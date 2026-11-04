@@ -36,6 +36,7 @@ fn picker_open_file_refresh_reads_bytes_and_keeps_failed_or_stale_candidates_pri
             source.clone(),
             force,
             Some(file.clone()),
+            None,
             &ibis_engine::Cancellation::default(),
             || false,
         );
@@ -56,6 +57,7 @@ fn picker_open_file_refresh_reads_bytes_and_keeps_failed_or_stale_candidates_pri
         source,
         force,
         Some(file.clone()),
+        None,
         &ibis_engine::Cancellation::default(),
         || false,
     );
@@ -124,6 +126,7 @@ fn a_new_library_opens_before_the_obsolete_filesystem_read_returns() {
             source,
             reload,
             intent: OpenIntent::Read,
+            profile: None,
             cancel: OpenCancellation::default(),
             #[cfg(debug_assertions)]
             started: std::time::Instant::now(),
@@ -195,6 +198,7 @@ fn remembered_choice_uses_the_read_identity_even_if_the_selected_path_disappears
     let loaded = load_source(
         source.clone(),
         false,
+        None,
         None,
         &ibis_engine::Cancellation::default(),
         || false,
@@ -325,6 +329,7 @@ fn three_rapid_choices_run_only_first_and_last_loads_and_the_last_wins() {
             source,
             reload,
             intent: OpenIntent::Read,
+            profile: None,
             #[cfg(debug_assertions)]
             started: std::time::Instant::now(),
         }
@@ -545,6 +550,7 @@ fn reload_and_engine_event_record_one_update_in_either_completion_order() -> Res
             Source::File(path),
             true,
             Some(file.clone()),
+            None,
             &ibis_engine::Cancellation::default(),
             || false,
         )
@@ -601,6 +607,7 @@ fn queued_reload_notification_cannot_clear_a_later_failed_read() -> Result<(), B
             Source::File(path.clone()),
             true,
             Some(file.clone()),
+            None,
             &ibis_engine::Cancellation::default(),
             || false,
         );
@@ -653,7 +660,14 @@ fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<()
     let (a, _, _) = begin_open(&library, &requests, path.clone()).ok_or("reload A")?;
     let cancel = ibis_engine::Cancellation::default();
     std::fs::write(&path, "@book{r1}")?;
-    let prepared = load_source(Source::File(path.clone()), true, Some(file.clone()), &cancel, || false);
+    let prepared = load_source(
+        Source::File(path.clone()),
+        true,
+        Some(file.clone()),
+        None,
+        &cancel,
+        || false,
+    );
     assert_eq!(
         file.revision(),
         accepted,
@@ -681,7 +695,14 @@ fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<()
     cancel.cancel();
     std::fs::remove_file(&path)?;
     assert!(install_loaded(&library, &requests, a, prepared).is_none());
-    let refused = load_source(missing, false, None, &ibis_engine::Cancellation::default(), || false);
+    let refused = load_source(
+        missing,
+        false,
+        None,
+        None,
+        &ibis_engine::Cancellation::default(),
+        || false,
+    );
     install_loaded(&library, &requests, b, refused).ok_or("failed choice")?;
     assert_eq!(file.revision(), snapshot.fingerprints().full.as_str());
     let result = file

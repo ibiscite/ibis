@@ -38,7 +38,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | Search icon | Magnifier | The Ibis mark, as Alfred shows its hat |
 | In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
-| Key caps | Shortcuts only in menus | Caps in the footer and key lists |
+| Key caps | Shortcuts only in menus | Caps in the footer and key lists; Settings writes keys as menus do |
 | Focus ring | A translucent keyboard focus colour | Solid accent text, so it keeps 3:1 on every surface |
 
 ## Foundations
@@ -56,9 +56,9 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 ### Colour
 
 - **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas. `--text-placeholder` is AppKit's placeholder colour, which equals its secondary label.
-- **Fills**: Apple's fill ladder `--fill-1` … `--fill-4`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover and grouped content are quaternary.
+- **Fills**: Apple's fill ladder `--fill-1` … `--fill-4`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover is quaternary. Grouped content (`--surface-grouped`, Settings cards) is tertiary (secondary in dark), a step above the sidebar, so groups separate by fill; the hairline backs it up. Increase Contrast uses the system fill.
 - **Separators**: one `--separator` for hairlines and dividers; `--stroke-field` is the control edge that only Increase Contrast and forced colours draw. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
-- **Accent and selection** [D6]: there are two choices, **Follow the Mac** and **Ibis scarlet**, and each resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where a Mac accent would fall below 4:1 with white; it keeps one text colour through hover and press. Hover and press darken toward black. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
+- **Accent and selection** [D6]: there are two choices, **Follow the Mac** and **Ibis scarlet**, and each resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. Rings and marks with no text on them (a picture choice's ring, the file-drag ring) read `--accent-mark`, which equals `--accent` except on Windows and Linux in dark, where it is lifted to 3:1 while fills keep the system accent so white on them stays 4.5:1. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where a Mac accent would fall below 4:1 with white; it keeps one text colour through hover and press. Hover and press darken toward black. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
 - **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
 - **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour. The dot agrees with the words beside it: while its menu or the footer reports a problem it is never green.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
@@ -68,7 +68,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 
 ### Materials and layers
 
-- **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`; `--raised` only for cards and the segmented thumb. No other surface colours.
+- **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`. Settings cards are grouped content. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
 - **Readable overlays** [C13]: menus, the keys sheet and dialogs use the panel's glass, denser than the window, so content behind reads as soft colour only.
 - **Elevation** [D11]: one overlay shadow for every menu; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
@@ -126,7 +126,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ### Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
-- Caps appear only in the footer, the notice slot and key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
 - A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
@@ -167,7 +167,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | --- | --- |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
 | IconButton | Square, one size and glyph size per context, `--r-control`; rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
-| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). |
+| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). Quiet in a band that is itself a fill (the shelf's count). |
 | Menu (`ui/Menu`) | See **Menus**. |
 | Segmented | `--r-seg` thumb on a quiet track. |
 | Switch (`ui/Switch`) | The one on/off control: accent track when on, `--text-on-accent` thumb, size from `--switch-*`. |
@@ -175,7 +175,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Settings group and row (`ui/SettingsGroup`) | See **Settings**. |
 | Shortcut table (`ui/ShortcutTable`) | Small secondary heading, one card of rows, action at the start and keys at the end. |
 | Key caps (`ui/KeyCaps`) | See **Key caps**. |
-| Shelf (`ChipGroup`, `LocatorToken`) | See **Shelf**. |
+| Shelf (`ShelfSegment`, `ChipGroup`, `LocatorToken`) | See **Shelf**. |
 | Inspector (`ui/Inspector`, `CitationDetails`) | See **Inspector**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
 | Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See **Notices**. |
@@ -293,6 +293,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
 - **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the notice slot (see **Notices**).
+- **One reading of a library's health**: the dot, the hover text and the library menu all draw from `libraryCondition`. A problem in words is never a green dot: anything the menu reports makes the dot at least Look.
 
 | Case | Footer |
 | --- | --- |
@@ -303,7 +304,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.
-- The status opens the **library menu**: the library with count and age; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
+- The status opens the **library menu**: the library with count and age; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
 - **Open the source** (⌘O): the words always name the target. **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
 
 ### Keys
@@ -386,6 +387,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Welcome**: the whole window, with no search header. The mark, a title, the line "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.", then four starts as a 2 × 2 grid of tiles (Zotero, a .bib file, Find them on this computer, Try sample references), each with its own centred glyph. The note names the registered shortcut ("After this, open Ibis from any app with ⇧⌘Y."), or says **No shortcut is set** with how to open Ibis instead. Esc dismisses a menu, then hides.
 - **Opening a library**: nothing for 400 ms, then the mark, "Opening example.bib…", "Reading your library. Zotero can stay closed." and a thin progress bar. Rows kept from before stay instead.
 - **No library**: "Where do your references live?" with the welcome grid; nothing is searched until Find is chosen.
+- **Zotero found**: Ibis still asks. When Zotero is running or its library is on this computer, the welcome screen keeps every start and highlights Zotero, so Enter takes it. Only that look happens first; no library is read until it is chosen.
 - **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a .bib or CSL-JSON file into this window."
 - **Could not open, nothing kept**: the title names the library and the fix; "Use another library" shows the no-library screen. A failure with references kept stays a notice above them.
 
@@ -393,10 +395,12 @@ Never call the destination a password field. The right paste key is shown per sy
 | --- | --- | --- |
 | `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
 | `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
-| `zotero_closed` | Zotero isn't open | Try again, Use another library |
-| `zotero_access_off` | Zotero isn't sharing your library | Try again, Use another library |
+| `zotero_closed` | Ibis needs Zotero open | Open Zotero, Use another library |
+| `zotero_missing` | Ibis can't find Zotero's library | Use another library, Try again |
+| `zotero_access_off` | Zotero isn't sharing your library | Open Zotero, Use another library |
+| `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
 
-- Setup finishes itself: Ibis never asks "What do you write in?"; when Zotero sharing turns on, the screen continues on its own; with Zotero closed Ibis reads the library anyway.
+- Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and only a closed read that used it remembers the answer; a saved profile that is gone or unreadable asks again and never reads another. With references on screen the choice stays out of the way: the footer offers **Choose Zotero Profile…**, and the library menu lists the profiles whenever there are several and Zotero is not running, so a mistaken choice can be changed. A running Zotero answers for the profile it opened, so it offers no choice.
 - **Try sample references** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
 ## Settings
@@ -415,7 +419,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Accent**: a segmented choice of **Follow the Mac** (the default) and **Ibis scarlet**. No other hues, free colour picker, custom fonts, themes or CSS.
 - A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Preference resets offer Undo.
 
-**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
+**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text at body size, as menus write key equivalents, in full ink under Increase Contrast. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
 
 - The recorder shows the shortcut in system notation; clicking says **Type a shortcut…**; Esc, Tab or leaving cancels.
 - A shortcut needs Control, Option or Command; **⌘ + one key is refused**, as are picker commands and, on Windows, Ctrl+Alt with a printable key (AltGr). Refusals name the owner and keep the working shortcut.
@@ -507,6 +511,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
 - The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
 - The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point `Screen.dc.html` at them); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
-- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. It merges at 9 out of 10 or better from every view; anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
+- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. A pass merges when no view scores any screen lower than before; work continues until every view scores every screen 9 or better, and anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
 - Record maintainer decisions in [decisions.md](decisions.md) and update the rule here in place, deleting the text it replaces.
 - Review this page against Apple's guidelines on each new macOS release.

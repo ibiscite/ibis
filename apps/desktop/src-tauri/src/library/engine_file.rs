@@ -97,6 +97,41 @@ pub(crate) struct FilePreview {
     #[specta(optional)]
     pub(crate) problem: Option<String>,
 }
+/// One answer from an engine's `libraries` method, by its field.
+fn engine_list<T: serde::de::DeserializeOwned>(
+    engine: &Engine,
+    action: &str,
+    field: &str,
+) -> Result<T, ibis_core::contract::EngineError> {
+    let answer = engine.dispatch(Method::Libraries, &json!({"action":action}), &Cancellation::default())?;
+    answer
+        .data
+        .get(field)
+        .cloned()
+        .and_then(|list| serde_json::from_value(list).ok())
+        .ok_or(ibis_core::contract::ErrorCode::Internal.into())
+}
+
+pub(super) fn zotero_groups(
+    engine: &Engine,
+) -> Result<Vec<ibis_engine::ZoteroGroup>, ibis_core::contract::EngineError> {
+    engine_list(engine, "zotero-groups", "zotero_groups")
+}
+
+/// The Zotero profiles on this computer, by name.
+pub(super) fn zotero_profiles() -> Result<Vec<String>, ibis_core::contract::EngineError> {
+    let names: Vec<String> = engine_list(&Engine::new()?, "zotero-profiles", "zotero_profiles")?;
+    if names.is_empty() {
+        return Err(ibis_core::contract::ErrorCode::SourceUnavailable.into());
+    }
+    Ok(names)
+}
+
+/// Whether a Zotero library is on this computer; reads none.
+pub(crate) fn zotero_installed() -> bool {
+    Engine::new().is_ok_and(|engine| engine_list(&engine, "zotero-profiles", "zotero_installed").unwrap_or(false))
+}
+
 impl FileLibrary {
     pub(crate) fn recents(&self, ids: &[ItemRef], include_added: bool) -> Result<SearchReply, String> {
         use super::search::RecentGroup;
@@ -362,24 +397,40 @@ impl FileLibrary {
             observing: AtomicBool::new(false),
         }
     }
-    pub(super) fn open_zotero(chosen: &ZoteroLibraries, cancel: &Cancellation) -> Result<Self, super::LoadError> {
-        let engine = Engine::new().map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        Self::open_zotero_with(engine, chosen, cancel)
+    pub(super) fn open_zotero(
+        chosen: &ZoteroLibraries,
+        profile: Option<&str>,
+        cancel: &Cancellation,
+    ) -> Result<Self, super::LoadError> {
+        let engine = Engine::new().map_err(super::LoadError::EngineZotero)?;
+        Self::open_zotero_with(engine, chosen, profile, cancel)
     }
 
     fn open_zotero_with(
         engine: Engine,
         chosen: &ZoteroLibraries,
+        profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<Self, super::LoadError> {
         let bridge = Self::from_engine(engine);
-        bridge.refresh_zotero(chosen, false, cancel)?;
+        bridge.refresh_zotero(chosen, profile, false, cancel)?;
         Ok(bridge)
+    }
+
+    /// Whether this library's references came from Zotero's closed database.
+    pub(super) fn read_zotero_closed(&self) -> bool {
+        self.engine.zotero_read_closed()
+    }
+
+    /// The group libraries this engine knows, Zotero running or not.
+    pub(super) fn zotero_groups(&self) -> Result<Vec<ibis_engine::ZoteroGroup>, ibis_core::contract::EngineError> {
+        zotero_groups(&self.engine)
     }
 
     pub(super) fn refresh_zotero(
         &self,
         chosen: &ZoteroLibraries,
+        profile: Option<&str>,
         force: bool,
         cancel: &Cancellation,
     ) -> Result<bool, super::LoadError> {
@@ -394,27 +445,26 @@ impl FileLibrary {
         let loaded: Vec<_> = self
             .engine
             .libraries()
-            .map_err(|e| super::LoadError::EngineZotero(e.code))?
+            .map_err(super::LoadError::EngineZotero)?
             .libraries
             .iter()
             .filter_map(|library| library.zotero)
             .collect();
         // The listing is sorted by opaque ID, not by the user's selection order.
         let same = loaded.len() == libraries.len() && loaded.iter().all(|library| libraries.contains(library));
-        let request = if force && same {
-            json!({"action":"reload"})
-        } else {
-            json!({"action":"open-zotero","libraries":libraries})
-        };
+        let request = json!({"action":"open-zotero","libraries":libraries,"profile":profile,"reload":force && same});
         self.engine
             .dispatch(Method::Libraries, &request, cancel)
-            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        let info = self
-            .engine
-            .libraries()
-            .map_err(|e| super::LoadError::EngineZotero(e.code))?;
-        if let Some(code) = info.libraries.iter().find_map(|info| info.refresh_error) {
-            return Err(super::LoadError::EngineZotero(code));
+            .map_err(super::LoadError::EngineZotero)?;
+        let info = self.engine.libraries().map_err(super::LoadError::EngineZotero)?;
+        let failure = info.libraries.iter().find_map(|info| {
+            info.refresh_error.map(|code| ibis_core::contract::EngineError {
+                code,
+                reason: info.refresh_reason,
+            })
+        });
+        if let Some(failure) = failure {
+            return Err(super::LoadError::EngineZotero(failure));
         }
         // Empty libraries change the choice even when the object fingerprint stays equal.
         Ok(same)

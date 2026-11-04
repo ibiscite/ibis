@@ -19,6 +19,11 @@ export const commands = {
 	/**  Samples are an explicit, temporary source, never a saved library preference. */
 	useSampleLibrary: (enabled: boolean) => __TAURI_INVOKE<null>("use_sample_library", { enabled }),
 	/**
+	 *  What the welcome screen can say about Zotero before anything is chosen, so
+	 *  it can offer Zotero first. Reads Zotero's profile configuration and no library.
+	 */
+	findZotero: () => __TAURI_INVOKE<ZoteroPresence>("find_zotero"),
+	/**
 	 *  Find what setup can offer: whether Zotero is open, and `.bib` files in
 	 *  the documents, desktop and downloads folders.
 	 */
@@ -35,8 +40,26 @@ export const commands = {
 	 *  is refused.
 	 */
 	useZoteroLibraries: (libraries: ZoteroLibrary[]) => __TAURI_INVOKE<null>("use_zotero_libraries", { libraries }),
-	/**  The group libraries Zotero knows, while Zotero runs. */
+	/**
+	 *  The group libraries Zotero knows: asked of Zotero while it runs, or as
+	 *  listed by the closed read of the open library. Starts no read of its own.
+	 */
 	zoteroGroups: () => __TAURI_INVOKE<ZoteroGroup[]>("zotero_groups"),
+	/**
+	 *  The profiles to choose from for reading while Zotero is closed. Their
+	 *  locations stay native.
+	 */
+	zoteroProfiles: () => __TAURI_INVOKE<ZoteroProfiles>("zotero_profiles"),
+	/**
+	 *  Read this Zotero profile from now on; the result arrives as
+	 *  `library:changed`, and only a closed read that used it saves the choice.
+	 */
+	useZoteroProfile: (name: string) => __TAURI_INVOKE<void>("use_zotero_profile", { name }),
+	/**
+	 *  Ask Zotero while a screen waiting on it is shown. Once it answers, the
+	 *  failed choice is read again and the result arrives as `library:changed`.
+	 */
+	checkZoteroSharing: () => __TAURI_INVOKE<ZoteroPresence>("check_zotero_sharing"),
 	/**  The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/**  Open the searched source or launch Zotero for a reported Zotero problem. */
@@ -551,7 +574,11 @@ export type LibraryProblem =
 /**  Zotero did not answer: it is closed or still starting. */
 "zotero_closed" |
 /**  Zotero answered but does not let other apps read it. */
-"zotero_access_off" | "other";
+"zotero_access_off" |
+/**  Zotero is closed and which profile to read is not settled. */
+"zotero_profiles" |
+/**  No Zotero library is on this computer. */
+"zotero_missing" | "other";
 
 export type LibraryState = "none" | "loading" | "loaded" | "reloading" | "error";
 
@@ -1198,4 +1225,17 @@ export type ZoteroLibrary =
 /**  A group library, by its numeric group ID. */
 { group: number };
 
-export type ZoteroPresence = "available" | "access_off" | "absent";
+export type ZoteroPresence = "available" | "access_off" |
+/**  Not running, but its library is on this computer and can be read. */
+"closed" | "absent";
+
+/**  The Zotero profiles on this computer and the one chosen, by name. */
+export type ZoteroProfiles = {
+	names: string[],
+	chosen: string | null,
+	/**
+	 *  Zotero is running, so it answers for the profile it opened and a choice
+	 *  here would change nothing on screen.
+	 */
+	running: boolean,
+};

@@ -75,14 +75,26 @@ pub(crate) enum LibraryProblem {
     ZoteroClosed,
     /// Zotero answered but does not let other apps read it.
     ZoteroAccessOff,
+    /// Zotero is closed and which profile to read is not settled.
+    ZoteroProfiles,
+    /// No Zotero library is on this computer.
+    ZoteroMissing,
     Other,
 }
 
 impl From<LoadError> for LibraryProblem {
     fn from(error: LoadError) -> Self {
+        use ibis_core::contract::ErrorReason;
         use ibis_core::source::SourceError;
         use ibis_core::zotero::api::{TransportError, ZoteroError};
         match error {
+            LoadError::EngineZotero(error) => match error.reason {
+                Some(ErrorReason::ZoteroSharingOff) => LibraryProblem::ZoteroAccessOff,
+                Some(ErrorReason::ZoteroProfileNeeded) => LibraryProblem::ZoteroProfiles,
+                Some(ErrorReason::ZoteroNeedsOpening) => LibraryProblem::ZoteroClosed,
+                Some(ErrorReason::ZoteroNotFound) => LibraryProblem::ZoteroMissing,
+                _ => LibraryProblem::Other,
+            },
             LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
             LoadError::InvalidData
             | LoadError::Source(
@@ -456,12 +468,19 @@ mod tests {
 
     #[test]
     fn problems_group_failures_by_the_fix_they_need() {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
         use ibis_core::zotero::api::ZoteroError;
-        let cases: [(LoadError, LibraryProblem); 6] = [
+        let engine = |reason| LoadError::EngineZotero(EngineError::because(ErrorCode::SourceUnavailable, reason));
+        let cases: [(LoadError, LibraryProblem); 11] = [
             (SourceError::Unavailable.into(), LibraryProblem::Missing),
             (SourceError::Unreadable.into(), LibraryProblem::Unreadable),
             (SourceError::TooLarge.into(), LibraryProblem::Unreadable),
             (ZOTERO_OFFLINE, LibraryProblem::ZoteroClosed),
+            (engine(ErrorReason::ZoteroSharingOff), LibraryProblem::ZoteroAccessOff),
+            (engine(ErrorReason::ZoteroProfileNeeded), LibraryProblem::ZoteroProfiles),
+            (engine(ErrorReason::ZoteroNeedsOpening), LibraryProblem::ZoteroClosed),
+            (engine(ErrorReason::ZoteroNotFound), LibraryProblem::ZoteroMissing),
+            (engine(ErrorReason::ZoteroNoSpace), LibraryProblem::Other),
             (ZoteroError::NotAllowed.into(), LibraryProblem::ZoteroAccessOff),
             (LoadError::Stopped, LibraryProblem::Other),
         ];

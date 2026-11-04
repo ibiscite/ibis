@@ -2,7 +2,7 @@
 -- Layout verified against upstream 7.0.0, 8.0, 9.0 and 10.0.6; no user data.
 CREATE TABLE version(schema TEXT PRIMARY KEY,version INTEGER);
 CREATE TABLE libraries(libraryID INTEGER PRIMARY KEY,type TEXT);
-CREATE TABLE groups(groupID INTEGER PRIMARY KEY,libraryID INTEGER UNIQUE);
+CREATE TABLE groups(groupID INTEGER PRIMARY KEY,libraryID INTEGER UNIQUE,name TEXT);
 CREATE TABLE itemTypesCombined(itemTypeID INTEGER PRIMARY KEY,typeName TEXT);
 CREATE TABLE fieldsCombined(fieldID INTEGER PRIMARY KEY,fieldName TEXT);
 CREATE TABLE items(itemID INTEGER PRIMARY KEY,libraryID INTEGER,key TEXT,version INTEGER,itemTypeID INTEGER,dateAdded TEXT,dateModified TEXT);
@@ -12,8 +12,10 @@ CREATE TABLE creators(creatorID INTEGER PRIMARY KEY,firstName TEXT,lastName TEXT
 CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY,creatorType TEXT);
 CREATE TABLE itemCreators(itemID INTEGER,creatorID INTEGER,creatorTypeID INTEGER,orderIndex INTEGER);
 CREATE TABLE deletedItems(itemID INTEGER);
+CREATE TABLE itemNotes(itemID INTEGER PRIMARY KEY,parentItemID INT,note TEXT,title TEXT);
+CREATE TABLE itemAttachments(itemID INTEGER PRIMARY KEY,parentItemID INT,linkMode INT,contentType TEXT,path TEXT);
 INSERT INTO libraries VALUES(1,'user'),(2,'group'),(3,'feed');
-INSERT INTO groups VALUES(4321,2);
+INSERT INTO groups VALUES(4321,2,'Invented Reading Group');
 INSERT INTO itemTypesCombined VALUES(1,'book'),(2,'journalArticle'),(3,'note'),(4,'attachment'),(5,'annotation');
 INSERT INTO fieldsCombined VALUES(1,'title'),(2,'date'),(3,'accessDate'),(4,'citationKey'),(5,'extra');
 INSERT INTO items VALUES(10,1,'SYNTH001',1,1,'2020-01-01 00:00:00','2020-02-02 00:00:00');

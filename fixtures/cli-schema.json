@@ -70,6 +70,46 @@
                   "array",
                   "null"
                 ]
+              },
+              "profile": {
+                "description": "The Zotero profile to read while Zotero is closed, by the name\n`zotero-profiles` gives; never a location. Omitted, a computer with\none profile reads it and one with several is refused.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "reload": {
+                "default": false,
+                "description": "Read everything again, not only what changed.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "The Zotero profiles on this computer, by name; reads no library.",
+            "properties": {
+              "action": {
+                "const": "zotero-profiles",
+                "type": "string"
+              }
+            },
+            "required": [
+              "action"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "description": "The Zotero group libraries known now, by name: asked of Zotero while\nit runs, otherwise those its closed copy listed when last read.",
+            "properties": {
+              "action": {
+                "const": "zotero-groups",
+                "type": "string"
               }
             },
             "required": [
@@ -136,6 +176,76 @@
             ],
             "type": "string"
           },
+          "ErrorReason": {
+            "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
+            "oneOf": [
+              {
+                "const": "unknown-style",
+                "description": "No style has the requested id; `styles` lists them.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-locale",
+                "description": "The requested locale is not bundled; `styles` lists the locales.",
+                "type": "string"
+              },
+              {
+                "const": "duplicate-key",
+                "description": "The key is repeated in a library, so every entry under it is skipped.",
+                "type": "string"
+              },
+              {
+                "const": "ambiguous-key",
+                "description": "Several references share the key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-key",
+                "description": "A key output needs a citation key this reference does not have.",
+                "type": "string"
+              },
+              {
+                "const": "app-missing",
+                "description": "The program started as the Ibis app does not exist.",
+                "type": "string"
+              },
+              {
+                "const": "not-ibis",
+                "description": "The program started as the Ibis app is not Ibis.",
+                "type": "string"
+              },
+              {
+                "const": "no-answer",
+                "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-sharing-off",
+                "description": "Zotero is running but does not let other applications read it.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-profile-needed",
+                "description": "Zotero is closed and which profile to read is not settled; name one.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-needs-opening",
+                "description": "A closed read is unsafe or impossible here; opening Zotero is the fix.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-not-found",
+                "description": "No Zotero library is on this computer.",
+                "type": "string"
+              },
+              {
+                "const": "zotero-no-space",
+                "description": "A closed read needs a private copy and there is no room for it.",
+                "type": "string"
+              }
+            ]
+          },
           "LibraryId": {
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
             "pattern": "^[A-Za-z0-9_-]{1,64}$",
@@ -169,6 +279,17 @@
                     "type": "null"
                   }
                 ]
+              },
+              "refresh_reason": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ErrorReason"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "What a person can do about `refresh_error`, when the failure says."
               },
               "updated_at_ms": {
                 "format": "uint64",
@@ -306,6 +427,24 @@
             ],
             "type": "string"
           },
+          "ZoteroGroup": {
+            "description": "A Zotero group library by its public ID and a name safe to show.",
+            "properties": {
+              "id": {
+                "format": "uint64",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
+            ],
+            "type": "object"
+          },
           "ZoteroLibrary": {
             "description": "A Zotero library: the personal library (\"My Library\") or a group by its\nZotero group ID.",
             "oneOf": [
@@ -340,6 +479,33 @@
               "$ref": "#/$defs/LibraryInfo"
             },
             "type": "array"
+          },
+          "zotero_groups": {
+            "description": "Answers `zotero-groups`.",
+            "items": {
+              "$ref": "#/$defs/ZoteroGroup"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "zotero_installed": {
+            "description": "Answers `zotero-profiles`: whether a Zotero library is on this computer.",
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "zotero_profiles": {
+            "description": "Answers `zotero-profiles`: each profile's safe name, never its location.",
+            "items": {
+              "type": "string"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
           }
         },
         "required": [

@@ -25,6 +25,7 @@ mod state;
 mod status;
 mod tasks;
 
+pub(crate) use engine_file::zotero_installed;
 pub(crate) use error::{CommandError, LoadError};
 pub(crate) use search::{PreviewIntent, PreviewRequests, ProjectMark, SearchRequests, SearchResult};
 pub(crate) use source::Source;

@@ -438,6 +438,7 @@ mod tests {
                 Source::File(path.clone()),
                 false,
                 None,
+                None,
                 &ibis_engine::Cancellation::default(),
                 || false,
             );
@@ -852,6 +853,7 @@ mod tests {
                 Source::File(file.clone()),
                 true,
                 previous,
+                None,
                 &ibis_engine::Cancellation::default(),
                 || false,
             );

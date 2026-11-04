@@ -31,6 +31,7 @@ Each run reads the libraries you name and nothing else:
 | `--file PATH` | A BibTeX, BibLaTeX or CSL-JSON file. Repeat for several. |
 | `--zotero` | The local Zotero personal library, whether Zotero is open or closed. |
 | `--zotero-group GROUP_ID` | A local Zotero group library. Repeat for several. |
+| `--zotero-profile NAME` | Which Zotero profile to read while Zotero is closed, when there are several. A refusal lists their names; `ibis mcp` tells an agent only that one is needed. |
 | `--app-libraries` | The library chosen in the Ibis app. |
 
 Library options may come before or after the command; they add up in that order and

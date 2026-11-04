@@ -2,6 +2,7 @@ import { iconPaths, iconStroke } from "./icon-paths";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
+import type { Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { copiedNoticeText } from "./messages";
 import { currentPlatform, platformOf, type Platform } from "./platform";
@@ -48,11 +49,39 @@ export type NoticePlatform = Platform;
 
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
+/**
+ * Every reason Ibis gives for copying instead of pasting: ibis-core's
+ * `CopyReason`, plus the paste delivery's own "key-release-failed". A test
+ * checks this list against the Rust source and the notice wording, so a
+ * reason without words cannot ship.
+ */
+export const COPY_REASONS = [
+  "paste-off", "unsupported-system", "no-target", "unknown-app", "copy-only", "target-changed", "clipboard-changed",
+  "paste-expired", "secure-field", "secure-input", "paste-unavailable", "elevated-app", "terminal", "remote-desktop",
+  "virtual-machine", "nonstandard-shortcut", "no-permission", "accessibility-required", "selection-not-shown", "citation-not-selected",
+  "key-release-failed",
+] as const;
+export type CopyReason = typeof COPY_REASONS[number];
+/** What happened to a copy, with its reason checked: an unknown reason does not compile. */
+export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason | null };
+export type Notice = Omit<NoticeMessage, "delivered"> & { delivered: Delivered };
+
+const isCopyReason = (reason: string): reason is CopyReason => (COPY_REASONS as readonly string[]).includes(reason);
+
+/** Reads what Rust sent. A reason this build does not know is a bug, reported,
+ * and the notice falls back to the plain paste hint rather than a bare title. */
+export function readDelivered(delivered: WireDelivered): Delivered {
+  if (delivered.outcome !== "copied" || delivered.reason === null || isCopyReason(delivered.reason)) return delivered as Delivered;
+  console.error(`Unknown copy reason: ${delivered.reason}`);
+  return { outcome: "copied", reason: null };
+}
+export const readNotice = (message: NoticeMessage): Notice => ({ ...message, delivered: readDelivered(message.delivered) });
+
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
-export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlatform()): string {
+export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform = currentPlatform()): string {
   if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
   if (delivered.reason) {
-    const text = copiedNoticeText.reasons[delivered.reason] || copiedNoticeText.title;
+    const text = copiedNoticeText.reasons[delivered.reason]!;
     return platform === "macos" ? text : text.replace("⌘V", "Ctrl+V");
   }
   return copiedNoticeText.hint(platform);
@@ -64,7 +93,7 @@ export function noticeTitle({ delivered }: NoticeMessage, platform = currentPlat
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
  */
-export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: NoticeMessage) => void {
+export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: Notice) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
   notice.className = "copied-notice copy-receipt";
@@ -87,7 +116,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   const code = document.createElement("code");
   code.dir = "auto";
   root.append(notice);
-  return (message: NoticeMessage) => {
+  return (message: Notice) => {
     title.textContent = noticeTitle(message, platform);
     if (message.milestone) {
       const milestone = document.createElement("span");

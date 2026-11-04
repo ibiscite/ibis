@@ -3,7 +3,7 @@
 import { listen } from "@tauri-apps/api/event";
 import type { NoticeMessage } from "./api";
 import { commands } from "./bindings";
-import { leaveNotice, noticePlatform, renderNotice } from "./copyFeedback";
+import { leaveNotice, noticePlatform, readNotice, renderNotice } from "./copyFeedback";
 import { copiedNoticeText } from "./messages";
 import { setPlatform } from "./nativeAppearance";
 import "./tokens.css";
@@ -21,8 +21,8 @@ if (root) {
   const show = renderNotice(root, platform);
   // Listen first, then ask for the text in case the event came before the page.
   void listen("notice:leave", () => leaveNotice(root)).catch(() => console.error(copiedNoticeText.noticeFailed));
-  void listen<NoticeMessage>("notice:show", (event) => show(event.payload))
+  void listen<NoticeMessage>("notice:show", (event) => show(readNotice(event.payload)))
     .then(() => commands.copiedNotice())
-    .then((message) => { if (message !== null) show(message); })
+    .then((message) => { if (message !== null) show(readNotice(message)); })
     .catch(() => console.error(copiedNoticeText.noticeFailed));
 }

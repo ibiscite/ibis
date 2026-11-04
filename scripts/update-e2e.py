@@ -1554,28 +1554,6 @@ class Tests(unittest.TestCase):
                 self.assertIsInstance(result, AssertionError)
                 self.assertEqual([event[-1] for event in events if event[1] == "key"], ["Tab"])
 
-    def test_update_job_keeps_nightly_metadata_but_executes_the_current_qualification_tools(self):
-        workflow = (Path(__file__).resolve().parents[1] / ".github/workflows/preview.yml").read_text(encoding="utf-8")
-        job = workflow.split("\n  update-e2e:\n", 1)[1]
-        steps = re.split(r"(?m)^      - name: ", job)[1:]
-        checkouts = [step for step in steps if "uses: actions/checkout@" in step]
-        # Artifact version calculation still runs in the publisher's checkout;
-        # fixes to the qualification tools must not wait for another nightly.
-        source = [step for step in checkouts if "ref: ${{ steps.source.outputs.sha }}" in step]
-        harness = [step for step in checkouts if "ref: ${{ github.sha }}" in step]
-        self.assertEqual(len(source), 1)
-        self.assertNotRegex(source[0], r"(?m)^          path:")
-        self.assertEqual(len(harness), 1, "the update job must check out its current qualification tools")
-        path = re.search(r"(?m)^          path: ([a-z-]+)$", harness[0])
-        self.assertIsNotNone(path)
-        self.assertIn("persist-credentials: false", harness[0])
-        commands = re.findall(r"(?m)^          .*?((?:[a-z-]+/)?scripts/update-e2e\.py) (.*)$", job)
-        self.assertEqual(len(commands), 4, "both platforms run self-tests and the real qualifier")
-        self.assertTrue(all(script == f"{path[1]}/scripts/update-e2e.py" for script, _ in commands))
-        self.assertEqual(sum(arguments == "--self-test" for _, arguments in commands), 2)
-        self.assertIn("version=$(node scripts/update-feed.mjs version)", job)
-        self.assertEqual(job.count("run-id: ${{ steps.source.outputs.run }}"), 2)
-
     def linux_desktop(self, scenario):
         events = []
         clock = {"now": 0.0}

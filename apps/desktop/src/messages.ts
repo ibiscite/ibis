@@ -1,4 +1,4 @@
-import type { EntryCopy, KeyFormat, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus } from "./bindings";
+import type { EntryCopy, KeyFormat, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -119,16 +119,23 @@ export const setupText = {
     "“Allow other applications on this computer to communicate with Zotero”.",
   cutShort: "Some folders were too large to search fully. Choose the file yourself if it is not listed.",
   nothingFound: "No Zotero or .bib files found nearby. Choose the file yourself.",
-  found: (files: number, zotero: boolean) =>
-    [zotero ? "Zotero is open." : "", files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
+  found: (files: number, zotero: ZoteroPresence | null) =>
+    [zotero === "available" ? "Zotero is open." : zotero === "closed" ? "Zotero is on this computer." : "",
+      files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
   missingTitle: (name: string) => `Can't find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,
   findFileHelp: "Choose where it is now",
   unreadableTitle: (name: string) => `Can't read ${name}`,
-  zoteroClosedTitle: "Zotero isn't open",
-  zoteroClosedLine: "Open Zotero, then try again.",
+  zoteroClosedTitle: "Ibis needs Zotero open",
+  zoteroMissingTitle: "Ibis can't find Zotero's library",
+  zoteroMissingLine: "If Zotero isn't installed, install it and open it once. Ibis will carry on by itself.",
+  zoteroClosedLine: "Open Zotero and Ibis will carry on by itself.",
   zoteroAccessOffTitle: "Zotero isn't sharing your library",
+  zoteroAccessOffWaiting: "Ibis will carry on by itself once it's on.",
+  zoteroProfilesTitle: "Which Zotero profile?",
+  zoteroProfilesLine: "Zotero is closed. Choose the profile to read.",
+  zoteroProfilesFailed: "Ibis could not list your Zotero profiles. Open Zotero and Ibis will carry on by itself.",
   otherTitle: (name: string) => `Can't open ${name}`,
   theLibrary: "the library",
   tryAgain: "Try again",
@@ -324,6 +331,8 @@ export const pickerText = {
   reload: "Reload",
   reloadTitle: "Reload Library",
   reloadLibrary: "Reload Library",
+  chooseZoteroProfile: "Choose Zotero Profile…",
+  zoteroProfile: "Zotero Profile",
   chooseLibraryMenu: "Choose Library…",
   copyAs: "Copy as",
   quitLabel: "Quit Ibis",
@@ -402,9 +411,14 @@ export const keyText = {
 export const libraryMessages = {
   opening: (name: string | null) => `Opening ${name ?? "library"}…`,
   reloading: (name: string | null) => `Reloading ${name ?? "library"}…`,
-  openError: (name: string | null, reason: string, zotero = false) => {
+  openError: (name: string | null, reason: string, zotero = false, problem: LibraryStatus["problem"] = null) => {
     const sentence = /[.!?]$/.test(reason) ? reason : `${reason}.`;
-    if (zotero) return `${isolate(name ?? "Zotero")} could not be read. ${sentence} Open Zotero, then reload.`;
+    if (zotero) {
+      // Each fix is named once: sharing is a setting, and a profile is chosen here.
+      const fix = problem === "zotero_access_off" ? ` ${setupText.zoteroAccessOff}`
+        : problem === "zotero_closed" || problem === null ? " Open Zotero, then reload." : "";
+      return `${isolate(name ?? "Zotero")} could not be read. ${sentence}${fix}`;
+    }
     return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
@@ -453,7 +467,7 @@ export const libraryMessages = {
     const parts = [
       zoteroSnapshot(status) && !(status.error && !status.stale) ? libraryNames(status) : null,
       checked === null ? null : isolate(`${status.stale ? "last read" : "checked"} ${ago(checked, now)}, ${clock(checked, now)}`),
-      status.error ? libraryMessages.openError(status.name, status.error, status.zotero)
+      status.error ? libraryMessages.openError(status.name, status.error, status.zotero, status.problem)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : null,
     ].filter((part): part is string => part !== null);

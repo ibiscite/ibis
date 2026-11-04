@@ -1,6 +1,9 @@
 /* Inspector rows, as Xcode's and Finder's: a trailing-aligned label, then one
    control. Both controls draw at the same height and keep 32 px targets. */
-.citation-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: var(--space-2); }
+/* Neighbouring rows share one gap: their drawn controls sit --space-2 apart, the
+   inspector column's own gap, so a focus ring (width and offset) never reaches the
+   control beside it. Each row is the 32 px target around a smaller drawn control. */
+.citation-details { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: calc(var(--space-2) - (var(--control-h) - var(--action-h))) var(--space-2); }
 .citation-field { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: var(--control-h); }
 .citation-label { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: end; }
 /* The clear border is the rest of the target; the fill lines up with the pop-up's. */

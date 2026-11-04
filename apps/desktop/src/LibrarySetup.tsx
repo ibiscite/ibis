@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { ShortcutStatus, Sources } from "./bindings";
+import type { ShortcutStatus, Sources, ZoteroPresence } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { keysFor } from "./keys";
 import { useInterfaceMessages } from "./i18n";
@@ -14,6 +14,7 @@ type SetupApi = {
   chooseLibrary: () => Promise<unknown>;
   useZotero: () => Promise<unknown>;
   useSampleLibrary?: (enabled: boolean) => Promise<unknown>;
+  findZotero?: () => Promise<ZoteroPresence>;
   findSources?: () => Promise<Sources>;
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
 };
@@ -38,7 +39,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   onWelcomeChange?: (shown: boolean) => void;
 }) {
   const { text } = useInterfaceMessages();
-  const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findSources, openFoundLibrary } = api;
+  const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findZotero, findSources, openFoundLibrary } = api;
   const welcome = !empty;
   useLayoutEffect(() => {
     onWelcomeChange?.(welcome);
@@ -65,18 +66,29 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     return () => { current = false; };
   }, [findSources, search]);
 
+  // Ibis still asks: a Zotero found here is offered first, so Enter takes it,
+  // and nothing is read until it is chosen.
+  const [present, setPresent] = useState<ZoteroPresence | null>(null);
+  useEffect(() => {
+    if (!welcome || !findZotero) return;
+    let current = true;
+    void findZotero().then((found) => { if (current) setPresent(found); }, () => {});
+    return () => { current = false; };
+  }, [welcome, findZotero]);
+
   const looking = sources === undefined;
-  const zotero = sources?.zotero;
+  const zotero = sources?.zotero ?? present;
+  const zoteroHere = zotero === "available" || zotero === "closed" || zotero === "access_off";
   const files = openFoundLibrary ? sources?.files ?? [] : [];
   const onlyFile = files.length === 1 ? files[0] : undefined;
   const lookAgain = () => { intent.current += 1; setShowFiles(false); setSources(undefined); setSearch((n) => n + 1); };
   const outcome = looking ? setupText.looking
     : sources && files.length === 0 && zotero === "absent" ? setupText.nothingFound
-    : sources ? setupText.found(files.length, zotero === "available") : setupText.findHelp;
+    : sources ? setupText.found(files.length, zotero) : setupText.findHelp;
 
   const choices: Choice[] = [
     { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <ChoiceIcon name="library" />,
-      tag: zotero === "available" || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined },
+      tag: zoteroHere || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined, suggested: welcome && zoteroHere },
     { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="file" /> },
     ...(empty?.source ? [{ id: "source", title: empty.source.label, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),
     ...(!empty && findSources ? [{

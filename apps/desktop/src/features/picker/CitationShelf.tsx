@@ -1,5 +1,4 @@
 import { Icon } from "../../icons";
-import { IconButton } from "../../ui/IconButton";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FilePreview } from "../../bindings";
@@ -14,6 +13,7 @@ import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
 import { useInterfaceMessages } from "../../i18n";
 import type { SourceActionProps } from "../../ui/SourceAction";
+import { ShelfSegment } from "../../ui/ShelfSegment";
 import { ToolbarMenu } from "../../ui/ToolbarMenu";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
@@ -185,27 +185,22 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     const name = labels[span.item!]!;
-    return <span key={idKey(reference.id)} className="shelf-segment" data-reference={idKey(reference.id)} data-reference-key={reference.key} data-built={isSelected(reference) || undefined}>
-      <Button variant="quiet" size="small" className="shelf-segment-button" aria-label={citationDetailsText.edit(name)}
-        aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
-        aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
-        onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}>
-        <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
-      </Button>
-      {isSelected(reference) && <IconButton className="shelf-remove" excludeFromTabOrder aria-label={removeLabel(reference)} onPress={() => remove(reference)} />}
-    </span>;
+    return <ShelfSegment key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={citationDetailsText.edit(name)}
+      aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
+      aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
+      onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}
+      remove={isSelected(reference) ? { label: removeLabel(reference), onPress: () => remove(reference) } : undefined}>
+      <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
+    </ShelfSegment>;
   });
-  const singleSegment = single && onChangeReference && !copied ? <span className="shelf-segment" data-reference={idKey(single.id)} data-reference-key={single.key} data-built={isSelected(single) || undefined}>
-            <Button variant="quiet" size="small" className="shelf-segment-button" aria-label={citationDetailsText.edit(labels[0]!)}
-              aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
-              aria-describedby={text !== undefined ? citationId : undefined}
-              aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
-              onKeyDown={(event) => segmentKeys(event, single)} onPress={(event) => edit(single, event.target as HTMLElement)}>
-              <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
-            </Button>
-            {isSelected(single) && <IconButton className="shelf-remove" excludeFromTabOrder
-              aria-label={removeLabel(single)} onPress={() => remove(single)} />}
-          </span> : null;
+  const singleSegment = single && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
+    aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
+    aria-describedby={text !== undefined ? citationId : undefined}
+    aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
+    onKeyDown={(event) => segmentKeys(event, single)} onPress={(event) => edit(single, event.target as HTMLElement)}
+    remove={isSelected(single) ? { label: removeLabel(single), onPress: () => remove(single) } : undefined}>
+    <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
+  </ShelfSegment> : null;
   return <>
     <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
       {announce ? [pickerText.selectionCount(selected.size), ...partialWarnings].join(" ") : ""}
@@ -230,8 +225,9 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><Icon name="check" />{pickerText.copied}</span>}
           {!copied && references.length > 1 && <ToolbarMenu buttonRef={count} label={pickerText.selectedReferences} value={String(references.length)} placement="top end" selectedKey={panel?.reference ?? ""}
-            button={{ className: "shelf-count", label: interfaceText("shelf-references", { count: references.length }), title: pickerText.allChosen(references.length),
-              content: <><Icon name="article" className="shelf-count-icon" />{references.length}</> }}
+            button={{ className: "shelf-count", quiet: true, label: interfaceText("shelf-references", { count: references.length }), title: pickerText.allChosen(references.length),
+              // Words say what the count is; a folded shelf keeps the number, as its warnings do.
+              content: compact ? String(references.length) : interfaceText("shelf-references", { count: references.length }) }}
             filterLabel={pickerText.filterReferences} sections={[{ id: "references", label: pickerText.selectedReferences, items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
               sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && pickerText.closestMatch].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
             onAction={(key) => { const reference = references.find((r) => idKey(r.id) === key); if (reference) open("reference", count.current!, reference); }} />}

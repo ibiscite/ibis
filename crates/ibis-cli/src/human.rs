@@ -614,16 +614,26 @@ fn path_reason(path: &Path) -> Option<&'static str> {
     }
 }
 
-pub(super) fn zotero_failure(code: ErrorCode) -> String {
-    let reason = match code {
-        ErrorCode::SourceUnavailable => {
+pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String {
+    let reason = match (error.code, error.reason) {
+        (_, Some(reason)) => reason_sentence(reason),
+        (ErrorCode::SourceUnavailable, None) => {
             "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
         }
-        ErrorCode::BadInput => "its data could not be understood; open Zotero once so it can repair its database.",
-        ErrorCode::NewerFormat => "a newer version of Zotero wrote it; update Ibis.",
-        ErrorCode::ResourceLimit => "it is larger than Ibis reads at once.",
-        code => code_sentence(code),
+        (ErrorCode::BadInput, None) => {
+            "its data could not be understood; open Zotero once so it can repair its database."
+        }
+        (ErrorCode::NewerFormat, None) => "a newer version of Zotero wrote it; update Ibis.",
+        (ErrorCode::ResourceLimit, None) => "it is larger than Ibis reads at once.",
+        (code, None) => code_sentence(code),
     };
+    if error.reason == Some(ErrorReason::ZoteroProfileNeeded) && !profiles.is_empty() {
+        let names: Vec<_> = profiles.iter().map(|name| field(name)).collect();
+        return format!(
+            "cannot read the Zotero library: {reason} Profiles: {}.",
+            names.join(", ")
+        );
+    }
     format!("cannot read the Zotero library: {reason}")
 }
 
@@ -676,5 +686,20 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
             "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."
         }
         ErrorReason::NoAnswer => "the Ibis app started but did not answer; open Ibis once by hand, then try again.",
+        ErrorReason::ZoteroSharingOff => {
+            "Zotero is not sharing its library; in Zotero open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero."
+        }
+        ErrorReason::ZoteroProfileNeeded => {
+            "Zotero is closed and Ibis needs to know which profile to read; open Zotero, or name one with --zotero-profile NAME."
+        }
+        ErrorReason::ZoteroNeedsOpening => {
+            "Zotero's library cannot be read while it is closed; open Zotero, then try again."
+        }
+        ErrorReason::ZoteroNotFound => {
+            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
+        }
+        ErrorReason::ZoteroNoSpace => {
+            "there is not enough free space to read Zotero while it is closed; free some space, or open Zotero."
+        }
     }
 }
