@@ -89,7 +89,7 @@ export function Reader({ source, title, page, onPageChange, onClose }: {
       </TextField>
       <Button size="small" type="submit">{readerText.useNearby}</Button>
     </form>}
-    <PageStrip label={readerText.thumbnails} labels={labels} selected={selected} current={current} unlabelled={readerText.pdfPage} onChange={choose} draw={source.draw} />
+    <div className="reader-strip"><PageStrip label={readerText.thumbnails} labels={labels} selected={selected} current={current} unlabelled={readerText.pdfPage} onChange={choose} draw={source.draw} /></div>
     <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={readerText.pages}>
       {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? readerText.indicator(printed, index + 1, labels.length) : readerText.unknown(index + 1, labels.length)}>
         <div className="reader-paper" />

@@ -7,7 +7,7 @@
 .reader-ask { grid-column: 2; display: flex; align-items: end; gap: var(--space-2); padding-block-end: var(--space-2); }
 .reader-ask-field { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; font-size: var(--type-body-size); }
 .reader-ask-field input { block-size: var(--action-h); max-inline-size: 8rem; padding-inline: var(--space-2); border: 0; border-radius: var(--r-control); background: var(--surface-field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
-.page-strip { grid-column: 1; grid-row: 1 / -1; }
+.reader-strip { grid-column: 1; grid-row: 1 / -1; display: flex; min-block-size: 0; }
 .reader-pages { grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: var(--inset); min-block-size: 0; overflow-y: auto; padding: var(--inset); border-radius: var(--r-row); background: var(--surface-grouped); outline-offset: var(--ring-offset); }
 .reader-sheet { inline-size: min(100%, var(--page-w)); aspect-ratio: 1 / 1.3; flex: none; overflow: hidden; background: var(--paper); box-shadow: 0 0 0 var(--border-width) var(--separator); }
 .reader-paper { block-size: 100%; }
