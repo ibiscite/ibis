@@ -142,6 +142,10 @@ pub struct ClosedSnapshot {
     /// older store, or no record of which Zotero last ran). Citation keys are
     /// then unknown: refuse key output rather than publish "no key".
     pub better_bibtex_unknown: bool,
+    /// The personal library's owner as Zotero's local API names it: the
+    /// account's user ID, or 0 when none is signed in or when the personal
+    /// library holds no top-level item (the API reads it from the first one).
+    pub owner: u64,
 }
 
 #[derive(Clone, PartialEq, Eq)]

@@ -156,7 +156,7 @@ fn unindexed_bibliographic_queries_stream_before_the_allocation_budget() {
     db.execute_batch(&schema)
         .unwrap_or_else(|_| panic!("unindexed synthetic schema"));
     configure(&mut db, &crate::closed::tests::control()).unwrap_or_else(|e| panic!("{e}"));
-    for sql in READ_SQL {
+    for sql in READ_SQL.into_iter().chain([OWNER_SQL]) {
         let mut statement = db
             .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
             .unwrap_or_else(|_| panic!("query plan"));
@@ -358,4 +358,54 @@ fn fifty_thousand_realistic_articles_fit_the_closed_reader() {
             .collect::<Vec<_>>(),
         vec!["date"]
     );
+}
+
+#[test]
+fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() {
+    let owner = |sql: &str| {
+        let dir = fixture(10);
+        edit(dir.path(), sql);
+        read_fixture(dir.path()).map(|snapshot| snapshot.owner)
+    };
+    let settings = "CREATE TABLE settings(setting TEXT,key TEXT,value,PRIMARY KEY(setting,key));";
+    let account = format!("{settings} INSERT INTO settings VALUES('account','userID',4242);");
+    assert_eq!(owner(&account), Ok(4242));
+    // Signed out, or a value Zotero would not report as a number.
+    assert_eq!(owner(""), Ok(0));
+    assert_eq!(owner(settings), Ok(0));
+    assert_eq!(
+        owner(&format!(
+            "{settings} INSERT INTO settings VALUES('account','userID','4242');"
+        )),
+        Ok(0)
+    );
+    assert_eq!(
+        owner(&format!(
+            "{settings} INSERT INTO settings VALUES('account','userID',-1);"
+        )),
+        Ok(0)
+    );
+    // A standalone note or file is a top-level item; a trashed item, a child
+    // and an annotation are not, and without one the API names owner 0.
+    let trashed = format!("{account} INSERT INTO deletedItems VALUES(10);");
+    assert_eq!(owner(&trashed), Ok(4242));
+    let children = format!(
+        "{trashed} INSERT INTO itemNotes VALUES(13,10,'',''); INSERT INTO itemAttachments VALUES(14,10,0,'','');"
+    );
+    assert_eq!(owner(&children), Ok(0));
+    assert_eq!(
+        owner(&format!("{trashed} INSERT INTO itemNotes VALUES(13,10,'','');")),
+        Ok(4242)
+    );
+    // Group items say nothing about the personal library's owner.
+    assert_eq!(
+        owner(&format!(
+            "{children} UPDATE items SET libraryID=2,key='GROUP001' WHERE itemID=12; DELETE FROM deletedItems WHERE itemID=12;"
+        )),
+        Ok(0)
+    );
+    // Zotero has kept both tables since before the oldest supported schema.
+    for table in ["itemNotes", "itemAttachments"] {
+        assert_eq!(owner(&format!("DROP TABLE {table};")), Err(ClosedError::Damaged));
+    }
 }

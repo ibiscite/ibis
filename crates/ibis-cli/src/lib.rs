@@ -697,6 +697,13 @@ impl From<EngineError> for Failure {
         }
     }
 }
+/// Why Zotero did not open. Profile names are the person's own choosing, so
+/// an agent reads the sentence without them, as it reads none of their paths.
+fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
+    let mut failure = Failure::explained(error, human::zotero_failure(error, profiles));
+    failure.unnamed = Some(human::zotero_failure(error, &[]));
+    failure
+}
 /// Why a citation key selected no single reference, with every line that repeats it.
 fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: bool) -> Failure {
     let lines: Vec<usize> = if error.reason == Some(ErrorReason::DuplicateKey) {
@@ -923,7 +930,7 @@ fn open_libraries(
             } else {
                 vec![]
             };
-            Failure::explained(error, human::zotero_failure(error, &profiles))
+            zotero_open_failure(error, &profiles)
         })?;
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {
@@ -1442,6 +1449,20 @@ mod tests {
         let stalled = bounded(|| std::thread::sleep(std::time::Duration::from_secs(30)));
         assert_eq!(stalled, None);
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    }
+
+    #[test]
+    fn an_agent_never_reads_the_zotero_profile_names_a_person_does() {
+        let error = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
+        let failure = zotero_open_failure(error, &["Invented Home".into(), "Invented Work".into()]);
+        assert!(failure.sentence().contains("Profiles: Invented Home, Invented Work."));
+        let refusal = format!("{:?}", failure.refusal());
+        assert!(!refusal.contains("Invented"), "{refusal}");
+        assert!(!refusal.contains("Profiles"), "{refusal}");
+        assert!(refusal.contains("--zotero-profile"), "{refusal}");
+        // Without names to hide, both readers get the same sentence.
+        let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
+        assert!(format!("{:?}", plain.refusal()).contains(plain.sentence()));
     }
 
     #[test]

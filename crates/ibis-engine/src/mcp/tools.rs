@@ -161,7 +161,7 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
             "Zotero is running but not sharing; turn on Allow other applications in Zotero's Advanced settings."
         }
         ErrorReason::ZoteroProfileNeeded => {
-            "Zotero is closed and which profile to read is not settled; open Zotero or name a profile."
+            "Zotero is closed and which profile to read is not settled; ask the user to open Zotero, or to choose a profile in Ibis or pass --zotero-profile to ibis mcp."
         }
         ErrorReason::ZoteroNeedsOpening => "Zotero's library cannot be read while it is closed; open Zotero.",
         ErrorReason::ZoteroNotFound => "No local Zotero library was found on this computer.",

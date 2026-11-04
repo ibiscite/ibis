@@ -12,6 +12,8 @@ CREATE TABLE creators(creatorID INTEGER PRIMARY KEY,firstName TEXT,lastName TEXT
 CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY,creatorType TEXT);
 CREATE TABLE itemCreators(itemID INTEGER,creatorID INTEGER,creatorTypeID INTEGER,orderIndex INTEGER);
 CREATE TABLE deletedItems(itemID INTEGER);
+CREATE TABLE itemNotes(itemID INTEGER PRIMARY KEY,parentItemID INT,note TEXT,title TEXT);
+CREATE TABLE itemAttachments(itemID INTEGER PRIMARY KEY,parentItemID INT,linkMode INT,contentType TEXT,path TEXT);
 INSERT INTO libraries VALUES(1,'user'),(2,'group'),(3,'feed');
 INSERT INTO groups VALUES(4321,2,'Invented Reading Group');
 INSERT INTO itemTypesCombined VALUES(1,'book'),(2,'journalArticle'),(3,'note'),(4,'attachment'),(5,'annotation');
