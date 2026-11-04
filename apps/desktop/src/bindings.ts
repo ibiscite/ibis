@@ -56,7 +56,7 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
-	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	/**  The preferences the picker starts with. */
@@ -628,7 +628,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "source" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {

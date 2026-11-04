@@ -17,7 +17,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
     controller.dispatch({ type: "view", session: state.session, interaction: state.interaction,
       view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey(chosen), chosen,
         shown: { text: "canonical citation", html: "", markup: [], warnings: [], fileTicket: "prepared", fileHash: "hash" },
-        searchPending: false, ready: true, saving: false, shouldAsk: false, output: ports.output() } });
+        searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: ports.output() } });
   };
   ready();
   const enter = () => controller.dispatch({ type: "enter", choice: choiceKey(chosen) });
@@ -33,7 +33,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   const pending = deferred<Copied>();
   const s = setup({ copyFileCitation: vi.fn(() => pending.promise) });
   s.enter(); s.enter();
-  expect(s.ports.copyFileCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash");
+  expect(s.ports.copyFileCitation).toHaveBeenCalledExactlyOnceWith("prepared", "hash", null);
   pending.resolve({ text: "canonical citation", warnings: [], delivery: 42 });
   await pending.promise;
   await Promise.resolve();

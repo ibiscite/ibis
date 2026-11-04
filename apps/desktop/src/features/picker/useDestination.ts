@@ -113,6 +113,11 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
     if (pick === "app") remember(choice);
     else if (pick === "default") { chooseDefault(choice); setHeld(null); }
   };
+  /** This citation's format, and only this one: held, never saved, consumed by the copy. */
+  const chooseOnce = (choice: Choice) => {
+    choices.current += 1;
+    setHeld(choice);
+  };
   const choosePaste = (paste: AppPaste, asked = false) => {
     const id = destination?.app_id;
     if (!rememberAppOutput || !id || !ready || saving) return;
@@ -144,5 +149,5 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
   const shouldAsk = askPaste || Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && held === null);
   return { appId: destination?.app_id ?? null, app, format, ready, saving, source, pick, shouldAsk, read, choose,
-    copyToken, isCurrentCopy, consumeHeld, askPaste, pasteChoices, choosePaste, quitAfterSaving };
+    chooseOnce, copyToken, isCurrentCopy, consumeHeld, askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }
