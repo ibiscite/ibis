@@ -13,9 +13,13 @@ test("website headline and planned features come from the canonical sources", as
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
   assert.ok(html.includes('Early preview · <a href="https://github.com/ibiscite/ibis/releases">Release notes</a>'), "public release link must work while the next version is an unpublished draft");
   const design = await readFile(new URL("../docs/design.md", import.meta.url), "utf8");
-  const highlights = [...html.matchAll(/<li><strong>([^<]+)<\/strong>/g)];
-  assert.equal(highlights.length, 3);
-  for (const name of ["Paste into the app you came from", "Citation forms", "Browse"]) assert.ok(design.includes(name));
+  const planned = html.match(/<ul class="roadmap" data-planned>[\s\S]*?<\/ul>/)[0];
+  assert.equal([...planned.matchAll(/<li><strong>([^<]+)<\/strong>/g)].length, 3);
+  for (const name of ["Citation forms", "Browse", "`ibis check`"]) assert.ok(design.includes(name));
+  assert.doesNotMatch(planned, /Windows too|reader/i, "shipped paste on Windows is not a plan; the PDF reader is not claimed");
+  const nightly = html.match(/<ul class="roadmap" data-nightly>[\s\S]*?<\/ul>/)[0];
+  assert.ok(html.indexOf("data-nightly") < html.indexOf("data-planned"), "what has shipped comes before what is planned");
+  assert.doesNotMatch(nightly, /PDF|passage|highlight/i, "the reader and passages are planned, not in Nightly");
   assert.match(html, /not a stable release/);
   assert.match(html, /does not generate your document’s bibliography/);
   assert.doesNotMatch(html, /Keep Zotero open|even when Zotero is closed/, "reading a closed Zotero has shipped");

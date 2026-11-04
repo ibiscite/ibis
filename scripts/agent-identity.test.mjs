@@ -136,4 +136,7 @@ test("missing, mismatched, shallow and empty intended inputs fail without sensit
   assert.match(f.run([], { ...event, GIT_SHALLOW_FILE: "synthetic-unavailable" }).stderr, /source overrides/);
   writeFileSync(join(f.cwd, ".git", "shallow"), head + "\n");
   assert.match(f.run([], event).stderr, /shallow inputs/);
+  // Outside Actions a shallow clone (every cloud session) reports and passes; CI enforces.
+  const local = f.run([], { GITHUB_ACTIONS: "" });
+  assert.equal(local.status, 0); assert.match(local.stdout, /skipped locally: shallow clone/);
 });
