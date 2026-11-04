@@ -1,7 +1,7 @@
 // One citation interaction. Pure transitions; I/O belongs to sessionController.
 import type { Copied, Locator, SearchResult } from "../../api";
 import type { Delivered } from "../../bindings";
-import { afterCopy, noticeTitle } from "../../copyFeedback";
+import { afterCopy, noticeTitle, readDelivered } from "../../copyFeedback";
 import type { FormattedCitation } from "../../format/styles";
 import { copiedNoticeText, pickerText } from "../../messages";
 import { choiceKey, idKey, type Choice, type CitationReference } from "./choice";
@@ -272,7 +272,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "hide-refused": return [finish(ownsInteraction(s, f) ? { ...s, permissionDetour: false } : s, f), []];
     case "delivered": {
       if (f.phase !== "notice") return [s, []];
-      if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: event.delivered, text: "" }) };
+      if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: readDelivered(event.delivered) }) };
       const permissionRefused = event.delivered?.outcome === "copied"
         && (event.delivered.reason === "no-permission" || event.delivered.reason === "accessibility-required");
       // Only a refusal this citation still owns is a detour; a newer opening is not.

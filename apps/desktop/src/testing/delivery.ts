@@ -20,7 +20,7 @@
  */
 import { emit } from "@tauri-apps/api/event";
 import type { AppOutput, AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
-import { renderNotice } from "../copyFeedback";
+import { readNotice, renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, type PreviewRequest } from "./app";
 
 type Job<Args, Input> = {
@@ -191,7 +191,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       const noticeOwner = ++latestNotice;
       return delivery.enqueue(request, () => deliver(request))
         .then((delivered) => notice.enqueue({ text: request.text, delivered }, () => {
-          if (noticeOwner === latestNotice) showReceipt({ text: request.text, delivered });
+          if (noticeOwner === latestNotice) showReceipt(readNotice({ text: request.text, delivered }));
           return delivered;
         }));
     },

@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test, vi } from "vitest";
 
 test("paste milestones decorate only the receipt heading and preserve the citation and focus", () => {
   const root = document.createElement("div");
@@ -14,9 +14,10 @@ test("paste milestones decorate only the receipt heading and preserve the citati
   expect(root.querySelector("strong")?.textContent).toBe("Pasted into Invented Writer");
 });
 import type { NoticeMessage } from "./api";
-import { afterCopy, DRAG_DISTANCE, leaveNotice, noticePlatform, noticeTitle, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
+import { afterCopy, COPY_REASONS, type CopyReason, DRAG_DISTANCE, leaveNotice, type Notice, noticePlatform, noticeTitle, readNotice, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
+import { copiedNoticeText } from "./messages";
 
-const copied = (text: string, reason: string | null = null): NoticeMessage => ({ delivered: { outcome: "copied", reason }, text });
+const copied = (text: string, reason: CopyReason | null = null): Notice => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
 
 test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as const)("plain-copy receipts always use %s's paste key, including after reopening", (platform, key) => {
@@ -32,7 +33,7 @@ test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as con
 test("the paste key never replaces a refusal, Linux's explanation or a pasted result", () => {
   const root = document.createElement("div"), show = renderNotice(root, "linux");
   for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal"],
-    ["unsupported-system", "Copied. Paste it into your document"], ["paste-off", "Copied. Pasting is off"]]) {
+    ["unsupported-system", "Copied. Paste it into your document"], ["paste-off", "Copied. Pasting is off"]] as const) {
     show(copied("[@invented]", reason));
     expect(root.querySelector("strong")?.textContent).toBe(title);
   }
@@ -103,8 +104,8 @@ test("the notice is a polite status that shows text as text and replays when sho
 });
 
 test("the notice says where the citation was pasted, or why it was only copied", () => {
-  expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" }, text: "[@a]" })).toBe("Pasted into Writer");
-  expect(noticeTitle({ delivered: { outcome: "pasted", app: null }, text: "[@a]" })).toBe("Pasted");
+  expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" } })).toBe("Pasted into Writer");
+  expect(noticeTitle({ delivered: { outcome: "pasted", app: null } })).toBe("Pasted");
   expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
   expect(noticeTitle(copied("[@a]", "no-permission"))).toBe("Copied. Ibis needs your OK to paste");
   expect(noticeTitle(copied("[@a]", "accessibility-required"), "macos")).toBe("Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.");
@@ -113,7 +114,31 @@ test("the notice says where the citation was pasted, or why it was only copied",
   expect(noticeTitle(copied("[@a]", "unsupported-system"))).toBe("Copied. Paste it into your document");
   expect(noticeTitle(copied("[@a]", "no-target"))).toBe("Copied. No app to paste into");
   expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste");
-  expect(noticeTitle(copied("[@a]", "unknown-future-code"))).toBe("Copied");
+});
+
+test("a reason Rust sends that this build does not know is reported and still says how to paste", () => {
+  const error = vi.spyOn(console, "error").mockImplementation(() => {});
+  try {
+    const wire: NoticeMessage = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" };
+    const notice = readNotice(wire);
+    expect(notice.delivered).toEqual({ outcome: "copied", reason: null });
+    expect(noticeTitle(notice, "macos")).toBe("Copied. Press ⌘V to paste");
+    expect(error).toHaveBeenCalledExactlyOnceWith("Unknown copy reason: unknown-future-code");
+    expect(readNotice({ delivered: { outcome: "copied", reason: "terminal" }, text: "[@a]" }).delivered).toEqual({ outcome: "copied", reason: "terminal" });
+    expect(error).toHaveBeenCalledOnce();
+  } finally { error.mockRestore(); }
+});
+
+test("the copy reasons are exactly the ones Rust sends, and each has its words", async () => {
+  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+  const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
+  const core = read("../../../crates/ibis-core/src/destination/mod.rs").match(/pub enum CopyReason \{([^}]*)\}/)![1]!
+    .replace(/\/\/[^\n]*/g, "").match(/[A-Z]\w*/g)!.map((name) => name.replace(/(?<!^)[A-Z]/g, (letter) => `-${letter}`).toLowerCase());
+  const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: Some\("([a-z-]+)"\.into\(\)\)/g)].map((match) => match[1]!);
+  expect(core).toContain("paste-off");
+  expect([...COPY_REASONS].sort()).toEqual([...new Set([...core, ...delivery])].sort());
+  expect(Object.keys(copiedNoticeText.reasons).sort()).toEqual([...COPY_REASONS].sort());
 });
 
 test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce the result without moving document focus", (platform) => {
@@ -131,7 +156,7 @@ test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce t
   } finally { editor.remove(); root.remove(); }
 });
 
-test.each([
+test.each<[CopyReason, string]>([
   ["unknown-app", "Copied. Automatic paste is not approved for this app"],
   ["target-changed", "Copied. The target app or window changed"],
   ["clipboard-changed", "Copied. The clipboard changed; copy the citation again"],
