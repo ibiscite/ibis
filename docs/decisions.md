@@ -196,8 +196,6 @@ erase confirmation of a completed clipboard write: a delayed response for the
 current citation shows Copied in the open picker, without hiding or forwarding
 its revoked paste proof. A newer Enter (including one waiting for a save),
 citation or opening retains its own selection, output and feedback ownership.
-Resetting the app to Automatic or choosing "Forget
-formats for apps" clears both output and delivery choices.
 
 Final injection must never wait on the UI thread while holding destination or
 key locks. Windows resolves the picker's known HWND before either lock and uses
@@ -701,8 +699,19 @@ libraries and sources (0033).
 
 ## 0031 What Ibis remembers per app
 
-The output chooser remembers a format picked for the captured app unless the
-person selects "Just this once". `apps.json`, beside `settings.json`, keeps
+2026-11-02 (maintainer): one rule replaces the format scopes. Ibis remembers a
+format per app, and the person changes it in the format menu. One default in
+Settings › Citations applies to apps with no remembered format. "Just this
+once", "Automatic", "Use as global default" and "Forget formats for apps" are
+gone, along with their Undo; a later pick replaces the old one. A format is
+remembered only for a captured app. When Ibis can't tell the app, the default
+applies and a pick changes it, so no choice is lost; when the destination could
+not be read, the app may be a real one, so a pick holds for that paste alone. A
+pick that cannot be saved also holds for that paste, and the control says "This
+paste". The app table's starting formats stay, as suggestions the menu names, so
+a new install still pastes APA into Word.
+
+`apps.json`, beside `settings.json`, keeps
 only the operating system, normalised app ID, output, optional delivery choice
 (`paste` or `copy-only`), the identity binding described below and whether the
 one-time plugin note was shown, for at most 200 apps;
@@ -711,8 +720,9 @@ window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
-global fallback; "Automatic" removes that app's output and delivery overrides, and a deliberate
-global choice never erases app choices.
+default; a format save and a delivery save each leave the other alone, except that
+answering Paste or Copy only in an open browser or editor first-paste question
+accepts the format it showed, unless a format is being held for that paste. A new default never erases app choices.
 
 2026-10-31 (#1486): Recent citations keep only opaque reference identities and
 known originating app IDs in the channel's WebView storage, bounded to 20 apps,
@@ -731,15 +741,15 @@ local time) are read as UTC, so cross-source order can be off by the offset. Rec
 or invented import times. These display dates do not change cite fingerprints.
 
 The bounded file is written whole, flushed and swapped in atomically. A file
-Ibis cannot read means automatic/default outputs, with a visible warning, and
-automatic paste is unavailable: a lost Copy only rule must not become paste
-permission. Subsequent writes preserve a recovery flag in `apps.json`, including
+Ibis cannot read means suggested/default outputs and automatic paste is
+unavailable: a lost Copy only rule must not become paste permission.
+Subsequent writes preserve a recovery flag in `apps.json`, including
 after restart. A format save never clears it. An explicit Paste or Copy only
-choice resolves recovery for that app alone; all other apps retain the refusal
-until their own delivery choice or the deliberate global reset. Its read failure
+choice resolves recovery for that app alone; every other app keeps the refusal
+until its own delivery choice, with no global reset. The warning shows only for
+an app that can answer, so it never sticks on a refused app or with no app. Its read failure
 is frozen in the copy proof, so a later successful save cannot release that copy.
-"Forget formats for apps" clears the recovery flag and all output/delivery
-choices. Unknown apps ask for delivery approval
+Unknown apps ask for delivery approval
 separately from format, in the same chooser (0009); recognised apps also offer
 Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
@@ -876,8 +886,8 @@ language in 0.4. The speed and resource budgets in
 [architecture](architecture.md#desktop-app) are limits: search and bundle
 checks fail pull request CI; checks with too little margin on shared runners
 report there and are enforced on the release machines before each release.
-0.5 cites from Zotero's annotations and the PDFs people already open before
-any reader inside Ibis (maintainer, 2026-10-28).
+The reader inside Ibis no longer waits for citing from Zotero's annotations
+(maintainer, 2026-11-04, replacing the 2026-10-28 order; see 0036).
 
 2026-10-31 (maintainer): limits come from what a person notices, at the size real
 libraries reach. They block a release at 10,000 generated realistic records
@@ -995,6 +1005,150 @@ Lessons taken from Zed (fake platform, seeded executor), FFmpeg (libraries never
 print, golden data reviewed as diffs), VLC 4 (one player object to end races),
 Pandoc (one model between readers and writers) and Better BibTeX (editors pull
 citations instead of synthetic paste).
+## 0036 The reader's trust boundary
+
+2026-11-04 (maintainer): Ibis gets a full-quality, page-level PDF reader so that
+nobody needs to open Zotero while writing. It comes forward and no longer waits
+for citing from annotations. It is a read-only viewer for PDFs already in the
+person's citation manager (a Zotero attachment or a `.bib` entry's `file` field),
+to look at a source and choose a page. It does not replace Zotero: Ibis never
+imports, stores, manages, downloads, edits or annotates a PDF, and Open in Zotero
+stays. It opens in the shared inspector panel beside the list, and the picker
+widens only to hold the PDF (0027, 2026-11-02). It is one priority among many;
+design polish, shortcuts and configuration matter as much.
+
+**Engine: PDF.js** (`pdfjs-dist`, legacy build, pinned exactly, behind one
+adapter module), compared on 2026-11-04 with a spike on the branch
+`claude/reader-boundary` (#1252):
+
+| | PDF.js in the web view | pdfium (`pdfium-render`) | Each system's own (PDFKit, Windows.Data.Pdf, poppler) |
+| --- | --- | --- | --- |
+| Untrusted input | Memory-safe JavaScript in a worker, inside the web view's content process (sandboxed on macOS and Windows; not yet on Linux, see below). CVE-2024-4367, code execution through PDF.js's old `eval` font path, was fixed in 4.2.67 | A C++ parser inside the Ibis process, beside the engine, the clipboard and paste permissions; Chrome runs it only in a sandboxed renderer | Three C/C++ parsers (CoreGraphics' JBIG2 decoder was the FORCEDENTRY exploit, CVE-2021-30860); a native view inside the window also bypasses the one key listener and focus rules |
+| Same on every system | One code base. Upstream supports the legacy build on Chrome 125+ (WebView2) and "mostly" on Safari 18+, and does not test WebKit, so Ibis tests it | Same pixels | Three renderers that differ |
+| Text and screen readers | A DOM text layer that can be selected, found and read (the spike) | Text and glyph boxes; Ibis would rebuild the DOM layer | PDFKit is accessible; Windows.Data.Pdf has no text at all |
+| Page labels | `getPageLabels()`: null for absent or malformed labels, empty for unlabelled pages, never guessed (the spike) | `FPDF_GetPageLabel` | PDFKit yes, Windows.Data.Pdf no, poppler yes |
+| Size | A lazy chunk of 564 KiB gzipped (147 main, 382 worker, two fonts); about 1.8 MB in the installer with cMaps, image decoders and Foxit fonts. The picker grows by 0.7 KiB | About 5 to 7 MB of native library per system and architecture (not measured here) | Nothing on macOS or Windows; poppler and GLib on Linux |
+| Memory | Worker and canvases only while open; ended on hide | In the app process | Managed by the system |
+| Licence | Apache-2.0; bundled parts BSD (Foxit fonts, OpenJPEG, JBIG2 from PDFium, Adobe cMaps), MIT (qcms), CC0 (an ICC profile) | Crate MIT or Apache-2.0; the binary bundles FreeType, libjpeg-turbo, OpenJPEG and LCMS, which `cargo deny` cannot see | poppler is GPL (from Xpdf) and needs its own licence decision |
+
+PDF.js is the only option that keeps untrusted parsing out of the Ibis process,
+draws the same pages on every system and gives screen readers real text.
+
+- **Who decided.** The first paragraph is the maintainer's direction, as are the
+  Linux hold and the answer on `'wasm-unsafe-eval'` below (2026-11-04: take the
+  security review's recommended options). The engine and the other rules are
+  engineering choices, changed by pull request with a review of the final head.
+- **Bytes, not paths.** One command, granted only to the picker window (0024),
+  takes an opaque attachment id the engine issued for the current library
+  generation (#1208) and a load id, and returns the bytes as a raw IPC response
+  (`tauri::ipc::Response`, an `ArrayBuffer`), which PDF.js transfers to its
+  worker. The engine finds the file; no path, file URL, `asset:` URL or
+  `convertFileSrc` reaches the web view, an error or a log. The read runs on the
+  bounded file-I/O budget (`ibis-sources/src/file/io.rs`, `bounded`), keyed by the
+  load id. `invoke` takes no `AbortSignal`, so a second command cancels a load id
+  on the Rust side, and a cancelled or overtaken read sends nothing; an `open()`
+  stuck in the kernel holds one budget slot, never the picker, and the load
+  fails at 15 s. The file is opened first and the handle checked: a regular file
+  (`fstat`), at most 256 MiB, placeholder flags rechecked on the handle just
+  before reading (a dataless file on macOS, read with
+  `IOPOL_MATERIALIZE_DATALESS_FILES_OFF` on the reading thread so it never
+  downloads; recall-on-open or recall-on-data-access on Windows), then `%PDF-` in
+  the first 1,024 bytes. Network file systems and Linux FUSE mounts, where cloud
+  clients live, are refused as not on this computer, since a read there can block
+  or download. If the window's IPC has fallen back to `postMessage`, which would
+  carry the bytes as a JSON array of numbers, the command refuses. Bytes stay in
+  memory only while the PDF is open: never written, cached or sent anywhere.
+- **Ibis owns the worker.** Ibis creates a dedicated `Worker` from a same-origin
+  script and always hands it to PDF.js as `port`: never `workerSrc`, whose failure
+  silently falls back to parsing on the main thread, and never a `blob:` worker.
+  Tauri 2.12.5 attaches the CSP only to `.html` assets, so Ibis sets the app's CSP
+  on the worker script's response itself (`on_web_resource_request` or a header
+  hook), and a test on each web view shows `fetch()` and `WebAssembly.compile`
+  refused inside the worker. Closing the reader or hiding the picker destroys the
+  task and then calls `terminate()`, because PDF.js terminates only workers it
+  made; a test shows no live worker after hiding.
+- **A viewer of bytes.** `getDocument({ data })` only: no URL, range requests,
+  streaming or auto-fetch. No scripting (neither `pdf.sandbox` nor the QuickJS
+  wasm ships), no XFA and no annotation layer, so links, forms, JavaScript,
+  launch, submit and embedded files do nothing; stored annotation appearances are
+  drawn as pictures. Standard fonts and cMaps are bundled and served by an
+  in-memory factory. `useWasm: false` is set explicitly; the two JavaScript image
+  decoders (`openjpeg_nowasm_fallback.js`, `jbig2_nowasm_fallback.js`) ship as
+  same-origin static files with `wasmUrl` pointing at them, because PDF.js loads
+  them with `import()`. Nothing else is fetched. The CSP gains neither
+  `unsafe-eval` nor `'wasm-unsafe-eval'` (maintainer: no), which would enable the
+  wasm decoders and compiling PDF functions to wasm. PDF.js 6.4.299 has no
+  reachable `eval` or `new Function`; the legacy build's core-js keeps an
+  unreachable `Function('return this')` fallback. Hardening, kept if measurement
+  allows: `disableFontFace: true` (glyphs drawn as paths) and
+  `isImageDecoderSupported: false`.
+- **What remains exposed.** Embedded fonts (unless drawn as paths) and JPEG
+  images still reach the web view's native decoders. A compromised content
+  process holds every grant the picker window has. A Flate bomb or a huge page
+  can exhaust the content process and crash the picker. On Linux wry 0.57 never
+  enables WebKitGTK's sandbox and the AppImage bundles its own WebKitGTK, so
+  **the reader stays off on Linux until Ibis enables the WebKitGTK sandbox before
+  the first web view** (maintainer). After a web-content crash with the reader
+  open, Ibis does not reopen that file, by content hash, for the rest of the
+  session. To evaluate: the reader in a child web view whose only grant is the
+  bytes command.
+- **Limits.** At most 256 MiB and 10,000 pages a file; opening, bytes to first
+  page drawn, takes at most 15 s, then fails with Try Again and Open in Zotero. Images up to
+  100 megapixels (`maxImageSize`) within a per-page budget of decoded image bytes;
+  a page that loses an image says "Part of this page is too large to draw" and is
+  never shown blank as if that were its content. Ibis caps each page canvas at 16
+  megapixels and enlarges by CSS beyond it (`canvasMaxAreaInBytes` only governs
+  downscaling inside the worker). The page list is virtualised with a minimum
+  laid-out page height; only pages in view and one either side are drawn, and
+  renders that leave the view are cancelled and their canvases and text layers
+  removed.
+- **One owner per load.** Each open belongs to the inspector's reader session and
+  has an immutable identity: load id, attachment id and library generation.
+  Opening another source, closing the reader or the panel, hiding the picker, a
+  reload that changes the attachment, or a newer open cancels the read by load
+  id and destroys the PDF.js task. A completion that is no longer current is
+  destroyed and reports nothing; a page render carries its load id and page and
+  is cancelled, never drawn, when stale. The Page field the reader fills belongs
+  to the citation item that opened it; if that item has left the shelf, nothing
+  is filled.
+- **Memory.** The reader is a dynamic import loaded on first open;
+  `scripts/picker-budget.mjs` counts only the picker's static graph, so startup
+  stays at today's 222 KiB of 400 KiB (the spike measured +0.7 KiB for the import
+  itself). Hiding the picker or closing the reader ends the document and the
+  worker; only the parsed module code stays. A release check opens an invented
+  300-page PDF, hides the picker and requires the hidden 200 MiB limit within 2 s.
+- **Page numbers.** The physical index, the printed label and an annotation's
+  label stay apart (architecture, **Reader**). A printed page comes from a
+  non-empty `/PageLabels` entry, a Zotero annotation's label or an offset the
+  person confirms; otherwise it is unknown, never the physical index. A label is
+  citable only if, after NFC, it has at most 16 characters of digits, letters
+  (Roman numerals included), `-` and `.`, and no control or format characters
+  (Cc, Cf); any other label is shown but counts as unknown. Annotation labels pass
+  the same test, and one that disagrees with `/PageLabels` makes the page
+  ambiguous. An ambiguous page, or a label on several pages, asks. When the record
+  has a page range and the label falls outside it, Page waits for the person to
+  confirm and the indicator shows both. pypdf, a widely used parser, fills in
+  "1, 2, 3" for a file with no labels and "3, 4" for pages a label range leaves
+  blank: the silent guess Ibis refuses.
+- **Notes HTML never reaches the DOM as HTML.** The engine parses Zotero note
+  HTML with html5ever (already in `Cargo.lock` through Tauri) into a small typed
+  tree: paragraphs, headings, lists, quotations, emphasis, strong, sub- and
+  superscript, code and text, at most 1 MiB and 32 levels deep. Links keep their
+  words and lose their target; images, styles, scripts, frames, forms and every
+  URL are dropped. React renders the tree as elements and text nodes, never
+  `innerHTML`. Annotation comments and PDF text are plain text (PDF.js's text
+  layer sets `textContent`).
+- **Still to prove.** The spike ran in Chromium 153, WebView2's engine. Before
+  the reader ships: the same scenario in WKWebView on each supported macOS and
+  WebView2 on Windows; the worker CSP test and the no-live-worker test on each web
+  view; the hardening options measured. The legacy build needs Safari 18's engine
+  or later, so the reader checks the web view's engine at run time and is
+  otherwise unavailable with that reason; macOS 12 (last Safari 17.6) fails it.
+- **Licences.** `cargo deny` does not see JavaScript; PDF.js and each bundled part
+  are listed in `NOTICE.md` by hand and pinned in `pnpm-lock.yaml`. PDF.js also
+  ships Liberation Sans (GPL-2.0 with a font exception, under Red Hat's terms) as
+  its Helvetica substitute; Ibis leaves it out until the maintainer decides, and
+  PDFs that do not embed Helvetica use the system's sans-serif.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

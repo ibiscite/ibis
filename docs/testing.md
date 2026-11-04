@@ -293,7 +293,7 @@ Rules for native harnesses, each learned from a false result:
 [CI](../.github/workflows/ci.yml) reports through one required check, `CI result`.
 A pull request runs only what its paths can affect
 ([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
-`node scripts/check.mjs` makes the same choice locally. The merge queue and main always run everything.
+`node scripts/check.mjs` makes the same choice locally. Main always runs everything; there is no merge queue (see AGENTS.md › Merging).
 
 | What changed | What runs | Typical wait |
 |---|---|---|

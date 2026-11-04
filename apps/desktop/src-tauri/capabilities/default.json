@@ -38,7 +38,6 @@
     "allow-set-picker-preferences",
     "allow-picker-destination",
     "allow-remember-app-output",
-    "allow-forget-app-outputs",
     "allow-login-item",
     "allow-set-login-item",
     "allow-hide-picker",

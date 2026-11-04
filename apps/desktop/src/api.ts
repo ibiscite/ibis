@@ -39,7 +39,6 @@ export const {
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
-  forgetAppOutputs,
   loginItem,
   setLoginItem,
   findZotero,
