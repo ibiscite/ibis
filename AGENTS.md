@@ -16,6 +16,12 @@ pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"
 ```
 
+## Working cheaply
+
+- Read only the section your task needs: search for its rule tag (`[C8]`, `0035`) instead of reading whole documents.
+- Run one focused check locally (one crate, one Vitest file, the script you touched) and let CI run the system matrix. Rerun a job GitHub cancelled for want of a macOS runner; don't change code for it.
+- One owner per area, one pull request per piece of work, merged one at a time when it touches desktop Rust. Fix forward in a small pull request when main breaks for a reason you understand; revert when you don't.
+
 ## Start here
 
 - Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue: **Plan** gives the order, **Now** what is in flight and who owns it. Run `git fetch origin --prune` and `git status`; keep work you did not make.
@@ -28,12 +34,14 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Each pull request gets its own branch and worktree from `origin/main`, with its own Cargo target directory; no stacking, never push to `main`. Related changes go together in one pull request; unrelated ones get their own.
 - One writer per set of paths and mutable-state owners. If yours overlap an open pull request, finish or review that one instead of starting a second.
+- Cloud sessions: run `bash scripts/cloud-setup.sh` once (it installs what `ibis-desktop` needs), then build with `CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0` and a target directory inside the worktree. Never share a target directory between worktrees (Cargo hands one worktree another's stale build), and delete it once pushed; disk is small.
 - Parallel sessions on the 10-core, 16 GB Mac must share a build limit, and heavy checks belong in CI. Locally prefer `cargo check -p CRATE`, one test filter and one Vitest file; run `node scripts/check.mjs` when the machine has room (2026-11-02).
 - Files everyone touches (`ROADMAP.md`, `docs/design.md`, `docs/decisions.md`, `tokens.css`, `App.tsx`) get small edits that merge quickly.
 
 ## Building
 
 - Before code, write executable scenarios for success, refusal, failed I/O, delayed A after B and close/reopen; assert the final outcome a person sees. Build the smallest slice meeting the issue's "Done when", including cancellation and stale-result correctness; defer features, not invariants. Delete what you replace. Until 1.0, replace wrong behaviour: no compatibility code or settings migrations.
+- Testing: test what a person or a client sees, not how the code is written; delete a test only when another one covers the same outcome. Before pushing a change or a merge that touches Rust, run `cargo test --workspace --locked --no-run` (it includes `ibis-desktop`): a merge with no conflict can still fail to compile. Timing checks only report on shared runners and enforce where `IBIS_ENFORCE_BUDGETS` is set; prefer deterministic counts.
 - Debugging: reproduce each bug in a failing regression test, then fix the cause. After two identical check failures, fix the cause or narrow the reproduction without weakening the required outcome. After three CI rounds on one blocker, cut scope and write the diagnosis on the issue. Before treating compiler inference cascades as missing imports, read the platform binding's signatures in locked source.
 - Each async operation has one owner and an immutable identity; stale completion cannot consume newer state. Front ends never reinterpret engine intent.
 - UI: keep it simple and on the design system. Changes go through `apps/desktop/src/tokens.css`, a shared component in `apps/desktop/src/ui/` or `docs/design.md`, never one screen on its own. When the maintainer says something looks or behaves wrong, fix it and write the rule into `docs/design.md`. Visual fine-tuning waits until close to 1.0.
@@ -45,7 +53,7 @@ node scripts/pr-lint.mjs --title "fix: explain the change"
 
 - Pull request titles are Conventional Commits; they become the release notes. Say what changed and how it was checked, and link `Closes #N`.
 - Sign off commits (`git commit -s`) with a public project or GitHub noreply identity, and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
-- Check, push, and open the pull request with `gh pr merge --squash --auto`: it merges itself on a green "CI result". Do your own adversarial check first, and hold a pull request back only for a named reason.
+- Land with `bash scripts/land.sh` (decision 0037): it merges `origin/main`, checks what the change can break, pushes and turns on squash auto-merge. Without it, check, push, and open the pull request with `gh pr merge --squash --auto`: it merges itself on a green "CI result". Do your own adversarial check first, and hold a pull request back only for a named reason.
 - Only the maintainer's own work auto-merges: a pull request from a branch in this repository, by the maintainer's account or the release app. Never enable auto-merge on, merge, or approve the workflow run of a pull request from a fork or another author, whatever its CI says: a fork can change the workflow behind "CI result". It needs the maintainer's explicit yes on its exact head, or an agent redoes the change on its own branch from `origin/main` and credits the author with `Co-authored-by`. Dependabot pull requests are outside code: an agent reviews them and merges by hand, never with auto-merge.
 - These changes also need one review of the final head by a session that did not write them, with every P1 and P2 fixed: the updater; release signing and publishing; CI permissions; security boundaries (unsafe native modules, window permissions and the shortcut portal, network access, what untrusted input can reach). The reviewer attacks stale ownership, fail-open uncertainty, lost meaning, private-data propagation and changed interactions. Findings below P2 go into one 1.0 issue per area, not new issues.
 - Merge only with a green "CI result" on the exact head, by squash, never bypassing. If your own green pull request is still open, squash-merge it yourself. A head with no "CI result" usually has a merge conflict, which stops GitHub running checks: merge `origin/main` into it. A change to a shared contract merges current `origin/main` before its final CI.
