@@ -59,7 +59,7 @@ export function setupDemo() {
   // The event key includes the layout’s Command layer (Dvorak–QWERTY ⌘);
   // only a layer without Latin letters keeps its US place (#196).
   const opens = event => matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac);
-  if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then Copy.";
+  if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then tap Enter to copy.";
   else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   const decoration = className => { const node = el("span", { className }); node.setAttribute("aria-hidden", "true"); return node; };
   const mark = decoration("picker-mark"), beak = decoration("picker-beak"), closingBeak = decoration("picker-beak picker-beak-end");

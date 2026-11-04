@@ -143,7 +143,9 @@ with a quiet System reset, no dropdown or hover-only menu.
 `brand/settings.json` (a test checks the built site). Feature and roadmap
 claims come from [ROADMAP.md](../ROADMAP.md) and [Coming features](../docs/design.md#coming-features): a few
 major highlights without version numbers, internal names such as "Insertion"
-explained for a new visitor, and nothing planned shown as shipped. Short,
+explained for a new visitor, and nothing planned shown as shipped. Work that has landed in Ibis Nightly but not in a numbered release
+is listed as "New in Ibis Nightly" before the plans, with its platform limits;
+it moves out of that list once released. Short,
 direct sentences, the maintainer's "I" for personal experience, plain
 invitations to share a workflow or report a problem; no popularity claims,
 promised dates, accent-bar callouts or disclosure controls. "Early preview",

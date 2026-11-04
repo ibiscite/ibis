@@ -105,6 +105,7 @@ section { padding-block: var(--website-section-pad); }
 .roadmap { list-style: none; padding: 0; margin: var(--website-block-gap) 0; }
 .roadmap li { display: grid; padding-block: var(--space-4); border-top: var(--border-width) solid var(--separator); }
 .roadmap span { font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
+#roadmap h3 { margin: var(--space-8) 0 0; font-size: var(--type-heading-size); }
 footer { margin-top: var(--space-8); font-family: var(--font); padding-bottom: var(--space-8); font-size: var(--type-reading-size); }
 footer > .text { border-top: var(--border-width) solid var(--separator); padding-top: var(--space-8); }
 .colophon { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--space-1) var(--space-5); }
