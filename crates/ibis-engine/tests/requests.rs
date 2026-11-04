@@ -7,7 +7,7 @@ use serde_json::json;
 
 #[test]
 fn requests_are_typed_and_unknown_fields_are_refused() -> Result<(), Box<dyn std::error::Error>> {
-    let library = LibraryId::file(b"synthetic-schema");
+    let library = LibraryId::digest(b"synthetic-schema");
     let search: SearchRequest = serde_json::from_value(json!({"query":"文字","libraries":[library]}))?;
     assert_eq!(search.limit, 10);
     assert!(search.libraries.is_some());

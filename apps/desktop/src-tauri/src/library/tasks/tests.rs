@@ -266,11 +266,20 @@ fn replacing_a_library_disconnects_its_idle_observer_but_keeps_it_for_the_same_e
 }
 
 #[test]
+fn a_dropped_file_of_any_other_kind_is_not_a_library() {
+    for name in ["notes.txt", "paper.pdf", "library", "archive.bib.zip", ".bib.tmp"] {
+        assert!(!accepts_library_file(std::path::Path::new(name)), "{name}");
+    }
+    assert!(accepts_library_file(std::path::Path::new("Invented.BIBLATEX")));
+}
+
+#[test]
 fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     for (extension, contents) in [
         ("bib", "@misc{synthetic,title={Example reference}}"),
         ("bibtex", "@misc{synthetic,title={Example reference}}"),
+        ("biblatex", "@misc{synthetic,title={Example reference}}"),
         (
             "json",
             r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
@@ -679,7 +688,7 @@ fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<()
     let snapshot = newer.snapshot().map_err(|_| "R2 snapshot")?;
     let id = newer.libraries().map_err(|_| "R2 library")?.libraries[0].id.clone();
     file.engine
-        .publish_library(id, snapshot.clone())
+        .publish_library(id, ibis_engine::LibraryKind::Snapshot, snapshot.clone())
         .map_err(|_| "watcher accepts R2")?;
     let missing = Source::File(dir.path().join("unavailable.bib"));
     let (b, _, _) = begin_open(&library, &requests, missing.clone()).ok_or("new choice B")?;

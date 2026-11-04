@@ -149,7 +149,7 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
         let older = set_picker_preferences(
             PickerPreferencesPatch {
                 larger_text: Some(false),
-                accent: Some(Accent::Purple),
+                accent: Some(Accent::Ibis),
                 ..Default::default()
             },
             None,
@@ -187,7 +187,7 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
         assert_eq!(height(), 552, "delayed A cannot undo the accepted B on reopen");
         let saved = ibis_core::settings::load(&path).settings;
         assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
-        assert_eq!(saved.unknown["accent"], "purple", "A's unrelated field must still save");
+        assert_eq!(saved.unknown["accent"], "ibis", "A's unrelated field must still save");
         assert_eq!(saved.larger_text.unwrap_or(false), !failed_newer_flush);
         let restarted = Sizing::default();
         restarted.load(&saved);

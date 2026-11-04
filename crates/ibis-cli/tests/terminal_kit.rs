@@ -35,9 +35,9 @@ fn success_without_a_tty_reports_versions_capabilities_and_freshness_without_con
             .is_some_and(|values| !values.is_empty())
     );
     assert!(
-        report["capabilities"]["csl_styles"]
-            .as_array()
-            .is_some_and(|styles| styles.iter().any(|style| style["id"] == "apa"))
+        report["capabilities"]["csl_styles"]["count"]
+            .as_u64()
+            .is_some_and(|count| count > 10_000)
     );
     assert_eq!(
         report["capabilities"]["key_outputs"][0]["single_item_forms"],
@@ -492,4 +492,69 @@ fn fzf_recipe_cites_identities_and_refuses_a_changed_selection_or_failed_source(
     assert_eq!(output.status.code(), Some(5));
     assert!(output.stdout.is_empty());
     assert!(String::from_utf8_lossy(&output.stderr).contains("search failed"));
+}
+
+fn run_at_terminal(args: &[&str]) -> (u8, String, String) {
+    let (mut output, mut errors) = (vec![], vec![]);
+    let code = ibis::run_with(
+        ibis_engine::Engine::new().unwrap_or_else(|error| panic!("{error:?}")),
+        args.iter().map(Into::into).collect(),
+        std::io::Cursor::new(vec![]),
+        &mut output,
+        &mut errors,
+        ibis::OutputMode::Terminal,
+    );
+    let text = |bytes| String::from_utf8(bytes).unwrap_or_else(|error| panic!("{error}"));
+    (code, text(output), text(errors))
+}
+
+#[test]
+fn ibis_alone_greets_a_person_and_every_example_it_shows_works() {
+    let (code, greeting, errors) = run_at_terminal(&["ibis"]);
+    assert_eq!(code, 0);
+    assert!(errors.is_empty(), "{errors}");
+    assert!(
+        greeting.starts_with(&format!("Ibis {} ", env!("CARGO_PKG_VERSION"))),
+        "{greeting}"
+    );
+    assert!(greeting.contains("ibis --help"), "{greeting}");
+    assert!(!greeting.contains('\u{1b}'));
+
+    let folder = directory("greeting");
+    let library = "@article{vale2024lanterns, author = {Vale, Mira}, title = {Lantern gardens}, \
+                   journal = {Journal of Invented Landscapes}, year = {2024}}";
+    std::fs::write(folder.join("refs.bib"), library).unwrap_or_else(|error| panic!("{error}"));
+    let examples: Vec<_> = greeting
+        .lines()
+        .filter_map(|line| {
+            line.trim_start()
+                .strip_prefix("ibis ")
+                .filter(|_| line.starts_with("  "))
+        })
+        .map(|line| line.split("  ").next().unwrap_or_default())
+        .collect();
+    assert_eq!(examples.len(), 3, "{greeting}");
+    for example in examples {
+        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+            .args(example.split_whitespace())
+            .current_dir(&folder)
+            .output()
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(output.status.code(), Some(0), "{example}: {output:?}");
+    }
+}
+
+#[test]
+fn a_script_that_forgets_its_command_still_fails_loudly() {
+    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .output()
+        .unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(output.status.code(), Some(2));
+    assert!(output.stdout.is_empty());
+    assert!(!output.stderr.is_empty());
+
+    let (code, envelope, _) = run_at_terminal(&["ibis", "--json"]);
+    assert_eq!(code, 2);
+    let envelope: Value = serde_json::from_str(&envelope).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(envelope["error"]["code"], "usage");
 }

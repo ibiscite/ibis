@@ -1,12 +1,15 @@
 #!/usr/bin/env node
-// One command for contributors and CI-equivalent local checks:
-//   node scripts/check.mjs
+// One command to trust before pushing:
+//   node scripts/check.mjs         what CI would run for this branch's changes
+//   node scripts/check.mjs --all   every check
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
 // Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
 import { readdirSync, realpathSync } from "node:fs";
-import { resolve } from "node:path";
+import { tmpdir } from "node:os";
+import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { classify } from "./ci-paths.mjs";
 
 /** Outline drawings stay on the 20 pt grid, inside the 16 pt live area.
  * Curves use bounded control points too: no hidden transform can move them. */
@@ -57,12 +60,36 @@ export function iconProblems(svg) {
   return [...new Set(problems)];
 }
 
+/** This branch's changes against origin/main, committed or not, in the shape
+ * of GitHub's file list. Anything unclear returns null: CI then runs everything. */
+export function changedFiles(run = git) {
+  const base = run(["merge-base", "origin/main", "HEAD"])?.trim();
+  const tracked = base && run(["diff", "--name-status", "-M", "-z", base]);
+  const untracked = run(["ls-files", "--others", "--exclude-standard", "-z"]);
+  if (tracked == null || tracked === false || untracked == null) return null;
+  const statuses = { A: "added", C: "copied", D: "removed", M: "modified", R: "renamed", T: "changed" };
+  const fields = tracked.split("\0").filter(Boolean);
+  const files = untracked.split("\0").filter(Boolean).map((filename) => ({ filename, status: "added" }));
+  while (fields.length > 0) {
+    const status = fields.shift();
+    const moved = /^[RC]/.test(status);
+    const previous_filename = moved ? fields.shift() : null;
+    files.push({ filename: fields.shift(), previous_filename, status: statuses[status[0]] ?? "unknown" });
+  }
+  return files;
+}
+
+function git(args) {
+  const result = spawnSync("git", args, { encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
+  return result.status === 0 ? result.stdout : null;
+}
+
 function main() {
   const args = process.argv.slice(2);
   const scriptsOnly = args.length === 1 && ["--script-tests", "--platform-script-tests"].includes(args[0]);
   const brandOnly = args.length === 1 && args[0] === "--brand-assets";
-  if (args.length > 0 && !scriptsOnly && !brandOnly) {
-    console.error("Usage: node scripts/check.mjs [--script-tests | --platform-script-tests | --brand-assets]");
+  if (args.length > 0 && !scriptsOnly && !brandOnly && args.join() !== "--all") {
+    console.error("Usage: node scripts/check.mjs [--all | --script-tests | --platform-script-tests | --brand-assets]");
     process.exit(1);
   }
 
@@ -86,22 +113,38 @@ function main() {
   // unused_result_ok (restriction): discarded .ok(); enabled below (zero hits).
   // let_underscore_must_use / let_underscore_untyped (restriction): many current
   // deliberate discards; do not enable wholesale without resolving those cases.
+  const webkit = join(tmpdir(), `ibis-webkit-${process.pid}`);
+  // The names after each step are the path decisions that select it, as in CI.
   const steps = [
     ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
-    ...brandSteps,
-    ["Format", "cargo", ["fmt", "--all", "--check"]],
-    ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"]],
-    ["Test", "cargo", ["test", "--locked"]],
+    ...brandSteps.map((step) => [...step, {}, "native"]),
+    ["Format", "cargo", ["fmt", "--all", "--check"], {}, "native"],
+    ["Engine boundary", "cargo", ["test", "-p", "ibis-engine", "--test", "engine_boundary", "--locked"], {}, "native"],
+    ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "core"],
+    ["Minimum Rust", "cargo", ["+1.90.0", "check", "--locked", "--all-targets"], {}, "core"],
+    ["Test", "cargo", ["test", "--locked"], {}, "core"],
     ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
     ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
     ...scriptSteps,
     // All desktop unit tests, including the generated-contract freshness check.
-    ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"]],
-    ["Desktop: type check", "pnpm", ["typecheck"], desktop],
-    ["Desktop: hook dependencies", "pnpm", ["lint"], desktop],
-    ["Desktop: interface tests", "pnpm", ["test"], desktop],
-    ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"]],
+    ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"], {}, "native"],
+    ["Desktop: type check", "pnpm", ["typecheck"], desktop, "web"],
+    ["Desktop: hook dependencies", "pnpm", ["lint"], desktop, "web"],
+    ["Desktop: interface tests", "pnpm", ["test"], desktop, "web"],
+    ["Desktop: picker size", "pnpm", ["exec", "vite", "build"], desktop, "web"],
+    ["Desktop: picker budget", "node", ["../../scripts/picker-budget.mjs", "dist"], desktop, "web"],
+    ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "native"],
+    // Only the system's own WebKit shows these colours; jsdom and Chromium cannot.
+    ...process.platform === "darwin" ? [
+      ["WebKit: canvas", "pnpm", ["build:canvas"], desktop, "interface"],
+      ["WebKit: compile", "swiftc", ["-O", "apps/desktop/gallery/webkit.swift", "-o", webkit], {}, "interface"],
+      ["WebKit colours", webkit, ["apps/desktop/dist-canvas", `${webkit}-pictures`], {}, "interface"],
+    ] : [],
   ];
+  const changed = args.length === 0;
+  const files = changed ? changedFiles() : null;
+  const selected = classify(changed ? "pull_request" : "all", files?.length, files);
+  if (changed) console.log(`Checks for ${files?.length ?? "unknown"} changed file(s): ${Object.keys(selected).filter((name) => selected[name]).join(", ") || "documentation only"}.`);
 
   // On Windows commands run through a shell so that pnpm.cmd resolves; a missing
   // tool then fails like any other command instead of raising ENOENT. So when a
@@ -109,12 +152,13 @@ function main() {
   // missing and the run is incomplete rather than failed.
   const shell = process.platform === "win32";
   const skipped = [];
-  for (const [name, cmd, args, options = {}] of scriptsOnly ? scriptSteps : brandOnly ? brandSteps : steps) {
+  for (const [name, cmd, args, options = {}, selector] of scriptsOnly ? scriptSteps : brandOnly ? brandSteps : steps) {
+    if (selector && !selected[selector]) continue;
     console.log(`\n== ${name}: ${cmd} ${args.join(" ")}`);
     const result = spawnSync(cmd, args, { stdio: "inherit", shell, ...options });
     if (result.status === 0) continue;
-    const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : ["--version"];
-    if (result.error?.code === "ENOENT" || !hasCommand(cmd, probe) || name === "Brand assets" && result.status === 2) {
+    const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : args[0].startsWith("+") ? [args[0], "--version"] : ["--version"];
+    if (cmd !== webkit && (result.error?.code === "ENOENT" || !hasCommand(cmd, probe)) || name === "Brand assets" && result.status === 2) {
       console.log(`${name} could not run: the tool is not installed.`);
       skipped.push(name);
       continue;
@@ -124,7 +168,7 @@ function main() {
     process.exit(1);
   }
   if (skipped.length > 0) {
-    console.error(`\n! INCOMPLETE: ${skipped.join(", ")} did not run. Install the missing tools (cargo-deny: cargo install --locked cargo-deny; pnpm: https://pnpm.io/installation; actionlint: https://github.com/rhysd/actionlint/blob/main/docs/install.md).`);
+    console.error(`\n! INCOMPLETE: ${skipped.join(", ")} did not run. Install the missing tools (cargo-deny: cargo install --locked cargo-deny; minimum Rust: rustup toolchain install 1.90.0 --profile minimal; pnpm: https://pnpm.io/installation; actionlint: https://github.com/rhysd/actionlint/blob/main/docs/install.md).`);
     process.exit(2);
   }
   console.log("\n✓ All checks passed.");

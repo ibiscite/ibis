@@ -152,7 +152,7 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   expect(document.querySelector(".notices")?.textContent).toBe("");
   fireEvent.click(within(footer()).getByRole("button", { name: "Open Zotero" }));
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: result("a", "Invented reference").id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: result("a", "Invented reference").id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
   expect(status().textContent).toContain("not updated");
   current = library({ revision: "2", checked_at: Date.now() });
   await act(async () => { await emit("library:changed", current); });
@@ -223,7 +223,7 @@ test("Command-O opens the searched source and More lists it first", async () => 
   await screen.findByText("Selected invented reference");
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
   const menu = await screen.findByRole("menu");
   expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toContain("Show in Zotero");
@@ -258,7 +258,7 @@ test("Command-O opens a file from every picker overlay, without passing a file p
   fireEvent.keyDown(await screen.findByRole("dialog"), { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
   expect(screen.queryByRole("dialog")).toBeNull();
-  expect(opened.mock.calls).toEqual(Array(2).fill([{ item: result("a", "Invented file reference").id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false }]));
+  expect(opened.mock.calls).toEqual(Array(2).fill([{ item: result("a", "Invented file reference").id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]));
 });
 
 test("an older failed open cannot overwrite a later successful open or a reopened picker", async () => {

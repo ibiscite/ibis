@@ -326,9 +326,9 @@ mod tests {
         use serde_json::json;
         use std::sync::Arc;
 
-        let non_records = LibraryId::file(b"invented non-record objects");
-        let records = LibraryId::file(b"invented references");
-        let empty = LibraryId::file(b"invented empty library");
+        let non_records = LibraryId::digest(b"invented non-record objects");
+        let records = LibraryId::digest(b"invented references");
+        let empty = LibraryId::digest(b"invented empty library");
         let id = |key| json!({"library":non_records,"key":key});
         let objects: Vec<LibraryObject> = serde_json::from_value(json!([
             {"kind":"attachment","data":{"id":id("attachment"),"parent":null,"title":"Invented PDF",
@@ -342,7 +342,11 @@ mod tests {
         ]))?;
         let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects)?));
         engine
-            .publish_library(empty.clone(), Arc::new(Snapshot::new(vec![])?))
+            .publish_library(
+                empty.clone(),
+                ibis_engine::LibraryKind::Snapshot,
+                Arc::new(Snapshot::new(vec![])?),
+            )
             .map_err(|_| "publish empty library")?;
         let mut library = Library {
             source: Some(Source::File(PathBuf::from("invented.bib"))),
@@ -371,7 +375,11 @@ mod tests {
             {"kind":"record","data":{"id":{"library":records,"key":"two"},"csl":{"title":"Invented two"}}}
         ]))?;
         engine
-            .publish_library(records.clone(), Arc::new(Snapshot::new(objects)?))
+            .publish_library(
+                records.clone(),
+                ibis_engine::LibraryKind::Snapshot,
+                Arc::new(Snapshot::new(objects)?),
+            )
             .map_err(|_| "publish references")?;
         library.error = None;
         let populated = status(&library);

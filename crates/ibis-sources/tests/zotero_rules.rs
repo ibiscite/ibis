@@ -342,7 +342,7 @@ fn arbitrary_field_labels_never_enter_diagnostics_or_public_data() {
         let mut item = json!({"key": "SYN00001", "itemType": "book", "title": "Synthetic title"});
         item[&label] = json!(value);
         let item: ZoteroItem = serde_json::from_value(item).unwrap();
-        let mapped = zotero::map_item(LibraryId::zotero(b"invented"), &item).unwrap();
+        let mapped = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap();
         assert!(!mapped.warnings.is_empty());
         assert!(!format!("{:?}", mapped.warnings).contains("SYNTHETIC_PRIVATE_LABEL"));
         assert!(
@@ -475,7 +475,7 @@ fn mapping_keeps_canonical_fields_without_a_duplicate_source_item() {
         "extra": "  Synthetic extra\n"
     }))
     .unwrap();
-    let mapped = zotero::map_item(LibraryId::zotero(b"invented"), &item).unwrap();
+    let mapped = zotero::map_item(LibraryId::digest(b"invented"), &item).unwrap();
     assert!(mapped.warnings.is_empty(), "{:?}", mapped.warnings);
     assert_eq!(mapped.record.id.key, "SYN00001");
     assert_eq!(
@@ -496,7 +496,7 @@ fn normalization_trims_and_escapes_rich_text() {
         "publicationTitle": "  <b >Synthetic</b>  ", "abstractNote": "  Synthetic abstract  "
     }))
     .unwrap();
-    let csl = zotero::map_item(LibraryId::zotero(b"invented"), &item)
+    let csl = zotero::map_item(LibraryId::digest(b"invented"), &item)
         .unwrap()
         .record
         .csl;
@@ -567,8 +567,8 @@ fn mapping_is_deterministic_and_keeps_each_library_identity() {
     }))
     .unwrap();
     for library in [
-        LibraryId::zotero(b"invented user"),
-        LibraryId::zotero(b"invented group 42"),
+        LibraryId::digest(b"invented user"),
+        LibraryId::digest(b"invented group 42"),
     ] {
         let mapped = zotero::map_item(library.clone(), &item).unwrap();
         assert_eq!(mapped, zotero::map_item(library.clone(), &item).unwrap());

@@ -35,6 +35,17 @@ mcp speak their own protocols instead). Messages go to stderr. Exit codes: 0 ok,
 5 source unavailable or resource limit, 6 newer format, 70 internal, 130 cancelled.
 
 Reference for scripts and agents: https://github.com/ibiscite/ibis/blob/main/docs/cli.md";
+const GREETING: &str = "\
+finds references and cites them anywhere.
+
+Try it:
+  ibis search lantern --file refs.bib       find a reference
+  ibis cite vale2024lanterns --file refs.bib --style apa
+                                            make a citation
+  ibis doctor --file refs.bib               check a library
+
+With the Ibis app installed you can leave out --file.
+Add --json to any command for scripts and agents. All commands: ibis --help";
 
 fn command() -> Command {
     // Keep list values in their own scope: clap's global propagation replaces
@@ -225,7 +236,7 @@ fn command() -> Command {
                         .long("locale")
                         .value_name("LOCALE")
                         .help_heading(OUTPUT)
-                        .help("Language for --style output; only en-US is available for now"),
+                        .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales"),
                 )
                 .arg(
                     Arg::new("locator")
@@ -261,7 +272,37 @@ fn command() -> Command {
                         .action(ArgAction::Append)
                         .help("Leave out the author of the key before it"),
                 ),
-            Method::Styles => subcommand.about("List available bundled CSL styles"),
+            Method::Styles => subcommand
+                .about("Find bundled CSL styles and citation languages")
+                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
+                .arg(
+                    Arg::new("query")
+                        .value_name("WORDS")
+                        .num_args(0..)
+                        .help("Words from a style's title or id; every word must match"),
+                )
+                .arg(
+                    Arg::new("limit")
+                        .long("limit")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("100")
+                        .help("Return at most N styles, up to 20000"),
+                )
+                .arg(
+                    Arg::new("offset")
+                        .long("offset")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("0")
+                        .help("Skip the first N styles"),
+                )
+                .arg(
+                    Arg::new("locales")
+                        .long("locales")
+                        .action(ArgAction::SetTrue)
+                        .help("List citation languages instead of styles"),
+                ),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
                 .arg(
@@ -410,6 +451,15 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     mode: OutputMode,
     defaults: Defaults,
 ) -> u8 {
+    // A person at a terminal gets a start; a script still gets the usage error.
+    if arguments.len() < 2 && mode == OutputMode::Terminal {
+        let greeting = format!("Ibis {} {GREETING}\n", ibis_core::VERSION);
+        return if output.write_all(greeting.as_bytes()).is_ok() {
+            0
+        } else {
+            70
+        };
+    }
     let json = arguments.iter().any(|argument| argument == "--json");
     let program = program_name(arguments.first());
     let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
@@ -466,6 +516,10 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
+    if defaults == Defaults::App {
+        // Doctor writes nothing: without a saved key its ids last only for its report.
+        ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+    }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
     } else {
@@ -475,7 +529,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
         let help = command_help(&program, args.get_one::<String>("command"));
         return emit(json, Ok(help), None, &mut output, &mut errors, mode);
     }
-    match execute(&engine, &matches, defaults, &mut input, &mut output, mode) {
+    match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
         Ok(Execution::Result(result, citing)) => {
             emit(json, Ok(result), citing.as_ref(), &mut output, &mut errors, mode)
@@ -565,6 +619,8 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
 struct Failure {
     error: EngineError,
     message: Option<String>,
+    /// The sentence for readers who must not see the file it names, when `message` names one.
+    unnamed: Option<String>,
 }
 impl Failure {
     fn new(code: ErrorCode, message: impl Into<String>) -> Self {
@@ -574,7 +630,23 @@ impl Failure {
         Self {
             error,
             message: Some(message.into()),
+            unnamed: None,
         }
+    }
+    fn sentence(&self) -> &str {
+        self.message
+            .as_deref()
+            .unwrap_or_else(|| human::code_sentence(self.error.code))
+    }
+    /// What an agent reads when its libraries did not open. Agents never see paths.
+    fn refusal(&self) -> ibis_engine::mcp::Refusal {
+        let reason = self.unnamed.as_deref().unwrap_or_else(|| self.sentence());
+        ibis_engine::mcp::Refusal::new(
+            self.error.code,
+            format!(
+                "The library could not be opened: {reason} Pass this on to the user; once it is fixed, start a new session."
+            ),
+        )
     }
 }
 impl From<EngineError> for Failure {
@@ -582,6 +654,7 @@ impl From<EngineError> for Failure {
         Self {
             error,
             message: error.reason.map(|reason| human::reason_sentence(reason).to_owned()),
+            unnamed: None,
         }
     }
 }
@@ -611,12 +684,13 @@ fn explain<T>(result: Result<T, EngineError>, message: impl FnOnce(EngineError) 
     })
 }
 
-fn execute<R: BufRead, W: Write + Send>(
+fn execute<R: BufRead, W: Write + Send, E: Write>(
     engine: &Engine,
     matches: &ArgMatches,
     defaults: Defaults,
     input: &mut R,
     output: &mut W,
+    errors: &mut E,
     mode: OutputMode,
 ) -> Result<Execution, Failure> {
     let (name, args) = matches.subcommand().ok_or(EngineError::new(ErrorCode::Usage))?;
@@ -656,6 +730,43 @@ fn execute<R: BufRead, W: Write + Send>(
             None,
         ));
     }
+    let opened = open_libraries(engine, matches, name, defaults);
+    if name == "mcp" {
+        let session = match opened {
+            Ok(_) => ibis_engine::mcp::Session::default(),
+            Err(failure) => {
+                let _ = writeln!(errors, "ibis: {}", terminal_display(failure.sentence()));
+                ibis_engine::mcp::Session::without_libraries(failure.refusal())
+            }
+        };
+        return Ok(Execution::Stdio(
+            match ibis_engine::mcp::serve(engine, session, input, output) {
+                Ok(()) => 0,
+                Err(_) => 70,
+            },
+        ));
+    }
+    let names = opened?;
+    if name == "serve" {
+        return Ok(Execution::Stdio(
+            match ibis_engine::server::serve(engine.clone(), input, output) {
+                Ok(()) => 0,
+                Err(protocol::FrameError::Io) => 70,
+                Err(_) => 3,
+            },
+        ));
+    }
+    run_method(engine, matches, name, args, names, input)
+}
+
+/// Opens the libraries this run names, or the app's choice when it names none,
+/// and returns how people should hear each one called.
+fn open_libraries(
+    engine: &Engine,
+    matches: &ArgMatches,
+    name: &str,
+    defaults: Defaults,
+) -> Result<std::collections::BTreeMap<String, String>, Failure> {
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
     let mut files = source_values::<PathBuf>(matches, "file");
@@ -719,7 +830,13 @@ fn execute<R: BufRead, W: Write + Send>(
                 ),
                 None => human::file_failure(&path, code),
             },
-        )?;
+        )
+        .map_err(|mut failure| {
+            if chosen.is_none() {
+                failure.unnamed = Some(human::file_reason(&path, failure.error.code).to_owned());
+            }
+            failure
+        })?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {
@@ -747,8 +864,15 @@ fn execute<R: BufRead, W: Write + Send>(
         })
         .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
         let before = engine.libraries()?.libraries;
-        explain(engine.dispatch(Method::Libraries, &params, &cancel), |error| {
-            human::zotero_failure(error, &zotero_profiles(engine, &cancel))
+        // A Zotero failure keeps its own wording with a reason too, so the
+        // profiles a person can name are listed beside it.
+        engine.dispatch(Method::Libraries, &params, &cancel).map_err(|error| {
+            let profiles = if error.reason == Some(ErrorReason::ZoteroProfileNeeded) {
+                zotero_profiles(engine, &cancel)
+            } else {
+                vec![]
+            };
+            Failure::explained(error, human::zotero_failure(error, &profiles))
         })?;
         // Each Zotero library is the app's only when the app chose it and the command line did not.
         if let Some(app) = &app {
@@ -775,21 +899,19 @@ fn execute<R: BufRead, W: Write + Send>(
             }
         }
     }
-    if name == "mcp" {
-        return Ok(Execution::Stdio(match ibis_engine::mcp::serve(engine, input, output) {
-            Ok(()) => 0,
-            Err(_) => 70,
-        }));
-    }
-    if name == "serve" {
-        return Ok(Execution::Stdio(
-            match ibis_engine::server::serve(engine.clone(), input, output) {
-                Ok(()) => 0,
-                Err(protocol::FrameError::Io) => 70,
-                Err(_) => 3,
-            },
-        ));
-    }
+    Ok(names)
+}
+
+/// Runs an engine method once its libraries are open.
+fn run_method<R: BufRead>(
+    engine: &Engine,
+    matches: &ArgMatches,
+    name: &str,
+    args: &ArgMatches,
+    names: std::collections::BTreeMap<String, String>,
+    input: &mut R,
+) -> Result<Execution, Failure> {
+    let cancel = Cancellation::default();
     let method = Method::parse(name).map_err(EngineError::new)?;
     let libraries_open = || engine.libraries().is_ok_and(|result| !result.libraries.is_empty());
     let params = match method {
@@ -936,7 +1058,7 @@ fn execute<R: BufRead, W: Write + Send>(
                     Some(ErrorReason::UnknownLocale) => Failure::explained(
                         error,
                         format!(
-                            "the locale '{}' is not available yet; Ibis formats in en-US for now.",
+                            "there is no locale '{}'; list them with: ibis styles --locales",
                             human::field(args.get_one::<String>("locale").map_or("", String::as_str))
                         ),
                     ),
@@ -959,7 +1081,19 @@ fn execute<R: BufRead, W: Write + Send>(
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
-        Method::Styles => json!({}),
+        Method::Styles => {
+            let words: Vec<&str> = args
+                .get_many::<String>("query")
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            json!({
+                "query": (!words.is_empty()).then(|| words.join(" ")),
+                "limit": args.get_one::<usize>("limit").copied().unwrap_or(100),
+                "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
+            })
+        }
         Method::Schema => {
             json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
@@ -991,7 +1125,21 @@ fn execute<R: BufRead, W: Write + Send>(
             return Ok(Execution::Result(result, citing));
         }
     };
-    let result = engine.dispatch(method, &params, &cancel)?;
+    let result = explain(
+        engine.dispatch(method, &params, &cancel),
+        |EngineError { code, .. }| match code {
+            ErrorCode::BadInput
+                if method == Method::Styles && params["query"].as_str().is_some_and(|query| query.len() > 1024) =>
+            {
+                "the search words are too long; use fewer.".into()
+            }
+            ErrorCode::BadInput if method == Method::Styles => "--limit must be between 1 and 20000.".into(),
+            code => human::code_sentence(code).into(),
+        },
+    )?;
+    if method == Method::Styles && args.get_flag("locales") && !matches.get_flag("json") {
+        return Ok(Execution::Result(human::locale_list(result), None));
+    }
     Ok(Execution::Result(
         human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
         None,
@@ -1078,20 +1226,15 @@ fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {
 }
 /// The canonical locator reader, applied to the whole value.
 fn locator(text: &str) -> Result<Locator, Failure> {
-    [format!("x {text}"), format!("x, {text}")]
-        .iter()
-        .filter_map(|query| ibis_core::locator::parse_trailing(query))
-        .find(|split| split.search == "x")
-        .map(|split| split.locator)
-        .ok_or_else(|| {
-            Failure::new(
-                ErrorCode::Usage,
-                format!(
-                    "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
-                    human::field(text)
-                ),
-            )
-        })
+    ibis_core::locator::read_given(text).ok_or_else(|| {
+        Failure::new(
+            ErrorCode::Usage,
+            format!(
+                "--locator '{}' is not a locator Ibis reads; write it like \"p. 12\", \"ch. 3\" or \"12-14\".",
+                human::field(text)
+            ),
+        )
+    })
 }
 const ITEM_REF_HELP: &str = "--id must be an ItemRef JSON object, as ibis search --json prints it.";
 fn method_named(name: &str) -> Result<Method, Failure> {
@@ -1207,9 +1350,7 @@ fn emit(
 fn terminal_display(text: &str) -> String {
     let mut output = String::with_capacity(text.len());
     for character in text.chars() {
-        if (character.is_control() && !matches!(character, '\n' | '\t'))
-            || matches!(character,'\u{200e}'|'\u{200f}'|'\u{202a}'..='\u{202e}'|'\u{2066}'..='\u{2069}')
-        {
+        if human::is_hidden(character) || matches!(character, '\u{200e}' | '\u{200f}') {
             output.extend(character.escape_unicode());
         } else {
             output.push(character);

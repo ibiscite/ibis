@@ -603,7 +603,7 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
 }
 
 // Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).
-const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "json", "csljson"];
+const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "biblatex", "json", "csljson"];
 
 /// Whether a dropped file's name says it is a library.
 pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {

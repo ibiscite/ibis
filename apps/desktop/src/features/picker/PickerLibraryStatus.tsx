@@ -1,4 +1,4 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import type { LibraryStatus, ZoteroLibrary, ZoteroProfiles } from "../../api";
 import type { SystemIcon } from "../../bindings";
 import { LibraryDetail, libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
@@ -15,8 +15,8 @@ export const zoteroWaits = (problem: LibraryStatus["problem"]) =>
 export type LibraryScope = { offered: ZoteroLibrary[]; isChosen: (choice: ZoteroLibrary) => boolean; chosenCount: number;
   name: (choice: ZoteroLibrary) => string; toggle: (choice: ZoteroLibrary) => void; all: () => void };
 
-export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false, rowAction, listProfiles, chooseProfile }: {
-  library: LibraryStatus | null | undefined; groupName: (id: number) => string;
+export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpenChange, searchRef, zotero, actions, failure, groupsFailed = false, sourceFailure, sourceAction, statusIcon, hideAction = false, rowAction, listProfiles, chooseProfile }: {
+  library: LibraryStatus | null | undefined; groupName: (id: number) => string; notice?: ReactNode;
   isOpen: boolean; onOpenChange: (open: boolean) => void; searchRef: RefObject<HTMLElement | null>;
   zotero: LibraryScope | null;
   actions: { choose: () => void; find: () => void; reload: () => void; openZotero: () => void; useZotero: () => void };
@@ -64,7 +64,7 @@ export function PickerLibraryStatus({ library, groupName, isOpen, onOpenChange, 
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
       : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null);
-  return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition}
+  return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition} notice={notice}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>

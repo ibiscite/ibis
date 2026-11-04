@@ -8,11 +8,12 @@ export function useAltHeld() {
     const down = (e: KeyboardEvent) => setAltHeld((held) => e.key === "Alt" || (e.altKey && held));
     const up = (e: KeyboardEvent) => { if (e.key === "Alt" || !e.altKey) setAltHeld(false); };
     const reset = () => setAltHeld(false);
-    window.addEventListener("keydown", down);
+    // Capture: a key the layer stack uses stops there, and still ends the hold.
+    window.addEventListener("keydown", down, true);
     window.addEventListener("keyup", up);
     window.addEventListener("blur", reset);
     return () => {
-      window.removeEventListener("keydown", down);
+      window.removeEventListener("keydown", down, true);
       window.removeEventListener("keyup", up);
       window.removeEventListener("blur", reset);
     };

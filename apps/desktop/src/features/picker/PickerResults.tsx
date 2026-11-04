@@ -18,7 +18,7 @@ import type { Density } from "../../api";
 const noLibrary = () => null;
 
 export function PickerResults({
-  api, libraryState, searchState, state, source, scope, shortcut, perform, input, pointer, rows, density,
+  api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
   resultArea, setQuery, peck,
 }: {
   setQuery: (value: string) => void;
@@ -31,7 +31,7 @@ export function PickerResults({
   scope: ReturnType<typeof useZoteroScope>;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
-  input: RefObject<HTMLInputElement | null>;
+  focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;
   rows: Pick<ReturnType<typeof useCitationRows>, "onChoose" | "onContext" | "onToggle">;
   density: Density;
@@ -40,18 +40,20 @@ export function PickerResults({
   const { choosingLibrary, setupApi, setWelcomeShown, library, libraryChoices, busy, blocked, showCitations } = libraryState;
   const { active, selected } = state;
   // The shown results and empty message answer this query until the next reply.
-  const { results, error, list, announcement, answered: query } = searchState;
+  const { results, error, list, unfiltered, announcement, answered: query } = searchState;
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
   const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={performSourceChoice} autoFocus
     shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
+      unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
+      onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
       source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
-      onClearSearch={() => { setQuery(""); input.current?.focus(); }}
+      onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}
-      onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
+      onReload={() => { focusHome(); void perform("reload", reloadLibrary); }}
       zotero={{ listProfiles: api.zoteroProfiles, checkSharing: api.checkZoteroSharing,
         chooseProfile: api.useZoteroProfile && ((name) => { void perform("zotero", async () => api.useZoteroProfile!(name)); }) }}
       setup={
@@ -71,6 +73,6 @@ export function PickerResults({
       libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
-    {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
+    {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
   </div>;
 }

@@ -1,6 +1,4 @@
 import type { LibraryStatus, SearchResult } from "./api";
-import type { PickerApi, PickerPreview } from "./App";
-import { DEFAULT_PICKER_SHORTCUT } from "./keys";
 
 // Invented records shared by component tests. No IPC or real library data.
 function library(overrides: Partial<LibraryStatus> = {}): LibraryStatus {
@@ -33,44 +31,3 @@ export const testStates = [
   { id: "many-results", library: library(), query: "memory", results: many },
   { id: "tray-20", library: library({ references: 50 }), query: "selection", results: [] },
 ];
-
-export function testProvider(state: typeof testStates[number]): { api: PickerApi; preview: PickerPreview } {
-  let sequence = 0;
-  const receipts = new Map<string, { text: string; hash: string }>();
-  return {
-    preview: { query: state.query },
-    api: {
-      libraryStatus: async () => state.library,
-      search: async () => ({ revision: state.library.revision, results: state.results, interpretation: null }),
-      previewFileCitation: async (items) => {
-        const text = `[${items.map(({ id }) => `@${(id as { key: string }).key}`).join("; ")}]`;
-        const ticket = `synthetic-ticket-${++sequence}`;
-        const hash = `synthetic-hash-${sequence}`;
-        receipts.set(ticket, { text, hash });
-        return { text, html: null, spans: [], warnings: [], ticket, content_hash: hash };
-      },
-      copyFileCitation: async (ticket, hash) => {
-        const receipt = receipts.get(ticket);
-        if (!receipt || receipt.hash !== hash) throw new Error("Unknown synthetic preview");
-        return { text: receipt.text, warnings: [] };
-      },
-      copyFormat: async () => "pandoc",
-      pickerPreferences: async () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true }),
-      setPickerPreferences: async (patch, copyFormat) => ({ preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, ...patch }, copy_format: copyFormat ?? "pandoc" }),
-      shortcutStatus: async () => ({ shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null }),
-      chooseLibrary: async () => undefined,
-      useZotero: async () => undefined,
-      reloadLibrary: async () => undefined,
-      hidePicker: async () => true,
-      pickerVisible: async () => true,
-      pickerPresentation: async () => 0,
-      setPinned: async () => undefined,
-      loginItem: async () => ({ name: "Ibis", enabled: false, problem: null }),
-      setLoginItem: async (enabled) => ({ name: "Ibis", enabled, problem: null }),
-      quit: async () => undefined,
-      onLibraryChanged: async () => () => undefined,
-      onPickerShown: async () => () => undefined,
-      onPickerHidden: async () => () => undefined,
-    },
-  };
-}

@@ -16,6 +16,7 @@ rquickjs = "0.14.0"
 icu_collator = "2.4.0"
 icu_locale_core = "2.4.0"
 icu_casemap = "2.4.0"
+ruzstd = { version = "0.9.1", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 sha2 = "0.11.1"

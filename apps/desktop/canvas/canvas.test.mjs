@@ -73,7 +73,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       else if (scenario === "empty-search") expect(host.textContent).toContain("Type to find");
       else if (scenario === "no-matches") expect(host.textContent).toContain("No matching references");
       else if (scenario === "missing") expect(host.textContent).toContain("Can't find invented.bib");
-      else if (scenario === "zotero-closed") expect(host.textContent).toContain("Zotero isn't open");
+      else if (scenario === "zotero-closed") expect(host.textContent).toContain("Ibis needs Zotero open");
       else if (scenario === "unreadable") expect(host.textContent).toContain("Can't read invented.bib");
       else if (scenario === "long-titles") expect(host.textContent).toContain("An invented reference whose title");
       else {
