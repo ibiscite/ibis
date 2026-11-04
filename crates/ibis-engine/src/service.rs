@@ -25,8 +25,11 @@ pub use formatting::Cancellation;
 mod prepared;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
-pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
-pub use project::{EntryResult, ProjectKey, ProjectResult, WritingProjectCitation, project_name};
+pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead, WorkMatch};
+pub use project::{
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectResult,
+    WritingProjectCitation, project_name,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]

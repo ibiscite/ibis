@@ -233,13 +233,19 @@ the other save finishes. Failed saves leave the old definitions intact.
 `--project` conflicts with `--format`, `--style`, `--for-app` and `--request`, so a
 script cannot accidentally mix two output authorities. For a project's formatted
 bibliography, use `--form bibliography-only`. Outputs that emit citation keys check
-the named bibliography; formatted outputs and record exports do not. A missing, conflicting or unreadable
-project entry exits 1 and reports its exact state while still returning the
-citation. No project or CLI action grants paste permission.
+the named bibliography; formatted outputs and record exports do not. A current
+missing or uncertain entry reports findings with exit 1. A known wrong-work
+conflict or an unreadable bibliography without matching evidence withholds the
+copyable citation. `--unchecked-project` is an explicit exception for this request
+and reports an unverified result; it never bypasses a known conflict or lost
+conflict history. `--strict-project` requires a complete current read. These
+options cannot be combined and never change a saved project. No project or CLI
+action grants paste permission.
 
 With `--json`, `cite --project` returns a typed wrapper in `data`: `id`, `name`,
-`revision`, the ordinary `citation`, and `project` (the bibliography check, or
-`null`). The definition's opaque `revision` changes when its name, output or
+`revision`, the ordinary `citation`, `assessment` (the shared evidence-policy
+outcome), and `project` (the bibliography check, or `null`). A paused or conflicting
+assessment returns typed refusals and no copyable citation text. The definition's opaque `revision` changes when its name, output or
 bibliography changes. `ibis projects schema --json` describes the wrapper.
 Project lists and results show only bibliography file names, never their folders.
 Plain `cite` keeps its existing result shape.

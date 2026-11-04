@@ -7,7 +7,9 @@ use ibis_core::settings::{
     self,
     writing_projects::{self as projects, ProjectError, WritingProject},
 };
-use ibis_engine::{DispatchResult, Engine, WritingProjectCitation, request::StylesRequest};
+use ibis_engine::{
+    DispatchResult, Engine, ProjectAssessmentState, ProjectPolicy, WritingProjectCitation, request::StylesRequest,
+};
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
@@ -85,6 +87,16 @@ pub(crate) fn chosen(args: &ArgMatches) -> Result<Option<WritingProject>, Failur
     };
     let (_, settings) = load(args.get_flag("nightly"))?;
     projects::find(&settings, id).cloned().map(Some).map_err(failure)
+}
+
+pub(crate) fn policy(args: &ArgMatches) -> ProjectPolicy {
+    if args.get_flag("unchecked-project") {
+        ProjectPolicy::Unchecked
+    } else if args.get_flag("strict-project") {
+        ProjectPolicy::Strict
+    } else {
+        ProjectPolicy::Normal
+    }
 }
 
 fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Failure> {
@@ -260,7 +272,12 @@ pub(crate) fn with_check(
     let Some(project) = project else {
         return Ok(result);
     };
-    if project.project.as_ref().is_some_and(|check| !check.settled()) {
+    if project.project.as_ref().is_some_and(|check| !check.settled())
+        || project
+            .assessment
+            .as_ref()
+            .is_some_and(|assessment| assessment.state != ProjectAssessmentState::Ready)
+    {
         result.exit_code = ExitCode::Findings;
     }
     result.data = serde_json::to_value(project)

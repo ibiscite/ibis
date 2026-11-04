@@ -1,5 +1,8 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
-use super::{Cancellation, Engine, ProjectKey, ProjectRead, Shared, error};
+use super::{
+    Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectRead, Shared,
+    WorkMatch, error,
+};
 use ibis_core::contract::*;
 use std::{
     collections::HashMap,
@@ -15,6 +18,82 @@ pub struct PreparedCitation {
     sample: bool,
 }
 impl PreparedCitation {
+    /// Caller owns the selected bibliography and binds it to this task's
+    /// immutable context. Rechecking never consumes or changes the preview.
+    pub fn project_evidence(&self, read: &ProjectRead, policy: ProjectPolicy) -> ProjectAssessment {
+        let checks = self.project_checks(read);
+        let matches: Vec<_> = if self.uses_citation_keys() {
+            self.request
+                .items
+                .iter()
+                .filter_map(|pick| {
+                    let LibraryObject::Record(record) = &self.snapshot.get(&pick.item)?.object else {
+                        return None;
+                    };
+                    let key = record.citation_key().ok().flatten()?;
+                    Some((key.to_owned(), read.work_match(key, record)))
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let conflicts: Vec<_> = matches
+            .iter()
+            .filter(|(_, work)| *work == WorkMatch::Conflict)
+            .map(|(key, _)| key.clone())
+            .collect();
+        let state = if !conflicts.is_empty() {
+            ProjectAssessmentState::Conflict
+        } else if !self.uses_citation_keys() {
+            ProjectAssessmentState::Ready
+        } else if read.evidence_limited() {
+            ProjectAssessmentState::Paused
+        } else if policy == ProjectPolicy::Strict && !read.current_complete() {
+            ProjectAssessmentState::Paused
+        } else if policy == ProjectPolicy::Unchecked {
+            ProjectAssessmentState::Unverified
+        } else if read.current_complete() {
+            ProjectAssessmentState::Ready
+        } else if read.last_good()
+            && matches.len() == self.request.items.len()
+            && matches.iter().all(|(_, work)| *work == WorkMatch::Matched)
+        {
+            ProjectAssessmentState::Retained
+        } else {
+            ProjectAssessmentState::Paused
+        };
+        let name = read.name();
+        let message = match state {
+            ProjectAssessmentState::Ready => None,
+            ProjectAssessmentState::Conflict => Some(format!(
+                "A key in {name} identifies a different work. Resolve the conflict before citing it."
+            )),
+            ProjectAssessmentState::Retained => Some(format!("Couldn't read {name}. Using its last checked copy.")),
+            ProjectAssessmentState::Unverified => Some(format!("This citation key is unverified against {name}.")),
+            ProjectAssessmentState::Paused if policy == ProjectPolicy::Strict => Some(format!(
+                "A current successful check of {name} is required. Retry before citing."
+            )),
+            ProjectAssessmentState::Paused if read.evidence_limited() => Some(format!(
+                "Can't safely rule out a key conflict in the incomplete {name}. Retry with a complete bibliography."
+            )),
+            ProjectAssessmentState::Paused if matches.iter().any(|(key, _)| read.absent_from_retained_copy(key)) => {
+                Some(format!(
+                    "A selected key was not found in the last checked copy of {name}. Retry or choose an explicit unverified action."
+                ))
+            }
+            ProjectAssessmentState::Paused => Some(format!(
+                "Couldn't check this citation against {name}. Retry or choose an explicit unverified action."
+            )),
+        };
+        ProjectAssessment {
+            state,
+            name,
+            checks,
+            last_checked_ms: read.last_checked_ms(),
+            message,
+            conflicts,
+        }
+    }
     /// Record exports do not emit citation keys even though they share the
     /// key-output request family; their target needs no project bibliography.
     pub fn uses_citation_keys(&self) -> bool {

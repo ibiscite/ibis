@@ -220,6 +220,11 @@ fn command() -> Command {
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
                     .requires("project").help("Read the writing project from Ibis Nightly's settings"))
+                .arg(Arg::new("unchecked-project").long("unchecked-project").action(ArgAction::SetTrue)
+                    .requires("project").conflicts_with("strict-project")
+                    .help("Deliberately emit an unverified project key for this request; never overrides a known wrong-work conflict"))
+                .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
+                    .requires("project").help("Require a current complete bibliography read for this project citation"))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
@@ -1155,7 +1160,7 @@ fn run_method<R: BufRead>(
             let writing_project = project
                 .as_ref()
                 .map(|project| {
-                    engine.cite_writing_project_keys(
+                    engine.cite_writing_project_keys_with_policy(
                         project,
                         &KeyCitationRequest {
                             keys: keys.clone(),
@@ -1163,6 +1168,7 @@ fn run_method<R: BufRead>(
                             form,
                             output_locale: args.get_one::<String>("locale").cloned(),
                         },
+                        writing_projects::policy(args),
                         &cancel,
                     )
                 })
@@ -1459,13 +1465,23 @@ fn emit(
     }
     if !json && let (Ok(result), Some(citing)) = (&result, citing) {
         let citation = result.data.get("citation").unwrap_or(&result.data);
-        for line in human::citation_report(citation, citing, result.text.is_some()) {
-            say(&line);
+        let project_blocked = result
+            .data
+            .pointer("/assessment/state")
+            .and_then(Value::as_str)
+            .is_some_and(|state| matches!(state, "paused" | "conflict"));
+        if !project_blocked {
+            for line in human::citation_report(citation, citing, result.text.is_some()) {
+                say(&line);
+            }
         }
         if let Some(project) = result.data.get("project").filter(|value| !value.is_null())
             && let Some(report) = human::project_report(project)
         {
             say(&report);
+        }
+        if let Some(message) = result.data.pointer("/assessment/message").and_then(Value::as_str) {
+            say(message);
         }
         if result.text.is_none() {
             // Refused citations print their reasons above and nothing to stdout.
