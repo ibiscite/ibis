@@ -3,5 +3,11 @@
 .ui-popup-button.ui-button[data-variant] { padding-inline: var(--space-3) var(--space-2); }
 .toolbar-menu-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 :root[data-platform="macos"] .ui-popup-button { min-height: calc(var(--control-h) - var(--space-1)); }
+:root[data-platform="macos"] .ui-popup-button[data-size="small"] { min-height: var(--control-small-h); }
 
 .ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
+/* A value with a glyph (the shelf's count) keeps them on one line. */
+.toolbar-menu-value:has(> svg) { display: inline-flex; align-items: center; gap: var(--space-1); }
+/* Quiet, inside a band that is itself a fill (the shelf's count; "Quiet bands"):
+   no fill or edge at rest, the shared quiet hover, and the band's control corner. */
+.ui-popup-button.ui-button[data-variant="quiet"] { padding-inline: var(--space-2) var(--space-1); border-radius: var(--r-shelf-control); font-variant-numeric: tabular-nums; }

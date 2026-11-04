@@ -167,7 +167,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | --- | --- |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
 | IconButton | Square, one size and glyph size per context, `--r-control`; rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
-| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). |
+| Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). Quiet in a band that is itself a fill (the shelf's count). |
 | Menu (`ui/Menu`) | See **Menus**. |
 | Segmented | `--r-seg` thumb on a quiet track. |
 | Switch (`ui/Switch`) | The one on/off control: accent track when on, `--text-on-accent` thumb, size from `--switch-*`. |
@@ -175,7 +175,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Settings group and row (`ui/SettingsGroup`) | See **Settings**. |
 | Shortcut table (`ui/ShortcutTable`) | Small secondary heading, one card of rows, action at the start and keys at the end. |
 | Key caps (`ui/KeyCaps`) | See **Key caps**. |
-| Shelf (`ChipGroup`, `LocatorToken`) | See **Shelf**. |
+| Shelf (`ShelfSegment`, `ChipGroup`, `LocatorToken`) | See **Shelf**. |
 | Inspector (`ui/Inspector`, `CitationDetails`) | See **Inspector**. |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See **Footer**. A status line is words, never a filled band. |
 | Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See **Notices**. |

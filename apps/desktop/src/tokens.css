@@ -227,10 +227,12 @@
    container's edge keeps the same gap on every side, and its radius is the
    container's minus that gap, never below the floor; neighbours share a radius.
      window 16 -8-> row, field, shelf, footer action 8 -4-> key cap 4
-     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6 */
+     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6
+     shelf 8 -8-> shelf control 6 (a small control S from the shelf's edges) */
 :root {
   --r-row: max(var(--r-floor), calc(var(--r-win) - var(--corner-inset)));
   --r-tile: var(--r-floor);
+  --r-shelf-control: max(var(--r-floor), calc(var(--r-row) - var(--inset)));
   --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
