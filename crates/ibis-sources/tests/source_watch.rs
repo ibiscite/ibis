@@ -144,8 +144,13 @@ fn interrupted_writes_replacements_deletion_and_empty_files() {
     .unwrap_or_else(|e| panic!("{e}"));
     let initial = next(&rx).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&initial).len(), 1);
-    std::fs::write(&path, "@misc{partial, title={Unclosed}").unwrap_or_else(|e| panic!("{e}"));
-    assert!(matches!(next(&rx), Err(SourceError::Incomplete)));
+    // A settled save with a damaged entry loads as an open would: the rest
+    // loads and the damaged entry warns. Two identical reads rule out a save
+    // still being written.
+    std::fs::write(&path, "@misc{kept}\n@misc{partial, title={Unclosed}").unwrap_or_else(|e| panic!("{e}"));
+    let damaged = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(records(&damaged)[0].citation_keys[0].value, "kept");
+    assert_eq!(damaged.warnings.len(), 1);
     let replacement = dir.path().join("replacement.tmp");
     std::fs::write(&replacement, "@misc{new, title={New}}").unwrap_or_else(|e| panic!("{e}"));
     // Exercise overwrite on Windows as well as Unix, as an editor save does.
@@ -196,7 +201,7 @@ fn change_bursts_publish_only_the_settled_contents() {
 }
 
 #[test]
-fn initial_damage_is_tolerated_and_reload_warnings_are_not_blanket_rejected() {
+fn damage_loads_alike_on_open_and_reload_and_reload_warnings_are_not_blanket_rejected() {
     use ibis_sources::{load_file, reload_file};
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
@@ -204,7 +209,9 @@ fn initial_damage_is_tolerated_and_reload_warnings_are_not_blanket_rejected() {
     let initial = load_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(records(&initial).len(), 1);
     assert_eq!(initial.warnings.len(), 1);
-    assert!(matches!(reload_file(&path), Err(SourceError::Incomplete)));
+    let reloaded = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(reloaded.snapshot.fingerprints(), initial.snapshot.fingerprints());
+    assert_eq!(reloaded.warnings, initial.warnings);
     std::fs::write(
         &path,
         "@misc{good}\n@misc{good}\n@misc{retained}\n@misc{closed, title=}",
@@ -340,7 +347,7 @@ fn verbatim_leaf_names_and_ordinary_aliases_watch_the_selected_file() {
 }
 
 #[test]
-fn unchanged_damaged_initial_load_does_not_publish_a_strict_reload() {
+fn unchanged_damaged_initial_load_is_not_published_again() {
     use ibis_sources::load_file_snapshot;
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
@@ -414,7 +421,7 @@ fn unchanged_contents_after_a_gap_error_publish_recovery() {
 }
 
 #[test]
-fn damaged_changes_in_the_registration_gap_still_use_strict_reloads() {
+fn damaged_changes_in_the_registration_gap_load_as_an_open_would() {
     use ibis_sources::load_file_snapshot;
     let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
     let path = dir.path().join("library.bib");
@@ -426,7 +433,15 @@ fn damaged_changes_in_the_registration_gap_still_use_strict_reloads() {
         let _ = tx.send(result);
     })
     .unwrap_or_else(|e| panic!("{e}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::Incomplete));
+    let changed = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(records(&changed)[0].citation_keys[0].value, "changed");
+    assert_eq!(
+        changed.warnings,
+        ibis_sources::load_file(&path)
+            .unwrap_or_else(|e| panic!("{e}"))
+            .warnings
+    );
+    assert_eq!(changed.warnings.len(), 1);
     assert_eq!(records(&initial)[0].citation_keys[0].value, "old");
 }
 
@@ -533,7 +548,7 @@ fn private_location_changes_publish_a_new_owner_even_if_public_hashes_match() {
 }
 
 #[test]
-fn long_identity_attachment_limits_keep_last_good_owner_until_recovery() {
+fn long_identity_attachment_limits_load_alike_on_open_and_reload() {
     let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let path = dir.path().join("synthetic.json");
     std::fs::write(&path, r#"[{"id":"initial","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
@@ -549,9 +564,86 @@ fn long_identity_attachment_limits_keep_last_good_owner_until_recovery() {
         serde_json::to_vec(&limited).unwrap_or_else(|error| panic!("{error}")),
     )
     .unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(next(&rx).err(), Some(SourceError::LoadLimit));
+    let limited = next(&rx).unwrap_or_else(|error| panic!("{error}"));
+    let opened = ibis_sources::load_file(&path).unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(limited.snapshot.fingerprints(), opened.snapshot.fingerprints());
+    assert_eq!(limited.warnings, opened.warnings);
+    assert!(
+        limited
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit)
+    );
     assert_eq!(records(&initial)[0].id.key, "record:initial");
     std::fs::write(&path, r#"[{"id":"recovered","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
     let recovered = next(&rx).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(records(&recovered)[0].id.key, "record:recovered");
+}
+
+/// The stress-test regression: a library opened with one damaged entry kept
+/// its first snapshot forever, because every later reload refused the damage.
+#[test]
+fn a_library_opened_with_one_damaged_entry_keeps_refreshing() {
+    use ibis_sources::{load_file, load_file_snapshot, reload_file};
+    let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let path = dir.path().join("synthetic.bib");
+    let library = |title: &str| {
+        format!(
+            "@book{{first,title={{{title}}},author={{Avery Researcher}}}}\n\
+             @book{{broken,title={{Unclosed\n\
+             @book{{second,title={{Other Synthetic Work}}}}\n"
+        )
+    };
+    let original = library("Synthetic Lantern");
+    std::fs::write(&path, &original).unwrap_or_else(|e| panic!("{e}"));
+    let save = |text: &str| {
+        // An editor's atomic save: write beside, then rename over.
+        let temporary = dir.path().join("synthetic.bib.tmp");
+        std::fs::write(&temporary, text).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::rename(&temporary, &path).unwrap_or_else(|e| panic!("{e}"));
+    };
+    let titles = |loaded: &LoadedLibrary| -> Vec<String> {
+        records(loaded)
+            .iter()
+            .map(|record| record.csl["title"].as_str().unwrap_or_default().to_owned())
+            .collect()
+    };
+    let (initial, observation) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(titles(&initial), ["Synthetic Lantern", "Other Synthetic Work"]);
+    assert_eq!(initial.warnings.len(), 1);
+    let (tx, rx) = mpsc::channel();
+    let watch = SourceWatch::with_snapshot(&path, observation, move |result| {
+        let _ = tx.send(result);
+    })
+    .unwrap_or_else(|e| panic!("{e}"));
+    // Unchanged bytes publish nothing.
+    assert!(rx.recv_timeout(Duration::from_millis(900)).is_err());
+
+    // A save far from the damage is picked up, keeping the same warning.
+    save(&library("Synthetic Zebra"));
+    let edited = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(titles(&edited), ["Synthetic Zebra", "Other Synthetic Work"]);
+    assert_eq!(edited.warnings, initial.warnings);
+
+    // Restoring the exact bytes it opened with gives the library it opened with.
+    save(&original);
+    let restored = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(restored.snapshot.fingerprints(), initial.snapshot.fingerprints());
+    assert_eq!(restored.warnings, initial.warnings);
+
+    // Failed I/O keeps reporting, and the damaged library recovers after it.
+    std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
+    save(&library("Synthetic Recovered"));
+    let recovered = next(&rx).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(titles(&recovered), ["Synthetic Recovered", "Other Synthetic Work"]);
+    assert_eq!(recovered.warnings, initial.warnings);
+
+    // Close and reopen: an explicit Reload and a fresh open agree.
+    drop(watch);
+    let reloaded = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    let reopened = load_file(&path).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(reloaded.snapshot.fingerprints(), reopened.snapshot.fingerprints());
+    assert_eq!(reloaded.warnings, reopened.warnings);
+    assert_eq!(titles(&reloaded), ["Synthetic Recovered", "Other Synthetic Work"]);
 }

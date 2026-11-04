@@ -248,7 +248,8 @@ fn a_coherent_engine_update_clears_only_its_own_failed_reload() -> Result<(), Bo
     });
     let requests = LoadRequests::default();
     let (request, _, _) = begin_open(&library, &requests, source.clone()).ok_or("begin")?;
-    std::fs::write(&path, "@book{partial,")?;
+    // Not UTF-8, so the reload fails; a damaged entry would only warn.
+    std::fs::write(&path, b"@book{\xff}")?;
     let error = file.reload().err().ok_or("partial reload succeeded")?;
     assert!(
         install(&library, &requests, request, Err(error))

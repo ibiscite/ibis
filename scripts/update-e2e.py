@@ -56,6 +56,9 @@ managed_client_windows = importlib.import_module("smoke-native").managed_client_
 
 IDENTIFIER = "com.ibiscite.ibis.nightly"
 SHORTCUT = "Control+Alt+Y"
+# Ibis keeps one opening shortcut per system (#1561) and names this one by the
+# key core's `System::HERE` serializes to; any other Unix desktop is Linux.
+SHORTCUT_SYSTEMS = {"Darwin": "macos", "Windows": "windows"}
 BUTTON = "Install and Restart"
 # The app's first check comes 30 seconds after start; the download is ~100 MB.
 OFFER_TIMEOUT = 180
@@ -498,7 +501,12 @@ def preserved_settings(settings, library):
             pass
     if not same_library:
         raise AssertionError("the synthetic library choice was not preserved")
-    if saved.get("shortcut") != SHORTCUT:
+    # The seed writes the shortcut as people do by hand, which Ibis reads as
+    # this system's; Ibis itself writes one entry per system. Either form must
+    # hold exactly the seeded shortcut for this system and nothing for others.
+    here = SHORTCUT_SYSTEMS.get(platform.system(), "linux")
+    shortcut = saved.get("shortcut")
+    if not (type(shortcut) is str and shortcut == SHORTCUT or shortcut == {here: SHORTCUT}):
         raise AssertionError("the synthetic shortcut choice was not preserved")
     return {"library": True, "shortcut": True}
 
@@ -2602,6 +2610,35 @@ function Contract-Result($pressed,$how) {
             with self.assertRaisesRegex(AssertionError, "synthetic library choice was not preserved"):
                 preserved_settings(settings, library)
 
+    def test_settings_verification_reads_the_shortcut_for_this_system_only(self):
+        # Ibis rewrites the hand-written seed as one entry per system (#1561).
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            library = root / "synthetic.bib"
+            library.write_text("@misc{synthetic}\n", encoding="utf-8")
+            settings = seed_settings(root, library)
+            saved = json.loads(settings.read_text(encoding="utf-8"))
+            for system, here in (("Darwin", "macos"), ("Windows", "windows"), ("Linux", "linux"), ("FreeBSD", "linux")):
+                others = [name for name in ("macos", "windows", "linux") if name != here]
+                kept = ("Control+Alt+Y", {here: "Control+Alt+Y"})
+                lost = (None, "", "Control+Alt+X", ["Control+Alt+Y"], {}, {here: None}, {here: "Control+Alt+X"},
+                        {here: ["Control+Alt+Y"]}, {others[0]: "Control+Alt+Y"},
+                        {here: "Control+Alt+Y", others[0]: "Control+Alt+Y"}, {"HERE": "Control+Alt+Y"},
+                        {here.capitalize(): "Control+Alt+Y"})
+                for index, shortcut in enumerate(kept + lost):
+                    saved["shortcut"] = shortcut
+                    settings.write_text(json.dumps(saved), encoding="utf-8")
+                    with self.subTest(system=system, shortcut=index), patch("platform.system", return_value=system):
+                        if index < len(kept):
+                            self.assertEqual(preserved_settings(settings, library), {"library": True, "shortcut": True})
+                        else:
+                            with self.assertRaisesRegex(AssertionError, "synthetic shortcut choice was not preserved"):
+                                preserved_settings(settings, library)
+            del saved["shortcut"]
+            settings.write_text(json.dumps(saved), encoding="utf-8")
+            with self.assertRaisesRegex(AssertionError, "synthetic shortcut choice was not preserved"):
+                preserved_settings(settings, library)
+
     def test_settings_verification_fails_closed_when_file_identity_cannot_be_read(self):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
@@ -2614,11 +2651,11 @@ function Contract-Result($pressed,$how) {
             self.assertNotIn("synthetic-private-sentinel", str(failure.exception))
 
     def test_restarted_update_must_keep_choices_without_an_environment_override(self):
-        for changed in ("library", "shortcut", "canonical", None):
+        for changed in ("library", "shortcut", "canonical", "per-system", "other-system", None):
             with self.subTest(changed=changed), tempfile.TemporaryDirectory() as temporary:
                 runtime = Path(temporary) / "runtime"
                 (runtime / "selected").mkdir(parents=True)
-                failed = changed in ("library", "shortcut")
+                failed = changed in ("library", "shortcut", "other-system")
                 def installed(folder, _args, library):
                     settings = folder / "settings.json"
                     choices = {"library": {"bibtex": str(folder / "synthetic.bib")}, "shortcut": "Control+Alt+Y"}
@@ -2630,6 +2667,10 @@ function Contract-Result($pressed,$how) {
                             canonical = str(library.resolve(strict=True))
                             self.assertNotEqual(canonical, str(library))
                             choices["library"] = {"bibtex": canonical}
+                        elif changed == "per-system":
+                            choices["shortcut"] = {"linux": "Control+Alt+Y"}
+                        elif changed == "other-system":
+                            choices["shortcut"] = {"windows": "Control+Alt+Y"}
                         elif changed:
                             choices[changed] = "synthetic wrong choice"
                         if changed:
