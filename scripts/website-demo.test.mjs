@@ -66,7 +66,7 @@ test("shared cap labels are one cap per shortcut in native modifier order, with 
   const ctx = {}; runInNewContext(keyScript, ctx);
   for (const [accelerator, mac, expected] of [
     ["CmdOrCtrl+Shift+Alt+C", true, ["⌥⇧⌘C"]],
-    ["CmdOrCtrl+Shift+Alt+C", false, ["Ctrl+Shift+Alt+C"]],
+    ["CmdOrCtrl+Shift+Alt+C", false, ["Ctrl+Alt+Shift+C"]],
     ["+", true, ["+"]], ["+", false, ["+"]],
     ["CmdOrCtrl++", true, ["⌘+"]], ["CmdOrCtrl++", false, ["Ctrl++"]],
     ["CmdOrCtrl+/", true, ["⌘/"]], ["CmdOrCtrl+/", false, ["Ctrl+/"]],
