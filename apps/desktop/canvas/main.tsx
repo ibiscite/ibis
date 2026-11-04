@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { lazy, Suspense, useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
@@ -25,8 +25,14 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
-type Scenario = typeof scenarios[number];
+// The reader spike (#1252) is built only with VITE_READER_SPIKE=1, so PDF.js
+// never enters the design canvas bundle or the picker. It stays on its branch.
+const readerSpike = import.meta.env.VITE_READER_SPIKE === "1";
+const ReaderSpike = readerSpike ? lazy(() => import("./reader-spike/ReaderSpike").then((module) => ({ default: module.ReaderSpike }))) : null;
+
+const allScenarios = ["reader-spike", "notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+type Scenario = typeof allScenarios[number];
+export const scenarios: readonly Scenario[] = allScenarios.filter((name) => readerSpike || name !== "reader-spike");
 type Theme = "light" | "dark";
 
 // Same invented records as picker-layout.browser.mjs; that executable browser
@@ -162,6 +168,11 @@ function ThemedParts({ theme }: { theme: Theme }) {
   return <><style>{pickerStyles}</style><Parts /></>;
 }
 
+function ThemedReaderSpike({ theme, Spike }: { theme: Theme; Spike: NonNullable<typeof ReaderSpike> }) {
+  useAppearance({ appearance: theme });
+  return <Suspense fallback={null}><Spike /></Suspense>;
+}
+
 /** The production notice renderer, with an invented citation and no native IPC. */
 function Notice({ theme }: { theme: Theme }) {
   const root = useRef<HTMLDivElement>(null);
@@ -199,6 +210,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
     open();
     return () => observer.disconnect();
   }, [host, scenario]);
+  if (scenario === "reader-spike" && ReaderSpike) return <ThemedReaderSpike theme={theme} Spike={ReaderSpike} />;
   if (scenario === "notice") return <Notice theme={theme} />;
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
@@ -233,7 +245,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   const settings = demoApi();
   void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
   // The states and tokens pages use the Settings window's base styles.
-  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
+  const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts" || scenario === "reader-spike";
   document.documentElement.classList.toggle("settings-window", settingsWindow);
   document.documentElement.classList.toggle("notice-window", scenario === "notice");
   document.documentElement.dataset.nativeAppearance = "opaque";

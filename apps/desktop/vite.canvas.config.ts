@@ -26,6 +26,8 @@ export default defineConfig({
         export function getCurrentWindow() { throw new Error("Native window unavailable on canvas"); }`;
     },
   }],
+  // The reader spike (#1252) inlines PDF.js's standard fonts; nothing else uses them.
+  assetsInclude: ["**/*.pfb"],
   base: "./",
   build: {
     target: "es2022",

@@ -1,0 +1,30 @@
+{
+  "browser": "chromium 153.0.8010.12",
+  "runs": [
+    {
+      "theme": "light",
+      "state": "ready",
+      "errors": [],
+      "requests": [
+        "/",
+        "/ibis-canvas.css",
+        "/ibis-canvas.js"
+      ],
+      "ariaSnapshot": "- region \"PDF page 8 · cite p. 416\":\n  - text: An Invented Monograph on Garden Walls Physical page 8 of 12. The walls of the invented garden were built in three seasons, each course of stone laid by a different and imaginary mason. Nothing in this passage describes a real place or a real text; it exists so that a reader can select, search and hear it. A quotation worth citing sits on this line, at a known place. 416\n  - paragraph: PDF page 8 · cite p. 416\n  - paragraph: From the PDF's page labels",
+      "selected": "A quotation worth citing sits on this line, at a known place.",
+      "find": 1,
+      "spans": 8,
+      "indicator": "PDF page 8 · cite p. 416"
+    },
+    {
+      "theme": "dark",
+      "state": "ready",
+      "errors": [],
+      "requests": [
+        "/",
+        "/ibis-canvas.css",
+        "/ibis-canvas.js"
+      ]
+    }
+  ]
+}

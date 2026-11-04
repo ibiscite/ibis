@@ -1,0 +1,28 @@
+/* Reader spike board (#1252); tokens only, except the paper, which stays white
+   in dark mode as in Preview. The .textLayer rules are the part of PDF.js's
+   own web/pdf_viewer.css (Apache-2.0) that its TextLayer needs. */
+.reader-spike { height: 100%; box-sizing: border-box; display: flex; flex-direction: column; color: var(--text); background: var(--surface); font-size: var(--type-body-size); }
+.reader-spike-head { display: flex; gap: var(--space-4); align-items: baseline; padding: var(--space-3) var(--space-4); border-block-end: 1px solid var(--separator); }
+.reader-spike-head span { color: var(--text-secondary); font-size: var(--type-meta-size); }
+.reader-spike-body { flex: 1; min-height: 0; display: flex; gap: var(--space-4); padding: var(--space-4); }
+.reader-spike-document { flex: none; display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-3); background: var(--surface-grouped); border-radius: var(--r-row); }
+.reader-spike-sheet { position: relative; background: white; box-shadow: 0 0 0 1px var(--separator); }
+.reader-spike-sheet canvas { display: block; }
+.reader-spike-indicator { margin: 0; font-variant-numeric: tabular-nums; font-weight: 500; }
+.reader-spike-source { margin: 0; color: var(--text-secondary); font-size: var(--type-meta-size); }
+.reader-spike-files { flex: 1; min-width: 0; overflow: auto; display: grid; grid-template-columns: 1fr 1fr; align-content: start; align-items: start; gap: var(--space-3); }
+.reader-spike-files table { border-collapse: collapse; font-size: var(--type-label-size); font-variant-numeric: tabular-nums; width: 100%; }
+.reader-spike-files caption { text-align: start; font-weight: 600; padding-block-end: var(--space-1); }
+.reader-spike-files caption code { font-family: var(--mono); font-weight: 400; color: var(--text-secondary); }
+.reader-spike-files th { text-align: start; color: var(--text-secondary); font-weight: 500; }
+.reader-spike-files th, .reader-spike-files td { padding: 1px var(--space-2); border-block-end: 1px solid var(--separator); white-space: nowrap; }
+.reader-spike-files td:last-child { white-space: normal; }
+.reader-spike-files tr[data-current] td { background: var(--selected); color: var(--selected-text); }
+[data-show-text-layer] .textLayer :is(span, br) { background: rgb(255 0 0 / 0.25); }
+
+.textLayer { color-scheme: only light; position: absolute; text-align: initial; inset: 0; overflow: clip; opacity: 1; line-height: 1; letter-spacing: normal; word-spacing: normal; text-size-adjust: none; forced-color-adjust: none; transform-origin: 0 0; caret-color: CanvasText; z-index: 0; --min-font-size: 1; --text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size)); --min-font-size-inv: calc(1 / var(--min-font-size)); }
+.textLayer :is(span, br) { color: transparent; position: absolute; white-space: pre; cursor: text; transform-origin: 0% 0%; user-select: text; }
+.textLayer > :not(.markedContent), .textLayer .markedContent span:not(.markedContent) { z-index: 1; --font-height: 0; font-size: calc(var(--text-scale-factor) * var(--font-height)); --scale-x: 1; --rotate: 0deg; transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv)); }
+.textLayer .markedContent { display: contents; }
+.textLayer ::selection { background: color-mix(in srgb, AccentColor, transparent 50%); color: transparent; }
+.textLayer .endOfContent { display: block; position: absolute; inset: 100% 0 0; z-index: 0; cursor: default; user-select: none; }
