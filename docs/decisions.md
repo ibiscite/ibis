@@ -65,11 +65,34 @@ line and agents is the priority. Three rules apply to that shared contract:
   the explicit option planned in #1538.
 
 These are planned rules, not a claim that implementation has landed. They do
-not choose a shared engine process or settle whether an unreadable project
-bibliography must block key output. Context and source ownership are described
+not choose a shared engine process. Context and source ownership are described
 in [architecture](architecture.md#task-contexts-planned); visible behavior is
 in [design](design.md#source-checks-and-passage-reuse-planned). Follow-up belongs
 to #1697, #1260 and #1538, with the work order on #1300 unchanged.
+
+2026-11-04 (maintainer, planning only): unreadable project bibliographies use
+the evidence available for the selected key and work, rather than a blanket
+refusal or blanket warning:
+
+- A retained, complete and coherent copy of the same selected bibliography
+  may support the match, including for a newly selected reference. Normal
+  Enter, copy and paste remain available with a clear last-checked warning
+  and time; the result never claims a current successful check.
+- Without usable evidence for the match, pause normal insertion, preserve
+  the selection and preview, and offer Retry or locating the bibliography.
+  A deliberate one-off unchecked copy or paste is available, honestly named
+  and reported as unverified. It does not bypass a known wrong-work conflict
+  or any source-identity refusal, and agents never choose it silently.
+- A newer successful read supersedes older evidence, including conflicts;
+  an older matching copy cannot hide a later detected conflict. A changed
+  project or bibliography cannot inherit the previous selection's check.
+  Absence in a retained copy is not claimed as absence in the current file.
+- Strict freshness explicitly requires a successful current check. Retry
+  recovery never triggers a delayed insertion; the person acts afresh.
+
+Visible behavior is specified in design.md's Source checks section. These
+rules supersede the unresolved bibliography question in the initial review;
+shared-project edits during a task remain a separate UX question.
 
 ## 0004 Desktop shell (with 0012)
 
