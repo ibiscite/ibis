@@ -8,11 +8,6 @@ use ibis_core::search::MatchField;
 use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
 
-/// The newest search each interface page has sent, so a search for a query
-/// the person has already typed past stops early instead of delaying the
-/// newer one. The interface numbers its searches, because commands can start
-/// in a different order than they were sent, and names its page, because a
-/// reloaded page counts from the start again.
 /// The state of one emitted key in the project bibliography, for the row.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
@@ -50,6 +45,11 @@ impl ProjectMark {
     }
 }
 
+/// The newest search each interface page has sent, so a search for a query
+/// the person has already typed past stops early instead of delaying the
+/// newer one. The interface numbers its searches, because commands can start
+/// in a different order than they were sent, and names its page, because a
+/// reloaded page counts from the start again.
 #[derive(Default)]
 pub(crate) struct SearchRequests(Mutex<HashMap<u32, (u32, Cancellation)>>);
 

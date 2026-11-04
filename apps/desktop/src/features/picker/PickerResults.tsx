@@ -18,7 +18,7 @@ import type { Density, ProjectStatus } from "../../api";
 const noLibrary = () => null;
 
 export function PickerResults({
-  api, libraryState, searchState, state, source, scope, shortcut, perform, input, pointer, rows, density,
+  api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
   resultArea, setQuery, peck, project,
 }: {
   /** The bibliography rows are marked against; null for formatted output. */
@@ -33,7 +33,7 @@ export function PickerResults({
   scope: ReturnType<typeof useZoteroScope>;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
-  input: RefObject<HTMLInputElement | null>;
+  focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;
   rows: Pick<ReturnType<typeof useCitationRows>, "onChoose" | "onContext" | "onToggle">;
   density: Density;
@@ -50,12 +50,12 @@ export function PickerResults({
     shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
-      onRemoveFilter={(plain) => { setQuery(plain); input.current?.focus(); }}
+      onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
       source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
-      onClearSearch={() => { setQuery(""); input.current?.focus(); }}
+      onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}
-      onReload={() => { input.current?.focus(); void perform("reload", reloadLibrary); }}
+      onReload={() => { focusHome(); void perform("reload", reloadLibrary); }}
       setup={
         (focus, empty) => <LibrarySetup api={setupApi} perform={perform} autoFocus={focus} empty={empty} shortcut={shortcut} onWelcomeChange={setWelcomeShown} />
       } />
@@ -73,6 +73,6 @@ export function PickerResults({
       libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
-    {library?.sample && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
+    {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
   </div>;
 }

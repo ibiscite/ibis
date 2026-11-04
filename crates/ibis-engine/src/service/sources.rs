@@ -8,6 +8,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 const MAX_FILES: usize = 64;
+const MAX_RELOAD_ATTEMPTS: usize = 3;
 const MAX_WARNING_DETAILS: usize = 256;
 #[derive(Default)]
 pub(super) struct Owners {
@@ -21,8 +22,9 @@ pub(super) struct Owners {
     before_watch: Mutex<Option<Box<dyn Fn() + Send>>>,
 }
 impl Owners {
-    pub(super) fn on_port(port: u16) -> Self {
+    pub(super) fn on_port(port: u16, profile: &[u8]) -> Self {
         Self {
+            zotero: Mutex::new(ZoteroSource::default().on_profile(profile)),
             zotero_port: Some(port),
             ..Self::default()
         }
@@ -85,6 +87,8 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
 fn info(loaded: &LoadedLibrary) -> LibraryInfo {
     LibraryInfo {
         id: loaded.library.clone(),
+        kind: loaded.kind,
+        capabilities: loaded.kind.capabilities().to_vec(),
         objects: loaded.snapshot.objects().len(),
         warnings: loaded.warnings.iter().take(MAX_WARNING_DETAILS).cloned().collect(),
         warnings_total: loaded.warnings.len(),
@@ -161,8 +165,8 @@ impl Engine {
                 ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
             cancel.check()?;
             let library = loaded.library.clone();
-            let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |id| {
-                *id == library || (!other_owners && *id == previous)
+            let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |old| {
+                !other_owners && old.id == previous
             })?;
             // Canonicalization and native registration can stall. Keep them off
             // the selection lock; callbacks wait for this exact acceptance.
@@ -429,10 +433,18 @@ impl Engine {
             return Err(error(ErrorCode::SourceUnavailable));
         }
         for (slot, generation, path) in paths {
-            cancel.check()?;
-            let reload = self
-                .prepare_file_reload_expected(&path, Some((slot, generation)), cancel)
-                .and_then(|prepared| self.accept_file_reload(prepared));
+            let mut reload = Err(error(ErrorCode::Cancelled));
+            // A watcher publishing first retires this read, not the person's
+            // request: read again, so Reload still ends on what the file holds.
+            for _ in 0..MAX_RELOAD_ATTEMPTS {
+                cancel.check()?;
+                reload = self
+                    .prepare_file_reload_expected(&path, Some((slot, generation)), cancel)
+                    .and_then(|prepared| self.accept_file_reload(prepared));
+                if !matches!(&reload, Err(failure) if failure.code == ErrorCode::Cancelled) {
+                    break;
+                }
+            }
             if let Err(failure) = reload {
                 if failure.code == ErrorCode::Cancelled {
                     return Err(failure);
@@ -466,7 +478,7 @@ impl Engine {
             Some(libraries) => {
                 let libraries: Vec<Library> = libraries.iter().copied().map(Into::into).collect();
                 (source.libraries() != libraries)
-                    .then(|| ZoteroSource::new(&libraries).map_err(|_| error(ErrorCode::BadInput)))
+                    .then(|| source.choosing(&libraries).map_err(|_| error(ErrorCode::BadInput)))
                     .transpose()?
             }
             None => None,
@@ -507,7 +519,7 @@ impl Engine {
                         (info, &loaded.snapshot)
                     })
                     .collect();
-                self.shared.publish(entries, ibis_sources::zotero_source::is_zotero)?;
+                self.shared.publish(entries, |old| old.kind == LibraryKind::Zotero)?;
                 if let Some(chosen) = chosen {
                     *source = chosen;
                 }
@@ -816,6 +828,38 @@ mod tests {
     }
 
     #[test]
+    fn reload_outlasts_a_watcher_publishing_first_but_not_a_real_cancellation() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@book{r0}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        let cancel = Cancellation::default();
+        engine.open_file(&path, &cancel).unwrap();
+        let (slot, generation) = {
+            let registry = engine.shared.sources.lock().unwrap();
+            let (slot, source) = registry.slots.iter().next().unwrap();
+            (*slot, source.generation)
+        };
+        std::fs::write(&path, "@book{r1}").unwrap();
+        let stale = engine.prepare_file_reload(&path, &cancel).unwrap();
+        // A watcher wins, as it can between this reload's read and its acceptance.
+        let watched = ibis_sources::load_file(&path).unwrap();
+        engine.shared.file_changed(slot, generation, Ok(watched)).unwrap();
+        assert_eq!(engine.accept_file_reload(stale).unwrap_err().code, ErrorCode::Cancelled);
+        std::fs::write(&path, "@book{r2}").unwrap();
+        engine.reload_files(None, &cancel).unwrap();
+        let libraries = engine.libraries().unwrap().libraries;
+        assert_eq!(libraries[0].refresh_error, None);
+        assert!(engine.snapshot().unwrap().objects()[0].object.id().key.ends_with("r2"));
+        let cancelled = Cancellation::default();
+        cancelled.cancel();
+        assert_eq!(
+            engine.reload_files(None, &cancelled).unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+    }
+
+    #[test]
     fn prepared_reload_accepts_repair_after_health_only_updates_and_keeps_other_errors() {
         let dir = tempfile::tempdir().unwrap();
         let a = dir.path().join("a.bib");
@@ -847,7 +891,9 @@ mod tests {
         let prepared = engine.prepare_file_reload(&a, &cancel).unwrap();
         let same = ibis_sources::load_file(&a).unwrap();
         // Equal payloads are still a newer accepted observation/diagnostic owner.
-        engine.publish_library(a_id, Arc::new(same.snapshot)).unwrap();
+        engine
+            .publish_library(a_id, LibraryKind::File, Arc::new(same.snapshot))
+            .unwrap();
         assert!(matches!(
             engine.accept_file_reload(prepared),
             Err(EngineError {
@@ -912,13 +958,15 @@ mod tests {
         let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
             panic!("invented record")
         };
-        record.id.library = LibraryId::zotero(b"synthetic");
+        record.id.library = LibraryId::digest(b"synthetic");
         record.citation_keys[0].value = "Zotero2026".into();
         let mut request = case.request.clone();
         request.items[0].item = record.id.clone();
         let id = record.id.library.clone();
         let snapshot = Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap());
-        engine.publish_library(id.clone(), snapshot.clone()).unwrap();
+        engine
+            .publish_library(id.clone(), LibraryKind::Zotero, snapshot.clone())
+            .unwrap();
         let old = engine.prepare_citation(&request, &cancel).unwrap();
         engine.shared.begin_zotero_read().unwrap();
         assert_eq!(
@@ -940,13 +988,19 @@ mod tests {
         // Neither a failed read nor a successful file publication restores Zotero.
         engine.shared.failed(&id, ErrorCode::SourceUnavailable).unwrap();
         engine
-            .publish_library(case.request.items[0].item.library.clone(), Arc::new(case.library))
+            .publish_library(
+                case.request.items[0].item.library.clone(),
+                LibraryKind::Snapshot,
+                Arc::new(case.library),
+            )
             .unwrap();
         assert_eq!(
             engine.prepare_citation(&request, &cancel).unwrap_err().code,
             ErrorCode::SourceUnavailable
         );
-        engine.publish_library(id.clone(), snapshot.clone()).unwrap();
+        engine
+            .publish_library(id.clone(), LibraryKind::Zotero, snapshot.clone())
+            .unwrap();
         assert!(matches!(
             engine.commit_citation(&old, &old.result().content_hash, |_| panic!("retired preview")),
             Err(CitationCommitError::PreviewChanged)
@@ -959,7 +1013,7 @@ mod tests {
             .unwrap();
         // A second full read retires the newer preview too, even with equal data.
         engine.shared.begin_zotero_read().unwrap();
-        engine.publish_library(id, snapshot).unwrap();
+        engine.publish_library(id, LibraryKind::Zotero, snapshot).unwrap();
         assert!(matches!(
             engine.commit_citation(&current, &current.result().content_hash, |_| panic!("old generation")),
             Err(CitationCommitError::PreviewChanged)

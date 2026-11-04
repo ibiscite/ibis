@@ -274,7 +274,7 @@ mod tests {
         #[test]
         fn arbitrary_text_never_panics(text in any::<String>()) {
             take_caught_parser_panics();
-            let _ = load_str(&LibraryId::file(b"synthetic-property"), &text);
+            let _ = load_str(&LibraryId::digest(b"synthetic-property"), &text);
             prop_assert_eq!(take_caught_parser_panics(), 0);
         }
 
@@ -287,14 +287,14 @@ mod tests {
         ) {
             let text = format!("{prefix}@article{{k, {field} = {{{value}}}{closer}\n@book(b, title={{{value}}})");
             take_caught_parser_panics();
-            let _ = load_str(&LibraryId::file(b"synthetic-property"), &text);
+            let _ = load_str(&LibraryId::digest(b"synthetic-property"), &text);
             prop_assert_eq!(take_caught_parser_panics(), 0);
         }
     }
 
     #[test]
     fn reused_records_keep_macro_epochs_and_parent_reads() {
-        let source = LibraryId::file(b"synthetic field ownership");
+        let source = LibraryId::digest(b"synthetic field ownership");
         let macros = load_str(
             &source,
             "@string{label={First}}\n@book{a,title=label}\n@string{label={Second}}\n@book{b,title=label}",
@@ -327,7 +327,7 @@ mod tests {
     #[test]
     fn refresh_retains_only_changed_csl_payloads() {
         use ibis_core::contract::LibraryObject;
-        let source = LibraryId::file(b"synthetic candidate reuse");
+        let source = LibraryId::digest(b"synthetic candidate reuse");
         let old = load_str(
             &source,
             "@book{a,title={Keep}}\n@book{b,title={Before}}\n@book{c,title={Deleted}}",
@@ -361,7 +361,7 @@ mod tests {
             "@book{{broken,title={{ {}\n@book{{good}}",
             "@misc{nested}".repeat(crate::MAX_LIBRARY_RECORDS + 1)
         );
-        let result = load_str(&LibraryId::file(b"synthetic"), &text);
+        let result = load_str(&LibraryId::digest(b"synthetic"), &text);
         assert!(
             result
                 .warnings
@@ -371,7 +371,8 @@ mod tests {
     }
     #[test]
     fn minimal_entries_pay_fixed_allocation_work() {
-        let (result, limited) = load_with_budget(&LibraryId::file(b"synthetic"), "@misc{one}", Budget::new(1024), None);
+        let (result, limited) =
+            load_with_budget(&LibraryId::digest(b"synthetic"), "@misc{one}", Budget::new(1024), None);
         assert!(limited);
         assert!(result.records.is_empty());
         assert!(
@@ -384,7 +385,7 @@ mod tests {
     #[test]
     fn damaged_and_duplicate_entries_keep_good_records() {
         let result = load_str(
-            &LibraryId::file(b"synthetic"),
+            &LibraryId::digest(b"synthetic"),
             "@book{one,title={First}}\n@book{broken,title={Unclosed}\n@book{two,title={Second}}\n@book{one}",
         );
         assert_eq!(
@@ -416,7 +417,7 @@ mod tests {
         fn arbitrary_damaged_text_keeps_completed_prefix(bytes in proptest::collection::vec(proptest::arbitrary::any::<u8>(),0..4096)) {
             // The pure parser never resolves file locations from generated data.
             let text=format!("@book{{first,title={{Invented}}}}\n{}\n@book{{last,title={{Last}}}}",String::from_utf8_lossy(&bytes));
-            let result=load_str(&LibraryId::file(b"synthetic-property"),&text);
+            let result=load_str(&LibraryId::digest(b"synthetic-property"),&text);
             proptest::prop_assert!(result.records.iter().any(|record|record.citation_key()==Ok(Some("first"))));
         }
     }

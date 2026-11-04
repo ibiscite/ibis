@@ -60,7 +60,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Separators**: one `--separator` for hairlines and dividers; `--stroke-field` is the control edge that only Increase Contrast and forced colours draw. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
 - **Accent and selection** [D6]: there are two choices, **Follow the Mac** and **Ibis scarlet**, and each resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where a Mac accent would fall below 4:1 with white; it keeps one text colour through hover and press. Hover and press darken toward black. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
 - **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
-- **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour.
+- **Status** [D10]: `--status-ok`, `--status-warning`, `--status-error`, the Mac's system hues. A dot or symbol, optionally on a wash; status words stay in a label colour. The dot agrees with the words beside it: while its menu or the footer reports a problem it is never green.
 - **The one Ibis red** [D9]: `--scarlet` is the flat mark colour for the search-bar mark, the shelf beak, the added tile and the logo; it is never recoloured for a material. `--on-scarlet` is what sits on a scarlet fill. On a selected row the added tile becomes `--selected-text` with a scarlet check.
 - **Ibis scarlet as accent:** it follows the rule of every macOS accent: the selection and filled controls are `--ibis` in both modes and carry white (5.4:1); the bright `--ibis-dark` stays for accent text, the ring and marks in dark (4.9:1 on the surface). Scarlet belongs to the bird, the shelf beak, the added tile and this one chosen accent, nowhere else.
 - **Light and dark** come from one `color-scheme` on the root, in every window; `light-dark()` roles have no value without it.
@@ -89,7 +89,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 - **Spacing** [C1]: S = `--inset` on every OS. Every fill keeps S from the window edge and from any divider it touches; the list's viewport starts S below the header divider and ends S above the shelf. 4 px grid; 2 px only as an optical nudge.
 - **Control sizes**: the picker uses Apple's large controls and Settings the regular ones, as Spotlight and System Settings do. Targets grow to 32 px without changing the drawn size.
 - **Two columns** [C3]: icons, the search glyph, the status dot and type tiles centre on the tile column (`--tile`); text (row titles, the query, status text, the shelf citation) starts on the title column. The trailing edge is where row text ends; the last header control, footer key cap and year column end there. Distances run from the logical start edge, also in RTL.
-- **Rows** [C4]: two densities: Compact (one line) and Comfortable (two, the default). Density changes rows only. Rows are 2 px apart in results.
+- **Rows** [C4]: two densities: Compact (one line; a long title ends in an ellipsis) and Comfortable (two, the default). Density changes rows only. Rows are 2 px apart in results.
 - **One steady window** [C10]: the picker keeps one size the whole time it is open, in every state; nothing measures content to choose a height and nothing animates a resize. Medium 720 × 480 is the default, minimum 480 × 360; Look › **Window size** offers Small, Medium, Large and **Compact** (a short bar that grows once to Medium on the first key, then never shrinks). A dragged size shows as Custom and is kept per display.
 - **Nothing clipped, one scroller**: no state is ever cut off; only the middle area or an open menu scrolls, never two at once. The inspector is the one exception: a sidebar scrolls apart from the list beside it, as in Preview. In a short frame with large text the header gaps and footer hint labels give way first.
 - **Width classes** [C17]: below 28.75 em footer hints show keys only; at 60 em the preview sits beside the list, below it replaces it.
@@ -161,7 +161,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Search field | None | None | The caret only |
 
 - **Selection is a fill** [D7]: result rows use the full `--selected` fill with paired text, no side pill; a kept-open picker without focus dims it. Picture choices select as System Settings does: an accent ring outside the picture, following its corner, and a semibold caption.
-- **Focus ring** [D8] only on keyboard focus: outside on controls, inside on rows (results, choice rows, sidebar), so no scroll area clips it.
+- **Focus ring** [D8] only on keyboard focus: outside on controls, inside on rows (results, choice rows, sidebar), so no scroll area clips it. It hugs what it names, never the space around a control.
 
 | Component | Rule |
 | --- | --- |
@@ -283,7 +283,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
 | Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
 | ⌘-click, the tile's +, ⇧Enter | Adds to the citation, in order |
-| Esc | Steps back one layer: menu or dialog, inspector, preview, then clears search and filters (the shelf stays), then hides |
+| Esc | Steps back one layer, from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held Esc takes one step |
 | ⌘O / ⇧⌘O | Opens the source / Choose Library… |
 | ⌘K | More |
 | ⌘/, or `?` outside a field | Keyboard shortcuts |
@@ -327,9 +327,10 @@ Never call the destination a password field. The right paste key is shown per sy
 
 ### Window behaviour
 
-- **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected; text typed while opening is kept. The window is current in its first frame.
+- **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected, unless Esc or Clear cleared it: an explicit clear sticks. Text typed while opening is kept. The window is current in its first frame.
 - **Dropping a file**: one `.bib`, `.biblatex` or CSL-JSON file dropped on the picker becomes the library, and the footer shows its name and count. Anything else leaves the library alone and says what Ibis accepts until the next good drop or opening.
 - **Moving and resizing**: drag the empty header; snap to centre, upper third and corners. Settings › Advanced › **Where Ibis opens** offers Centre and the four corners; **Reset Window Position** restores the default.
+- **Other windows**: a command that hands the screen to another window has one effect however it was reached, and Esc then belongs to that window. Settings always closes the picker, even a pinned one, which would otherwise float above it; the pin stays for the next opening. An opened source hides an unpinned picker; pinned, it stays beside. A file chooser belongs to the picker, which stays behind it.
 - **Clicking outside** hides Ibis and the click reaches its target, unless pinned or a dialog, drag or file chooser is open.
 - Overlays close when the picker hides and do not reopen. Tooltips appear after 600 ms and never take focus.
 - **Never** take keys people type with (so not Ctrl+Space or Ctrl+Alt), open by itself, appear in the Dock, taskbar or Alt+Tab (only Settings and a pinned picker do), or animate past 280 ms. On X11 the first press over a full-screen app is ignored and a second within two seconds opens Ibis.
@@ -387,7 +388,7 @@ Never call the destination a password field. The right paste key is shown per sy
 
 **Another computer.** Settings › General ends with **Back Up Settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore Settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
 
-**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page; then Updates (automatic checks, Check now), links and the free-software note. The icon is the page's only bird. It fits 920 × 560 without scrolling. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
+**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page; then Updates (automatic checks, Check now), links and the free-software note. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 
 ## Source checks and passage reuse (planned)
 

@@ -100,9 +100,19 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 
 /// Resolve opaque history IDs against the current snapshot, with source-added
 /// dates for the second group. Never searches document text or reads new sources.
-#[derive(serde::Deserialize, specta::Type)]
-#[serde(transparent)]
-pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] pub(crate) ibis_core::contract::ItemRef);
+#[derive(specta::Type)]
+pub(crate) struct RecentIdentity(
+    #[specta(type = specta_typescript::Unknown)] pub(crate) Option<ibis_core::contract::ItemRef>,
+);
+
+/// History outlives identities: one that is no longer valid resolves to
+/// nothing, the same as one whose library is gone.
+impl<'de> serde::Deserialize<'de> for RecentIdentity {
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = serde_json::Value::deserialize(deserializer)?;
+        Ok(Self(serde_json::from_value(value).ok()))
+    }
+}
 
 #[tauri::command]
 #[specta::specta]
@@ -115,7 +125,7 @@ pub(crate) async fn recent_references(
     if ids.len() > 30 {
         return Err("Too many recent references.".into());
     }
-    let ids: Vec<_> = ids.into_iter().map(|id| id.0).collect();
+    let ids: Vec<_> = ids.into_iter().filter_map(|id| id.0).collect();
     let file = library
         .lock()
         .map_err(|_| "The library is unavailable.")?

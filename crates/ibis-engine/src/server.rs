@@ -318,7 +318,8 @@ mod tests {
         });
         engine
             .publish_library(
-                ibis_core::contract::LibraryId::file(b"synthetic event"),
+                ibis_core::contract::LibraryId::digest(b"synthetic event"),
+                crate::LibraryKind::Snapshot,
                 Arc::new(ibis_core::contract::Snapshot::new(vec![]).unwrap()),
             )
             .unwrap();

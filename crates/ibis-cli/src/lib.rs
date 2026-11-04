@@ -230,7 +230,7 @@ fn command() -> Command {
                         .long("locale")
                         .value_name("LOCALE")
                         .help_heading(OUTPUT)
-                        .help("Language for --style output; only en-US is available for now"),
+                        .help("Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales"),
                 )
                 .arg(
                     Arg::new("locator")
@@ -272,8 +272,8 @@ fn command() -> Command {
                     "Each exact key is reported as in the file, missing, repeated, doubtful or not checkable.\n\
                      Name a library too, and a key whose entry disagrees with it is flagged.\n\n\
                      Examples:\n  \
-                     ibis project thesis.bib smith2020 jones2019\n  \
-                     ibis project thesis.bib smith2020 --file refs.bib --json",
+                     ibis project thesis.bib vale2024lanterns fen2023clouds\n  \
+                     ibis project thesis.bib vale2024lanterns --file refs.bib --json",
                 )
                 .arg(
                     Arg::new("bib")
@@ -293,10 +293,40 @@ fn command() -> Command {
                 .about("Print a reference's original BibTeX entry, with what it needs to stand alone")
                 .after_help(
                     "The entry comes as written, key included, with its @string, crossref and xdata.\n\n\
-                     Example:\n  ibis entry smith2020 --file refs.bib >> thesis.bib",
+                     Example:\n  ibis entry vale2024lanterns --file refs.bib >> thesis.bib",
                 )
                 .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
-            Method::Styles => subcommand.about("List available bundled CSL styles"),
+            Method::Styles => subcommand
+                .about("Find bundled CSL styles and citation languages")
+                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
+                .arg(
+                    Arg::new("query")
+                        .value_name("WORDS")
+                        .num_args(0..)
+                        .help("Words from a style's title or id; every word must match"),
+                )
+                .arg(
+                    Arg::new("limit")
+                        .long("limit")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("100")
+                        .help("Return at most N styles, up to 20000"),
+                )
+                .arg(
+                    Arg::new("offset")
+                        .long("offset")
+                        .value_name("N")
+                        .value_parser(clap::value_parser!(usize))
+                        .default_value("0")
+                        .help("Skip the first N styles"),
+                )
+                .arg(
+                    Arg::new("locales")
+                        .long("locales")
+                        .action(ArgAction::SetTrue)
+                        .help("List citation languages instead of styles"),
+                ),
             Method::Schema => subcommand
                 .about("Print generated method JSON schemas")
                 .arg(
@@ -510,6 +540,10 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
+    if defaults == Defaults::App {
+        // Doctor writes nothing: without a saved key its ids last only for its report.
+        ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+    }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
     } else {
@@ -1027,7 +1061,7 @@ fn run_method<R: BufRead>(
                     Some(ErrorReason::UnknownLocale) => Failure::explained(
                         error,
                         format!(
-                            "the locale '{}' is not available yet; Ibis formats in en-US for now.",
+                            "there is no locale '{}'; list them with: ibis styles --locales",
                             human::field(args.get_one::<String>("locale").map_or("", String::as_str))
                         ),
                     ),
@@ -1075,7 +1109,19 @@ fn run_method<R: BufRead>(
                 None,
             ));
         }
-        Method::Styles => json!({}),
+        Method::Styles => {
+            let words: Vec<&str> = args
+                .get_many::<String>("query")
+                .into_iter()
+                .flatten()
+                .map(String::as_str)
+                .collect();
+            json!({
+                "query": (!words.is_empty()).then(|| words.join(" ")),
+                "limit": args.get_one::<usize>("limit").copied().unwrap_or(100),
+                "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
+            })
+        }
         Method::Schema => {
             json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
@@ -1107,7 +1153,21 @@ fn run_method<R: BufRead>(
             return Ok(Execution::Result(result, citing));
         }
     };
-    let result = engine.dispatch(method, &params, &cancel)?;
+    let result = explain(
+        engine.dispatch(method, &params, &cancel),
+        |EngineError { code, .. }| match code {
+            ErrorCode::BadInput
+                if method == Method::Styles && params["query"].as_str().is_some_and(|query| query.len() > 1024) =>
+            {
+                "the search words are too long; use fewer.".into()
+            }
+            ErrorCode::BadInput if method == Method::Styles => "--limit must be between 1 and 20000.".into(),
+            code => human::code_sentence(code).into(),
+        },
+    )?;
+    if method == Method::Styles && args.get_flag("locales") && !matches.get_flag("json") {
+        return Ok(Execution::Result(human::locale_list(result), None));
+    }
     Ok(Execution::Result(
         human::with_summary(result, method, matches.get_flag("json"), libraries_open(), &names),
         None,

@@ -126,6 +126,26 @@ fn explicit_zotero_search_show_pandoc_apa_and_call_use_the_shared_engine() {
     assert!(!output.contains("dateModified"));
 }
 #[test]
+fn a_zotero_profile_keeps_its_ids_across_close_and_reopen_and_two_profiles_differ() {
+    let server = Server::new();
+    let ids = |engine: &Engine| {
+        let (_, output) = run(engine, &["ibis", "--zotero", "libraries", "--json"]);
+        let libraries: Value = serde_json::from_str(&output).unwrap();
+        assert_eq!(libraries["data"]["libraries"][0]["kind"], "zotero");
+        libraries["data"]["libraries"][0]["id"].clone()
+    };
+    let first = Engine::with_zotero_profile(server.port, b"directory:/invented/one").unwrap();
+    let again = Engine::with_zotero_profile(server.port, b"directory:/invented/one").unwrap();
+    let other = Engine::with_zotero_profile(server.port, b"directory:/invented/two").unwrap();
+    let (first, again, other) = (ids(&first), ids(&again), ids(&other));
+    assert_eq!(first, again);
+    assert_ne!(first, other);
+    // Both still read as the same kind of library, whatever the id says.
+    assert!(first.as_str().unwrap().starts_with("lib_"));
+    assert!(other.as_str().unwrap().starts_with("lib_"));
+}
+
+#[test]
 fn failed_reload_preserves_last_good_and_successful_reload_replaces_it() {
     let server = Server::new();
     let engine = Engine::with_zotero_port(server.port).unwrap();

@@ -11,7 +11,7 @@ use notify::{RecursiveMode, Watcher};
 use thiserror::Error;
 
 use crate::{LoadedLibrary, attachments, bibtex, csl_json};
-use ibis_core::contract::{LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
 mod io;
@@ -253,7 +253,7 @@ fn parse_with_budget(
     let source = std::path::absolute(path)
         .map(compatible_path)
         .map_err(|_| SourceError::Unavailable)?;
-    let library = LibraryId::file(source.as_os_str().as_encoded_bytes());
+    let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
     let extension = source.extension();
     // Select by suffix: BibTeX comments may start with a JSON-looking bracket.
@@ -298,6 +298,7 @@ fn parse_with_budget(
     }
     Ok(LoadedLibrary {
         library,
+        kind: crate::LibraryKind::File,
         snapshot,
         warnings,
         attachment_paths,

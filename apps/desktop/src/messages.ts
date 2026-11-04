@@ -270,7 +270,6 @@ export const pickerText = {
   more: "More",
   keepOpen: "Keep Window Open",
   keepOpenMenu: "Keep Window Open",
-  stopKeepingOpen: "Stop keeping open",
   moreTitle: (keys: string) => `More actions (${keys})`,
   chooseLibrary: "Choose Library…",
   chooseTitle: "Choose a library",
@@ -596,8 +595,3 @@ export const updateText = {
   installing: "Checking and installing",
   failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
 };
-
-// The Settings window (#776, docs/design.md "Settings").
-export const settingsText = {
-  windowTitle: "Ibis Settings",
-} as const;

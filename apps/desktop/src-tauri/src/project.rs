@@ -330,7 +330,11 @@ pub(crate) async fn copy_project_entry(
         .file
         .clone()
         .ok_or("No library is open.")?;
-    let result = tauri::async_runtime::spawn_blocking(move || file.original_entry(&id.0))
+    // An identity from before the library changed names nothing now.
+    let Some(id) = id.0 else {
+        return Ok(EntryCopy::Changed);
+    };
+    let result = tauri::async_runtime::spawn_blocking(move || file.original_entry(&id))
         .await
         .map_err(|_| FAILED)?
         .map_err(|_| FAILED)?;

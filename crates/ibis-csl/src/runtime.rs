@@ -1,30 +1,8 @@
 use crate::{FormatError, Limits, input::Prepared, output, service::Control};
-use rquickjs::{Context, Module, Runtime};
+use rquickjs::{Context, Function, Module, Runtime};
 use std::collections::BTreeMap;
 
 const PROCESSOR: &str = include_str!("../vendor/citeproc.mjs");
-const EN_US: &str = include_str!("../vendor/locales/en-US.xml");
-const STYLE_XML: [(&str, &str); 5] = [
-    ("apa", include_str!("../vendor/styles/apa.csl")),
-    (
-        "chicago-author-date",
-        include_str!("../vendor/styles/chicago-author-date.csl"),
-    ),
-    (
-        "harvard-cite-them-right",
-        include_str!("../vendor/styles/harvard-cite-them-right.csl"),
-    ),
-    ("ieee", include_str!("../vendor/styles/ieee.csl")),
-    (
-        "modern-language-association",
-        include_str!("../vendor/styles/modern-language-association.csl"),
-    ),
-];
-
-pub(crate) fn style_xml() -> &'static [(&'static str, &'static str)] {
-    &STYLE_XML
-}
-
 pub(crate) struct Session {
     context: Context,
     runtime: Runtime,
@@ -73,10 +51,11 @@ impl Session {
                     ctx.globals()
                         .set("CSL", module.get::<_, rquickjs::Object>("default")?)?;
                     ctx.globals().set(
-                        "__ibisStyles",
-                        ctx.json_parse(serde_json::to_string(&STYLE_XML).map_err(|_| rquickjs::Error::Unknown)?)?,
+                        "__ibisLocaleXml",
+                        Function::new(ctx.clone(), |tag: String| {
+                            crate::catalog::locale_xml(&tag).ok().flatten()
+                        })?,
                     )?;
-                    ctx.globals().set("__ibisLocale", EN_US)?;
                     ctx.eval::<(), _>(include_str!("bridge.js"))?;
                     // Snapshot trusted presentation data before any reference is supplied.
                     let table: String = ctx.eval("JSON.stringify(CSL.SUPERSCRIPTS)")?;
@@ -102,7 +81,7 @@ impl Session {
         }
         install_interrupt(&self.runtime, control);
         let json = self
-            .render(&prepared.json)
+            .render(&prepared.json, &prepared.xml)
             .map_err(|error| control.error().unwrap_or(error.public()))?;
         if let Some(error) = control.error() {
             return Err(error);
@@ -115,12 +94,12 @@ impl Session {
             eprintln!("CSL failure phase=output class=validation");
         })
     }
-    fn render(&self, json: &str) -> Result<String, JsFailure> {
+    fn render(&self, json: &str, xml: &str) -> Result<String, JsFailure> {
         self.context.with(|ctx| {
             let rendered = (|| {
-                let function: rquickjs::Function = ctx.globals().get("__ibisFormat")?;
+                let function: Function = ctx.globals().get("__ibisFormat")?;
                 let value = ctx.json_parse(json.as_bytes())?;
-                function.call::<_, String>((value,))
+                function.call::<_, String>((value, xml))
             })();
             rendered.map_err(|error| failure(&ctx, "render", &error))
         })
@@ -211,12 +190,15 @@ mod tests {
             deadline: Instant::now() + Duration::from_secs(5),
         }
     }
+    fn apa() -> std::sync::Arc<str> {
+        crate::catalog::resolve("apa").unwrap().xml.clone()
+    }
     fn synthetic(count: usize, bibliography: bool) -> Prepared {
         let items: Vec<_> = (0..count).map(|index| serde_json::json!({"id":format!("ibis-{index}"), "type":"book", "title":format!("Synthetic title {index}"), "author":[{"family":if index==0 {"Taylor".into()} else {format!("Invented{index}")},"given":"Avery"}], "issued":{"date-parts":[[2026]]}, "publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count)
             .map(|index| serde_json::json!({"id":format!("ibis-{index}")}))
             .collect();
-        Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],warnings:vec![],empty:false}
+        Prepared {json:serde_json::json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(), xml:apa(), language:"en-US".into(), outcomes:(0..count).map(|item|ibis_core::contract::ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![],warnings:vec![],empty:false}
     }
 
     fn on_worker_stack(work: impl FnOnce() + Send + 'static) {
@@ -232,21 +214,15 @@ mod tests {
     fn bibliography_strips_numbers_through_shared_macros_without_changing_citations() {
         on_worker_stack(|| {
             let session = Session::new(&Limits::default(), &control()).unwrap();
-            session.context.with(|ctx| {
-                ctx.eval::<(), _>(r#"
-                    __ibisStyles.push(["synthetic-macro-number", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><category citation-format="numeric"/></info>
+            let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><category citation-format="numeric"/></info>
                       <macro name="n"><text variable="citation-number" prefix="[" suffix="]"/></macro>
                       <macro name="entry"><text macro="n"/><text variable="title"/></macro>
                       <citation><layout><text macro="n"/></layout></citation>
-                      <bibliography><layout><text macro="entry"/><text macro="n"/></layout></bibliography></style>`]);
-                "#).unwrap();
-                // Rebuild the adapter's style map with the synthetic fixture.
-                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
-            });
+                      <bibliography><layout><text macro="entry"/><text macro="n"/></layout></bibliography></style>"#;
             for bibliography in [true, false, true] {
                 let request = serde_json::json!({"style":"synthetic-macro-number","numeric":true,"items":[{"id":"ibis-0","type":"book","title":"Synthetic signals"}],"cites":[{"id":"ibis-0"}],"bibliography":bibliography,"keep_order":false,"locale":null});
                 let output: serde_json::Value =
-                    serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                    serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
                 assert_eq!(output["status"], "rendered");
                 let expected = if bibliography { "Synthetic signals" } else { "[1]" };
                 assert_eq!(output["text"], expected);
@@ -257,21 +233,31 @@ mod tests {
     }
 
     #[test]
+    fn a_removed_number_takes_its_separator_with_it() {
+        on_worker_stack(|| {
+            let session = Session::new(&Limits::default(), &control()).unwrap();
+            let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><info><category citation-format="numeric"/></info>
+                      <citation><layout><text variable="citation-number"/></layout></citation>
+                      <bibliography><layout><text variable="citation-number"/><text variable="title" prefix=". " suffix="."/></layout></bibliography></style>"#;
+            let request = serde_json::json!({"style":"synthetic-leading-number","numeric":true,"items":[{"id":"ibis-0","type":"book","title":"Synthetic signals"}],"cites":[{"id":"ibis-0"}],"bibliography":true,"keep_order":false,"locale":null});
+            let output: serde_json::Value =
+                serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
+            assert_eq!(output["text"], "Synthetic signals.");
+        });
+    }
+
+    #[test]
     fn year_only_checks_each_items_rendered_year_and_refuses_locator_only_branches() {
         on_worker_stack(|| {
             let limits = Limits::default();
             let control = control();
             let mut session = Session::new(&limits, &control).unwrap();
-            session.context.with(|ctx| {
-                ctx.eval::<(), _>(r#"
-                    __ibisStyles.push(["synthetic-conditional-year", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><citation><layout delimiter="; "><choose>
+            let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text"><citation><layout delimiter="; "><choose>
                       <if type="book"><date variable="issued"><date-part name="year"/></date></if>
                       <else><label variable="locator" form="short" suffix=" "/><text variable="locator"/></else>
-                    </choose></layout></citation></style>`]);
-                "#).unwrap();
-                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
-            });
+                    </choose></layout></citation></style>"#;
             let mut prepared = synthetic(1, false);
+            prepared.xml = xml.into();
             let mut request: serde_json::Value = serde_json::from_str(&prepared.json).unwrap();
             request["style"] = serde_json::json!("synthetic-conditional-year");
             request["cites"][0]["suppress-author"] = serde_json::json!(true);
@@ -279,7 +265,7 @@ mod tests {
             request["cites"][0]["locator"] = serde_json::json!("42");
             // A matching branch still prints the actual year.
             let output: serde_json::Value =
-                serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
             assert_eq!(output["text"], "2026");
             request["items"][0]["type"] = serde_json::json!("article-journal");
             for locator in ["42", "2026"] {
@@ -305,7 +291,7 @@ mod tests {
                 .unwrap()
                 .push(serde_json::json!({"id":"ibis-1","suppress-author":true,"year-only":true}));
             let output: serde_json::Value =
-                serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
             assert_eq!(output["status"], "refused");
         });
     }
@@ -314,17 +300,12 @@ mod tests {
     fn year_only_accepts_the_styles_short_year_and_no_date_term() {
         on_worker_stack(|| {
             let session = Session::new(&Limits::default(), &control()).unwrap();
-            session.context.with(|ctx| {
-                ctx.eval::<(), _>(r#"
-                    __ibisStyles.push(["synthetic-short-year", `<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text">
+            let xml = r#"<style xmlns="http://purl.org/net/xbiblio/csl" version="1.0" class="in-text">
                       <locale xml:lang="en-US"><terms><term name="no date" form="short">u.d.</term></terms></locale>
                       <citation><layout><choose>
                         <if variable="issued"><date variable="issued"><date-part name="year" form="short"/></date></if>
                         <else><text term="no date" form="short" strip-periods="true" text-case="uppercase"/></else>
-                      </choose></layout></citation></style>`]);
-                "#).unwrap();
-                ctx.eval::<(), _>(include_str!("bridge.js")).unwrap();
-            });
+                      </choose></layout></citation></style>"#;
             let mut request: serde_json::Value = serde_json::from_str(&synthetic(1, false).json).unwrap();
             request["style"] = serde_json::json!("synthetic-short-year");
             request["cites"][0]["suppress-author"] = serde_json::json!(true);
@@ -336,7 +317,7 @@ mod tests {
                     request["items"][0].as_object_mut().unwrap().remove("issued");
                 }
                 let output: serde_json::Value =
-                    serde_json::from_str(&session.render(&request.to_string()).unwrap()).unwrap();
+                    serde_json::from_str(&session.render(&request.to_string(), xml).unwrap()).unwrap();
                 assert_eq!(output["status"], "rendered");
                 assert_eq!(output["text"], if dated { "26" } else { "UD" });
             }
@@ -399,7 +380,7 @@ mod tests {
             let limits = Limits::default();
             let control = control();
             let mut session = Session::new(&limits, &control).unwrap();
-            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],warnings:vec![],empty:false};
+            let prepared=Prepared {json:serde_json::json!({"style":"apa","items":[{"id":"ibis-0","type":"book","title":"Synthetic title","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}}],"cites":[{"id":"ibis-0","author-only":true,"suppress-author":true}],"bibliography":false,"keep_order":false,"locale":null}).to_string(),xml:apa(),language:"en-US".into(),outcomes:vec![ibis_core::contract::ItemOutcome::Rendered {item:0}],losses:vec![],notices:vec![],warnings:vec![],empty:false};
             let refused = session.run(&prepared, &limits, &control).unwrap();
             assert_eq!(
                 refused.outcomes,
@@ -425,7 +406,7 @@ mod tests {
                 };
                 assert!(limits.valid());
                 let outcome = match Session::new(&limits, &control()) {
-                    Ok(session) => match session.render(&synthetic(1, false).json) {
+                    Ok(session) => match session.render(&synthetic(1, false).json, &apa()) {
                         Ok(json) => {
                             let value: serde_json::Value = serde_json::from_str(&json).unwrap();
                             assert!(value["text"] == "(Taylor, 2026)", "synthetic probe output changed");
@@ -536,6 +517,8 @@ mod tests {
                 session.runtime.set_memory_limit(used + 1024 * 1024);
                 let prepared = Prepared {
                     json: "{}".into(),
+                    xml: apa(),
+                    language: "en-US".into(),
                     outcomes: vec![],
                     losses: vec![],
                     notices: vec![],

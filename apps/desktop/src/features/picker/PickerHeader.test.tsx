@@ -10,9 +10,9 @@ function Header({ changed, pinChanged = () => undefined }: { changed: (query: st
   const [query, setQuery] = useState("");
   const [pinned, setPinned] = useState(false);
   return <PickerHeader inputRef={input} query={query} onQueryChange={(next) => { changed(next); setQuery(next); }}
-    onSearchKeyDown={() => undefined} expanded activeDescendant="result-0" format="pandoc" showFormat={false}
+    expanded activeDescendant="result-0" format="pandoc" showFormat={false}
     pinned={pinned} onTogglePin={() => { setPinned((value) => !value); pinChanged(); input.current?.focus(); }}
-    styles={false} onFormatChange={() => undefined} onFormatCommand={() => ({ run: () => undefined, isCurrent: () => true })} />;
+    styles={false} onFormatChange={() => undefined} />;
 }
 
 test.each([

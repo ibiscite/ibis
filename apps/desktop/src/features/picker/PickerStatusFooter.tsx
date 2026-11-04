@@ -7,10 +7,12 @@ import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
 import { PickerMenu } from "./PickerMenu";
 import { libraryOperations } from "./Notices";
+import { closeNearestLayer } from "../../ui/layers";
 import type { useZoteroScope } from "./useZoteroScope";
 import type { usePickerSource } from "./usePickerSource";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerActions } from "./usePickerActions";
+import type { usePickerKeys } from "./usePickerKeys";
 import type { useCitationRows } from "./useCitationRows";
 import type { useDestination } from "./useDestination";
 import type { useRecentReferences } from "./useRecentReferences";
@@ -19,8 +21,8 @@ import type { useOperations } from "./useOperations";
 import type { useProjectBibliography } from "./useProjectBibliography";
 
 export function PickerStatusFooter({
-  api, library, scope, sourceState, menus, actions, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, quitAfterSaving, emptyAction, notices, project, highlighted,
+  api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
+  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted,
 }: {
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
@@ -31,6 +33,7 @@ export function PickerStatusFooter({
   sourceState: ReturnType<typeof usePickerSource>;
   menus: ReturnType<typeof usePickerMenus>;
   actions: ReturnType<typeof usePickerActions>;
+  run: ReturnType<typeof usePickerKeys>["run"];
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
   destination: ReturnType<typeof useDestination>;
   recents: ReturnType<typeof useRecentReferences>;
@@ -39,22 +42,21 @@ export function PickerStatusFooter({
   altHeld: boolean;
   lastOutcome: string | null;
   cancelCopy: () => void;
-  quitAfterSaving: () => Promise<void>;
   emptyAction?: boolean;
   notices?: ReactNode;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
-  const { libraryMenuOpen, setMenuOpen, setLibraryMenuOpen, input, menuOpen, openMore, closeMenu, moreButton, pinned, togglePin, openKeys, runFromMenu } = menus;
+  const { libraryMenuOpen, openLibrary, closeLibrary, input, menuOpen, openMore, closeMore, moreButton, pinned, focusHome, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
   const { density, changeDensity } = preferences;
   const { failures, report } = operations;
-  const { toggleHighlighted, escapeStep, hints } = actions;
+  const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
   return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction}
     status={<PickerLibraryStatus library={library} groupName={groupName} notice={notices} isOpen={libraryMenuOpen}
-      onOpenChange={(open) => { if (open) { cancelCopy(); setMenuOpen(false); } setLibraryMenuOpen(open); }}
+      onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
       statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}
       rowAction={menuOpen && api.openLibrarySource && sourceState.sourceAvailable ? sourceAction.label : undefined}
@@ -67,27 +69,27 @@ export function PickerStatusFooter({
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
 
     hints={hints}
-    altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: escapeStep }}
+    altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}
     more={
-      <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMenu(false))}
+      <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
         source={api.openLibrarySource && sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
         project={{ status: project.status, choose: project.choose, stop: project.stop,
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
-            ? () => { project.copyEntry(highlighted); input.current?.focus(); } : null }}
+            ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
         density={density} pinned={pinned}
         actions={{
           density: changeDensity,
-          pin: togglePin,
-          keys: openKeys,
-          settings: openSettings ? () => runFromMenu("settings", () => openSettings(null)) : null,
+          pin: () => run("pin"),
+          keys: () => run("keys"),
+          settings: openSettings ? () => run("settings") : null,
           copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
             cancelCopy();
             destination.choosePaste("copy-only");
           } } : null,
-          forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); input.current?.focus(); } : null,
-          quit: () => runFromMenu("quit", quitAfterSaving),
+          forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); focusHome(); } : null,
+          quit: () => run("quit"),
         }} />
     } />;
 }

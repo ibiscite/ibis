@@ -35,7 +35,10 @@ Each run reads the libraries you name and nothing else:
 
 Library options may come before or after the command; they add up in that order and
 duplicates are ignored. Reading never writes to a library, and one-shot commands
-watch no files. Library IDs in the output are opaque digests, never paths.
+watch no files. Library IDs in the output are opaque tokens: they say nothing about
+the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
+and last across runs on one computer, thanks to a private key Ibis saves once in its
+configuration folder. That key is the only file the command writes.
 
 When you name no library, `search`, `show`, `cite` and `libraries` read the one chosen
 in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
@@ -61,7 +64,7 @@ it stays a usage error (exit 2), so a script that forgets its command fails loud
 | `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
 | `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
 | `libraries` | The loaded libraries, their item counts and typed source warnings. |
-| `styles` | The bundled CSL styles. |
+| `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
 | `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |
@@ -164,7 +167,7 @@ explanation. An output Ibis cannot write correctly is an explicit per-item
 
 ### A project's own bibliography
 
-`ibis project thesis.bib smith2020 jones2019` says, for each exact key, one of: In
+`ibis project thesis.bib vale2024lanterns fen2023clouds` says, for each exact key, one of: In
 thesis.bib; Missing from thesis.bib; Couldn't check thesis.bib; Key appears more than
 once; or Key may name another reference. Exit 0 means every key is in the file; 1 means
 at least one is not. `--json` gives each key's `check` with its `status` and lines.
@@ -179,7 +182,7 @@ that disagrees with it on DOI, title or year is one as well.
 "In thesis.bib" means the key is written there. It does not show that the fields match,
 that the export is current or that the document compiles.
 
-`ibis entry smith2020 --file refs.bib` prints the original entry, key included, with
+`ibis entry vale2024lanterns --file refs.bib` prints the original entry, key included, with
 the `@string`, `crossref`, `xdata`, `xref`, `related` and `entryset` it needs, and nothing rewritten. Check it before adding
 it to a shared file, because the original can hold fields such as `file` or `note`. It
 is refused, with how to export it instead, when the reference has no BibTeX original

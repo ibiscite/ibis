@@ -1140,7 +1140,8 @@ mod tests {
 
         // Golden transcripts include exact canonical bytes, diagnostics, remaining
         // work credits and the final records/fingerprints published to consumers.
-        // Title casing and source-warning fingerprints were updated for #1530;
+        // Title casing and source-warning fingerprints were updated for #1530, and
+        // library ids for #1535;
         // subsequent allocation changes must preserve them. Pinned hashes keep the many
         // partial-budget outcomes small without keeping a second resolver.
         let cases = [
@@ -1148,7 +1149,7 @@ mod tests {
                 "plain",
                 "@article{plain,title={Synthetic Signals},author={Avery Researcher and Ann Morgan},year=2024,\
                  journal={Invented Letters},pages={1--20},doi={10.1234/synthetic}}",
-                "d5e789fc6d54bf6cd06b96ca2e47e98d923593daaa6b0e23a43ea699686fe777",
+                "7623790d2cf980d166605db13fc089b710ac3a1106e2fbb14ab16171052a88ac",
             ),
             (
                 "escaped",
@@ -1157,13 +1158,13 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "fdc59daef7f3aeeb0ba25480257f87aad94f53dbebe42fa7220b218e90a560ea",
+                "27e0238974729c5b067d50f6745c4758dbf78ebbeb471d8ab4daf81af46e0b55",
             ),
             (
                 "unicode-and-verbatim-url",
                 r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
                   url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
-                "130d8502623b3b55ba4e4c58e619650ed1d0cefb3b36db5bacdb9a60b566d3f6",
+                "f7a2e261467750f597aaa38995d58ee2b784b899353497436f8cad6982585d11",
             ),
             (
                 "epochs-and-shared-inheritance",
@@ -1172,14 +1173,14 @@ mod tests {
                  @string{label=\"Late\"}\n\
                  @inproceedings{first,title=label,month=mar,xdata={shared},crossref={parent}}\n\
                  @inproceedings{second,title={Other},xdata={shared},crossref={parent}}",
-                "5f3eddd89f3cb8202edec217f0f5ad62c6700d111448f8787170bae22bb753ff",
+                "8ff0d982e491254da0826ffad569ff2a1bbd583163f230d25cf84d5300faa084",
             ),
             (
                 "malformed-and-refused-fields",
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "94ffe578592bc82b40de81a7572c0d654d8c2953281e7551a4960e484ab2a91c",
+                "d2863cb2fced2a90e311ef5862257e5c2213a3edea396c1cfd8eb313bbddce01",
             ),
         ];
         let mut mismatches = Vec::new();
@@ -1215,7 +1216,7 @@ mod tests {
                     })
                     .collect();
                 let (loaded, limited) = super::super::load_with_budget(
-                    &LibraryId::file(b"synthetic-resolver-regression.bib"),
+                    &LibraryId::digest(b"synthetic-resolver-regression.bib"),
                     text,
                     Budget::new(credits),
                     None,
@@ -1251,7 +1252,7 @@ mod tests {
             text.push_str(&format!("@book{{k{i},title={{Book}},xdata={{p9}}}}\n"));
         }
         let start = std::time::Instant::now();
-        let loaded = super::super::load_str(&ibis_core::contract::LibraryId::file(b"synthetic.bib"), &text);
+        let loaded = super::super::load_str(&ibis_core::contract::LibraryId::digest(b"synthetic.bib"), &text);
         eprintln!(
             "shared parent DAG: {:?}; references: {}",
             start.elapsed(),

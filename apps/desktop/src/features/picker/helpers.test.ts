@@ -4,7 +4,7 @@ import type { SearchResult } from "../../api";
 import pickerConflicts from "../../testing/picker-shortcut-conflicts.json";
 import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
-import { isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
+import { commandFor, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
 
 const record = (more: Partial<SearchResult> = {}): SearchResult => ({
   revision: "1", id: { source: "refs.bib", native_key: "a" }, key: "a", title: "T", authors: "García", year: 2021,
@@ -61,3 +61,22 @@ test("a letter shortcut typed as punctuation is not the keys shortcut", () => {
   expect(isMenuShortcut(press("/", "Slash"), false)).toBe(false);
 });
 
+test("every command has one key on each system, and ⌘/ opens the keys wherever focus is", () => {
+  const press = (key: string, code: string, modifiers: Partial<KeyboardEvent> = {}) => ({ key, code, ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: null, getModifierState: () => false, ...modifiers }) as unknown as KeyboardEvent;
+  const field = document.createElement("input");
+  for (const [mac, command] of [[true, { metaKey: true }], [false, { ctrlKey: true }]] as const) {
+    expect(commandFor(press("/", "Slash", command), field, mac)).toBe("keys");
+    expect(commandFor(press("/", "Slash", command), null, mac)).toBe("keys");
+    expect(commandFor(press("?", "Slash", { ...command, shiftKey: true }), field, mac)).toBe("keys");
+    expect(commandFor(press("k", "KeyK", command), null, mac)).toBe("more");
+    expect(commandFor(press(",", "Comma", command), null, mac)).toBe("settings");
+    expect(commandFor(press("o", "KeyO", command), null, mac)).toBe("source");
+    expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe("revealSource");
+    expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe("chooseSource");
+    expect(commandFor(press("q", "KeyQ", command), null, mac)).toBe("quit");
+  }
+  // A bare ? is text in a field, and on nothing it is the keys sheet.
+  expect(commandFor(press("?", "Slash", { shiftKey: true }), field, true)).toBeNull();
+  expect(commandFor(press("?", "Slash", { shiftKey: true }), null, true)).toBe("keys");
+  expect(commandFor(press("k", "KeyK", { ctrlKey: true }), null, true)).toBeNull();
+});
