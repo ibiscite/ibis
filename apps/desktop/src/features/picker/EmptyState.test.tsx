@@ -146,9 +146,10 @@ test("a filter is named, with one fix that keeps the plain words", () => {
   expect(onRemoveFilter).toHaveBeenCalledWith("smith");
 });
 
-test("a library scope is named, with one fix", () => {
-  const { title, buttons } = obstacle({ narrowed: true });
-  expect(title).toBe("Not in the libraries you’re searching");
+test("left-out libraries first say nothing matched, then offer searching them all", () => {
+  const { title, buttons } = obstacle({ narrowed: true, query: "qxzq" });
+  expect(title).toBe("No matching references");
+  expect(document.querySelector(".empty-description")?.textContent).toBe("Some of your Zotero libraries are left out of this search.");
   expect(buttons).toEqual(["Search All Zotero Libraries"]);
 });
 

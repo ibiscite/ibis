@@ -221,7 +221,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - **List scrolling**: a clicked row stays under the pointer and only that row consumes the click, even if results re-render first. Arrow keys take back ownership.
 - **Empty search** [C11]: a new library shows the hint ("Type to find a reference") centred in the middle area, with no keys. With history it shows **Cited here recently** (up to three, for the app Ibis came from) then **Recently added** (three), as ordinary rows navigated as one list.
 - **Typing keeps the picker still**: rows, headings, shelf and footer stay until the next reply; nothing blanks. A click on a row from an earlier query does nothing.
-- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When something else is the obstacle the screen names it, with its one fix: a filter (**Remove Filter** keeps the plain words), left-out Zotero libraries (**Search All Zotero Libraries**) or "Not in your libraries" for a pasted citation. A source failure and an empty library keep their own screens. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
+- No matches: "No matching references", "Try a surname, year or fewer words.", then Clear Search. When something else is the obstacle the screen names it, with its one fix: a filter (**Remove Filter** keeps the plain words) or "Not in your libraries" for a pasted citation. Left-out Zotero libraries are where else to look, not the obstacle: the title stays "No matching references", the line says some Zotero libraries are left out, and the fix is **Search All Zotero Libraries**. A source failure and an empty library keep their own screens. When nothing matches every word, closest matches show under **Closest matches** and keep a "Closest match" pill on the shelf.
 
 ### Search rules
 
@@ -239,7 +239,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Several references are segments of one citation; a pointed segment shows its hover fill and grows at its trailing end to make room for a small ×, `--key-gap` from the edge on every side. Nothing ever covers text. ← → select a segment; Delete removes it with Undo. Segment text starts exactly on the title column. A focused segment shows the ring every button has; the segment whose details are open keeps the pressed fill, as a toggled-on button does.
 - **One line, details on demand**: a segment opens the **Inspector**. The count is a pop-up of every reference with its page; a pick opens that reference there.
 - On copy a closing beak mirrors the opening one and a "Copied" capsule draws its check; Reduce Motion shows the end state. Each copy is confirmed once, in one place.
-- Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected.
+- Pending output dims, then "Formatting…"; Enter waits. A failed format says why and offers another style; refusals stay visible until corrected. Every preview ends in a result or a stated failure: an engine stop is asked again once (after the destination read, when one is running), and a second stop says the citation could not be prepared, so Copy is never left waiting on "Formatting…".
 - The shelf keeps the last citation through a running search and when the next search finds nothing.
 
 ### Inspector
