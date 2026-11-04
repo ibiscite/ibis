@@ -1,16 +1,25 @@
 /* Settings › Shortcuts uses the grouped cards of every other Settings page
    (docs/design.md, Settings): a small secondary heading over each group, then
-   one card of rows with the action at the start and its keys at the end. One
-   key look: editable keys are filled caps; fixed system keys are plain
-   secondary text, and the word "System" is spoken, not shown. */
+   one card of rows with the action at the start and its keys at the end. Only
+   the opening-shortcut recorder edits a key, so every listed key is plain
+   secondary text; the keys sheet (a key list) keeps caps. */
 .ui-shortcut-table { width: 100%; border-collapse: separate; border-spacing: 0; font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .ui-shortcut-table th, .ui-shortcut-table td { box-sizing: border-box; padding: 0; text-align: start; font-weight: inherit; }
 /* Group headings scroll with their cards, as in System Settings: a heading
    that stuck would cover the top edge of the card below it. */
 .ui-shortcut-table tbody th[scope="rowgroup"] { padding-block-start: var(--space-5); }
 .ui-shortcut-table tbody:first-of-type th[scope="rowgroup"] { padding-block-start: var(--space-4); }
-/* Card rows: the row's cells draw the card, its edges and its corners. */
-.ui-shortcut-table tr:not(:first-child) > * { height: var(--settings-row-h); padding-inline: var(--space-4); background: var(--raised); border-top: var(--border-width) solid var(--separator); }
+/* Card rows: the row's cells draw the card, its edges and its corners, on the
+   Settings cards' fill. Dividers are inset to the text on both sides, as in
+   SettingsGroup; the first row's top edge is the card's. */
+.ui-shortcut-table tr:not(:first-child) > * { height: var(--settings-row-h); padding-inline: var(--settings-row-pad); background-color: var(--surface-grouped); }
+.ui-shortcut-table tr:nth-child(2) > * { border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-table tr:nth-child(n + 3) > * { background-image: linear-gradient(var(--separator), var(--separator)); background-repeat: no-repeat; background-size: calc(100% - var(--settings-row-pad)) var(--border-width); }
+.ui-shortcut-table tr:nth-child(n + 3) > :first-child { background-position: right top; }
+.ui-shortcut-table tr:nth-child(n + 3) > :last-child { background-position: left top; }
+.ui-shortcut-table:dir(rtl) tr:nth-child(n + 3) > :first-child { background-position: left top; }
+.ui-shortcut-table:dir(rtl) tr:nth-child(n + 3) > :last-child { background-position: right top; }
+.ui-shortcut-table tr:nth-child(n + 3) > :only-child { background-size: calc(100% - 2 * var(--settings-row-pad)) var(--border-width); background-position: center top; }
 .ui-shortcut-table tr:not(:first-child) > :first-child { border-inline-start: var(--border-width) solid var(--separator); }
 .ui-shortcut-table tr:not(:first-child) > :last-child { border-inline-end: var(--border-width) solid var(--separator); text-align: end; }
 .ui-shortcut-table tr:last-child > * { border-bottom: var(--border-width) solid var(--separator); }
@@ -21,14 +30,24 @@
 .ui-shortcut-table tr:not(:first-child) > td[colspan] { height: auto; padding-block: var(--space-2); text-align: start; }
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .ui-settings-keys .keys-binding { align-items: baseline; gap: var(--space-2); }
-/* Keys and the "or" between them share one baseline and the label size. */
+/* Keys and the "or" between them share one baseline and the label size in a key
+   list. Settings writes fixed keys as macOS menus write key equivalents: plain
+   secondary text at body size (Apple's measured label colour), in full ink under
+   Increase Contrast; no box, even in forced colours, and one shortcut never wraps. */
 .ui-settings-keys { display: inline-flex; align-items: baseline; gap: var(--space-2); font-size: var(--type-label-size); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
-.ui-settings-keys kbd[data-system] { min-width: 0; padding-inline: 0; background: transparent; border-color: transparent; color: var(--text-secondary); font-weight: 400; }
+.ui-settings-keys:has(kbd[data-plain]) { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.ui-settings-keys kbd[data-plain] { height: auto; min-width: 0; padding-inline: 0; border-width: 0; background: transparent; color: var(--text-secondary); font-size: inherit; font-weight: 400; line-height: inherit; }
+@media (prefers-contrast: more) { .ui-settings-keys kbd[data-plain] { color: var(--text); } }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
-.ui-shortcut-table tr[data-highlighted] > * { background: var(--highlight); }
+.ui-shortcut-table tr[data-highlighted] > * { background-color: var(--highlight); }
 
-.ui-shortcut-table tr[data-echo] > * { background: color-mix(in srgb, var(--raised), var(--text) 6%); }
+/* A pressed shortcut's row briefly takes the pressed fill, a clear step above the card's. */
+.ui-shortcut-table tr[data-echo] > * { background-color: var(--fill-control-pressed); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-shortcut-table tr:not(:first-child) > * { border-color: CanvasText; }
+}
+/* Forced colours drop background images, so the dividers become edges there. */
+@media (forced-colors: active) {
+  .ui-shortcut-table tr:nth-child(n + 3) > * { border-top: var(--border-width) solid CanvasText; }
 }

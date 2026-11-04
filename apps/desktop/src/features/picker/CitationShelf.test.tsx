@@ -255,9 +255,9 @@ test("a key the segment does not use is handed on to the picker", () => {
 });
 
 test("a pointed segment's remove button outranks the rule that hides it", () => {
-  const css = readFileSync(new FileURL("./CitationShelf.css", import.meta.url), "utf8");
+  const css = readFileSync(new FileURL("../../ui/ShelfSegment.css", import.meta.url), "utf8");
   const hidden = css.match(/(\.shelf-segment > \.shelf-remove[^\s{]*)[^{]*\{[^}]*visibility: hidden/)![1]!;
-  expect(css).toContain(`:hover:not(:has([data-focus-visible])) > ${hidden.replace(".shelf-segment > ", "")} { visibility: visible; }`);
+  expect(css).toContain(`:is(:hover, [data-hovered]):not(:has([data-focus-visible])) > ${hidden.replace(".shelf-segment > ", "")} { visibility: visible; }`);
 });
 
 test("hiding the output keeps the reference's one-click remove badge", () => {

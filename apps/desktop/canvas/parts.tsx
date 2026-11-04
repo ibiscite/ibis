@@ -1,4 +1,4 @@
-import { useRef, type ReactNode } from "react";
+import { useLayoutEffect, useRef, type ReactNode } from "react";
 import { ChoiceIcon, PageIcon } from "../src/icons";
 import { Button } from "../src/ui/Button";
 import { IconButton } from "../src/ui/IconButton";
@@ -12,6 +12,8 @@ import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
 import { NoticeSlot, QuietNotice } from "../src/ui/NoticeSlot";
 import { Segmented } from "../src/ui/Segmented";
 import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { ShelfSegment } from "../src/ui/ShelfSegment";
+import { ToolbarMenu } from "../src/ui/ToolbarMenu";
 import { SideResults } from "../src/ui/SideNavigation";
 import { SourceAction } from "../src/ui/SourceAction";
 import { Switch } from "../src/ui/Switch";
@@ -28,6 +30,20 @@ const choices = [
 function State({ name, children }: { name: string; children: ReactNode }) {
   return <div className="canvas-part"><div className="canvas-part-items">{children}</div><code>{name}</code></div>;
 }
+
+/** The shelf band around one of its parts, as the picker draws it. `hovered` marks the
+ * pointed state on the element named, as React Aria marks a hovered button. */
+function Band({ hovered, children }: { hovered?: string; children: ReactNode }) {
+  const band = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => { if (hovered) band.current?.querySelector(hovered)?.setAttribute("data-hovered", "true"); }, [hovered]);
+  return <div ref={band} className="shelf canvas-band"><div className="shelf-output"><div className="shelf-citation">{children}</div></div></div>;
+}
+const segment = (state: "rest" | "hovered" | "expanded" | "focus-visible") => <ShelfSegment reference={state} referenceKey="vale2021" aria-label="Edit Vale 2021"
+  aria-expanded={state === "expanded"} remove={{ label: "Remove Vale 2021", onPress: ignore }}
+  render={state === "focus-visible" ? (native) => <button {...native} data-focus-visible /> : undefined}><bdi className="preview-text">(Vale 2021)</bdi></ShelfSegment>;
+const count = <ToolbarMenu label="References in the citation" value="2" selectedKey="" onAction={ignore}
+  button={{ className: "shelf-count", quiet: true, label: "2 references", content: "2 references" }}
+  sections={[{ id: "references", items: [{ id: "a", label: "Vale 2021" }, { id: "b", label: "Reed 2019" }] }]} />;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return <section><h2>{title}</h2><div className="canvas-parts-row">{children}</div></section>;
@@ -67,6 +83,13 @@ export function Parts() {
     <Section title="Chips and source action">
       <State name="chips"><ChipGroup label="Libraries" items={[{ id: "a", label: "invented.bib", textValue: "invented.bib", removeLabel: "Remove invented.bib" }, { id: "b", label: "Zotero", textValue: "Zotero", removeLabel: "Remove Zotero" }]} onRemove={ignore} fallbackFocusRef={fallback} /></State>
       <State name="source"><SourceAction label="Open invented.bib" keys="CmdOrCtrl+O" icon={null} file open={ignore} /></State>
+    </Section>
+    <Section title="Shelf: segments and the reference count">
+      {(["rest", "hovered", "expanded", "focus-visible"] as const).map((state) => <State key={state} name={state}>
+        <Band hovered={state === "hovered" ? ".shelf-segment" : undefined}>{segment(state)}</Band>
+      </State>)}
+      <State name="count"><Band>{count}</Band></State>
+      <State name="count hovered"><Band hovered=".shelf-count">{count}</Band></State>
     </Section>
     <section><h2>Settings rows</h2>
       <SettingsGroup id="canvas-group" title="Group title">

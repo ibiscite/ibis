@@ -10,7 +10,7 @@ export function Segmented<T extends string>({ label, value, options, onChange }:
 }) {
   return (
     <RadioGroup className="ui-segmented" aria-label={label} orientation="horizontal" value={value} onChange={(next) => onChange(next as T)}>
-      {options.map((option) => <Radio key={option.value} value={option.value} isDisabled={option.isDisabled} className="ui-segment">{option.label}</Radio>)}
+      {options.map((option) => <Radio key={option.value} value={option.value} isDisabled={option.isDisabled} className="ui-segment"><span className="ui-segment-label" data-label={option.label}>{option.label}</span></Radio>)}
     </RadioGroup>
   );
 }

@@ -78,10 +78,12 @@
   /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
      (docs/design.md, "Exact macOS values"), raised only where Ibis's floors need it.
      System colours sit underneath for webviews without light-dark(). */
-  --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
+  --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
   --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
+  /* Rings and marks drawn in the accent, with no text on them: they need 3:1, never 4.5:1 under white. */
+  --accent-mark: var(--accent);
   --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
   --text-placeholder: var(--text-secondary);
   --ring: var(--accent-text);
@@ -105,8 +107,9 @@
   --scrollbar-thumb: var(--text-tertiary);
   --scroll-fade: 14px;
 
-  /* Settings: a grouped form beside a sidebar. */
-  --surface-grouped: var(--fill-4);
+  /* Settings: a grouped form beside a sidebar. Groups are Apple's tertiary fill,
+     a step above the sidebar's quaternary, so they separate by fill, not by their edge. */
+  --surface-grouped: var(--fill-3);
   --titlebar-height: 2.75rem;
   --sidebar-width: min(12.5rem, 26%);
   --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
@@ -135,7 +138,7 @@
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root {
-      --surface: light-dark(#ffffff, #1e1e1e); --raised: light-dark(#f6f6f6, #282828);
+      --surface: light-dark(#ffffff, #1e1e1e);
       --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
       --text-secondary: light-dark(rgb(0 0 0 / 49.8%), rgb(255 255 255 / 54.9%));
@@ -147,6 +150,8 @@
       --fill-2: light-dark(rgb(0 0 0 / 7.8%), rgb(255 255 255 / 7.8%));
       --fill-3: light-dark(rgb(0 0 0 / 4.7%), rgb(255 255 255 / 4.7%));
       --fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%));
+      /* Dark separates less per step, so groups take one fill more there: 1.11:1 against the window in light, 1.25:1 in dark. */
+      --surface-grouped: light-dark(var(--fill-3), var(--fill-2));
       --shadow-overlay: 0 0 0 .5px light-dark(rgb(0 0 0 / 12%), rgb(255 255 255 / 10%)), 0 12px 32px light-dark(rgb(0 0 0 / 16%), rgb(0 0 0 / 45%));
       /* The veil over the native material, so text stays legible on any wallpaper. */
       --vibrancy-tint: light-dark(rgb(250 250 252 / 75%), rgb(30 30 34 / 75%));
@@ -162,6 +167,17 @@
 }
 /* Other systems keep their own selection pair. */
 :root[data-system="windows"], :root[data-system="linux"] { --accent: Highlight; --selected: Highlight; --selected-text: HighlightText; }
+/* As the Mac accent is, a system accent keeps 3:1 on the window: no lighter than
+   oklch .62 in light (about 3.6:1 on white), no darker than .6 in dark. */
+@supports (color: light-dark(oklch(from white l c h), black)) {
+  /* Light: darken until the accent clears 3:1 and white on it reads. Dark: only
+     rings and marks are lifted to 3:1; a fill keeps the system accent so white
+     text on it does not drop below 4.5:1. */
+  :root[data-system="windows"], :root[data-system="linux"] {
+    --accent: light-dark(oklch(from Highlight min(l, .62) c h), Highlight);
+    --accent-mark: light-dark(oklch(from Highlight min(l, .62) c h), oklch(from Highlight max(l, .6) c h));
+  }
+}
 :root[data-system="windows"] { --font: "Segoe UI Variable Text", "Segoe UI Variable", "Segoe UI", system-ui, sans-serif; }
 :root[data-system="linux"] { --font: system-ui, "Adwaita Sans", Cantarell, sans-serif; }
 
@@ -181,13 +197,17 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
     --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none;
-    --surface: Canvas; --raised: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
+    --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
     --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }
+}
+/* Increase Contrast keeps groups apart by fill too: the system fill, over the solid edge. */
+@media (prefers-contrast: more) and (forced-colors: none) {
+  :root, :root[data-platform] { --surface-grouped: var(--fill-1); }
 }
 @media (forced-colors: active) {
   :root, :root[data-platform] { --stroke-field: ButtonText; --separator: ButtonText; --on-fill-h: transparent; --on-fill-p: transparent; }
@@ -227,10 +247,13 @@
    container's edge keeps the same gap on every side, and its radius is the
    container's minus that gap, never below the floor; neighbours share a radius.
      window 16 -8-> row, field, shelf, footer action 8 -4-> key cap 4
-     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6 */
+     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6
+     band 8 -8-> band control 6 (a small control S inside a --r-row band such as
+     the shelf: --r-row minus S is 0, so it rests on the floor) */
 :root {
   --r-row: max(var(--r-floor), calc(var(--r-win) - var(--corner-inset)));
   --r-tile: var(--r-floor);
+  --r-band-control: max(var(--r-floor), calc(var(--r-row) - var(--inset)));
   --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
   --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
@@ -239,7 +262,7 @@
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* One Settings row, in every group and the shortcuts list. */
-  --settings-row-h: 2.75rem;
+  --settings-row-h: 2.75rem; --settings-row-pad: var(--space-4);
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
