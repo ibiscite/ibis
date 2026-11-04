@@ -1,7 +1,8 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { testStates } from "../../test-fixtures";
-import { EmptyState } from "./EmptyState";
+import type { LibraryStatus, ZoteroProfiles } from "../../api";
+import { EmptyState, ZOTERO_CHECK_EVERY, type ZoteroRecovery } from "./EmptyState";
 import { LibrarySetup, type EmptyLibraryChoices } from "../../LibrarySetup";
 
 afterEach(() => { cleanup(); vi.useRealTimers(); });
@@ -23,6 +24,102 @@ test("Zotero sharing explains reading references separately from macOS paste per
     onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
   expect(container.textContent).toContain("To read your references, in Zotero › Settings › Advanced turn on “Allow other applications on this computer to communicate with Zotero”.");
   expect(container.textContent).not.toContain("macOS");
+});
+
+const waiting = (problem: "zotero_access_off" | "zotero_closed" | "zotero_profiles" | "zotero_missing") =>
+  ({ ...loaded, state: "error" as const, has_snapshot: false, zotero: true, problem });
+const recovery = (library: LibraryStatus, zotero: ZoteroRecovery, setupNode = setup) => render(<EmptyState library={library} query="" narrowed={false}
+  onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setupNode} zotero={zotero} />);
+const ask = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+
+describe("a screen waiting on Zotero", () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => {
+    document.documentElement.removeAttribute("data-picker-hidden");
+    vi.useRealTimers();
+  });
+
+  test.each(["zotero_access_off", "zotero_closed", "zotero_missing"] as const)("%s asks Zotero only while it is shown", async (problem) => {
+    const checkSharing = vi.fn(async () => "access_off");
+    const { unmount } = recovery(waiting(problem), { checkSharing });
+    expect(checkSharing).not.toHaveBeenCalled();
+    await ask(ZOTERO_CHECK_EVERY);
+    expect(checkSharing).toHaveBeenCalledTimes(1);
+    await ask(ZOTERO_CHECK_EVERY);
+    expect(checkSharing).toHaveBeenCalledTimes(2);
+    // Hidden, nothing polls; shown again, it resumes.
+    await act(async () => { document.documentElement.setAttribute("data-picker-hidden", ""); await Promise.resolve(); });
+    await ask(ZOTERO_CHECK_EVERY * 5);
+    expect(checkSharing).toHaveBeenCalledTimes(2);
+    await act(async () => { document.documentElement.removeAttribute("data-picker-hidden"); await Promise.resolve(); });
+    await ask(ZOTERO_CHECK_EVERY);
+    expect(checkSharing).toHaveBeenCalledTimes(3);
+    unmount();
+    await ask(ZOTERO_CHECK_EVERY * 5);
+    expect(checkSharing).toHaveBeenCalledTimes(3);
+  });
+
+  test("a slow answer is never overlapped, and a failed one tries again", async () => {
+    let answer: (value: string) => void = () => {};
+    const checkSharing = vi.fn(() => new Promise<string>((resolve) => { answer = resolve; }));
+    recovery(waiting("zotero_access_off"), { checkSharing });
+    await ask(ZOTERO_CHECK_EVERY * 5);
+    expect(checkSharing).toHaveBeenCalledTimes(1);
+    await act(async () => { answer("access_off"); await Promise.resolve(); });
+    await ask(ZOTERO_CHECK_EVERY);
+    expect(checkSharing).toHaveBeenCalledTimes(2);
+  });
+
+  test("the other screens ask nothing", async () => {
+    const checkSharing = vi.fn(async () => "available");
+    recovery({ ...loaded, state: "error", has_snapshot: false, problem: "missing" }, { checkSharing });
+    await ask(ZOTERO_CHECK_EVERY * 3);
+    expect(checkSharing).not.toHaveBeenCalled();
+  });
+
+  test("leaving for another library stops the check", async () => {
+    const checkSharing = vi.fn(async () => "access_off");
+    recovery(waiting("zotero_access_off"), { checkSharing });
+    fireEvent.click(screen.getByRole("option", { name: /Use another library/ }));
+    await ask(ZOTERO_CHECK_EVERY * 3);
+    expect(checkSharing).not.toHaveBeenCalled();
+  });
+});
+
+test("no Zotero here says so and offers the way on, never Open Zotero", () => {
+  const openSource = vi.fn();
+  render(<EmptyState library={waiting("zotero_missing")} query="" narrowed={false} onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()}
+    onReload={vi.fn()} setup={setup} />);
+  expect(screen.getByText("Ibis can't find Zotero's library")).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Use another library/ }).getAttribute("data-suggested")).toBe("true");
+  expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Open Zotero/ })).toBeNull();
+  expect(openSource).not.toHaveBeenCalled();
+});
+
+test("several profiles are offered by name and a choice names only that", async () => {
+  const chooseProfile = vi.fn();
+  recovery(waiting("zotero_profiles"), { listProfiles: async () => ({ names: ["Home", "Work"], chosen: null, running: false }), chooseProfile });
+  expect(screen.getByText("Which Zotero profile?")).toBeTruthy();
+  fireEvent.click(await screen.findByRole("option", { name: /Work/ }));
+  expect(chooseProfile).toHaveBeenCalledExactlyOnceWith("Work");
+});
+
+test("a list of profiles that cannot be read still leaves a way forward", async () => {
+  const chooseProfile = vi.fn();
+  recovery(waiting("zotero_profiles"), { listProfiles: async () => { throw new Error("refused"); }, chooseProfile });
+  expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("could not list your Zotero profiles"));
+  expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Use another library/ })).toBeTruthy();
+  expect(chooseProfile).not.toHaveBeenCalled();
+});
+
+test("a list that answers after the screen left changes nothing", async () => {
+  let answer: (found: ZoteroProfiles) => void = () => {};
+  const { unmount } = recovery(waiting("zotero_profiles"), { listProfiles: () => new Promise((resolve) => { answer = resolve; }) });
+  unmount();
+  await act(async () => { answer({ names: ["Home"], chosen: null, running: false }); await Promise.resolve(); });
+  expect(screen.queryByRole("option", { name: /Home/ })).toBeNull();
 });
 
 test.each(["", "unmatched"])("one empty-state template has a plain title, description and decorative icon (query=%s)", (query) => {

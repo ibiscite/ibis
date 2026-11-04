@@ -16,7 +16,7 @@ fn source() -> Source {
 }
 
 fn loaded(source: Source) -> Library {
-    match load_source(source, false, None, &Cancellation::default(), || false).unwrap_or_else(|e| panic!("{e}")) {
+    match load_source(source, false, None, None, &Cancellation::default(), || false).unwrap_or_else(|e| panic!("{e}")) {
         Loaded::New(library) => *library,
         Loaded::Unchanged | Loaded::Reload(_) => panic!("first read"),
     }
@@ -61,7 +61,15 @@ fn bundled_samples_load_through_csl_json_and_copy_marked_apa() {
     std::fs::write(&broken, "[{\"id\":").unwrap_or_else(|e| panic!("{e}"));
     for path in [broken, directory.path().join("missing.csljson")] {
         assert!(
-            load_source(Source::Samples(path), false, None, &Cancellation::default(), || false).is_err(),
+            load_source(
+                Source::Samples(path),
+                false,
+                None,
+                None,
+                &Cancellation::default(),
+                || false
+            )
+            .is_err(),
             "malformed or unreadable samples cannot become a loaded sample library"
         );
     }

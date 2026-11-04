@@ -307,6 +307,10 @@ pub struct Settings {
     /// Library to open at start.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub library: Option<LibrarySetting>,
+    /// The Zotero profile read while Zotero is closed, by its safe name;
+    /// `None` until a computer with several profiles needs a choice.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub zotero_profile: Option<String>,
     /// The editor endpoint; absent means off (decision 0008).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_endpoint: Option<EditorEndpoint>,
@@ -353,6 +357,7 @@ impl Default for Settings {
             small_surprises: None,
             shortcut: Shortcuts::default(),
             library: None,
+            zotero_profile: None,
             editor_endpoint: None,
             copy_format: None,
             update_checks: None,

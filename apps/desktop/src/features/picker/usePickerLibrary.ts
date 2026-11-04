@@ -4,9 +4,9 @@ import type { useOperations } from "./useOperations";
 import { useLibraryStatus } from "./useLibraryStatus";
 
 export function usePickerLibrary(api: PickerApi, report: ReturnType<typeof useOperations>["report"], cancelCopy: () => void) {
-  const { chooseLibrary, useZotero, findSources, openFoundLibrary } = api;
-  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findSources, openFoundLibrary }),
-    [chooseLibrary, useZotero, api.useSampleLibrary, findSources, openFoundLibrary]);
+  const { chooseLibrary, useZotero, findZotero, findSources, openFoundLibrary } = api;
+  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findZotero, findSources, openFoundLibrary }),
+    [chooseLibrary, useZotero, api.useSampleLibrary, findZotero, findSources, openFoundLibrary]);
   const { library, settledLibrary, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
   const [choosingLibrary, setChoosingLibrary] = useState(false);
   const chooserRequest = useRef<object | null>(null);

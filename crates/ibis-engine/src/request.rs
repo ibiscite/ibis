@@ -18,7 +18,20 @@ pub enum LibrariesRequest {
         #[serde(default)]
         #[schemars(length(min = 1, max = 32))]
         libraries: Option<Vec<ZoteroLibrary>>,
+        /// The Zotero profile to read while Zotero is closed, by the name
+        /// `zotero-profiles` gives; never a location. Omitted, a computer with
+        /// one profile reads it and one with several is refused.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        profile: Option<String>,
+        /// Read everything again, not only what changed.
+        #[serde(default)]
+        reload: bool,
     },
+    /// The Zotero profiles on this computer, by name; reads no library.
+    ZoteroProfiles,
+    /// The Zotero group libraries known now, by name: asked of Zotero while
+    /// it runs, otherwise those its closed copy listed when last read.
+    ZoteroGroups,
     OpenFile {
         path: PathBuf,
     },

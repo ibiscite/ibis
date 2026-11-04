@@ -246,3 +246,38 @@ fn symlinked_preferences_are_rejected_before_opening_the_target() {
     assert_eq!(result.warnings, [Warning::NotRegularFile]);
     assert!(result.directories.is_empty());
 }
+
+fn registry(text: &str) -> (tempfile::TempDir, DiscoveryRoots) {
+    let home = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+    let profiles = home.path().join("Library/Application Support/Zotero");
+    let write = |path: PathBuf, contents: &str| {
+        std::fs::create_dir_all(path.parent().unwrap_or(&profiles)).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(path, contents).unwrap_or_else(|e| panic!("{e}"));
+    };
+    write(profiles.join("profiles.ini"), text);
+    for (folder, directory) in [("a", "/invented/one"), ("b", "/invented/two"), ("c", "/invented/three")] {
+        let line = format!(
+            "user_pref(\"extensions.zotero.dataDir\", \"{directory}\");\nuser_pref(\"extensions.zotero.useDataDir\", true);\n"
+        );
+        write(profiles.join(folder).join("prefs.js"), &line);
+    }
+    let roots = DiscoveryRoots::new(Platform::MacOs, home.path().to_path_buf(), None);
+    (home, roots)
+}
+
+#[test]
+fn several_profiles_are_offered_by_a_name_that_is_safe_and_unique() {
+    let (_home, roots) = registry(
+        "[Profile0]\nName=Work\nIsRelative=1\nPath=a\n\
+         [Profile1]\nName=Wo\u{202e}rk\nIsRelative=1\nPath=b\n\
+         [Profile2]\nIsRelative=1\nPath=c\n",
+    );
+    let found = discover(&roots, None);
+    assert_eq!(found.warnings, []);
+    let names: Vec<_> = found.directories.iter().map(|found| found.name()).collect();
+    assert_eq!(names, ["Work", "Work (2)", "Profile 3"]);
+    assert!(
+        !format!("{found:?}").contains("invented"),
+        "names show, locations never do"
+    );
+}

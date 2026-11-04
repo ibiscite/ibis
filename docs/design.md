@@ -293,6 +293,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Quiet bands**: inside the shelf and footer only the main action (Copy or Paste) is filled. The library status, the source action, More, the reference count, notes and Details are quiet. A band that is itself a fill never holds another filled control.
 - Never show an action twice on one screen. With ⌥ held: "Add to citation ⇧↵", the Esc step, then More.
 - **One place for each status**: library state lives only in the footer status; citation refusals and settings notices use the middle area; anything passing uses the notice slot (see **Notices**).
+- **One reading of a library's health**: the dot, the hover text and the library menu all draw from `libraryCondition`. A problem in words is never a green dot: anything the menu reports makes the dot at least Look.
 
 | Case | Footer |
 | --- | --- |
@@ -303,7 +304,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.
-- The status opens the **library menu**: the library with count and age; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
+- The status opens the **library menu**: the library with count and age; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
 - **Open the source** (⌘O): the words always name the target. **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
 
 ### Keys
@@ -386,6 +387,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Welcome**: the whole window, with no search header. The mark, a title, the line "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.", then four starts as a 2 × 2 grid of tiles (Zotero, a .bib file, Find them on this computer, Try sample references), each with its own centred glyph. The note names the registered shortcut ("After this, open Ibis from any app with ⇧⌘Y."), or says **No shortcut is set** with how to open Ibis instead. Esc dismisses a menu, then hides.
 - **Opening a library**: nothing for 400 ms, then the mark, "Opening example.bib…", "Reading your library. Zotero can stay closed." and a thin progress bar. Rows kept from before stay instead.
 - **No library**: "Where do your references live?" with the welcome grid; nothing is searched until Find is chosen.
+- **Zotero found**: Ibis still asks. When Zotero is running or its library is on this computer, the welcome screen keeps every start and highlights Zotero, so Enter takes it. Only that look happens first; no library is read until it is chosen.
 - **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a .bib or CSL-JSON file into this window."
 - **Could not open, nothing kept**: the title names the library and the fix; "Use another library" shows the no-library screen. A failure with references kept stays a notice above them.
 
@@ -393,10 +395,12 @@ Never call the destination a password field. The right paste key is shown per sy
 | --- | --- | --- |
 | `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
 | `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
-| `zotero_closed` | Zotero isn't open | Try again, Use another library |
-| `zotero_access_off` | Zotero isn't sharing your library | Try again, Use another library |
+| `zotero_closed` | Ibis needs Zotero open | Open Zotero, Use another library |
+| `zotero_missing` | Ibis can't find Zotero's library | Use another library, Try again |
+| `zotero_access_off` | Zotero isn't sharing your library | Open Zotero, Use another library |
+| `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
 
-- Setup finishes itself: Ibis never asks "What do you write in?"; when Zotero sharing turns on, the screen continues on its own; with Zotero closed Ibis reads the library anyway.
+- Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and only a closed read that used it remembers the answer; a saved profile that is gone or unreadable asks again and never reads another. With references on screen the choice stays out of the way: the footer offers **Choose Zotero Profile…**, and the library menu lists the profiles whenever there are several and Zotero is not running, so a mistaken choice can be changed. A running Zotero answers for the profile it opened, so it offers no choice.
 - **Try sample references** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
 ## Settings

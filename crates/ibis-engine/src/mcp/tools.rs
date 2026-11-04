@@ -157,6 +157,15 @@ fn reason_hint(reason: ErrorReason) -> &'static str {
         ErrorReason::AmbiguousKey => "Several references have this key; use the ref search returned.",
         ErrorReason::MissingKey => "This reference has no citation key; use a style, or ask the user to give it one.",
         ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => code_hint(ErrorCode::Internal),
+        ErrorReason::ZoteroSharingOff => {
+            "Zotero is running but not sharing; turn on Allow other applications in Zotero's Advanced settings."
+        }
+        ErrorReason::ZoteroProfileNeeded => {
+            "Zotero is closed and which profile to read is not settled; ask the user to open Zotero, or to choose a profile in Ibis or pass --zotero-profile to ibis mcp."
+        }
+        ErrorReason::ZoteroNeedsOpening => "Zotero's library cannot be read while it is closed; open Zotero.",
+        ErrorReason::ZoteroNotFound => "No local Zotero library was found on this computer.",
+        ErrorReason::ZoteroNoSpace => "There is not enough free space to read Zotero while it is closed.",
     }
 }
 

@@ -49,6 +49,8 @@ impl OfferedList {
 pub(crate) enum ZoteroPresence {
     Available,
     AccessOff,
+    /// Not running, but its library is on this computer and can be read.
+    Closed,
     Absent,
 }
 
@@ -81,6 +83,29 @@ fn presence(found: Presence) -> ZoteroPresence {
     }
 }
 
+/// Ask Zotero's root, which reads no library.
+pub(crate) fn zotero_presence(transport: &mut impl api::Transport) -> ZoteroPresence {
+    presence(api::presence(transport))
+}
+
+/// Whether Zotero is here, running or not. Reading it stays a person's choice.
+fn found_zotero(transport: &mut impl api::Transport, installed: impl FnOnce() -> bool) -> ZoteroPresence {
+    match zotero_presence(transport) {
+        ZoteroPresence::Absent if installed() => ZoteroPresence::Closed,
+        found => found,
+    }
+}
+
+/// What the welcome screen can say about Zotero before anything is chosen, so
+/// it can offer Zotero first. Reads Zotero's profile configuration and no library.
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {
+    tauri::async_runtime::spawn_blocking(|| found_zotero(&mut LocalZotero::default(), crate::library::zotero_installed))
+        .await
+        .map_err(|_| "looking for Zotero stopped unexpectedly".to_string())
+}
+
 fn shown(path: &Path) -> FoundFile {
     let name = |p: Option<&Path>| {
         p.and_then(Path::file_name)
@@ -104,7 +129,10 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         .flatten()
         .collect();
     let (zotero, found) = tauri::async_runtime::spawn_blocking(move || {
-        (api::presence(&mut LocalZotero::default()), find::bib_files(&roots))
+        (
+            found_zotero(&mut LocalZotero::default(), crate::library::zotero_installed),
+            find::bib_files(&roots),
+        )
     })
     .await
     .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?;
@@ -117,7 +145,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
         .map_err(|_| "looking for libraries stopped unexpectedly".to_string())?
         .offer(paths);
     Ok(Sources {
-        zotero: presence(zotero),
+        zotero,
         list,
         files,
         cut_short: found.cut_short,
@@ -160,6 +188,45 @@ mod tests {
             }
         );
         assert_eq!(presence(Presence::AccessOff), ZoteroPresence::AccessOff);
+    }
+
+    #[test]
+    fn zotero_is_seen_going_from_refusing_to_sharing() {
+        struct Fake(Vec<u16>);
+        impl api::Transport for Fake {
+            fn get(&mut self, _path: &str) -> Result<api::Response, api::TransportError> {
+                Ok(api::Response {
+                    status: self.0.remove(0),
+                    headers: vec![],
+                    body: vec![],
+                })
+            }
+        }
+        let mut zotero = Fake(vec![403, 200]);
+        assert_eq!(zotero_presence(&mut zotero), ZoteroPresence::AccessOff);
+        assert_eq!(zotero_presence(&mut zotero), ZoteroPresence::Available);
+    }
+
+    #[test]
+    fn a_closed_zotero_counts_as_found_and_a_running_one_is_never_second_guessed() {
+        struct Fake(u16);
+        impl api::Transport for Fake {
+            fn get(&mut self, _path: &str) -> Result<api::Response, api::TransportError> {
+                match self.0 {
+                    0 => Err(api::TransportError::Unreachable),
+                    status => Ok(api::Response {
+                        status,
+                        headers: vec![],
+                        body: vec![],
+                    }),
+                }
+            }
+        }
+        assert_eq!(found_zotero(&mut Fake(0), || true), ZoteroPresence::Closed);
+        assert_eq!(found_zotero(&mut Fake(0), || false), ZoteroPresence::Absent);
+        let never = || panic!("a running Zotero needs no look at its files");
+        assert_eq!(found_zotero(&mut Fake(200), never), ZoteroPresence::Available);
+        assert_eq!(found_zotero(&mut Fake(403), never), ZoteroPresence::AccessOff);
     }
 
     #[test]
