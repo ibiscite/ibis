@@ -351,7 +351,7 @@ mod tests {
 
     fn item(key: &str) -> ItemRef {
         ItemRef {
-            library: LibraryId::file(b"/invented/refs.bib"),
+            library: LibraryId::digest(b"/invented/refs.bib"),
             key: key.into(),
         }
     }
