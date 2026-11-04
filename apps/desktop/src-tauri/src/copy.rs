@@ -211,14 +211,9 @@ pub(crate) async fn preview_file_citation(
         result
     }
 }
-/// Whole content with no delivery: it is copied, never pasted.
-fn write_plain_content(app: &AppHandle, content: ibis_core::contract::ClipboardContent<'_>) -> Result<(), String> {
-    clipboard::write(app, content).map(|_| ())
-}
-
 /// Plain text with no delivery.
 pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
-    write_plain_content(
+    write_copy_only(
         app,
         ibis_core::contract::ClipboardContent {
             text,
@@ -272,7 +267,7 @@ pub(crate) fn copy_file_citation(
         }
         // Only a request that was answered may leave its citation on the clipboard.
         if request.clipboard {
-            write_plain_content(
+            write_copy_only(
                 &app,
                 ibis_core::contract::ClipboardContent {
                     text: &text,
