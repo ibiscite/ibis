@@ -10,29 +10,44 @@ use ibis_engine::{DispatchResult, Method};
 use serde_json::Value;
 use std::{collections::BTreeMap, path::Path};
 
-/// Without --json, search, libraries and styles print short lines for people.
+/// What the open libraries hold, so an empty result can be told truthfully.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum Holdings {
+    NoLibrary,
+    Empty,
+    References,
+}
+
+/// Without --json, search, show, libraries and styles print short lines for people.
 pub(super) fn with_summary(
     mut result: DispatchResult,
     method: Method,
     json: bool,
-    libraries_open: bool,
+    holdings: Holdings,
     names: &BTreeMap<String, String>,
 ) -> DispatchResult {
-    if !json && let Some(text) = summary(method, &result.data, libraries_open, names) {
+    if !json && let Some(text) = summary(method, &result.data, holdings, names) {
         result.text = Some(text);
     }
     result
 }
 
-fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<String, String>) -> Option<String> {
+fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<String, String>) -> Option<String> {
     match method {
+        Method::Show => reference(data),
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
-            if hits.is_empty() && !libraries_open {
-                return Some("No library is open; add --file <library> or --zotero.".into());
-            }
             if hits.is_empty() {
-                return Some("No references found.".into());
+                return Some(
+                    match holdings {
+                        Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
+                        Holdings::Empty => {
+                            "No open library holds any references. A file must be BibTeX, BibLaTeX or CSL-JSON."
+                        }
+                        Holdings::References => "No references found.",
+                    }
+                    .into(),
+                );
             }
             let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
             // Closest matches are said to be so, never shown as full matches.
@@ -74,8 +89,8 @@ fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<
                     if count == 1 { "item" } else { "items" },
                     match warnings {
                         0 => String::new(),
-                        1 => ", 1 warning (details: ibis libraries --json)".into(),
-                        n => format!(", {n} warnings (details: ibis libraries --json)"),
+                        1 => ", 1 warning".into(),
+                        n => format!(", {n} warnings"),
                     },
                     if library.get("refresh_error").is_some_and(|value| !value.is_null()) {
                         " (last good snapshot; refresh failed)"
@@ -88,6 +103,12 @@ fn summary(method: Method, data: &Value, libraries_open: bool, names: &BTreeMap<
                         ""
                     }
                 ));
+                let shown = library.get("warnings").and_then(Value::as_array);
+                lines.extend(shown.into_iter().flatten().map(warning_line));
+                let listed = shown.map_or(0, |shown| shown.len() as u64);
+                if warnings > listed {
+                    lines.push(format!("  and {} more", warnings - listed));
+                }
             }
             Some(lines.join("\n"))
         }
@@ -140,38 +161,64 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
     let csl = record.get("csl")?;
+    let authors = authors(csl, Some(3));
+    Some(format!(
+        "{}\t{}\t{}\t{}",
+        field(citation_key(record)?),
+        if authors.is_empty() {
+            "—".into()
+        } else {
+            field(&authors)
+        },
+        field(&year(csl).unwrap_or_else(|| "n.d.".into())),
+        field(&strip_markup(
+            csl.get("title").and_then(Value::as_str).unwrap_or("[untitled]")
+        ))
+    ))
+}
+
+fn citation_key(record: &Value) -> Option<&str> {
     let keys = record.get("citation_keys")?.as_array()?;
-    let key = match keys.first().and_then(|key| key.get("value")).and_then(Value::as_str) {
-        None => "[no citation key]",
-        Some(key) if key.is_empty() || key.chars().any(|c| c.is_whitespace() || c.is_control()) => {
-            "[invalid citation key]"
-        }
-        Some(key)
-            if keys
-                .iter()
-                .any(|other| other.get("value").and_then(Value::as_str) != Some(key)) =>
-        {
-            "[conflicting citation keys]"
-        }
-        Some(key) => key,
-    };
-    let authors = csl
-        .get("author")
+    Some(
+        match keys.first().and_then(|key| key.get("value")).and_then(Value::as_str) {
+            None => "[no citation key]",
+            Some(key) if key.is_empty() || key.chars().any(|c| c.is_whitespace() || c.is_control()) => {
+                "[invalid citation key]"
+            }
+            Some(key)
+                if keys
+                    .iter()
+                    .any(|other| other.get("value").and_then(Value::as_str) != Some(key)) =>
+            {
+                "[conflicting citation keys]"
+            }
+            Some(key) => key,
+        },
+    )
+}
+
+/// The authors' names, at most `limit` of them and then "et al.".
+fn authors(csl: &Value, limit: Option<usize>) -> String {
+    csl.get("author")
         .and_then(Value::as_array)
         .map_or_else(String::new, |names| {
+            let limit = limit.unwrap_or(names.len());
             let mut authors = names
                 .iter()
-                .take(3)
+                .take(limit)
                 .map(|name| Name::from_csl(name).display())
                 .filter(|name| !name.is_empty())
                 .collect::<Vec<_>>();
-            if names.len() > 3 {
+            if names.len() > limit {
                 authors.push("et al.".into());
             }
             authors.join(", ")
-        });
+        })
+}
+
+fn year(csl: &Value) -> Option<String> {
     let issued = csl.get("issued");
-    let year = issued
+    issued
         .and_then(|date| date.pointer("/date-parts/0/0"))
         .map(|year| year.as_str().map_or_else(|| year.to_string(), str::to_owned))
         .or_else(|| {
@@ -180,20 +227,72 @@ fn search_row(hit: &Value) -> Option<String> {
                 .and_then(Value::as_str)
                 .map(str::to_owned)
         })
-        .unwrap_or_else(|| "n.d.".into());
-    Some(format!(
-        "{}\t{}\t{}\t{}",
-        field(key),
-        if authors.is_empty() {
-            "—".into()
-        } else {
-            field(&authors)
-        },
-        field(&year),
-        field(&strip_markup(
-            csl.get("title").and_then(Value::as_str).unwrap_or("[untitled]")
-        ))
-    ))
+}
+
+/// One reference for reading. Anything that is not a reference stays as JSON.
+fn reference(data: &Value) -> Option<String> {
+    let record = data.pointer("/object/data")?;
+    let csl = record.get("csl")?;
+    let text = |name: &str| csl.get(name).and_then(Value::as_str).map(strip_markup);
+    let authors = Some(authors(csl, None)).filter(|authors| !authors.is_empty());
+    let number = |name: &str| {
+        csl.get(name)
+            .map(|value| value.as_str().map_or_else(|| value.to_string(), str::to_owned))
+    };
+    let rows = [
+        ("Title", text("title")),
+        ("Authors", authors),
+        ("Year", year(csl)),
+        ("Published in", text("container-title")),
+        ("Publisher", text("publisher")),
+        ("Volume", number("volume")),
+        ("Issue", number("issue")),
+        ("Pages", number("page")),
+        ("DOI", text("DOI")),
+        ("URL", text("URL")),
+    ];
+    let mut lines = vec![field(citation_key(record)?)];
+    lines.extend(
+        rows.into_iter()
+            .filter_map(|(label, value)| Some(format!("{label}: {}", field(&value?)))),
+    );
+    Some(lines.join("\n"))
+}
+
+/// A source warning as a sentence.
+fn warning_line(warning: &Value) -> String {
+    let key = warning.get("key").and_then(Value::as_str).map(field);
+    let what = match (warning.get("code").and_then(Value::as_str), key) {
+        (Some("duplicate-key"), Some(key)) => {
+            // In CSL-JSON this is the record's `id`, which is never a citation key.
+            format!("more than one entry uses '{key}' as its key or id, so Ibis skips them all")
+        }
+        (Some("syntax"), _) => "an entry could not be read, so Ibis skips it".into(),
+        (Some("field"), _) => "a field could not be fully converted; check this entry".into(),
+        (Some("work-limit"), _) => "the library is too large to read in full".into(),
+        (Some("invalid-attachment"), _) => "an attachment link is not valid".into(),
+        (Some("cloud-synced-directory"), _) => "the library is in a cloud-synced folder, so changes can be late".into(),
+        (Some("citation-keys-unavailable"), _) => {
+            "Better BibTeX keys could not be read, so some items have none".into()
+        }
+        _ => "something in the library needs checking".into(),
+    };
+    match warning.get("line").and_then(Value::as_u64) {
+        Some(line) => format!("  line {line}: {what}"),
+        None => format!("  {what}"),
+    }
+}
+
+/// A word for a command line, quoted when this system's shell would otherwise split it.
+pub(super) fn quoted(text: &str) -> String {
+    let plain = |c: char| c.is_alphanumeric() || "/._-:".contains(c) || (cfg!(windows) && c == '\\');
+    if !text.is_empty() && text.chars().all(plain) {
+        text.to_owned()
+    } else if cfg!(windows) {
+        format!("\"{text}\"")
+    } else {
+        format!("'{}'", text.replace('\'', "'\\''"))
+    }
 }
 
 pub(super) fn field(text: &str) -> String {
@@ -433,7 +532,9 @@ pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
 
 /// What the path itself shows: missing, a folder, or a file this program may not read.
 fn path_reason(path: &Path) -> Option<&'static str> {
-    if std::fs::symlink_metadata(path).is_err() {
+    let link_to_nothing = std::fs::symlink_metadata(path).is_ok()
+        && std::fs::metadata(path).is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound);
+    if std::fs::symlink_metadata(path).is_err() || link_to_nothing {
         Some("there is no file at that path; check the spelling or give the full path.")
     } else if path.is_dir() {
         Some("it is a folder; give the library file inside it.")

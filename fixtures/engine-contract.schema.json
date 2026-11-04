@@ -996,6 +996,7 @@
         "biblatex",
         "natbib",
         "latex",
+        "context",
         "typst",
         "org-cite",
         "myst",

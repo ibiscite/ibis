@@ -414,7 +414,6 @@ test("an unexpected runner mirror list stops before APT without replacing it", {
 test("only the Linux offline observer is elevated, and capture keeps failures", { skip: process.platform === "win32" }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-observer-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  mkdirSync(join(dir, "target/synthetic/release"), { recursive: true });
   const config = join(dir, "nightly.conf.json");
   writeFileSync(config, JSON.stringify(nightlyConfig("0.1.2-nightly.20261028000000", "linux")));
   const workflow = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
@@ -436,14 +435,19 @@ test("only the Linux offline observer is elevated, and capture keeps failures", 
   }
   import() { :; }; screencapture() { :; }`;
   const calls = join(dir, "calls");
-  for (const [system, sample, sudo, expected] of [["Linux", 0, 0, 0], ["Linux", 42, 0, 42], ["Linux", 0, 73, 73], ["macOS", 0, 0, 0], ["macOS", 42, 0, 42]]) {
-    const app = join(dir, `target/synthetic/release/${system === "Linux" ? "ibis-nightly" : "ibis-desktop"}`);
+  const cases = [["Linux", 0, 0, 0], ["Linux", 42, 0, 42], ["Linux", 0, 73, 73], ["macOS", 0, 0, 0], ["macOS", 42, 0, 42]];
+  for (const [index, [system, sample, sudo, expected]] of cases.entries()) {
+    // The EXIT trap signals the previous stub without waiting for it, so each
+    // case gets its own binary; rewriting a running one fails with ETXTBSY.
+    const target = `synthetic-${index}`;
+    mkdirSync(join(dir, `target/${target}/release`), { recursive: true });
+    const app = join(dir, `target/${target}/release/${system === "Linux" ? "ibis-nightly" : "ibis-desktop"}`);
     writeFileSync(app, "#!/bin/sh\nexec sleep 30\n");
     chmodSync(app, 0o755);
     writeFileSync(calls, "");
     const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", `${stubs}\n${command}\ncapture`], {
       cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, TARGET: "synthetic", CONFIG: system === "Linux" ? config : "", RUNNER_OS: system, CALLS: calls, OBSERVER_ELEVATED: "0", SAMPLE_STATUS: String(sample), SUDO_STATUS: String(sudo) },
+      env: { ...process.env, TARGET: target, CONFIG: system === "Linux" ? config : "", RUNNER_OS: system, CALLS: calls, OBSERVER_ELEVATED: "0", SAMPLE_STATUS: String(sample), SUDO_STATUS: String(sudo) },
     });
     assert.equal(result.status, expected, `${system}: ${result.stderr}`);
     const log = readFileSync(calls, "utf8");

@@ -1,6 +1,5 @@
 /* Shared library status controls use the footer's existing geometry and roles. */
 .library-status-controls { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: center; gap: var(--space-1); }
-[data-status-compact] > .library-status-controls { min-width: calc(var(--tile) + var(--row-gap)); }
 /* A notice stands in for the status over the same box, so the footer's controls never move. */
 .library-status-controls { position: relative; }
 .library-status-controls:has(> .notice-slot) > :not(.notice-slot) { visibility: hidden; }

@@ -530,7 +530,7 @@ impl FileLibrary {
             .lock()
             .map_err(|_| CommandError::from("The preview is unavailable."))?;
         if latest.0 != reservation {
-            return Err("A newer citation preview replaced this request.".into());
+            return Err(CommandError::Cancelled);
         }
         Ok(latest.1.clone())
     }

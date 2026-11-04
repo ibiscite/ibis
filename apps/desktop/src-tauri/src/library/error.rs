@@ -99,6 +99,8 @@ pub(crate) enum CommandError {
     SnapshotChanged,
     /// The library is being read; ask again when it has opened.
     LibraryLoading,
+    /// The work stopped because it was cancelled or replaced. Nothing failed.
+    Cancelled,
     /// Another loaded record has this citation key, so citing by key would be ambiguous.
     SharedCitationKey { key: String },
     /// Anything else, with fixed text for the user.
@@ -106,10 +108,14 @@ pub(crate) enum CommandError {
 }
 
 // Engine faults (including formatter capacity/timeouts) are not source revisions.
+// Cancellation is not a fault: it keeps its own code and never gets failure text.
 impl From<ibis_core::contract::EngineError> for CommandError {
-    fn from(_: ibis_core::contract::EngineError) -> Self {
-        Self::Failed {
-            message: "The citation could not be prepared. Try again.".into(),
+    fn from(error: ibis_core::contract::EngineError) -> Self {
+        match error.code {
+            ibis_core::contract::ErrorCode::Cancelled => Self::Cancelled,
+            _ => Self::Failed {
+                message: "The citation could not be prepared. Try again.".into(),
+            },
         }
     }
 }
@@ -133,6 +139,7 @@ impl fmt::Display for CommandError {
         match self {
             CommandError::SnapshotChanged => f.write_str("library snapshot changed"),
             CommandError::LibraryLoading => f.write_str("library is loading"),
+            CommandError::Cancelled => f.write_str("cancelled"),
             CommandError::SharedCitationKey { key } => {
                 write!(f, "the citation key `{key}` belongs to more than one reference")
             }
@@ -152,6 +159,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn only_cancellation_escapes_the_engine_fault_text() {
+        use ibis_core::contract::{EngineError, ErrorCode};
+        assert_eq!(
+            CommandError::from(EngineError::new(ErrorCode::Cancelled)),
+            CommandError::Cancelled
+        );
+        for code in [
+            ErrorCode::ResourceLimit,
+            ErrorCode::SourceUnavailable,
+            ErrorCode::Internal,
+        ] {
+            assert_eq!(
+                CommandError::from(EngineError::new(code)),
+                CommandError::from("The citation could not be prepared. Try again.")
+            );
+        }
+    }
+
+    #[test]
     fn commands_fail_with_a_stable_code() {
         let json = |error: CommandError| serde_json::to_value(error).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
@@ -162,6 +188,7 @@ mod tests {
             json(CommandError::LibraryLoading),
             serde_json::json!({"code": "library_loading"})
         );
+        assert_eq!(json(CommandError::Cancelled), serde_json::json!({"code": "cancelled"}));
         assert_eq!(
             json(CommandError::SharedCitationKey { key: "same".into() }),
             serde_json::json!({"code": "shared_citation_key", "key": "same"})

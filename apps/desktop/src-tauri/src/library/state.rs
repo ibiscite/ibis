@@ -26,7 +26,7 @@ pub(crate) struct Library {
     pub(crate) requested: Option<Source>,
     pub(crate) opening: bool,
     /// A Zotero change check is running; unlike `opening`, it is not shown.
-    pub(super) checking: bool,
+    pub(crate) checking: bool,
     /// Neutral failure reason; status derives retention context from the current library.
     /// Automatic refreshes preserve a different rejected choice until the next request.
     pub(crate) error: Option<LoadError>,
@@ -301,6 +301,50 @@ pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn a_preview_refused_during_a_quiet_check_waits_and_refuses_again_after_it() {
+        use crate::library::CommandError;
+        use tauri::Manager;
+        let app = tauri::test::mock_builder()
+            .manage(Mutex::new(candidate(
+                PathBuf::from("synthetic.bib"),
+                "@misc{synthetic,title={Synthetic}}",
+            )))
+            .manage(super::super::PreviewRequests::default())
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let preview = |request| {
+            // An empty citation is refused whatever the library is doing.
+            tauri::async_runtime::block_on(crate::copy::preview_file_citation(
+                Vec::new(),
+                ibis_core::cite::KeyFormat::Pandoc,
+                Some(ibis_core::settings::CitationStyle::Ieee),
+                String::new(),
+                super::super::PreviewIntent {
+                    page: 1,
+                    request,
+                    cancel: false,
+                },
+                app.state(),
+                app.state(),
+            ))
+            .err()
+        };
+        let checking = |value| {
+            app.state::<Mutex<Library>>()
+                .lock()
+                .unwrap_or_else(|e| panic!("{e}"))
+                .checking = value;
+        };
+        checking(true);
+        assert_eq!(preview(1), Some(CommandError::LibraryLoading));
+        checking(false);
+        assert_eq!(
+            preview(2),
+            Some(CommandError::from("The citation could not be prepared. Try again."))
+        );
+    }
 
     use ibis_core::settings::ZoteroLibrary;
     use ibis_core::source::SourceError;
