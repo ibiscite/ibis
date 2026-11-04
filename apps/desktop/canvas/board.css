@@ -15,3 +15,4 @@
 .canvas-part code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); }
 .canvas-part-items > svg { width: var(--icon); height: var(--icon); }
 .canvas-part .canvas-part-mark { width: var(--space-10); height: var(--space-10); }
+.canvas-band { margin: 0; }

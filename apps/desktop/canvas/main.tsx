@@ -127,19 +127,29 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
 const tokensStyle = `
 .canvas-tokens { padding: var(--space-6); overflow: auto; height: 100%; box-sizing: border-box; color: var(--text); }
 .canvas-tokens h2 { font-size: var(--type-title-size); margin: var(--space-4) 0 var(--space-2); }
-.canvas-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: var(--space-2); }
-.canvas-token-grid span { display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.canvas-token-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: var(--space-2) var(--space-4); }
+.canvas-token-grid span { display: flex; align-items: center; gap: var(--space-2); min-width: 0; min-height: calc(2 * var(--type-body-line)); }
 .canvas-token-grid i { flex: none; width: var(--space-6); height: var(--space-6); box-shadow: inset 0 0 0 1px var(--separator); }
-.canvas-token-grid code { font: var(--type-label-size) var(--mono); color: var(--text-secondary); overflow-wrap: anywhere; }
+/* A long name wraps at its hyphens onto a second line, never inside a word. */
+.canvas-token-grid code { min-width: 0; font: var(--type-label-size) / var(--type-label-line) var(--mono); color: var(--text-secondary); overflow-wrap: normal; }
 `;
 
 function States({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  return <SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} {...{ [`data-${state}`]: true }} /><Button variant={index === 1 ? "primary" : index === 2 ? "quiet" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup>;
+  // Each state is drawn by the part's own attribute, through its render prop, so the picture is the real rule.
+  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} render={(native) => <label {...native} {...{ [`data-${state}`]: true }} />} /><Button variant={index === 1 ? "primary" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup></div>;
 }
 
 const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];
 const family = (...prefixes: string[]) => tokenNames.filter((name) => prefixes.some((prefix) => name === prefix || name.startsWith(`${prefix}-`)));
+
+/** A type role's size in pixels, as the page resolves it, so the roles list from small to large. */
+function typeSize(name: string): number {
+  const probe = document.createElement("span");
+  probe.style.fontSize = `var(${name})`;
+  document.body.append(probe);
+  try { return parseFloat(getComputedStyle(probe).fontSize) || 0; } finally { probe.remove(); }
+}
 
 /** The tokens as the app resolves them, so this page cannot drift from the code. */
 function Tokens({ theme }: { theme: Theme }) {
@@ -157,7 +167,7 @@ function Tokens({ theme }: { theme: Theme }) {
     <h2>Space</h2>
     <div className="canvas-token-grid">{family("--space").map((name) => <span key={name}><i style={{ width: `var(${name})`, height: `var(${name})` }} /><code>{name}</code></span>)}</div>
     <h2>Type</h2>
-    {family("--type").filter((name) => name.endsWith("-size")).map((name) => <p key={name} style={{ fontSize: `var(${name})`, lineHeight: `var(${name.replace("-size", "-line")})` }}>{name.slice(7, -5)}: The quiet garden</p>)}
+    {family("--type").filter((name) => name.endsWith("-size")).sort((a, b) => typeSize(a) - typeSize(b)).map((name) => <p key={name} style={{ fontSize: `var(${name})`, lineHeight: `var(${name.replace("-size", "-line")})` }}>{name.slice(7, -5)}: The quiet garden</p>)}
   </div>;
 }
 
