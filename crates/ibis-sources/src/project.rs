@@ -284,7 +284,7 @@ impl ProjectRead {
     }
 }
 
-fn observed_text(path: &Path) -> Result<Arc<str>, ProjectProblem> {
+fn observed_text(path: &Path) -> Result<Arc<String>, ProjectProblem> {
     let bibtex = path.extension().is_none_or(|extension| {
         !["json", "csljson"]
             .iter()
