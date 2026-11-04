@@ -35,7 +35,24 @@ struct Header {
     locales: Vec<LocaleRow>,
     primary: BTreeMap<String, String>,
     renames: BTreeMap<String, String>,
-    curated: Vec<(String, String)>,
+    curated: Vec<Curated>,
+}
+
+/// A common style: its id, the style's full title, and its one short name.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+pub struct Curated(pub String, pub String, pub String);
+impl Curated {
+    pub fn id(&self) -> &str {
+        &self.0
+    }
+    /// The full title, as the style list shows it.
+    pub fn title(&self) -> &str {
+        &self.1
+    }
+    /// The short name every front end shows.
+    pub fn name(&self) -> &str {
+        &self.2
+    }
 }
 
 #[derive(Deserialize)]
@@ -312,6 +329,11 @@ pub(crate) fn locale_xml(tag: &str) -> Result<Option<String>, FormatError> {
     row.map(|locale| file(locale.3, locale.4, locale.5)).transpose()
 }
 
+/// The common styles, most used first.
+pub fn curated() -> Result<&'static [Curated], FormatError> {
+    Ok(&header()?.curated)
+}
+
 /// Styles matching every word, most useful first, then by id. An empty query
 /// gives the curated styles, then the rest.
 pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, FormatError> {
@@ -321,7 +343,7 @@ pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, For
         .curated
         .iter()
         .enumerate()
-        .map(|(rank, (id, title))| (id.as_str(), (rank, title.as_str())))
+        .map(|(rank, style)| (style.id(), (rank, style.title())))
         .collect();
     let mut found: Vec<(usize, StyleRow)> = rows()?
         .into_iter()

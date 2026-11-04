@@ -311,9 +311,9 @@ fn mcp_serves_agents_from_the_files_given() -> Result<(), Box<dyn std::error::Er
     for message in [
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":ibis_engine::mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
         json!({"jsonrpc":"2.0","method":"notifications/initialized"}),
-        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"syntax":"pandoc"}}}),
+        json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"format":"pandoc"}}}),
         // A 2026-07-28 client in the same process: no handshake, the revision in `_meta`.
-        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"syntax":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
+        json!({"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"cite","arguments":{"items":[{"ref":"accents2021"}],"format":"pandoc"},"_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
     ] {
         writeln!(stdin, "{message}")?;
     }

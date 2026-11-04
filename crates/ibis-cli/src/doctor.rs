@@ -50,7 +50,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
         .iter()
         .map(|capability| {
             json!({
-                "syntax":capability.syntax, "command":capability.command,
+                "id":capability.id, "syntax":capability.syntax, "command":capability.command,
                 "forms":capability.forms, "single_item_forms":capability.single_item_forms,
             })
         })

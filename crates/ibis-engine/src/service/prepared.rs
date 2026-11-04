@@ -74,17 +74,6 @@ impl PreparedCitation {
         let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
         pick.form = (form != CitationForm::Normal).then_some(form);
         pick.suppress_author = false;
-        // Narrative is the textcite member of the native BibLaTeX family.
-        if request.items.len() == 1
-            && form == CitationForm::Narrative
-            && let OutputSpec::Key {
-                syntax: KeySyntax::Biblatex,
-                command,
-            } = &mut request.output
-            && matches!(command.as_deref(), Some("autocite" | "parencite"))
-        {
-            *command = Some("textcite".into());
-        }
         engine.cite_snapshot(&self.snapshot, &request, cancel)
     }
 
@@ -174,12 +163,17 @@ impl Engine {
             return Err(error(ErrorCode::SourceUnavailable));
         }
         let snapshot = state.index.snapshot().clone();
-        let result = self.cite_snapshot(&snapshot, request, cancel)?;
+        // The receipt keeps the output the preset means, so copy-time checks know it.
+        let request = CitationRequest {
+            output: crate::outputs::resolve(&request.output)?,
+            ..request.clone()
+        };
+        let result = self.cite_snapshot(&snapshot, &request, cancel)?;
         let prepared = PreparedCitation {
             zotero_generation: uses_zotero.then_some(state.zotero_generation),
             origin: Arc::downgrade(&self.shared),
             snapshot,
-            request: request.clone(),
+            request,
             result,
             sample: false,
         };

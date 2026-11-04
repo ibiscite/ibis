@@ -714,6 +714,11 @@
           "const": "unknown-style"
         },
         {
+          "description": "No output has the requested id; `outputs` lists them.",
+          "type": "string",
+          "const": "unknown-output"
+        },
+        {
           "description": "The requested locale is not bundled; `styles` lists the locales.",
           "type": "string",
           "const": "unknown-locale"
@@ -1328,6 +1333,7 @@
           ]
         },
         {
+          "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
           "type": "object",
           "properties": {
             "kind": {
