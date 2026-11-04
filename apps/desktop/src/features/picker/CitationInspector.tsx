@@ -1,5 +1,5 @@
 import { useEffect, useState, type Ref } from "react";
-import { citationDetails } from "../../api";
+import { citationDetails, isCancelled } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import { composing } from "../../composition";
 import type { FormattedCitation } from "../../format/styles";
@@ -37,7 +37,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     let live = true;
     void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
       (value) => { if (live) setDetails({ receipt: previewReceipt, output, value }); },
-      () => { if (live) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
+      (error) => { if (live && !isCancelled(error)) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
     );
     return () => { live = false; };
   }, [editing, previewReceipt, index, output]);

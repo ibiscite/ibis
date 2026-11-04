@@ -615,6 +615,20 @@ test("failed examples leave every form usable and say so once, quietly", async (
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
+test("cancelled examples say nothing: a newer preview owns the answer", async () => {
+  const previews: PreviewRequest[] = [];
+  backend({ search: () => [result("a", "Invented work")], citation_details: () => { throw { code: "cancelled" }; },
+    preview_file_citation: (request) => { previews.push(request); return receipt("Output"); } });
+  render(<App />);
+  await openCitationDetails();
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryByText("Examples are unavailable")).toBeNull();
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Year only" }));
+  await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("year-only"));
+  expect(screen.queryByRole("alert")).toBeNull();
+});
+
 test("an unavailable form is dimmed with its reason under it and cannot be picked", async () => {
   const previews: PreviewRequest[] = [];
   const reason = "Cite it alone or choose another output.";
