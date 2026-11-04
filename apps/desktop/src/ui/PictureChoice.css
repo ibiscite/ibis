@@ -31,7 +31,8 @@
 .ui-picker-picture[data-rows] .ui-picker-picture-content { position: static; display: block; width: auto; transform: none; zoom: var(--preview-rows); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-picture-choice { border: var(--border-width) solid CanvasText; }
-  .ui-picture-choice[data-selected] { background: Highlight; color: HighlightText; }
+  .ui-picture-choice[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .ui-picture-choice[data-selected] .ui-picture-choice-note { color: inherit; }
   .ui-picture-choice[data-focus-visible] { outline-color: CanvasText; }
 }
 @media (pointer: coarse) {

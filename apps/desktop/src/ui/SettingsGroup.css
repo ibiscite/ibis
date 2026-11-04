@@ -20,8 +20,10 @@
   min-height: var(--settings-row-h); padding: var(--space-2) var(--settings-row-pad); box-sizing: border-box; font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-settings-row[data-bare] { --settings-row-pad: var(--space-3); padding: var(--space-3); }
-/* A divider belongs to the row below and is inset to its text on both sides, as System Settings draws it. */
+/* A divider belongs to the row below and is inset to its text on both sides, as System Settings draws it.
+   A highlighted row's fill is its own edge, so no divider touches it. */
 .ui-settings-row + .ui-settings-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--settings-row-pad); border-top: var(--border-width) solid var(--separator); }
+.ui-settings-row[data-highlighted]::before, .ui-settings-row[data-highlighted] + .ui-settings-row::before { display: none; }
 .ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
@@ -41,7 +43,7 @@
   .ui-settings-search input { min-height: var(--touch-target); }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-settings-row[data-highlighted] { background: Highlight; color: HighlightText; }
+  .ui-settings-row[data-highlighted] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
   .ui-settings-row[data-highlighted] .ui-settings-description { color: inherit; }
 }
 

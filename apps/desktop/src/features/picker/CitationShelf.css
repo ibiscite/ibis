@@ -1,5 +1,6 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
-.shelf { --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
+/* One band, one corner and one hover for every control in it: segments and the count. */
+.shelf { --band-control-radius: var(--r-band-control); --band-control-hover: var(--fill-control-hover); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 /* Text starts on the title column; trailing controls keep the same gap S to the
@@ -25,7 +26,6 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-reference-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .shelf-actions { display: flex; flex: none; align-items: center; gap: var(--space-1); margin-inline-start: var(--space-1); }
 .shelf-actions:empty { display: none; }
-.shelf-count-icon { width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
 /* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }

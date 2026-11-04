@@ -16,5 +16,5 @@
 .ui-segment[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 @media (pointer: coarse) { .ui-segment { min-height: 2.75rem; } }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-segment[data-selected] { background: Highlight; color: HighlightText; box-shadow: none; }
+  .ui-segment[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; box-shadow: none; }
 }

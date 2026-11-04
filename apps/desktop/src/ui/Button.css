@@ -45,6 +45,10 @@
 .ui-button[data-variant] .key-caps kbd { color: inherit; font-weight: inherit; }
 .ui-button[data-variant="primary"] .key-caps kbd { background: var(--accent-pressed); }
 .ui-button[data-size="small"]:has(.key-caps:last-child) { padding-inline-end: calc(var(--key-gap) - var(--border-width)); }
+/* Forced colours: the primary keeps its system pair, without a Canvas plate behind its words. */
+@media (forced-colors: active) {
+  .ui-button[data-variant="primary"]:not([data-disabled], [aria-disabled="true"]) { forced-color-adjust: none; background: Highlight; color: HighlightText; border-color: Highlight; }
+}
 @media (pointer: coarse) {
   .ui-button[data-variant], .settings-page .ui-button[data-variant] { min-width: var(--touch-target); min-height: var(--touch-target); }
   .ui-button[data-variant]::after, .ui-button[data-size="small"]::after, .settings-page .ui-button[data-variant]::after { inset: 0; }

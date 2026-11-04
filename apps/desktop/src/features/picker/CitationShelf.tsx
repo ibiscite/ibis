@@ -226,7 +226,8 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
           {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><Icon name="check" />{pickerText.copied}</span>}
           {!copied && references.length > 1 && <ToolbarMenu buttonRef={count} label={pickerText.selectedReferences} value={String(references.length)} placement="top end" selectedKey={panel?.reference ?? ""}
             button={{ className: "shelf-count", quiet: true, label: interfaceText("shelf-references", { count: references.length }), title: pickerText.allChosen(references.length),
-              content: <><Icon name="article" className="shelf-count-icon" />{references.length}</> }}
+              // Words say what the count is; a folded shelf keeps the number, as its warnings do.
+              content: compact ? String(references.length) : interfaceText("shelf-references", { count: references.length }) }}
             filterLabel={pickerText.filterReferences} sections={[{ id: "references", label: pickerText.selectedReferences, items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
               sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && pickerText.closestMatch].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
             onAction={(key) => { const reference = references.find((r) => idKey(r.id) === key); if (reference) open("reference", count.current!, reference); }} />}

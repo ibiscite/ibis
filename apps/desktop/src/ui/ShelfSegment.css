@@ -1,7 +1,7 @@
-/* Shelf segments [C7]: one quiet button per reference, its text on the title
+/* Shelf segments [C7] (a pointer over one, or data-hovered on the canvas, is its hover): one quiet button per reference, its text on the title
    column (the fill hangs --space-1 past it), with the shelf's control corner. */
 .shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); }
-.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--space-1)); margin-inline: calc(-1 * var(--space-1)); padding: 0 var(--space-1); transition: padding-inline-end var(--dur) var(--ease); border-width: 0; border-radius: var(--r-shelf-control); color: var(--text); white-space: nowrap; }
+.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--space-1)); margin-inline: calc(-1 * var(--space-1)); padding: 0 var(--space-1); transition: padding-inline-end var(--dur) var(--ease); border-width: 0; border-radius: var(--r-band-control); color: var(--text); white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 /* The ring every button has, drawn inside so the one-line band never clips it. */
 .shelf-segment-button.ui-button { --ring-offset: calc(-1 * var(--ring-width)); }
@@ -11,13 +11,13 @@
    chip grows at its trailing end to make room for a small quiet x, the same
    --remove-gap from the chip's edge on every side. The 32 px pointer target stays. */
 .shelf-segment { --remove-gap: calc((var(--control-small-h) - var(--space-4)) / 2); --remove-room: calc(var(--space-1) + var(--space-4) + var(--remove-gap)); }
-.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(var(--remove-gap) - var(--space-1)); translate: 0 -50%; visibility: hidden; border: 0; border-radius: max(var(--r-floor-mark), calc(var(--r-shelf-control) - var(--remove-gap))); color: var(--text-secondary); --ring-offset: calc(-1 * var(--ring-width)); }
+.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(var(--remove-gap) - var(--space-1)); translate: 0 -50%; visibility: hidden; border: 0; border-radius: max(var(--r-floor-mark), calc(var(--r-band-control) - var(--remove-gap))); color: var(--text-secondary); --ring-offset: calc(-1 * var(--ring-width)); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-hover); color: var(--text); }
 @media (hover: hover) {
-  .shelf-segment:hover:not(:has([data-focus-visible])) > .shelf-remove.ui-icon-button.ui-button[data-variant] { visibility: visible; }
-  .shelf-segment:hover > .shelf-segment-button:not([aria-expanded="true"]) { background: var(--fill-control-hover); }
-  .shelf-segment[data-built]:hover:not(:has([data-focus-visible])) > .shelf-segment-button { padding-inline-end: var(--remove-room); }
+  .shelf-segment:is(:hover, [data-hovered]):not(:has([data-focus-visible])) > .shelf-remove.ui-icon-button.ui-button[data-variant] { visibility: visible; }
+  .shelf-segment:is(:hover, [data-hovered]) > .shelf-segment-button:not([aria-expanded="true"]) { background: var(--fill-control-hover); }
+  .shelf-segment[data-built]:is(:hover, [data-hovered]):not(:has([data-focus-visible])) > .shelf-segment-button { padding-inline-end: var(--remove-room); }
 }
 @media (pointer: coarse) {
   .shelf-segment-button.ui-button[data-variant] { min-width: var(--touch-target); }
@@ -28,4 +28,5 @@
 }
 @media (forced-colors: active) {
   .shelf-segment-button.ui-button[data-variant][aria-expanded="true"] { background: Highlight; color: HighlightText; forced-color-adjust: none; }
+  .shelf-segment-button.ui-button[data-variant][aria-expanded="true"] .preview-text { color: inherit; }
 }

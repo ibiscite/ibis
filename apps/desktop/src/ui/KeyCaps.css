@@ -12,7 +12,7 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
 /* Keys read left to right in every language, as the systems print them: in a
    right-to-left page "⌘K" would otherwise show as "K⌘" and "Ctrl K" as "K Ctrl". */
 .key-caps { direction: ltr; unicode-bidi: isolate; }
-.key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); }
+.key-caps kbd { margin: 0; padding-inline: calc(var(--space-1) + var(--border-width)); white-space: nowrap; }
 /* A one-symbol cap is square, as on a keyboard. ↵ draws above the middle of its
    em box in system fonts, so it is lowered by .1em to sit optically centred. */
 .key-caps kbd[data-single]:not([data-plain]) { padding-inline: 0; min-width: var(--key); }
