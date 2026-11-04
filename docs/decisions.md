@@ -959,6 +959,42 @@ by hand. Rules: [AGENTS.md](../AGENTS.md). No workflow change was needed: an aud
 on 2026-11-02 found no `pull_request_target`, no secrets reachable by forks, and
 that every outside run needs approval.
 
+## 0035 One owner per picker session, one contract, one catalogue
+
+A review of main on 2026-11-04 traced a week of repeated picker fixes (#1403,
+#1558, #1093, #1179, #1603, #1642) to one cause: a picker session's results,
+preview, destination and presentation have separate async owners on both sides
+of IPC, joined afterwards by comparing about fifteen counters, with React effects
+as the scheduler. The same review found five output vocabularies with lossy
+conversions, four record summaries that disagree, three wordings of each error,
+and app types generated from the app's own structures rather than the engine
+schema. Before 1.0 these are replaced, not patched (maintainer, 2026-11-04,
+"full freedom to restructure"):
+
+- **One session owner.** Each picker session is a pure Rust state machine
+  (`(state, event) -> (state, effects)`); every effect carries its session and a
+  sequence number, and only the current one may complete. The web view sends
+  intents and renders a generated view snapshot; it holds no async state of its
+  own. Built in stages under #1260.
+- **One contract.** The app speaks the engine's `CitationRequest`, `OutputSpec`
+  and `ItemRef`; app-only output types and their conversions are deleted; app
+  types come from the engine schema. A format, style or form has one name, from
+  the engine, in every front end.
+- **One catalogue.** The engine returns codes with arguments and one record
+  summary; one Fluent catalogue words them for the command line, MCP and the app.
+- **One platform seam.** Capture, delivery, selected text, clipboard, shortcut,
+  login item and window presentation sit behind one trait with a fake, and the
+  app shows what each system can do from a capability report, not from
+  `cfg` branches spread through the code.
+- **Tests prove outcomes.** Tests that parse source, workflow YAML or CSS with
+  regular expressions, or that fix call order or English wording, are replaced by
+  behaviour checks, generated race orderings with a replayable seed and golden
+  data; time comes from an injected clock, never a sleep.
+
+Lessons taken from Zed (fake platform, seeded executor), FFmpeg (libraries never
+print, golden data reviewed as diffs), VLC 4 (one player object to end races),
+Pandoc (one model between readers and writers) and Better BibTeX (editors pull
+citations instead of synthetic paste).
 ## 0036 The reader's trust boundary
 
 2026-11-04 (maintainer): Ibis gets a full-quality, page-level PDF reader so that
@@ -1047,7 +1083,7 @@ draws the same pages on every system and gives screen readers real text.
   session. To evaluate: the reader in a child web view whose only grant is the
   bytes command.
 - **Limits.** At most 256 MiB and 10,000 pages a file; opening, bytes to first
-  page drawn, takes at most 15 s, then fails with Open in Zotero. Images up to
+  page drawn, takes at most 15 s, then fails with Try Again and Open in Zotero. Images up to
   100 megapixels (`maxImageSize`) within a per-page budget of decoded image bytes;
   a page that loses an image says "Part of this page is too large to draw" and is
   never shown blank as if that were its content. Ibis caps each page canvas at 16

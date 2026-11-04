@@ -213,6 +213,36 @@ test("the shelf shows what Enter pastes in a key syntax, without copying, and le
   expect(calls).not.toContain("copy_file_citation");
 });
 
+test.each([
+  ["cancelled while hidden", { code: "cancelled" }],
+  ["failed while hidden", { code: "failed", message: "The citation could not be prepared. Try again." }],
+])("a preview %s never greets the reopened picker: Copy stays and the citation is prepared afresh", async (_, fault) => {
+  let refuse: unknown = null;
+  backend({
+    search: () => [result("a", "First")],
+    preview_file_citation: ({ items }) => {
+      if (refuse) { const reason = refuse; refuse = null; return Promise.reject(reason); }
+      return receipt(`[@${items.map(({ id }) => id.key).join("; @")}]`);
+    },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "first" } });
+  const output = await screen.findByRole("region", { name: "Preview" });
+  await waitFor(() => expect(output.textContent).toContain("[@a]"));
+  const copy = () => within(screen.getByRole("group", { name: "Keys" })).getByRole("button", { name: /^Copy/ });
+  expect(copy()).toBeTruthy();
+  await act(async () => { await emit("picker:hidden"); });
+  refuse = fault;
+  await act(async () => { await emit("library:changed", { state: "loaded", revision: "1", source_generation: "1", source_is_requested: true, has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }); });
+  await act(async () => { await emit("picker:preparing"); });
+  // The first frame of the reopened window already has no failure in it.
+  expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
+  await act(async () => { await emit("picker:shown", 2); });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("[@a]"));
+  expect(screen.queryByText("The citation could not be prepared. Try again.")).toBeNull();
+  expect(copy()).toBeTruthy();
+});
+
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
   const shared = { code: "shared_citation_key", key: "same" };
   const calls = backend({
@@ -2598,7 +2628,7 @@ test("More reads like the hints beside it: its name first, then its keys", async
   const hints = [...screen.getByRole("group", { name: "Keys" }).children];
   expect(hints[0]?.textContent).toContain("Copy as Pandoc");
   expect(hints).toHaveLength(1);
-  expect(more.compareDocumentPosition(hints[0]!) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(hints[0]!.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
 });
 
 test("footer actions copy and open shortcuts without using a keyboard shortcut", async () => {
