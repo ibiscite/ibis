@@ -59,7 +59,7 @@ test("Command-O follows the selected reference; Option reveals the file without 
   expect(open.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }]);
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("menuitem", { name: "Show in folder" })).toBeTruthy();
+  expect(await screen.findByRole("menuitem", { name: "Show in Folder" })).toBeTruthy();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "o", ctrlKey: true, altKey: true });
   await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
   expect(open.mock.calls[1]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: true, presentation: 0 }]);

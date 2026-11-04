@@ -19,7 +19,8 @@ export const ROWS: readonly { id: string; page: Page; label: MessageId; descript
   { id: "recent-citations", page: "citations", label: "citations-recent", description: "citations-recent-description", keywords: "citations-recent-words" },
   { id: "editor-endpoint", page: "citations", label: "citations-editor", description: "citations-editor-description", keywords: "citations-editor-words" },
   { id: "about-ibis", page: "about", label: "settings-about", keywords: "delight-about-words" },
-  { id: "automatic", page: "about", label: "about-automatic", description: "about-automatic-description", keywords: "about-check" },
+  { id: "automatic", page: "about", label: "about-automatic", description: "about-automatic-description" },
+  { id: "check-updates", page: "about", label: "about-check-label", keywords: "about-check" },
 ];
 
 /** Search and rendering read the same descriptions. */

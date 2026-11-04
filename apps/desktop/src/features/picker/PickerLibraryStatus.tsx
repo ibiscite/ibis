@@ -64,23 +64,22 @@ export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpen
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
       : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
       : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null);
+  const detailLabel = [...detail, condition.problem].filter(Boolean).join(". ");
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition} notice={notice}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
     menu={{ label: pickerText.libraryRegion, id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
-        <MenuSection id="library-detail" label={[...detail, condition.problem].filter(Boolean).join(". ")} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>
-          {/* A reload can publish a recovery screen before an animated exit
-              ends. Retire the modal and its same-named menu before that I/O. */}
-          {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
-          <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
-          {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
-        </MenuSection>
-        {profileRows && <MenuSeparator />}
+        {/* The spec's order: what the menu is about (the library, its count and
+            age, then any profile and the libraries searched), then what you can
+            do. The detail is also the actions' group name, so a keyboard user
+            hears it on entering the menu even though the heading has no items. */}
+        <MenuSection id="library-detail" label={detailLabel} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>{[]}</MenuSection>
+        <MenuSeparator />
         {profileRows && <MenuSection id="zotero-profile" label={pickerText.zoteroProfile} header={pickerText.zoteroProfile} layout="list" selectionMode="single">
           {profileRows.names.map((name, index) => <MenuItem key={name} id={`profile-${index}`} label={shortenedLabel(name, 36)} title={name}
             checked={name === profileRows.chosen} closeOnSelect onAction={() => chooseProfile?.(name)} />)}
         </MenuSection>}
-        {zotero && zotero.offered.length > 1 && <MenuSeparator />}
+        {profileRows && <MenuSeparator />}
         {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} header={pickerText.searchIn} layout="list">
           <MenuItem id="all" label={pickerText.allLibraries} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />
           {zotero.offered.map((choice) => {
@@ -92,5 +91,13 @@ export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpen
               title={last ? pickerText.keepOneLibrary : name} onAction={() => zotero.toggle(choice)} />;
           })}
         </MenuSection>}
+        {zotero && zotero.offered.length > 1 && <MenuSeparator />}
+        <MenuSection id="library-actions" label={detailLabel}>
+          <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
+          {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
+          {/* A reload can publish a recovery screen before an animated exit
+              ends. Retire the modal and its same-named menu before that I/O. */}
+          {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
+        </MenuSection>
       </> }} />;
 }

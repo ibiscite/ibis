@@ -20,7 +20,7 @@ test("it is off until switched on, then shows the address to paste and what it l
   await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
   expect((toggle as HTMLInputElement).checked).toBe(false);
   expect(screen.queryByText(/127\.0\.0\.1/)).toBeNull();
-  expect(document.body.textContent).toContain("Web pages can't use it, and nothing leaves this computer.");
+  expect(document.body.textContent).toContain("Web pages can’t use it, and nothing leaves this computer.");
   fireEvent.click(toggle);
   await screen.findByText(on.url!);
   expect(api.setEditorEndpoint).toHaveBeenCalledWith(true);
@@ -34,7 +34,7 @@ test("a port another program holds is said, and the switch stays off", async () 
   const toggle = await screen.findByRole("switch", { name: "Editor endpoint" });
   await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
   fireEvent.click(toggle);
-  await screen.findByText("Another program is using the endpoint's port, so it is off.");
+  await screen.findByText("Another program is using the endpoint’s port, so it is off.");
   expect((toggle as HTMLInputElement).checked).toBe(false);
 });
 

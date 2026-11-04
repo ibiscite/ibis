@@ -38,7 +38,7 @@ test("an unavailable drag explains recovery, and retry clears the failure withou
   render(<PasteGuide name="Ibis" permission={denied} onOpen={vi.fn()} onDrag={onDrag} />);
   const drag = screen.getByRole("button", { name: "Drag Ibis to Accessibility" });
   fireEvent.dragStart(drag);
-  expect((await screen.findByRole("alert")).textContent).toBe("Couldn't drag this copy of Ibis. Use the + button in System Settings to add it.");
+  expect((await screen.findByRole("alert")).textContent).toBe("Couldn’t drag this copy of Ibis. Use the + button in System Settings to add it.");
   expect(screen.queryByText(/private synthetic detail/)).toBeNull();
   expect(screen.queryByText("Ibis can paste now.")).toBeNull();
   await act(async () => { fireEvent.dragStart(drag); });

@@ -9,7 +9,7 @@ export const INTERFACE_LOCALE = "en-US";
 const IDS = [
   ...SETTINGS_IDS,
   "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
-  "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-global", "shortcuts-system", "shortcuts-empty",
+  "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
@@ -27,11 +27,11 @@ const IDS = [
   "shortcuts-refusal-in-use", "shortcuts-refusal-unavailable", "shortcuts-refusal-not-saved",
   "shortcuts-command-format", "shortcuts-command-pin", "shortcuts-command-keys", "shortcuts-command-more",
   "shortcuts-command-source", "shortcuts-command-change-last", "shortcuts-command-settings", "shortcuts-command-quit", "shortcuts-picker-conflict",
-  "shortcuts-region-search", "shortcuts-region-library", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system",
-  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-copy", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
-  "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit",
+  "shortcuts-region-search", "shortcuts-region-library", "shortcuts-region-picker", "shortcuts-region-menu", "shortcuts-region-system", "shortcuts-region-citation",
+  "shortcuts-action-choose-source", "shortcuts-action-reveal-source", "shortcuts-action-source", "shortcuts-action-change-last", "shortcuts-action-open", "shortcuts-action-copy", "shortcuts-action-paste", "shortcuts-action-copy-only", "shortcuts-action-add", "shortcuts-action-move", "shortcuts-action-escape",
+  "shortcuts-action-format", "shortcuts-action-more", "shortcuts-action-pin", "shortcuts-action-keys", "shortcuts-action-settings", "shortcuts-action-quit", "shortcuts-action-undo", "shortcuts-action-text-size", "shortcuts-action-citation-move", "shortcuts-action-citation-remove",
   "shortcuts-action-menu-move", "shortcuts-action-menu-ends", "shortcuts-action-menu-choose", "shortcuts-action-menu-leave", "shortcuts-or",
-  "about-automatic", "about-automatic-description", "about-check", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
+  "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
 type Variables = Readonly<Record<string, string | number>>;

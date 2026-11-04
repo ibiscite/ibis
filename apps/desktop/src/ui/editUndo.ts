@@ -1,5 +1,5 @@
 import { composing } from "../composition";
-import { matchesAccelerator } from "../keys";
+import { keysFor, matchesAccelerator } from "../keys";
 import { currentPlatform } from "../platform";
 
 type Stop = (() => void) & { pause: (paused: boolean) => void; isNewest: () => boolean };
@@ -44,7 +44,7 @@ const owner = new UndoOwner();
 export const subscribeUndo = owner.subscribe;
 
 const key = (event: KeyboardEvent) => {
-  if (composing(event) || !matchesAccelerator(event, "CmdOrCtrl+Z", currentPlatform() === "macos") || !owner.takes(text(event.target))) return;
+  if (composing(event) || !matchesAccelerator(event, keysFor("undo"), currentPlatform() === "macos") || !owner.takes(text(event.target))) return;
   event.preventDefault(); event.stopImmediatePropagation();
   if (!event.repeat) owner.invoke();
 };

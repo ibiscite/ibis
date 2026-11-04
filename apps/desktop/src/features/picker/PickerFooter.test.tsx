@@ -35,7 +35,7 @@ function rule(selector: string) {
 }
 
 function footer(copy = vi.fn(), altHeld = false, label: string | null = "Copy 20 as Pandoc") {
-  return <PickerFooter library={null} groupName={String} hints={{ enter: label, shiftEnter: "Add to citation", escape: "Hide" }}
+  return <PickerFooter library={null} groupName={String} hints={{ enter: label, shiftEnter: "Add to Citation", escape: "Hide" }}
     altHeld={altHeld} actions={{ copy, add: copy, escape: copy }} more={<button aria-label="More">More</button>} />;
 }
 
@@ -218,7 +218,7 @@ test("RTL at 200% shortens status and hides only labels while core actions keep 
 test("RTL and Alt preserve the guarded Add and Escape actions without a shortcut hint", () => {
   const resize = geometry(); document.documentElement.dir = "rtl";
   const action = vi.fn(); render(footer(action, true)); resize(240);
-  fireEvent.click(screen.getByRole("button", { name: "Add to citation" }));
+  fireEvent.click(screen.getByRole("button", { name: "Add to Citation" }));
   fireEvent.click(screen.getByRole("button", { name: "Hide" }));
   expect(action).toHaveBeenCalledTimes(2);
   expect(screen.getByRole("button", { name: "Hide" }).compareDocumentPosition(screen.getByRole("button", { name: "More" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();

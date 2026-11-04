@@ -12,7 +12,7 @@ const noLibrary = { state: "none", has_snapshot: false, zotero: false, name: nul
 const welcome = async () => (await screen.findByRole("heading", { name: "Where do your references live?" })).closest("section")!;
 
 test.each([false, true])("welcome plainly names a missing Wayland shortcut, follows changed triggers, and returns to none (initial registered: %s)", async (registered) => {
-  const guidance = "Bind ibis toggle in your desktop's keyboard settings.";
+  const guidance = "Bind ibis toggle in your desktop’s keyboard settings.";
   backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "", registered, error: null,
     desktop: { configurable: true, guidance } }) });
   render(<App />);
@@ -47,7 +47,7 @@ test("welcome uses the current registered shortcut, including live changes and d
 });
 
 test.each([false, true])("unregistered welcome shortcut shows unavailable guidance and no promise (desktop: %s)", async (desktop) => {
-  const guidance = "Bind ibis toggle in your desktop's keyboard settings.";
+  const guidance = "Bind ibis toggle in your desktop’s keyboard settings.";
   backend({ library_status: () => noLibrary, shortcut_status: () => ({ shortcut: "Alt+K", registered: false, error: "Another app owns the shortcut",
     desktop: desktop ? { configurable: false, guidance } : null }) });
   render(<App />);
@@ -82,7 +82,7 @@ test("a delayed shortcut read cannot replace the welcome's newer registered stat
   expect(group.queryByText(/Ctrl\+Shift\+Y/)).toBeNull();
 });
 
-test("the keys list preserves the desktop's trigger text without inventing an accelerator", async () => {
+test("the keys list preserves the desktop’s trigger text without inventing an accelerator", async () => {
   const label = "Strg + Umschalt + Y";
   backend({ shortcut_status: () => ({ shortcut: label, registered: true, error: null, desktop: { configurable: true, guidance: "Desktop settings" } }) });
   render(<App />);

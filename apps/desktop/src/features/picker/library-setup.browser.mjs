@@ -119,7 +119,7 @@ try {
       await page.evaluate(() => window.fixtureReopen());
       // The native show handler must not focus a hidden Search control.
       assert.equal(await page.evaluate(() => !!document.activeElement?.closest(".choice-list")), true, `${label}: reopen focus`);
-      await page.getByRole("option", { name: /^Try sample references/ }).press("Enter");
+      await page.getByRole("option", { name: /^Try Sample References/ }).press("Enter");
       await page.getByText("Invented lantern gardens reference", { exact: true }).waitFor();
       const mark = page.locator(".search-mark");
       const artwork = await mark.evaluate((node) => {
