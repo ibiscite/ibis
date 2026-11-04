@@ -37,6 +37,7 @@ import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
+import { useProjectBibliography } from "./features/picker/useProjectBibliography";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -53,7 +54,7 @@ import { useInterfaceMessages } from "./i18n";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "projectStatus" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -90,9 +91,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const libraryState = usePickerLibrary(api, report, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
+  const project = useProjectBibliography(api, report, perform);
   const editor = useEditorRequest(api);
   // A waiting editor's format replaces the picker's, so the same choice is asked again.
-  const checkVersion = libraryVersion + editor.version;
+  // A changed project bibliography asks the same questions of a new answer.
+  const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged, () => send({ type: "forget-last" }));
@@ -134,6 +137,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     },
   });
   useLibrarySetup(library, setFailures, send, focusHome);
+  const { clearNotice } = project;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.
+  useEffect(clearNotice, [queryKey, clearNotice]);
   const { read: readDestination } = destination;
   // The editor takes the citation itself, so no app question or paste applies.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each request and end is the trigger.
@@ -211,14 +217,15 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <Notices editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
+        <Notices projectNotice={project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
           shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={rows}
-          density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck} />
+          density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
+          project={styleOf(format) === null ? project.status : null} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
@@ -228,6 +235,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} />
       <PickerOverlays api={api} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />

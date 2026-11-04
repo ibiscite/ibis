@@ -66,7 +66,7 @@ test("More holds working actions, leaving preferences and update checks to Setti
   expect(calls).not.toContain("set_picker_preferences");
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
-    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable", "References Used This Session…", "Keep Window OpenCtrl+Shift+P", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a Project Bibliography…", "Rows: Comfortable", "References Used This Session…", "Keep Window OpenCtrl+Shift+P", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(calls).not.toContain("forget_app_outputs");
 });

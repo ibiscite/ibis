@@ -142,6 +142,12 @@ pub struct SourceSnapshot {
     text: Arc<str>,
 }
 
+impl SourceSnapshot {
+    pub(crate) fn text(&self) -> Arc<str> {
+        self.text.clone()
+    }
+}
+
 /// Load once and retain an observation for the watch-registration gap check.
 /// This compares contents, so same-size edits with preserved timestamps remain
 /// visible. Clones share the bounded source text rather than copying it.
@@ -186,6 +192,41 @@ pub fn reload_file_snapshot_reusing(
     let observation = stable_observation_with(path, || std::thread::sleep(SETTLE))?;
     let loaded = parse(&observation.source, &observation.text, true, Some(previous))?;
     Ok((loaded, observation))
+}
+
+/// Two identical reads, so a file an editor is still writing is never trusted.
+pub(crate) fn stable_observation(path: &Path) -> Result<SourceSnapshot, SourceError> {
+    stable_observation_with(path, || std::thread::sleep(SETTLE))
+}
+
+/// A file read as a library without becoming one, tolerating damaged entries.
+pub(crate) fn parse_for_project(path: &Path, text: &str) -> Result<LoadedLibrary, SourceError> {
+    parse(path, text, false, None)
+}
+
+/// `key`'s original entry in the file `item` came from, when the file still
+/// holds exactly what the library read, by `cite` fingerprint.
+pub fn original_entry(
+    path: &Path,
+    item: &ibis_core::contract::ItemRef,
+    key: &str,
+    cite: &ibis_core::contract::Fingerprint,
+) -> Result<String, crate::project::EntryRefusal> {
+    use crate::project::EntryRefusal;
+    let json = path
+        .extension()
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
+    if json {
+        return Err(EntryRefusal::NoOriginal);
+    }
+    let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
+    // Parsed from the canonical path, as the library was, so the item's ID matches.
+    let loaded = parse(&observation.source, &observation.text, false, None).map_err(|_| EntryRefusal::Changed)?;
+    let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
+    if current.fingerprints.cite != *cite {
+        return Err(EntryRefusal::Changed);
+    }
+    crate::project::entry_in(&observation.text, key)
 }
 
 fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceSnapshot, SourceError> {

@@ -6,7 +6,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 
 export type { Sources } from "./bindings";
 export type {
-  AppOutput, AppPaste, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -24,6 +24,10 @@ export const {
   checkZoteroSharing,
   reloadLibrary,
   libraryStatus,
+  projectStatus,
+  chooseProject,
+  stopProject,
+  copyProjectEntry,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -155,6 +159,16 @@ export function onLibraryFileRefused(handler: () => void): Promise<UnlistenFn> {
 
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
+}
+
+/** The project bibliography's choice or its read changed. */
+export function onProjectChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("project:changed", () => handler());
+}
+
+/** A chosen project bibliography could not be saved, so the old choice stands. */
+export function onProjectNotSaved(handler: () => void): Promise<UnlistenFn> {
+  return listen("project:not-saved", () => handler());
 }
 
 /** An editor began or stopped waiting for a citation. */

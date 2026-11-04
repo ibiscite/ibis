@@ -3,7 +3,17 @@ use ibis_engine::Method;
 
 #[test]
 fn one_method_list_drives_all_front_ends() {
-    let names = ["libraries", "search", "show", "cite", "styles", "schema", "call"];
+    let names = [
+        "libraries",
+        "search",
+        "show",
+        "cite",
+        "project",
+        "entry",
+        "styles",
+        "schema",
+        "call",
+    ];
     assert_eq!(Method::ALL.map(Method::as_str), names);
     for (method, name) in Method::ALL.into_iter().zip(names) {
         assert_eq!(Method::parse(name), Ok(method));
