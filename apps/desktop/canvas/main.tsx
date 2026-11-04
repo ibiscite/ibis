@@ -2,7 +2,6 @@ import { useEffect, useRef } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
-import { Switch } from "../src/ui/Switch";
 import { KeyCaps } from "../src/ui/KeyCaps";
 import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
 import { useAppearance } from "../src/ui/appearance";
@@ -136,8 +135,12 @@ const tokensStyle = `
 
 function States({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  // Each state is drawn by the part's own attribute, through its render prop, so the picture is the real rule.
-  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)}><Switch aria-label={englishMessages.text((["canvas-hovered", "canvas-pressed", "canvas-focused"] as const)[index]!)} isSelected={index === 1} onChange={() => {}} render={(native) => <label {...native} {...{ [`data-${state}`]: true }} />} /><Button variant={index === 1 ? "primary" : "secondary"} render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}><KeyCaps accelerator="CmdOrCtrl+K" /></Button></SettingsRow>)}</SettingsGroup></div>;
+  // One control in every row, each state drawn by the part's own attribute through its
+  // render prop, so the picture is the real rule.
+  const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
+  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
+    <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
+  </SettingsRow>)}</SettingsGroup></div>;
 }
 
 const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];

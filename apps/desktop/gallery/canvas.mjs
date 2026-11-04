@@ -31,12 +31,18 @@ const load = async (viewport) => {
 const probe = await load(size("results"));
 const scenarios = await probe.evaluate(() => [...window.IbisCanvas.scenarios]);
 await probe.close();
+// Contrast modes, for the screens whose rules change there: forced colours and
+// Increase Contrast, each in light and dark, as <scenario>-<theme>-forced.png and -contrast.png.
+const contrastScenarios = new Set(["settings-general", "settings-shortcuts", "settings-look", "shelf", "reference-details", "file-drag"]);
+const modes = [{ suffix: "", media: {} }, { suffix: "-forced", media: { forcedColors: "active" } }, { suffix: "-contrast", media: { contrast: "more" } }];
 const failures = [];
-for (const scenario of scenarios) for (const theme of ["light", "dark"]) {
+let pictures = 0;
+for (const scenario of scenarios) for (const mode of modes) for (const theme of ["light", "dark"]) {
+  if (mode.suffix && !contrastScenarios.has(scenario)) continue;
   const page = await load(size(scenario));
   const errors = [];
   page.on("pageerror", (error) => errors.push(error.message));
-  await page.emulateMedia({ colorScheme: theme });
+  await page.emulateMedia({ colorScheme: theme, forcedColors: "none", contrast: "no-preference", ...mode.media });
   await page.evaluate(({ scenario, theme }) => { window.IbisCanvas.mount(document.getElementById("host"), { scenario, theme }); }, { scenario, theme });
   await page.waitForTimeout(700);
   await page.evaluate(() => document.fonts.ready);
@@ -47,10 +53,11 @@ for (const scenario of scenarios) for (const theme of ["light", "dark"]) {
     await page.setViewportSize({ width: viewport.width, height: viewport.height + Math.ceil(more) });
     await page.waitForTimeout(200);
   }
-  await page.screenshot({ path: `${out}/${scenario}-${theme}.png` });
-  if (errors.length) failures.push(`${scenario}/${theme}: ${errors[0]}`);
+  await page.screenshot({ path: `${out}/${scenario}-${theme}${mode.suffix}.png` });
+  pictures++;
+  if (errors.length) failures.push(`${scenario}/${theme}${mode.suffix}: ${errors[0]}`);
   await page.close();
 }
 await browser.close();
 if (failures.length) throw new Error(failures.join("\n"));
-console.log(`Canvas: ${scenarios.length * 2} pictures.`);
+console.log(`Canvas: ${pictures} pictures.`);
