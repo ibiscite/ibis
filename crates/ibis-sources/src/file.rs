@@ -34,8 +34,6 @@ pub enum SourceError {
     Unreadable,
     #[error("the library file contains an unfinished entry")]
     Incomplete,
-    #[error("the library exceeded the load work limit")]
-    LoadLimit,
     #[error("the library file is still changing")]
     Changing,
     #[error("automatic library updates are unavailable; use Reload to try again")]
@@ -127,13 +125,6 @@ fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
     Ok(compatible_path(parent).join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?))
 }
 
-/// Initial loads remain tolerant of damaged entries. A reload additionally
-/// refuses unclosed blocks, while duplicate keys and other warnings still load.
-pub(crate) fn load_library_file(path: &Path, reload: bool) -> Result<LoadedLibrary, SourceError> {
-    let observation = SourceSnapshot::read_with(path, || {})?;
-    parse(&observation.source, &observation.text, reload, None)
-}
-
 /// The exact bytes and source identity seen by a completed load. Pass this to
 /// `SourceWatch::with_snapshot` to avoid parsing an unchanged source again.
 #[derive(Clone, PartialEq, Eq)]
@@ -154,7 +145,7 @@ fn load_file_snapshot_with(
     after_read: impl FnOnce(),
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
     let observation = SourceSnapshot::read_with(path, after_read)?;
-    let loaded = parse(&observation.source, &observation.text, false, None)?;
+    let loaded = parse(&observation.source, &observation.text, None)?;
     Ok((loaded, observation))
 }
 
@@ -184,7 +175,7 @@ pub fn reload_file_snapshot_reusing(
     previous: &Snapshot,
 ) -> Result<(LoadedLibrary, SourceSnapshot), SourceError> {
     let observation = stable_observation_with(path, || std::thread::sleep(SETTLE))?;
-    let loaded = parse(&observation.source, &observation.text, true, Some(previous))?;
+    let loaded = parse(&observation.source, &observation.text, Some(previous))?;
     Ok((loaded, observation))
 }
 
@@ -198,14 +189,16 @@ fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceS
     Ok(after)
 }
 
-fn parse(path: &Path, text: &str, reload: bool, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
-    parse_with_budget(path, text, reload, bibtex::Budget::for_input(text.len()), previous)
+/// One read policy: the same bytes give the same library whether opened or
+/// reloaded. Damaged entries and work limits warn while the rest loads; a
+/// stable read has already ruled out a file still being written.
+fn parse(path: &Path, text: &str, previous: Option<&Snapshot>) -> Result<LoadedLibrary, SourceError> {
+    parse_with_budget(path, text, bibtex::Budget::for_input(text.len()), previous)
 }
 
 fn parse_with_budget(
     path: &Path,
     text: &str,
-    reload: bool,
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
 ) -> Result<LoadedLibrary, SourceError> {
@@ -218,35 +211,21 @@ fn parse_with_budget(
     // Select by suffix: BibTeX comments may start with a JSON-looking bracket.
     let json = extension
         .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
-    let (parsed, limited) = if json {
-        let parsed = csl_json::load_str(&library, text)?;
-        let limited = parsed
-            .warnings
-            .iter()
-            .any(|warning| warning.code == crate::WarningCode::WorkLimit);
-        (parsed, limited)
+    let parsed = if json {
+        csl_json::load_str(&library, text)?
     } else {
-        if reload && bibtex::has_incomplete_blocks(text) {
-            return Err(SourceError::Incomplete);
-        }
         bibtex::load_with_budget(&library, text, budget, previous)
     };
-    if reload && limited {
-        return Err(SourceError::LoadLimit);
-    }
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
     let mut attachment_paths = BTreeMap::new();
-    let attachment_limited = attachments::append(
+    attachments::append(
         source.parent().ok_or(SourceError::Unavailable)?,
         parsed.attachments,
         &mut objects,
         &mut attachment_paths,
         &mut warnings,
     );
-    if reload && attachment_limited {
-        return Err(SourceError::LoadLimit);
-    }
     let mut snapshot = match previous {
         Some(previous) => Snapshot::new_reusing(objects, previous, &parsed.reused),
         None => Snapshot::new(objects),
@@ -265,9 +244,10 @@ fn parse_with_budget(
     })
 }
 
-/// Tolerant initial read: damaged entries warn while complete entries load.
+/// One read: damaged entries warn while complete entries load.
 pub fn load_file(path: &Path) -> Result<LoadedLibrary, SourceError> {
-    load_library_file(path, false)
+    let observation = SourceSnapshot::read_with(path, || {})?;
+    parse(&observation.source, &observation.text, None)
 }
 
 /// Explicit refresh obeys the same two-identical-observations rule as watches.
@@ -309,7 +289,7 @@ impl SourceWatch {
     }
 
     /// Check once after registration, but publish only if the source differs
-    /// from the completed load. Ordinary notifications retain strict reloads.
+    /// from the completed load. Ordinary notifications reload after two identical reads.
     pub fn with_snapshot(
         path: &Path,
         snapshot: SourceSnapshot,
@@ -501,17 +481,11 @@ fn stable_read(
     if before != after {
         return Err(SourceError::Changing);
     }
-    let source = &after.source;
-    if snapshot.take().is_some_and(|previous| previous == after) {
-        // An earlier gap error must clear even if the file returns unchanged.
-        // Only these exact initially accepted bytes retain tolerant loading.
-        return if error_reported {
-            parse(source, &after.text, false, previous).map(Some)
-        } else {
-            Ok(None)
-        };
+    // An earlier gap error must clear even if the file returns unchanged.
+    if snapshot.take().is_some_and(|previous| previous == after) && !error_reported {
+        return Ok(None);
     }
-    parse(source, &after.text, true, previous).map(Some)
+    parse(&after.source, &after.text, previous).map(Some)
 }
 
 impl Drop for SourceWatch {
@@ -626,6 +600,22 @@ mod tests {
     }
 
     #[test]
+    fn a_reload_refuses_bytes_that_differ_between_its_two_reads() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = dir.path().join("synthetic.bib");
+        std::fs::write(&path, "@misc{done}\n@misc{half, title={Half").unwrap_or_else(|e| panic!("{e}"));
+        // A save still being written: the second read sees different bytes.
+        let result = stable_observation_with(&path, || {
+            std::fs::write(&path, "@misc{done}\n@misc{half, title={Half written}}").unwrap_or_else(|e| panic!("{e}"));
+        });
+        assert!(matches!(result, Err(SourceError::Changing)));
+        // Once it settles, the finished save loads whole.
+        let settled = reload_file(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(settled.snapshot.objects().len(), 2);
+        assert!(settled.warnings.is_empty());
+    }
+
+    #[test]
     fn watcher_caches_only_the_accepted_coalesced_model() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("synthetic.bib");
@@ -683,39 +673,43 @@ mod tests {
         assert_eq!(read_open_file(file), Err(SourceError::NotRegular));
     }
     #[test]
-    fn exhausted_bibtex_work_keeps_prefix_but_refuses_reload() {
+    fn exhausted_bibtex_work_keeps_the_same_prefix_on_load_and_reload() {
         let fields = (0..100)
             .map(|index| format!("field{index}={{value}}"))
             .collect::<Vec<_>>()
             .join(",");
         let text =
             format!("@xdata{{parent,{fields}}}\n@book{{good}}\n@book{{limited,xdata={{parent}}}}\n@book{{suffix}}");
-        let parse_limited = |reload| {
+        let parse_limited = |previous| {
             parse_with_budget(
                 Path::new("synthetic.bib"),
                 &text,
-                reload,
                 bibtex::Budget::new(32 * 1024),
-                None,
+                previous,
             )
         };
-        let initial = parse_limited(false).unwrap_or_else(|error| panic!("{error}"));
-        let keys: Vec<_> = initial
-            .snapshot
-            .objects()
-            .iter()
-            .filter_map(|item| match &item.object {
-                LibraryObject::Record(record) => record.citation_key().ok().flatten(),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(keys, ["good"]);
+        let keys = |loaded: &LoadedLibrary| -> Vec<String> {
+            loaded
+                .snapshot
+                .objects()
+                .iter()
+                .filter_map(|item| match &item.object {
+                    LibraryObject::Record(record) => record.citation_key().ok().flatten().map(str::to_owned),
+                    _ => None,
+                })
+                .collect()
+        };
+        let initial = parse_limited(None).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(keys(&initial), ["good"]);
         assert!(
             initial
                 .warnings
                 .iter()
                 .any(|warning| warning.code == crate::WarningCode::WorkLimit)
         );
-        assert_eq!(parse_limited(true).err(), Some(SourceError::LoadLimit));
+        let reloaded = parse_limited(Some(&initial.snapshot)).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(keys(&reloaded), keys(&initial));
+        assert_eq!(reloaded.warnings, initial.warnings);
+        assert_eq!(reloaded.snapshot.fingerprints(), initial.snapshot.fingerprints());
     }
 }

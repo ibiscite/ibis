@@ -18,7 +18,6 @@ struct AttachmentBudget {
     tokens: usize,
     attachments: usize,
     bytes: usize,
-    limited: bool,
 }
 impl AttachmentBudget {
     fn charge(&mut self, record_work: &mut usize, bytes: usize) -> bool {
@@ -31,14 +30,14 @@ impl AttachmentBudget {
         self.bytes += bytes;
         true
     }
-    fn warn(&mut self, warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
-        self.limited = true;
-        warnings.push(SourceWarning {
-            code: WarningCode::WorkLimit,
-            line,
-            key: None,
-        });
-    }
+}
+
+fn limit_warning(warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
+    warnings.push(SourceWarning {
+        code: WarningCode::WorkLimit,
+        line,
+        key: None,
+    });
 }
 
 pub(crate) fn append(
@@ -47,7 +46,7 @@ pub(crate) fn append(
     objects: &mut Vec<LibraryObject>,
     paths: &mut BTreeMap<ItemRef, PathBuf>,
     warnings: &mut Vec<SourceWarning>,
-) -> bool {
+) {
     append_with(
         base,
         fields,
@@ -67,13 +66,13 @@ fn append_with(
     warnings: &mut Vec<SourceWarning>,
     budget: &mut AttachmentBudget,
     mut probe: impl FnMut(&Path) -> Availability,
-) -> bool {
+) {
     for (parent, field, line) in fields {
         if field.is_empty() {
             continue;
         }
         if field.len() > MAX_FIELD_BYTES || field.len() > MAX_LIBRARY_BYTES.saturating_sub(budget.bytes) {
-            budget.warn(warnings, line);
+            limit_warning(warnings, line);
             continue;
         }
         budget.bytes += field.len();
@@ -86,7 +85,7 @@ fn append_with(
                 || budget.attachments >= MAX_LIBRARY_ATTACHMENTS
             {
                 if rest.is_some_and(|rest| !rest.is_empty()) {
-                    budget.warn(warnings, line);
+                    limit_warning(warnings, line);
                 }
                 break;
             }
@@ -94,7 +93,7 @@ fn append_with(
                 Ok(Some(encoded)) => encoded,
                 Ok(None) => break,
                 Err(()) => {
-                    budget.warn(warnings, line);
+                    limit_warning(warnings, line);
                     break;
                 }
             };
@@ -116,7 +115,7 @@ fn append_with(
                 .saturating_add(parent.library.as_str().len().saturating_mul(3))
                 .saturating_add(digits);
             if !budget.charge(&mut record_work, reference_work) {
-                budget.warn(warnings, line);
+                limit_warning(warnings, line);
                 break;
             }
             let encoded = encoded.replace("\\;", ";");
@@ -125,7 +124,7 @@ fn append_with(
                 .as_ref()
                 .is_some_and(|(_, location, _)| location.len() > MAX_PATH_BYTES)
             {
-                budget.warn(warnings, line);
+                limit_warning(warnings, line);
                 continue;
             }
             let (title, media_type, path, availability) = match parsed {
@@ -155,7 +154,7 @@ fn append_with(
                         if native_bytes > MAX_PATH_BYTES
                             || !budget.charge(&mut record_work, native_bytes.saturating_mul(2))
                         {
-                            budget.warn(warnings, line);
+                            limit_warning(warnings, line);
                             continue;
                         }
                         let path = if relative.is_absolute() {
@@ -201,7 +200,6 @@ fn append_with(
             }));
         }
     }
-    budget.limited
 }
 
 enum LocationKind {

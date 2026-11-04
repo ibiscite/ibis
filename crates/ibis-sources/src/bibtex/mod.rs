@@ -68,7 +68,7 @@ impl Budget {
 /// and becomes part of each record's identity.
 #[cfg(test)]
 fn load_str(source: &LibraryId, text: &str) -> ParsedLibrary {
-    load_with_budget(source, text, Budget::for_input(text.len()), None).0
+    load_with_budget(source, text, Budget::for_input(text.len()), None)
 }
 
 pub(crate) fn load_with_budget(
@@ -76,7 +76,7 @@ pub(crate) fn load_with_budget(
     text: &str,
     budget: Budget,
     previous: Option<&Snapshot>,
-) -> (ParsedLibrary, bool) {
+) -> ParsedLibrary {
     let mut result = ParsedLibrary::default();
     if !budget.charge(text.len()) {
         result.warnings.push(SourceWarning {
@@ -84,7 +84,7 @@ pub(crate) fn load_with_budget(
             line: None,
             key: None,
         });
-        return (result, true);
+        return result;
     }
     let (mut blocks, limited) = split_blocks(text);
     if limited {
@@ -117,7 +117,7 @@ pub(crate) fn load_with_budget(
             result
                 .warnings
                 .push(warn(WarningCode::WorkLimit, None, LOAD_LIMIT.into()));
-            return (result, true);
+            return result;
         }
         match block.kind.as_str() {
             "comment" | "preamble" => continue,
@@ -218,12 +218,7 @@ pub(crate) fn load_with_budget(
             )),
         }
     }
-    (result, limited || budget.exhausted())
-}
-
-/// Whether a recognized block is demonstrably unfinished, for reload safety.
-pub(crate) fn has_incomplete_blocks(text: &str) -> bool {
-    split_blocks(text).0.iter().any(|block| !block.complete)
+    result
 }
 
 /// Resolve, parse and convert one entry.
@@ -318,7 +313,7 @@ mod tests {
                     .collect(),
             )
             .unwrap_or_else(|error| panic!("{error}"));
-            let repeated = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous)).0;
+            let repeated = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
             assert!(repeated.records.is_empty());
             assert_eq!(repeated.reused.len(), previous.objects().len());
         }
@@ -334,8 +329,13 @@ mod tests {
         let previous = Snapshot::new(old.records.into_iter().map(LibraryObject::Record).collect())
             .unwrap_or_else(|error| panic!("{error}"));
         let text = "@book{a,title={Keep}}\n@book{b,title={After}}\n@book{d,title={Added}}";
-        let (candidate, limited) = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
-        assert!(!limited);
+        let candidate = load_with_budget(&source, text, Budget::for_input(text.len()), Some(&previous));
+        assert!(
+            !candidate
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
         assert_eq!(candidate.records.len(), 2);
         assert_eq!(candidate.reused.len(), 1);
         let next = Snapshot::new_reusing(
@@ -370,9 +370,7 @@ mod tests {
     }
     #[test]
     fn minimal_entries_pay_fixed_allocation_work() {
-        let (result, limited) =
-            load_with_budget(&LibraryId::digest(b"synthetic"), "@misc{one}", Budget::new(1024), None);
-        assert!(limited);
+        let result = load_with_budget(&LibraryId::digest(b"synthetic"), "@misc{one}", Budget::new(1024), None);
         assert!(result.records.is_empty());
         assert!(
             result
