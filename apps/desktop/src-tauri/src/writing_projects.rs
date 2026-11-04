@@ -1756,8 +1756,10 @@ mod tests {
     fn task_epoch_exhaustion_is_refused_before_a_shared_save_can_start() {
         let settings = Settings::default();
         let target = known("example.editor", 1);
-        let mut runtime = Tasks::default();
-        runtime.next = u64::MAX - 1;
+        let mut runtime = Tasks {
+            next: u64::MAX - 1,
+            ..Tasks::default()
+        };
         assert!(runtime.preflight_edit(&target).is_err());
         assert!(runtime.tasks.is_empty());
         runtime

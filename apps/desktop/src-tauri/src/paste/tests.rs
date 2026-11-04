@@ -1626,23 +1626,29 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
         .manage(super::LastTarget::default())
         .manage(crate::project::ProjectBibliography::default())
         .build(tauri::test::mock_context(tauri::test::noop_assets()))
-        .unwrap();
-    let directory = tempfile::tempdir().unwrap();
+        .unwrap_or_else(|error| panic!("mock app: {error}"));
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("test directory: {error}"));
     let path = directory.path().join("invented.bib");
-    std::fs::write(&path, "@book{synthetic,title={Work},doi={10.5555/intended}}\n").unwrap();
+    std::fs::write(&path, "@book{synthetic,title={Work},doi={10.5555/intended}}\n")
+        .unwrap_or_else(|error| panic!("initial bibliography: {error}"));
     let project = app.state::<crate::project::ProjectBibliography>();
     let first = ibis_engine::ProjectRead::read(&path, None);
     assert!(project.finish_read(app.handle(), 0, first.clone()));
     let target = app.state::<super::LastTarget>();
     target.begin_presentation(Some(writer("com.microsoft.word")));
-    let token = target.write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT))).unwrap();
-    let detached = target.take_copy(TEXT, token).unwrap();
+    let token = target
+        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .unwrap_or_else(|error| panic!("clipboard receipt: {error}"));
+    let detached = target
+        .take_copy(TEXT, token)
+        .unwrap_or_else(|| panic!("detached proof"));
     assert!(!project.finish_read(app.handle(), 0, first.clone()));
     assert!(
         detached.policy.current(),
         "an unchanged check preserves the pending delivery"
     );
-    std::fs::write(&path, "@book{synthetic,title={Other work},doi={10.5555/other}}\n").unwrap();
+    std::fs::write(&path, "@book{synthetic,title={Other work},doi={10.5555/other}}\n")
+        .unwrap_or_else(|error| panic!("updated bibliography: {error}"));
     let conflicting = ibis_engine::ProjectRead::read(&path, Some(&first));
     assert!(!project.finish_read(app.handle(), 99, conflicting.clone()));
     assert!(

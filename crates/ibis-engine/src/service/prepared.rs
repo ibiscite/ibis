@@ -46,9 +46,7 @@ impl PreparedCitation {
             ProjectAssessmentState::Conflict
         } else if !self.uses_citation_keys() {
             ProjectAssessmentState::Ready
-        } else if read.evidence_limited() {
-            ProjectAssessmentState::Paused
-        } else if policy == ProjectPolicy::Strict && !read.current_complete() {
+        } else if read.evidence_limited() || policy == ProjectPolicy::Strict && !read.current_complete() {
             ProjectAssessmentState::Paused
         } else if policy == ProjectPolicy::Unchecked {
             ProjectAssessmentState::Unverified
