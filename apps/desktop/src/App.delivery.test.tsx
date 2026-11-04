@@ -61,19 +61,19 @@ function expectReceipt(harness: Harness, title: string, text: string) {
 }
 
 test.each([
-  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not approved for this app"],
-  ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
-  ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired; paste it yourself"],
-  ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired; paste it yourself"],
+  ["unknown app", (h: Harness) => { h.target.verified = false; }, "Copied. Automatic paste is not approved for this app. Press ⌘V to paste."],
+  ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired. Press ⌘V to paste."],
+  ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired. Press ⌘V to paste."],
+  ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired. Press ⌘V to paste."],
   ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Press ⌘V to paste."],
   ["AX unavailable", (h: Harness) => { h.target.focusAvailable = false; }, "Copied. Press ⌘V to paste."],
   ["AX timeout", (h: Harness) => { h.target.focusTimedOut = true; }, "Copied. Press ⌘V to paste."],
-  ["foreign nonactivating panel holds keyboard focus", (h: Harness) => { h.target.focusedPid = 99; }, "Copied. The target app or window changed"],
-  ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed; copy the citation again"],
-  ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed"],
-  ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed"],
-  ["minimised window", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
-  ["quit app", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed"],
+  ["foreign nonactivating panel holds keyboard focus", (h: Harness) => { h.target.focusedPid = 99; }, "Copied. The target app or window changed. Press ⌘V to paste."],
+  ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed since. Copy the citation again."],
+  ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed. Press ⌘V to paste."],
+  ["closed window", (h: Harness) => { h.target.window = null; }, "Copied. The target app or window changed. Press ⌘V to paste."],
+  ["minimised window", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed. Press ⌘V to paste."],
+  ["quit app", (h: Harness) => { h.target.available = false; }, "Copied. The target app or window changed. Press ⌘V to paste."],
 ] as const)("%s refuses pending delivery, keeps the copied citation and shows its exact reason", async (_scenario, change, message) => {
   const harness = await open();
   await choose(harness, "first");
@@ -124,7 +124,7 @@ test("opening an attached Save sheet keeps the document identity but refuses pas
   expect(sheet.text).toBe("invented-name");
   expect(harness.document.pastes).toEqual([]);
   expect(harness.clipboard.text).toBe("[@a]");
-  expectReceipt(harness, "Copied. The target app or window changed", "[@a]");
+  expectReceipt(harness, "Copied. The target app or window changed. Press ⌘V to paste.", "[@a]");
 });
 
 test.each([false, true])("missing Accessibility with PostEvent granted keeps its own receipt, including a later grant (%s)", async (grantBeforeDelivery) => {
@@ -322,7 +322,7 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   expect(harness.document.pastes).toHaveLength(when === "before paste" ? 0 : 1);
   expect(harness.copy.calls).toHaveLength(1);
   expect(harness.delivery.calls).toHaveLength(1);
-  expectReceipt(harness, when === "before paste" ? "Copied. Press ⌘V to paste" : "Pasted into Example Writer", "[@a]");
+  expectReceipt(harness, when === "before paste" ? "Copied. Press ⌘V to paste." : "Pasted into Example Writer", "[@a]");
 });
 
 test.each(["different text", "identical text"])("an old notice cannot steal a newer copy's proof (%s)", async (variant) => {
@@ -381,7 +381,7 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expect(harness.clipboard).toMatchObject({ text, owner: "external", sequence: 2 });
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);
-  expectReceipt(harness, "Copied. The clipboard changed; copy the citation again", "[@a]");
+  expectReceipt(harness, "Copied. The clipboard changed since. Copy the citation again.", "[@a]");
 });
 
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {
@@ -581,7 +581,7 @@ test("a refused app opens an empty search, and Enter changes nothing in the docu
   expect(harness.clipboard.owner).toBeNull();
   await copyFirst(harness, "first");
   expect(harness.document.text).toBe("Draft: smith 2020 ends.");
-  expectReceipt(harness, "Copied. Not pasted into a terminal", "[@a]");
+  expectReceipt(harness, "Copied. Not pasted into a terminal. Press ⌘V to paste.", "[@a]");
 });
 
 test("Copy only opens an empty search, and Enter changes nothing in the document", async () => {
@@ -592,7 +592,7 @@ test("Copy only opens an empty search, and Enter changes nothing in the document
   expect((searchBox() as HTMLInputElement).value).toBe("");
   await copyFirst(harness, "first");
   expect(harness.document.text).toBe("Draft: smith 2020 ends.");
-  expectReceipt(harness, "Copied. Copy only is set for this app", "[@a]");
+  expectReceipt(harness, "Copied. Copy Only is set for this app. Press ⌘V to paste.", "[@a]");
 });
 
 test("an unapproved app opens an empty search and changes nothing in the document", async () => {

@@ -34,12 +34,15 @@ test("empty Enter explains refusal and zoom reports for one second, without copy
   expect(container.querySelector("[data-empty-action]")).not.toBeNull();
   act(() => vi.advanceTimersByTime(240));
   expect(container.querySelector("[data-empty-action]")).toBeNull();
+  // Text size takes the system's command key, as KEY_TABLE lists it: Ctrl here, never the Windows key.
   fireEvent.keyDown(input, { key: "+", metaKey: true });
+  expect(document.documentElement.style.zoom).toBe("");
+  fireEvent.keyDown(input, { key: "+", ctrlKey: true });
   expect(screen.getByText("110%").closest(".notice-slot")).toBeTruthy();
   expect(document.documentElement.style.zoom).toBe("1.1");
   act(() => vi.advanceTimersByTime(1000));
   expect(screen.queryByText("110%")).toBeNull();
-  fireEvent.keyDown(input, { key: "-", metaKey: true });
+  fireEvent.keyDown(input, { key: "-", ctrlKey: true });
   expect(screen.getByText("100%")).toBeTruthy();
   expect(document.activeElement).toBe(input);
   expect(calls).not.toContain("copy_file_citation");

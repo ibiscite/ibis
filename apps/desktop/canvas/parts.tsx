@@ -23,8 +23,8 @@ const ignore = () => {};
 const states = ["rest", "hovered", "pressed", "focus-visible", "disabled"] as const;
 const variants = ["primary", "secondary"] as const;
 const choices = [
-  { id: "retry", title: "Try again", help: "Read the library again", icon: <ChoiceIcon name="retry" />, suggested: true },
-  { id: "another", title: "Use another library", help: "Zotero or another library file", icon: <ChoiceIcon name="swap" /> },
+  { id: "retry", title: "Try Again", help: "Read the library again", icon: <ChoiceIcon name="retry" />, suggested: true },
+  { id: "another", title: "Use Another Library", help: "Zotero or another library file", icon: <ChoiceIcon name="swap" /> },
 ];
 
 function State({ name, children }: { name: string; children: ReactNode }) {
@@ -94,7 +94,7 @@ export function Parts() {
     <section><h2>Settings rows</h2>
       <SettingsGroup id="canvas-group" title="Group title">
         <SettingsRow id="canvas-switch" label="A setting" description="One line that explains it"><Switch aria-label="A setting" isSelected onChange={ignore} /></SettingsRow>
-        <SettingsRow id="canvas-button" label="An action"><Button>Check now</Button></SettingsRow>
+        <SettingsRow id="canvas-button" label="An action"><Button>Check Now</Button></SettingsRow>
         <SettingsRow id="canvas-highlight" label="Found by search" highlighted><Button>Reset</Button></SettingsRow>
       </SettingsGroup>
     </section>

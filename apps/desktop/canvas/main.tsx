@@ -53,10 +53,10 @@ const fixtures: Partial<Record<Scenario, {
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { click: ".pin-button" },
   "no-matches": { rows: [] },
-  missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "The invented library file is unavailable" } },
-  "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero isn't open" } },
-  unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The invented file has an entry Ibis can't read" } },
-  stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
+  missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "the library file is unavailable; download any online-only file to this computer first" } },
+  "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero’s library cannot be read while it is closed" } },
+  unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "the library file does not contain valid reference data" } },
+  stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero’s library cannot be read while it is closed", problem: "zotero_closed", checked_at: Date.now() - 2 * 3_600_000 } },
   compact: { preferences: { density: "compact" } },
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
@@ -74,8 +74,9 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     zotero: false, snapshot_zotero: false, zotero_libraries: [],
     name: firstRun ? null : "invented.bib", snapshot_name: firstRun ? null : "invented.bib",
     references: firstRun || fixture ? 0 : rows.length, source_counts: firstRun ? {} : { "invented.bib": rows.length },
-    warnings: 0, error: scenario === "error" ? "The invented library could not be opened." : null, problem: scenario === "error" ? "other" : null, note: null, settings_notice: null,
-    stale: false, updated_at: null, checked_at: null, ...fixed?.library,
+    warnings: 0, error: scenario === "error" ? "the chosen file is not on this computer" : null, problem: scenario === "error" ? "other" : null, note: null, settings_notice: null,
+    // The backend's own words and times, so each picture shows what a person would see.
+    stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };
   const noop = async () => {};
   const subscribe = async () => () => {};
@@ -139,7 +140,7 @@ function States({ theme }: { theme: Theme }) {
   // render prop, so the picture is the real rule.
   const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
   return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
-    <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
+    <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check Now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
   </SettingsRow>)}</SettingsGroup></div>;
 }
 

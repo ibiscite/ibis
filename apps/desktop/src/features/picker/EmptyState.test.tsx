@@ -80,7 +80,7 @@ describe("a screen waiting on Zotero", () => {
   test("leaving for another library stops the check", async () => {
     const checkSharing = vi.fn(async () => "access_off");
     recovery(waiting("zotero_access_off"), { checkSharing });
-    fireEvent.click(screen.getByRole("option", { name: /Use another library/ }));
+    fireEvent.click(screen.getByRole("option", { name: /Use Another Library/ }));
     await ask(ZOTERO_CHECK_EVERY * 3);
     expect(checkSharing).not.toHaveBeenCalled();
   });
@@ -90,9 +90,9 @@ test("no Zotero here says so and offers the way on, never Open Zotero", () => {
   const openSource = vi.fn();
   render(<EmptyState library={waiting("zotero_missing")} query="" narrowed={false} onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()}
     onReload={vi.fn()} setup={setup} />);
-  expect(screen.getByText("Ibis can't find Zotero's library")).toBeTruthy();
-  expect(screen.getByRole("option", { name: /Use another library/ }).getAttribute("data-suggested")).toBe("true");
-  expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
+  expect(screen.getByText("Ibis can’t find Zotero’s library")).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Use Another Library/ }).getAttribute("data-suggested")).toBe("true");
+  expect(screen.getByRole("option", { name: /Try Again/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /Open Zotero/ })).toBeNull();
   expect(openSource).not.toHaveBeenCalled();
 });
@@ -109,8 +109,8 @@ test("a list of profiles that cannot be read still leaves a way forward", async 
   const chooseProfile = vi.fn();
   recovery(waiting("zotero_profiles"), { listProfiles: async () => { throw new Error("refused"); }, chooseProfile });
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", expect.stringContaining("could not list your Zotero profiles"));
-  expect(screen.getByRole("option", { name: /Try again/ })).toBeTruthy();
-  expect(screen.getByRole("option", { name: /Use another library/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Try Again/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Use Another Library/ })).toBeTruthy();
   expect(chooseProfile).not.toHaveBeenCalled();
 });
 
@@ -148,7 +148,7 @@ test("a filter is named, with one fix that keeps the plain words", () => {
 
 test("a library scope is named, with one fix", () => {
   const { title, buttons } = obstacle({ narrowed: true });
-  expect(title).toBe("Not in the libraries you're searching");
+  expect(title).toBe("Not in the libraries you’re searching");
   expect(buttons).toEqual(["Search All Zotero Libraries"]);
 });
 
@@ -174,12 +174,10 @@ test("plain no matches, an empty library and a source failure stay different", (
   expect(screen.getByRole("alert")).toBeTruthy();
 });
 
-test("idle instructions show only the two decorative key hints without an action", () => {
+test("a new library's hint shows words only: no keys, no action [C11]", () => {
   const { container } = mount();
-  const keys = container.querySelector(".empty-keys");
-  expect(keys?.getAttribute("aria-hidden")).toBe("true");
-  expect([...container.querySelectorAll(".key-hint-label")].map((label) => label.textContent)).toEqual(["Copy", "Add to citation"]);
-  expect([...container.querySelectorAll(".key-hint")].every((hint) => hint.firstElementChild?.className === "key-hint-label")).toBe(true);
+  expect(container.querySelector(".empty-title")?.textContent).toBe("Type to find a reference");
+  expect(container.querySelector(".empty-keys, .key-hint, kbd")).toBeNull();
   expect(screen.queryByRole("button")).toBeNull();
   expect(container.querySelector(".empty-actions")).toBeNull();
 });
@@ -360,7 +358,7 @@ test("C12 missing-file choices name the requested file and keep both actions aft
     onChooseLibrary={choose} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setup} />);
   const rows = screen.getAllByRole("option");
   expect(rows.map((row) => row.querySelector(".result-title")?.textContent))
-    .toEqual(["Find requested 研究.bib", "Use another library"]);
+    .toEqual(["Find requested 研究.bib", "Use Another Library"]);
   fireEvent.click(rows[0]!);
   expect(choose).toHaveBeenCalledOnce();
   expect(screen.getByRole("option", { name: /^Find requested 研究.bib/ })).toBeTruthy();

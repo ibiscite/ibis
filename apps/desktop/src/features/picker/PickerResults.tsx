@@ -46,8 +46,12 @@ export function PickerResults({
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
+  // A failed refresh keeps the older references searchable, so a search that
+  // finds nothing there still says so; only a library with nothing to search
+  // hands the middle area to its recovery screen.
+  const searchable = !library?.error || blocked || Boolean(library?.has_snapshot);
   const emptyState = choosingLibrary ? <LibrarySetup api={setupApi} perform={performSourceChoice} autoFocus
-    shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && (!library?.error || blocked)) ? (
+    shortcut={shortcut} onWelcomeChange={setWelcomeShown} /> : (library !== undefined && (libraryChoices || busy || results.length === 0 && !error && searchable) ? (
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
       onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}

@@ -11,7 +11,7 @@ use notify::{RecursiveMode, Watcher};
 use thiserror::Error;
 
 use crate::{LoadedLibrary, attachments, bibtex, csl_json};
-use ibis_core::contract::{LibraryObject, Snapshot};
+use ibis_core::contract::{Fingerprint, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
 mod io;
@@ -85,8 +85,10 @@ fn retry_io<T>(mut operation: impl FnMut() -> std::io::Result<T>, mut pause: imp
     }
 }
 
-fn read_text(file: impl Read) -> Result<String, SourceError> {
-    let mut bytes = Vec::new();
+/// `expected` is the size the file reported; reading into exactly that much
+/// keeps a large library from briefly costing twice its size.
+fn read_text(file: impl Read, expected: u64) -> Result<String, SourceError> {
+    let mut bytes = Vec::with_capacity(usize::try_from(expected.min(MAX_LIBRARY_BYTES)).unwrap_or(0));
     file.take(MAX_LIBRARY_BYTES + 1)
         .read_to_end(&mut bytes)
         .map_err(|_| SourceError::Unavailable)?;
@@ -139,13 +141,30 @@ pub(crate) fn load_library_file(path: &Path, reload: bool) -> Result<LoadedLibra
 #[derive(Clone, PartialEq, Eq)]
 pub struct SourceSnapshot {
     source: PathBuf,
-    text: Arc<str>,
+    // Shares the buffer that was read; `Arc<str>` would copy all of it.
+    text: Arc<String>,
 }
 
 impl SourceSnapshot {
-    pub(crate) fn text(&self) -> Arc<str> {
+    pub(crate) fn text(&self) -> Arc<String> {
         self.text.clone()
     }
+
+    /// What two observations compare, without keeping the text alive.
+    fn seen(self) -> Seen {
+        Seen {
+            digest: Fingerprint::of_bytes(self.text.as_bytes()),
+            source: self.source,
+        }
+    }
+}
+
+/// An earlier observation, remembered only to compare with a later one: a
+/// full copy of a large library per observation would multiply its cost.
+#[derive(PartialEq, Eq)]
+struct Seen {
+    source: PathBuf,
+    digest: Fingerprint,
 }
 
 /// Load once and retain an observation for the watch-registration gap check.
@@ -179,7 +198,7 @@ impl SourceSnapshot {
         }
         Ok(Self {
             source,
-            text: text.into(),
+            text: Arc::new(text),
         })
     }
 }
@@ -230,10 +249,10 @@ pub fn original_entry(
 }
 
 fn stable_observation_with(path: &Path, settle: impl FnOnce()) -> Result<SourceSnapshot, SourceError> {
-    let before = SourceSnapshot::read_with(path, || {})?;
+    let before = SourceSnapshot::read_with(path, || {})?.seen();
     settle();
     let after = SourceSnapshot::read_with(path, || {})?;
-    if before != after {
+    if before != after.clone().seen() {
         return Err(SourceError::Changing);
     }
     Ok(after)
@@ -384,7 +403,7 @@ impl SourceWatch {
 
     fn start_with_policy(
         path: &Path,
-        mut snapshot: Option<SourceSnapshot>,
+        snapshot: Option<SourceSnapshot>,
         mut model: Option<Snapshot>,
         mut changed: impl FnMut(Result<LoadedLibrary, SourceError>) -> Option<Snapshot> + Send + 'static,
         supports_notifications: impl FnOnce(&Path) -> bool,
@@ -437,6 +456,9 @@ impl SourceWatch {
         std::thread::Builder::new()
             .name("ibis-library-watch".into())
             .spawn(move || {
+                // Hashed here, not on the opening thread; the text it frees is
+                // a whole library that the gap check below does not need.
+                let mut snapshot = snapshot.map(SourceSnapshot::seen);
                 // Also check once after registration to close the load/watch gap.
                 let mut error_reported = false;
                 // Windows reports one delete as several directory events: the
@@ -523,11 +545,11 @@ fn stable_read(
     path: &Path,
     events: &Receiver<()>,
     stopped: &AtomicBool,
-    snapshot: &mut Option<SourceSnapshot>,
+    snapshot: &mut Option<Seen>,
     error_reported: bool,
     previous: Option<&Snapshot>,
 ) -> Result<Option<LoadedLibrary>, SourceError> {
-    let before = SourceSnapshot::read_with(path, || {})?;
+    let before = SourceSnapshot::read_with(path, || {})?.seen();
     // A zero-length file and a valid prefix can both occur during a save.
     // Require identical observations separated by another quiet interval.
     match events.recv_timeout(SETTLE) {
@@ -539,11 +561,12 @@ fn stable_read(
         return Err(SourceError::Changing);
     }
     let after = SourceSnapshot::read_with(path, || {})?;
-    if before != after {
+    let seen = after.clone().seen();
+    if before != seen {
         return Err(SourceError::Changing);
     }
     let source = &after.source;
-    if snapshot.take().is_some_and(|previous| previous == after) {
+    if snapshot.take().is_some_and(|previous| previous == seen) {
         // An earlier gap error must clear even if the file returns unchanged.
         // Only these exact initially accepted bytes retain tolerant loading.
         return if error_reported {
@@ -589,7 +612,7 @@ fn read_open_file(file: std::fs::File) -> Result<String, SourceError> {
     if metadata.len() > MAX_LIBRARY_BYTES {
         return Err(SourceError::TooLarge);
     }
-    io::read_if_downloaded(io::needs_download(&metadata), || read_text(file))
+    io::read_if_downloaded(io::needs_download(&metadata), || read_text(file, metadata.len()))
 }
 
 #[cfg(all(test, unix))]
@@ -626,6 +649,20 @@ mod tests {
             panic!("reference")
         };
         assert_eq!(record.citation_key(), Ok(Some("after")));
+    }
+
+    #[test]
+    fn an_observation_holds_one_exact_copy_of_the_file() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("synthetic.bib");
+        let text = "@book{a,title={Invented 日本}}\n".repeat(5_000);
+        std::fs::write(&path, &text).unwrap_or_else(|e| panic!("{e}"));
+        let (_, observation) = load_file_snapshot(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(*observation.text, text);
+        // Reading without the file's size doubles the buffer as it fills.
+        assert_eq!(observation.text.capacity(), text.len());
+        let stable = stable_observation(&path).unwrap_or_else(|e| panic!("{e}"));
+        assert!(stable.seen() == observation.seen());
     }
 
     #[cfg(unix)]

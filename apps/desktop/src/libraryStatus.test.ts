@@ -28,7 +28,9 @@ const clockAt = (hours: number) => new Intl.DateTimeFormat("en", { timeStyle: "s
 test("the dot never stays green beside a reported problem, and a worse state stays worse", () => {
   expect(libraryCondition(file()).health).toBe("done");
   expect(libraryCondition(file(), { failure: "Invented failure" }).health).toBe("look");
-  expect(libraryCondition(file({ stale: true }), { groupsFailed: true }).health).toBe("stop");
+  // An older copy still searched is a warning; nothing to search is a stop.
+  expect(libraryCondition(file({ stale: true }), { groupsFailed: true }).health).toBe("look");
+  expect(libraryCondition(file({ state: "error", has_snapshot: false, error: "Invented failure" }), { groupsFailed: true }).health).toBe("stop");
   expect(libraryCondition(null, { groupsFailed: true }).health).toBe("stop");
 });
 
@@ -68,7 +70,7 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
   ["reading notices", file({ warnings: 2 }), "thesis.bib · 1,204 references · 2 reading notices", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
-  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "stop"],
+  ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "look"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
   ["failed switch between files", file({ state: "error", name: "missing.bib", error: "The library file is unavailable; keeping the last loaded references" }), "thesis.bib · 1,204 references · ⁨missing.bib⁩ not opened", "stop"],
   ["failed switch from a file to Zotero", file({ state: "error", zotero: true, zotero_libraries: ["user"], name: "Zotero library", error: "Zotero is not running" }), "thesis.bib · 1,204 references · ⁨Zotero⁩ not opened", "stop"],
@@ -356,7 +358,8 @@ test.each<[string, { groupsFailed?: boolean; failure?: string }, string | null]>
 });
 
 test("a stopped library stays Stop when a smaller problem joins it", () => {
-  expect(libraryCondition(zotero({ error: "Zotero is not sharing", stale: true }), { groupsFailed: true }).health).toBe("stop");
+  expect(libraryCondition(zotero({ error: "Zotero is not sharing", state: "error", has_snapshot: false }), { groupsFailed: true }).health).toBe("stop");
+  expect(libraryCondition(zotero({ error: "Zotero is not sharing", stale: true }), { groupsFailed: true }).health).toBe("look");
   expect(libraryCondition(null, { groupsFailed: true }).health).toBe("stop");
 });
 

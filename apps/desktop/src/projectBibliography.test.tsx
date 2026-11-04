@@ -23,7 +23,7 @@ function picker(state: string, status: () => ProjectStatus | null, handlers: Par
 }
 
 test.each([
-  ["in", "In thesis.bib"], ["missing", "Missing from thesis.bib"], ["could-not-check", "Couldn't check thesis.bib"],
+  ["in", "In thesis.bib"], ["missing", "Missing from thesis.bib"], ["could-not-check", "Couldn’t check thesis.bib"],
   ["repeated", "Key appears more than once"], ["may-name-another", "Key may name another reference"],
 ])("a row in the %s state says so in words", async (state, words) => {
   picker(state, () => file());
@@ -127,7 +127,7 @@ test("the status survives the picker closing and opening again", async () => {
 test.each<[EntryCopy, RegExp]>([
   ["copied", /Copied the entry for okafor2018 as your file has it, including any file or note field\. Check it, then add it to thesis\.bib/],
   ["no-original", /Export it from your reference manager/],
-  ["dependency", /can't come with it/],
+  ["dependency", /can’t come with it/],
   ["changed", /Search again, then try again/],
 ])("copying a missing entry ending %s says what to do next", async (outcome, words) => {
   const sent: unknown[] = [];
@@ -150,9 +150,9 @@ test("an entry is offered only for a missing key", async () => {
 test("More says what is wrong with the file, and offers the choice when none is made", async () => {
   let status: ProjectStatus | null = file({ state: "damaged" });
   picker("could-not-check", () => status);
-  await waitFor(() => expect(shownRow()).toContain("Couldn't check thesis.bib"));
+  await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn't read all of thesis.bib, so nothing is called missing.");
+  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read all of thesis.bib, so nothing is called missing.");
   fireEvent.keyDown(await screen.findByRole("menu"), { key: "Escape" });
   status = null;
   await act(() => emit("project:changed"));
@@ -162,9 +162,9 @@ test("More says what is wrong with the file, and offers the choice when none is 
 
 test("More names the failed read and the lines to look at", async () => {
   picker("could-not-check", () => file({ state: "failed", last_good: true, reason: "Part of it cannot be read.", damaged_lines: [7] }));
-  await waitFor(() => expect(shownRow()).toContain("Couldn't check thesis.bib (last good copy)"));
+  await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib (last good copy)"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn't read thesis.bib; using the last good copy. Part of it cannot be read. Check line 7.");
+  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read thesis.bib; using the last good copy. Part of it cannot be read. Check line 7.");
 });
 
 test("a choice that could not be saved says so", async () => {

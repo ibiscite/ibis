@@ -224,17 +224,28 @@ fn measure(include_refresh: bool, enforce_open_refresh: bool) {
     assert_original_ranking(&engine, &cancel);
 
     // Each query must meet the limit; cheap queries cannot mask a slow case.
+    // Decision 0032: the blocking limits apply at 10k records, and a check with
+    // too little margin on shared runners only reports there. This 100k case
+    // sits near its 20 ms line on shared CI runners, so it fails only where
+    // IBIS_ENFORCE_BUDGETS is set (the release machines, #1536).
+    let enforce = std::env::var_os("IBIS_ENFORCE_BUDGETS").is_some();
+    let mut over = Vec::new();
     for (query, samples) in QUERIES.iter().zip(cases) {
         let p95 = percentile(samples, 95);
-        assert!(
-            p95 <= Duration::from_millis(20),
-            "100k {query:?} p95 {p95:?} exceeds 20 ms"
-        );
+        if p95 > Duration::from_millis(20) {
+            over.push(format!("100k {query:?} p95 {p95:?} exceeds 20 ms"));
+        }
     }
-    assert!(
-        search_p95 <= Duration::from_millis(20),
-        "100k search p95 {search_p95:?} exceeds 20 ms"
-    );
+    if search_p95 > Duration::from_millis(20) {
+        over.push(format!("100k search p95 {search_p95:?} exceeds 20 ms"));
+    }
+    if enforce {
+        assert!(over.is_empty(), "{}", over.join("; "));
+    } else {
+        for line in &over {
+            eprintln!("report only (IBIS_ENFORCE_BUDGETS unset): {line}");
+        }
+    }
     if !include_refresh {
         return;
     }

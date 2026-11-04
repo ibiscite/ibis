@@ -8,12 +8,15 @@ export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; prob
 
 /** The one reading of a library's health. The dot, the hover text and the
  * menu all draw from it, so a screen can never say two things at once: a
- * problem in words is never a Done dot. */
+ * problem in words is never a Done dot. Nothing to search is a stop; an older
+ * copy still searched is a warning (docs/design.md, Footer). */
 export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, profilesFailed = false, failure = null }: {
   groupsFailed?: boolean; profilesFailed?: boolean; failure?: string | null;
 } = {}): LibraryCondition {
   const problem = [groupsFailed && operationFailures.zoteroGroups, profilesFailed && setupText.zoteroProfilesFailed].filter(Boolean).join(" ") || null;
-  if (library === null || library?.error || library?.stale) return { health: "stop", problem };
+  // An old copy kept after a failed read is still searched: a warning, not a stop.
+  if (library?.stale) return { health: "look", problem };
+  if (library === null || library?.error) return { health: "stop", problem };
   if (problem || failure) return { health: "look", problem };
   if (!library?.has_snapshot) return { health: "idle", problem };
   return { health: library.warnings > 0 || library.references === 0 ? "look" : "done", problem };
