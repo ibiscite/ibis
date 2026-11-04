@@ -1487,7 +1487,7 @@ def _first_run_preferences_main(args):
         # With no match there is no footer copy action to invoke accidentally.
         type_query(native, snapshot, NO_MATCH, "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc key · Default")
+        native.click("Copy as Pandoc key")
         wait_for(lambda: bool(named(snapshot(), "Typst key")), "Copy as lists Typst key")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
@@ -2641,7 +2641,7 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc key · Default":
+            elif name == "Copy as Pandoc key":
                 self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
                 native.format_filter = ""
             else:
@@ -2674,7 +2674,7 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc key · Default", "3 references"]
+                names += ["Copy as Pandoc key", "3 references"]
                 if native.format_filter is not None:
                     names += ["Typst key"]
                 names += ["No matching references"] if native.query == NO_MATCH else [
@@ -2756,7 +2756,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc key · Default", "Typst")], [("Copy as Pandoc key · Default", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc key", "Typst")], [("Copy as Pandoc key", 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
