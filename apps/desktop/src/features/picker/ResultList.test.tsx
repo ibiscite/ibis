@@ -16,7 +16,7 @@ const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
 }));
 
 test("metadata reflow measures the space left beside the year", () => {
-  // A 464px spacious row with Web page, a key, library and No date has only
+  // A 464px row with Web page, a key, library and No date has only
   // 336px for metadata: the whole row's width must not force it onto one line.
   expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size/);
   expect(styles).not.toMatch(/\[role="option"\] \{ container-type: inline-size/);
@@ -27,13 +27,13 @@ function list(active: number, onChoose = vi.fn(), onToggle = vi.fn()) {
     onMouseMove={() => undefined} onChoose={onChoose} onToggle={onToggle} />;
 }
 
-test.each<Density>(["compact", "comfortable", "spacious"])("%s sample rows keep their own label while a replacement search is pending", (density) => {
+test.each<Density>(["compact", "comfortable"])("%s sample rows keep their own label while a replacement search is pending", (density) => {
   const { getByRole } = render(<ResultList results={[{ ...rows[0]!, sample: true }]} active={0} selected={new Map()} density={density}
     libraryOf={() => null} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />);
   expect(getByRole("option").querySelector(".result-title")?.textContent).toBe("Sample · Title 0");
 });
 
-test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the trailing column for the year", (density) => {
+test.each<Density>(["compact", "comfortable"])("%s rows reserve the trailing column for the year", (density) => {
   const record = { ...rows[0]!, title: "多言語の研究 · الذاكرة", key: "memory2020", year: null };
   const { container, getByRole } = render(<ResultList results={[record]} active={0} selected={new Map()} density={density}
     libraryOf={() => "Example library"} onMouseMove={vi.fn()} onChoose={vi.fn()} onToggle={vi.fn()} />);
@@ -41,10 +41,7 @@ test.each<Density>(["compact", "comfortable", "spacious"])("%s rows reserve the 
   const year = container.querySelector(".result-year")!;
   const key = container.querySelector(".result-key")!;
   expect(year.parentElement).toBe(row.querySelector(".result-line"));
-  if (density === "spacious") expect(row.querySelector(".result-type")?.textContent).toBe("Book");
-  {
-    expect(year.textContent).toBe("No date");
-  }
+  expect(year.textContent).toBe("No date");
   // C4: the key is not drawn in the row; it stays spoken, in the tooltip and LTR.
   expect(key.classList.contains("visually-hidden")).toBe(true);
   expect(container.querySelector(".result-meta")?.contains(key)).toBe(false);

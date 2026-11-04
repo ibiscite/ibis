@@ -3,6 +3,7 @@ mod attachments;
 mod bibtex;
 mod csl_json;
 mod file;
+pub mod identity;
 mod urls;
 pub mod zotero;
 
@@ -43,16 +44,57 @@ pub enum WarningCode {
 pub struct SourceWarning {
     pub code: WarningCode,
     pub line: Option<usize>,
-    /// The repeated BibTeX citation key, for `duplicate-key` only. It is the person's own
-    /// data and is shown only to them; no other warning carries source text.
+    /// The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's
+    /// own data and is shown only to them; no other warning carries source text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+}
+
+/// What a library is. Front ends read this, never the library's id.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum LibraryKind {
+    /// A BibTeX, BibLaTeX or CSL-JSON file.
+    File,
+    Zotero,
+    /// Data handed to the engine whole, with no source behind it.
+    Snapshot,
+}
+
+/// A fixed list per kind, not a plugin system. Zotero's two read paths share
+/// one kind, so running and closed Zotero cannot offer different lists.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum SourceCapability {
+    BibliographicRecords,
+    NativeCitationKeys,
+    ExtraCitationKeys,
+    KeyAliases,
+    KeyConflicts,
+}
+
+impl LibraryKind {
+    pub fn capabilities(self) -> &'static [SourceCapability] {
+        use SourceCapability::*;
+        match self {
+            Self::File => &[BibliographicRecords, NativeCitationKeys],
+            Self::Zotero => &[
+                BibliographicRecords,
+                NativeCitationKeys,
+                ExtraCitationKeys,
+                KeyAliases,
+                KeyConflicts,
+            ],
+            Self::Snapshot => &[BibliographicRecords],
+        }
+    }
 }
 
 /// One immutable library plus private source ownership. Paths never serialize.
 #[derive(Clone)]
 pub struct LoadedLibrary {
     pub library: LibraryId,
+    pub kind: LibraryKind,
     pub snapshot: Snapshot,
     pub warnings: Vec<SourceWarning>,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,

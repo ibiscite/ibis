@@ -35,7 +35,10 @@ Each run reads the libraries you name and nothing else:
 
 Library options may come before or after the command; they add up in that order and
 duplicates are ignored. Reading never writes to a library, and one-shot commands
-watch no files. Library IDs in the output are opaque digests, never paths.
+watch no files. Library IDs in the output are opaque tokens: they say nothing about
+the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
+and last across runs on one computer, thanks to a private key Ibis saves once in its
+configuration folder. That key is the only file the command writes.
 
 When you name no library, `search`, `show`, `cite`, `libraries` and `call` of the first
 three read the one chosen in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
@@ -49,6 +52,10 @@ app's choice only when given `--app-libraries`.
 
 ## Commands
 
+`ibis` alone at a terminal prints a short start and exits 0. With its output piped,
+it stays a usage error (exit 2) that lists the commands on stderr, so a script that
+forgets its command fails loudly. `ibis settings` alone lists its own commands the same way.
+
 | Command | Does |
 | --- | --- |
 | `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
@@ -56,7 +63,7 @@ app's choice only when given `--app-libraries`.
 | `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The open libraries, their item counts and each warning in words. |
-| `styles` | The bundled CSL styles. |
+| `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
 | `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |
@@ -73,10 +80,10 @@ Without `--json`, commands print short lines for people. Add `--json` to any
 command, including `--help`, `--version` and argument errors, and stdout holds exactly
 one JSON envelope followed by a newline. The exceptions are `serve` and `mcp`, which
 stream their own protocols on stdout (below); their help and argument errors still use
-the envelope. A library that fails to open before they start is reported in each one's
-own way: `serve` writes one framed JSON-RPC error whose `data.code` is the
-`error.code`, with nothing on stderr; `mcp` reports it like any other command. Both
-exit with the code from the table below.
+the envelope. When a library fails to open, `serve` writes one framed JSON-RPC error
+whose `data.code` is the `error.code`, with nothing on stderr, and exits with the code
+from the table below. `mcp` still starts: it says why on stderr and in every tool that
+needs a library, so an agent can tell the person.
 
 The envelope looks like this:
 
@@ -184,14 +191,30 @@ behind a queue of eight; a long request delays the ones after it.
 ## AI agents (MCP)
 
 `ibis mcp` serves the Model Context Protocol over stdio with four read-only tools:
-`search`, `show`, `cite` and `styles`; `cite` takes `for_app`, the [ID above](#output-for-an-app). It speaks revision 2026-07-28, in which every
+
+| Tool | Takes | Returns |
+| --- | --- | --- |
+| `search` | `query`, `limit` (1 to 25, default 10) | Short `hits`, each with a `ref`. `complete` is false when more references match. |
+| `show` | `ref` | One reference's fields. |
+| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `style` or `syntax`, `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
+| `styles` | nothing | The style ids `cite` accepts. |
+
+A `ref` is the citation key, or an `id:` string when no key selects that record alone,
+then `#` and a short check. If the record changes after `search`, the ref is refused
+instead of citing whatever now holds that key.
+Answers holding library text carry a `provenance` line saying it is data, not
+instructions, and `library_notes` when results may be missing or out of date, for
+example when entries were skipped or a library could no longer be read.
+
+It speaks revision 2026-07-28, in which every
 request names its revision and the client's capabilities and `server/discover`
 describes the server, and it still answers clients that start with `initialize` on
 2025-11-25 or 2025-06-18. A request that names any other revision is refused with
 the list of revisions Ibis supports. An `initialize` that asks for another revision is
 answered with 2025-11-25, and the client decides whether to go on, as MCP specifies.
 A failed tool call names its error code and says what to change, never quoting the
-library.
+library. An argument the tool does not know is refused, not ignored. With no library
+open, a tool says so instead of finding nothing.
 
 The Ibis plugin for Claude Code and Codex adds the server and a skill that tells the
 agent to cite only what Ibis returns. It reads the library chosen in the Ibis app and
@@ -230,8 +253,12 @@ open Agent Skills format; copy that folder into an agent's skills folder to use 
 without the plugin.
 
 Through MCP, agents see bibliographic fields and citations only: never notes, annotations, source
-paths, file locations or local links. Long values are shortened and each answer is at
-most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
+paths, file locations, local links or addresses with a login. A note's field lines, such
+as `original-title: …`, count as bibliographic fields, because citations print them.
+`search` and `show` remove markup, direction overrides and invisible tag characters,
+because anyone can write a title; a library is treated as untrusted text. `cite` text is
+the citation as it prints, so a title's own words stay in it. Long values are shortened
+and each answer is at most 256 KiB. Nothing connects beyond your computer; reading a running Zotero uses
 its local API on `127.0.0.1` only.
 
 Search results preserve `partial` (only some query words matched) and `typo`

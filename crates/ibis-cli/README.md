@@ -92,7 +92,7 @@ use `ibis libraries --zotero --json` separately.
 when the report completes, including when checks find problems. `data` includes:
 
 - `contract_version`, `cli_version`, and `stdout_tty` (no terminal is required).
-- `capabilities`: engine method names, bundled `csl_styles` and supported key
+- `capabilities`: engine method names, the `csl_styles` count and upstream releases and supported key
   outputs/forms (including `single_item_forms` restrictions), generated from
   the engine registries.
 - `config` and `library_check`: each has `status`, a stable `code` and a fixed

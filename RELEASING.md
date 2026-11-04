@@ -23,7 +23,33 @@ destinations through Tauri's JSON merge patch before adding its own.
 
 Packages are named `Ibis-<platform>.<extension>` with no version (for example `Ibis-macOS-Apple-silicon.dmg`, `Ibis-Windows-setup.exe`), so download links never change; ARM packages add `-ARM` after the platform. The command line ships beside them as `ibis-<platform>.tar.gz` (`ibis-Windows.zip` on Windows), holding `ibis`, the licence and `NOTICE.md`. Release notes come from Conventional Commits ([commits](CONTRIBUTING.md#pull-requests)); `scripts/release-notes.mjs` adds the download table, the unsigned-install note and verification steps. Link the [code signing policy](docs/code-signing.md) from release notes: updater signatures and operating-system code signing are separate, and the latter is planned for 1.0.
 
+## The note people read
+
+Generated notes list every change. For a milestone (`0.N.0`), add a short note above them on the published release, written for someone in the middle of a paper rather than for developers:
+
+```markdown
+Ibis X.Y: [one sentence saying what is different for someone writing].
+
+**New**
+
+- [What you can now do, as you would tell a colleague.]
+
+**Fixed**
+
+- [What went wrong before, and what happens now.]
+
+**Good to know**
+
+- [What still does not work, and on which systems.]
+
+This is an early preview. Tell me what breaks: [issue form](https://github.com/ibiscite/ibis/issues/new/choose), or diyanko@ibiscite.org if you have no GitHub account.
+```
+
+Name only what the release has shown working, and leave out version numbers of tools, file names and internal terms unless a reader needs them.
+
 ## How a release is built
+
+Each finished milestone becomes one numbered release: the roughly stable version for early adopters, which every distribution follows (the Claude plugin, Homebrew and the command line included). Daily testing happens on Nightly. So Release Please's pull request stays open while a milestone is built, and merging it is the agents' last step before the maintainer's one click.
 
 Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it updates `CHANGELOG.md` and the versions, then tags `vX.Y.Z` with the `ibis-release` app's token. The tag starts Preview builds (`.github/workflows/preview.yml`):
 
@@ -32,7 +58,7 @@ Release Please keeps a pull request titled `chore: release X.Y.Z`. Merging it up
 3. The publish job waits in the `updates` environment until the maintainer approves it. It then verifies every checksum and attestation against the exact tag and commit, signs the update archives with the stable key, uploads to a draft and publishes it. Any failure leaves the draft unpublished; a public release is never overwritten. Numbered publishes queue and run one at a time, so a run waiting for approval holds the queue and must be approved or rejected before a newer one can reach its prompt.
 4. The `stable-feed` job replaces the files on the `stable` pre-release: packages first, then `latest.json`, which the app reads. The fixed `stable` tag anchors permanent download URLs; it never moves and is not a source ref. Older versions leave the feed in place. The job can be re-run on its own.
 
-A nightly follows the same build, install and verify steps without approval, signs with the nightly key in the `nightly` environment, and replaces the `nightly` pre-release only if its commit is still the head of `main`. A failure leaves the previous nightly in place. To refresh it by hand, run Preview builds on `main` with publication checked; with it unchecked the run is a dry run whose packages stay as workflow artifacts for 14 days.
+A nightly follows the same build, install and verify steps without approval and without waiting for the release checks (minimum Rust, release-mode tests and speed limits), which a numbered release needs, signs with the nightly key in the `nightly` environment, and replaces the `nightly` pre-release only if its commit is still the head of `main`. A failure leaves the previous nightly in place. To refresh it by hand, run Preview builds on `main` with publication checked; with it unchecked the run is a dry run whose packages stay as workflow artifacts for 14 days.
 
 Keeping the previous nightly's identity never blocks publication. The separate
 daily update qualification job fails when its previous feed and package exist
@@ -51,7 +77,7 @@ Two keys in two environments: the stable key in `updates` (only `v*` tags, after
 - The Actions variable `RELEASE_PLEASE` set to `enabled`.
 - The `updates` environment (tag rule `v*`, the maintainer as required reviewer) and the `nightly` environment (branch `main`), each holding its key and password.
 
-When changing Release Please's config, rehearse it in a temporary checkout and check that only the workspace version, the four release package entries in `Cargo.lock` and the version in `apps/desktop/package.json` change, and that `cargo metadata --locked --offline --format-version 1` passes for the workspace. TOML name filters use `@.name.value` ([why](https://github.com/googleapis/release-please/issues/2455)).
+Unchanged release notes can leave Release Please's pull request on an old `main`: merge final `main` into it and check every workspace version in `Cargo.lock` before releasing. When changing Release Please's config, rehearse it in a temporary checkout and check that only the workspace version, the four release package entries in `Cargo.lock` and the version in `apps/desktop/package.json` change, and that `cargo metadata --locked --offline --format-version 1` passes for the workspace. TOML name filters use `@.name.value` ([why](https://github.com/googleapis/release-please/issues/2455)).
 
 ## Before approving a stable release
 
@@ -72,6 +98,6 @@ Then rerun at the same tag with publication on, or upload the verified packages 
 
 ## Planned for 1.0
 
-- An SBOM with every release, and immutable stable releases. 1.0 needs no paid code signing; Apple Developer ID and Windows signing wait for money or a free programme ([ROADMAP](ROADMAP.md)).
+- An SBOM with every release, and immutable stable releases. Paid Mac signing is undecided and revisited near 1.0, an open question for the 1.0 gate; Apple Developer ID and Windows signing wait for money or a free programme ([ROADMAP](ROADMAP.md)).
 - A written procedure for losing or rotating an update key.
 - Distribution through Homebrew, winget and Flathub as well as GitHub Releases.

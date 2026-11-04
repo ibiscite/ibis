@@ -20,16 +20,15 @@ const PROBLEMS: Record<BackupProblem, MessageId> = {
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 const SETTINGS: Record<string, MessageId> = {
   library: "backup-setting-library", copy_format: "backup-setting-copy-format", citation_style: "backup-setting-citation-style",
-  density: "general-rows", larger_text: "backup-setting-larger-text", show_paste_preview: "general-preview", search_icon: "look-search-icon",
+  density: "general-rows", larger_text: "backup-setting-larger-text",
   paste: "general-paste-label", menu_bar: "general-menu-bar-label", recent_citations: "citations-recent",
   small_surprises: "general-small-surprises-label", appearance: "look-appearance", accent: "look-accent",
 };
 const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut", "repairs-settings": "backup-note-repairs" };
 const VALUES: Record<string, Record<string, MessageId>> = {
-  density: { compact: "general-density-compact", comfortable: "general-density-comfortable", spacious: "general-density-spacious" },
+  density: { compact: "general-density-compact", comfortable: "general-density-comfortable" },
   appearance: { system: "look-system", light: "look-light", dark: "look-dark" },
-  search_icon: { ibis: "look-ibis", magnifier: "look-magnifier", none: "look-none" },
-  accent: { ibis: "look-accent-ibis", blue: "look-accent-blue", purple: "look-accent-purple", pink: "look-accent-pink", red: "look-accent-red", orange: "look-accent-orange", yellow: "look-accent-yellow", green: "look-accent-green", graphite: "look-accent-graphite" },
+  accent: { ibis: "look-accent-ibis" },
 };
 const FORMATS = new Set(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys", "apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"]);
 

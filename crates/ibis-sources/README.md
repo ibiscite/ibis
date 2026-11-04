@@ -4,7 +4,7 @@
 its opaque `LibraryId`, immutable `Snapshot`, and fixed-code warnings with
 1-based source lines. BibTeX native keys and CSL-JSON IDs use the `record:`
 namespace; attachment keys use a separate namespace. Citation keys keep their
-original spelling and provenance. CSL-JSON prefers `citation-key`, then `id`.
+original spelling and provenance. In CSL-JSON only `citation-key` is a key; `id` names the record in its file.
 Numeric IDs use citeproc-js spelling; numbers beyond its safe integer range
 require a string ID or explicit citation key to prevent identity collisions.
 BibTeX arXiv eprints populate normalized search identifiers without changing CSL

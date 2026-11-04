@@ -14,7 +14,6 @@
     }
     throw Error("citation formatting failed");
   };
-  const styles = new Map(__ibisStyles);
   const engines = new Map();
   let activeItems = new Map();
   const dateAsSortKey = CSL.dateAsSortKey;
@@ -114,6 +113,11 @@
   CSL.titlecaseSentenceOrNormal = function (...args) { return withSubtitleBoundaries(args[0], caseTitle, this, args); };
   const decodeRich = (text, lessThan = "<") => inline(text.split(markup)
     .map((part, index) => index % 2 ? part : decodeText(part, lessThan)).join(""));
+  // The processor's text format opens a block with a line break but never
+  // closes it, gluing the next word to the block's last one: "Noor2021". HTML
+  // shows the break, so the text keeps it too, and one-line folding spaces it.
+  CSL.Output.Formats.text["@display/block"] = (state, str) => "\n" + str + "\n";
+  CSL.Output.Formats.text["@display/indent"] = (state, str) => "\n    " + str + "\n";
   let literalLessThan = null;
   for (const format of ["text", "html", "rtf"]) {
     const escape = CSL.Output.Formats[format].text_escape;
@@ -270,16 +274,16 @@
   };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
-  globalThis.__ibisFormat = (request) => {
-    let xml = styles.get(request.style).replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
+  globalThis.__ibisFormat = (request, source) => {
     const converted = processorItems(request);
     if (!converted) return JSON.stringify({ status: "refused" });
     activeItems = new Map(converted.map((item) => [item.id, item]));
-    const key = JSON.stringify([request.style, request.locale, request.keep_order]);
+    const key = JSON.stringify([request.style, request.locale, request.keep_order, request.sentence_titles]);
     let engine = engines.get(key);
     if (!engine) {
       // Keep one warm style, rather than eight independent item registries.
       engines.clear();
+      let xml = source.replace(/disambiguate-add-year-suffix="true"/g, 'disambiguate-add-year-suffix="false"');
       if (request.numeric) {
         const tree = CSL.parseXml(xml);
         const macros = new Map(tree.children.filter((node) => node.name === "macro").map((node) => [node.attrs.name, node]));
@@ -292,7 +296,13 @@
           const pending = bibliography.children.filter((node) => node.name === "layout");
           while (pending.length) {
             const node = pending.pop();
-            node.children = node.children.filter((child) => !(child.name === "text" && child.attrs.variable === "citation-number"));
+            const number = (child) => child.name === "text" && child.attrs.variable === "citation-number";
+            // A number that opens the entry takes its separator with it: the
+            // next element's leading ". " only ever followed the number.
+            if (node.name === "layout" && node.children[0] && number(node.children[0]) && node.children[1]?.attrs?.prefix) {
+              node.children[1].attrs.prefix = node.children[1].attrs.prefix.replace(/^[\s.,;:]+/, "");
+            }
+            node.children = node.children.filter((child) => !number(child));
             for (const child of node.children) {
               const called = child.attrs?.macro;
               if (macros.has(called)) {
@@ -315,7 +325,7 @@
         }
         xml = tree;
       }
-      engine = new CSL.Engine({ retrieveLocale: () => __ibisLocale, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.style === "apa" }, xml, request.locale ?? undefined, request.locale !== null);
+      engine = new CSL.Engine({ retrieveLocale: __ibisLocaleXml, retrieveItem: (id) => activeItems.get(id), uppercase_subtitles: request.sentence_titles }, xml, request.locale ?? undefined, request.locale !== null);
       engine.opt.development_extensions.throw_on_empty = true;
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);
@@ -336,6 +346,10 @@
         observation = capture;
         let output;
         if (request.bibliography) {
+          // The processor creates its nested-bracket flipper only while writing a
+          // citation, then leaves it for the bibliography. Without this, a note
+          // style's entries depend on what this engine last cited: "(2026]".
+          engine.output.checkNestedBrace = undefined;
           const bibliography = engine.makeBibliography();
           if (!bibliography || bibliography[0].bibliography_errors.length) throw unverified;
           if (format === "text") outputs.text_parts = bibliography[1];
@@ -372,9 +386,11 @@
         outputs[format] = format === "rtf" ? wrapRtf(output, request.bibliography) : output;
       }
     } catch (error) {
-      if (error !== unverified) throw error;
       // A partially evaluated engine must never be reused after a refusal.
       engines.delete(key);
+      // A style the processor cannot run on this record refuses it, like any
+      // citation Ibis cannot verify. Resource limits still surface as themselves.
+      if (error !== unverified && !(error instanceof TypeError)) throw error;
       return JSON.stringify({ status: "refused" });
     } finally {
       observation = null;

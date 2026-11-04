@@ -169,7 +169,7 @@ fn the_warning_note_gives_a_command_that_works() {
     assert_eq!(code, 1, "{stderr}");
     assert!(stdout.contains("2 warnings"), "{stdout}");
     assert!(
-        stdout.contains("line 9: the citation key 'same' is used by more than one entry"),
+        stdout.contains("line 9: more than one entry uses 'same' as its key or id"),
         "{stdout}"
     );
 }
@@ -193,7 +193,11 @@ fn doctor_reads_as_sentences() {
     let file = lab.file("refs.bib", BIB);
     let (_, stdout, _) = lab.run(&["doctor", "--file", &file]);
     assert!(!stdout.contains("ms since Unix epoch"), "{stdout}");
-    assert!(stdout.contains("ibis libraries --file"), "{stdout}");
+    // The next step works for a file, Zotero and the app's libraries alike.
+    assert!(
+        stdout.contains("See them with ibis libraries and the same library options."),
+        "{stdout}"
+    );
 }
 
 #[cfg(unix)]

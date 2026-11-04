@@ -15,10 +15,10 @@ use tauri::{AppHandle, Manager};
 use tauri_nspanel::objc2::rc::Retained;
 use tauri_plugin_global_shortcut::Code;
 
-use super::capture::Front;
+use super::capture::{Front, SelectedText};
 use super::{
-    CopyProof, DeliveryRequest, Desk, InputPress, PendingPost, PostDesk, PostRequest, PostResult, check_input_since,
-    checked_post,
+    CopyProof, DeliveryRequest, Desk, InputPress, PendingPost, PostDesk, PostRequest, PostResult, Selection,
+    check_input_since, checked_post,
 };
 
 pub(super) mod diagnostics;
@@ -73,6 +73,8 @@ fn app_front(app: &NSRunningApplication) -> Front {
         focus_failure: None,
         name: app.localizedName().map(|name| name.to_string()),
         elevated: false,
+        selection: Selection::Unknown,
+        search: None,
     }
 }
 
@@ -96,6 +98,8 @@ pub(super) fn frontmost(app: &AppHandle) -> Option<Front> {
         && active
             .as_ref()
             .is_some_and(|front| front.pid != own && manual_accessibility_allowed(app, front));
+    // Reading follows paste policy too: copy-only, refused and unapproved apps
+    // are never asked for text, and paste off turns the whole feature off.
     capture_front(active, own, own_window_key, |pid| {
         let trace = diagnostics::Trace::new(None);
         // A grant acquired later cannot authorize this earlier presentation.
@@ -159,7 +163,7 @@ pub(super) fn capture_front(
     active: Option<Front>,
     own: i32,
     own_window_key: bool,
-    capture_window: impl FnOnce(i32) -> Result<u32, CopyReason>,
+    capture_window: impl FnOnce(i32) -> Result<(u32, Selection, Option<SelectedText>), CopyReason>,
 ) -> Option<Front> {
     if own_window_key {
         // Ibis is itself nonactivating: NSWorkspace can still name the prior
@@ -173,14 +177,18 @@ pub(super) fn capture_front(
             focus_failure: None,
             name: None,
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         });
     }
     let mut front = active?;
     if front.pid != own {
         match capture_window(front.pid) {
-            Ok(window) => {
+            Ok((window, selection, search)) => {
                 front.window = Some(window);
                 front.focus_failure = None;
+                front.selection = selection;
+                front.search = search;
             }
             Err(reason) => {
                 front.window = None;
@@ -235,6 +243,7 @@ impl Mac {
                     Some("unknown-app") => Some("policy.unknown_app"),
                     Some("no-target") => Some("policy.no_target"),
                     Some("secure-input") => Some("secure_input"),
+                    Some("selection-not-shown") => Some("selection"),
                     Some("clipboard-changed") => Some("clipboard"),
                     _ => None, // Keep the detailed AX/readiness/lifecycle failure stage.
                 };
@@ -494,6 +503,11 @@ impl PostDesk for Ready<'_> {
         Ok(Some(front))
     }
 
+    fn selection_unchanged(&self, selection: &Selection) -> Result<(), CopyReason> {
+        diagnostics::stage("selection");
+        focus::selection_unchanged(self.request.pid, selection, self.request.deadline)
+    }
+
     fn change_count(&self) -> isize {
         diagnostics::stage("clipboard");
         NSPasteboard::generalPasteboard().changeCount()
@@ -547,6 +561,8 @@ mod tests {
             focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         };
         let bank_kept = Cell::new(true);
         // NSWorkspace still names Word; the key NSPanel belongs to Ibis.
@@ -572,6 +588,8 @@ mod tests {
             focus_failure: None,
             name: Some("Writer".into()),
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         };
         let front = capture_front(Some(active), 7, false, |_| Err(CopyReason::TargetChanged));
         let captured = super::super::capture::captured(System::Macos, front, 7).unwrap_or_else(|| panic!("capture"));
@@ -590,6 +608,8 @@ mod tests {
             focus_failure: None,
             name: None,
             elevated: false,
+            selection: Selection::Unknown,
+            search: None,
         };
         for id in [
             "com.apple.terminal",

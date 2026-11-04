@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { composing } from "../composition";
 import { useInterfaceMessages } from "../i18n";
 import { matchesAccelerator } from "../keys";
@@ -39,9 +39,10 @@ export function useKeyPulse(accelerator: string | readonly string[], enabled = t
       timer = window.setTimeout(() => setPressed(false), 100);
     };
     const clear = () => { window.clearTimeout(timer); setPressed(false); };
-    window.addEventListener("keydown", down);
+    // Capture: a key the layer stack uses stops there, and still pulses.
+    window.addEventListener("keydown", down, true);
     window.addEventListener("blur", clear);
-    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down); window.removeEventListener("blur", clear); };
+    return () => { window.clearTimeout(timer); window.removeEventListener("keydown", down, true); window.removeEventListener("blur", clear); };
   }, [keys, enabled]);
   return pressed;
 }
@@ -51,19 +52,24 @@ export function ShortcutEcho({ keys, children }: { keys: readonly string[]; chil
   return <div className="ui-shortcut-echo" data-echo={pressed || undefined}>{children}</div>;
 }
 
-/** The app icon itself. A click blinks it, and each run of clicks shows a fact. */
-export function AboutDelight({ blink, enabled, onClick }: { blink: number; enabled: boolean; onClick: () => void }) {
+/** The app icon itself. A click dips the bird's beak and the line below it says something new. */
+export function AboutDelight({ dip, enabled, onClick }: { dip: number; enabled: boolean; onClick: () => void }) {
   const { text } = useInterfaceMessages();
   return <Button variant="quiet" className="ui-about-icon" aria-label={text("delight-ibis")} preventFocusOnPress onPress={onClick}>
-    <span key={blink} data-blink={enabled && blink > 0 ? true : undefined} aria-hidden="true">
+    <span key={dip} data-dip={enabled && dip > 0 ? true : undefined} aria-hidden="true">
       <span data-icon="light" dangerouslySetInnerHTML={{ __html: appIcon.light }} />
       <span data-icon="dark" dangerouslySetInnerHTML={{ __html: appIcon.dark }} />
     </span>
   </Button>;
 }
 
-export function QuietStatus({ children, passive = false }: { children: ReactNode; passive?: boolean }) {
-  return children ? <p className="ui-quiet-status" role={passive ? undefined : "status"}>{children}</p> : null;
+/** One line under the bird, read aloud when a click changes it. */
+export function AboutLine({ children, said, highlighted }: { children: string; said: boolean; highlighted: boolean }) {
+  return <p id="about-name" className="ui-about-line" data-highlighted={highlighted || undefined} aria-live="polite"><span key={children} data-said={said || undefined}>{children}</span></p>;
+}
+
+export function QuietStatus({ children }: { children: ReactNode }) {
+  return children ? <p className="ui-quiet-status" role="status">{children}</p> : null;
 }
 
 /** Browser zoom stays local to this webview; the receipt slot reports its result. */
@@ -96,7 +102,8 @@ export function useEmptyFeedback(identity: string) {
   const timer = useRef<number | undefined>(undefined);
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new presentation retires feedback.
   useEffect(() => { setFeedback(null); setShaking(false); return () => window.clearTimeout(timer.current); }, [identity]);
-  return { feedback, shaking, refuse: (message: string) => {
+  const clear = useCallback(() => setFeedback(null), []);
+  return { feedback, shaking, clear, refuse: (message: string) => {
     setFeedback(message); setShaking(true); window.clearTimeout(timer.current);
     timer.current = window.setTimeout(() => setShaking(false), 240);
   } };

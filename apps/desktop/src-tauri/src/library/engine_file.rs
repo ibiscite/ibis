@@ -151,6 +151,7 @@ impl FileLibrary {
             results,
             interpretation: None,
             list: None,
+            unfiltered: None,
         })
     }
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
@@ -368,6 +369,7 @@ impl FileLibrary {
                 results: vec![],
                 interpretation: None,
                 list: None,
+                unfiltered: None,
             });
         }
         // The existing native boundary names Zotero sources for the picker;
@@ -413,12 +415,13 @@ impl FileLibrary {
                     results: vec![],
                     interpretation: None,
                     list: None,
+                    unfiltered: None,
                 });
             }
             Err(_) => return Err("The library could not be searched.".to_string()),
         };
         let revision = reply.snapshot.full.as_str().to_owned();
-        let results = reply
+        let results: Vec<_> = reply
             .hits
             .into_iter()
             .filter_map(|hit| match hit.item.object {
@@ -439,6 +442,10 @@ impl FileLibrary {
                 _ => None,
             })
             .collect();
+        let unfiltered = results
+            .is_empty()
+            .then(|| ibis_engine::without_filters(&query.text))
+            .flatten();
         Ok(SearchReply {
             revision,
             results,
@@ -446,6 +453,7 @@ impl FileLibrary {
             list: reply
                 .list
                 .map(|list| super::search::PastedList { missing: list.missing }),
+            unfiltered,
         })
     }
     pub(crate) fn reserve_preview(&self) -> u64 {

@@ -25,6 +25,13 @@ const detail = (status: LibraryStatus) =>
   libraryMessages.detail(status, now, (s) => zoteroLibraryNames(s, (id) => `Group ${id}`)).map(strip);
 const clockAt = (hours: number) => new Intl.DateTimeFormat("en", { timeStyle: "short" }).format(now - hours * hour);
 
+test("the dot never stays green beside a reported problem, and a worse state stays worse", () => {
+  expect(libraryHealth(file())).toBe("done");
+  expect(libraryHealth(file(), true)).toBe("look");
+  expect(libraryHealth(file({ stale: true }), true)).toBe("stop");
+  expect(libraryHealth(null, true)).toBe("stop");
+});
+
 test("native hide stops the age timer and reopen refreshes it without DOM visibility events", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(now);

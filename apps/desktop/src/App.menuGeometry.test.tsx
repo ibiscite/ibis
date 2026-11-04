@@ -60,7 +60,7 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   expect(calls).not.toContain("fit_picker");
 });
 
-test("More is closed while its exit overlaps the probe's keys-sheet and Copy as steps", async () => {
+test("More is gone before the probe's keys-sheet and Copy as steps", async () => {
   backend({ search: () => [] });
   render(<App />);
   await screen.findByText("Type to find a reference");
@@ -79,7 +79,7 @@ test("More is closed while its exit overlaps the probe's keys-sheet and Copy as 
     fireEvent.keyDown(document.activeElement!, { key: "Home" });
     fireEvent.keyDown(document.activeElement!, { key: "Escape" });
     expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(popover.hasAttribute("data-exiting")).toBe(true);
+    expect(popover.isConnected).toBe(false);
     // Playwright focuses its search locator before sending the shortcut.
     act(() => search.focus());
     fireEvent.keyDown(search, { key: "/", ctrlKey: true });
@@ -88,14 +88,9 @@ test("More is closed while its exit overlaps the probe's keys-sheet and Copy as 
     const format = screen.getByRole("button", { name: /^Copy as/ });
     fireEvent.click(format);
     const formatMenu = await screen.findByRole("menu", { name: /^Copy as/ });
-    // The browser can still find the closing DOM with an unqualified locator.
-    // Presence during exit does not mean both menu triggers are open.
-    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
     expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(popover.hasAttribute("data-exiting")).toBe(true);
     expect(format.getAttribute("aria-expanded")).toBe("true");
-    await act(async () => { finishExit(); });
-    await waitFor(() => expect(moreMenu.isConnected).toBe(false));
     expect(formatMenu.isConnected).toBe(true);
   } finally {
     await act(async () => { finishExit(); });
@@ -104,7 +99,7 @@ test("More is closed while its exit overlaps the probe's keys-sheet and Copy as 
 
 test.each([false, true])("empty, controls, results, selection, no matches and keys never measure or resize (Larger=%s)", async (larger) => {
   const calls = backend({
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: larger, show_paste_preview: true, search_icon: "magnifier", paste: false, menu_bar: true }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: larger, paste: false, menu_bar: true }),
     search: ({ query }) => query.text === "work" ? [result("a", "First invented work")] : [],
   });
   const height = vi.spyOn(HTMLElement.prototype, "offsetHeight", "get");

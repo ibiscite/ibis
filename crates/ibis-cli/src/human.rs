@@ -1,4 +1,5 @@
 //! Sentences and summaries for people; `--json` output never passes through here.
+pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},
@@ -75,10 +76,11 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
                     "{}\t{} {}{}{}{}",
                     field(&{
                         let id = library.get("id")?.as_str()?;
+                        let zotero = library.get("kind").and_then(Value::as_str) == Some("zotero");
                         names.get(id).cloned().unwrap_or_else(|| {
                             match library.pointer("/zotero/group").and_then(Value::as_u64) {
                                 Some(group) => format!("Zotero group {group}"),
-                                None if id.starts_with("zotero:") => "Zotero".into(),
+                                None if zotero => "Zotero".into(),
                                 None => id.into(),
                             }
                         })
@@ -110,22 +112,50 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
             }
             Some(lines.join("\n"))
         }
-        Method::Styles => Some(
-            data.get("styles")?
-                .as_array()?
+        Method::Styles => {
+            let styles = data.get("styles")?.as_array()?;
+            let total = data.get("total")?.as_u64()?;
+            let mut lines = styles
                 .iter()
                 .map(|style| {
                     Some(format!(
-                        "{}\t{}",
+                        "{}\t{}\t{}",
                         field(style.get("id")?.as_str()?),
-                        field(style.get("title")?.as_str()?)
+                        field(style.get("title")?.as_str()?),
+                        field(style.get("updated")?.as_str()?)
                     ))
                 })
-                .collect::<Option<Vec<_>>>()?
-                .join("\n"),
-        ),
+                .collect::<Option<Vec<_>>>()?;
+            if total == 0 {
+                lines.push("No style matches those words.".into());
+            } else if styles.len() as u64 != total {
+                lines.push(format!(
+                    "Showing {} of {total} styles; narrow it with: ibis styles WORDS",
+                    styles.len()
+                ));
+            }
+            Some(lines.join("\n"))
+        }
         _ => None,
     }
+}
+
+/// Citation languages for `ibis styles --locales`.
+pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
+    let lines: Option<Vec<String>> = result.data.get("locales").and_then(Value::as_array).map(|locales| {
+        locales
+            .iter()
+            .filter_map(|locale| {
+                Some(format!(
+                    "{}\t{}",
+                    field(locale.get("tag")?.as_str()?),
+                    field(locale.get("english")?.as_str()?)
+                ))
+            })
+            .collect()
+    });
+    result.text = lines.map(|lines| lines.join("\n"));
+    result
 }
 
 fn search_row(hit: &Value) -> Option<String> {
@@ -176,7 +206,7 @@ fn authors(csl: &Value, limit: Option<usize>) -> String {
             let mut authors = names
                 .iter()
                 .take(limit)
-                .map(author)
+                .map(|name| Name::from_csl(name).display())
                 .filter(|name| !name.is_empty())
                 .collect::<Vec<_>>();
             if names.len() > limit {
@@ -234,7 +264,8 @@ fn warning_line(warning: &Value) -> String {
     let key = warning.get("key").and_then(Value::as_str).map(field);
     let what = match (warning.get("code").and_then(Value::as_str), key) {
         (Some("duplicate-key"), Some(key)) => {
-            format!("the citation key '{key}' is used by more than one entry, so Ibis skips them all")
+            // In CSL-JSON this is the record's `id`, which is never a citation key.
+            format!("more than one entry uses '{key}' as its key or id, so Ibis skips them all")
         }
         (Some("syntax"), _) => "an entry could not be read, so Ibis skips it".into(),
         (Some("field"), _) => "a field could not be fully converted; check this entry".into(),
@@ -250,19 +281,6 @@ fn warning_line(warning: &Value) -> String {
         Some(line) => format!("  line {line}: {what}"),
         None => format!("  {what}"),
     }
-}
-
-fn author(value: &Value) -> String {
-    let text = |name| value.get(name).and_then(Value::as_str).map(str::to_owned);
-    Name {
-        family: text("family"),
-        given: text("given"),
-        literal: text("literal"),
-        dropping_particle: text("dropping-particle"),
-        non_dropping_particle: text("non-dropping-particle"),
-        suffix: text("suffix"),
-    }
-    .display()
 }
 
 /// A word for a command line, quoted when this system's shell would otherwise split it.
@@ -377,6 +395,14 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
             .into(),
         );
     }
+    // A person reading English output needs no note; any other language is a choice to see.
+    if let Some(language) = data
+        .get("language")
+        .and_then(Value::as_str)
+        .filter(|language| printed && *language != "en-US")
+    {
+        lines.push(format!("note: written in {}.", field(language)));
+    }
     if printed && let Ok(destination) = serde_json::from_value(parse("destination")) {
         lines.push(destination_note(&destination));
     }
@@ -440,7 +466,7 @@ fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, 
         }
         CitationError::InvalidKey => format!("the citation key of {label} has characters {output} cannot write."),
         CitationError::UnsupportedOutput => format!("there is no style {output}; list the styles with: ibis styles"),
-        CitationError::InvalidLocale => "this locale is not available yet; Ibis formats in en-US.".into(),
+        CitationError::InvalidLocale => "there is no such locale; list them with: ibis styles --locales".into(),
         CitationError::NotCitable => format!("{label} is not a reference (for example, a note) and cannot be cited."),
         CitationError::FormatterUnavailable => "the citation formatter could not start; try again.".into(),
         CitationError::AnnotationMismatch => format!("the annotation given for {label} belongs to another reference."),
@@ -571,13 +597,14 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
 pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
     match reason {
         ErrorReason::UnknownStyle => "there is no style with that name; list the styles with: ibis styles",
-        ErrorReason::UnknownLocale => "this locale is not available yet; Ibis formats in en-US for now.",
+        ErrorReason::UnknownLocale => "there is no such locale; list them with: ibis styles --locales",
         ErrorReason::DuplicateKey => {
             "the citation key is used by more than one entry, so Ibis skips them all; give each entry its own key."
         }
         ErrorReason::AmbiguousKey => {
             "several references use this citation key; give each one its own key in your library."
         }
+        ErrorReason::MissingKey => "this reference has no citation key; give it one in your library, or use --style.",
         ErrorReason::AppMissing => "the Ibis app was not found; install it, or give its location with --app <path>.",
         ErrorReason::NotIbis => {
             "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."

@@ -461,7 +461,7 @@ mod adversarial_tests {
         budget: &mut AttachmentBudget,
     ) -> (Vec<LibraryObject>, usize, Vec<SourceWarning>) {
         let parent = ItemRef {
-            library: LibraryId::file(b"invented"),
+            library: LibraryId::digest(b"invented"),
             key: "record:one".into(),
         };
         let mut objects = Vec::new();
@@ -623,7 +623,7 @@ mod identity_budget_tests {
     fn long_parent_keys_cannot_amplify_retained_attachment_identity_bytes() {
         for (key_length, location) in [(64 * 1024, "https://example.invalid/x"), (1024, "x.pdf")] {
             let parent = ItemRef {
-                library: LibraryId::file(b"invented"),
+                library: LibraryId::digest(b"invented"),
                 key: format!("record:{}", "x".repeat(key_length)),
             };
             let mut objects = Vec::new();
@@ -681,7 +681,7 @@ mod identity_library_budget_test {
     #[test]
     fn exhausted_reference_budget_refuses_identity_clones_and_probes() {
         let parent = ItemRef {
-            library: LibraryId::file(b"invented"),
+            library: LibraryId::digest(b"invented"),
             key: format!("record:{}", "x".repeat(1024)),
         };
         let mut objects = Vec::new();

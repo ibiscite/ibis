@@ -191,6 +191,8 @@ fn main() {
                     if paths.len() == 1 && library::accepts_library_file(&paths[0]) {
                         let _ = webview.emit("library:file-dropped", ());
                         library::start_open(webview.app_handle(), library::Source::File(paths[0].clone()), true);
+                    } else if !paths.is_empty() {
+                        let _ = webview.emit("library:file-refused", ());
                     }
                 }
                 tauri::WebviewEvent::DragDrop(tauri::DragDropEvent::Leave) => {
@@ -273,6 +275,8 @@ fn main() {
                     let _ = ibis_zotero_local::closed::remove_obsolete_file_cache(&cache);
                 });
             }
+            // Before the first library, so its id lasts and matches `ibis`.
+            ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
