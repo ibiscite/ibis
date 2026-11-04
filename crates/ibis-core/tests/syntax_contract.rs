@@ -508,7 +508,7 @@ fn prefix_support_matches_every_supported_output_and_form() {
             let expected = match (caps.syntax, form) {
                 (KeySyntax::Pandoc, CitationForm::Narrative) | (KeySyntax::Latex | KeySyntax::Typst, _) => Flattened,
                 (KeySyntax::Natbib, CitationForm::Narrative | CitationForm::AuthorOnly) => Flattened,
-                (KeySyntax::Natbib, _) => SingleItem,
+                (KeySyntax::Natbib | KeySyntax::Context, _) => SingleItem,
                 (
                     KeySyntax::Keys
                     | KeySyntax::CslJson
@@ -1309,6 +1309,12 @@ proptest! {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             prop_assert!(result.content_matches_hash());
+            // ConTeXt reads `a::b` as a dataset, so it refuses such a key
+            // rather than cite another entry.
+            if caps.escaping == Escaping::Context && key.contains("::") {
+                prop_assert_eq!(&result.outcomes, &[ItemOutcome::Refused { item: 0, error: CitationError::InvalidKey }]);
+                continue;
+            }
             prop_assert!(result.copy_content(1).is_some());
             match caps.escaping {
                 Escaping::BareKeys => prop_assert_eq!(&result.text, &key),
@@ -1338,6 +1344,20 @@ proptest! {
                         let suffix = if caps.escaping == Escaping::Pandoc && !note.trim().is_empty() { suffix.strip_prefix(",").unwrap_or(&suffix).trim_start().strip_prefix("{}").unwrap() } else { &suffix };
                         prop_assert_eq!(suffix.split_whitespace().collect::<Vec<_>>().join(" "), expected, "{:?}: {}", caps, result.text);
                     }
+                },
+                Escaping::Context => {
+                    let (settings, keys) = result.text.rsplit_once("][").unwrap_or(("", result.text.strip_prefix("\\cite[").unwrap()));
+                    prop_assert_eq!(keys.strip_suffix(']'), Some(key.as_str()), "{}", result.text);
+                    // Every special is written as an escape, so nothing can end the setting.
+                    let mut rest = settings.to_owned();
+                    for escape in ["\\&", "\\%", "\\#", "\\$", "\\_", "\\char92{}", "\\char94{}", "\\char123{}", "\\char124{}", "\\char125{}", "\\char126{}"] {
+                        rest = rest.replace(escape, "");
+                    }
+                    let rest = ["\\cite", "\\space", "\\removeunwantedspaces", "\\removepunctuation"]
+                        .into_iter()
+                        .fold(rest, |rest, command| rest.replace(command, ""));
+                    prop_assert!(!rest.contains(['\\', '&', '%', '#', '$', '_', '^', '~', '|']), "{}", result.text);
+                    prop_assert_eq!(rest.matches('{').count(), rest.matches('}').count(), "{}", result.text);
                 },
                 _ => {},
             }

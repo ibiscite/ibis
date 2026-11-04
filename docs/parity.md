@@ -80,7 +80,8 @@ exactly what the picker shows. Which editors pass is in the
 | `format=pandoc` with `brackets`; without it `@key` as BBT gives, with brackets kept where a locator or affix needs them | done | #42 | `key_syntaxes.rs::bare_pandoc_drops_brackets_only_when_nothing_needs_them` |
 | `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
 | `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
-| `format=scannable-cite` | planned | #1207 | to add |
+| `format=scannable-cite` | planned | #1531 | to add |
+| ConTeXt `\cite`; key form, author, year and full entry, with notes for one reference | done as a syntax (`context`), checked in ConTeXt itself; narrative refused | #1207 | `key_syntaxes.rs`, `scripts/syntax-tools.mjs` |
 | `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the default style chosen in Settings) | done | #42 | `cayw.rs::every_listed_format_has_its_output`, `editor_endpoint.rs::a_formatted_request_takes_the_persons_style_and_a_numeric_one_its_entry` |
 | `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
 | Picks carry locator, prefix, suffix and suppress author | done: the picker's own editor sets them | #42 | `cayw_clients.rs::the_vs_code_citation_picker_gets_each_format_it_offers` (recorded requests) |

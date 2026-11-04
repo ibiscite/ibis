@@ -1,9 +1,8 @@
 # Compatibility and limits
 
-Ibis is a copy-only preview: find a reference, copy its citation, then paste it
-yourself. Pasting into the previous app is planned for 0.3 on macOS, then
-Windows, leaving the citation on the clipboard; destination profiles come after 1.0. Copying
-replaces the clipboard; your clipboard manager may keep a copy.
+Ibis pastes the citation into the app you came from on macOS and Windows, and
+copies it on Linux, where you paste it yourself. Copying replaces the
+clipboard; your clipboard manager may keep a copy.
 
 ## Platforms: tested and targeted
 

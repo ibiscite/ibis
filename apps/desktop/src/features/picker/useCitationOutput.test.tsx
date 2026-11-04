@@ -254,6 +254,7 @@ test("a stale file preview recovers when a refreshed search has a new source rev
 test.each([
   { code: "snapshot_changed" },
   { code: "failed", message: conflictMessage },
+  { code: "cancelled" },
 ])("a replaced file preview cannot refresh status or replace newer output after a late $code rejection", async (error) => {
   let rejectOld: (reason: unknown) => void = () => undefined;
   const old = new Promise<FilePreview>((_resolve, reject) => { rejectOld = reject; });
@@ -270,4 +271,89 @@ test.each([
   expect(refreshSnapshot).not.toHaveBeenCalled();
   expect(result.current.shown).toMatchObject({ text: "[@new-choice]" });
   expect(result.current.previewProblem).toBeUndefined();
+});
+
+const engineFault = "The citation could not be prepared. Try again.";
+
+test("a cancelled preview whose owner still wants it is not a failure: it asks once more", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "cancelled" }).mockResolvedValue(preview("Fresh entry"));
+  const refreshSnapshot = vi.fn();
+  const { result } = renderHook(useCitationOutput, { initialProps: options({ previewFileCitation, refreshSnapshot }) });
+  await act(async () => { await Promise.resolve(); });
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(result.current.displayedOutput).not.toBe("failed");
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Fresh entry" }));
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+  expect(refreshSnapshot).not.toHaveBeenCalled();
+});
+
+test("a preview cancelled twice waits for the next change instead of looping or failing", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValue({ code: "cancelled" });
+  const initial = options({ previewFileCitation, sessionId: 0 });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(previewFileCitation).toHaveBeenCalledTimes(2));
+  await act(async () => { await Promise.resolve(); });
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+  expect(result.current.shown).toBeNull();
+  expect(result.current.previewProblem).toBeUndefined();
+
+  previewFileCitation.mockResolvedValue(preview("After reopening"));
+  rerender({ ...initial, sessionId: 1 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "After reopening" }));
+});
+
+test("reopening drops a failure from the first frame and prepares the same citation afresh", async () => {
+  const pending: { resolve: (value: FilePreview) => void; reject: (reason: unknown) => void }[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  const initial = options({ previewFileCitation, sessionId: 0 });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await act(async () => { pending[0]!.reject({ code: "failed", message: engineFault }); });
+  expect(result.current.previewProblem).toBe(engineFault);
+
+  rerender({ ...initial, sessionId: 1 });
+  expect(result.current.shown).toBeNull();
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(result.current.displayedOutput).not.toBe("failed");
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
+  await act(async () => { pending[1]!.resolve(preview("Reopened entry")); });
+  expect(result.current.shown).toMatchObject({ text: "Reopened entry" });
+});
+
+test("a failure is gone when the reopened window prepares its first frame, before it is shown", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "failed", message: engineFault }).mockResolvedValue(preview("Shown entry"));
+  const initial = options({ previewFileCitation, sessionId: 0, opened: 0 });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.previewProblem).toBe(engineFault));
+  rerender({ ...initial, opened: 1 });
+  expect(result.current.previewProblem).toBeUndefined();
+  expect(result.current.displayedOutput).not.toBe("failed");
+  rerender({ ...initial, sessionId: 1, opened: 2 });
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Shown entry" }));
+});
+
+test("a failure that outlives reopening is shown again, and a late old failure cannot replace a newer citation", async () => {
+  const pending: { resolve: (value: FilePreview) => void; reject: (reason: unknown) => void }[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve, reject) => pending.push({ resolve, reject })));
+  const initial = options({ previewFileCitation, sessionId: 0 });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  rerender({ ...initial, sessionId: 1 });
+  await act(async () => { pending[1]!.reject({ code: "failed", message: engineFault }); });
+  expect(result.current.previewProblem).toBe(engineFault);
+  rerender({ ...initial, sessionId: 2 });
+  await act(async () => { pending[2]!.resolve(preview("Newest entry")); });
+  await act(async () => { pending[0]!.reject({ code: "failed", message: engineFault }); });
+  expect(result.current.shown).toMatchObject({ text: "Newest entry" });
+  expect(result.current.previewProblem).toBeUndefined();
+});
+
+test("choosing a failed citation again prepares it again instead of reviving the failure", async () => {
+  const previewFileCitation = vi.fn<Preview>().mockRejectedValueOnce({ code: "failed", message: engineFault }).mockResolvedValue(preview("Second try"));
+  const initial = options({ previewFileCitation });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  await waitFor(() => expect(result.current.shown).toBe("failed"));
+  rerender({ ...initial, chosen: [] });
+  rerender(initial);
+  expect(result.current.shown).toBeNull();
+  await waitFor(() => expect(result.current.shown).toMatchObject({ text: "Second try" }));
+  expect(previewFileCitation).toHaveBeenCalledTimes(2);
 });

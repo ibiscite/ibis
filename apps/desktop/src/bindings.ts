@@ -96,12 +96,11 @@ export const commands = {
 "keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
-	/**  Remember output and an optional delivery choice; both absent reset this app to Automatic. */
+	/**
+	 *  Remember a format, a delivery choice or both for the captured app. Whichever
+	 *  is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
+	 */
 	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
-	/**  Forget output and delivery choices for every app. */
-	forgetAppOutputs: () => __TAURI_INVOKE<number>("forget_app_outputs"),
-	/**  Bring back what Forget removed, while its Undo is offered. */
-	restoreAppOutputs: (ticket: number) => __TAURI_INVOKE<null>("restore_app_outputs", { ticket }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -305,6 +304,8 @@ export type CommandError =
 { code: "snapshot_changed" } |
 /**  The library is being read; ask again when it has opened. */
 { code: "library_loading" } |
+/**  The work stopped because it was cancelled or replaced. Nothing failed. */
+{ code: "cancelled" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */
@@ -676,11 +677,11 @@ export type PickerDestination = {
 	app_id: string | null,
 	/**  Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null,
-	/**  The app suggestion; `None` follows the saved global default. */
+	/**  The app suggestion; `None` follows the saved default. */
 	automatic: AppOutput | null,
 	/**  The output the person chose to always use for this app. */
 	remembered: AppOutput | null,
-	/**  Unresolved recovery from an unreadable per-app file; formats use defaults. */
+	/**  This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean,

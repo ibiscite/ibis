@@ -693,7 +693,10 @@ mod tests {
         let (second, second_answer) = pending
             .begin(&pick, "apa", || {})
             .unwrap_or_else(|| panic!("a request"));
-        assert!(!pending.answer(first, "late", || panic!("a late answer retires nothing")), "A finished after B began");
+        assert!(
+            !pending.answer(first, "late", || panic!("a late answer retires nothing")),
+            "A finished after B began"
+        );
         assert!(!pending.cancel(first, || panic!("nothing to retire for an ended request")));
         assert_eq!(pending.current().map(|request| request.id), Some(second));
         assert!(pending.answer(second, "newer", || ()));
@@ -805,9 +808,18 @@ mod tests {
         let (id, _answer) = pending
             .begin(&pick, "apa", || retired += 1000)
             .unwrap_or_else(|| panic!("a request"));
-        assert!(!pending.answer(id + 1, "@a", || retired += 10_000), "another request's answer retires nothing");
-        assert!(pending.answer(id, "@a", || retired += 100_000), "answering retires the editor's receipt");
-        assert!(!pending.answer(id, "@a", || retired += 1_000_000), "an answered request is gone");
+        assert!(
+            !pending.answer(id + 1, "@a", || retired += 10_000),
+            "another request's answer retires nothing"
+        );
+        assert!(
+            pending.answer(id, "@a", || retired += 100_000),
+            "answering retires the editor's receipt"
+        );
+        assert!(
+            !pending.answer(id, "@a", || retired += 1_000_000),
+            "an answered request is gone"
+        );
         assert_eq!(retired, 101_101);
     }
 
