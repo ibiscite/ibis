@@ -53,6 +53,8 @@
     "allow-choose-project",
     "allow-stop-project",
     "allow-copy-project-entry",
+    "allow-writing-projects",
+    "allow-edit-writing-project",
     "allow-editor-request",
     "allow-session-references",
     "allow-edit-session-references",

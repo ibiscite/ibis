@@ -7,6 +7,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 export type { Sources } from "./bindings";
 export type {
   AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  WritingProjectView, WritingProjectsView, WritingProjectEdit,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -28,6 +29,8 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
+  writingProjects,
+  editWritingProject,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -96,8 +99,9 @@ export function previewFileCitation(
   style: Parameters<typeof commands.previewFileCitation>[2],
   expectedRevision: string,
   signal?: AbortSignal,
+  context?: [number, number] | null,
 ) {
-  const intent = { page: searchPage, request: ++previewRequest, cancel: false };
+  const intent = { page: searchPage, request: ++previewRequest, cancel: false, context: context ?? null };
   const pending = commands.previewFileCitation(items, format, style, expectedRevision, intent);
   const cancel = () => { void commands.previewFileCitation([], format, style, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
   signal?.addEventListener("abort", cancel, { once: true });

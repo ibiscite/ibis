@@ -44,6 +44,22 @@ function options(overrides: Partial<Options>): Options {
   };
 }
 
+test("switching projects with equal citation text needs a fresh preview and ignores the delayed old one", async () => {
+  const pending: ((value: FilePreview) => void)[] = [];
+  const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
+  const initial = options({ previewFileCitation, projectContext: [1, 0] });
+  const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
+  const firstSignal = previewFileCitation.mock.calls[0]?.[4];
+  rerender({ ...initial, projectContext: [2, 0] });
+  expect(firstSignal?.aborted).toBe(true);
+  expect(result.current.shown).toBeNull();
+  await act(async () => pending[0]?.(preview("old project")));
+  expect(result.current.shown).toBeNull();
+  await act(async () => pending[1]?.(preview("new project")));
+  expect(result.current.shown).toMatchObject({ text: "new project" });
+  expect(previewFileCitation.mock.calls[1]?.[5]).toEqual([2, 0]);
+});
+
 test("an empty reconciliation cannot retire a settled ticket when no other preview ran", async () => {
   const previewFileCitation = vi.fn<Preview>().mockResolvedValue(preview("Settled citation"));
   const initial = options({ previewFileCitation });
@@ -135,7 +151,7 @@ test.each([
   expect(signal).toBeInstanceOf(AbortSignal);
   expect(signal?.aborted).toBe(false);
   expect(previewFileCitation).toHaveBeenLastCalledWith(
-    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", null, "1", signal,
+    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", null, "1", signal, undefined,
   );
 
   await act(async () => { pending[1]?.(preview("edited citation")); });

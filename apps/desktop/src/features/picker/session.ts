@@ -11,6 +11,7 @@ export type OutputToken = { opening: number; choice: number; delivery: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
   appId?: string | null;
+  writingProjectId?: string | null;
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
@@ -20,10 +21,10 @@ export type SessionView = {
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
 type Flight = { id: number; session: number; presentation: number; choice: string; format: Choice; opening: number; delivery: number; warnings: string[];
-  references: unknown[]; shelf: CitationReference[]; replaces: string | null; appId: string | null;
+  references: unknown[]; shelf: CitationReference[]; replaces: string | null; appId: string | null; writingProjectId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
-export type LastCitation = { text: string; references: CitationReference[]; format: Choice };
+export type LastCitation = { text: string; references: CitationReference[]; format: Choice; project?: string };
 export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
 export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
 export type SessionState = {
@@ -48,7 +49,7 @@ type Completion = { id: number; session: number };
 export type SessionEvent =
   | { type: "view"; session: number; interaction: number; view: SessionView }
   | { type: "query"; value: string }
-  | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
+  | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" | "project-context" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
   | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
@@ -148,7 +149,7 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const existing = s.flights.find((f) => f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session);
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), references: v.chosen.filter((r) => !r.sample).map((r) => r.id), shelf: v.chosen, replaces: s.changing, appId: v.appId ?? null };
+  const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), references: v.chosen.filter((r) => !r.sample).map((r) => r.id), shelf: v.chosen, replaces: s.changing, appId: v.appId ?? null, writingProjectId: v.writingProjectId };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing }]];
 }
@@ -172,11 +173,17 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "sample": return [changed(s, { selected: new Map(), copied: null, removed: null, copyError: null, changing: null, lastCitations: new Map() }), []];
     case "change-last": {
       const last = s.lastCitations.get(s.view?.appId ?? "");
-      if (!last) return [s, []];
+      if (!last || (last.project ?? null) !== (s.view?.writingProjectId ?? null)
+        || last.project && last.format !== s.view?.format) return [s, []];
       return [changed(s, { selected: new Map(last.references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
         query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, changing: last.text }), []];
     }
     case "forget-last": return [{ ...s, lastCitations: new Map(), changing: null }, []];
+    case "project-context": {
+      const lastCitations = new Map(s.lastCitations);
+      if (s.view?.appId) lastCitations.delete(s.view.appId);
+      return [changed(s, { changing: null, lastCitations, copied: null, shelfCopied: null, copyNotice: null }), []];
+    }
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
     case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null, shelfCopied: null, copyNotice: null } : s, []];
     case "highlight": {
@@ -277,7 +284,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references },
-        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format }, s.view?.remembersLast === true) };
+        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format, ...f.writingProjectId ? { project: f.writingProjectId } : {} }, s.view?.remembersLast === true) };
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.
       const sameVisibleOutput = s.view?.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;

@@ -44,6 +44,8 @@ pub const APP_COMMANDS: &[&str] = &[
     "choose_project",
     "stop_project",
     "copy_project_entry",
+    "writing_projects",
+    "edit_writing_project",
     "editor_request",
     "editor_endpoint",
     "set_editor_endpoint",

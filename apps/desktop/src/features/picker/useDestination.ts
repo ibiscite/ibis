@@ -7,7 +7,7 @@ type CopyToken = { opening: number; choice: number; delivery: number };
 
 import type { Operation } from "./Notices";
 
-type DestinationApi = Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput">>;
+type DestinationApi = Partial<Pick<typeof nativeApi, "pickerDestination" | "rememberAppOutput" | "editWritingProject">>;
 /** Why the next paste uses its format. */
 export type FormatSource = "remembered" | "suggested" | "default" | "held";
 /** Where a format pick goes: this app, the default, or only the next paste. */
@@ -20,7 +20,7 @@ export function outputOf(choice: Choice): AppOutput {
   return style ? { style } : { key: choice as CopyFormat };
 }
 
-export function useDestination({ pickerDestination, rememberAppOutput }: DestinationApi, { fallback, fallbackReady = true, chooseDefault, report }: {
+export function useDestination({ pickerDestination, rememberAppOutput, editWritingProject }: DestinationApi, { fallback, fallbackReady = true, chooseDefault, report }: {
   fallback: Choice;
   fallbackReady?: boolean;
   chooseDefault: (choice: Choice) => void;
@@ -32,11 +32,13 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const [held, setHeld] = useState<Choice | null>(null);
   const [ready, setReady] = useState(!pickerDestination);
   const [saving, setSaving] = useState(false);
+  const [readProblem, setReadProblem] = useState<string | null>(null);
   const reads = useRef(0);
   const openings = useRef(0);
   // Settings refreshes can supersede the return's read within this opening.
   const preserveOpeningOutput = useRef(false);
   const capturedId = useRef<string | null | undefined>(undefined);
+  const capturedContext = useRef<string | undefined>(undefined);
   const choices = useRef(0);
   const delivery = useRef(0);
   const lastPolicy = useRef<string | undefined>(undefined);
@@ -61,17 +63,27 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
         setHeld(null);
       }
       capturedId.current = next.app_id;
+      const context = JSON.stringify(next.context_version ?? null);
+      if (capturedContext.current !== undefined && capturedContext.current !== context) {
+        choices.current += 1;
+        setHeld(null);
+        preserveOpeningOutput.current = false;
+      }
+      capturedContext.current = context;
       const policy = JSON.stringify([next.app_id, next.app_identity, next.paste, next.can_paste, next.unreadable]);
       if (!reset && lastPolicy.current !== undefined && lastPolicy.current !== policy) delivery.current += 1;
       lastPolicy.current = policy;
       setDestination(next);
+      setReadProblem(null);
       report("appRead", false);
       report("appChoices", next.unreadable);
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (request !== reads.current) return;
       setDestination(null);
+      setReadProblem(typeof error === "string" ? error : null);
       report("appChoices", false);
-      report("appRead");
+      if (typeof error === "string") report("appRead", false);
+      else report("appRead");
     }).finally(() => { if (request === reads.current) setReady(true); });
   }, [pickerDestination, report]);
   const app = rememberAppOutput ? destination?.app ?? null : null;
@@ -79,7 +91,9 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const appOutput = destination?.automatic;
   const suggested = appOutput && "style" in appOutput && fallbackReady
     ? `style:${styleOf(fallback) ?? "apa"}` as Choice : choiceOf(appOutput ?? null);
-  const baseFormat = remembered ?? suggested ?? fallback;
+  const writingProject = destination?.writing_project ?? null;
+  const projectFormat = choiceOf(writingProject?.output ?? null);
+  const baseFormat = projectFormat ?? remembered ?? suggested ?? fallback;
   const format = held ?? baseFormat;
   preparedFormat.current = format;
   const save = (action: () => Promise<unknown>, apply: () => void, clearHeld = true) => {
@@ -108,6 +122,11 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const pick: FormatPick = app ? "app" : !pickerDestination || destination ? "default" : "paste";
   const choose = (choice: Choice) => {
     choices.current += 1;
+    if (writingProject && destination?.writing_context && editWritingProject) {
+      const context = destination.writing_context;
+      save(() => editWritingProject(context, { kind: "output", id: writingProject.id, revision: writingProject.revision, output: outputOf(choice) }), () => read(false));
+      return;
+    }
     setHeld(choice);
     if (!ready) return;
     if (pick === "app") remember(choice);
@@ -126,7 +145,7 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
     // Persisting delivery does not resume the Enter that opened the chooser.
     // Read the native policy back before showing an intended paste in the footer.
     // Answering an open first-paste question accepts the format it showed, so it is not asked again.
-    const output = asked && held === null && destination?.output_question && !remembered ? outputOf(format) : null;
+    const output = asked && !writingProject && held === null && destination?.output_question && !remembered ? outputOf(format) : null;
     save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false);
   };
   const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current, delivery: delivery.current });
@@ -144,10 +163,11 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   };
   // A pick being saved already reads as remembered; only one that stayed held says so.
   const source: FormatSource = held !== null && held !== baseFormat ? saving ? "remembered" : "held"
-    : remembered ? "remembered" : app && suggested ? "suggested" : "default";
+    : writingProject || remembered ? "remembered" : app && suggested ? "suggested" : "default";
   const askPaste = Boolean(rememberAppOutput && destination?.app_id && destination.paste_question);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
-  const shouldAsk = askPaste || Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && held === null);
+  const shouldAsk = askPaste || Boolean(!writingProject && rememberAppOutput && destination?.app_id && destination.output_question && !remembered && held === null);
   return { appId: destination?.app_id ?? null, app, format, ready, saving, source, pick, shouldAsk, read, choose,
+    writingProject, readProblem, contextVersion: destination?.context_version ?? null,
     chooseOnce, copyToken, isCurrentCopy, consumeHeld, askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }

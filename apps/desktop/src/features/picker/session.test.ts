@@ -20,6 +20,49 @@ function scenario() {
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
+test("a project switch keeps search, ordered references and pages but cancels pending Enter and replacement", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "synthetic" });
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send(s.view({ shown: null, searchPending: true }));
+  s.send({ type: "enter", choice: null });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.send({ type: "project-context" });
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.state.changing).toBeNull();
+  expect(s.state.query).toBe("synthetic");
+  expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
+  expect(s.send(s.view())).toEqual([]);
+});
+
+test("a project switch does not offer another project's citation for replacement", () => {
+  const s = scenario();
+  s.send(s.view({ appId: "example.editor" }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1, { pinned: true });
+  expect(s.state.lastCitations.has("example.editor")).toBe(true);
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBe(prepared.text);
+  s.send({ type: "project-context" });
+  expect(s.state.changing).toBeNull();
+  expect(s.state.lastCitations.has("example.editor")).toBe(false);
+});
+
+test.each([
+  { writingProjectId: "project-b", format: "pandoc" as const },
+  { writingProjectId: "project-a", format: "typst" as const },
+  { writingProjectId: null, format: "pandoc" as const },
+])("a last citation cannot cross project or output identity even before its change event: $writingProjectId $format", (next) => {
+  const s = scenario();
+  s.send(s.view({ appId: "example.editor", writingProjectId: "project-a" }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1, { pinned: true });
+  expect(s.state.lastCitations.get("example.editor")?.project).toBe("project-a");
+  s.send(s.view({ appId: "example.editor", ...next }));
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
+});
+
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
   const c = { ...b, id: { synthetic: "third" }, key: "third" };

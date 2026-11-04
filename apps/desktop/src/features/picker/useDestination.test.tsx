@@ -18,6 +18,33 @@ function options() {
 const refused = () => vi.fn(async (): Promise<null> => { throw new Error("synthetic save failure"); });
 const noApp: PickerDestination = { ...browser, app: null, app_id: null, output_question: null };
 
+test("a project's format beats the app and a failed project save keeps both old settings", async () => {
+  const settings = options();
+  const rememberAppOutput = vi.fn(async () => null);
+  const editWritingProject = vi.fn(async (): Promise<never> => { throw new Error("synthetic failure"); });
+  const project = { id: "thesis", name: "Thesis", revision: "r1", output: { key: "cite" } as const, bibliography: "refs.bib" };
+  const target: PickerDestination = { ...browser, remembered: { key: "typst" }, writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput, editWritingProject }, settings));
+  await act(async () => result.current.read());
+  expect(result.current.format).toBe("cite");
+  expect(result.current.shouldAsk).toBe(false);
+  await act(async () => result.current.choose("pandoc"));
+  expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "output", id: "thesis", revision: "r1", output: { key: "pandoc" } });
+  expect(result.current.format).toBe("cite");
+  expect(rememberAppOutput).not.toHaveBeenCalled();
+  expect(settings.chooseDefault).not.toHaveBeenCalled();
+});
+
+test("switching projects with the same output retires the old copy token", async () => {
+  let target: PickerDestination = { ...browser, context_version: [1, 0] };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput: vi.fn() }, options()));
+  await act(async () => result.current.read());
+  const first = result.current.copyToken();
+  target = { ...target, context_version: [2, 0] };
+  await act(async () => result.current.read(false));
+  expect(result.current.isCurrentCopy(first)).toBe(false);
+});
+
 test("a pick is remembered for the app, says so, and never changes the default", async () => {
   const settings = options();
   const rememberAppOutput = vi.fn(async () => null);

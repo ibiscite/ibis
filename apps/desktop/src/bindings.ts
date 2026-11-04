@@ -107,6 +107,8 @@ export const commands = {
 	 *  file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
+	writingProjects: () => __TAURI_INVOKE<WritingProjectsView>("writing_projects"),
+	editWritingProject: (context: string, action: WritingProjectEdit) => __TAURI_INVOKE<WritingProjectsView>("edit_writing_project", { context, action }),
 	/**  `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<{
 	request: number,
@@ -778,6 +780,9 @@ export type PickerDestination = {
 	paste_question: boolean,
 	/**  A proven ordinary target can accept an explicit delivery choice, including recovery. */
 	can_choose_paste: boolean,
+	writing_project?: WritingProjectView | null,
+	context_version?: [number, number] | null,
+	writing_context?: string | null,
 };
 
 /**
@@ -889,6 +894,7 @@ export type PreviewIntent = {
 	page: number,
 	request: number,
 	cancel: boolean,
+	context?: [number, number] | null,
 };
 
 /**  The state of one emitted key in the project bibliography, for the row. */
@@ -1211,6 +1217,25 @@ export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Seri
 
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
+
+export type WritingProjectEdit = { kind: "create"; name: string; output: AppOutput } | { kind: "rename"; id: string; revision: string; name: string } | { kind: "remove"; id: string; revision: string } | { kind: "select"; id: string | null } | { kind: "output"; id: string; revision: string; output: AppOutput };
+
+export type WritingProjectView = {
+	id: string,
+	name: string,
+	/**  A CLI project can name outputs not yet available in the picker. */
+	output: AppOutput | null,
+	bibliography: string | null,
+	revision: string,
+};
+
+export type WritingProjectsView = {
+	projects: WritingProjectView[],
+	selected: string | null,
+	session_only: boolean,
+	/**  Owns one picker opening and captured destination; never a path or title. */
+	context: string,
+};
 
 /**  A Zotero group library the user can choose. */
 export type ZoteroGroup = {

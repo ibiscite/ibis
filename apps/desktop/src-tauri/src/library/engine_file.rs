@@ -688,27 +688,27 @@ impl FileLibrary {
         reply
     }
 
-    /// A sentence for each chosen key not plainly in the project's file.
-    pub(crate) fn project_warnings(&self, items: &[ItemRef], project: &crate::project::Current) -> Vec<String> {
-        items
-            .iter()
-            .filter_map(|id| self.engine.project_check_item(&project.read, id).ok().flatten())
-            .filter_map(|(key, check)| project.warning(&key, &check))
-            .collect()
-    }
-
-    /// Copying reports the same keys its preview warned about, so a citation
-    /// is never delivered past a warning the person may not have seen. Only a
-    /// key output depends on what the project's file holds.
-    pub(crate) fn copy_project_warnings(
+    /// The exact records retained by this receipt supply both its emitted keys
+    /// and its bibliography checks. A concurrent reload cannot change either.
+    pub(crate) fn prepared_project_warnings(
         &self,
-        cited: &[ItemRef],
-        key_output: bool,
+        ticket: &str,
+        hash: &str,
         project: Option<&crate::project::Current>,
-    ) -> Vec<String> {
-        project
-            .filter(|_| key_output)
-            .map_or_else(Vec::new, |project| self.project_warnings(cited, project))
+    ) -> Result<Vec<String>, CommandError> {
+        let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+        if current != ticket || citation.result().content_hash.as_str() != hash {
+            return Err(CommandError::SnapshotChanged);
+        }
+        let Some(project) = project.filter(|_| matches!(citation.request_output(), OutputSpec::Key { .. })) else {
+            return Ok(vec![]);
+        };
+        Ok(citation
+            .project_checks(&project.read)
+            .into_iter()
+            .filter_map(|key| project.warning(&key.key, &key.check))
+            .collect())
     }
 
     pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
@@ -1105,7 +1105,6 @@ impl FileLibrary {
             warnings: citation_warnings_named(citation),
             delivery: None,
             cited: citation.items(),
-            key_output: matches!(citation.request_output(), OutputSpec::Key { .. }),
         })
     }
 }

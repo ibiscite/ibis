@@ -8,7 +8,7 @@ import { usePin } from "./usePin";
 import { useWindowResetUndo } from "./useWindowResetUndo";
 
 /** The picker's own overlay: at most one is open, whichever way it was reached. */
-type Overlay = "more" | "library" | "format" | "keys" | "session";
+type Overlay = "more" | "library" | "format" | "keys" | "session" | "projects";
 
 export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
   { welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "welcomeShown">, cancelCopy: () => void) {
@@ -63,22 +63,23 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     leaveOverlays();
     void perform(operation, action);
   };
-  const openSheet = (sheet: "keys" | "session") => {
+  const openSheet = (sheet: "keys" | "session" | "projects") => {
     cancelCopy();
     closeOverlays();
     const focused = document.activeElement;
     sheetReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
     setOverlay(sheet);
   };
-  const closeSheet = (sheet: "keys" | "session") => {
+  const closeSheet = (sheet: "keys" | "session" | "projects") => {
     closed(sheet);
     const back = sheetReturn.current;
     if (back?.isConnected && !back.closest("[hidden]")) back.focus();
     else focusHome();
   };
-  return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session",
+  return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session", projectsOpen: overlay === "projects",
     setFormatOpen: (open: boolean) => { if (open) setOverlay("format"); else closed("format"); },
     pinned, currentPin, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu,
     openKeys: () => openSheet("keys"), closeKeys: () => closeSheet("keys"),
-    openSession: () => openSheet("session"), closeSession: () => closeSheet("session") };
+    openSession: () => openSheet("session"), closeSession: () => closeSheet("session"),
+    openProjects: () => openSheet("projects"), closeProjects: () => closeSheet("projects") };
 }

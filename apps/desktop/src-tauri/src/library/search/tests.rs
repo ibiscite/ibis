@@ -10,6 +10,7 @@ fn preview_aborts_stop_only_the_named_engine_request_in_any_delivery_order() {
         page: 1,
         request,
         cancel,
+        context: None,
     };
     let first = requests.start(intent(1, false)).unwrap_or_else(|| panic!("first"));
     let second = requests.start(intent(2, false)).unwrap_or_else(|| panic!("second"));

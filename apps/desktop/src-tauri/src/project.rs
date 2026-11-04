@@ -18,7 +18,6 @@ use crate::diagnostics::{NativeIssue, report};
 use crate::library::commands::RecentIdentity;
 use crate::library::{Library, ProjectMark};
 use crate::picker::ChooserOpen;
-use crate::preferences::SettingsFile;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
@@ -71,6 +70,11 @@ struct Slot {
     path: Option<PathBuf>,
     read: Option<ProjectRead>,
     reading: bool,
+    context: Option<String>,
+    prepared: Option<(u64, String, (u32, u32))>,
+    output: Option<crate::destination::AppOutput>,
+    worker_running: bool,
+    pending_read: Option<Ticket>,
 }
 
 #[derive(Default)]
@@ -88,7 +92,95 @@ impl ProjectBibliography {
         slot.path = path;
         slot.read = None;
         slot.reading = false;
+        slot.prepared = None;
+        slot.pending_read = None;
         Self::begin(&mut slot)
+    }
+
+    /// One bounded reader and one latest queued choice. A discarded choice
+    /// cannot retain another full bibliography parse while the person switches.
+    fn enqueue_read(&self, ticket: Ticket) -> Option<Ticket> {
+        let mut slot = self.lock();
+        if ticket.generation != slot.generation { return None; }
+        if slot.worker_running {
+            slot.pending_read = Some(ticket);
+            None
+        } else {
+            slot.worker_running = true;
+            Some(ticket)
+        }
+    }
+
+    fn next_read(&self) -> Option<Ticket> {
+        let mut slot = self.lock();
+        let next = slot.pending_read.take().filter(|ticket| ticket.generation == slot.generation);
+        if next.is_none() { slot.worker_running = false; }
+        next
+    }
+
+    pub(crate) fn version(&self) -> (u32, u32) {
+        let slot = self.lock();
+        (slot.generation, slot.revision)
+    }
+
+    pub(crate) fn capture(
+        &self,
+        expected: Option<(u32, u32)>,
+        output: Option<crate::destination::AppOutput>,
+    ) -> Result<((u32, u32), Option<Current>), crate::library::CommandError> {
+        let slot = self.lock();
+        let version = (slot.generation, slot.revision);
+        // An explicit editor owns its output and never borrows this bibliography.
+        let Some(output) = output else {
+            return Ok((version, None));
+        };
+        let valid = !slot
+            .context
+            .as_ref()
+            .is_some_and(|context| context.starts_with("unavailable:"))
+            && !(matches!(output, crate::destination::AppOutput::Key(_)) && slot.path.is_some() && slot.read.is_none())
+            && expected == Some(version)
+            && slot.output.is_none_or(|current| current == output);
+        if !valid {
+            return Err(crate::library::CommandError::Cancelled);
+        }
+        Ok((version, Self::current_in(&slot)))
+    }
+
+    /// A native receipt belongs to one immutable project observation, including
+    /// the state with no bibliography. Equal output after A → B → A is new work.
+    pub(crate) fn bind_preview(
+        &self,
+        reservation: u64,
+        ticket: &str,
+        version: (u32, u32),
+    ) -> Result<(), crate::library::CommandError> {
+        let mut slot = self.lock();
+        if (slot.generation, slot.revision) != version
+            || slot.prepared.as_ref().is_some_and(|(newer, _, _)| *newer > reservation)
+        {
+            return Err(crate::library::CommandError::SnapshotChanged);
+        }
+        slot.prepared = Some((reservation, ticket.to_owned(), version));
+        Ok(())
+    }
+
+    /// Project changes and clipboard commits share this lock. Warnings and
+    /// content are committed under the same context, before any clipboard I/O.
+    pub(crate) fn commit<T>(
+        &self,
+        ticket: &str,
+        write: impl FnOnce(Option<Current>) -> Result<T, crate::library::CommandError>,
+    ) -> Result<T, crate::library::CommandError> {
+        let slot = self.lock();
+        let valid = slot
+            .prepared
+            .as_ref()
+            .is_some_and(|(_, prepared, version)| prepared == ticket && *version == (slot.generation, slot.revision));
+        if !valid {
+            return Err(crate::library::CommandError::SnapshotChanged);
+        }
+        write(Self::current_in(&slot))
     }
 
     /// Read the current choice again, unless a read of it is running.
@@ -152,6 +244,10 @@ impl ProjectBibliography {
     /// The read a reply should use; `None` until the choice has one.
     pub(crate) fn current(&self) -> Option<Current> {
         let slot = self.lock();
+        Self::current_in(&slot)
+    }
+
+    fn current_in(slot: &Slot) -> Option<Current> {
         Some(Current {
             generation: slot.generation,
             name: project_name(slot.path.as_deref()?),
@@ -159,8 +255,9 @@ impl ProjectBibliography {
         })
     }
 
-    fn is_current(&self, generation: u32) -> bool {
-        self.lock().generation == generation
+    fn commit_generation<T>(&self, generation: u32, write: impl FnOnce() -> T) -> Option<T> {
+        let slot = self.lock();
+        (slot.generation == generation).then(write)
     }
 }
 
@@ -203,17 +300,50 @@ impl Current {
 
 fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
     let Some(ticket) = ticket else { return };
+    let Some(mut ticket) = app.state::<ProjectBibliography>().enqueue_read(ticket) else { return };
     let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
+    tauri::async_runtime::spawn_blocking(move || loop {
         let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
-        if handle.state::<ProjectBibliography>().finish(ticket.generation, read) {
+        let project = handle.state::<ProjectBibliography>();
+        if project.finish(ticket.generation, read) {
             changed(&handle);
         }
+        match project.next_read() { Some(next) => ticket = next, None => break }
     });
 }
 
 fn changed(app: &AppHandle) {
     report(app.emit("project:changed", ()), NativeIssue::LibraryEvent);
+}
+
+/// Install output ownership and its bibliography together. The same lock order
+/// as copy (project, then delivery) makes switching revoke an old paste proof.
+pub(crate) fn activate_context(
+    app: &AppHandle,
+    context: String,
+    path: Option<PathBuf>,
+    output: Option<crate::destination::AppOutput>,
+) {
+    let project = app.state::<ProjectBibliography>();
+    let ticket = {
+        let mut slot = project.lock();
+        if slot.context.as_ref() == Some(&context) && slot.path == path && slot.output == output {
+            return;
+        }
+        slot.context = Some(context);
+        slot.generation = slot.generation.wrapping_add(1);
+        slot.path = path;
+        slot.output = output;
+        slot.read = None;
+        slot.reading = false;
+        slot.prepared = None;
+        slot.pending_read = None;
+        // A poisoned delivery owner cannot post keys; still retire our receipt.
+        let _ = crate::paste::change_destination(app, true, |_| Ok(()));
+        ProjectBibliography::begin(&mut slot)
+    };
+    changed(app);
+    start_read(app, ticket);
 }
 
 /// Read the saved choice at launch.
@@ -233,14 +363,8 @@ pub(crate) fn watch_openings(app: &AppHandle) {
 }
 
 fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), String> {
-    let saved = path.clone();
-    app.state::<SettingsFile>()
-        .update(move |settings| settings.project_bibliography = saved)
-        .map_err(|_| "The project bibliography could not be saved. Try again.".to_owned())?;
-    let ticket = app.state::<ProjectBibliography>().choose(path);
-    changed(app);
-    start_read(app, ticket);
-    Ok(())
+    let owner = crate::writing_projects::bibliography_owner(app)?;
+    crate::writing_projects::set_bibliography(app, &owner, path)
 }
 
 #[tauri::command]
@@ -259,6 +383,9 @@ pub(crate) fn choose_project(app: AppHandle) {
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(&app);
     let generation = app.state::<crate::picker::PickerGeneration>().current();
+    let Ok(bibliography_owner) = crate::writing_projects::bibliography_owner(&app) else {
+        return;
+    };
     let mut dialog = app
         .dialog()
         .file()
@@ -271,7 +398,7 @@ pub(crate) fn choose_project(app: AppHandle) {
     dialog.pick_file(move |picked| {
         owner.during(|| {
             if let Some(Ok(path)) = picked.map(|path| path.into_path())
-                && apply(&handle, Some(path)).is_err()
+                && crate::writing_projects::set_bibliography(&handle, &bibliography_owner, Some(path)).is_err()
             {
                 report(handle.emit("project:not-saved", ()), NativeIssue::LibraryEvent);
             }
@@ -348,11 +475,14 @@ pub(crate) async fn copy_project_entry(
         EntryResult::Refused { reason } => return Ok(reason.into()),
     };
     // Checked last: the choice may have changed during that read.
-    if !app.state::<ProjectBibliography>().is_current(generation) {
-        return Ok(EntryCopy::Changed);
-    }
-    crate::copy::write_plain(&app, &text)?;
-    Ok(EntryCopy::Copied)
+    let captured = crate::paste::last_app(&app);
+    crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
+    app.state::<ProjectBibliography>()
+        .commit_generation(generation, || {
+            crate::copy::write_plain(&app, &text)?;
+            Ok(EntryCopy::Copied)
+        })
+        .unwrap_or(Ok(EntryCopy::Changed))
 }
 
 #[cfg(test)]
@@ -373,6 +503,148 @@ mod tests {
 
     const A: &str = "@book{a2026,title={A}}\n";
     const B: &str = "@book{b2026,title={B}}\n";
+
+    #[test]
+    fn a_preview_cannot_write_after_a_project_switch_even_when_switching_back() {
+        let slot = ProjectBibliography::default();
+        slot.choose(None);
+        let a = slot.version();
+        slot.bind_preview(1, "preview-a", a).unwrap();
+        let mut written = String::new();
+        slot.commit("preview-a", |_| {
+            written.push_str("citation A");
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(written, "citation A");
+        slot.choose(None);
+        assert!(
+            slot.commit("preview-a", |_| {
+                written.push_str("wrong");
+                Ok(())
+            })
+            .is_err()
+        );
+        slot.choose(None);
+        assert!(slot.bind_preview(1, "late-a", a).is_err());
+        assert!(
+            slot.commit("preview-a", |_| {
+                written.push_str("wrong");
+                Ok(())
+            })
+            .is_err()
+        );
+        assert_eq!(written, "citation A");
+        slot.bind_preview(3, "fresh-a", slot.version()).unwrap();
+        slot.commit("fresh-a", |_| {
+            written.push_str(" fresh A");
+            Ok(())
+        })
+        .unwrap();
+        assert_eq!(written, "citation A fresh A");
+    }
+
+    #[test]
+    fn a_delayed_preview_cannot_replace_a_newer_receipt() {
+        let slot = ProjectBibliography::default();
+        let version = slot.version();
+        slot.bind_preview(2, "newer", version).unwrap();
+        assert!(slot.bind_preview(1, "older", version).is_err());
+        slot.commit("newer", |_| Ok(())).unwrap();
+    }
+
+    #[test]
+    fn rapid_project_switches_keep_one_reader_and_only_the_latest_pending_choice() {
+        let slot = ProjectBibliography::default();
+        let first = slot.choose(Some("/invented/a.bib".into())).unwrap();
+        assert!(slot.enqueue_read(first).is_some());
+        for name in ["b.bib", "c.bib", "d.bib"] {
+            let queued = slot.choose(Some(std::path::Path::new("/invented").join(name))).unwrap();
+            assert!(slot.enqueue_read(queued).is_none());
+        }
+        let next = slot.next_read().unwrap();
+        assert_eq!(next.path.file_name().unwrap(), "d.bib");
+        assert!(slot.lock().worker_running);
+        assert!(slot.next_read().is_none());
+        assert!(!slot.lock().worker_running);
+        let queued = slot.choose(Some("/invented/e.bib".into())).unwrap();
+        assert!(slot.enqueue_read(queued).is_some());
+        let abandoned = slot.choose(Some("/invented/f.bib".into())).unwrap();
+        assert!(slot.enqueue_read(abandoned).is_none());
+        slot.choose(None);
+        assert!(slot.next_read().is_none(), "leaving a project drops its queued read");
+    }
+
+    #[test]
+    fn context_validation_freezes_the_output_and_version_together() {
+        use crate::destination::AppOutput;
+        use ibis_core::cite::KeyFormat;
+        let slot = ProjectBibliography::default();
+        slot.lock().output = Some(AppOutput::Key(KeyFormat::Cite));
+        let (a, _) = slot
+            .capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Cite)))
+            .unwrap();
+        slot.choose(None);
+        slot.lock().output = Some(AppOutput::Key(KeyFormat::Typst));
+        assert!(slot.capture(Some(a), Some(AppOutput::Key(KeyFormat::Cite))).is_err());
+        assert!(
+            slot.capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Cite)))
+                .is_err()
+        );
+        assert!(slot.bind_preview(1, "old-format", a).is_err());
+        assert!(
+            slot.commit::<()>("old-format", |_| panic!("old format cannot write in new project"))
+                .is_err()
+        );
+        assert!(
+            slot.capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Typst)))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn an_entry_copy_keeps_its_project_guard_until_the_clipboard_write_finishes() {
+        let slot = ProjectBibliography::default();
+        let generation = slot.version().0;
+        assert_eq!(slot.commit_generation(generation, || "entry A"), Some("entry A"));
+        slot.choose(None);
+        assert_eq!(slot.commit_generation(generation, || "must not reach clipboard"), None);
+    }
+
+    #[test]
+    fn a_new_bibliography_must_finish_reading_before_a_citation_can_be_prepared() {
+        let (_dir, path) = written("paper.bib", A);
+        let slot = ProjectBibliography::default();
+        let ticket = slot.choose(Some(path)).unwrap();
+        let output = Some(crate::destination::AppOutput::Key(ibis_core::cite::KeyFormat::Pandoc));
+        assert!(
+            slot.capture(None, output).is_err(),
+            "an unowned request cannot prepare a citation"
+        );
+        assert!(slot.capture(Some(slot.version()), output).is_err());
+        assert!(
+            slot.capture(
+                Some(slot.version()),
+                Some(crate::destination::AppOutput::Style(
+                    ibis_core::settings::CitationStyle::Apa
+                ))
+            )
+            .is_ok(),
+            "formatted text does not check bibliography keys"
+        );
+        assert!(
+            slot.commit::<()>("not-prepared", |_| panic!("must not write before checking"))
+                .is_err()
+        );
+        slot.finish(ticket.generation, read(&ticket));
+        assert!(slot.capture(Some(slot.version()), output).is_ok());
+        slot.bind_preview(1, "checked", slot.version()).unwrap();
+        slot.commit("checked", |current| {
+            assert_eq!(current.unwrap().name, "paper.bib");
+            Ok(())
+        })
+        .unwrap();
+    }
 
     #[test]
     fn rows_and_warnings_use_the_key_a_citation_would_emit() {
@@ -416,15 +688,25 @@ mod tests {
             Some((serde_json::json!("may-name-another"), generation))
         );
 
-        let ids: Vec<ItemRef> = rows["results"]
+        let selections = rows["results"]
             .as_array()
             .map(|rows| {
                 rows.iter()
-                    .filter_map(|row| serde_json::from_value(row["id"].clone()).ok())
+                    .filter_map(|row| serde_json::from_value(row.clone()).ok())
                     .collect()
             })
             .unwrap_or_default();
-        let mut warnings = file.project_warnings(&ids, &current);
+        let preview = file
+            .preview(
+                file.reserve_preview(),
+                selections,
+                ibis_core::cite::KeyFormat::Pandoc,
+                None,
+            )
+            .unwrap();
+        let mut warnings = file
+            .prepared_project_warnings(&preview.ticket, &preview.content_hash, Some(&current))
+            .unwrap();
         warnings.sort();
         assert_eq!(
             warnings,
@@ -470,7 +752,9 @@ mod tests {
             let mut copied = file
                 .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
                 .unwrap_or_else(|_| panic!("a copy"));
-            let warnings = file.copy_project_warnings(&copied.cited, copied.key_output, current.as_ref());
+            let warnings = file
+                .prepared_project_warnings(&preview.ticket, &preview.content_hash, current.as_ref())
+                .unwrap();
             copied.warnings.extend(warnings);
             copied.warnings
         };
@@ -546,6 +830,7 @@ mod tests {
                     page: 1,
                     request,
                     cancel: false,
+                    context: Some(self.app.state::<ProjectBibliography>().version()),
                 },
                 self.app.state(),
                 self.app.state(),

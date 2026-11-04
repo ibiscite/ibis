@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
@@ -17,6 +17,8 @@ import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
+import { WritingProjectsDialog } from "../src/features/picker/WritingProjects";
+import type { WritingProjectsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
 import "../src/ui/CopyReceipt.css";
@@ -24,7 +26,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -49,6 +51,7 @@ const fixtures: Partial<Record<Scenario, {
   "empty-search": { query: "" },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
+  "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { click: ".pin-button" },
@@ -221,9 +224,27 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
+  if (scenario === "writing-projects" || scenario === "writing-projects-pending") return <WritingProjectsBoard picker={picker} pending={scenario === "writing-projects-pending"} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
     : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
+}
+
+const writingProjects: WritingProjectsView = { context: "invented-opening", session_only: false, selected: "thesis", projects: [
+  { id: "thesis", name: "Thesis", output: { key: "autocite" }, bibliography: "thesis.bib", revision: "1" },
+  { id: "notes", name: "Field Notes", output: { key: "pandoc" }, bibliography: null, revision: "1" },
+] };
+
+/** The real project sheet over the real picker, with invented local choices. */
+function WritingProjectsBoard({ picker, pending }: { picker: PickerApi; pending: boolean }) {
+  const [open, setOpen] = useState(true);
+  return <><style>{pickerStyles}</style><App api={picker} preview={{ query: "invented" }} />
+    {open && <WritingProjectsDialog format="autocite" onClose={() => setOpen(false)} api={{
+      writingProjects: async () => writingProjects,
+      editWritingProject: async () => pending ? new Promise<WritingProjectsView>(() => {}) : writingProjects,
+      chooseProject: async () => {}, stopProject: async () => {},
+    }} />}
+  </>;
 }
 
 const mounts = new WeakMap<HTMLElement, () => void>();
