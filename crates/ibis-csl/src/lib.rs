@@ -8,8 +8,8 @@ mod output;
 mod runtime;
 mod service;
 
-pub use catalog::{LocaleEntry, Release, StyleEntry, StylePage, files, styles};
-use ibis_core::contract::{CitationRequest, CitationResult, OutputSpec, Snapshot};
+pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
+use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;
 use std::time::Duration;
@@ -84,6 +84,11 @@ pub const STYLES: [(&str, &str); 5] = [
     ("ieee", "IEEE"),
     ("modern-language-association", "MLA (9th edition)"),
 ];
+
+/// The forms one reference can be cited in with the style `id`.
+pub fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
+    input::style_forms(id)
+}
 
 #[derive(Clone)]
 pub struct Formatter {

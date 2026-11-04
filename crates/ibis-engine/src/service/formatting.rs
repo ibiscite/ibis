@@ -190,19 +190,6 @@ fn formatter_error(failure: FormatError) -> EngineError {
         FormatError::Runtime => error(ErrorCode::Internal),
     }
 }
-pub(super) fn refusal(request: &CitationRequest, failure: CitationError) -> CitationResult {
-    CitationResult::new(
-        String::new(),
-        None,
-        None,
-        DisplayTree::default(),
-        (0..request.items.len())
-            .map(|item| ItemOutcome::Refused { item, error: failure })
-            .collect(),
-        vec![],
-        vec![],
-    )
-}
 
 #[cfg(test)]
 mod tests {

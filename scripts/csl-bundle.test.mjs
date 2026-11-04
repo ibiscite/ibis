@@ -46,5 +46,7 @@ test("a broken reference in the release stops the build", () => {
   assert.throws(() => pack(options([file("child", "missing")])), /parent missing is missing/);
   assert.throws(() => pack(options([file("a", "b"), file("b", "c"), file("c")])), /itself dependent/);
   assert.throws(() => pack({ ...options([file("a")]), renames: { old: "gone" } }), /rename target/);
-  assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "gone", title: "Gone" }] }), /curated style/);
+  assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "gone", title: "Gone", name: "Gone" }] }), /curated style/);
+  assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "a", title: "A" }] }), /needs a short name/);
+  assert.throws(() => pack({ ...options([file("a")]), curated: [{ id: "a", title: "A", name: "A".repeat(25) }] }), /needs a short name/);
 });

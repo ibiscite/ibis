@@ -113,7 +113,11 @@ export function pack({ styles, locales, renames, curated, releases, primary }) {
     if (style.parent && byId.get(style.parent).parent) throw new Error(`${style.id}: its parent is itself dependent`);
   }
   for (const id of Object.values(renames)) if (!byId.has(id)) throw new Error(`rename target ${id} is missing`);
-  for (const { id } of curated) if (!byId.has(id)) throw new Error(`curated style ${id} is missing`);
+  for (const { id, name } of curated) {
+    if (!byId.has(id)) throw new Error(`curated style ${id} is missing`);
+    // Its one name in every front end, short enough for "APA · Word".
+    if (typeof name !== "string" || !name || name.length > 24) throw new Error(`curated style ${id} needs a short name`);
+  }
   // Independent styles share a little; dependent ones are near copies of each other.
   const ordered = [...styles].sort((a, b) => Number(Boolean(a.parent)) - Number(Boolean(b.parent)) || (a.id < b.id ? -1 : 1));
   const raw = [];
@@ -132,7 +136,7 @@ export function pack({ styles, locales, renames, curated, releases, primary }) {
     locales: locales.map(({ tag, native, english, block, offset, bytes }) => [tag, native, english, block, offset, bytes.length]),
     primary,
     renames,
-    curated: curated.map(({ id, title }) => [id, title]),
+    curated: curated.map(({ id, title, name }) => [id, title, name]),
   })));
   const rows = compress(Buffer.from(JSON.stringify([...styles].sort((a, b) => (a.id < b.id ? -1 : 1)).map((style) => [
     style.id, style.title, style.updated, style.parent, style.locale, style.format, style.fields,

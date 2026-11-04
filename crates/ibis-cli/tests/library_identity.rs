@@ -192,7 +192,7 @@ fn a_keyless_csl_record_formats_and_key_output_refuses_it() {
     let refused = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":mcp_ref(&item)}],"syntax":"pandoc"}),
+        json!({"items":[{"ref":mcp_ref(&item)}],"format":"pandoc"}),
     )
     .unwrap_err();
     assert!(refused.contains("has no citation key"), "{refused}");
@@ -230,7 +230,7 @@ fn csl_json_key_export_keeps_the_source_id() {
     assert_eq!(records[0]["id"], "item-7");
     assert_eq!(records[0]["citation-key"], "Doe2026");
     // MCP offers no CSL-JSON key output, but finds the record by its real key.
-    let cited = tool(&engine, "cite", json!({"items":[{"ref":"Doe2026"}],"syntax":"pandoc"})).unwrap();
+    let cited = tool(&engine, "cite", json!({"items":[{"ref":"Doe2026"}],"format":"pandoc"})).unwrap();
     assert_eq!(cited["text"], "[@Doe2026]");
 }
 

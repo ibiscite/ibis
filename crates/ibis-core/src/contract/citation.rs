@@ -122,6 +122,17 @@ pub enum CitationForm {
     BibliographyOnly,
 }
 
+impl CitationForm {
+    pub const ALL: [Self; 6] = [
+        Self::Normal,
+        Self::Narrative,
+        Self::AuthorOnly,
+        Self::YearOnly,
+        Self::Full,
+        Self::BibliographyOnly,
+    ];
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CitationItem {
@@ -202,6 +213,8 @@ pub enum OutputSpec {
     Csl {
         style: String,
     },
+    /// An output by its id in the engine's `outputs` list: a key syntax or a
+    /// common style. The engine writes it as that entry's own output.
     Preset {
         name: String,
     },

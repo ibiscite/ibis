@@ -48,8 +48,9 @@ Use these four tools from the `ibis` MCP server, in this order:
 2. `show` with a `ref` when you need more fields (pages, publisher, identifiers).
    You do not need it before citing.
 3. `cite` with `items`, in order, each holding a `ref` and any `locator`, `prefix`,
-   `suffix` or `omit_author`. Add either a `style` (default `apa`; ids from `styles`)
-   or a key `syntax` (`pandoc`, `biblatex`, `natbib`, `latex`, `typst` or `keys`).
+   `suffix` or `omit_author`. Add either a `format` (the ids in the tool's input
+   schema: key syntaxes such as `pandoc`, `autocite` or `typst`, and common styles
+   such as `apa`) or any other `style` id from `styles`. With neither it is `apa`.
 4. `styles` finds a style id by journal or style name among every official CSL style,
    and lists the languages `cite` can write in with `locale`.
 
@@ -77,8 +78,9 @@ removes. Do not bypass that boundary by reading the app's settings yourself.
 
 ## Choosing the output
 
-- Markdown for Pandoc or Quarto: `syntax: "pandoc"`. LaTeX with BibLaTeX:
-  `syntax: "biblatex"`; with natbib: `syntax: "natbib"`. Typst: `syntax: "typst"`.
-- Writing prose or a document without a citation processor: a `style`, plus
+- Markdown for Pandoc or Quarto: `format: "pandoc"`. LaTeX with BibLaTeX:
+  `format: "autocite"` (a narrative citation is written as `\textcite`); with
+  natbib: `format: "natbib"`. Typst: `format: "typst"`.
+- Writing prose or a document without a citation processor: a style, plus
   `form: "bibliography-only"` for the reference list.
 - Match what the document already uses before choosing one yourself.

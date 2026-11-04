@@ -11,6 +11,7 @@ fn one_method_list_drives_all_front_ends() {
         "project",
         "entry",
         "styles",
+        "outputs",
         "schema",
         "call",
     ];
