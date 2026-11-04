@@ -253,6 +253,36 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **Warnings** use the same panel without a document.
 - **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
+### Reader (planned, #1252)
+
+[C20] A read-only view of a reference's PDF that is already in Zotero or a `.bib` `file` field, for looking at a source and choosing its page without opening Zotero (decision 0036). Ibis never imports, downloads, edits or annotates a PDF; **Open in Zotero** stays beside it.
+
+- **Where**: the Inspector's document area. **Show PDF** (proposed ⌘D, added to `KEY_TABLE` with its code) sits under the source action. Opening widens the window once, toward its trailing side and within the screen, by the width of one page at Fit Width: the one planned exception to [C10], with no animated resize. The column, list, shelf and footer stay where they were. Closing the reader returns the window to its steady size; the details stay open. Below 36 rem the reader takes the list's place, as the panel does.
+- **Anatomy**: a toolbar on one line above the pages, built from `ui/` parts only: the page indicator, then a zoom `PopupButton` and a find `IconButton` at the trailing edge. Pages scroll vertically and alone on `--surface-grouped`, each a sheet with one `--separator` edge and `--inset` between them. With several PDFs a pop-up names each by its title, never a path, and the reader asks before showing one.
+- **Page indicator**: "PDF page 8 of 312 · cite p. 416", `tabular-nums`. An unknown label reads "PDF page 8 of 312 · Citation page unknown"; a label printed on two pages adds "also PDF page 3". The tooltip and accessible description say where the printed page came from: the PDF's page labels, a Zotero annotation, or an offset you confirmed. It never shows the physical number as the citation page.
+- **Choosing the page**: the Page field follows the page in view, but only to a known printed page; an unknown page leaves Page as it was and the indicator says why. Typing in Page stops it following, and **Cite This Page** (⌘↵ in the reader) starts it again. Choosing a page never copies or pastes; Enter still does what the footer says.
+- **Go to a page** (⌥⌘G): a field in the toolbar. "417" goes to the page printed 417; with none it says "No page printed 417 in this PDF" and offers **Go to PDF Page 417** as a named choice; with several it lists them. It never jumps silently.
+- **Zoom**: Fit Width by default, then Actual Size and 50 to 400 %. With focus in the pages ⌘+, ⌘− and ⌘0 zoom as in Preview; elsewhere they keep changing text size. Pages redraw sharp at the screen's scale; zoom lasts the session only and is never a setting.
+- **Find in the PDF** (⌘F with focus in the reader): the toolbar becomes a search field with "3 of 12" and previous and next; ↵ and ⌘G go forward, ⇧↵ and ⇧⌘G back, Esc closes it. Matches are a quiet fill, the current one `--selected`; the count, not colour, says where you are. It searches the PDF's own text, page by page in the worker, stops when closed and never runs while hidden. A page without text says so ("This page is an image without text"), never "no matches".
+- **Keys**: all by key, Tab in order (column, toolbar, pages). In the pages: ↑ ↓ scroll, Space and ⇧Space or Page Down and Page Up by a screen, ⌥↑ ⌥↓ by a page, Home and End to the first and last page. Esc steps back: find, Go to page, the reader (focus returns to Show PDF), then the panel. The keys sheet lists the reader's keys under their own heading.
+- **Screen readers**: the pages are one region named by the PDF's title; each page is a group named by its indicator words, holding its text in reading order; the drawn page is hidden from them. Moving page by key announces the indicator once, politely; scrolling announces only where it settles.
+- **Light, dark and contrast**: the paper is drawn as the PDF draws it, white in dark mode as in Preview; only the surround follows the theme. Increase Contrast adds `--stroke-field` to each sheet. Forced colours draw the page in `Canvas` and `CanvasText`, and text selection uses `Highlight`.
+- **Motion**: page jumps and zoom are instant; nothing scrolls or zooms by animation, so Reduce Motion changes nothing here.
+- **Right to left**: the panel and toolbar mirror; the pages, their text and the numbers in the indicator never do (each number is isolated).
+- **Hidden and reopened**: hiding the picker closes the PDF and frees it. Reopening within a minute returns to the same page from memory; the place is never saved to disk.
+- **When it cannot open**: the document area shows one sentence and one fix, centred, never a dialog; the column stays usable, so a page can still be typed. Nothing passes through the notice slot.
+
+| State | Words | Fix |
+| --- | --- | --- |
+| No PDF | Show PDF is dimmed: "No PDF for this reference" | — |
+| Missing file | Can't find this PDF | Show in Zotero, or Open thesis.bib |
+| Not downloaded or in the cloud | This PDF isn't on this computer | Open in Zotero |
+| Password-protected | This PDF is password-protected | Open in Zotero |
+| Damaged | This PDF is damaged | Open in Zotero |
+| Over 256 MB | This PDF is too large to open in Ibis (412 MB) | Open in Zotero |
+| Over 15 s | This PDF took too long to open | Try Again |
+| One page fails | That page shows "Couldn't draw this page"; the rest stay | — |
+
 ### Footer
 
 - **Footer** [C8]: status dot and text at the leading edge (dot on the tiles' column), the source action, "More ⌘K", and last, on the rows' trailing edge, the one primary action: "Paste into Word · APA ↵" or "Copy N as <format> ↵".
@@ -453,7 +483,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
 | Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
-| A source's PDF, choosing the page there (#1252) | The **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following the page in view |
+| A source's PDF, choosing the page there (#1252) | **Reader**: the **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following a known printed page in view |
 
 ## How the design changes
 

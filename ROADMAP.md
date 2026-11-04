@@ -61,7 +61,7 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 - **Quotes:** a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown, with the quotation, known page, reference and source link, and comments kept separate. Selected passages and comments exported as one Markdown evidence brief ([#1517](https://github.com/ibiscite/ibis/issues/1517)).
 - **Is this in my library?** for a pasted identifier, reference or reference list.
 - **Attachments:** results say whether a reference has a PDF or a saved web page, with the PDF's page count where it can be read safely.
-- **A read-only reader inside Ibis** for PDFs, EPUB and web snapshots, for what the reader people already use cannot do ([#1252](https://github.com/ibiscite/ibis/issues/1252)). A PDF opens in a panel inside the picker that widens, shared with the citation editor.
+- **A read-only reader inside Ibis** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions.md#0036-the-readers-trust-boundary)): a full-quality, page-level viewer for the PDFs already in Zotero or a `.bib` `file` field, so choosing a page never needs Zotero; Ibis never imports, stores, edits or annotates them, and Open in Zotero stays. It opens in the citation editor's panel, widening the picker only to hold the PDF; EPUB and web snapshots follow.
 
 ### 0.6 Your document
 
