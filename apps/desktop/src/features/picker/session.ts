@@ -56,7 +56,7 @@ export type SessionEvent =
   | { type: "remove-reference"; reference: CitationReference }
   | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken }
-  | { type: "question"; format?: Choice | null; output?: OutputToken; answer: "open" | "answered" | "cancel" }
+  | { type: "question"; format?: Choice; output?: OutputToken; answer: "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "preparing"; now: number; selection?: string | null }
   | { type: "shown"; now: number; presentation: number }

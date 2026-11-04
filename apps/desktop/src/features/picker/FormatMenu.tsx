@@ -7,25 +7,23 @@ import { STYLE_SAMPLES } from "../../format/styles";
 import { copyFormatMenu, pickerText } from "../../messages";
 import { ToolbarMenu, type ToolbarMenuSection, type MenuCloseReason } from "../../ui/ToolbarMenu";
 import { outputName, type Choice } from "./choice";
-
-const ONCE = "just-once";
-const AUTOMATIC = "automatic";
-const DEFAULT = "global-default";
+import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The copy format menu: key syntaxes and citation styles, each with a real
- * sample. Styles stay listed but unavailable while the engine is not offered.
+ * sample. Picking one remembers it for the app; without an app it is the
+ * default. The menu says which applies and why.
+ * Styles stay listed but unavailable while the engine is not offered.
  * Focus goes back to the search box after a pick, Escape or Tab. */
-export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOnly, onToggleOnce, onAutomatic, onDefault, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef }: {
+export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef }: {
   format: Choice;
   buttonRef?: RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, named beside the format. */
   app: string | null;
-  scope?: string | null;
+  /** Why the next paste uses `format`. */
+  source: FormatSource;
+  /** Where a pick goes. */
+  pick: FormatPick;
   onOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
-  onceOnly: boolean;
-  onToggleOnce: () => void;
-  onAutomatic: () => void;
-  onDefault: () => void;
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
   disabled: boolean;
@@ -39,16 +37,16 @@ export function FormatMenu({ format, buttonRef, app, scope, onOpenChange, onceOn
       { id: "paste", label: pickerText.pasteFromNowOn(app), command: true },
       { id: "copy-only", label: pickerText.copyOnly, command: true },
     ] }] : [],
-    { id: "scope", label: app ? pickerText.forApp(app) : pickerText.copyAs, items: [
-      { id: ONCE, label: pickerText.justOnce, checked: onceOnly },
-      ...app ? [{ id: AUTOMATIC, label: pickerText.automatic, command: true }] : [],
-      { id: DEFAULT, label: pickerText.globalDefault, command: true },
-    ] },
     { id: "key-formats", label: pickerText.keyFormats, items: COPY_FORMATS.map(({ value }) => ({ id: value, ...copyFormatMenu[value] })) },
     { id: "citation-styles", label: pickerText.formattedStyles, items: FORMATTED_STYLES.map(({ id }) => (
       { id: `style:${id}`, label: outputName(`style:${id}`), sample: STYLE_SAMPLES[id], prose: true, disabled: !styles })) },
   ];
   const name = outputName(format);
-  return <><span role="status" className="visually-hidden">{scope}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={scope ?? (app ? pickerText.formatForApp(name, app) : name)} sections={sections} selectedKey={format}
-    filterLabel={pickerText.filterFormats} onAction={(key) => key === "paste" || key === "copy-only" ? onPasteChange?.(key) : key === ONCE ? onToggleOnce() : key === AUTOMATIC ? onAutomatic() : key === DEFAULT ? onDefault() : onChange(key as Choice)} returnFocusRef={searchRef} /></>;
+  const value = source === "held" ? pickerText.formatThisPaste(name) : source === "default" || !app ? pickerText.formatDefault(name) : pickerText.formatForApp(name, app);
+  const why = source === "held" ? pickerText.formatHeld(name) : source === "default" ? app ? pickerText.formatAppDefault(app) : pickerText.formatNoApp
+    : app ? source === "remembered" ? pickerText.formatRemembered(app) : pickerText.formatSuggested(app) : pickerText.formatNoApp;
+  const next = source === "held" ? pick === "app" ? pickerText.pickToRemember : pick === "default" ? pickerText.pickToSetDefault : ""
+    : pick === "paste" ? pickerText.pickThisPaste : pick === "default" ? pickerText.pickDefault : source === "remembered" ? pickerText.pickReplaces : pickerText.pickRemembered;
+  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
+    filterLabel={pickerText.filterFormats} onAction={(key) => key === "paste" || key === "copy-only" ? onPasteChange?.(key) : onChange(key as Choice)} returnFocusRef={searchRef} /></>;
 }

@@ -33,7 +33,7 @@ pub(crate) enum PickerCommand {
 impl std::fmt::Display for PickerCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(match self {
-            Self::Format => "Choose Output Format",
+            Self::Format => "Change Format",
             Self::Pin => "Keep Window Open",
             Self::Keys => "Keyboard Shortcuts",
             Self::More => "More",

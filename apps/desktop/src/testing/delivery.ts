@@ -152,14 +152,13 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
       const args = { appId, output, paste } as { appId: string; output: AppOutput | null; paste: AppPaste | null };
       const saving = appSaves.enqueue(args, () => {
-        if (args.output === null && args.paste === null) appChoices.delete(args.appId);
-        else appChoices.set(args.appId, { output: args.output, paste: args.paste ?? appChoices.get(args.appId)?.paste ?? null });
-        if (args.paste !== null || args.output === null) proof = null;
+        const saved = appChoices.get(args.appId);
+        appChoices.set(args.appId, { output: args.output ?? saved?.output ?? null, paste: args.paste ?? saved?.paste ?? null });
+        if (args.paste !== null) proof = null;
       });
       if (!holdAppSaves) appSaves.pending.at(-1)!.complete();
       return saving;
     },
-    forget_app_outputs: () => { appChoices.clear(); proof = null; return null; },
     search: ({ query }) => search.enqueue(query, (reply) => reply),
     preview_file_citation: (args) => {
       const request = ++latestPreview;

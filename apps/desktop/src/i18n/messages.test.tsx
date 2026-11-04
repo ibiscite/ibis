@@ -53,7 +53,7 @@ const panelEnglish = {
   "shortcuts-refusal-in-use": "Another app or the system may be using that shortcut. Try another.",
   "shortcuts-refusal-unavailable": "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",
   "shortcuts-refusal-not-saved": "The shortcut works now, but Ibis could not save it for next time. Try again.",
-  "shortcuts-command-format": "Choose Output Format",
+  "shortcuts-command-format": "Change Format",
   "shortcuts-command-pin": "Keep Window Open",
   "shortcuts-command-keys": "Keyboard Shortcuts",
   "shortcuts-command-more": "More",
@@ -75,7 +75,7 @@ const panelEnglish = {
   "shortcuts-action-add": "Add another reference",
   "shortcuts-action-move": "Move through results",
   "shortcuts-action-escape": "Step back or hide",
-  "shortcuts-action-format": "Choose the format",
+  "shortcuts-action-format": "Change the format",
   "shortcuts-action-more": "More actions",
   "shortcuts-action-pin": "Keep the window open",
   "shortcuts-action-keys": "Show this list",
@@ -102,7 +102,7 @@ test.each(Object.entries(panelEnglish))("%s preserves exact English and expands 
 test("panel variables preserve exact English and formatting errors refuse without partial copy", () => {
   expect(englishMessages.text("about-version", { name: "Synthetic App", version: "0.3.0" })).toBe("Version 0.3.0");
   expect(englishMessages.text("about-version", { name: "Ibis", version: "" })).toBe("Version ");
-  expect(englishMessages.text("shortcuts-picker-conflict", { command: "Choose Output Format" })).toBe("That shortcut is used for Choose Output Format. Try another shortcut.");
+  expect(englishMessages.text("shortcuts-picker-conflict", { command: "Change Format" })).toBe("That shortcut is used for Change Format. Try another shortcut.");
   for (const id of ["about-version", "shortcuts-picker-conflict"] as const) expect(() => englishMessages.text(id)).toThrow("Invalid interface message");
   const child = vi.fn(() => <p>Partial panel</p>);
   expect(() => render(<InterfaceMessagesProvider messages={createInterfaceMessages(english.replace(/^about-check =.*$/m, ""))}>{child()}</InterfaceMessagesProvider>)).toThrow("Invalid interface messages");

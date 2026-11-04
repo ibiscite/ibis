@@ -6,7 +6,7 @@
 //! each with its chosen output and optional paste/copy-only preference.
 //! Never a window title, document name or
 //! citation text. An unreadable file uses default formats and retains a durable
-//! delivery-recovery refusal until explicit app delivery choices or a global reset.
+//! delivery-recovery refusal until each app gets an explicit delivery choice.
 
 use std::fs;
 use std::io::{self, Read, Write};
@@ -47,11 +47,11 @@ pub(crate) struct PickerDestination {
     pub(crate) app_id: Option<String>,
     /// Opaque app-location fingerprint; no path crosses IPC.
     pub(crate) app_identity: Option<String>,
-    /// The app suggestion; `None` follows the saved global default.
+    /// The app suggestion; `None` follows the saved default.
     pub(crate) automatic: Option<AppOutput>,
     /// The output the person chose to always use for this app.
     pub(crate) remembered: Option<AppOutput>,
-    /// Unresolved recovery from an unreadable per-app file; formats use defaults.
+    /// This app needs a delivery choice after an unreadable per-app file; formats use defaults.
     pub(crate) unreadable: bool,
     /// The current paste policy permits an attempt; final delivery checks still apply.
     pub(crate) can_paste: bool,
@@ -111,15 +111,11 @@ struct MemoryFile {
     recovery: bool,
 }
 
-/// Every app's choices, and whether lost choices still need resolving.
-type Choices = (Vec<Remembered>, bool);
-
 /// The per-app file, read once and written on every change.
 pub(crate) struct AppMemory {
     path: PathBuf,
-    state: Mutex<Choices>,
-    /// What the newest Forget removed, for its Undo. Never written to disk.
-    forgotten: Mutex<(u32, Option<Choices>)>,
+    /// Every app's choices, and whether lost choices still need resolving.
+    state: Mutex<(Vec<Remembered>, bool)>,
 }
 
 fn normalized(app: &AppId) -> AppId {
@@ -141,7 +137,6 @@ impl AppMemory {
         AppMemory {
             path,
             state: Mutex::new((apps, unreadable)),
-            forgotten: Mutex::new((0, None)),
         }
     }
 
@@ -156,10 +151,6 @@ impl AppMemory {
                 .and_then(|entry| entry.output);
             (output, state.1)
         })
-    }
-
-    fn unreadable(&self) -> bool {
-        self.state.lock().map_or(true, |state| state.1)
     }
 
     pub(crate) fn paste_for(&self, app: &AppId, identity: Option<&str>) -> Result<Option<AppPaste>, CopyReason> {
@@ -190,17 +181,18 @@ impl AppMemory {
         self.paste_for(app, test_identity(app).as_deref())
     }
 
-    /// Remember `output` for `app`, or forget the app with `None`.
+    /// Remember `output` for `app`.
     #[cfg(test)]
     pub(crate) fn set(&self, app: &AppId, output: Option<AppOutput>) -> io::Result<()> {
         self.set_choice(app, output, None)
     }
 
     #[cfg(test)]
-    fn set_choice(&self, app: &AppId, output: Option<AppOutput>, paste: Option<AppPaste>) -> io::Result<()> {
+    pub(crate) fn set_choice(&self, app: &AppId, output: Option<AppOutput>, paste: Option<AppPaste>) -> io::Result<()> {
         self.set_bound_choice(app, output, paste, test_identity(app))
     }
 
+    /// Remember what was chosen; the half left out keeps its saved value.
     fn set_bound_choice(
         &self,
         app: &AppId,
@@ -209,17 +201,20 @@ impl AppMemory {
         identity: Option<String>,
     ) -> io::Result<()> {
         let app = normalized(app);
+        if output.is_none() && paste.is_none() {
+            return Err(io::Error::other("there is no choice to remember"));
+        }
         if paste == Some(AppPaste::Paste) && lookup(&app).is_some_and(|entry| entry.safety != PasteSafety::Normal) {
             return Err(io::Error::other("this app cannot be approved for automatic paste"));
         }
         if paste == Some(AppPaste::Paste) && lookup(&app).is_none() && identity.is_none() {
             return Err(io::Error::other("this app has no proven identity to approve"));
         }
-        let chosen = app.clone();
         self.change(|apps| {
             let previous = apps.iter().find(|entry| entry.app == app);
+            let output = output.or_else(|| previous?.output);
             let paste = paste.or_else(|| {
-                output.and_then(|_| previous?.paste).filter(|paste| {
+                previous?.paste.filter(|paste| {
                     *paste != AppPaste::Paste
                         || lookup(&app).is_some()
                         || identity.is_some() && previous.and_then(|entry| entry.identity.as_ref()) == identity.as_ref()
@@ -230,23 +225,18 @@ impl AppMemory {
                 .flatten();
             let noted = previous.is_some_and(|entry| entry.noted);
             apps.retain(|entry| entry.app != app);
-            if output.is_some() || paste.is_some() || noted {
-                apps.push(Remembered {
-                    app,
-                    output,
-                    paste,
-                    identity,
-                    noted,
-                });
-            }
-        })?;
-        // Any explicit choice since Forget, even a reset, is no longer Undo's to restore.
-        if let Ok(mut forgotten) = self.forgotten.lock()
-            && let Some((removed, _)) = forgotten.1.as_mut()
-        {
-            removed.retain(|old| old.app != chosen);
-        }
-        Ok(())
+            apps.push(Remembered {
+                app,
+                output,
+                paste,
+                identity,
+                noted,
+            });
+        })
+    }
+
+    fn unreadable(&self) -> bool {
+        self.state.lock().map_or(true, |state| state.1)
     }
 
     /// Whether a paste into `app` should show the one-time plugin note. It
@@ -279,47 +269,6 @@ impl AppMemory {
             }
         });
         first && saved.is_ok()
-    }
-
-    /// Forget every app, returning the ticket that can undo it.
-    pub(crate) fn forget(&self) -> io::Result<u32> {
-        let unavailable = || io::Error::other("app choices are unavailable");
-        let mut state = self.state.lock().map_err(|_| unavailable())?;
-        let mut forgotten = self.forgotten.lock().map_err(|_| unavailable())?;
-        write(&self.path, &[], false)?;
-        let removed = std::mem::take(&mut *state);
-        *forgotten = (forgotten.0.wrapping_add(1), Some(removed));
-        Ok(forgotten.0)
-    }
-
-    /// Undo the newest Forget. A choice made since then wins for its app, and
-    /// an older ticket changes nothing. A failed write can be tried again.
-    pub(crate) fn restore(&self, ticket: u32) -> io::Result<()> {
-        let unavailable = || io::Error::other("app choices are unavailable");
-        let mut state = self.state.lock().map_err(|_| unavailable())?;
-        let mut forgotten = self.forgotten.lock().map_err(|_| unavailable())?;
-        if forgotten.0 != ticket {
-            return Ok(());
-        }
-        let Some((removed, recovery)) = forgotten.1.as_ref() else {
-            return Ok(());
-        };
-        // One entry per app, or the next read refuses the whole file. A choice
-        // made since wins; a note shown since keeps the forgotten choices.
-        let mut apps = removed.clone();
-        for newer in &state.0 {
-            match apps.iter_mut().find(|old| old.app == newer.app) {
-                Some(old) if newer.output.is_none() && newer.paste.is_none() => old.noted |= newer.noted,
-                Some(old) => *old = newer.clone(),
-                None => apps.push(newer.clone()),
-            }
-        }
-        apps.drain(..apps.len().saturating_sub(MAX_APPS));
-        let recovery = *recovery || state.1;
-        write(&self.path, &apps, recovery)?;
-        *state = (apps, recovery);
-        forgotten.1 = None;
-        Ok(())
     }
 
     fn change(&self, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
@@ -434,7 +383,7 @@ pub(crate) fn picker_destination(
             app_identity: None,
             automatic: None,
             remembered: None,
-            unreadable: memory.unreadable(),
+            unreadable: false,
             can_paste: false,
             output_question: None,
             paste: None,
@@ -447,10 +396,11 @@ pub(crate) fn picker_destination(
     let style = settings.citation_style;
     let (remembered, _) = memory.get(&id);
     let policy = memory.paste_for(&id, app_identity.as_deref());
-    let unreadable = policy.is_err();
+    let can_choose_paste = crate::paste::may_choose_paste(&app, settings.paste.unwrap_or(true));
+    // Only an app that can answer sees the warning; the others never paste anyway.
+    let unreadable = policy.is_err() && can_choose_paste;
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
-    let can_choose_paste = crate::paste::may_choose_paste(&app, settings.paste.unwrap_or(true));
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
     PickerDestination {
         app: Some(name),
@@ -467,7 +417,8 @@ pub(crate) fn picker_destination(
     }
 }
 
-/// Remember output and an optional delivery choice; both absent reset this app to Automatic.
+/// Remember a format, a delivery choice or both for the captured app. Whichever
+/// is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn remember_app_output(
@@ -478,7 +429,7 @@ pub(crate) fn remember_app_output(
     paste: Option<AppPaste>,
     identity: Option<String>,
 ) -> Result<(), String> {
-    crate::paste::change_destination(&app, paste.is_some() || output.is_none(), |captured| {
+    crate::paste::change_destination(&app, paste.is_some(), |captured| {
         let captured = captured.ok_or("no app to remember a choice for")?;
         let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
         if id.normalized() != app_id || captured.app_identity != identity {
@@ -509,28 +460,6 @@ fn remember_choice_for(
     memory
         .set_choice(id, output, paste)
         .map_err(|_| "the choice for this app could not be saved".into())
-}
-
-/// Forget output and delivery choices for every app.
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn forget_app_outputs(app: AppHandle, memory: State<'_, AppMemory>) -> Result<u32, String> {
-    crate::paste::change_destination(&app, true, |_| {
-        memory
-            .forget()
-            .map_err(|_| "the choices for apps could not be forgotten".into())
-    })
-}
-
-/// Bring back what Forget removed, while its Undo is offered.
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn restore_app_outputs(ticket: u32, app: AppHandle, memory: State<'_, AppMemory>) -> Result<(), String> {
-    crate::paste::change_destination(&app, true, |_| {
-        memory
-            .restore(ticket)
-            .map_err(|_| "the choices for apps could not be restored".into())
-    })
 }
 
 #[cfg(test)]
@@ -580,30 +509,16 @@ mod tests {
     }
 
     #[test]
-    fn the_plugin_note_is_reset_by_clear_and_kept_by_other_choices() -> io::Result<()> {
+    fn the_plugin_note_survives_later_choices_for_the_app() -> io::Result<()> {
         let directory = tempfile::tempdir()?;
         let memory = memory_in(&directory);
         assert!(memory.take_plugin_note(&word()));
         memory.set(&word(), Some(AppOutput::Style(CitationStyle::Apa)))?;
-        memory.set(&word(), None)?;
-        assert!(!memory.take_plugin_note(&word()), "Automatic is not Clear");
-        memory.forget()?;
-        assert!(memory.take_plugin_note(&word()));
-        Ok(())
-    }
-
-    #[test]
-    fn a_note_after_clear_survives_undo_without_a_second_entry_for_the_app() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = memory_in(&directory);
-        memory.set(&word(), Some(AppOutput::Style(CitationStyle::Apa)))?;
-        let ticket = memory.forget()?;
-        assert!(memory.take_plugin_note(&word()));
-        memory.restore(ticket)?;
+        memory.set_choice(&word(), None, Some(AppPaste::CopyOnly))?;
+        assert!(!memory.take_plugin_note(&word()), "a choice keeps the note shown");
         let reopened = memory_in(&directory);
-        assert!(!reopened.unreadable(), "a duplicate entry would refuse the whole file");
         assert_eq!(reopened.get(&word()).0, Some(AppOutput::Style(CitationStyle::Apa)));
-        assert!(!reopened.take_plugin_note(&word()), "the note was shown");
+        assert!(!reopened.take_plugin_note(&word()));
         Ok(())
     }
 
@@ -650,81 +565,6 @@ mod tests {
             saved["apps"][0],
             serde_json::json!({ "app": { "system": "macos", "id": "com.microsoft.word" }, "output": null, "noted": true })
         );
-        Ok(())
-    }
-
-    #[test]
-    fn undo_restores_forgotten_choices_and_a_newer_choice_wins() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("apps.json");
-        let memory = AppMemory::open(path.clone());
-        let (kept, changed) = (mac("com.invented.kept"), mac("com.invented.changed"));
-        memory.set_choice(&kept, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
-        memory.set_choice(&changed, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
-        let ticket = memory.forget()?;
-        assert_eq!(memory.get(&kept).0, None);
-        memory.set_choice(&changed, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
-        memory.restore(ticket)?;
-        assert_eq!(memory.get(&kept).0, Some(AppOutput::Key(KeyFormat::Pandoc)));
-        assert_eq!(memory.get(&changed).0, Some(AppOutput::Key(KeyFormat::Typst)));
-        // Close and reopen: the restored choices are on disk.
-        assert_eq!(
-            AppMemory::open(path).get(&kept).0,
-            Some(AppOutput::Key(KeyFormat::Pandoc))
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn undo_leaves_an_app_reset_since_forget_alone() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = AppMemory::open(directory.path().join("apps.json"));
-        let app = mac("com.invented.writer");
-        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
-        let ticket = memory.forget()?;
-        memory.set_choice(&app, None, None)?; // Automatic, in a picker still open from before.
-        memory.restore(ticket)?;
-        assert_eq!(memory.get(&app).0, None);
-        Ok(())
-    }
-
-    #[test]
-    fn only_the_newest_ticket_restores_and_only_once() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let memory = AppMemory::open(directory.path().join("apps.json"));
-        let app = mac("com.invented.writer");
-        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
-        let older = memory.forget()?;
-        let newer = memory.forget()?;
-        memory.restore(older)?;
-        assert_eq!(memory.get(&app).0, None);
-        memory.restore(newer)?;
-        assert_eq!(memory.get(&app).0, None);
-        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Typst)), None)?;
-        let last = memory.forget()?;
-        memory.restore(last)?;
-        memory.forget()?;
-        memory.restore(last)?;
-        assert_eq!(memory.get(&app).0, None);
-        Ok(())
-    }
-
-    #[test]
-    fn a_failed_restore_can_be_tried_again() -> io::Result<()> {
-        let directory = tempfile::tempdir()?;
-        let path = directory.path().join("nested").join("apps.json");
-        std::fs::create_dir(directory.path().join("nested"))?;
-        let memory = AppMemory::open(path.clone());
-        let app = mac("com.invented.writer");
-        memory.set_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None)?;
-        let ticket = memory.forget()?;
-        std::fs::remove_file(&path)?;
-        std::fs::create_dir(&path)?; // A directory where the file belongs refuses the write.
-        assert!(memory.restore(ticket).is_err());
-        assert_eq!(memory.get(&app).0, None);
-        std::fs::remove_dir(&path)?;
-        memory.restore(ticket)?;
-        assert_eq!(memory.get(&app).0, Some(AppOutput::Key(KeyFormat::Pandoc)));
         Ok(())
     }
 
@@ -784,20 +624,19 @@ mod tests {
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         memory.set(&other, Some(AppOutput::Key(KeyFormat::Pandoc)))?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        let reopened = AppMemory::open(path);
+        let reopened = AppMemory::open(path.clone());
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
         reopened.set_choice(&other, None, Some(AppPaste::CopyOnly))?;
         assert_eq!(reopened.paste(&other), Ok(Some(AppPaste::CopyOnly)));
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
         reopened.set_choice(&word, None, Some(AppPaste::CopyOnly))?;
         assert_eq!(reopened.paste(&word), Ok(Some(AppPaste::CopyOnly)));
-        reopened.forget()?;
-        assert_eq!(reopened.paste(&word), Ok(None));
+        assert_eq!(AppMemory::open(path).paste(&word), Ok(Some(AppPaste::CopyOnly)));
         Ok(())
     }
 
     #[test]
-    fn paste_choices_are_separate_durable_and_reset_with_app_formats() -> io::Result<()> {
+    fn paste_choices_and_formats_stay_separate_and_durable() -> io::Result<()> {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("apps.json");
         let app = mac("org.example.Writer");
@@ -811,15 +650,33 @@ mod tests {
             // A later format pick preserves delivery; a format alone never grants it.
             reopened.set(&app, Some(AppOutput::Key(KeyFormat::Cite)))?;
             assert_eq!(reopened.paste(&app), Ok(Some(paste)));
-            reopened.set(&app, None)?;
-            assert_eq!(AppMemory::open(path.clone()).paste(&app), Ok(None));
-            reopened.set_choice(&app, format, Some(paste))?;
-            reopened.forget()?;
-            assert_eq!(AppMemory::open(path.clone()).paste(&app), Ok(None));
+            // A delivery answer keeps the format the person chose.
+            reopened.set_choice(&app, None, Some(paste))?;
+            assert_eq!(
+                AppMemory::open(path.clone()).get(&app).0,
+                Some(AppOutput::Key(KeyFormat::Cite))
+            );
+            reopened.set(&app, format)?;
         }
+        let other = mac("org.example.other");
         let memory = AppMemory::open(path);
-        memory.set(&app, format)?;
-        assert_eq!(memory.paste(&app), Ok(None));
+        memory.set(&other, format)?;
+        assert_eq!(memory.paste(&other), Ok(None));
+        Ok(())
+    }
+
+    #[test]
+    fn a_choice_with_nothing_in_it_is_refused_and_keeps_what_was_saved() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        let memory = AppMemory::open(path.clone());
+        let app = mac("org.example.Writer");
+        let format = Some(AppOutput::Key(KeyFormat::Pandoc));
+        memory.set_choice(&app, format, Some(AppPaste::CopyOnly))?;
+        assert!(memory.set(&app, None).is_err());
+        let reopened = AppMemory::open(path);
+        assert_eq!(reopened.get(&app), (format, false));
+        assert_eq!(reopened.paste(&app), Ok(Some(AppPaste::CopyOnly)));
         Ok(())
     }
 
@@ -883,7 +740,7 @@ mod tests {
     }
 
     #[test]
-    fn a_remembered_choice_survives_a_restart_and_forgetting_clears_it() {
+    fn a_remembered_choice_survives_a_restart_and_a_new_pick_replaces_it() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = memory_path(&directory.path().join("settings.json"));
         let memory = AppMemory::open(path.clone());
@@ -895,18 +752,14 @@ mod tests {
         let reopened = AppMemory::open(path.clone());
         // IDs compare as the platform does: bundle IDs without case.
         assert_eq!(reopened.get(&mac("com.microsoft.word")), (Some(apa), false));
+        let typst = AppOutput::Key(KeyFormat::Typst);
         reopened
-            .set(&mac("com.microsoft.word"), None)
+            .set(&mac("com.microsoft.word"), Some(typst))
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            AppMemory::open(path.clone()).get(&mac("com.microsoft.Word")),
-            (None, false)
+            AppMemory::open(path).get(&mac("com.microsoft.Word")),
+            (Some(typst), false)
         );
-        reopened
-            .set(&mac("md.obsidian"), Some(AppOutput::Key(KeyFormat::Typst)))
-            .unwrap_or_else(|e| panic!("{e}"));
-        reopened.forget().unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(AppMemory::open(path).get(&mac("md.obsidian")), (None, false));
     }
 
     #[test]
@@ -1015,7 +868,11 @@ mod tests {
         // A directory at the destination refuses the atomic replacement.
         fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
         fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(memory.forget().is_err());
+        assert!(
+            memory
+                .set(&mac("example.browser"), Some(AppOutput::Key(KeyFormat::Typst)))
+                .is_err()
+        );
         assert_eq!(memory.get(&mac("example.browser")), (Some(cite), false));
     }
 

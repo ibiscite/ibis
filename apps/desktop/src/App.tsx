@@ -120,7 +120,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const highlightedChoice = choiceKey(results.slice(active, active + 1)
     .map((r) => ({ ...r, locator: interpretation?.locator })));
   const defaultChoice = list && ready ? choiceKey(results) : highlightedChoice;
-  const { requestCopy, chooseFormat, questionScope, onFormatOpenChange } = useCitationCopy({
+  const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
     view: {
       queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
@@ -188,14 +188,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         expanded={results.length > 0 && showCitations}
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatButtonRef={formatButtonRef}
-        app={destination.app} formatScope={destination.scope}
+        app={destination.app} formatSource={destination.source} formatPick={destination.pick}
         onFormatOpenChange={onFormatOpenChange}
-        onceOnly={destination.onceOnly}
-        onToggleOnce={() => questionScope(destination.toggleOnce, true)}
-        onAutomatic={() => questionScope(destination.restoreAutomatic)}
-        onDefault={() => questionScope(destination.useDefault)}
         pasteChoices={destination.pasteChoices}
-        onPasteChange={(paste) => { send({ type: "question", answer: "cancel" }); destination.choosePaste(paste); }}
+        onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
         formatDisabled={!destination.ready || destination.saving}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat}
