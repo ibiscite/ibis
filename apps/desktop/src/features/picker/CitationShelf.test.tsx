@@ -139,7 +139,6 @@ test("RTL citation text is isolated with automatic direction without changing ke
   const citation = document.querySelector(".shelf .preview-text")!;
   expect(citation.getAttribute("dir")).toBe("auto");
   expect(citation.textContent).toBe(text);
-  expect(citation.textContent).toBe(text);
   expect(citation.getAttribute("title")).toBeNull();
 });
 
