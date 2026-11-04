@@ -21,8 +21,12 @@ pub struct OutputInfo {
     /// Stable: settings store it, `--format` and MCP's `format` take it, and
     /// `{"kind":"preset","name":ID}` names it in a request.
     pub id: String,
-    /// The one name every front end shows.
+    /// The one name every front end shows, short enough for "APA · Word".
     pub name: String,
+    /// A style's full title, shown only as the quiet detail beside the name;
+    /// none when it is the name.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
     /// What it writes for one invented reference: the key `key`, or for a
     /// style an article by A. García (2021).
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -94,21 +98,25 @@ static OUTPUTS: LazyLock<Result<Vec<OutputInfo>, EngineError>> = LazyLock::new(|
     let keys = CAPABILITIES.iter().map(|caps| OutputInfo {
         id: caps.id.to_owned(),
         name: caps.name.to_owned(),
+        description: None,
         example: caps.example.map(str::to_owned),
         output: caps.output(),
         forms: caps.citable_forms(),
         exports_records: caps.exports_records,
     });
     let unavailable = |_| EngineError::new(ErrorCode::Internal);
-    let styles = ibis_csl::curated().map_err(unavailable)?.iter().map(|(id, title)| {
+    let styles = ibis_csl::curated().map_err(unavailable)?.iter().map(|style| {
+        let id = style.id();
         Ok(OutputInfo {
-            id: id.clone(),
-            name: title.clone(),
+            id: id.to_owned(),
+            name: style.name().to_owned(),
+            // A title that is the name again ("IEEE") adds nothing.
+            description: (style.title() != style.name()).then(|| style.title().to_owned()),
             example: STYLE_EXAMPLES
                 .iter()
-                .find(|(style, _)| style == id)
+                .find(|(listed, _)| *listed == id)
                 .map(|(_, example)| (*example).to_owned()),
-            output: OutputSpec::Csl { style: id.clone() },
+            output: OutputSpec::Csl { style: id.to_owned() },
             forms: ibis_csl::style_forms(id).map_err(unavailable)?,
             exports_records: false,
         })

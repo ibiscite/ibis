@@ -8,7 +8,7 @@ mod output;
 mod runtime;
 mod service;
 
-pub use catalog::{LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
+pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
 use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;

@@ -28,54 +28,67 @@
   "curated": [
     {
       "id": "apa",
+      "name": "APA",
       "title": "APA (7th edition)"
     },
     {
       "id": "chicago-author-date",
+      "name": "Chicago (author-date)",
       "title": "Chicago (author-date)"
     },
     {
       "id": "chicago-notes-bibliography",
+      "name": "Chicago (notes)",
       "title": "Chicago (notes and bibliography)"
     },
     {
       "id": "modern-language-association",
+      "name": "MLA",
       "title": "MLA (9th edition)"
     },
     {
       "id": "harvard-cite-them-right",
+      "name": "Harvard",
       "title": "Harvard (Cite Them Right)"
     },
     {
       "id": "ieee",
+      "name": "IEEE",
       "title": "IEEE"
     },
     {
       "id": "vancouver-nlm",
+      "name": "Vancouver",
       "title": "Vancouver"
     },
     {
       "id": "nature",
+      "name": "Nature",
       "title": "Nature"
     },
     {
       "id": "american-medical-association",
+      "name": "AMA",
       "title": "AMA"
     },
     {
       "id": "american-chemical-society",
+      "name": "ACS",
       "title": "ACS"
     },
     {
       "id": "china-national-standard-gb-t-7714-2025-numeric",
+      "name": "GB/T 7714 (numeric)",
       "title": "GB/T 7714-2025 (numeric)"
     },
     {
       "id": "china-national-standard-gb-t-7714-2025-author-date",
+      "name": "GB/T 7714 (author-date)",
       "title": "GB/T 7714-2025 (author-date)"
     },
     {
       "id": "china-national-standard-gb-t-7714-2025-note",
+      "name": "GB/T 7714 (notes)",
       "title": "GB/T 7714-2025 (notes)"
     }
   ]

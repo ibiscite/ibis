@@ -13,8 +13,8 @@
  },
  "bundle": {
   "path": "csl-bundle.bin",
-  "bytes": 3040660,
-  "sha256": "6faf9ef8373ec2bc2058aa67a9165382efae8bf9a93cd37fba8ec6759f92235b"
+  "bytes": 3040685,
+  "sha256": "b71fb3fdb04c0c846421fb2243a1cb58716eb2bf2429be2c8f42f0698b6b5d2a"
  },
  "renames": {
   "aaa": "american-anthropological-association",

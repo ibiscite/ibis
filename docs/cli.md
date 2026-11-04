@@ -63,7 +63,7 @@ forgets its command fails loudly. `ibis settings` alone lists its own commands t
 | `cite KEY…` | A citation. `--format ID` writes one of the outputs `outputs` lists (default `pandoc`): a key syntax, or a common style; `--style` writes any CSL style (see `styles`); `--bibliography` writes bibliography entries in a style. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The open libraries, their item counts and each warning in words. |
-| `outputs` | Every output `cite` writes, each with its id, its one name and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
+| `outputs` | Every output `cite` writes, each with its id, its one short name (a style's full title is its `description`) and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
 | `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |

@@ -1008,6 +1008,14 @@ schema. Before 1.0 these are replaced, not patched (maintainer, 2026-11-04,
   and `ItemRef`; app-only output types and their conversions are deleted; app
   types come from the engine schema. A format, style or form has one name, from
   the engine, in every front end.
+  The engine's `outputs` list is that one vocabulary (maintainer, 2026-11-04):
+  its ids are the command line's 17 format names plus `pandoc-bare`; a common
+  style's one name is a short name kept in the CSL manifest ("APA", "Chicago
+  (notes)", at most 24 characters), and its full title is only the quiet
+  detail beside it; `pandoc` stays the default output and `apa` the default
+  style for finished text; CSL-JSON stays out of MCP; settings store one output
+  id, and a formatted app's style comes from what Ibis remembers for that app,
+  else the default style.
 - **One catalogue.** The engine returns codes with arguments and one record
   summary; one Fluent catalogue words them for the command line, MCP and the app.
 - **One platform seam.** Capture, delivery, selected text, clipboard, shortcut,

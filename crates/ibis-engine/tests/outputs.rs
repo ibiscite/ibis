@@ -76,12 +76,13 @@ fn every_output_has_one_id_and_one_name() {
             .count(),
         ibis_core::syntax::CAPABILITIES.len()
     );
-    let common = ibis_csl::curated().unwrap();
-    assert!(
-        common
-            .iter()
-            .all(|(id, title)| outputs::find(id).unwrap().name == *title)
-    );
+    // A common style's one name is its short name; its full title is the quiet detail.
+    for style in ibis_csl::curated().unwrap() {
+        let listed = outputs::find(style.id()).unwrap();
+        assert_eq!(listed.name, style.name());
+        let detail = (style.title() != style.name()).then_some(style.title());
+        assert_eq!(listed.description.as_deref(), detail);
+    }
     // A preset id never shadows a style: no bundled style has a key output's id.
     let styles = ibis_csl::styles("", 20_000, 0).unwrap();
     assert!(styles.total < 20_000);
@@ -246,7 +247,32 @@ fn the_list_is_an_engine_method_with_a_schema() {
 
 #[test]
 fn each_output_is_named_by_its_one_name() {
+    let mut names = BTreeSet::new();
     for output in outputs::outputs().unwrap() {
+        // Short enough for the closed format control ("APA · Word"), and never twice.
+        assert!(
+            !output.name.is_empty() && output.name.chars().count() <= 24,
+            "{}: {:?}",
+            output.id,
+            output.name
+        );
+        assert!(
+            names.insert(output.name.to_lowercase()),
+            "{:?} names two outputs",
+            output.name
+        );
+        // Only a style has a description, and it is never the name again.
+        assert!(
+            output.description.is_none() || matches!(output.output, OutputSpec::Csl { .. }),
+            "{}",
+            output.id
+        );
+        assert_ne!(
+            output.description.as_deref(),
+            Some(output.name.as_str()),
+            "{}",
+            output.id
+        );
         assert_eq!(outputs::named(&output.output).unwrap().id, output.id);
         assert_eq!(outputs::named(&preset(&output.id)).unwrap().id, output.id);
     }

@@ -2914,6 +2914,13 @@
           "OutputInfo": {
             "description": "One output, as the `outputs` method lists it.",
             "properties": {
+              "description": {
+                "description": "A style's full title, shown only as the quiet detail beside the name;\nnone when it is the name.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "example": {
                 "description": "What it writes for one invented reference: the key `key`, or for a\nstyle an article by A. García (2021).",
                 "type": [
@@ -2937,7 +2944,7 @@
                 "type": "string"
               },
               "name": {
-                "description": "The one name every front end shows.",
+                "description": "The one name every front end shows, short enough for \"APA · Word\".",
                 "type": "string"
               },
               "output": {
