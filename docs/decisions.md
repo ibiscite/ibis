@@ -91,8 +91,36 @@ refusal or blanket warning:
   recovery never triggers a delayed insertion; the person acts afresh.
 
 Visible behavior is specified in design.md's Source checks section. These
-rules supersede the unresolved bibliography question in the initial review;
-shared-project edits during a task remain a separate UX question.
+rules supersede the unresolved bibliography question in the initial review.
+
+2026-11-04 (maintainer, planning only): saved project edits become available
+to every client, while ongoing tasks adopt citation-affecting changes
+deliberately:
+
+- An edit intended for the current task applies after saving, regenerates
+  and revalidates the preview, and cancels queued insertion. Saving or applying
+  settings never releases an earlier Enter.
+- A material edit from elsewhere leaves the task's project choices in place
+  and offers one persistent, nonmodal Apply Updates action. The current
+  format and bibliography stay visible. Completing one citation or hiding
+  the picker does not automatically end a writing task; an agent keeps one
+  context across its whole job. A deliberately started new task uses the
+  latest saved definition. Cosmetic renames update the label directly.
+- Applying an update keeps selected references, pages, prefixes and suffixes
+  where valid, then prepares a fresh preview and requires a fresh insertion
+  action. The already bound sources and bibliography still refresh normally;
+  pinning project choices never overrides new conflict evidence. Changing
+  which bibliography is selected is a context edit, not a content refresh.
+- Deleting a saved project elsewhere leaves the ongoing task's settings
+  available, clearly labelled as retained settings, rather than silently
+  selecting another project or defaults. Explicit source disconnection or
+  revocation stops affected work; it is not deletion of a reusable preset.
+- Failed or conflicting saves leave current task choices intact. Show what
+  another writer changed before overwriting the shared definition.
+
+The UX is in [Shared project edits](design.md#shared-project-edits-planned),
+under #1697 and #1260. Historical reproducibility is a separate question;
+retaining task choices is not a promise to archive old records or styles.
 
 ## 0004 Desktop shell (with 0012)
 

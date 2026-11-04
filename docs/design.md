@@ -310,6 +310,18 @@ Built in `ibis-core` so every front end shares them (#1204).
 - The status opens the **library menu** (`top end`, like every footer menu): a heading with the library, its count and age, then a separator; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn’t load"; then, after a separator, Choose Library… ⇧⌘O, Use Zotero for a file, and Reload Library.
 - **Open the source** (⌘O): the words always name the target. While opening Zotero is the fix, ⌘O opens Zotero, so the fix button and More both read "Open Zotero ⌘O". **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
 
+### Shared project edits (planned)
+
+Approved 2026-11-04, decision 0028: a saved project is shared, while each ongoing
+writing task keeps its established citation choices.
+
+- An edit made for the current task applies after it saves, regenerates and revalidates the preview, and cancels queued insertion. Saving never pastes automatically.
+- A citation-affecting edit elsewhere shows one persistent, nonmodal notice: "Thesis settings changed elsewhere. Using APA · thesis.bib · Apply Updates". Enter continues to use the shown task choices and preview. No repeated prompt, automatic switch between citations, or visible version-management interface. Completing one citation or hiding the picker does not itself end the writing task; a deliberately started new task uses the latest saved project.
+- **Apply Updates** keeps valid picks, pages, prefixes and suffixes, shows the changed format or bibliography, and prepares a fresh preview. It requires a fresh insertion action and never replays a queued Enter. A running agent adopts updates for its whole affected output, not halfway through a citation list.
+- A cosmetic rename updates the displayed project name without changing its identity or citation choices. A project removed elsewhere leaves the ongoing task's settings available and clearly labelled as retained settings; it never silently selects a different project or app defaults.
+- Changing the project's selected bibliography or source scope is a pending context edit. New contents in the already bound bibliography or sources are factual updates: refresh and validate them normally, apply the unreadability policy below, and refuse newly conflicting keys. Explicit source disconnection or access revocation stops affected work.
+- Failed or conflicting saves keep current task choices intact. Show the other writer's change before overwriting the shared definition; preserve valid user input.
+
 ### Keys
 
 `KEY_TABLE` in [`apps/desktop/src/keys.ts`](../apps/desktop/src/keys.ts) is the one source of shortcuts; the keys sheet, footer and More read it. A key is added only with the code that handles it.
