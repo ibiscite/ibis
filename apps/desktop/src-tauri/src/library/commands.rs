@@ -100,7 +100,9 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
 /// Resolve opaque history IDs against the current snapshot, with source-added
 /// dates for the second group. Never searches document text or reads new sources.
 #[derive(specta::Type)]
-pub(crate) struct RecentIdentity(#[specta(type = specta_typescript::Unknown)] Option<ibis_core::contract::ItemRef>);
+pub(crate) struct RecentIdentity(
+    #[specta(type = specta_typescript::Unknown)] pub(crate) Option<ibis_core::contract::ItemRef>,
+);
 
 /// History outlives identities: one that is no longer valid resolves to
 /// nothing, the same as one whose library is gone.
