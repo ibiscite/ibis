@@ -192,7 +192,7 @@ pub(crate) fn stable_observation(path: &Path) -> Result<SourceSnapshot, SourceEr
 
 /// A file read as a library without becoming one, tolerating damaged entries.
 pub(crate) fn parse_for_project(path: &Path, text: &str) -> Result<LoadedLibrary, SourceError> {
-    parse(path, text, false, None)
+    parse(path, text, None)
 }
 
 /// `key`'s original entry in the file `item` came from, when the file still
@@ -212,7 +212,7 @@ pub fn original_entry(
     }
     let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
     // Parsed from the canonical path, as the library was, so the item's ID matches.
-    let loaded = parse(&observation.source, &observation.text, false, None).map_err(|_| EntryRefusal::Changed)?;
+    let loaded = parse(&observation.source, &observation.text, None).map_err(|_| EntryRefusal::Changed)?;
     let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
     if current.fingerprints.cite != *cite {
         return Err(EntryRefusal::Changed);
