@@ -1,0 +1,16 @@
+/* [C20] Thumbnails at the reader's leading edge, as Preview's sidebar. Chosen
+   pages are filled as any selection is; the page in view has a thin ring. */
+.page-strip { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); min-height: 0; overflow-y: auto; padding: var(--space-1) 0 var(--inset); outline: none; }
+.page-strip-page { flex: none; display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) var(--space-2) var(--space-1); border-radius: var(--r-row); outline: none; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-variant-numeric: tabular-nums; cursor: default; }
+.page-strip-paper { display: block; overflow: hidden; inline-size: var(--thumb-w); aspect-ratio: 1 / 1.3; background: var(--paper); box-shadow: 0 0 0 var(--border-width) var(--separator); }
+/* A thumbnail is the page drawn at full size and scaled, so it is the page. */
+.page-strip-paper > * { inline-size: var(--page-w); transform: scale(calc(var(--thumb-w) / var(--page-w))); transform-origin: top left; }
+.page-strip-page[data-current] .page-strip-paper { box-shadow: 0 0 0 var(--border-width) var(--separator), 0 0 0 calc(2 * var(--border-width)) var(--surface), 0 0 0 calc(3 * var(--border-width)) var(--text-tertiary); }
+.page-strip-page[data-unlabelled] .page-strip-label { color: var(--text-tertiary); }
+.page-strip-page[data-selected] { background: var(--fill-control-hover); color: var(--text); font-weight: var(--strong); }
+.page-strip:focus-within .page-strip-page[data-selected] { background: var(--selected); color: var(--selected-text); }
+.page-strip-page[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
+@media (forced-colors: active) {
+  .page-strip-page[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .page-strip-paper { background: Canvas; }
+}

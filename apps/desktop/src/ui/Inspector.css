@@ -26,6 +26,10 @@
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-tile); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
 .inspector-keys { flex: none; color: var(--text-secondary); }
 .inspector-action[data-disabled] .inspector-keys { color: inherit; }
+/* Reading: the list folds away and the panel takes the whole middle row, so the
+   pages sit between the thumbnails and the column (decision 0038). */
+.inspector[data-reading] { grid-column: 1 / -1; width: auto; }
+main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
