@@ -16,6 +16,12 @@ pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"
 ```
 
+## Working cheaply
+
+- Read only the section your task needs: search for its rule tag (`[C8]`, `0035`) instead of reading whole documents.
+- Run one focused check locally (one crate, one Vitest file, the script you touched) and let CI run the system matrix. Rerun a job GitHub cancelled for want of a macOS runner; don't change code for it.
+- One owner per area, one pull request per piece of work, merged one at a time when it touches desktop Rust. Fix forward in a small pull request when main breaks for a reason you understand; revert when you don't.
+
 ## Start here
 
 - Everything needed to resume lives in the repository and on GitHub, never only in a chat, a tool's memory or a local file. Start from the tracking issue: **Plan** gives the order, **Now** what is in flight and who owns it. Run `git fetch origin --prune` and `git status`; keep work you did not make.
