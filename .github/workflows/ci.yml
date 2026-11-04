@@ -59,17 +59,7 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           EXPECTED: ${{ github.event.pull_request.changed_files }}
           EXPECTED_REFS: ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.base.sha }}
-        run: |
-          # Pin the API list to this event's head and base across pagination.
-          # Failed reads, changed refs or a partial list enable every check.
-          unset FILES
-          if [ "$EVENT" = pull_request ] &&
-            before=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha + ":" + .base.sha') && [ "$before" = "$EXPECTED_REFS" ] &&
-            gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | {filename, previous_filename, status} | @json' > "$RUNNER_TEMP/changed-files.ndjson" &&
-            after=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha + ":" + .base.sha') && [ "$after" = "$EXPECTED_REFS" ]; then
-            export FILES="$RUNNER_TEMP/changed-files.ndjson"
-          fi
-          node scripts/ci-paths.mjs | tee -a "$GITHUB_OUTPUT"
+        run: scripts/ci-changes.sh
 
       # Desktop embeds the interface built here, so it starts as soon as the
       # files are classified instead of after every Web interface check. That
@@ -253,26 +243,7 @@ jobs:
       - name: Install system WebView libraries (Linux)
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
         working-directory: .
-        run: |
-          # Prefer the HTTPS archive already configured by runner-images (#857).
-          sudo python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("/etc/apt/apt-mirrors.txt")
-          archive = "https://archive.ubuntu.com/ubuntu/"
-          lines = path.read_text().splitlines(keepends=True)
-          matches = [i for i, line in enumerate(lines) if line.split()[:1] == [archive]]
-          if len(matches) != 1 or lines[matches[0]].split() not in (
-              [archive, "priority:2"], [archive, "priority:0"]
-          ):
-              raise SystemExit("expected runner archive mirror is missing or ambiguous")
-          lines[matches[0]] = f"{archive}\tpriority:0\n"
-          path.write_text("".join(lines))
-          PY
-          # Match runner-images' acquire bounds even on images with older defaults (#857).
-          ibis_apt_options=(-o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
-          sudo apt-get "${ibis_apt_options[@]}" update
-          sudo apt-get "${ibis_apt_options[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof
+        run: scripts/ci-linux-webview.sh
 
       - name: Check generated brand assets (Linux)
         if: env.NATIVE == 'true' && runner.os == 'Linux'
@@ -281,12 +252,6 @@ jobs:
       - name: Format
         if: env.NATIVE == 'true' && runner.os == 'Linux'
         run: cargo fmt --all --check
-
-      # The one crate test that reads the app's own source, so a change inside
-      # apps/desktop alone still runs it.
-      - name: Keep the app behind the engine (Linux)
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
-        run: cargo test -p ibis-engine --test engine_boundary --locked
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -437,6 +402,13 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
+      # Only for scripts/ci-result.sh, read from the same commit as this workflow.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+
       - name: Require every needed job to pass and main as the base
         env:
           RESULTS: ${{ needs.changes.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
@@ -448,30 +420,4 @@ jobs:
           WEBKIT: ${{ needs.webkit.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
-        run: |
-          echo "Results: $RESULTS"
-          if [ "$EVENT" = pull_request ] && [ "$BASE" != main ]; then
-            echo "::error::This pull request targets '$BASE'. Stacked pull requests are not allowed: retarget it to main."
-            exit 1
-          fi
-          set -- $RESULTS
-          if [ "$#" -ne 4 ]; then
-            echo "::error::Expected 4 unconditional job results, got $#."
-            exit 1
-          fi
-          for result in "$@"; do
-            if [ "$result" != success ]; then
-              echo "::error::A required job ended '$result'."
-              exit 1
-            fi
-          done
-          case "$EVENT:$WEB:$INTERFACE:$NATIVE:$CORE" in
-            pull_request:false:false:false:false|pull_request:true:false:false:false) test=skipped webkit=skipped ;;
-            pull_request:true:true:false:false|pull_request:true:true:true:false) test=skipped webkit=success ;;
-            *:true:true:true:true) test=success webkit=success ;;
-            *) echo "::error::Missing or invalid check selection."; exit 1 ;;
-          esac
-          if [ "$TEST" != "$test" ] || [ "$WEBKIT" != "$webkit" ]; then
-            echo "::error::Expected Test '$test' and WebKit '$webkit', got '$TEST' and '$WEBKIT'."
-            exit 1
-          fi
+        run: scripts/ci-result.sh

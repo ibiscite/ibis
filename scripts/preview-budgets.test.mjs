@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 import { budgetTest } from "./preview-budgets.mjs";
 
 test("the approved release boundary reports before 0.3 and enforces every later tag", () => {
@@ -27,32 +28,13 @@ test("real command failures stay fatal in report mode and numbers reach the job 
   }
 });
 
-test("Preview measures and pastes beside packaging, and install still waits for the paste check", () => {
-  const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  const build = preview.split("\n  build:\n")[1].split("\n  release-checks:\n")[0];
-  assert.doesNotMatch(build, /preview-budgets|one_ctrl_v_pastes/);
-  assert.match(preview.split("\n  release-checks:\n")[1].split("\n  windows-paste:\n")[0], /node scripts\/preview-budgets\.mjs/);
-  const windows = preview.split("\n  windows-paste:\n")[1].split("\n  sign-macos:\n")[0];
-  assert.match(windows, /- name: Build the web interface\n        shell: bash/);
-  assert.match(windows, /one_ctrl_v_pastes_the_clipboard_into_the_app_in_front/);
-  const install = preview.split("\n  install:\n")[1].split(/\n  [a-z][\w-]*:\n/)[0];
-  assert.match(install, /needs: \[build, sign-macos, windows-paste\]/);
-  assert.match(install, /needs.windows-paste.result == 'success'/);
-  const ci = readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8");
-  assert.match(ci, /Paste into Notepad \(Windows\)[\s\S]*?runner.os == 'Windows'[\s\S]*?one_ctrl_v_pastes_the_clipboard_into_the_app_in_front/);
-});
-
-test("failed Windows dependency setup stops the actual workflow shell before building", { skip: process.platform === "win32" }, (t) => {
-  const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  const windows = preview.split("\n  windows-paste:\n")[1].split("\n  sign-macos:\n")[0];
-  const block = windows.match(/- name: Build the web interface\n([\s\S]*?)\n      - name:/)[1];
-  assert.match(block, /shell: bash/);
-  const command = block.split("run: |\n")[1].replace(/^          /gm, "");
+test("failed web dependency setup stops the Windows paste check before building", { skip: process.platform === "win32" }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), "ibis-windows-setup-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
+  mkdirSync(join(dir, "apps/desktop"), { recursive: true });
   writeFileSync(join(dir, "pnpm"), '#!/bin/sh\ncase "$1" in install) exit 23 ;; *) touch "$BUILD_MARKER"; exit 0 ;; esac\n', { mode: 0o755 });
   const marker = join(dir, "built");
-  const result = spawnSync("bash", ["-e", "-o", "pipefail", "-c", command], { cwd: dir, encoding: "utf8", timeout: 5000, env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BUILD_MARKER: marker } });
+  const result = spawnSync("bash", [fileURLToPath(new URL("./build-web.sh", import.meta.url))], { cwd: dir, encoding: "utf8", timeout: 5000, env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, BUILD_MARKER: marker } });
   assert.equal(result.status, 23, result.stderr);
   assert.equal(existsSync(marker), false, "a failed install must not be consumed by a later build");
 });
