@@ -1,8 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { forgetAppOutputs } from "./api";
 import { resetApp, result } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
@@ -146,25 +144,6 @@ test("an unknown app without a proven target only copies and never asks for appr
   expect(receipt(h)).toBe("Copied. Automatic paste is not approved for this app");
 });
 
-test.each(["Automatic", "a Settings reset notification"])("%s resets unknown-app approval and brings the question back", async (reset) => {
-  const h = await open();
-  await enter();
-  await answer("Paste into Example Writer from now on");
-  if (reset === "Automatic") {
-    await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Copy as / })); });
-    await answer(reset);
-  } else {
-    await act(async () => {
-      await forgetAppOutputs();
-      await emit("preferences:changed");
-    });
-  }
-  expect(h.copy.calls).toHaveLength(0);
-  await enter();
-  expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from now on" })).toBeTruthy();
-  expect(h.document.pastes).toHaveLength(0);
-});
-
 test("dismissing the unknown-app question or picking a format never grants paste", async () => {
   const h = await open();
   await enter();
@@ -178,17 +157,16 @@ test("dismissing the unknown-app question or picking a format never grants paste
   expect(h.document.pastes).toHaveLength(0);
 });
 
-test("Just this once stays in the chooser and paste approval preserves that temporary citation", async () => {
+test("a format pick and paste approval are saved apart, and each keeps the other", async () => {
   const h = await open();
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Just this once" })); });
-  expect(screen.getByRole("menuitemcheckbox", { name: "Just this once", checked: true })).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" })); });
   await act(async () => { h.preview.pending[0]!.complete({ text: "@a" }); });
   expect(h.copy.calls).toHaveLength(0);
+  expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: null });
   await enter();
   await answer("Paste into Example Writer from now on");
-  expect(h.appChoices.get("example.writer")).toEqual({ output: null, paste: "paste" });
+  expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: "paste" });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   await finish(h);

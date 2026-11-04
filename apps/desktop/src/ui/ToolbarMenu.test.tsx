@@ -80,6 +80,22 @@ test.each(["macos", "windows", "linux"])("%s menu has named sections, radio item
   await waitFor(() => expect(document.activeElement).toBe(search));
 });
 
+test("a note above the choices is read with the menu and is absent otherwise", async () => {
+  vi.stubGlobal("ResizeObserver", class { observe() {} unobserve() {} disconnect() {} });
+  Element.prototype.scrollIntoView = vi.fn();
+  const many = [{ id: "formats", label: "Formats", items: ["a", "b", "c", "d", "e", "f", "g", "h"].map((id) => ({ id, label: `Format ${id}` })) }];
+  const menu = (note?: string) => <ToolbarMenu label="Copy as" value="Pandoc" note={note} sections={many} selectedKey="a" onAction={() => undefined} filterLabel="Filter formats" />;
+  const { rerender } = render(menu());
+  fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc" }));
+  expect((await screen.findByRole("menu")).hasAttribute("aria-describedby")).toBe(false);
+  rerender(menu("Remembered for Example Writer."));
+  const note = await screen.findByText("Remembered for Example Writer.");
+  expect(screen.getByRole("menu").getAttribute("aria-describedby")).toBe(note.id);
+  // Focus stays in the filter, so the note has to reach it too.
+  expect(screen.getByRole("searchbox").getAttribute("aria-describedby")).toContain(note.id);
+  expect((await axe.run(document.body, { rules: { "color-contrast": { enabled: false } } })).violations).toEqual([]);
+});
+
 test.each(["Escape", "Tab"])("%s closes just the menu and returns focus", async (key) => {
   const { trigger, search, parentKeys } = mount();
   act(() => trigger.focus());

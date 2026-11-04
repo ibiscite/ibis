@@ -196,8 +196,6 @@ erase confirmation of a completed clipboard write: a delayed response for the
 current citation shows Copied in the open picker, without hiding or forwarding
 its revoked paste proof. A newer Enter (including one waiting for a save),
 citation or opening retains its own selection, output and feedback ownership.
-Resetting the app to Automatic or choosing "Forget
-formats for apps" clears both output and delivery choices.
 
 Final injection must never wait on the UI thread while holding destination or
 key locks. Windows resolves the picker's known HWND before either lock and uses
@@ -701,8 +699,19 @@ libraries and sources (0033).
 
 ## 0031 What Ibis remembers per app
 
-The output chooser remembers a format picked for the captured app unless the
-person selects "Just this once". `apps.json`, beside `settings.json`, keeps
+2026-11-02 (maintainer): one rule replaces the format scopes. Ibis remembers a
+format per app, and the person changes it in the format menu. One default in
+Settings › Citations applies to apps with no remembered format. "Just this
+once", "Automatic", "Use as global default" and "Forget formats for apps" are
+gone, along with their Undo; a later pick replaces the old one. A format is
+remembered only for a captured app. When Ibis can't tell the app, the default
+applies and a pick changes it, so no choice is lost; when the destination could
+not be read, the app may be a real one, so a pick holds for that paste alone. A
+pick that cannot be saved also holds for that paste, and the control says "This
+paste". The app table's starting formats stay, as suggestions the menu names, so
+a new install still pastes APA into Word.
+
+`apps.json`, beside `settings.json`, keeps
 only the operating system, normalised app ID, output, optional delivery choice
 (`paste` or `copy-only`), the identity binding described below and whether the
 one-time plugin note was shown, for at most 200 apps;
@@ -711,8 +720,9 @@ window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
 Remembered choices beat app-table suggestions, then the
-global fallback; "Automatic" removes that app's output and delivery overrides, and a deliberate
-global choice never erases app choices.
+default; a format save and a delivery save each leave the other alone, except that
+answering Paste or Copy only in an open browser or editor first-paste question
+accepts the format it showed, unless a format is being held for that paste. A new default never erases app choices.
 
 2026-10-31 (#1486): Recent citations keep only opaque reference identities and
 known originating app IDs in the channel's WebView storage, bounded to 20 apps,
@@ -731,15 +741,15 @@ local time) are read as UTC, so cross-source order can be off by the offset. Rec
 or invented import times. These display dates do not change cite fingerprints.
 
 The bounded file is written whole, flushed and swapped in atomically. A file
-Ibis cannot read means automatic/default outputs, with a visible warning, and
-automatic paste is unavailable: a lost Copy only rule must not become paste
-permission. Subsequent writes preserve a recovery flag in `apps.json`, including
+Ibis cannot read means suggested/default outputs and automatic paste is
+unavailable: a lost Copy only rule must not become paste permission.
+Subsequent writes preserve a recovery flag in `apps.json`, including
 after restart. A format save never clears it. An explicit Paste or Copy only
-choice resolves recovery for that app alone; all other apps retain the refusal
-until their own delivery choice or the deliberate global reset. Its read failure
+choice resolves recovery for that app alone; every other app keeps the refusal
+until its own delivery choice, with no global reset. The warning shows only for
+an app that can answer, so it never sticks on a refused app or with no app. Its read failure
 is frozen in the copy proof, so a later successful save cannot release that copy.
-"Forget formats for apps" clears the recovery flag and all output/delivery
-choices. Unknown apps ask for delivery approval
+Unknown apps ask for delivery approval
 separately from format, in the same chooser (0009); recognised apps also offer
 Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
