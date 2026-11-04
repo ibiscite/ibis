@@ -7,6 +7,60 @@ import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/ap
 
 afterEach(resetApp);
 
+test("an unreadable key check pauses Enter and the explicit unverified action applies to one copy only", async () => {
+  const copied: boolean[] = [];
+  const called = backend({
+    search: () => [result("a", "Invented work")],
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: "paused", project_message: "Couldn’t check this citation against thesis.bib." }),
+    copy_file_citation: (args) => { copied.push(args.unverifiedProject === true); return { text: "[@a]", warnings: ["Unverified project key."] }; },
+  });
+  render(<App />);
+  await screen.findByText("Invented work");
+  const unverified = await screen.findByRole("button", { name: "Copy Unverified Key" });
+  expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
+  expect(document.querySelector(".footer-action")?.getAttribute("title")).toContain("Couldn’t check");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(copied).toEqual([]);
+  expect(called).not.toContain("hide_picker");
+  fireEvent.click(unverified);
+  await waitFor(() => expect(copied).toEqual([true]));
+  await waitFor(() => expect(screen.getByText("Unverified project key.")).toBeTruthy());
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await act(async () => { await Promise.resolve(); });
+  expect(copied).toEqual([true]);
+});
+
+test("a known wrong-work key has no unverified action and never reaches native copy", async () => {
+  const called = backend({ search: () => [result("a", "Invented work")],
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: "conflict", project_message: "A key in thesis.bib identifies a different work." }),
+  });
+  render(<App />);
+  await screen.findByText("A key in thesis.bib identifies a different work.");
+  expect(screen.queryByRole("button", { name: /Unverified Key/ })).toBeNull();
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  expect(called).not.toContain("copy_file_citation");
+});
+
+test("Retry checks again and keeps the citation, but does not replay the stopped Enter", async () => {
+  let paused = true;
+  const called = backend({ search: () => [result("a", "Invented work")],
+    project_status: () => file({ revision: paused ? 1 : 2 }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: paused ? "paused" : null, project_message: paused ? "Couldn’t check thesis.bib." : null }),
+    retry_project: async () => { paused = false; await emit("project:changed", [1, 2]); },
+    copy_file_citation: () => ({ text: "[@a]", warnings: [] }),
+  });
+  render(<App />);
+  await screen.findByRole("button", { name: "Copy Unverified Key" });
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Copy Unverified Key" })).toBeNull());
+  expect(called.filter((command) => command === "retry_project")).toHaveLength(1);
+  expect(called).not.toContain("copy_file_citation");
+  expect(screen.getByText("Invented work")).toBeTruthy();
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(called.filter((command) => command === "copy_file_citation")).toHaveLength(1));
+});
+
 const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, revision: 1, name: "thesis.bib", state: "ready", last_good: false, reason: null, damaged_lines: [], ...over });
 /** Names sit in invisible direction marks; a person reads the words between. */
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[\u2068\u2069]/g, "");

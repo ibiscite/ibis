@@ -10,7 +10,7 @@ import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { pickerText } from "../../messages";
 import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
 
-export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot }: {
+export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot, projectContext }: {
   /** The selection, or the highlighted result when nothing is selected. */
   chosen: CitationReference[];
   library: LibraryStatus | null | undefined;
@@ -25,6 +25,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   previewFileCitation: typeof nativeApi.previewFileCitation;
   /** Reads the library status again when the preview meets a newer snapshot. */
   refreshSnapshot: () => void;
+  projectContext?: [number, number] | null;
 }) {
   // Tagged with the style, choice and library it was made for, so Enter never
   // copies a preview of an earlier choice.
@@ -42,8 +43,8 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   const keyFormat = styleOf(format) === null ? (format as CopyFormat) : null;
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
-  const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
-  const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}`;
+  const retryKey = JSON.stringify([output, library?.revision, chosenKey, projectContext]);
+  const previewKey = `${output}\u0002${libraryVersion}\u0002${chosenKey}\u0002${JSON.stringify(projectContext)}`;
   // A -> B -> A is a new operation: B has retired A's native copy ticket.
   // Equal input alone cannot revive that receipt before fresh A finishes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new attempt is a new request for the same key.
@@ -91,7 +92,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
       ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
       ...(r.form ? { form: r.form } : {}),
-    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
+    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal, projectContext).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, project_check: result.project_check, project_message: result.project_message, project_checked_at_ms: result.project_checked_at_ms, project_unverified_allowed: result.project_unverified_allowed, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {

@@ -14,7 +14,7 @@ import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. It is also
  * the window's drag region; the editable box itself is not. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, pinned, onTogglePin }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, pinned, onTogglePin, writingProject, onWritingProjects }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
@@ -33,6 +33,8 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   app?: string | null;
   formatSource?: FormatSource;
   formatPick?: FormatPick;
+  writingProject?: { name: string } | null;
+  onWritingProjects?: () => void;
   onFormatOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
@@ -96,7 +98,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
         </div>
         {pageToken}
       </div>
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} />}
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} />}
       <IconButton icon="pin" size="large" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}/>
     </header>

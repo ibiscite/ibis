@@ -5,6 +5,72 @@ use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
 
+/// A request-local choice; never a saved preference or inferred retry policy.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProjectPolicy {
+    #[default]
+    Normal,
+    Unchecked,
+    Strict,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum ProjectAssessmentState {
+    Ready,
+    Retained,
+    Unverified,
+    Paused,
+    Conflict,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct ProjectAssessment {
+    pub state: ProjectAssessmentState,
+    pub name: String,
+    pub checks: Vec<ProjectKey>,
+    pub last_checked_ms: Option<u64>,
+    pub message: Option<String>,
+    /// Keys with contradictory work identifiers, not mere metadata differences.
+    pub conflicts: Vec<String>,
+}
+impl ProjectAssessment {
+    pub fn can_copy(&self) -> bool {
+        matches!(
+            self.state,
+            ProjectAssessmentState::Ready | ProjectAssessmentState::Retained | ProjectAssessmentState::Unverified
+        )
+    }
+    pub fn warning(&self) -> Option<String> {
+        matches!(
+            self.state,
+            ProjectAssessmentState::Retained | ProjectAssessmentState::Unverified
+        )
+        .then(|| self.message.clone())
+        .flatten()
+    }
+}
+
+/// A request-local writing context, with the ordinary citation contract kept
+/// intact. Paths are native input only; the check names just its bibliography.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WritingProjectCitation {
+    pub id: String,
+    pub name: String,
+    pub revision: String,
+    pub citation: CitationResult,
+    pub project: Option<ProjectResult>,
+    pub assessment: Option<ProjectAssessment>,
+}
+impl WritingProjectCitation {
+    pub fn schema() -> serde_json::Value {
+        schemars::schema_for!(Self).into()
+    }
+}
+
 /// One key against the chosen file.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct ProjectKey {
@@ -49,6 +115,114 @@ pub fn project_name(path: &Path) -> String {
 }
 
 impl Engine {
+    /// Resolve keys through the same path as an ordinary citation, then apply
+    /// one explicit project's output and bibliography. GUI selection is absent.
+    pub fn cite_writing_project_keys(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        self.cite_writing_project_keys_with_policy(project, request, ProjectPolicy::Normal, cancel)
+    }
+
+    pub fn cite_writing_project_keys_with_policy(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &KeyCitationRequest,
+        policy: ProjectPolicy,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        let mut request = request.clone();
+        request.output = project.output.clone();
+        let request = self.key_citation_request(&request, cancel)?;
+        self.cite_writing_project_with_policy(project, &request, policy, cancel)
+    }
+
+    /// The project definition is immutable for this request. Its output is the
+    /// authority; callers choose another request rather than mixing outputs.
+    pub fn cite_writing_project(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &CitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        self.cite_writing_project_with_policy(project, request, ProjectPolicy::Normal, cancel)
+    }
+
+    pub fn cite_writing_project_with_policy(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &CitationRequest,
+        policy: ProjectPolicy,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
+        ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
+            .map_err(|_| error(ErrorCode::BadInput))?;
+        let mut request = request.clone();
+        request.output = project.output.clone();
+        let prepared = self.prepare_citation(&request, cancel)?;
+        let mut assessment = None;
+        let checked = if prepared.uses_citation_keys() {
+            project
+                .bibliography
+                .as_ref()
+                .map(|path| {
+                    cancel.check()?;
+                    let read = ProjectRead::read(path, None);
+                    cancel.check()?;
+                    let keys = prepared.project_checks(&read);
+                    assessment = Some(prepared.project_evidence(&read, policy));
+                    Ok::<_, EngineError>(ProjectResult {
+                        name: project_name(path),
+                        keys,
+                        problem: read.problem(),
+                        damaged_lines: read.damaged_lines().to_vec(),
+                    })
+                })
+                .transpose()?
+        } else {
+            None
+        };
+        if policy == ProjectPolicy::Strict && prepared.uses_citation_keys() && project.bibliography.is_none() {
+            let mut required = prepared.project_evidence(&ProjectRead::default(), policy);
+            required.message = Some("Choose a project bibliography before requesting a strict check.".to_owned());
+            assessment = Some(required);
+        }
+        let mut citation = prepared.into_result();
+        if let Some(check) = assessment.as_ref().filter(|check| !check.can_copy()) {
+            let error = if check.state == ProjectAssessmentState::Conflict {
+                CitationError::ConflictingKey
+            } else {
+                CitationError::NotCitable
+            };
+            citation = CitationResult::new(
+                String::new(),
+                None,
+                None,
+                DisplayTree::default(),
+                citation
+                    .outcomes
+                    .into_iter()
+                    .map(|outcome| match outcome {
+                        ItemOutcome::Rendered { item } => ItemOutcome::Refused { item, error },
+                        refused => refused,
+                    })
+                    .collect(),
+                citation.losses,
+                citation.notices,
+            )
+            .with_warnings(citation.warnings);
+        }
+        Ok(WritingProjectCitation {
+            id: project.id.clone(),
+            name: project.name.clone(),
+            revision: project.revision(),
+            citation,
+            project: checked,
+            assessment,
+        })
+    }
     pub(super) fn project(
         &self,
         request: &ProjectRequest,

@@ -3846,11 +3846,11 @@ test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and cop
   await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
     { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
   ], format, style: null, expectedRevision: "1", intent: {
-    page: expect.any(Number), request: expect.any(Number), cancel: false,
+    page: expect.any(Number), request: expect.any(Number), cancel: false, context: null,
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null, unverifiedProject: false }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

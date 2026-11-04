@@ -41,6 +41,7 @@ mod shortcut_setting;
 mod sizing;
 mod tray;
 mod updater;
+mod writing_projects;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -168,6 +169,7 @@ fn main() {
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .manage(project::ProjectBibliography::default())
+        .manage(writing_projects::Runtime::default())
         .manage(editor_endpoint::Pending::default())
         .manage(editor_endpoint::Endpoint::default())
         .manage(session_references::SessionReferences::default())

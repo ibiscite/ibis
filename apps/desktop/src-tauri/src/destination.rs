@@ -38,6 +38,54 @@ pub(crate) enum AppOutput {
     Style(CitationStyle),
 }
 
+impl AppOutput {
+    pub(crate) fn project_spec(&self) -> OutputSpec {
+        match self {
+            Self::Style(style) => OutputSpec::Csl {
+                style: crate::library::engine_file::style_id(*style).into(),
+            },
+            Self::Key(format) => {
+                let (syntax, command) = match format {
+                    KeyFormat::Pandoc => (KeySyntax::Pandoc, None),
+                    KeyFormat::Autocite => (KeySyntax::Biblatex, Some("autocite")),
+                    KeyFormat::Parencite => (KeySyntax::Biblatex, Some("parencite")),
+                    KeyFormat::Textcite => (KeySyntax::Biblatex, Some("textcite")),
+                    KeyFormat::Cite => (KeySyntax::Latex, Some("cite")),
+                    KeyFormat::Typst => (KeySyntax::Typst, None),
+                    KeyFormat::Keys => (KeySyntax::Keys, None),
+                };
+                OutputSpec::Key {
+                    syntax,
+                    command: command.map(str::to_owned),
+                }
+            }
+        }
+    }
+
+    /// A project from the CLI can use an output this picker cannot yet show.
+    /// Refuse that choice, rather than substituting a plausible wrong format.
+    pub(crate) fn from_project_spec(output: &OutputSpec) -> Result<Self, String> {
+        let choices = [
+            Self::Key(KeyFormat::Pandoc),
+            Self::Key(KeyFormat::Autocite),
+            Self::Key(KeyFormat::Parencite),
+            Self::Key(KeyFormat::Textcite),
+            Self::Key(KeyFormat::Cite),
+            Self::Key(KeyFormat::Typst),
+            Self::Key(KeyFormat::Keys),
+            Self::Style(CitationStyle::Apa),
+            Self::Style(CitationStyle::ChicagoAuthorDate),
+            Self::Style(CitationStyle::HarvardCiteThemRight),
+            Self::Style(CitationStyle::Ieee),
+            Self::Style(CitationStyle::ModernLanguageAssociation),
+        ];
+        choices.into_iter().find(|choice| {
+            let canonical = choice.project_spec();
+            &canonical == output || matches!((&canonical, output), (OutputSpec::Key { syntax: a, command: Some(command) }, OutputSpec::Key { syntax: b, command: None }) if a == b && matches!(command.as_str(), "autocite" | "cite"))
+        }).ok_or_else(|| "This project's output is available in the command line. Choose a supported output there before using it in the picker.".into())
+    }
+}
+
 /// What the picker needs to know about the app it was opened from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct PickerDestination {
@@ -63,6 +111,12 @@ pub(crate) struct PickerDestination {
     pub(crate) paste_question: bool,
     /// A proven ordinary target can accept an explicit delivery choice, including recovery.
     pub(crate) can_choose_paste: bool,
+    #[specta(optional)]
+    pub(crate) writing_project: Option<crate::writing_projects::WritingProjectView>,
+    #[specta(optional)]
+    pub(crate) context_version: Option<(u32, u32)>,
+    #[specta(optional)]
+    pub(crate) writing_context: Option<String>,
 }
 
 /// The output an app's documents use, from the destination table through
@@ -376,15 +430,19 @@ pub(crate) fn picker_destination(
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
-) -> PickerDestination {
+) -> Result<PickerDestination, String> {
     // The editor already said what it wants and takes the citation itself.
     let last = if editor.current().is_some() {
         None
     } else {
         crate::paste::last_app(&app)
     };
+    let context = crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
+    let context_version = Some(context.version);
+    let writing_project = context.active.map(|project| project.view());
+    let writing_context = editor.current().is_none().then_some(context.edit);
     let Some((id, name, app_identity)) = last else {
-        return PickerDestination {
+        return Ok(PickerDestination {
             app: None,
             app_id: None,
             app_identity: None,
@@ -396,7 +454,10 @@ pub(crate) fn picker_destination(
             paste: None,
             paste_question: false,
             can_choose_paste: false,
-        };
+            writing_project,
+            context_version,
+            writing_context,
+        });
     };
     let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
@@ -409,7 +470,7 @@ pub(crate) fn picker_destination(
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
-    PickerDestination {
+    Ok(PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
         app_identity,
@@ -421,7 +482,10 @@ pub(crate) fn picker_destination(
         paste,
         paste_question,
         can_choose_paste,
-    }
+        writing_project,
+        context_version,
+        writing_context,
+    })
 }
 
 /// Remember a format, a delivery choice or both for the captured app. Whichever

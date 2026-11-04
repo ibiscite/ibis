@@ -814,7 +814,21 @@ libraries and sources (0033).
 
 ## 0031 What Ibis remembers per app
 
-2026-11-02 (maintainer): one rule replaces the format scopes. Ibis remembers a
+2026-11-04 (maintainer, #1697): an optional writing project remembers its output
+and optional checked bibliography together. Each app remembers its own selected
+project; selecting No Writing Project restores that app's ordinary output.
+The selected project's output takes precedence over the app's format, and a
+format pick changes the project while it is selected. The picker continuously
+names that project and offers a quick explicit switch. A project is chosen by
+the person, never inferred from a document, window title or browser URL.
+Selection grants no paste permission. Explicit editor and command-line requests
+keep their own output and do not change the GUI selection. Project switches
+replace format and bibliography together and retire pending copy authority;
+failed saves keep the previous context whole. Search continues across connected
+libraries. The checked bibliography remains one read-only file, not proof about
+the actual document. Implementation and acceptance scenarios: #1697.
+
+2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
 format per app, and the person changes it in the format menu. One default in
 Settings › Citations applies to apps with no remembered format. "Just this
 once", "Automatic", "Use as global default" and "Forget formats for apps" are
