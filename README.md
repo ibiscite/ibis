@@ -7,31 +7,31 @@
 
 <p align="center"><strong>Your next citation, a shortcut away.</strong><br>Search your libraries and cite where you write.<br><a href="https://ibiscite.org">ibiscite.org</a></p>
 
-Ibis is free and open source. Searching and copying work offline after setup.
+Ibis is a small, free app for researchers, students and anyone who writes with references. Press one shortcut in any app, type a few words, choose a reference from your Zotero library or a BibTeX file, and Ibis gives you the citation for your document.
+
+**Download:** [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage). Ibis is an early preview, so expect rough edges and a warning from your computer [the first time you open it](#install).
 
 No account, no uploads, no telemetry; sources read without changes. [Privacy](PRIVACY.md) covers runtime data and optional update checks.
 
-## What it does today
+## What it does
 
-Ibis is an early preview.
-
-- Open the picker with **Ctrl+Shift+Y** on Windows or Linux/X11, or **Command+Shift+Y** on macOS, if the shortcut is available. Existing custom shortcuts are kept. **Nightly, until the next release:** on Wayland, [bind `ibis toggle` in your desktop](docs/compatibility.md#bind-a-system-shortcut); it starts Ibis or shows/hides the running picker. Use `ibis toggle --app "Ibis Nightly"` for macOS Nightly, or `--app <executable-path>` on Linux/Windows. Portal shortcuts ([#782](https://github.com/ibiscite/ibis/issues/782)) have not shipped.
-- Search a BibTeX/BibLaTeX (`.bib`, `.bibtex`) or CSL-JSON (`.json`, `.csljson`) file, or your Zotero library and any group libraries you choose (Zotero 7–10, open or closed).
-- Cite with a key for Pandoc, BibLaTeX, LaTeX or Typst, a formatted citation in APA, Chicago, Harvard or MLA, or an IEEE reference entry. Ibis remembers a format per app, and you change it in the picker. When Ibis can't tell the app, a format you pick becomes your default.
-- Press **Enter** to paste on macOS. Elsewhere, or when pasting is unavailable, Ibis copies. The paste permission guide is in **Settings > General > Pasting**.
-- Works offline and never changes your library.
+- **Opens from any app.** Press **Ctrl+Shift+Y** on Windows or Linux, or **Command+Shift+Y** on a Mac. If another app already uses that shortcut, Ibis tells you, and a shortcut you have set yourself is kept. Linux desktops that use Wayland cannot use this shortcut yet; Ibis Nightly lets you [set one in your desktop's settings](docs/compatibility.md#bind-a-system-shortcut).
+- **Finds the reference.** Search your Zotero library and any group libraries you choose (Zotero 7–10, open or closed), or a reference file: BibTeX or BibLaTeX (`.bib`, `.bibtex`) or CSL-JSON (`.json`, `.csljson`).
+- **Gives you the citation you need.** A citation key for Pandoc, BibLaTeX, LaTeX or Typst; a formatted citation in APA, Chicago, Harvard or MLA; or an IEEE reference entry. A citation key is a short label for a reference, such as `vale2024lanterns`; those tools use it to find the full reference. Ibis remembers a format per app, and you change it in the picker. When Ibis can't tell the app, a format you pick becomes your default.
+- **Gets it into your document.** Press **Enter**. On a Mac, Ibis pastes for you once you allow it, and the guide is in **Settings > General > Pasting**. On Windows and Linux, or when pasting is not possible, Ibis copies the citation and you paste it yourself.
+- **Leaves your library alone.** Ibis works offline after setup and never changes your library.
 - **Nightly only, until the next release:** start Ibis when you log in, and paste a DOI, ISBN, PubMed ID (`PMID:…`) or arXiv ID to find that record in your library (Ibis does not fetch it from the internet).
 
-See the [roadmap](ROADMAP.md) for what comes next, including pasting on Windows, any citation style, exporting a document's bibliography and checking a manuscript's citations.
+Ibis does not build the reference list for your whole document yet. See the [roadmap](ROADMAP.md) for what comes next, including pasting on Windows, any citation style, exporting a document's bibliography and checking a manuscript's citations.
 
 ## Install
 
 There are two builds. Both are free, run on Windows, macOS and Linux, and install as separate apps, so you can keep both.
 
-- **Ibis** is the numbered preview release: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) ([all releases](https://github.com/ibiscite/ibis/releases)).
-- **Ibis Nightly** has the newest work and is rebuilt regularly from main, so it may be unfinished: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) ([release page](https://github.com/ibiscite/ibis/releases/tag/nightly)).
+- **Ibis** is the numbered release, and the one to start with: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage) ([all releases](https://github.com/ibiscite/ibis/releases)).
+- **Ibis Nightly** is where new work lands first. It is rebuilt often and may be unfinished: [Mac (Apple silicon)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Apple-silicon.dmg) · [Mac (Intel)](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-macOS-Intel.dmg) · [Windows](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Windows-setup.exe) · [Linux AppImage](https://github.com/ibiscite/ibis/releases/download/nightly/Ibis-Linux.AppImage) ([release page](https://github.com/ibiscite/ibis/releases/tag/nightly)).
 
-On Linux you can also use the `.deb` on either release page. See [compatibility](docs/compatibility.md) for tested systems, runtime requirements and AppImage FUSE help.
+On Debian or Ubuntu you can also use the `.deb` on either release page. See [compatibility](docs/compatibility.md) for tested systems and help with Linux.
 
 **The first time you open it.** The apps are not signed by Apple or Microsoft yet, so your system warns before opening them:
 
@@ -45,11 +45,13 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 ## First use
 
-1. Press the shortcut. Choose **Zotero** or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks for running Zotero and `.bib` files in your Documents, Desktop and Downloads folders when asked. The format beside search belongs to the app you came from; choose another there and Ibis remembers it for that app. When Ibis can't tell the app, a format you pick becomes your default. **Settings › Citations › Default format** applies to apps with no remembered format.
+1. Press the shortcut and choose your library: **Zotero**, or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks, only when you ask, for a running Zotero and for `.bib` files in your Documents, Desktop and Downloads folders.
 2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
-3. Press **Enter** to paste into your document on macOS. If permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation; paste it into your document yourself. **Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on macOS) to see every key.
+3. Press **Enter**. On a Mac this pastes into your document; if permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation and you paste it yourself.
 
-Hide or show the citation output with **Show what will be pasted** in **More**, or **Ctrl+I** (**⌘I** on macOS). Ibis remembers this choice; the references you added stay selected.
+**Shift+Enter** adds several references to one citation. Press **Ctrl+/** (**⌘/** on a Mac) to see every key.
+
+To change the format, use the control beside search. The format belongs to the app you came from, and choosing another one remembers it for that app. When Ibis can't tell the app, a format you pick becomes your default. **Settings › Citations › Default format** applies to apps with no remembered format.
 
 **Nightly only, until the next release:** add a locator at the end of a search,
 such as `memory p 12–14`, `memory ch. 3` or `memory S. 12`. Ibis shows how it interpreted the locator; **Search as typed**
@@ -61,13 +63,11 @@ volumes and verses are supported. Times such as `01:23` stay literal search text
 
 ## Use with Zotero
 
-Choose **Zotero** during setup, or **Use Zotero** in the picker's More menu (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads Zotero 7–10: through its local API while Zotero runs, and from a private copy of its database while it is closed. It reads your personal library and any group libraries you choose, on your computer only, and checks for changes each time the picker opens. It never changes anything in Zotero.
+Choose **Zotero** during setup, or **Use Zotero** in the picker's More menu (or **Use Zotero Library** in the menu bar or tray menu). Ibis reads Zotero 7–10, whether Zotero is open or closed. It reads your personal library and any group libraries you choose, on your computer only, and checks for changes each time the picker opens. It never changes anything in Zotero.
 
-If any selected library fails during a refresh, Ibis keeps the whole previous
-snapshot searchable and reports that it could not be updated. Even libraries
-that did respond wait until all selected libraries can be read again.
+If any selected library cannot be read, Ibis keeps searching its last good copy of all of them and tells you it could not update. Libraries that did respond wait until all of them can be read again.
 
-To read while Zotero runs, turn on its local API: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis reads Zotero's Citation Key field, a `Citation Key:` line in Extra and Better BibTeX keys. If the keys disagree, Ibis shows the conflict and refuses key output until you resolve it in Zotero.
+To read while Zotero is open, Ibis needs Zotero's permission: in Zotero, open **Settings > Advanced** and tick **Allow other applications on this computer to communicate with Zotero**. Ibis reads Zotero's Citation Key field, a `Citation Key:` line in Extra and Better BibTeX keys. If the keys disagree, Ibis shows the conflict and refuses key output until you resolve it in Zotero.
 
 If you prefer a file, let Zotero keep a `.bib` file up to date instead:
 
@@ -80,11 +80,17 @@ Better BibTeX rewrites the file whenever your library changes, and Ibis reloads 
 
 ## Help and feedback
 
-Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions). Report a problem through [the issue forms](https://github.com/ibiscite/ibis/issues/new/choose). The app's menu has **Report a Problem** and **Suggest an Idea** too.
+Ask questions and suggest ideas in [GitHub Discussions](https://github.com/ibiscite/ibis/discussions). Report a problem through [the issue form](https://github.com/ibiscite/ibis/issues/new/choose). The app's menu has **Report a Problem** and **Suggest an Idea** too. No GitHub account? Email [diyanko@ibiscite.org](mailto:diyanko@ibiscite.org).
+
+Please use invented examples: what you post on GitHub is public. Ibis has one maintainer, so replies can take a while.
+
+## How Ibis is built
+
+Ibis has one maintainer, who decides what it does and what ships. AI agents do most of the engineering under that direction, and people test the real app. [CONTRIBUTING.md](CONTRIBUTING.md#how-ibis-is-built) says what that means for you. You do not need to be a programmer to help: reporting an app where pasting fails, adding an invented test example or improving the documentation all count.
 
 ## Command line
 
-`ibis` is the engine itself, for people, scripts and AI agents. On macOS and Linux, install it with `brew install ibiscite/tap/ibis`. Or download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases/latest): `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`, `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it and put `ibis` somewhere on your PATH. The macOS binary is not signed yet; if macOS refuses to run a downloaded copy, run `xattr -d com.apple.quarantine ibis` once.
+You do not need the command line to use the app. `ibis` is the engine itself, for people, scripts and AI agents. On macOS and Linux, install it with `brew install ibiscite/tap/ibis`, or download it from the [nightly](https://github.com/ibiscite/ibis/releases/tag/nightly) or a [release](https://github.com/ibiscite/ibis/releases/latest). The [command line reference](docs/cli.md) has the details and everything else it can do.
 
 ```sh
 ibis search "lantern" --file refs.bib
@@ -92,30 +98,7 @@ ibis cite vale2024lanterns --file refs.bib --style apa
 ibis cite vale2024lanterns fen2023clouds --file refs.bib --format autocite
 ```
 
-`ibis --help` lists every command. From a checkout, `cargo run -p ibis -- <command>` does the same, for example with the synthetic `fixtures/bibtex/fidelity.bib`:
-
-```sh
-cargo run -p ibis -- libraries --file fixtures/bibtex/fidelity.bib --json
-cargo run -p ibis -- schema cite --json
-cargo run -p ibis -- call search --params '{"query":"garcia"}' --file fixtures/bibtex/fidelity.bib --json
-cargo run -p ibis -- serve --stdio --file fixtures/bibtex/fidelity.bib
-cargo run -p ibis -- mcp --file fixtures/bibtex/fidelity.bib
-```
-
-The [terminal kit](crates/ibis-cli/README.md) includes an fzf picker recipe,
-`ibis completions bash|zsh|fish` and read-only `ibis doctor --json` diagnostics.
-
-The command line calls the same typed engine methods as the app. Every command
-accepts `--json` and then writes one versioned envelope to stdout, with stable error
-codes and exit codes. The [command line reference](docs/cli.md) covers libraries,
-commands, JSON output, exit codes, canonical citation requests, the JSON-RPC server
-and `ibis mcp` for AI agents. The [Ibis plugin for Claude Code and Codex](docs/cli.md#ai-agents-mcp)
-adds the MCP server and a skill that cites only what your library holds. Install a
-current `ibis` command first: `ibis mcp --help` must list `--app-libraries`.
-
-## Contributing
-
-You do not need to be a programmer to help. Reporting an app where pasting fails, adding a test example, or improving documentation are all valuable. AI-assisted contributions are welcome under clear rules. Start with [CONTRIBUTING.md](CONTRIBUTING.md). See [testing](docs/testing.md) for what the checks prove and what comes next.
+`ibis --help` lists every command. The [terminal kit](crates/ibis-cli/README.md) adds an fzf picker recipe, shell completions and diagnostics. The [Ibis plugin for Claude Code and Codex](docs/cli.md#ai-agents-mcp) lets an AI agent cite only what your library holds.
 
 ## License
 

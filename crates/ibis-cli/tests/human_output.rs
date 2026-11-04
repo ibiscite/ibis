@@ -368,7 +368,15 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
     assert_eq!(code, 0);
     assert_eq!(text, format!("1 library\n{}\t4 items\n", path.display()));
     let (_, text, _) = run(engine()?, &["ibis", "styles"])?;
-    assert!(text.lines().any(|line| line == "apa\tAPA (7th edition)"), "{text}");
+    assert!(
+        text.lines().any(|line| line.starts_with("apa\tAPA (7th edition)\t2")),
+        "{text}"
+    );
+    assert!(text.ends_with("narrow it with: ibis styles WORDS\n"), "{text}");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "--locales"])?;
+    assert!(text.lines().any(|line| line == "de-DE\tGerman (Germany)"), "{text}");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "invented", "nothing"])?;
+    assert_eq!(text, "No style matches those words.\n");
     Ok(())
 }
 
@@ -376,7 +384,7 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
 fn year_letters_notice_sees_the_same_year_and_names_however_they_are_written() -> Result<(), Box<dyn std::error::Error>>
 {
     let work = |id: &str, extra: serde_json::Value| {
-        let mut item = serde_json::json!({"id":id,"type":"book","title":format!("Synthetic {id}")});
+        let mut item = serde_json::json!({"id":id,"citation-key":id,"type":"book","title":format!("Synthetic {id}")});
         for (field, value) in extra.as_object().into_iter().flatten() {
             item[field] = value.clone();
         }
@@ -455,14 +463,25 @@ fn a_preloaded_engine_never_reads_the_app_settings() -> Result<(), Box<dyn std::
     let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--json"])?;
     assert_eq!((code, errors.as_str()), (0, ""));
     // Asked for the app's libraries, it refuses instead of reading or ignoring them.
-    for args in [
-        &["ibis", "search", "x", "--app-libraries", "--json"][..],
-        &["ibis", "mcp", "--app-libraries", "--json"],
-    ] {
-        let (code, text, errors) = run(engine()?, args)?;
-        assert_eq!(code, 2, "{args:?}");
-        assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
-        assert!(errors.contains("--app-libraries is not available here"), "{errors}");
-    }
+    let (code, text, errors) = run(engine()?, &["ibis", "search", "x", "--app-libraries", "--json"])?;
+    assert_eq!(code, 2);
+    assert_eq!(text, "{\"error\":{\"code\":\"usage\"},\"ibis\":1,\"ok\":false}\n");
+    assert!(errors.contains("--app-libraries is not available here"), "{errors}");
+    // The server starts and says the same, so an agent can tell the person.
+    let (code, _, errors) = run(engine()?, &["ibis", "mcp", "--app-libraries", "--json"])?;
+    assert_eq!(code, 0);
+    assert!(errors.contains("--app-libraries is not available here"), "{errors}");
+    Ok(())
+}
+
+#[test]
+fn a_bare_less_than_sign_keeps_the_whole_title() -> Result<(), Box<dyn std::error::Error>> {
+    let path = library_file(
+        "less-than.json",
+        r#"[{"id":"lee2021","type":"article-journal","title":"Effect of p<0.05 on tidal rats"}]"#,
+    )?;
+    let (code, text, _) = run_file(&path, &["search", "tidal"])?;
+    assert_eq!(code, 0);
+    assert!(text.contains("Effect of p<0.05 on tidal rats"), "{text}");
     Ok(())
 }

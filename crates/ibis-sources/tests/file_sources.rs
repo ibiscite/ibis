@@ -55,13 +55,13 @@ fn damaged_bibtex_keeps_records_and_private_attachments() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn csl_json_uses_citation_key_then_id_and_reports_exact_lines() -> Result<(), Box<dyn std::error::Error>> {
+fn csl_json_keys_come_only_from_citation_key_and_lines_are_exact() -> Result<(), Box<dyn std::error::Error>> {
     use ibis_sources::WarningCode;
     let dir = tempfile::tempdir()?;
     let path = dir.path().join("synthetic.json");
     std::fs::write(
         &path,
-        "[\n {\"id\":\"native\",\"citation-key\":\"Chosen2026\",\"type\":\"book\",\"title\":\"Invented\",\"custom\":{\"path\":\"/invented/private\"}},\n {\"id\":7,\"type\":\"article-journal\"},\n {\"id\":\"native\",\"type\":\"book\"},\n {\"type\":\"book\"},\n {\"id\":\"partial\",\"type\":\"book\",\"title\":{}},\n {\"id\":\"last\",\"type\":\"book\",\"URL\":\"file:///invented/private\"}\n]",
+        "[\n {\"id\":\"native\",\"citation-key\":\"Chosen2026\",\"type\":\"book\",\"title\":\"Invented\",\"custom\":{\"path\":\"/invented/private\"}},\n {\"id\":7,\"type\":\"article-journal\"},\n {\"id\":\"twice\",\"type\":\"book\"},\n {\"type\":\"book\"},\n {\"id\":\"partial\",\"type\":\"book\",\"title\":{}},\n {\"id\":\"last\",\"type\":\"book\",\"URL\":\"file:///invented/private\"},\n {\"id\":\"twice\",\"citation-key\":\"Later2026\",\"type\":\"book\"}\n]",
     )?;
     let loaded = ibis_sources::load_file(&path)?;
     let records: Vec<_> = loaded
@@ -85,15 +85,22 @@ fn csl_json_uses_citation_key_then_id_and_reports_exact_lines() -> Result<(), Bo
         records
             .iter()
             .find(|record| record.id.key == "record:7")
-            .and_then(|record| record.citation_key().ok().flatten()),
-        Some("7")
+            .map(|record| record.citation_key()),
+        Some(Ok(None)),
+        "an id is not a key"
     );
-    assert!(
-        loaded
-            .warnings
-            .iter()
-            .any(|warning| warning.code == WarningCode::DuplicateKey && warning.line == Some(4))
-    );
+    // A repeated id refuses every record under it, naming each line.
+    assert!(records.iter().all(|record| record.id.key != "record:twice"));
+    for line in [4, 8] {
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::DuplicateKey
+                    && warning.line == Some(line)
+                    && warning.key.as_deref() == Some("twice"))
+        );
+    }
     assert!(
         loaded
             .warnings
@@ -352,11 +359,11 @@ fn numeric_json_ids_use_consistent_citation_processor_spelling() -> Result<(), B
     ] {
         std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;
         let loaded = ibis_sources::load_file(&path)?;
-        let key_from_source = loaded.snapshot.objects().iter().find_map(|item| match &item.object {
-            LibraryObject::Record(record) => record.citation_key().ok().flatten(),
+        let native = loaded.snapshot.objects().iter().find_map(|item| match &item.object {
+            LibraryObject::Record(record) => Some(record.id.key.clone()),
             _ => None,
         });
-        assert_eq!(key_from_source, Some(key), "numeric identifier {id}");
+        assert_eq!(native, Some(format!("record:{key}")), "numeric identifier {id}");
     }
     for id in ["1e20", "1e21", "9007199254740992", "9007199254740993"] {
         std::fs::write(&path, format!(r#"[{{"id":{id},"type":"book"}}]"#))?;

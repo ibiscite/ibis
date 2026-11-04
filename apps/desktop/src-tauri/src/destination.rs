@@ -15,7 +15,9 @@ use std::sync::Mutex;
 
 use ibis_core::cite::KeyFormat;
 use ibis_core::contract::citation::{KeySyntax, OutputSpec};
-use ibis_core::destination::{AppId, AppPaste, CopyReason, OutputQuestion, PasteSafety, lookup, output_for};
+use ibis_core::destination::{
+    AppId, AppPaste, CopyReason, OutputQuestion, PasteSafety, has_citation_plugins, lookup, output_for,
+};
 use ibis_core::settings::{self, CitationStyle};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -94,6 +96,9 @@ struct Remembered {
     /// Only unlisted apps approved for Paste need a location binding.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     identity: Option<String>,
+    /// The one-time note about reference manager plugins has been shown.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    noted: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -218,14 +223,53 @@ impl AppMemory {
             let identity = (paste == Some(AppPaste::Paste) && lookup(&app).is_none())
                 .then_some(identity)
                 .flatten();
+            let noted = previous.is_some_and(|entry| entry.noted);
             apps.retain(|entry| entry.app != app);
             apps.push(Remembered {
                 app,
                 output,
                 paste,
                 identity,
+                noted,
             });
         })
+    }
+
+    fn unreadable(&self) -> bool {
+        self.state.lock().map_or(true, |state| state.1)
+    }
+
+    /// Whether a paste into `app` should show the one-time plugin note. It
+    /// depends only on the app ID. Saying yes records it, so it shows once; a
+    /// failed save says no, and the next paste tries again.
+    pub(crate) fn take_plugin_note(&self, app: &AppId) -> bool {
+        if !has_citation_plugins(app) || self.unreadable() {
+            return false;
+        }
+        let app = normalized(app);
+        let Ok(state) = self.state.lock() else { return false };
+        if state.0.iter().any(|entry| entry.app == app && entry.noted) {
+            return false;
+        }
+        drop(state);
+        let mut first = false;
+        let saved = self.change(|apps| {
+            if let Some(entry) = apps.iter_mut().find(|entry| entry.app == app) {
+                first = !entry.noted;
+                entry.noted = true;
+            } else {
+                first = true;
+                apps.push(Remembered {
+                    app,
+                    output: None,
+                    paste: None,
+                    identity: None,
+                    noted: true,
+                });
+            }
+        });
+        first && saved.is_ok()
+    }
     }
 
     fn change(&self, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
@@ -444,6 +488,85 @@ mod tests {
             system: System::Macos,
             id: id.into(),
         }
+    }
+
+    fn word() -> AppId {
+        mac("com.microsoft.word")
+    }
+
+    fn memory_in(directory: &tempfile::TempDir) -> AppMemory {
+        AppMemory::open(directory.path().join("apps.json"))
+    }
+
+    #[test]
+    fn the_plugin_note_shows_once_per_app_and_survives_a_restart() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        assert!(memory.take_plugin_note(&word()));
+        assert!(!memory.take_plugin_note(&word()));
+        assert!(memory.take_plugin_note(&mac("com.apple.iwork.pages")), "per app");
+        assert!(!memory_in(&directory).take_plugin_note(&word()));
+        Ok(())
+    }
+
+    #[test]
+    fn the_plugin_note_survives_later_choices_for_the_app() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        assert!(memory.take_plugin_note(&word()));
+        memory.set(&word(), Some(AppOutput::Style(CitationStyle::Apa)))?;
+        memory.set_choice(&word(), None, Some(AppPaste::CopyOnly))?;
+        assert!(!memory.take_plugin_note(&word()), "a choice keeps the note shown");
+        let reopened = memory_in(&directory);
+        assert_eq!(reopened.get(&word()).0, Some(AppOutput::Style(CitationStyle::Apa)));
+        assert!(!reopened.take_plugin_note(&word()));
+        Ok(())
+    }
+
+    #[test]
+    fn a_shown_note_leaves_the_file_alone_on_every_later_paste() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        assert!(memory.take_plugin_note(&word()));
+        let path = directory.path().join("apps.json");
+        fs::remove_file(&path)?;
+        assert!(!memory.take_plugin_note(&word()));
+        assert!(!path.exists(), "an already noted app writes nothing");
+        Ok(())
+    }
+
+    #[test]
+    fn browsers_and_unknown_apps_never_get_the_note_or_a_file_entry() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        assert!(!memory.take_plugin_note(&mac("com.google.chrome")));
+        assert!(!memory.take_plugin_note(&mac("org.example.unknown")));
+        assert!(!directory.path().join("apps.json").exists());
+        Ok(())
+    }
+
+    #[test]
+    fn a_failed_save_shows_no_note_so_it_cannot_repeat() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let memory = memory_in(&directory);
+        // A directory in the file's place: nothing can be saved over it.
+        let blocked = directory.path().join("apps.json");
+        fs::create_dir(&blocked)?;
+        fs::write(blocked.join("kept"), "")?;
+        assert!(!memory.take_plugin_note(&word()));
+        Ok(())
+    }
+
+    #[test]
+    fn the_note_keeps_only_a_flag_beside_the_app_id() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        memory_in(&directory).take_plugin_note(&word());
+        let saved: serde_json::Value = serde_json::from_slice(&fs::read(directory.path().join("apps.json"))?)?;
+        assert_eq!(
+            saved["apps"][0],
+            serde_json::json!({ "app": { "system": "macos", "id": "com.microsoft.word" }, "output": null, "noted": true })
+        );
+        Ok(())
     }
 
     #[test]

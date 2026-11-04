@@ -65,7 +65,7 @@ pub(crate) fn command() -> clap::Command {
 /// The settings file a command uses: Nightly's when asked; otherwise the
 /// stable app's, or Nightly's when only Nightly has settings here.
 fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
-    let directory = app_libraries::config_dir().ok_or_else(|| {
+    let directory = ibis_engine::identity::config_dir().ok_or_else(|| {
         Failure::new(
             ErrorCode::Usage,
             "this computer has no folder for app settings (HOME or APPDATA is not set).",
@@ -291,8 +291,6 @@ fn setting_label(setting: &str) -> String {
         "citation_style" => "Citation style",
         "density" => "Row density",
         "larger_text" => "Larger text",
-        "show_paste_preview" => "Show the citation",
-        "search_icon" => "Search field icon",
         "paste" => "Enter pastes",
         "menu_bar" => "Menu bar item",
         "recent_citations" => "Recent citations",

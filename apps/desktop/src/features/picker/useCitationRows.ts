@@ -1,4 +1,4 @@
-import { useMemo, useRef, type ComponentProps, type RefObject } from "react";
+import { useMemo, useRef, type ComponentProps } from "react";
 import type { ResultList } from "./ResultList";
 import type { PickerApi } from "../../App";
 import type { Locator, SearchResult } from "../../api";
@@ -9,7 +9,7 @@ import type { useOperations } from "./useOperations";
 import { choiceKey, idKey, type CitationReference, type Choice } from "./choice";
 
 export function useCitationRows({
-  api, pickerSession, searchState, chosenKey, chosen, showCitations, format, snapshotRevision, input,
+  api, pickerSession, searchState, chosenKey, chosen, showCitations, format, snapshotRevision, focusHome,
   pointer, requestCopy, report,
 }: {
   api: PickerApi;
@@ -20,7 +20,7 @@ export function useCitationRows({
   showCitations: boolean;
   format: Choice;
   snapshotRevision: string | undefined;
-  input: RefObject<HTMLInputElement | null>;
+  focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;
   requestCopy: (choice: string | null) => void;
   report: ReturnType<typeof useOperations>["report"];
@@ -36,7 +36,7 @@ export function useCitationRows({
   const toggle = (result?: SearchResult) => send({ type: "toggle", result, locator: interpretation?.locator });
   const changeLocator = (reference: CitationReference, locator: Readonly<Locator> | null) => {
     send({ type: "reference", reference, change: { locator: locator ? { ...locator } : null }, selectedOnly: true });
-    input.current?.focus({ preventScroll: true });
+    focusHome();
   };
   const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
     send({ type: "reference", reference, change, initialSelection: list && ready ? results : undefined });
@@ -59,7 +59,7 @@ export function useCitationRows({
     pointer.choose(i);
     if (action === "toggle") toggle(r);
     else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
-    input.current?.focus();
+    focusHome();
   };
   const onContext: NonNullable<ComponentProps<typeof ResultList>["onContext"]> = (i, r) => {
     if (!ready || !rowContext) return;
@@ -72,15 +72,15 @@ export function useCitationRows({
       report("rowContext", false);
       if (action === "toggle") toggle(r);
       else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
-      if (action !== null || document.hasFocus()) input.current?.focus({ preventScroll: true });
-    }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) input.current?.focus({ preventScroll: true }); } });
+      if (action !== null || document.hasFocus()) focusHome();
+    }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) focusHome(); } });
   };
   const onToggle: NonNullable<ComponentProps<typeof ResultList>["onToggle"]> = (i, r) => {
     cancelCopy();
     if (!ready) return;
     pointer.choose(i);
     toggle(r);
-    input.current?.focus();
+    focusHome();
   };
   return { toggle, changeLocator, changeReference, copyChosen, onChoose, onContext, onToggle };
 }

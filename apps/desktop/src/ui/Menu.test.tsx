@@ -3,19 +3,6 @@ import { act, cleanup, fireEvent, render, renderHook, screen, waitFor, within } 
 import axe from "axe-core";
 import { useRef, useState } from "react";
 import { Menu, MenuDetail, MenuItem, MenuSection, MenuSeparator, useMenuBoundary, useMenuPlacement, useWholeRows } from "./Menu";
-import { useMenuLifecycle } from "./useMenuLifecycle";
-
-test.each(["frame", "cancel", "reopen", "unmount"])("a deferred menu focus request respects %s", async (action) => {
-  render(<input aria-label="Retry target" />);
-  const target = screen.getByRole("textbox");
-  const hook = renderHook(({ open }) => useMenuLifecycle(open), { initialProps: { open: false } });
-  act(() => hook.result.current.retryFocus(() => target.focus()));
-  if (action === "cancel") act(() => hook.result.current.cancelFocusRetry());
-  else if (action === "reopen") hook.rerender({ open: true });
-  else if (action === "unmount") hook.unmount();
-  await act(async () => { await new Promise(requestAnimationFrame); });
-  expect(document.activeElement).toBe(action === "frame" ? target : document.body);
-});
 
 afterEach(async () => {
   cleanup();
@@ -171,8 +158,8 @@ function holdExit(menu: HTMLElement) {
   let finishExit!: () => void;
   const finished = new Promise<void>((resolve) => { finishExit = resolve; });
   const popover = menu.closest(".menu-popover")!;
-  // JSDOM has no CSS animation lifecycle: keep the real popover mounted until
-  // its exit finishes, as the browser does for menu-exit in Menu.css.
+  // JSDOM has no CSS animation lifecycle: hold the real popover mounted, as
+  // React Aria does while any exit animation runs.
   Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
     ? [{ playState: "running", finished }] : [] });
   return { popover, finish: async () => {
@@ -181,7 +168,7 @@ function holdExit(menu: HTMLElement) {
   } };
 }
 
-test.each(["pointer", "keyboard"])("%s action returns focus to Search through the menu's exit animation", async (activation) => {
+test.each(["pointer", "keyboard"])("%s action closes at once and returns focus to Search", async (activation) => {
   const { trigger, search, onAction } = mount();
   act(() => trigger.focus());
   fireEvent.click(trigger);
@@ -200,14 +187,13 @@ test.each(["pointer", "keyboard"])("%s action returns focus to Search through th
     fireEvent.keyUp(open, { key: "Enter" });
   }
   expect(onAction).toHaveBeenCalledWith("open");
-  expect(exit.popover.hasAttribute("data-exiting")).toBe(true);
-  await exit.finish();
-  focus.mockRestore();
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(exit.popover.isConnected).toBe(false);
   expect(document.activeElement).toBe(search);
+  focus.mockRestore();
+  await exit.finish();
 });
 
-test.each(["Escape", "Tab"])("%s restores its destination after an animated exit", async (key) => {
+test.each(["Escape", "Tab"])("%s closes at once and returns focus, with no exit to wait for", async (key) => {
   const { trigger, search } = mount();
   act(() => trigger.focus());
   fireEvent.click(trigger);
@@ -215,8 +201,9 @@ test.each(["Escape", "Tab"])("%s restores its destination after an animated exit
   const exit = holdExit(menu);
   act(() => menu.focus());
   fireEvent.keyDown(menu, { key });
-  await exit.finish();
+  expect(exit.popover.isConnected).toBe(false);
   expect(document.activeElement).toBe(key === "Escape" ? trigger : search);
+  await exit.finish();
 });
 
 test.each([false, true])("Tab (shift=%s) releases the modal before immediate typing", async (shiftKey) => {
@@ -255,7 +242,7 @@ test.each(["Escape", "Tab", "Enter", " "])("composing %s does not dismiss or act
   expect(onAction).toHaveBeenCalledWith("open");
 });
 
-test("a shortcut can reopen immediately after Tab and action exits still animate", async () => {
+test("a shortcut can reopen immediately after Tab, and an action closes at once", async () => {
   const { trigger, search } = mount();
   fireEvent.click(trigger);
   fireEvent.keyDown(await screen.findByRole("menu"), { key: "Tab" });
@@ -264,9 +251,9 @@ test("a shortcut can reopen immediately after Tab and action exits still animate
   const reopened = await screen.findByRole("menu");
   const exit = holdExit(reopened);
   fireEvent.click(screen.getByRole("menuitem", { name: "Open" }));
-  expect(exit.popover.hasAttribute("data-exiting")).toBe(true);
-  await exit.finish();
+  expect(exit.popover.isConnected).toBe(false);
   expect(document.activeElement).toBe(search);
+  await exit.finish();
 });
 
 test.each(["focus", "pointer", "keyboard"])("later %s intent supersedes the action's focus destination", async (intent) => {
@@ -291,7 +278,7 @@ test.each(["focus", "pointer", "keyboard"])("later %s intent supersedes the acti
   if (intent !== "keyboard") target.remove();
 });
 
-test.each(["action", "Escape"])("rapid pointer reopening after %s keeps the menu usable through its exit", async (close) => {
+test.each(["action", "Escape"])("rapid pointer reopening after %s gives a usable menu", async (close) => {
   const { trigger } = mount();
   fireEvent.click(trigger);
   const menu = await screen.findByRole("menu");
@@ -304,7 +291,7 @@ test.each(["action", "Escape"])("rapid pointer reopening after %s keeps the menu
     ? [{ playState: "running", finished }] : [] });
   if (close === "action") fireEvent.click(item);
   else fireEvent.keyDown(item, { key: "Escape" });
-  expect(popover.hasAttribute("data-exiting")).toBe(true);
+  expect(popover.isConnected).toBe(false);
   // The browser blurs the trigger when reopening makes the page inert again.
   // JSDOM has no inert focus behavior; model that loss before the open commit.
   act(() => (document.activeElement as HTMLElement).blur());
@@ -315,7 +302,6 @@ test.each(["action", "Escape"])("rapid pointer reopening after %s keeps the menu
     fireEvent.click(trigger);
     await act(async () => { await new Promise(requestAnimationFrame); });
     const reopened = screen.getByRole("menu");
-    expect(reopened.closest(".menu-popover")).toBe(popover);
     expect(document.activeElement).toBe(reopened);
     expect(reopened.querySelector("[data-focused]")).toBeNull();
     fireEvent.keyDown(document.activeElement!, { key: "ArrowDown" });

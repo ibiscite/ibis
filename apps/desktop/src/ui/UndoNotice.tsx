@@ -1,10 +1,9 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { pickerText } from "../messages";
 import { Button } from "./Button";
 import { useInterfaceMessages } from "../i18n";
-import { currentPlatform } from "../platform";
-import { registerUndo } from "./editUndo";
-import "./UndoNotice.css";
+import { registerUndo, subscribeUndo } from "./editUndo";
+import "./NoticeSlot.css";
 
 function noticeText(value: string) {
   const letters = [...value.replace(/\s+/gu, " ")].filter((letter) => {
@@ -44,12 +43,19 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
     return () => { current(); if (lease.current === current) lease.current = null; };
   }, [label]);
   useEffect(() => lease.current?.pause(paused), [paused]);
+  // The slot holds one notice: an older one waits, keeping the rest of its time.
+  const newest = useSyncExternalStore(subscribeUndo, () => lease.current?.isNewest() ?? true);
+  useLayoutEffect(() => {
+    if (newest || !notice.current?.contains(document.activeElement)) return;
+    setFocused(false);
+    fallbackFocusRef?.current?.focus({ preventScroll: true });
+  }, [newest, fallbackFocusRef]);
   useEffect(() => {
-    if (paused || hovered || focused || pending) return;
+    if (paused || hovered || focused || pending || !newest) return;
     const start = performance.now();
     const timer = window.setTimeout(onExpire, remaining.current);
     return () => { window.clearTimeout(timer); remaining.current = Math.max(0, remaining.current - (performance.now() - start)); };
-  }, [paused, hovered, focused, pending, onExpire]);
+  }, [paused, hovered, focused, pending, newest, onExpire]);
   useLayoutEffect(() => {
     mounted.current = true;
     const node = notice.current;
@@ -58,11 +64,11 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
       if (node?.contains(document.activeElement)) fallbackFocusRef?.current?.focus({ preventScroll: true });
     };
   }, [fallbackFocusRef]);
-  return <div ref={notice} className="undo-notice" onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
+  return <div ref={notice} className="notice-band" data-offer hidden={!newest} onPointerEnter={() => setHovered(true)} onPointerLeave={() => setHovered(false)}
     onFocusCapture={() => setFocused(true)} onBlurCapture={(event) => { if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setFocused(false); }}>
-    <span id={description} role={error ? "alert" : "status"}>{error ? pickerText.undoFailed : noticeText(message)}</span>
+    <span id={description} role={error ? "alert" : "status"} title={noticeText(message)}>{error ? pickerText.undoFailed : noticeText(message)}</span>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
-    {/* The message names the action; the short word keeps two notices on a small window. */}
-    <Button variant="secondary" size="small" aria-label={label} aria-describedby={description} aria-keyshortcuts={currentPlatform() === "macos" ? "Meta+Z" : "Control+Z"} isPending={pending} onPress={() => invoke.current()}>{pickerText.undo}</Button>
+    {/* The message names the action; the key cap says ⌘Z does the same. */}
+    <Button variant="quiet" size="small" label={pickerText.undo} keys="CmdOrCtrl+Z" aria-label={label} aria-describedby={description} isPending={pending} onPress={() => invoke.current()} />
   </div>;
 }

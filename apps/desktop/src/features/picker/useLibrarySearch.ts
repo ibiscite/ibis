@@ -25,6 +25,7 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
   const queryKey = JSON.stringify([query, interpretLocators]);
   const [interpretation, setInterpretation] = useState<LocatorQuery | null>(null);
   const [list, setList] = useState<PastedList | null>(null);
+  const [unfiltered, setUnfiltered] = useState<string | null>(null);
   const [results, setResults] = useState<SearchResult[]>([]);
   const [announcement, setAnnouncement] = useState("");
   // The query the shown results belong to; differs while a search is pending.
@@ -52,6 +53,7 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
       setResults([]);
       setInterpretation(null);
       setList(null);
+      setUnfiltered(null);
       setResultsQuery(queryKey);
       setActive(0);
       setError(null);
@@ -62,11 +64,12 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
     const owns = () => current && currentSession.current === sessionId && (isCurrentSession?.(sessionId) ?? true);
     let announcementTimer: number | undefined;
     (recentSearch ? recentSearch() : search(query, undefined, undefined, interpretLocators))
-      .then(({ revision, results: found, interpretation: interpreted, list: pasted }) => {
+      .then(({ revision, results: found, interpretation: interpreted, list: pasted, unfiltered: plain }) => {
         if (owns()) {
           setResults(found);
           setInterpretation(interpreted ?? null);
           setList(pasted ?? null);
+          setUnfiltered(plain ?? null);
           setResultsRevision(revision);
           if (revision !== library?.revision) refreshSnapshot();
           setResultsQuery(queryKey);
@@ -88,6 +91,7 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
           setResults([]);
           setInterpretation(null);
           setList(null);
+          setUnfiltered(null);
           setResultsQuery(queryKey);
           setError(pickerText.searchError);
           setSettled(request);
@@ -113,5 +117,5 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
     || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || settled.emptySearch !== recentSearch || reconciling);
   // The query text the shown results answer; "" before the first reply.
   const answered = resultsQuery === null ? "" : (JSON.parse(resultsQuery) as [string, boolean])[0];
-  return { queryKey, results, sameSnapshot, ready, answered, interpretation, list, announcement, resultsQuery, error, pending };
+  return { queryKey, results, sameSnapshot, ready, answered, interpretation, list, unfiltered, announcement, resultsQuery, error, pending };
 }

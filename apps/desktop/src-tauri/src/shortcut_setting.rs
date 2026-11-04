@@ -24,7 +24,6 @@ pub(crate) enum PickerCommand {
     Pin,
     Keys,
     More,
-    Preview,
     Source,
     Settings,
     Quit,
@@ -37,7 +36,6 @@ impl std::fmt::Display for PickerCommand {
             Self::Pin => "Keep Window Open",
             Self::Keys => "Keyboard Shortcuts",
             Self::More => "More",
-            Self::Preview => "Show What Will Be Pasted",
             Self::Source => "Open the Source",
             Self::Settings => "Settings",
             Self::Quit => "Quit Ibis",
@@ -200,9 +198,6 @@ fn picker_command(shortcut: Shortcut, character: Option<char>) -> Option<PickerC
         }
         if letter('q', Code::KeyQ) {
             return Some(PickerCommand::Quit);
-        }
-        if character.is_some_and(|typed| typed.eq_ignore_ascii_case(&'i')) {
-            return Some(PickerCommand::Preview);
         }
         if character == Some(',') {
             return Some(PickerCommand::Settings);
@@ -407,7 +402,7 @@ mod tests {
                     "{text}"
                 );
             }
-            for key in ["Y", "K", "I", "Q", "Comma"] {
+            for key in ["Y", "K", "Q", "Comma"] {
                 let text = format!("{modifier}+Shift+{key}");
                 assert!(check_shortcut_for(&text, command, windows).is_ok(), "{text}");
             }

@@ -131,12 +131,14 @@ pub enum ErrorCode {
 pub enum ErrorReason {
     /// No style has the requested id; `styles` lists them.
     UnknownStyle,
-    /// The requested locale is not available; only en-US is for now.
+    /// The requested locale is not bundled; `styles` lists the locales.
     UnknownLocale,
     /// The key is repeated in a library, so every entry under it is skipped.
     DuplicateKey,
     /// Several references share the key.
     AmbiguousKey,
+    /// A key output needs a citation key this reference does not have.
+    MissingKey,
     /// The program started as the Ibis app does not exist.
     AppMissing,
     /// The program started as the Ibis app is not Ibis.

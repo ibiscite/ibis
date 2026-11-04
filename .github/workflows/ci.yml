@@ -4,14 +4,16 @@ on:
   push:
     branches: [main]
   pull_request:
+  merge_group:
   workflow_dispatch:
 
 # On a pull request, a newer push cancels the run in progress. On main, a run
 # that has started always finishes, so its caches are saved and its evidence is
 # collected; GitHub keeps only the newest waiting push and replaces older ones
-# before they start, so a burst of merges never runs every commit.
+# before they start, so a burst of merges never runs every commit. Each merge
+# queue entry has its own ref and group, and is never cancelled.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -19,6 +21,8 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  # Debug information makes up most of what Windows compiles and links here.
+  CARGO_PROFILE_DEV_DEBUG: 0
   RUSTFLAGS: -D warnings
 
 jobs:
@@ -30,12 +34,15 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
+      core: ${{ steps.classify.outputs.core }}
+      interface: ${{ steps.classify.outputs.interface }}
       native: ${{ steps.classify.outputs.native }}
       web: ${{ steps.classify.outputs.web }}
     steps:
       # Interface-only and website-only pull requests keep web validation
       # without native jobs and without building the interface for them.
       # A Linux Desktop placeholder still reports success for "CI result".
+      # Changes only inside apps/desktop skip the crates' tests.
       # Main and unclear file lists build the complete app.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -100,17 +107,11 @@ jobs:
           retention-days: 1
 
   test:
-    name: Test (${{ matrix.os }})
+    name: Test (ubuntu-24.04)
     needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ${{ matrix.os }}
+    if: needs.changes.outputs.core == 'true'
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        # macOS and Windows run the same checks inside their Desktop jobs,
-        # which already build on those systems; one runner each per change.
-        os: [ubuntu-24.04]
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -124,14 +125,26 @@ jobs:
           # which would evict main's from the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
-      - name: Format
-        run: cargo fmt --all --check
-
       - name: Lint
         run: cargo clippy --all-targets --locked
 
+      - name: Check the declared minimum Rust version
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          cargo +1.90.0 check --locked --all-targets
+
       - name: Test
         run: cargo test --locked
+
+      # Installed only now: with Pandoc present, cargo test also runs the
+      # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
+      - name: Install Pandoc
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+
+      - name: Compare rendering from BibTeX and from CSL export
+        env:
+          IBIS_REQUIRE_PANDOC: "1"
+        run: cargo test -p ibis --test fidelity --locked
 
       - name: Enforce 100k search budget (release)
         # Compilation and the ordinary test processes finish before measurement;
@@ -159,7 +172,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # Identity guard checks the PR range and merge-group candidate.
+          fetch-depth: 0 # The identity guard reads the pull request range or the queue candidate.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -193,7 +206,7 @@ jobs:
           pnpm typecheck
           pnpm lint
           pnpm test
-          pnpm build
+          pnpm exec vite build
           node ../../scripts/picker-budget.mjs dist
 
   desktop:
@@ -202,6 +215,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
+      CORE: ${{ needs.changes.outputs.core }}
       NATIVE: ${{ needs.changes.outputs.native }}
     strategy:
       fail-fast: false
@@ -226,13 +240,13 @@ jobs:
           persist-credentials: false
 
       - name: Check Windows updater activation contracts
-        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        if: env.CORE == 'true' && runner.os == 'Windows'
         run: |
           command -v pwsh
           python -B scripts/update-e2e.py --self-test
 
       - name: Test the Windows offline observer
-        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        if: env.CORE == 'true' && runner.os == 'Windows'
         shell: pwsh
         run: ./scripts/check-offline.tests.ps1
 
@@ -263,6 +277,16 @@ jobs:
       - name: Check generated brand assets (Linux)
         if: env.NATIVE == 'true' && runner.os == 'Linux'
         run: node scripts/check.mjs --brand-assets
+
+      - name: Format
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: cargo fmt --all --check
+
+      # The one crate test that reads the app's own source, so a change inside
+      # apps/desktop alone still runs it.
+      - name: Keep the app behind the engine (Linux)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: cargo test -p ibis-engine --test engine_boundary --locked
 
       - name: Cache Rust build
         if: env.NATIVE == 'true'
@@ -298,8 +322,10 @@ jobs:
         if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
+      # Windows finds real bugs in the crates. macOS almost never finds one
+      # that Linux misses, so pull requests leave it to main.
       - name: Lint and test the core and scripts (macOS and Windows)
-        if: env.NATIVE == 'true' && runner.os != 'Linux'
+        if: env.CORE == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
         run: |
           cargo clippy --all-targets --locked
           cargo test --locked
@@ -331,11 +357,13 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  fidelity:
-    name: Citation fidelity
+  # jsdom and Chromium show neither WebKit's system colours nor its light-dark().
+  # Interface changes skip the macOS Desktop job, so this one runs by itself.
+  webkit:
+    name: WebKit colours (macOS)
     needs: changes
-    if: needs.changes.outputs.web == 'true'
-    runs-on: ubuntu-24.04
+    if: needs.changes.outputs.interface == 'true'
+    runs-on: macos-15
     timeout-minutes: 15
     steps:
       - name: Checkout
@@ -343,20 +371,38 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          # Pull requests restore main's caches but never write their own,
-          # which would evict main's from the repository's cache quota.
-          save-if: ${{ github.ref == 'refs/heads/main' }}
+          node-version: 22
+          package-manager-cache: false
 
-      - name: Install Pandoc
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
+      - name: Set up pnpm
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with:
+          package_json_file: apps/desktop/package.json
+          cache: true
+          cache_dependency_path: apps/desktop/pnpm-lock.yaml
 
-      - name: Compare rendering from BibTeX and from CSL export
-        env:
-          IBIS_REQUIRE_PANDOC: "1"
-        run: cargo test -p ibis --test fidelity --locked
+      - name: Build the design canvas
+        working-directory: apps/desktop
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm build:canvas
+
+      - name: Check colours in the system's own WebKit
+        run: |
+          swiftc -O apps/desktop/gallery/webkit.swift -o "$RUNNER_TEMP/ibis-webkit"
+          "$RUNNER_TEMP/ibis-webkit" apps/desktop/dist-canvas webkit-pictures
+
+      - name: Keep the pictures of a failure
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: webkit-${{ github.sha }}
+          path: webkit-pictures/*
+          if-no-files-found: warn
+          retention-days: 14
 
   dependencies:
     name: Dependency policy
@@ -381,13 +427,13 @@ jobs:
   # One check that stands for every required job, for the ruleset to require
   # instead of six names. A matrix job skipped because a job it needs failed
   # never reports its per-system checks; this job always reports. Every
-  # unconditional job must succeed. Rust and fidelity may be skipped only for
-  # docs-only inputs; missing classifier output fails shut.
+  # unconditional job must succeed. Test and WebKit may be skipped only when
+  # their inputs did not change; missing classifier output fails shut.
   # It also refuses stacked pull requests: every pull request targets main.
   result:
     name: CI result
     if: always()
-    needs: [changes, test, web, desktop, fidelity, dependencies]
+    needs: [changes, test, web, desktop, webkit, dependencies]
     runs-on: ubuntu-24.04
     timeout-minutes: 2
     steps:
@@ -396,7 +442,10 @@ jobs:
           RESULTS: ${{ needs.changes.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
           WEB: ${{ needs.changes.outputs.web }}
           NATIVE: ${{ needs.changes.outputs.native }}
-          RUST_RESULTS: ${{ needs.test.result }} ${{ needs.fidelity.result }}
+          CORE: ${{ needs.changes.outputs.core }}
+          INTERFACE: ${{ needs.changes.outputs.interface }}
+          TEST: ${{ needs.test.result }}
+          WEBKIT: ${{ needs.webkit.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: |
@@ -416,19 +465,13 @@ jobs:
               exit 1
             fi
           done
-          case "$EVENT:$WEB:$NATIVE" in
-            pull_request:false:false) expected=skipped ;;
-            pull_request:true:false|*:true:true) expected=success ;;
+          case "$EVENT:$WEB:$INTERFACE:$NATIVE:$CORE" in
+            pull_request:false:false:false:false|pull_request:true:false:false:false) test=skipped webkit=skipped ;;
+            pull_request:true:true:false:false|pull_request:true:true:true:false) test=skipped webkit=success ;;
+            *:true:true:true:true) test=success webkit=success ;;
             *) echo "::error::Missing or invalid check selection."; exit 1 ;;
           esac
-          set -- $RUST_RESULTS
-          if [ "$#" -ne 2 ]; then
-            echo "::error::Expected 2 Rust job results, got $#."
+          if [ "$TEST" != "$test" ] || [ "$WEBKIT" != "$webkit" ]; then
+            echo "::error::Expected Test '$test' and WebKit '$webkit', got '$TEST' and '$WEBKIT'."
             exit 1
           fi
-          for result in "$@"; do
-            if [ "$result" != "$expected" ]; then
-              echo "::error::Expected Rust and fidelity jobs to be '$expected', got '$result'."
-              exit 1
-            fi
-          done

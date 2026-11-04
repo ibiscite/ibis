@@ -1,6 +1,6 @@
 # Roadmap
 
-Every feature planned here ships before 1.0. The version numbers before 1.0 are working steps and may change; each release is usable on its own, and each milestone on GitHub has the same name. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
+Every feature and milestone planned here, through 0.7, ships before 1.0. The version numbers before 1.0 are working steps and may change; each finished milestone becomes one numbered release, usable on its own, and each milestone on GitHub has the same name. Numbered releases are the roughly stable version for early adopters on every distribution; daily testing happens on Nightly. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is.
 
 ## Direction
 
@@ -8,11 +8,12 @@ Ibis sits between the references people already keep and the apps they already w
 
 - **Keep the person's sources and workflow.** Zotero with or without Better BibTeX, `.bib` files kept by hand, BibDesk, spreadsheets and other reference managers are all valid starting points, reached through documented integrations, exports and the person's own files. Ibis states which formats it supports, never needs its own library and never writes to a source library or reads another app's private cloud account.
 - **Every writing app; citation keys first.** LaTeX and Overleaf come first, with Markdown, Quarto and Typst given equal care. Formatted citations for Word, Google Docs and other apps stay fully supported. Ibis respects the citation syntax and bibliography the person already uses.
-- **Engine first.** The `ibis` command line can do everything, with `--json`, a JSON-RPC server and an MCP server for AI agents. The app is a fast client of the same engine ([decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005), [architecture](docs/architecture.md)).
+- **Engine first.** The Rust engine is the soul of Ibis: almost no one sees it, and everything is done there. It stands on its own, adapts and grows, works with AI agents, runs on every operating system and is there for anyone to build on, as the most powerful open source system of its kind, developed in tandem with the app and with no compromises. The `ibis` command line can do everything, with `--json`, a JSON-RPC server and an MCP server for AI agents. The app is a fast client of the same engine, and only a layer on top ([decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005), [architecture](docs/architecture.md)).
 - **Defaults the person controls.** A remembered format per app, changed in the format menu, and one default for apps with none. Ibis shows what it will paste and why, never changes a setting silently, and finishes setup steps by itself ([design](docs/design.md)).
 - **Only what Ibis can get right.** A plausible but wrong citation is worse than none. Where correctness needs the whole document (numbering, ibid., 2020a and 2020b), Ibis gives what is correct on its own and says why. Every feature must be right from what Ibis knows and save real work.
 - **Languages and platforms count.** Names, search, input methods, text direction and citation locales work on Windows, macOS and Linux; limits are written down, not hidden.
 - **Offline by default.** Any online feature is opt-in and needs a recorded network decision and the maintainer's yes ([decision 0008](docs/decisions.md#0008-offline-by-default)).
+- **Quiet delight.** Delights are quiet, with rare moments.
 - **Long-lived foundations.** Open standards (CSL, CSL-JSON, BibTeX) and widely used open source (citeproc-js, SQLite, PDF.js, Tauri, React Aria), each behind one Ibis module so it can be replaced.
 
 Each release claims only what it has demonstrated, in the [compatibility guide](docs/compatibility.md). Until 1.0 nothing is kept for compatibility (decision 0027): anything wrong is rebuilt.
@@ -31,13 +32,14 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 
 ### 0.3 Straight into your document
 
-- **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it for that app. The first paste into a browser, code editor or unknown app asks once, and can keep that app to copying. Setup finishes itself, including a permission detour that keeps the prepared citation. Sample references when there is no library, the same invented set as the website and help.
+- **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it for that app. The first paste into a browser, code editor or unknown app asks once, and can keep that app to copying. First run asks first, with Zotero highlighted when found. Setup finishes itself, including a permission detour that keeps the prepared citation. Sample references when there is no library, the same invented set as the website and help.
 - **Enter pastes** into that app on macOS and Windows, on by default with a switch to turn it off. Enter pressed while results load runs once. Ibis copies instead, and says why, wherever pasting is unsafe: terminals, remote desktops and viewers, editors whose paste key does something else, elevated apps, secure typing on macOS and password fields on Windows. Any other app can be set to "copy only here". A pending paste is cancelled when the computer sleeps, locks or switches user. A one-time note per word processor says that documents using a reference manager's plugin should insert with it. After the window closes a short receipt says what happened; the last outcome stays in More.
 - **Linux** copies and says why. On Wayland the shortcut comes from the desktop portal, or Ibis shows the exact binding to add.
 - **Updates** keep the paste permission on macOS through a stable self-signed identity, and an update never opens the picker.
 - **Citations:** rich text (RTF and HTML) on the clipboard, Copy as Plain Text and Copy Reference as Markdown; recent citations per app; changing the last citation as an explicit action that replaces only a selected citation; a page or page range; narrative and author-omitted citations. Short selected text becomes the search, so the paste replaces a placeholder like "smith 2020". A peek at a reference's full details; a `.bib` or CSL-JSON file dropped on the window becomes a library.
 - **For scripts and AI agents** ([decision 0033](docs/decisions.md#0033-the-engine-for-agents-and-tools)): `ibis mcp` speaks MCP 2026-07-28 and still answers 2025 clients ([#1591](https://github.com/ibiscite/ibis/issues/1591)); an Agent Skill in one plugin for Claude Code and Codex; `ibis` uses the libraries chosen in the app when none are named; the app installs the matching `ibis` command; a Homebrew tap and winget.
 - **Release gates** ([decision 0032](docs/decisions.md#0032-release-gates)): the whole citation works with VoiceOver and NVDA and with Chinese, Japanese and Korean input methods; interface text is ready for translation; speed and resource limits are checks that run.
+- **Open to early adopters:** once 0.3 is released it is announced publicly, with Report a Problem collecting feedback.
 
 ### 0.4 Build any citation
 
@@ -59,7 +61,7 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 - **Quotes:** a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown, with the quotation, known page, reference and source link, and comments kept separate. Selected passages and comments exported as one Markdown evidence brief ([#1517](https://github.com/ibiscite/ibis/issues/1517)).
 - **Is this in my library?** for a pasted identifier, reference or reference list.
 - **Attachments:** results say whether a reference has a PDF or a saved web page, with the PDF's page count where it can be read safely.
-- **A read-only reader inside Ibis** for PDFs, EPUB and web snapshots, for what the reader people already use cannot do ([#1252](https://github.com/ibiscite/ibis/issues/1252)).
+- **A read-only reader inside Ibis** for PDFs, EPUB and web snapshots, for what the reader people already use cannot do ([#1252](https://github.com/ibiscite/ibis/issues/1252)). A PDF opens in a panel inside the picker that widens, shared with the citation editor.
 
 ### 0.6 Your document
 
@@ -80,23 +82,15 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 
 ### 1.0 Stable
 
-No new features. People test everything, then the maintainer moves to 1.0. The release gates: accessibility verified with VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop, display server and package; the documentation site; licence notices and supply-chain records. macOS keeps its stable self-signed identity and Windows installers stay unsigned with first-launch steps: 1.0 needs no paid signing (decision 0032).
+No new features. People test everything, then the maintainer moves to 1.0. The release gates: accessibility verified with VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop, display server and package; the documentation site; licence notices and supply-chain records. macOS keeps its stable self-signed identity and Windows installers stay unsigned with first-launch steps. Open question for the 1.0 gate: paid Mac signing is undecided and revisited near 1.0 (decision 0032).
 
 ## Saved passages and project checks
 
-These five workflows were approved on 2026-10-30 and all ship before 1.0. The first three come first; each starts with the smallest path that is reliable, and a slice that cannot yet be proved is narrowed rather than allowed to weaken its claims. Detail and limits are in the [research](docs/source-workflow-research.md); interaction rules in [design](docs/design.md#source-checks-and-passage-reuse-planned).
+Five workflows in 0.4 to 0.6 were approved together on 2026-10-30, in this order: the project's bibliography ([#1377](https://github.com/ibiscite/ibis/issues/1377)), highlights and comments with exact passages ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)), quotes ([#1385](https://github.com/ibiscite/ibis/issues/1385)), evidence briefs ([#1517](https://github.com/ibiscite/ibis/issues/1517)) and changed keys ([#1092](https://github.com/ibiscite/ibis/issues/1092)). A slice that cannot yet be proved is narrowed rather than allowed to weaken its claims. Notes and comments stay distinct from quotations, Zotero annotation support is stated per version and per live or closed mode, and none of this widens MCP access to notes, annotations or private links. Detail: [research](docs/source-workflow-research.md); interaction rules: [design](docs/design.md#source-checks-and-passage-reuse-planned).
 
-1. **Check the project's bibliography** ([#1377](https://github.com/ibiscite/ibis/issues/1377)): choose a read-only `.bib`; results say "In thesis.bib", "Missing from thesis.bib" or a specific unknown or conflict state. Copy a safe missing entry with its existing key, or explain how to export it from the reference manager.
-2. **Search highlights and comments, then open the exact passage** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)).
-3. **Copy a quote with its reference** ([#1385](https://github.com/ibiscite/ibis/issues/1385)), with personal comments kept separate.
-4. **Export selected passages as an evidence brief** ([#1517](https://github.com/ibiscite/ibis/issues/1517)): one new Markdown file with quotations, separate comments, references, pages and source links; no notebook or publishing service.
-5. **Warn when a previously copied key changes** ([#1092](https://github.com/ibiscite/ibis/issues/1092)), only with proven source, library and item continuity, with bounded private history and no guessed `.bib` renames or document edits.
+## Needs paid signing
 
-Notes and comments stay distinct from quotations. Zotero annotation support is stated per version and per live or closed mode. None of this widens MCP access to notes, annotations or private links.
-
-## After 1.0: needs paid signing
-
-- Apple Developer ID signing and notarization, and Windows code signing, when there is money or a free programme accepts Ibis.
+- Apple Developer ID signing and notarization, and Windows code signing, when there is money or a free programme accepts Ibis. Paid Mac signing is revisited near 1.0.
 - Opt-in iCloud settings sync on macOS, which needs a Developer ID build (network decision first) ([#1561](https://github.com/ibiscite/ibis/issues/1561)).
 - Windows App Actions (Click to Do) and the Windows agent registry, which need signed packages.
 

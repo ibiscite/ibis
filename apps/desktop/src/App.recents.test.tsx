@@ -35,11 +35,11 @@ test("recents are ordinary rows in one keyboard list; choosing one resolves it a
   expect(copies[0]).toEqual([{ id: c.id, cite: c.cite, locator: null }]);
 });
 
-test.each(["compact", "comfortable", "spacious"])("%s requests and renders the same recent groups", async (density) => {
+test.each(["compact", "comfortable"])("%s requests and renders the same recent groups", async (density) => {
   seed();
   const requests: unknown[] = [];
   backend({ picker_destination: destination,
-    picker_preferences: () => ({ citation_style: null, density, larger_text: false, show_paste_preview: true }),
+    picker_preferences: () => ({ citation_style: null, density, larger_text: false }),
     recent_references: (args) => { requests.push(args.includeAdded); return [{ ...a, recent: "cited" }, { ...b, recent: "added" }]; },
   });
   render(<App />);
@@ -86,7 +86,7 @@ test("Recent citations off forgets the history, records nothing and hides Forget
   seed();
   let on = false;
   backend({ picker_destination: destination,
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, recent_citations: on }),
+    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: on }),
     recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
     search: () => [b],
   });
@@ -153,7 +153,7 @@ test("a copy finished before the re-read after a saved off is not recorded", asy
   let reads = 0;
   backend({ picker_destination: destination,
     // The re-read after the change event still reports the old "on".
-    picker_preferences: () => { reads++; return { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, recent_citations: true }; },
+    picker_preferences: () => { reads++; return { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: true }; },
     recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
     search: () => [b],
   });

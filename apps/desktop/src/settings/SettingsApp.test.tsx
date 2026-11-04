@@ -120,7 +120,7 @@ function deferred<T>() {
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
-    preferences: { citation_style: null, density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true, ...preferences } as PickerPreferences,
+    preferences: { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
@@ -340,6 +340,7 @@ test("a window size that cannot be read says so and offers no choice", async () 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });
   expect(pageOf("about")).toEqual({ page: "about", focus: null });
+  expect(pageOf("updates")).toEqual({ page: "about", focus: null });
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
@@ -714,11 +715,11 @@ test("systems that paste without asking show the switch and no guide", async () 
 test("picker choices save at once, in order, keeping the others", async () => {
   const { api, state } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
-  fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
+  fireEvent.click(await screen.findByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(state.saved).toHaveLength(2));
-  expect(state.saved[0]).toMatchObject({ density: "spacious", larger_text: false, paste: true });
-  expect(state.saved[1]).toMatchObject({ density: "spacious", larger_text: true, paste: true });
+  expect(state.saved[0]).toMatchObject({ density: "compact", larger_text: false, paste: true });
+  expect(state.saved[1]).toMatchObject({ density: "compact", larger_text: true, paste: true });
 });
 
 test.each(["success", "failure", "later edit"])("closing drains both queued choices (%s)", async (outcome) => {
@@ -727,7 +728,7 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   const save = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await first.promise; return commit(next); }).mockImplementationOnce(async (next) => { await second.promise; return commit(next); });
   const read = vi.spyOn(api, "pickerPreferences");
   render(<SettingsApp api={api} initialPage="look" />);
-  fireEvent.click(await screen.findByRole("radio", { name: "Spacious" }));
+  fireEvent.click(await screen.findByRole("radio", { name: "Compact" }));
   if (outcome !== "later edit") fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   const closed = vi.fn();
@@ -736,7 +737,7 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(7); });
-  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "spacious" } : { larger_text: true }, null, outcome === "failure" ? 1 : 2);
+  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "compact" } : { larger_text: true }, null, outcome === "failure" ? 1 : 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
@@ -791,9 +792,9 @@ test.each(["before", "during", "during, resolved after saving"])("a focus read s
   if (when !== "during") await act(async () => { save.resolve(null); });
   await act(async () => { read.resolve(stale); });
   expect((larger as HTMLInputElement).checked).toBe(true);
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => { save.resolve(null); });
-  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "spacious", larger_text: true }));
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: true }));
 });
 
 test("a failure read cannot overwrite a newer edit", async () => {
@@ -806,8 +807,8 @@ test("a failure read cannot overwrite a newer edit", async () => {
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(read.promise);
   fireEvent.click(larger);
   await act(async () => { save.reject(); });
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
-  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "spacious", larger_text: true }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: true }));
   await act(async () => { read.resolve(saved); });
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
@@ -864,10 +865,10 @@ test("a later equal-valued switch intent is retried when its own save fails", as
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   fireEvent.click(larger);
   // Retrying the third intent keeps its ticket separate from the newer row choice.
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => { first.resolve(); });
   await waitFor(() => expect(writes).toBe(5));
-  expect(state.preferences).toMatchObject({ larger_text: true, density: "spacious" });
+  expect(state.preferences).toMatchObject({ larger_text: true, density: "compact" });
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
 
@@ -1057,11 +1058,54 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "dark" } });
-  fireEvent.click(await screen.findByRole("button", { name: "Appearance" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Appearance, Look" }));
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 2100));
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
+});
+
+test("search results are sidebar rows, and Enter opens the first", async () => {
+  const { api } = fakeApi({ granted: true });
+  const { container } = render(<SettingsApp api={api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "a" } });
+  const results = await screen.findByRole("listbox", { name: "Search results" });
+  expect(within(results).queryAllByRole("button")).toEqual([]);
+  const row = within(results).getByRole("option", { name: "Appearance, Look" });
+  expect(row.classList.contains("ui-side-navigation-item")).toBe(true);
+  expect(row.querySelector('.ui-side-navigation-tile[data-page="look"] svg')).not.toBeNull();
+  fireEvent.keyDown(search, { key: "Enter", isComposing: true });
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
+  fireEvent.change(search, { target: { value: "appearance" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect(container.querySelector(".ui-settings-search-results")).toBeNull();
+  fireEvent.change(search, { target: { value: "no such setting" } });
+  expect((await screen.findByText("No matching settings")).classList.contains("ui-side-navigation-empty")).toBe(true);
+});
+
+test("the bird never labels a page: About wears the same glyph tile as the others", async () => {
+  const { api } = fakeApi({ granted: true });
+  const { container } = render(<SettingsApp api={api} initialPage="about" />);
+  await screen.findByRole("button", { name: "Ibis" });
+  for (const tile of container.querySelectorAll(".ui-side-navigation-tile")) expect(tile.querySelector("svg.ibis-mark, img")).toBeNull();
+  expect(container.querySelector('.ui-side-navigation-tile[data-page="about"] svg')).not.toBeNull();
+  expect(container.querySelectorAll(".ibis-mark")).toHaveLength(0);
+  expect(screen.queryByText("Why an ibis")).toBeNull();
+});
+
+test("Accent is a plain two-way choice that follows the Mac until changed", async () => {
+  const { api, state } = fakeApi({ granted: true });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const accent = await screen.findByRole("radiogroup", { name: "Accent" });
+  expect(within(accent).getAllByRole("radio").map((radio) => radio.getAttribute("value"))).toEqual(["system", "ibis"]);
+  expect(within(accent).getByRole("radio", { name: "Follow the system" })).toHaveProperty("checked", true);
+  fireEvent.click(within(accent).getByRole("radio", { name: "Ibis scarlet" }));
+  await waitFor(() => expect(state.preferences).toMatchObject({ accent: "ibis" }));
+  expect(screen.queryByRole("radio", { name: "Magnifier" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Show what will be pasted" })).toBeNull();
+  expect(screen.queryByRole("radio", { name: "Spacious" })).toBeNull();
 });
 
 test("Settings shows only built pages, rows and choices, including in search", async () => {
@@ -1089,24 +1133,24 @@ test("Look serializes older A before B, so B stays selected and survives reopeni
   const write = vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (next) => { await slow.promise; return commit(next); });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
   fireEvent.click(within(await screen.findByRole("radiogroup", { name: "Rows" })).getByRole("radio", { name: "Compact" }));
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => undefined);
   expect(write).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   await act(async () => slow.resolve());
   await act(async () => state.closes[0]!());
-  expect(state.preferences.density).toBe("spacious");
+  expect(state.preferences.density).toBe("compact");
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
   fireEvent.click(screen.getByRole("option", { name: "Look" }));
-  expect((await screen.findByRole("radio", { name: "Spacious" }))).toHaveProperty("checked", true);
+  expect((await screen.findByRole("radio", { name: "Compact" }))).toHaveProperty("checked", true);
 });
 
 test.each(["read-only", "failed I/O"])("%s restores the saved choice even if recovery also fails, beside its cause", async () => {
   const { api } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
-  const choice = await screen.findByRole("radio", { name: "Spacious" });
+  const choice = await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic private OS detail"));
   vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("synthetic read failure"));
   fireEvent.click(choice);
@@ -1123,14 +1167,14 @@ test.each(["read-only", "failed I/O"])("%s restores the saved choice even if rec
 test("a picker preference event updates open Settings without focus, and Settings sends only its chosen field", async () => {
   const { api, state } = fakeApi({ granted: true });
   const { unmount } = render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Spacious" });
-  state.preferences = { ...state.preferences, density: "compact", show_paste_preview: false };
+  await screen.findByRole("radio", { name: "Compact" });
+  state.preferences = { ...state.preferences, density: "compact" };
   await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Comfortable" }));
   await act(async () => state.closes[0]!());
-  expect(state.preferences).toMatchObject({ density: "spacious", show_paste_preview: false });
-  expect(state.patches).toEqual([{ density: "spacious" }]);
+  expect(state.preferences).toMatchObject({ density: "comfortable" });
+  expect(state.patches).toEqual([{ density: "comfortable" }]);
   unmount();
   await act(async () => undefined);
   expect(state.preferenceEvents).toEqual([]);
@@ -1143,15 +1187,15 @@ test("a failed queued edit restores the preceding acknowledged save when rereadi
     .mockImplementationOnce(async (patch, key) => { await pending.promise; return commit(patch, key); })
     .mockRejectedValueOnce("settings-read-only");
   render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Spacious" });
+  await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "pickerPreferences").mockRejectedValueOnce(new Error("synthetic failed read"));
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => pending.resolve());
   expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
-  expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
+  expect(state.preferences).toMatchObject({ density: "compact", larger_text: false });
 });
 
 test("a self-notification before reply preserves the saved row choice when the next save and every read fail", async () => {
@@ -1167,24 +1211,24 @@ test("a self-notification before reply preserves the saved row choice when the n
     })
     .mockRejectedValueOnce("settings-read-only");
   render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Spacious" });
+  await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await act(async () => first.resolve());
   expect(screen.getByRole("alert").textContent).toBe("The settings file is read-only; the saved value is shown.");
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
-  expect(state.preferences).toMatchObject({ density: "spacious", larger_text: false });
+  expect(state.preferences).toMatchObject({ density: "compact", larger_text: false });
 });
 
 test("a picker notification after a recovered refusal retires the saved-value claim until a real read succeeds", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
   render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Spacious" });
+  await screen.findByRole("radio", { name: "Compact" });
   const read = vi.spyOn(api, "pickerPreferences");
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => state.closes[0]!());
   expect(read).toHaveBeenCalledOnce();
   expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
@@ -1193,21 +1237,21 @@ test("a picker notification after a recovered refusal retires the saved-value cl
   const refreshing = deferred<PickerPreferences>();
   read.mockRejectedValue(new Error("synthetic failed read")).mockReturnValueOnce(refreshing.promise);
   await act(async () => {
-    await commit({ density: "spacious" });
+    await commit({ density: "compact" });
     for (const changed of state.preferenceEvents) changed(++state.revision);
   });
   expect(screen.queryByText(/the saved value is shown/)).toBeNull();
   await act(async () => refreshing.reject());
   const uncertainty = "Ibis could not read your settings; reopen Settings to try again.";
   expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
-  expect(state.preferences.density).toBe("spacious");
+  expect(state.preferences.density).toBe("compact");
   await act(async () => { fireEvent.focus(window); });
   expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
 
   read.mockImplementation(async () => state.preferences);
   await act(async () => { fireEvent.focus(window); });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
 });
 
 test("a picker notification before a queued save fails stays uncertain until the saved settings can be read", async () => {
@@ -1222,18 +1266,18 @@ test("a picker notification before a queued save fails stays uncertain until the
     })
     .mockRejectedValueOnce("settings-read-only");
   render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Spacious" });
+  await screen.findByRole("radio", { name: "Compact" });
   const read = vi.spyOn(api, "pickerPreferences").mockRejectedValue(new Error("synthetic read failure"));
-  fireEvent.click(screen.getByRole("radio", { name: "Spacious" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
   await waitFor(() => expect(write).toHaveBeenCalledTimes(1));
   await act(async () => {
-    await commit({ accent: "purple" });
+    await commit({ accent: "ibis" });
     for (const changed of state.preferenceEvents) changed(++state.revision);
     reply.resolve();
   });
   expect(write).toHaveBeenCalledTimes(2);
-  expect(state.preferences).toMatchObject({ density: "spacious", accent: "purple", larger_text: false });
+  expect(state.preferences).toMatchObject({ density: "compact", accent: "ibis", larger_text: false });
   const uncertainty = "Ibis could not read your settings; reopen Settings to try again.";
   expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
   expect(screen.queryByText(/the saved value is shown/)).toBeNull();
@@ -1250,8 +1294,8 @@ test("a picker notification before a queued save fails stays uncertain until the
   read.mockImplementation(async () => state.preferences);
   await act(async () => { fireEvent.focus(window); });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
-  expect(screen.getByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
+  expect(screen.getByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
   expect(screen.getByRole("radio", { name: "Default" })).toHaveProperty("checked", true);
 });
 
@@ -1268,47 +1312,40 @@ test("a picker change survives a Settings save reply delayed beyond the close ti
   vi.useFakeTimers();
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => undefined);
-  await commit({ density: "spacious" });
+  await commit({ density: "compact" });
   await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
   await act(async () => vi.advanceTimersByTimeAsync(2_500));
   await act(async () => pending.resolve(older));
-  expect(screen.getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
-  expect(state.preferences.density).toBe("spacious");
+  expect(screen.getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
+  expect(state.preferences.density).toBe("compact");
   mounted.unmount();
   vi.useRealTimers();
   render(<SettingsApp api={api} initialPage="look" />);
-  expect(await screen.findByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(await screen.findByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
 });
 
-test("Appearance, ten accents, both search icons, both text sizes and preview persist separately", async () => {
+test("Appearance, both accents and both text sizes persist separately", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
-  const accents = within(await screen.findByRole("radiogroup", { name: "Accent" })).getAllByRole("radio");
-  expect(accents).toHaveLength(10);
-  expect(accents.map((radio) => radio.getAttribute("aria-label"))).toEqual(expect.arrayContaining(["Follow the system", "Blue", "Ibis scarlet"]));
-  expect(accents[0]?.getAttribute("aria-label")).toBe("Follow the system");
-  expect(accents.at(-1)?.getAttribute("aria-label")).toBe("Ibis scarlet");
+  await screen.findByRole("radiogroup", { name: "Accent" });
   fireEvent.click(screen.getByRole("radio", { name: "Dark" }));
-  fireEvent.click(screen.getByRole("radio", { name: "Purple" }));
-  fireEvent.click(screen.getByRole("radio", { name: "Ibis mark" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Ibis scarlet" }));
   fireEvent.click(screen.getByRole("radio", { name: "Larger" }));
-  fireEvent.click(screen.getByRole("switch", { name: "Show what will be pasted" }));
   await act(async () => state.closes[0]!());
-  expect(state.preferences).toMatchObject({ appearance: "dark", accent: "purple", search_icon: "ibis", larger_text: true, show_paste_preview: false });
+  expect(state.preferences).toMatchObject({ appearance: "dark", accent: "ibis", larger_text: true });
   expect(state.patches.at(0)).toEqual({ appearance: "dark" });
-  expect(state.patches.at(1)).toEqual({ accent: "purple" });
+  expect(state.patches.at(1)).toEqual({ accent: "ibis" });
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   fireEvent.click(screen.getByRole("option", { name: "Look" }));
-  expect(await screen.findByRole("radio", { name: "Purple" })).toHaveProperty("checked", true);
+  expect(await screen.findByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.appearance).toBe("dark");
   fireEvent.click(screen.getByRole("radio", { name: "System" }));
   fireEvent.click(screen.getByRole("radio", { name: "Follow the system" }));
-  fireEvent.click(screen.getByRole("radio", { name: "Magnifier" }));
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   await act(async () => state.closes.at(-1)!());
-  expect(state.preferences).toMatchObject({ appearance: "system", accent: "system", search_icon: "magnifier", larger_text: false });
+  expect(state.preferences).toMatchObject({ appearance: "system", accent: "system", larger_text: false });
 });
 
 test("a failed initial preference read explains uncertainty and leaves navigation usable", async () => {
@@ -1349,7 +1386,7 @@ test("Look picture radios have keyboard selection, inert real components and no 
   const selected = within(rows).getByRole("radio", { name: "Comfortable" });
   act(() => selected.focus());
   fireEvent.keyDown(selected, { key: "ArrowRight" });
-  expect(within(rows).getByRole("radio", { name: "Spacious" })).toHaveProperty("checked", true);
+  expect(within(rows).getByRole("radio", { name: "Compact" })).toHaveProperty("checked", true);
   const previews = container.querySelectorAll(".ui-picker-picture-content > div");
   expect(previews.length).toBeGreaterThan(0);
   for (const host of previews) {
@@ -1402,7 +1439,7 @@ test.each(["general", "shortcuts"])("%s default shortcut offers Undo that restor
 test("a read-only refusal names the file constraint beside the restored control", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="look" />);
-  const choice = await screen.findByRole("radio", { name: "Spacious" });
+  const choice = await screen.findByRole("radio", { name: "Compact" });
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
   fireEvent.click(choice);
   const problem = await screen.findByRole("alert");
@@ -1432,7 +1469,7 @@ test.each([
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
-  fireEvent.click(await screen.findByRole("button", { name: label }));
+  fireEvent.click(await screen.findByRole("option", { name: `${label}, ${page}` }));
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
   await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
 });
@@ -1487,7 +1524,7 @@ test.each(["light", "dark"] as const)("Ibis scarlet persists and reopens in %s a
 });
 
 test("an Ibis accent refusal restores the saved accent beside its localized cause", async () => {
-  const { api } = fakeApi({}, { accent: "blue" });
+  const { api } = fakeApi();
   const pseudo = createInterfaceMessages(english, true);
   render(<InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>);
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
@@ -1495,16 +1532,16 @@ test("an Ibis accent refusal restores the saved accent beside its localized caus
   const problem = await screen.findByRole("alert");
   expect(problem.textContent).toBe(pseudo.text("settings-read-only"));
   expect(problem.closest(".ui-settings-row")?.querySelector("#accent")).toBeTruthy();
-  expect(screen.getByRole("radio", { name: pseudo.text("look-accent-blue") })).toHaveProperty("checked", true);
-  expect(document.documentElement.dataset.accent).toBe("blue");
+  expect(screen.getByRole("radio", { name: pseudo.text("look-accent-system", { platform: "other" }) })).toHaveProperty("checked", true);
+  expect(document.documentElement.dataset.accent).toBe("system");
 });
 
 
 test("a delayed accent read cannot replace the newer Ibis choice or its reopened value", async () => {
-  const { api, state } = fakeApi({}, { accent: "blue" });
+  const { api, state } = fakeApi();
   const old = deferred<PickerPreferences>();
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
-  await screen.findByRole("radio", { name: "Blue" });
+  await screen.findByRole("radio", { name: "Follow the system" });
   const previous = state.preferences;
   vi.spyOn(api, "pickerPreferences").mockReturnValueOnce(old.promise);
   fireEvent.focus(window);
@@ -1585,6 +1622,20 @@ test.each([
   fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
   await screen.findByRole("button", { name: "Check now" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
+test("the tray's update check opens About, checks once and says its result in place", async () => {
+  const { api, state } = fakeApi();
+  let finish!: (result: "newest") => void;
+  const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  render(<SettingsApp api={api} initialPage="updates" />);
+  await waitFor(() => expect(check).toHaveBeenCalledOnce());
+  await act(async () => { for (const handler of state.pages) handler("updates"); });
+  expect(check).toHaveBeenCalledOnce();
+  await act(async () => { finish("newest"); });
+  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
+  await act(async () => { for (const handler of state.pages) handler("updates"); });
+  expect(check).toHaveBeenCalledTimes(2);
 });
 
 test("a check that ends on another page says its result back on About", async () => {

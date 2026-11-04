@@ -1,76 +1,82 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
+import { closeOverlays, focusLost } from "../../ui/layers";
 import type { Operation } from "./Notices";
 import type { useOperations } from "./useOperations";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import { usePin } from "./usePin";
 import { useWindowResetUndo } from "./useWindowResetUndo";
 
+/** The picker's own overlay: at most one is open, whichever way it was reached. */
+type Overlay = "more" | "library" | "format" | "keys";
+
 export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
-  { choosingLibrary, welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "choosingLibrary" | "welcomeShown">, cancelCopy: () => void) {
+  { welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "welcomeShown">, cancelCopy: () => void) {
   const { setPinned } = api;
   const input = useRef<HTMLInputElement>(null);
   const formatButtonRef = useRef<HTMLButtonElement>(null);
   const moreButton = useRef<HTMLButtonElement>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [libraryMenuOpen, setLibraryMenuOpen] = useState(false);
-  const [formatOpen, setFormatOpen] = useState(false);
+  const [overlay, setOverlay] = useState<Overlay | null>(null);
+  const closed = (name: Overlay) => setOverlay((current) => current === name ? null : current);
   const { pinned, currentPin, togglePin } = usePin({ setPinned, perform });
-  const [keysOpen, setKeysOpen] = useState(false);
-  const restoreChooserFocus = useRef(false);
-  useLayoutEffect(() => {
-    if (choosingLibrary || !restoreChooserFocus.current) return;
-    restoreChooserFocus.current = false;
-    // Welcome hides Search. Inspect the committed screen, after the
-    // chooser leaves, so focus never goes to the header it just replaced.
-    const welcome = input.current?.closest("main")?.querySelector(".library-welcome");
-    (welcome ? moreButton.current : input.current)?.focus();
-  }, [choosingLibrary]);
+  // Where the keyboard rests. Welcome hides Search; ask the committed screen,
+  // because that state arrives a render after the chooser leaves.
+  const focusHome = useCallback(() => {
+    (input.current?.closest("main")?.querySelector(".library-welcome") ? moreButton.current : input.current)?.focus({ preventScroll: true });
+  }, []);
   // Setup's chosen choice leaves with setup. If nothing else took focus, the
-  // keyboard goes to Search; otherwise keys would reach no handler at all.
+  // keyboard goes home.
   const welcomeWasShown = useRef(welcomeShown);
   useLayoutEffect(() => {
     const left = welcomeWasShown.current && !welcomeShown;
     welcomeWasShown.current = welcomeShown;
-    if (left && (document.activeElement === null || document.activeElement === document.body)) input.current?.focus();
-  }, [welcomeShown]);
+    if (left && focusLost()) focusHome();
+  }, [welcomeShown, focusHome]);
   const windowUndo = useWindowResetUndo(api);
-  useEffect(() => { if (windowUndo.ticket !== null) { setKeysOpen(false); setMenuOpen(false); setLibraryMenuOpen(false); } }, [windowUndo.ticket]);
+  // A commit cannot flush the closes it causes, so they follow it.
+  useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
   // Where focus goes back to when the keys overlay closes.
   const keysReturn = useRef<HTMLElement | null>(null);
   const openMore = () => {
     cancelCopy();
-    setLibraryMenuOpen(false);
+    closeOverlays();
     // React Aria records the invoker before mounting its modal focus scope.
     moreButton.current?.focus();
-    setMenuOpen(true);
+    setOverlay("more");
   };
-  const closeMenu = (refocus: boolean) => {
-    setMenuOpen(false);
-    setLibraryMenuOpen(false);
-    if (refocus) moreButton.current?.focus();
-  };
-  const focusPicker = () => (welcomeShown ? moreButton.current : input.current)?.focus();
-  const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
+  const openLibrary = () => {
     cancelCopy();
-    closeMenu(false);
-    focusPicker();
+    closeOverlays();
+    setOverlay("library");
+  };
+  const openFormat = () => {
+    closeOverlays();
+    formatButtonRef.current?.click();
+  };
+  /** A command that acts on the picker or leaves it: nothing stays in its way. */
+  const leaveOverlays = () => {
+    cancelCopy();
+    closeOverlays();
+    focusHome();
+  };
+  const runFromMenu = (operation: Operation, action: () => Promise<unknown>) => {
+    leaveOverlays();
     void perform(operation, action);
   };
   const openKeys = () => {
     cancelCopy();
-    closeMenu(false);
+    closeOverlays();
     const focused = document.activeElement;
-    // A dismissed menu item returns to a visible control; welcome has no Search.
-    keysReturn.current = focused instanceof HTMLElement && !focused.closest("[role='menu']") ? focused
-      : welcomeShown ? moreButton.current : input.current;
-    setKeysOpen(true);
+    keysReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
+    setOverlay("keys");
   };
   const closeKeys = () => {
-    setKeysOpen(false);
+    closed("keys");
     const back = keysReturn.current;
-    const fallback = welcomeShown ? moreButton.current : input.current;
-    (back?.isConnected ? back : fallback)?.focus();
+    if (back?.isConnected && !back.closest("[hidden]")) back.focus();
+    else focusHome();
   };
-  return { input, formatButtonRef, moreButton, menuOpen, setMenuOpen, libraryMenuOpen, setLibraryMenuOpen, formatOpen, setFormatOpen, pinned, currentPin, togglePin, keysOpen, setKeysOpen, restoreChooserFocus, windowUndo, openMore, closeMenu, focusPicker, runFromMenu, openKeys, closeKeys };
+  return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys",
+    setFormatOpen: (open: boolean) => { if (open) setOverlay("format"); else closed("format"); },
+    pinned, currentPin, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu, openKeys, closeKeys };
 }

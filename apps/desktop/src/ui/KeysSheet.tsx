@@ -3,6 +3,7 @@ import { useEffect, useRef } from "react";
 import { useInterfaceMessages } from "../i18n";
 import { type KeyBinding } from "../keys";
 import { ShortcutGroup } from "./ShortcutTable";
+import { useLayer } from "./layers";
 import { useScrollEdges } from "./ScrollArea";
 import "./Overlay.css";
 import "./KeysSheet.css";
@@ -15,6 +16,7 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
   const scroll = useRef<HTMLDivElement>(null);
   useScrollEdges(scroll);
   useEffect(() => { dialog.current?.focus(); }, []);
+  useLayer("sheet", true, () => onClose());
   return (
     <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div
@@ -26,17 +28,11 @@ export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly Ke
         aria-labelledby="keys-title"
         className="keys-dialog ui-overlay ui-sheet"
         onKeyDown={(e) => {
-          // The picker's own keys wait until the dialog is closed.
-          e.stopPropagation();
-          if (e.key === "Escape") {
-            e.preventDefault();
-            onClose();
-          } else if (e.key === "Tab") {
-            const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button, [tabindex='0']") ?? [])];
-            const at = focusable.indexOf(document.activeElement as HTMLElement);
-            e.preventDefault();
-            focusable[at < 0 ? e.shiftKey ? focusable.length - 1 : 0 : (at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
-          }
+          if (e.key !== "Tab") return;
+          const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button, [tabindex='0']") ?? [])];
+          const at = focusable.indexOf(document.activeElement as HTMLElement);
+          e.preventDefault();
+          focusable[at < 0 ? e.shiftKey ? focusable.length - 1 : 0 : (at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
         }}
       >
         <div className="keys-heading">

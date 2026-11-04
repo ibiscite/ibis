@@ -8,7 +8,7 @@ import { pickerText } from "../../messages";
 /** A source query/open owns its item, snapshot and picker presentation. Icons
  * are read once on that identity, only while shown; they never poll. */
 export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librarySource">, library: LibraryStatus | null | undefined,
-  visibility: number, item: unknown | null, zoteroOnly: boolean, refresh: () => void) {
+  visibility: number, item: unknown | null, zoteroOnly: boolean, refresh: () => void, presentation: () => number | null = () => null) {
   const [visible, setVisible] = useState(false);
   useEffect(() => {
     const sync = () => setVisible(document.visibilityState !== "hidden" && !document.documentElement.hasAttribute("data-picker-hidden"));
@@ -58,7 +58,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
       setBusy(null);
     };
     const kind = appOnly ? "zotero" : source.kind;
-    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", library?.source_generation ?? "", appOnly || zoteroOnly && target === item, reveal).then(settled, (error: unknown) => {
+    void api.openLibrarySource(appOnly ? null : target as typeof item, library?.revision ?? "", library?.source_generation ?? "", appOnly || zoteroOnly && target === item, reveal, presentation()).then(settled, (error: unknown) => {
       settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);

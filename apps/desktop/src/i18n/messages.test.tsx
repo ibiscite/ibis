@@ -58,7 +58,6 @@ const panelEnglish = {
   "shortcuts-command-keys": "Keyboard Shortcuts",
   "shortcuts-command-more": "More",
   "shortcuts-command-source": "Open the Source",
-  "shortcuts-command-preview": "Show What Will Be Pasted",
   "shortcuts-command-settings": "Settings",
   "shortcuts-command-quit": "Quit Ibis",
   "shortcuts-region-search": "While searching",
@@ -69,7 +68,6 @@ const panelEnglish = {
   "shortcuts-action-choose-source": "Choose a library",
   "shortcuts-action-reveal-source": "Show the source in its folder",
   "shortcuts-action-source": "Open the source",
-  "shortcuts-action-preview": "Show what will be pasted",
   "shortcuts-action-copy": "Paste the citation",
   "shortcuts-action-copy-only": "Copy the citation",
   "shortcuts-action-add": "Add another reference",
@@ -135,7 +133,6 @@ test("settings wording follows the platform, and a backend reason ends on one fu
   for (const platform of ["windows", "linux"]) {
     expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V");
     expect(says("look-accent-system", platform)).toBe("Follow the system");
-    expect(says("look-accent-multicolor", platform)).not.toContain("Mac");
   }
   expect(says("look-accent-system", "macos")).toBe("Follow the Mac");
   expect(pickerText.shortcutError(false, "Ctrl+Shift+Y", "Restart Ibis after the desktop portal is available."))

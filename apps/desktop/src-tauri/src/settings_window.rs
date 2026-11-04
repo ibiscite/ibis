@@ -2,9 +2,10 @@
 //! the Dock and the app switcher like any Mac settings window.
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
 use crate::diagnostics::{NativeIssue, checked, report};
+use crate::picker::{PickerGeneration, PickerHideUi, Takeover, yield_to_window};
 
 pub(crate) const LABEL: &str = "settings";
 const TITLE: &str = "Ibis Settings";
@@ -25,6 +26,8 @@ pub(crate) enum Page {
     Shortcuts,
     Citations,
     About,
+    /// About, running Check now: the tray's update check shows its result there.
+    Updates,
 }
 
 impl Page {
@@ -38,6 +41,7 @@ impl Page {
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
+            Page::Updates => "updates",
         }
     }
 }
@@ -47,8 +51,11 @@ impl Page {
 /// WebView2 callback, where building a second webview deadlocks on Windows.
 #[tauri::command]
 #[specta::specta]
-pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>) {
-    open(&app, page);
+pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentation: Option<u64>) {
+    // Tauri spawns async commands before their bodies run; the picker names
+    // the opening that asked, so a newer one is not what gives way.
+    let presentation = app.state::<PickerGeneration>().originating(presentation);
+    show(&app, page, presentation);
 }
 
 /// Close the paste guide after both grants; a fresh external activation opens
@@ -96,14 +103,19 @@ fn finish_guide_with<E>(granted: bool, focused: bool, close: impl FnOnce() -> Re
 }
 
 pub(crate) fn open(app: &AppHandle, page: Option<Page>) {
+    show(app, page, app.state::<PickerGeneration>().current());
+}
+
+fn show(app: &AppHandle, page: Option<Page>, presentation: u64) {
     let handle = app.clone();
     report(
-        app.run_on_main_thread(move || present(&handle, page)),
+        app.run_on_main_thread(move || present(&handle, page, presentation)),
         NativeIssue::Window,
     );
 }
 
-fn present(app: &AppHandle, page: Option<Page>) {
+/// Every way into Settings ends here, so each has one effect on the picker.
+pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, presentation: u64) {
     #[cfg(target_os = "macos")]
     {
         report(
@@ -115,6 +127,7 @@ fn present(app: &AppHandle, page: Option<Page>) {
     }
     if let Some(window) = app.get_webview_window(LABEL) {
         present_existing(&window, page);
+        yield_to_window(app, presentation, Takeover::Covered);
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
@@ -124,7 +137,10 @@ fn present(app: &AppHandle, page: Option<Page>) {
         .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
         .center()
         .maximizable(false)
-        .focused(true);
+        .focused(true)
+        // A system alert leaves Settings without the keyboard; the click that
+        // returns to it must also reach the control under the pointer.
+        .accept_first_mouse(true);
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
     {
@@ -145,13 +161,16 @@ fn present(app: &AppHandle, page: Option<Page>) {
         builder = builder.additional_browser_args(&args);
     }
     match checked(builder.build(), NativeIssue::Window) {
-        Some(window) => report(window.set_focus(), NativeIssue::Focus),
+        Some(window) => {
+            report(window.set_focus(), NativeIssue::Focus);
+            yield_to_window(app, presentation, Takeover::Covered);
+        }
         None => closed(app),
     }
 }
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.
-fn present_existing<R: tauri::Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
+fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
     report(
         window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
         NativeIssue::Window,
@@ -170,7 +189,7 @@ pub(crate) fn is_open(app: &AppHandle) -> bool {
 
 /// Once Settings closes, Ibis leaves the Dock again and lives in the menu bar,
 /// handing focus back to the app underneath unless the picker is up.
-pub(crate) fn closed(app: &AppHandle) {
+pub(crate) fn closed<R: Runtime>(app: &AppHandle<R>) {
     #[cfg(target_os = "macos")]
     {
         report(
@@ -255,6 +274,7 @@ mod tests {
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),
+            (Page::Updates, "updates"),
         ] {
             assert_eq!(page.name(), name);
             assert_eq!(serde_json::to_value(page).ok(), Some(serde_json::json!(name)));

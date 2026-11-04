@@ -39,12 +39,12 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   expect(frame.getPropertyValue("height")).toBe("100%");
   expect(frame.getPropertyValue("display")).toBe("grid");
   expect(frame.getPropertyValue("grid-template-columns")).toBe("var(--sidebar-width) minmax(0, 1fr)");
-  expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr)");
+  expect(frame.getPropertyValue("grid-template-rows")).toBe("var(--titlebar-height) minmax(0, 1fr) auto");
   expect(frame.getPropertyValue("overflow")).toBe("hidden");
   expect(style(shell, ".settings-sidebar").getPropertyValue("grid-area")).toBe("1 / 1 / -1 / 2");
   expect(style(shell, ".settings-titlebar").getPropertyValue("grid-area")).toBe("1 / 1 / 2 / -1");
   const page = style(shell, ".settings-page");
-  expect(page.getPropertyValue("grid-area")).toBe("1 / 2 / -1 / 3");
+  expect(page.getPropertyValue("grid-area")).toBe("1 / 2 / 3 / 3");
   for (const property of ["min-width", "min-height"]) expect(page.getPropertyValue(property)).toBe("0px");
   expect(page.getPropertyValue("overflow-x")).toBe("hidden");
   expect(page.getPropertyValue("overflow-y")).toBe("auto");
@@ -141,7 +141,7 @@ test("picture choices use a quiet selected surface and an inward keyboard-only r
     expect(getComputedStyle(picture).outline).toBe("var(--ring-width) solid var(--ring)");
     expect(getComputedStyle(picture).outlineOffset).toBe("var(--ring-offset)");
   } finally { picture.remove(); sheet.remove(); }
-  expect(style(groups, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
+  expect(style(choices, ".ui-picker-picture").getPropertyValue("max-width")).toBe("100%");
   const media = (source: string) => {
     const sheet = document.createElement("style"); sheet.textContent = source; document.head.append(sheet);
     const rule = [...sheet.sheet!.cssRules].find((rule) => rule.type === CSSRule.MEDIA_RULE && (rule as CSSMediaRule).conditionText === "(pointer: coarse)") as CSSMediaRule;
