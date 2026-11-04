@@ -60,6 +60,17 @@ their session. A source update still revalidates affected citations; separate
 contexts do not preserve permission to cite a changed work or conflicting key.
 This behavior does not require one shared running engine.
 
+Saved project edits are available across clients, but ongoing tasks keep their
+effective citation settings until deliberately adopting a material edit made
+elsewhere. An edit intended for the current task applies after saving; either
+kind of adoption revalidates and re-prepares the citation and retires pending
+insertion. A completed citation or hidden picker is not automatically a new
+task. Cosmetic labels may update immediately. Bound source contents remain
+subject to current safety validation. Preset deletion retains task settings;
+explicit source disconnection or revocation stops affected work. See
+[Shared project edits](design.md#shared-project-edits-planned) for visible
+behavior (maintainer, 2026-11-04; decision 0028).
+
 ## Data model (ibis-core)
 
 - **Objects:** `Record` (a citable work: CSL-normalised fields plus citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
