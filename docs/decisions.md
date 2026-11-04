@@ -86,6 +86,16 @@ elsewhere and the workspace forbids it.
 
 2026-10-31 (maintainer): Remove the saved `.bib` cache (#1498, #1515); #1534 found no first-result gain at 10k and 2.7× slower citation readiness. Parse files fresh, clean obsolete private cache files under their lease, and retain Zotero's coherent-read guard.
 
+2026-11-04 (#1645): A project bibliography is one more `.bib` the person
+chooses, read only to check the keys a citation emits; it is never searched or
+written. Its path is saved in settings as a `LOCAL` value, so a backup never
+carries it and a restore keeps this computer's. It is read when chosen, at launch
+and when the picker opens; nothing polls or watches it. Only its file name, each
+key's state and line numbers cross to the web view, never the path or the file's
+text. Copy Entry writes one library entry as its file has it, `file` and `note`
+fields included, from native code straight to the clipboard (listed in
+[PRIVACY.md](../PRIVACY.md)).
+
 ## 0007 Formatting (with 0028)
 
 Formatted citations use Zotero's maintained build of citeproc-js, pinned by

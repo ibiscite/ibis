@@ -1,4 +1,4 @@
-import type { KeyFormat, LibraryStatus, LoginItemProblem, ZoteroPresence } from "./bindings";
+import type { EntryCopy, KeyFormat, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
 export const citationDetailsText = {
@@ -22,6 +22,7 @@ export const citationDetailsText = {
  */
 export const operationFailures = {
   recentHistory: "Recent citations could not be forgotten. Try again.",
+  project: "The project bibliography could not be changed. Try again.",
   rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
   format: "Ibis could not read your saved copy format. Check Copy as before copying.",
@@ -181,6 +182,33 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
+  projectState: (state: ProjectKeyState, name: string, lastGood: boolean, lines: number[] = []) => {
+    const file = isolate(name);
+    const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn't check ${file}`,
+      repeated: "Key appears more than once", "may-name-another": "Key may name another reference" }[state];
+    const where = lines.length ? ` (${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")})` : "";
+    return lastGood ? `${text}${where} (last good copy)` : `${text}${where}`;
+  },
+  /** The file the rows are marked against, and what is wrong with it if anything. */
+  projectDetail: ({ name, state, last_good, reason, damaged_lines: lines }: ProjectStatus) => {
+    const file = isolate(name);
+    const where = lines.length ? ` Check ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.` : "";
+    if (state === "reading") return `Reading ${file}`;
+    if (state === "damaged") return `Couldn't read all of ${file}, so nothing is called missing.${where}`;
+    if (state === "failed") return `Couldn't read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
+    return `Checking against ${file}`;
+  },
+  chooseProject: "Check Against a Project Bibliography…",
+  chooseOtherProject: "Check Against Another Bibliography…",
+  stopProject: (name: string) => `Stop Checking ${isolate(name)}`,
+  copyProjectEntry: (name: string) => `Copy Entry for ${isolate(name)}`,
+  projectEntry: (outcome: EntryCopy, key: string, name: string) => ({
+    copied: `Copied the entry for ${isolate(key)} as your file has it, including any file or note field. Check it, then add it to ${isolate(name)}.`,
+    "no-original": "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key.",
+    changed: "The library or the bibliography changed. Search again, then try again.",
+    repeated: "The library file repeats this key, so Ibis can't tell which entry to copy.",
+    dependency: "This entry relies on a crossref, xdata or @string that can't come with it. Export it from your reference manager, keeping its key.",
+  })[outcome],
   /** An editor asked through the endpoint; it receives exactly what is shown. */
   editorWaiting: (format: string) => `Citing for your editor in ${isolate(format)}. Enter sends what you see; Esc cancels.`,
   openZotero: "Open Zotero",

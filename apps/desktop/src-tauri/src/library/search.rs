@@ -8,6 +8,43 @@ use ibis_core::search::MatchField;
 use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
 
+/// The state of one emitted key in the project bibliography, for the row.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum ProjectKeyState {
+    In,
+    Missing,
+    CouldNotCheck,
+    Repeated,
+    MayNameAnother,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub(crate) struct ProjectMark {
+    pub(crate) generation: u32,
+    pub(crate) state: ProjectKeyState,
+    /// Where to look in the file, when the state asks a person to look.
+    pub(crate) lines: Vec<u32>,
+}
+
+impl ProjectMark {
+    pub(crate) fn new(generation: u32, check: &ibis_engine::KeyCheck) -> Self {
+        use ibis_engine::KeyCheck;
+        let (state, lines) = match check {
+            KeyCheck::In { .. } => (ProjectKeyState::In, vec![]),
+            KeyCheck::Missing => (ProjectKeyState::Missing, vec![]),
+            KeyCheck::CouldNotCheck => (ProjectKeyState::CouldNotCheck, vec![]),
+            KeyCheck::Repeated { lines } => (ProjectKeyState::Repeated, lines.clone()),
+            KeyCheck::MayNameAnother { line, .. } => (ProjectKeyState::MayNameAnother, vec![*line]),
+        };
+        Self {
+            generation,
+            state,
+            lines: lines.into_iter().take(5).map(|line| line as u32).collect(),
+        }
+    }
+}
+
 /// The newest search each interface page has sent, so a search for a query
 /// the person has already typed past stops early instead of delaying the
 /// newer one. The interface numbers its searches, because commands can start
@@ -63,6 +100,10 @@ pub(crate) struct SearchResult {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(super) recent: Option<RecentGroup>,
+    /// This row's key against the project bibliography of that generation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(optional)]
+    pub(super) project: Option<ProjectMark>,
     /// This row comes from the bundled invented library, including while a replacement search is pending.
     #[specta(optional)]
     pub(super) sample: bool,
@@ -152,6 +193,7 @@ impl SearchResult {
             .map(|text| capped(text, CONTAINER_LIMIT));
         Self {
             recent: None,
+            project: None,
             sample: false,
             revision: revision.into(),
             id: serde_json::json!(&record.id),

@@ -82,6 +82,31 @@ export const commands = {
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
+	projectStatus: () => __TAURI_INVOKE<{
+	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
+} | null>("project_status"),
+	/**  Choose the file with the system dialog; the interface never handles a path. */
+	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
+	/**  Stop checking. The file itself is untouched. */
+	stopProject: () => __TAURI_INVOKE<null>("stop_project"),
+	/**
+	 *  Copy a reference's original entry with its key, for adding to the project's
+	 *  file. The text goes to the clipboard here and never through the web view.
+	 */
+	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
 	/**  `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<{
 	request: number,
@@ -472,6 +497,11 @@ export type EndpointStatus = {
 	problem: EndpointProblem | null,
 };
 
+/**  How an entry copy ended; a refusal says how to get the entry another way. */
+export type EntryCopy = "copied" | "no-original" |
+/**  The file or the choice changed since this was offered. */
+"changed" | "repeated" | "dependency";
+
 export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
 
 export type FilePreview_Deserialize = {
@@ -861,6 +891,44 @@ export type PreviewIntent = {
 	cancel: boolean,
 };
 
+/**  The state of one emitted key in the project bibliography, for the row. */
+export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
+
+export type ProjectMark = {
+	generation: number,
+	state: ProjectKeyState,
+	/**  Where to look in the file, when the state asks a person to look. */
+	lines: number[],
+};
+
+export type ProjectState =
+/**  No answer yet for this choice. */
+"reading" |
+/**  Every entry could be read. */
+"ready" |
+/**  Part of the file could not be read, so nothing can be called missing. */
+"damaged" |
+/**  The newest read failed. */
+"failed";
+
+/**  What the picker may show. A file name, never a folder. */
+export type ProjectStatus = {
+	generation: number,
+	/**
+	 *  Counts reads that changed an answer, which can happen with the status
+	 *  otherwise the same, as when an entry is added to a healthy file.
+	 */
+	revision: number,
+	name: string,
+	state: ProjectState,
+	/**  Answers come from an earlier read, because the newest one failed. */
+	last_good: boolean,
+	/**  Why the newest read failed, as a sentence ending in a full stop. */
+	reason: string | null,
+	/**  The first lines that could not be read. */
+	damaged_lines: number[],
+};
+
 export type ReceiptSummary = {
 	text: string,
 	more: number,
@@ -940,6 +1008,8 @@ export type SearchResult = SearchResult_Serialize | SearchResult_Deserialize;
 
 export type SearchResult_Deserialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */
@@ -976,6 +1046,8 @@ export type SearchResult_Deserialize = {
 
 export type SearchResult_Serialize = {
 	recent?: RecentGroup | null,
+	/**  This row's key against the project bibliography of that generation. */
+	project?: ProjectMark | null,
 	/**  This row comes from the bundled invented library, including while a replacement search is pending. */
 	sample?: boolean,
 	/**  Revision captured with the index used for this result. */

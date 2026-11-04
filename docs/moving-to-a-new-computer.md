@@ -24,8 +24,8 @@ folder even with another user name or system. If the file is not there yet, Ibis
 keeps the setting and finds it once the file arrives.
 
 **What stays on each computer:** paste approvals for apps, which you give again on
-each computer, window places and sizes, and whether Ibis checks for updates, which
-each computer asks once. The settings that a restore replaces are kept as
+each computer, window places and sizes, the project bibliography being checked, and
+whether Ibis checks for updates, which each computer asks once. The settings that a restore replaces are kept as
 `settings.json.bak` beside the settings file.
 
 **A backup that cannot be used** (damaged, from a newer version of Ibis, the
