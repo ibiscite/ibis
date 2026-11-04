@@ -2,8 +2,8 @@
 # The maintainer's hands-on check on a Mac, as one command:
 #   curl -fsSL https://raw.githubusercontent.com/ibiscite/ibis/main/scripts/hands-on-macos.sh | bash
 # Installs the newest Ibis Nightly and CLI. Synthetic checks run with temporary
-# settings; the original settings and backup are saved before launch and restored
-# on exit. An explicit opt-in Zotero check shows your own library in the picker.
+# profile; the original profile is moved aside before launch and restored on
+# exit. An explicit opt-in Zotero check shows your own library in the picker.
 # Only answers and typed notes go to a fresh ~/Desktop/ibis-test-*/results.txt
 # and the clipboard. Keep notes free of library content, private names and paths.
 set -euo pipefail
@@ -14,7 +14,7 @@ repo=https://github.com/ibiscite/ibis
 raw=https://raw.githubusercontent.com/ibiscite/ibis/main
 app="/Applications/Ibis Nightly.app"
 settings="$HOME/Library/Application Support/com.ibiscite.ibis.nightly"
-dir="" mount="" stage="" lock="" lock_record="" snapshotted=0 isolated=0 swapping=0 had_app=0
+dir="" mount="" stage="" profile_stage="" lock="" lock_record="" isolated=0 had_profile=0 swapping=0 had_app=0
 results=()
 fail() { echo "$*" >&2; return 1; }
 say() { printf '\n\033[1m%s\033[0m\n' "$*"; }
@@ -113,19 +113,33 @@ stop_app() {
   done
   fail "Could not verify Ibis Nightly has stopped; leaving saved settings untouched."
 }
-restore_settings() {
-  local name
+remove_test_profile() {
+  no_links "$settings" || return 1
+  if [ -e "$settings" ]; then
+    [ -d "$settings" ] || { fail "Expected a Nightly profile directory."; return 1; }
+    rm -rf "$settings" || return 1
+  fi
+}
+restore_profile() {
   stop_app || return 1
-  for name in settings.json settings.json.bak; do
-    regular_destination "$settings/$name" || return 1
-    regular_destination "$dir/original-settings/$name" || return 1
-    if [ -f "$dir/original-settings/$name" ]; then
-      cp -p "$dir/original-settings/$name" "$settings/$name" || return 1
+  no_links "$profile_stage/original" || return 1
+  if [ "$had_profile" = 1 ]; then
+    if [ -e "$profile_stage/original" ]; then
+      [ -d "$profile_stage/original" ] || { fail "Expected the saved Nightly profile."; return 1; }
+      remove_test_profile || return 1
+      absent_destination "$settings" || return 1
+      mv "$profile_stage/original" "$settings" || return 1
     else
-      rm -f "$settings/$name" || return 1
+      # The initial same-filesystem rename failed or was interrupted before
+      # it ran. The original is still in place: never delete that directory.
+      no_links "$settings" && [ -d "$settings" ] || return 1
     fi
-  done
+  else
+    remove_test_profile || return 1
+  fi
   isolated=0
+  rmdir "$profile_stage" || { fail "The original profile is restored; the empty test backup directory could not be removed."; return 1; }
+  profile_stage=""
 }
 cleanup() {
   local status=$?
@@ -133,7 +147,12 @@ cleanup() {
   trap '' INT TERM
   set +e
   if [ "$isolated" = 1 ]; then
-    restore_settings || { status=1; echo "Restore the saved files in $dir/original-settings after quitting Ibis Nightly." >&2; }
+    if ! restore_profile; then
+      status=1
+      if [ "$isolated" = 1 ]; then
+        echo "Profile restoration did not finish. Quit Ibis Nightly; preserve the saved profile at $profile_stage/original before trying again." >&2
+      fi
+    fi
   fi
   if [ -n "$mount" ]; then
     hdiutil detach -quiet "$mount" || hdiutil detach -quiet -force "$mount" || status=1
@@ -159,26 +178,35 @@ cleanup() {
   exit "$status"
 }
 seed_settings() {
-  local name
-  stop_app
-  if [ "$snapshotted" = 0 ]; then
-    no_links "$settings"
-    mkdir -p "$settings"
-    no_links "$dir/original-settings"
-    mkdir "$dir/original-settings"
-    for name in settings.json settings.json.bak; do
-      regular_destination "$settings/$name"
-      regular_destination "$dir/original-settings/$name"
-      if [ -f "$settings/$name" ]; then cp -p "$settings/$name" "$dir/original-settings/$name"; fi
+  local name previous
+  stop_app || return 1
+  if [ "$isolated" = 0 ]; then
+    no_links "$settings" || return 1
+    [ ! -e "$settings" ] || [ -d "$settings" ] || { fail "Expected a Nightly profile directory."; return 1; }
+    # Do not mistake a previous test's synthetic profile for the person's
+    # original after a failed restore. A later session must refuse it intact.
+    for previous in "$settings".hands-on-original.*; do
+      [ -e "$previous" ] || [ -L "$previous" ] || continue
+      fail "An earlier hands-on check needs its profile restored first: $previous/original."
+      return 1
     done
-    snapshotted=1
+    no_links "${settings%/*}" || return 1
+    mkdir -p "${settings%/*}" || return 1
+    # Beside the profile, so both moves are same-filesystem renames and keep
+    # every file, permission and link without reading personal configuration.
+    profile_stage=$(mktemp -d "$settings.hands-on-original.XXXXXX") || return 1
+    no_links "$profile_stage" || return 1
+    had_profile=0
+    [ ! -d "$settings" ] || had_profile=1
+    isolated=1 # Cleanup owns the profile before its first possible move.
+    if [ "$had_profile" = 1 ]; then mv "$settings" "$profile_stage/original" || return 1; fi
+    mkdir "$settings" || return 1
   fi
-  isolated=1 # Set before the first write, including a partially failed copy.
   for name in settings.json settings.json.bak; do
-    regular_destination "$settings/$name"
-    cp "$dir/synthetic-settings.json" "$settings/$name"
+    regular_destination "$settings/$name" || return 1
+    cp "$dir/synthetic-settings.json" "$settings/$name" || return 1
   done
-  if [ "${1:-}" = recovery ]; then printf 'broken\n' > "$settings/settings.json"; fi
+  if [ "${1:-}" = recovery ]; then printf 'broken\n' > "$settings/settings.json" || return 1; fi
 }
 launch() {
   seed_settings "${1:-}"
@@ -349,7 +377,7 @@ if opt_in_zotero; then
       "Can you search and copy your Zotero references with Zotero closed?"
   fi
 fi
-restore_settings
+restore_profile
 regular_destination "$dir/results.txt"
 {
   echo "Ibis hands-on check, $(date -u +%Y-%m-%dT%H:%MZ)"
@@ -357,7 +385,7 @@ regular_destination "$dir/results.txt"
   printf '%s\n' "${results[@]}"
 } > results.txt
 pbcopy < results.txt
-say "Done. Thank you! Original Nightly settings restored; Ibis is stopped."
+say "Done. Thank you! Original Nightly profile restored; Ibis is stopped."
 cat results.txt
 echo
-echo "The results are on your clipboard and in $dir/results.txt. Paste only results.txt in the chat; original-settings contains private configuration."
+echo "The results are on your clipboard and in $dir/results.txt. Paste only results.txt in the chat; keep profile backups private."
