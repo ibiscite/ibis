@@ -38,7 +38,13 @@ const MARKER: &str = "ibis_settings_backup";
 /// update question, which each computer answers for itself because it allows
 /// network use (decision 0008), and the Zotero profile, a name that means nothing
 /// elsewhere. A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 5] = ["picker_windows", "delights", "editor_endpoint", "update_checks", "zotero_profile"];
+pub const LOCAL: [&str; 5] = [
+    "picker_windows",
+    "delights",
+    "editor_endpoint",
+    "update_checks",
+    "zotero_profile",
+];
 
 /// A backup read and checked whole.
 #[derive(Debug, Clone, PartialEq, Eq)]
