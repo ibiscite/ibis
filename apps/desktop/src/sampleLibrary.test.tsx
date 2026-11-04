@@ -42,7 +42,7 @@ function setup(density: Density = "comfortable", formatted = true) {
     library_status: status,
     use_sample_library: ({ enabled }) => switchTo(enabled ? "sample" : "none"),
     choose_library: () => null,
-    picker_preferences: () => ({ citation_style: formatted ? "apa" : null, density }),
+    picker_preferences: () => ({ output: formatted ? "apa" : "pandoc", density }),
     search: ({ query }) => ({ revision: mode, results: mode === "none" || !query.text ? [] : [{
       ...result(mode === "sample" ? lantern["citation-key"] : "own", mode === "sample" ? title : "My invented reference", mode === "sample" ? "samples" : "real"),
       revision: mode, sample: mode === "sample",

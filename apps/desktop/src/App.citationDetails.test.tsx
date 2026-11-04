@@ -401,9 +401,9 @@ test("page and form survive changing output and remain editable", async () => {
   await chooseForm("Name in the sentence");
   const search = screen.getByLabelText("Search references");
   closeCitationDetails();
-  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc key · Default" }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
-  await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
+  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc · Default" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst" }));
+  await waitFor(() => expect(previews.at(-1)?.output).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
   page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42–45" } });

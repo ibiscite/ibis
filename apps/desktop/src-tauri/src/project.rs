@@ -439,8 +439,6 @@ mod tests {
     #[test]
     fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
         use crate::library::engine_file::FileLibrary;
-        use ibis_core::cite::KeyFormat;
-        use ibis_core::settings::CitationStyle;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -459,13 +457,13 @@ mod tests {
             .search(&query, 10, None, &Cancellation::default())
             .unwrap_or_else(|error| panic!("{error}"));
         let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
-        let copied = |style: Option<CitationStyle>| {
+        let copied = |style: Option<&str>| {
             let selection = serde_json::from_value(serde_json::json!({
                 "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
             }))
             .unwrap_or_else(|error| panic!("{error}"));
             let preview = file
-                .preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, style)
+                .preview(file.reserve_preview(), vec![selection], style.unwrap_or("pandoc"))
                 .unwrap_or_else(|_| panic!("a preview"));
             let mut copied = file
                 .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
@@ -475,7 +473,7 @@ mod tests {
             copied.warnings
         };
         assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
-        assert_eq!(copied(Some(CitationStyle::Apa)), Vec::<String>::new());
+        assert_eq!(copied(Some("apa")), Vec::<String>::new());
     }
 
     /// One picker copy on the mock app, as `copy_file_citation` makes it with
@@ -539,8 +537,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
             let preview = tauri::async_runtime::block_on(crate::copy::preview_file_citation(
                 vec![selection],
-                ibis_core::cite::KeyFormat::Pandoc,
-                None,
+                "pandoc".into(),
                 String::new(),
                 crate::library::PreviewIntent {
                     page: 1,

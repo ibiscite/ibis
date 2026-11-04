@@ -496,8 +496,7 @@ fn cite_output() -> Value {
 /// would hand an agent notes and fields it is never shown.
 fn format_ids() -> Vec<&'static str> {
     outputs::outputs()
-        .into_iter()
-        .flatten()
+        .iter()
         .filter(|output| !output.exports_records)
         .map(|output| output.id.as_str())
         .collect()

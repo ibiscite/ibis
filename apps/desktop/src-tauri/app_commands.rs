@@ -20,7 +20,6 @@ pub const APP_COMMANDS: &[&str] = &[
     "preview_file_citation",
     "citation_details",
     "copy_file_citation",
-    "copy_format",
     "picker_preferences",
     "preference_revision",
     "delight_view",

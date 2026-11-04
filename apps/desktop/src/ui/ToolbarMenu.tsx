@@ -9,8 +9,9 @@ import { useMenuLifecycle } from "./useMenuLifecycle";
 import "./ToolbarMenu.css";
 
 /** A `note` says something quietly: on an item, why it is dimmed, under its label;
- * on a section, what holds for all of it. */
-export type ToolbarMenuSection = { id: string; label?: string; note?: string; items: { id: string; label: string; sample?: string; prose?: boolean; note?: string; disabled?: boolean; command?: boolean }[] };
+ * on a section, what holds for all of it. An item's `detail` follows its label
+ * quietly, such as a style's full title. */
+export type ToolbarMenuSection = { id: string; label?: string; note?: string; items: { id: string; label: string; detail?: string; sample?: string; prose?: boolean; note?: string; disabled?: boolean; command?: boolean }[] };
 /** A pick, a dismissal by Esc, Tab or a click, or a command clearing the way. */
 export type MenuCloseReason = "action" | "dismiss" | "command";
 type Props = {
@@ -67,11 +68,11 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     {sections.map((section) => <MenuSection key={section.id} id={section.id} className="menu-section">
       {section.label && <Header className="menu-heading">{section.label}</Header>}
       {section.note && <Header className="toolbar-menu-note">{section.note}</Header>}
-      {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.label} shouldCloseOnSelect={false}
+      {section.items.map((item) => <MenuItem className="menu-item" id={item.id} key={item.id} textValue={item.detail ? `${item.label} ${item.detail}` : item.label} shouldCloseOnSelect={false}
         render={(props) => <MenuRow {...props as ComponentPropsWithRef<"div">} itemId={item.id} aria-disabled={disabled || item.disabled || undefined}
           {...item.command ? { role: "menuitem", "aria-checked": undefined } : {}} />}>
         {({ isSelected }) => <><MenuCheck checked={!item.command && isSelected} />
-          <Text slot="label" className="menu-label">{item.label}</Text><Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined} data-note={item.note ? "" : undefined}>{item.note ?? item.sample}</Text></>}
+          <Text slot="label" className="menu-label">{item.label}</Text>{item.detail && <span className="toolbar-menu-detail">{item.detail}</span>}<Text slot="description" className="toolbar-menu-sample" data-prose={item.prose || undefined} data-note={item.note ? "" : undefined}>{item.note ?? item.sample}</Text></>}
       </MenuItem>)}
     </MenuSection>)}
   </Menu>;

@@ -3,11 +3,10 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use ibis_core::cite::KeyFormat;
 use ibis_core::destination::System;
 use ibis_core::settings::backup::{self, BackupError, Note};
 use ibis_core::settings::{
-    self, CitationStyle, Density, LibrarySetting, PickerWindow, Settings, SettingsError, ZoteroLibrary,
+    self, Density, LibrarySetting, PickerWindow, Settings, SettingsError, ZoteroLibrary,
 };
 use serde_json::{Value, json};
 
@@ -42,8 +41,7 @@ fn system_name(system: System) -> String {
 fn chosen() -> Settings {
     let mut settings = Settings {
         library: Some(LibrarySetting::Zotero(ZoteroLibrary::Group(42).into())),
-        copy_format: Some(KeyFormat::Typst),
-        citation_style: Some(CitationStyle::Ieee),
+        output: Some("ieee".into()),
         density: Some(Density::Compact),
         update_checks: Some(true),
         zotero_profile: Some("Invented elsewhere".into()),
@@ -266,7 +264,7 @@ fn a_backup_holds_what_travels_and_names_the_system_of_each_shortcut() {
     assert_eq!(settings["accent"], "ibis");
     let read = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(read.made_on, System::HERE);
-    assert_eq!(read.settings.citation_style, Some(CitationStyle::Ieee));
+    assert_eq!(read.settings.output.as_deref(), Some("ieee"));
     assert_eq!(read.settings.update_checks, None);
     assert!(read.settings.picker_windows.is_empty());
 }
@@ -411,10 +409,9 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     let other_shortcut = format!("shortcut.{}", system_name(other_system()));
     let mut expected = vec![
         "accent",
-        "citation_style",
-        "copy_format",
         "density",
         "library",
+        "output",
         other_shortcut.as_str(),
     ];
     expected.sort_unstable();
@@ -452,7 +449,7 @@ fn restore_saves_the_backup_and_keeps_the_settings_it_replaced() {
     let reopened = settings::load(&path);
     assert!(reopened.problem.is_none());
     assert_eq!(reopened.settings, restored);
-    assert_eq!(reopened.settings.citation_style, Some(CitationStyle::Ieee));
+    assert_eq!(reopened.settings.output.as_deref(), Some("ieee"));
     assert_eq!(
         reopened.settings.paste, None,
         "the backup's choices replace this computer's"
@@ -493,7 +490,7 @@ fn restore_replaces_damaged_settings_but_never_newer_or_unreadable_ones() {
     write(&path, "{ damaged");
     let plan = backup::plan(&settings::load(&path).settings, &backup, |_| true);
     backup::restore(&path, &plan).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(settings::load(&path).settings.citation_style, Some(CitationStyle::Ieee));
+    assert_eq!(settings::load(&path).settings.output.as_deref(), Some("ieee"));
     assert_eq!(read(&directory.path().join("settings.json.invalid-1")), "{ damaged");
     // Damaged, recovered from a .bak that already matches the backup: still
     // worth restoring, because it repairs the damaged file.

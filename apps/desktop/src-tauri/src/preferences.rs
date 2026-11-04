@@ -4,12 +4,12 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
-use ibis_core::cite::KeyFormat;
-use ibis_core::settings::{self, CitationStyle, Density};
+use ibis_core::settings::{self, Density};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::library::Library;
+use crate::output::OutputRef;
 
 /// Settings errors can contain user-entered values or OS details. Only these
 /// fixed descriptions reach diagnostics or messages about failed saves.
@@ -203,17 +203,17 @@ fn look_from_settings(settings: &settings::Settings) -> Result<LookPreferences, 
 }
 
 /// How the picker looks and what it formats with, remembered across restarts
-/// (ADR 0020). A new key format is saved with the same preference change.
+/// (ADR 0020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
 pub(crate) struct PickerPreferences {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) copy_format: Option<KeyFormat>,
+    /// The default output: an id from the engine's list; an id it does not
+    /// list was read as the engine's default.
+    #[specta(type = String)]
+    pub(crate) output: OutputRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) appearance: Option<Appearance>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) accent: Option<Accent>,
-    /// A style chosen in the format menu, or `null` to copy citation keys.
-    pub(crate) citation_style: Option<CitationStyle>,
     pub(crate) density: Density,
     pub(crate) larger_text: bool,
     /// Enter pastes into the app the picker was opened from; on by default.
@@ -231,10 +231,9 @@ impl PickerPreferences {
     fn from_settings(settings: &settings::Settings) -> Self {
         let look = look_from_settings(settings).unwrap_or_default();
         PickerPreferences {
-            copy_format: Some(settings.copy_format.unwrap_or(KeyFormat::Pandoc)),
+            output: crate::output::stored(settings.output.as_deref()),
             appearance: Some(look.appearance),
             accent: Some(look.accent),
-            citation_style: settings.citation_style,
             density: settings.density.unwrap_or(Density::Comfortable),
             larger_text: settings.larger_text.unwrap_or(false),
             paste: settings.paste.unwrap_or(true),
@@ -249,7 +248,6 @@ impl PickerPreferences {
 #[derive(Debug, Serialize, specta::Type)]
 pub(crate) struct PickerSave {
     preferences: PickerPreferences,
-    copy_format: KeyFormat,
 }
 
 /// The saved snapshot and the identity of the write that published it.
@@ -268,9 +266,10 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) appearance: Option<Appearance>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) accent: Option<Accent>,
-    #[serde(default, deserialize_with = "present_style", skip_serializing_if = "Option::is_none")]
-    #[specta(type = Option<CitationStyle>)]
-    pub(crate) citation_style: Option<Option<CitationStyle>>,
+    /// Only an id the engine lists; any other refuses the whole change.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[specta(type = Option<String>)]
+    pub(crate) output: Option<OutputRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) density: Option<Density>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -286,7 +285,7 @@ pub(crate) struct PickerPreferencesPatch {
 }
 
 impl PickerPreferencesPatch {
-    /// Apply ownership checks only to deliberate fields, including explicit null styles.
+    /// Apply ownership checks only to deliberate fields.
     fn retain_fields(&mut self, mut keep: impl FnMut(&'static str) -> bool) {
         if self.appearance.is_some() && !keep("appearance") {
             self.appearance = None;
@@ -294,8 +293,8 @@ impl PickerPreferencesPatch {
         if self.accent.is_some() && !keep("accent") {
             self.accent = None;
         }
-        if self.citation_style.is_some() && !keep("citation_style") {
-            self.citation_style = None;
+        if self.output.is_some() && !keep("output") {
+            self.output = None;
         }
         if self.density.is_some() && !keep("density") {
             self.density = None;
@@ -318,18 +317,13 @@ impl PickerPreferencesPatch {
     }
 }
 
-// An absent style is unchanged; an explicit null deliberately chooses keys.
-fn present_style<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Option<Option<CitationStyle>>, D::Error> {
-    Option::<CitationStyle>::deserialize(deserializer).map(Some)
-}
-
 #[cfg(test)]
 impl From<PickerPreferences> for PickerPreferencesPatch {
     fn from(value: PickerPreferences) -> Self {
         Self {
             appearance: value.appearance,
             accent: value.accent,
-            citation_style: Some(value.citation_style),
+            output: Some(value.output),
             density: Some(value.density),
             larger_text: Some(value.larger_text),
             paste: Some(value.paste),
@@ -397,17 +391,12 @@ pub(crate) fn preference_revision(settings_file: State<'_, SettingsFile>) -> Res
 #[specta::specta]
 pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferencesPatch,
-    copy_format: Option<KeyFormat>,
     revision: u64,
     settings_file: State<'_, SettingsFile>,
     app: AppHandle<R>,
     window: tauri::Window<R>,
 ) -> Result<PickerSave, String> {
-    let intent = PreferenceIntent {
-        revision,
-        preferences,
-        copy_format,
-    };
+    let intent = PreferenceIntent { revision, preferences };
     {
         let mut current = settings_file
             .preference_intents
@@ -449,10 +438,7 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
             app.emit_to("settings", "preferences:changed", change),
             crate::diagnostics::NativeIssue::PickerEvent,
         );
-        Ok(PickerSave {
-            preferences,
-            copy_format: saved.copy_format.unwrap_or(KeyFormat::Pandoc),
-        })
+        Ok(PickerSave { preferences })
     })
     .await
     .map_err(|_| "picker preferences could not be saved".to_string())?
@@ -473,7 +459,6 @@ struct PreferenceIntents {
 struct PreferenceIntent {
     revision: u64,
     preferences: PickerPreferencesPatch,
-    copy_format: Option<KeyFormat>,
 }
 
 impl SettingsFile {
@@ -498,24 +483,23 @@ impl SettingsFile {
     #[cfg(test)]
     fn reserve_preferences(
         &self,
-        preferences: PickerPreferencesPatch,
-        copy_format: Option<KeyFormat>,
+        mut preferences: PickerPreferencesPatch,
+        output: Option<&str>,
     ) -> Result<PreferenceIntent, String> {
+        if let Some(id) = output {
+            preferences.output = Some(crate::output::listed(id).ok_or("not a listed output")?);
+        }
         let revision = self.issue_preference_revision()?;
-        Ok(PreferenceIntent {
-            revision,
-            preferences,
-            copy_format,
-        })
+        Ok(PreferenceIntent { revision, preferences })
     }
 
     #[cfg(test)]
     fn save_preferences(
         &self,
         preferences: impl Into<PickerPreferencesPatch>,
-        copy_format: Option<KeyFormat>,
+        output: Option<&str>,
     ) -> Result<settings::Settings, String> {
-        let intent = self.reserve_preferences(preferences.into(), copy_format)?;
+        let intent = self.reserve_preferences(preferences.into(), output)?;
         self.save_reserved_preferences(intent)
     }
 
@@ -543,20 +527,8 @@ impl SettingsFile {
             }
             keep
         });
-        if intent.copy_format.is_some() {
-            if current
-                .fields
-                .get("copy_format")
-                .is_none_or(|written| intent.revision > *written)
-            {
-                written_fields.push("copy_format");
-            } else {
-                intent.copy_format = None;
-            }
-        }
         drop(current);
         let preferences = intent.preferences;
-        let copy_format = intent.copy_format;
         let current_settings = read_preference_settings(&self.path)?;
         if written_fields.is_empty() {
             if let Ok(mut owner) = self.preference_intents.lock() {
@@ -582,11 +554,8 @@ impl SettingsFile {
                     s.unknown.insert("accent".into(), value);
                 }
             }
-            if let Some(format) = copy_format {
-                s.copy_format = Some(format);
-            }
-            if let Some(style) = preferences.citation_style {
-                s.citation_style = style;
+            if let Some(output) = preferences.output {
+                s.output = (output.id() != ibis_engine::outputs::DEFAULT).then(|| output.id().to_owned());
             }
             // Defaults stay unwritten, so the file only names real choices.
             if let Some(density) = preferences.density {
@@ -629,19 +598,26 @@ mod tests {
     use ibis_core::settings::LibrarySetting;
     use tauri::Manager;
 
+    fn out(id: &str) -> OutputRef {
+        crate::output::listed(id).unwrap_or_else(|| panic!("{id} is listed"))
+    }
+
     fn preference_request<R: tauri::Runtime>(
         window: &tauri::WebviewWindow<R>,
         preferences: PickerPreferences,
-        copy_format: Option<KeyFormat>,
+        output: Option<&str>,
     ) -> tauri::webview::InvokeRequest {
         let mut patch = serde_json::to_value(preferences).unwrap_or_default();
         if let Some(patch) = patch.as_object_mut() {
-            patch.remove("copy_format");
+            match output {
+                Some(id) => patch.insert("output".into(), id.into()),
+                None => patch.remove("output"),
+            };
         }
         command_request(
             "set_picker_preferences",
             serde_json::json!({
-                "preferences": patch, "copyFormat": copy_format,
+                "preferences": patch,
                 "revision": preference_revision(window.state::<SettingsFile>()).unwrap_or_else(|e| panic!("{e}")),
             }),
         )
@@ -707,9 +683,9 @@ mod tests {
             PickerPreferencesPatch {
                 density: Some(Density::Comfortable),
                 accent: Some(Accent::Ibis),
+                output: crate::output::listed("typst"),
                 ..Default::default()
             },
-            Some(KeyFormat::Typst),
             a,
             app.state::<SettingsFile>(),
             app.handle().clone(),
@@ -718,9 +694,9 @@ mod tests {
         let newer = set_picker_preferences(
             PickerPreferencesPatch {
                 density: Some(Density::Compact),
+                output: crate::output::listed("cite"),
                 ..Default::default()
             },
-            Some(KeyFormat::Cite),
             b,
             app.state::<SettingsFile>(),
             app.handle().clone(),
@@ -740,7 +716,7 @@ mod tests {
         // Restart's read must match the newer window, retaining unrelated fields.
         let reopened = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(reopened.density, Density::Compact);
-        assert_eq!(reopened.copy_format, Some(KeyFormat::Cite));
+        assert_eq!(reopened.output.id(), "cite");
         assert_eq!(reopened.accent, Some(Accent::Ibis));
     }
 
@@ -825,7 +801,6 @@ mod tests {
                 density: Some(density),
                 ..Default::default()
             },
-            copy_format: None,
         };
         for revision in [0, issued + 1, u64::MAX] {
             assert!(
@@ -858,7 +833,7 @@ mod tests {
                     accent: Some(Accent::Ibis),
                     ..Default::default()
                 },
-                Some(KeyFormat::Typst),
+                Some("typst"),
             )
             .unwrap_or_else(|e| panic!("{e}"));
         let newer = file
@@ -867,14 +842,14 @@ mod tests {
                     density: Some(Density::Compact),
                     ..Default::default()
                 },
-                Some(KeyFormat::Cite),
+                Some("cite"),
             )
             .unwrap_or_else(|e| panic!("{e}"));
         file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
         file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
         let shown = read_preferences(&path).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(shown.density, Density::Compact);
-        assert_eq!(shown.copy_format, Some(KeyFormat::Cite));
+        assert_eq!(shown.output.id(), "cite");
         assert_eq!(
             shown.accent,
             Some(Accent::Ibis),
@@ -887,40 +862,39 @@ mod tests {
         for (field, value) in [
             ("appearance", serde_json::json!("light")),
             ("accent", serde_json::json!("system")),
-            ("citation_style", serde_json::Value::Null),
-            ("density", serde_json::json!("comfortable")),
+                        ("density", serde_json::json!("comfortable")),
             ("larger_text", serde_json::json!(false)),
             ("paste", serde_json::json!(true)),
             ("menu_bar", serde_json::json!(true)),
             ("recent_citations", serde_json::json!(true)),
             ("small_surprises", serde_json::json!(false)),
-            ("copy_format", serde_json::json!("cite")),
+            ("output", serde_json::json!("cite")),
         ] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
             let mut expected = serde_json::json!({
-                "appearance": "dark", "accent": "ibis", "citation_style": "apa",
+                "appearance": "dark", "accent": "ibis",
                 "density": "compact", "larger_text": true, "paste": false, "menu_bar": false, "recent_citations": false, "small_surprises": true,
             });
             let older = file
                 .reserve_preferences(
                     serde_json::from_value(expected.clone()).unwrap_or_else(|e| panic!("{e}")),
-                    Some(KeyFormat::Typst),
+                    Some("typst"),
                 )
                 .unwrap_or_else(|e| panic!("{e}"));
             let mut patch = serde_json::json!({});
-            if field != "copy_format" {
+            if field != "output" {
                 patch[field] = value.clone();
             }
             let newer = file
                 .reserve_preferences(
                     serde_json::from_value(patch).unwrap_or_else(|e| panic!("{e}")),
-                    (field == "copy_format").then_some(KeyFormat::Cite),
+                    (field == "output").then_some("cite"),
                 )
                 .unwrap_or_else(|e| panic!("{e}"));
             file.save_reserved_preferences(newer).unwrap_or_else(|e| panic!("{e}"));
             file.save_reserved_preferences(older).unwrap_or_else(|e| panic!("{e}"));
-            expected["copy_format"] = serde_json::json!("typst");
+            expected["output"] = serde_json::json!("typst");
             expected[field] = value;
             assert_eq!(
                 serde_json::to_value(read_preferences(&file.path).unwrap_or_else(|e| panic!("{e}")))
@@ -936,7 +910,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
         let file = SettingsFile::new(path.clone());
-        file.update(|s| s.copy_format = Some(KeyFormat::Typst))
+        file.update(|s| s.output = Some("typst".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         file.save_preferences(
             PickerPreferencesPatch {
@@ -969,7 +943,7 @@ mod tests {
         let saved = settings::load(&path).settings;
         assert!(!saved.unknown.contains_key("appearance"));
         assert!(!saved.unknown.contains_key("accent"));
-        assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(saved.output.as_deref(), Some("typst"));
     }
 
     #[test]
@@ -1084,7 +1058,7 @@ mod tests {
 
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("settings.json");
-        std::fs::write(&path, r#"{"copy_format":"keys","future_choice":"before dispatch"}"#)
+        std::fs::write(&path, r#"{"output":"keys","future_choice":"before dispatch"}"#)
             .unwrap_or_else(|e| panic!("{e}"));
         let app = tauri::test::mock_builder()
             .manage(SettingsFile::new(path.clone()))
@@ -1097,10 +1071,9 @@ mod tests {
         let file = app.state::<SettingsFile>();
         let writing = file.writing.lock().unwrap_or_else(|_| panic!("writer lock poisoned"));
         let chosen = PickerPreferences {
-            copy_format: Some(KeyFormat::Pandoc),
+            output: out("pandoc"),
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
-            citation_style: None,
             density: Density::Compact,
             larger_text: true,
             paste: true,
@@ -1112,7 +1085,7 @@ mod tests {
         let (responded, response) = mpsc::channel();
         let thread = std::thread::spawn(move || {
             window.as_ref().clone().on_message(
-                preference_request(&window, chosen, Some(KeyFormat::Typst)),
+                preference_request(&window, chosen, Some("typst")),
                 Box::new(move |_, _, reply, _, _| {
                     let _ = responded.send(reply);
                 }),
@@ -1123,7 +1096,7 @@ mod tests {
         let pending = matches!(response.try_recv(), Err(mpsc::TryRecvError::Empty));
         // Simulate an external edit after dispatch, before the writer can read.
         let current = serde_json::json!({
-            "schema_version": 2, "copy_format": "cite", "citation_style": "apa",
+            "schema_version": 2, "output": "apa",
             "library": { "bibtex": "refs.bib" }, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "update_checks": false,
             "picker_windows": { "display-a": {
                 "width": 840, "height": 600, "custom_size": true, "x": 40, "y": 60
@@ -1143,7 +1116,7 @@ mod tests {
         assert_eq!(
             body.deserialize::<serde_json::Value>()
                 .unwrap_or_else(|e| panic!("invalid reply: {e}")),
-            serde_json::json!({"preferences": PickerPreferences { copy_format: Some(KeyFormat::Typst), ..chosen }, "copy_format": "typst"})
+            serde_json::json!({"preferences": PickerPreferences { output: out("typst"), ..chosen }})
         );
         thread.join().unwrap_or_else(|_| panic!("dispatch thread panicked"));
         let loaded = settings::load(&path);
@@ -1151,11 +1124,11 @@ mod tests {
         assert_eq!(
             PickerPreferences::from_settings(&loaded.settings),
             PickerPreferences {
-                copy_format: loaded.settings.copy_format.or(Some(KeyFormat::Pandoc)),
+                output: crate::output::stored(loaded.settings.output.as_deref()),
                 ..chosen
             }
         );
-        assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(loaded.settings.output.as_deref(), Some("typst"));
         let saved: serde_json::Value =
             serde_json::from_str(&std::fs::read_to_string(&path).unwrap_or_default()).unwrap_or_else(|e| panic!("{e}"));
         for field in [
@@ -1236,7 +1209,7 @@ mod tests {
         let chosen = PickerPreferences::from_settings(&settings::Settings::default());
         for (text, expected) in [
             (
-                r#"{"copy_format":"synthetic-private-value"}"#,
+                r#"{"density":"synthetic-private-value"}"#,
                 "settings.json is not valid",
             ),
             (
@@ -1286,7 +1259,7 @@ mod tests {
                 "settings.json.bak was written by a newer version of Ibis",
             ),
             (
-                br#"{"copy_format":"synthetic-private-value"}"#.as_slice(),
+                br#"{"density":"synthetic-private-value"}"#.as_slice(),
                 "settings.json.bak is not valid",
             ),
             (b"\xff".as_slice(), "settings.json.bak could not be read"),
@@ -1310,7 +1283,7 @@ mod tests {
                 assert_eq!(
                     file.save_preferences(
                         PickerPreferences::from_settings(&loaded.settings),
-                        Some(KeyFormat::Keys)
+                        Some("keys")
                     )
                     .err(),
                     Some(expected.to_string())
@@ -1325,7 +1298,7 @@ mod tests {
     fn missing_primary_notice_explains_restoration_and_clears_after_a_successful_save() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        let backup = br#"{"copy_format":"typst","future_choice":[true,null]}"#;
+        let backup = br#"{"output":"typst","future_choice":[true,null]}"#;
         std::fs::write(file.path.with_extension("json.bak"), backup).unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&file.path);
         let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
@@ -1368,7 +1341,7 @@ mod tests {
         let path = dir.path().join("settings.json");
         let private = "synthetic-private-payload";
         for (contents, problem) in [
-            (format!(r#"{{"copy_format":"{private}"}}"#), "not valid"),
+            (format!(r#"{{"density":"{private}"}}"#), "not valid"),
             (r#"{"schema_version":3}"#.to_string(), "newer version"),
             (
                 format!(r#"{{"schema_version":2,"library":{{"zotero":["user",{{"group":"{private}"}}]}}}}"#),
@@ -1384,7 +1357,7 @@ mod tests {
             assert!(notice.contains("not being saved"));
             assert!(notice.contains(path.to_string_lossy().as_ref()));
             assert!(!notice.contains(private));
-            let Err(failed) = SettingsFile::new(path.clone()).update(|s| s.copy_format = Some(KeyFormat::Keys)) else {
+            let Err(failed) = SettingsFile::new(path.clone()).update(|s| s.output = Some("keys".into())) else {
                 panic!("expected the invalid settings save to fail");
             };
             assert!(failed.contains(problem));
@@ -1427,7 +1400,7 @@ mod tests {
                 let file = SettingsFile::new(directory.path().join("settings.json"));
                 let backup = file.path.with_extension("json.bak");
                 let temporary = file.path.with_extension("json.tmp");
-                let backup_contents = br#"{"schema_version":2,"copy_format":"typst"}"#;
+                let backup_contents = br#"{"schema_version":2,"output":"typst"}"#;
                 std::fs::write(&file.path, contents).unwrap_or_else(|e| panic!("{e}"));
                 std::fs::write(&temporary, b"synthetic unfinished save").unwrap_or_else(|e| panic!("{e}"));
                 if has_backup {
@@ -1436,14 +1409,14 @@ mod tests {
                 let loaded = settings::load(&file.path);
                 assert!(loaded.problem.is_some());
                 assert_eq!(loaded.from_backup, has_backup);
-                assert_eq!(loaded.settings.copy_format, has_backup.then_some(KeyFormat::Typst));
+                assert_eq!(loaded.settings.output.as_deref(), has_backup.then_some("typst"));
                 assert_eq!(std::fs::read(&file.path).unwrap_or_else(|e| panic!("{e}")), contents);
                 let chosen = PickerPreferences::from_settings(&loaded.settings);
-                let saved = file.save_preferences(chosen, Some(KeyFormat::Cite));
+                let saved = file.save_preferences(chosen, Some("cite"));
                 let recoverable = has_backup && contents != br#"{"schema_version":999}"#;
                 if recoverable {
                     let saved = saved.unwrap_or_else(|e| panic!("recovery save failed: {e}"));
-                    assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
+                    assert_eq!(saved.output.as_deref(), Some("cite"));
                     let restarted = settings::load(&file.path);
                     assert!(restarted.problem.is_none());
                     assert_eq!(restarted.settings, saved);
@@ -1496,7 +1469,7 @@ mod tests {
                         let saved = if i % 2 == 0 {
                             file.update(|s| s.library = Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib"))))
                         } else {
-                            file.update(|s| s.copy_format = Some(KeyFormat::Typst))
+                            file.update(|s| s.output = Some("typst".into()))
                         };
                         saved.unwrap_or_else(|e| panic!("{e}"));
                     }
@@ -1512,7 +1485,7 @@ mod tests {
             loaded.settings.library,
             Some(LibrarySetting::Bibtex(PathBuf::from("refs.bib")))
         );
-        assert_eq!(loaded.settings.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(loaded.settings.output.as_deref(), Some("typst"));
         assert_eq!(
             std::fs::read_to_string(file.path.with_extension("json.invalid-1")).unwrap_or_default(),
             "{ damaged"
@@ -1525,13 +1498,12 @@ mod tests {
     fn picker_preferences_save_only_real_choices_and_keep_other_settings() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|s| s.copy_format = Some(KeyFormat::Typst))
+        file.update(|s| s.output = Some("typst".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         let chosen = PickerPreferences {
-            copy_format: Some(KeyFormat::Pandoc),
+            output: out("apa"),
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
-            citation_style: Some(CitationStyle::Apa),
             density: Density::Compact,
             larger_text: true,
             paste: false,
@@ -1541,19 +1513,18 @@ mod tests {
         };
         let saved = file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.paste, Some(false));
-        assert_eq!(saved.copy_format, Some(KeyFormat::Typst));
+        assert_eq!(saved.output.as_deref(), Some("apa"));
         assert_eq!(
             PickerPreferences::from_settings(&saved),
             PickerPreferences {
-                copy_format: saved.copy_format.or(Some(KeyFormat::Pandoc)),
+                output: crate::output::stored(saved.output.as_deref()),
                 ..chosen
             }
         );
         let defaults = PickerPreferences {
-            copy_format: Some(KeyFormat::Pandoc),
+            output: out("pandoc"),
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
-            citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
             paste: true,
@@ -1565,13 +1536,13 @@ mod tests {
         assert_eq!(
             PickerPreferences::from_settings(&saved),
             PickerPreferences {
-                copy_format: saved.copy_format.or(Some(KeyFormat::Pandoc)),
+                output: crate::output::stored(saved.output.as_deref()),
                 ..defaults
             }
         );
         let text = std::fs::read_to_string(&file.path).unwrap_or_default();
         for field in [
-            "citation_style",
+            "output",
             "density",
             "larger_text",
             "paste",
@@ -1600,7 +1571,7 @@ mod tests {
 
         let original = serde_json::json!({
             "schema_version": 2, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "library": { "bibtex": "refs.bib" },
-            "copy_format": "typst", "update_checks": false, "citation_style": "ieee",
+            "output": "ieee", "update_checks": false,
             "density": "compact", "larger_text": true, "future_choice": { "kept": [true, null] },
         });
         std::fs::write(&file.path, original.to_string()).unwrap_or_else(|e| panic!("{e}"));
@@ -1613,7 +1584,7 @@ mod tests {
         assert_eq!(
             PickerPreferences::from_settings(&loaded.settings),
             PickerPreferences {
-                copy_format: loaded.settings.copy_format.or(Some(KeyFormat::Pandoc)),
+                output: crate::output::stored(loaded.settings.output.as_deref()),
                 ..chosen
             }
         );
@@ -1635,53 +1606,30 @@ mod tests {
     }
 
     #[test]
-    fn key_choices_are_saved_with_style_removal_before_any_copy() {
+    fn every_listed_output_is_saved_by_its_id_and_the_default_stays_unwritten() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        let styled = PickerPreferences {
-            copy_format: Some(KeyFormat::Pandoc),
-            appearance: Some(Appearance::System),
-            accent: Some(Accent::System),
-            citation_style: Some(CitationStyle::Apa),
-            density: Density::Comfortable,
-            larger_text: true,
-            paste: true,
-            menu_bar: true,
-            recent_citations: Some(true),
-            small_surprises: Some(true),
-        };
-        for format in [
-            KeyFormat::Pandoc,
-            KeyFormat::Autocite,
-            KeyFormat::Parencite,
-            KeyFormat::Textcite,
-            KeyFormat::Cite,
-            KeyFormat::Typst,
-            KeyFormat::Keys,
-        ] {
-            file.save_preferences(styled, None).unwrap_or_else(|e| panic!("{e}"));
+        let chosen = PickerPreferences::from_settings(&settings::Settings::default());
+        for output in ibis_engine::outputs::outputs() {
             let chosen = PickerPreferences {
-                citation_style: None,
-                ..styled
+                output: out(&output.id),
+                ..chosen
             };
-            file.save_preferences(chosen, Some(format))
-                .unwrap_or_else(|e| panic!("{e}"));
+            file.save_preferences(chosen, None).unwrap_or_else(|e| panic!("{e}"));
             let loaded = settings::load(&file.path);
-            assert_eq!(loaded.settings.copy_format, Some(format));
-            assert_eq!(
-                PickerPreferences::from_settings(&loaded.settings),
-                PickerPreferences {
-                    copy_format: loaded.settings.copy_format.or(Some(KeyFormat::Pandoc)),
-                    ..chosen
-                }
-            );
+            let written = (output.id != ibis_engine::outputs::DEFAULT).then_some(output.id.as_str());
+            assert_eq!(loaded.settings.output.as_deref(), written);
+            assert_eq!(PickerPreferences::from_settings(&loaded.settings), chosen);
         }
-        // A style/density save keeps a key changed in the file meanwhile.
-        file.update(|s| s.copy_format = Some(KeyFormat::Keys))
+        // A density save keeps an output changed in the file meanwhile.
+        file.update(|s| s.output = Some("keys".into()))
             .unwrap_or_else(|e| panic!("{e}"));
-        let saved = file.save_preferences(styled, None).unwrap_or_else(|e| panic!("{e}"));
-        assert_eq!(saved.copy_format, Some(KeyFormat::Keys));
-        assert_eq!(saved.citation_style, Some(CitationStyle::Apa));
+        let density = PickerPreferencesPatch {
+            density: Some(Density::Compact),
+            ..Default::default()
+        };
+        let saved = file.save_preferences(density, None).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(saved.output.as_deref(), Some("keys"));
     }
 
     #[test]
@@ -1689,10 +1637,9 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
         let chosen = PickerPreferences {
-            copy_format: Some(KeyFormat::Pandoc),
+            output: out("pandoc"),
             appearance: Some(Appearance::System),
             accent: Some(Accent::System),
-            citation_style: None,
             density: Density::Comfortable,
             larger_text: false,
             paste: true,
@@ -1701,12 +1648,12 @@ mod tests {
             small_surprises: Some(true),
         };
         for text in [
-            r#"{"copy_format":"synthetic-private-value"}"#,
+            r#"{"density":"synthetic-private-value"}"#,
             r#"{"larger_text":"synthetic-private-value"}"#,
             r#"{"schema_version":3,"larger_text":true,"future_choice":{"kept":true}}"#,
         ] {
             std::fs::write(&file.path, text).unwrap_or_else(|e| panic!("{e}"));
-            let failed = file.save_preferences(chosen, Some(KeyFormat::Cite));
+            let failed = file.save_preferences(chosen, Some("cite"));
             assert!(failed.is_err());
             assert!(
                 !failed
@@ -1719,7 +1666,7 @@ mod tests {
         std::fs::remove_file(&file.path).unwrap_or_else(|e| panic!("{e}"));
         std::fs::create_dir(&file.path).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            file.save_preferences(chosen, Some(KeyFormat::Cite))
+            file.save_preferences(chosen, Some("cite"))
                 .err()
                 .unwrap_or_else(|| panic!("expected an unreadable settings save to fail")),
             "settings.json could not be read"
@@ -1732,16 +1679,14 @@ mod tests {
         for first in [0, 1] {
             let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
-            file.update(|s| s.citation_style = Some(CitationStyle::Apa))
+            file.update(|s| s.output = Some("apa".into()))
                 .unwrap_or_else(|e| panic!("{e}"));
             let baseline = PickerPreferences::from_settings(&settings::load(&file.path).settings);
-            let mut global = baseline;
-            global.citation_style = None;
             let mut view = baseline;
             view.density = Density::Compact;
             // Each client sends only the field its user changed from the same baseline.
             let patches = [
-                serde_json::json!({ "citation_style": global.citation_style }),
+                serde_json::json!({ "output": "cite" }),
                 serde_json::json!({ "density": view.density }),
             ];
             std::thread::scope(|scope| {
@@ -1757,7 +1702,7 @@ mod tests {
                         let patch: PickerPreferencesPatch =
                             serde_json::from_value(patch).unwrap_or_else(|e| panic!("{e}"));
                         let saved = file
-                            .save_preferences(patch, (index == 0).then_some(KeyFormat::Cite))
+                            .save_preferences(patch, None)
                             .unwrap_or_else(|e| panic!("{e}"));
                         completed.send((index, saved)).unwrap_or_else(|e| panic!("{e}"));
                     });
@@ -1767,35 +1712,44 @@ mod tests {
                 assert_eq!(index, first);
                 starts[1 - first].send(()).unwrap_or_else(|e| panic!("{e}"));
                 let (_, saved) = results.recv().unwrap_or_else(|e| panic!("{e}"));
-                assert_eq!(saved.citation_style, None);
-                assert_eq!(saved.copy_format, Some(KeyFormat::Cite));
+                assert_eq!(saved.output.as_deref(), Some("cite"));
                 assert_eq!(saved.density, Some(Density::Compact));
             });
         }
     }
 
     #[test]
-    fn an_absent_style_patch_keeps_it_and_explicit_null_selects_keys() {
+    fn an_absent_output_keeps_the_saved_one_and_an_unlisted_one_is_refused() {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let file = SettingsFile::new(directory.path().join("settings.json"));
-        file.update(|s| s.citation_style = Some(CitationStyle::Apa))
+        file.update(|s| s.output = Some("apa".into()))
             .unwrap_or_else(|e| panic!("{e}"));
         let patch: PickerPreferencesPatch =
             serde_json::from_value(serde_json::json!({"larger_text":true})).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             file.save_preferences(patch, None)
                 .unwrap_or_else(|e| panic!("{e}"))
-                .citation_style,
-            Some(CitationStyle::Apa)
+                .output
+                .as_deref(),
+            Some("apa")
         );
         let patch: PickerPreferencesPatch =
-            serde_json::from_value(serde_json::json!({"citation_style":null})).unwrap_or_else(|e| panic!("{e}"));
+            serde_json::from_value(serde_json::json!({"output":"cite"})).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
-            file.save_preferences(patch, Some(KeyFormat::Cite))
+            file.save_preferences(patch, None)
                 .unwrap_or_else(|e| panic!("{e}"))
-                .citation_style,
-            None
+                .output
+                .as_deref(),
+            Some("cite")
         );
-        assert!(serde_json::from_value::<PickerPreferencesPatch>(serde_json::json!({"document":"synthetic"})).is_err());
+        // Only an id the engine lists crosses the boundary; the old shapes do not.
+        for refused in [
+            serde_json::json!({"output":"no-such-output"}),
+            serde_json::json!({"output":{"key":"cite"}}),
+            serde_json::json!({"citation_style":"apa"}),
+            serde_json::json!({"document":"synthetic"}),
+        ] {
+            assert!(serde_json::from_value::<PickerPreferencesPatch>(refused.clone()).is_err(), "{refused}");
+        }
     }
 }

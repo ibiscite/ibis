@@ -1,6 +1,6 @@
 //! Invented files through the native picker bridge and the real `ibis cite` parser.
 use crate::library::engine_file::{FileLibrary, FileSelection};
-use ibis_core::{cite::KeyFormat, contract::CitationResult, settings::CitationStyle};
+use ibis_core::contract::CitationResult;
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;
 use std::io::Cursor;
@@ -41,7 +41,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
         .map_err(|_| "CLI file open")?;
         for (style, option, value, text) in [
             (None, "--format", "pandoc", "[@demo]"),
-            (Some(CitationStyle::Apa), "--style", "apa", "(Researcher, 2026)"),
+            (Some("apa"), "--style", "apa", "(Researcher, 2026)"),
         ] {
             let mut stdout = vec![];
             let mut stderr = vec![];
@@ -64,7 +64,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
             let selection: FileSelection =
                 serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
             let preview = file
-                .preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, style)
+                .preview(file.reserve_preview(), vec![selection], style.unwrap_or("pandoc"))
                 .map_err(|_| "native preview")?;
             assert_eq!(preview.text, expected.text);
             assert_eq!(preview.html, expected.html);
@@ -124,15 +124,15 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
     .map_err(|_| "CLI file")?;
     for (style, locator, count) in [
         (None, true, 1),
-        (Some(CitationStyle::Apa), true, 1),
-        (Some(CitationStyle::Apa), false, 2),
-        (Some(CitationStyle::Ieee), false, 1),
+        (Some("apa"), true, 1),
+        (Some("apa"), false, 2),
+        (Some("ieee"), false, 1),
     ] {
         let output = match style {
             Some(style) => json!({"kind":"csl","style":style}),
             None => json!({"kind":"key","syntax":"pandoc","command":null}),
         };
-        let request = json!({"items": rows[..count].iter().map(|row| json!({"item":row["id"],"expected_cite":row["cite"],"locator":locator.then(|| json!({"term":"page","value":"12"}))})).collect::<Vec<_>>(), "output":output,"form":if style == Some(CitationStyle::Ieee) {"bibliography-only"} else {"normal"},"keep_order":style.is_none()});
+        let request = json!({"items": rows[..count].iter().map(|row| json!({"item":row["id"],"expected_cite":row["cite"],"locator":locator.then(|| json!({"term":"page","value":"12"}))})).collect::<Vec<_>>(), "output":output,"form":"normal","keep_order":style.is_none()});
         let mut stdout = vec![];
         let mut stderr = vec![];
         assert_eq!(
@@ -150,7 +150,7 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
         let expected: CitationResult = serde_json::from_value(envelope["data"].clone())?;
         let selections=rows[..count].iter().map(|row| serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":locator.then(|| json!({"label":"page","value":"12"}))}))).collect::<Result<Vec<FileSelection>,_>>()?;
         let preview = file
-            .preview(file.reserve_preview(), selections, KeyFormat::Pandoc, style)
+            .preview(file.reserve_preview(), selections, style.unwrap_or("pandoc"))
             .map_err(|e| format!("native preview: {e}"))?;
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.html, expected.html);
@@ -225,8 +225,7 @@ fn italics_and_non_latin_text_reach_every_clipboard_flavor_from_one_result() -> 
         .preview(
             file.reserve_preview(),
             vec![selection],
-            KeyFormat::Pandoc,
-            Some(CitationStyle::Apa),
+            "apa",
         )
         .map_err(|e| e.to_string())?;
     let mut written = vec![];

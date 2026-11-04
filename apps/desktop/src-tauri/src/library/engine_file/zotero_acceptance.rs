@@ -2,7 +2,7 @@
 #[path = "../../../../../../crates/ibis-engine/tests/support/zotero.rs"]
 mod fixture;
 use super::{FileLibrary, FileSelection};
-use ibis_core::{cite::KeyFormat, contract::CitationResult, settings::CitationStyle};
+use ibis_core::contract::CitationResult;
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;
 use std::{
@@ -43,7 +43,7 @@ fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn
     let bridge = opened(&server)?;
     for (style, option, value) in [
         (None, "--format", "pandoc"),
-        (Some(CitationStyle::Apa), "--style", "apa"),
+        (Some("apa"), "--style", "apa"),
     ] {
         let cli = Engine::with_zotero_port(server.port).map_err(|_| "synthetic CLI")?;
         let (mut output, mut errors) = (vec![], vec![]);
@@ -67,8 +67,7 @@ fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn
             .preview(
                 bridge.reserve_preview(),
                 vec![selection(&bridge)?],
-                KeyFormat::Pandoc,
-                style,
+                style.unwrap_or("pandoc"),
             )
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
@@ -96,8 +95,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
         .preview(
             bridge.reserve_preview(),
             vec![selection(&bridge)?],
-            KeyFormat::Pandoc,
-            None,
+            "pandoc",
         )
         .map_err(|e| e.to_string())?;
     server.instance.store(2, Ordering::SeqCst);
@@ -125,8 +123,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
         .preview(
             bridge.reserve_preview(),
             vec![selection(&bridge)?],
-            KeyFormat::Pandoc,
-            None,
+            "pandoc",
         )
         .map_err(|e| e.to_string())?;
     let mut copied = String::new();
@@ -176,8 +173,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                         page_input: None,
                         form: None,
                     }],
-                    KeyFormat::Pandoc,
-                    None
+                    "pandoc"
                 ),
             Err(crate::library::CommandError::SharedCitationKey { key }) if key == "Synthetic2026"
         ));
@@ -211,8 +207,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
             .preview(
                 bridge.reserve_preview(),
                 vec![selection(&bridge)?],
-                KeyFormat::Pandoc,
-                None
+                "pandoc"
             )
             .is_ok()
     );

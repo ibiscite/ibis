@@ -6,7 +6,7 @@ import { type BackupApi, BackupRows } from "./BackupRows";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const preview = (ticket: number, changes: RestorePreview["changes"] = [
-  { setting: "citation_style", from: "apa", to: "ieee" },
+  { setting: "output", from: "apa", to: "ieee" },
   { setting: "library", from: null, to: "thesis.bib" },
   { setting: "density", from: "comfortable", to: "compact" },
   { setting: "larger_text", from: null, to: "on" },
@@ -50,7 +50,7 @@ test("a restore shows every change in words first, then restores that preview an
   expect(screen.getByText("Backup from Windows, made by Ibis 0.2.8")).toBeTruthy();
   const items = screen.getAllByRole("listitem").map((item) => item.textContent);
   expect(items).toEqual([
-    "Citation style: APA (7th edition) → IEEE reference entry",
+    "Default format: APA → IEEE",
     "Library: Default → thesis.bib",
     "Rows: Comfortable → Compact",
     "Larger text: Default → On",

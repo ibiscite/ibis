@@ -320,8 +320,7 @@ mod tests {
             // An empty citation is refused whatever the library is doing.
             tauri::async_runtime::block_on(crate::copy::preview_file_citation(
                 Vec::new(),
-                ibis_core::cite::KeyFormat::Pandoc,
-                Some(ibis_core::settings::CitationStyle::Ieee),
+                "ieee".into(),
                 String::new(),
                 super::super::PreviewIntent {
                     page: 1,
@@ -461,8 +460,7 @@ mod tests {
             .unwrap();
             let preview = tauri::async_runtime::block_on(crate::copy::preview_file_citation(
                 vec![selection],
-                ibis_core::cite::KeyFormat::Pandoc,
-                None,
+                "pandoc".into(),
                 active.revision(),
                 super::super::PreviewIntent {
                     page: 1,

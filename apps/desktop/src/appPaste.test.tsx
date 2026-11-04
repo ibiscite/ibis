@@ -38,7 +38,7 @@ const receipt = (h: Harness) => within(h.receipt).getByRole("status").querySelec
 test("the first unknown-app Enter asks in the format chooser; approval needs fresh Enter and is remembered", async () => {
   const h = await open();
   await enter();
-  expect(screen.getByRole("menuitemradio", { name: "APA · text" })).toBeTruthy();
+  expect(screen.getByRole("menuitemradio", { name: "APA" })).toBeTruthy();
   expect(h.copy.calls).toHaveLength(0);
   await answer("Paste into Example Writer from now on");
   expect(h.copy.calls).toHaveLength(0);
@@ -77,7 +77,7 @@ test.each(["first Enter", "recognised app's format chooser"])("Copy only through
 
 test("saving Copy only while a paste-approved clipboard response is delayed cannot join or deliver that copy", async () => {
   const h = await open((h) => {
-    h.appChoices.set("example.writer", { output: { key: "pandoc" }, paste: "paste" });
+    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
     h.holdCopyReplies = true;
   });
   await enter();
@@ -103,7 +103,7 @@ test("saving Copy only while a paste-approved clipboard response is delayed cann
 
 test("revoking paste after the write still confirms Copied when its delayed response arrives without another Enter", async () => {
   const h = await open((h) => {
-    h.appChoices.set("example.writer", { output: { key: "pandoc" }, paste: "paste" });
+    h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" });
     h.holdCopyReplies = true;
   });
   await enter();
@@ -150,7 +150,7 @@ test("dismissing the unknown-app question or picking a format never grants paste
   await act(async () => { fireEvent.keyDown(screen.getByRole("searchbox"), { key: "Escape" }); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc key" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc" })); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   expect(screen.getByRole("menuitem", { name: "Copy only" })).toBeTruthy();
@@ -160,13 +160,13 @@ test("dismissing the unknown-app question or picking a format never grants paste
 test("a format pick and paste approval are saved apart, and each keeps the other", async () => {
   const h = await open();
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst" })); });
   await act(async () => { h.preview.pending[0]!.complete({ text: "@a" }); });
   expect(h.copy.calls).toHaveLength(0);
-  expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: null });
+  expect(h.appChoices.get("example.writer")).toEqual({ output: "typst", paste: null });
   await enter();
   await answer("Paste into Example Writer from now on");
-  expect(h.appChoices.get("example.writer")).toEqual({ output: { key: "typst" }, paste: "paste" });
+  expect(h.appChoices.get("example.writer")).toEqual({ output: "typst", paste: "paste" });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   await finish(h);
@@ -176,7 +176,7 @@ test("a format pick and paste approval are saved apart, and each keeps the other
 });
 
 test.each(["terminal", "remote-desktop", "virtual-machine", "nonstandard-shortcut"] as const)("a refused %s app never asks, even with a saved paste choice", async (reason) => {
-  const h = await open((h) => { h.target.refusal = reason; h.appChoices.set("example.writer", { output: { key: "pandoc" }, paste: "paste" }); });
+  const h = await open((h) => { h.target.refusal = reason; h.appChoices.set("example.writer", { output: "pandoc", paste: "paste" }); });
   await enter();
   expect(screen.queryByRole("menu")).toBeNull();
   await finish(h);

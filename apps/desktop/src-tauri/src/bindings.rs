@@ -26,7 +26,6 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::preview_file_citation,
             crate::copy::citation_details,
             crate::copy::copy_file_citation,
-            crate::copy::copy_format,
             crate::project::project_status,
             crate::project::choose_project,
             crate::project::stop_project,
@@ -84,6 +83,10 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::sizing::undo_window_position,
             crate::sizing::dismiss_window_position_undo
         ])
+        // The engine's outputs, read once at build time: names never wait for IPC.
+        .constant("OUTPUTS", crate::output::choices())
+        .constant("DEFAULT_OUTPUT", ibis_engine::outputs::DEFAULT)
+        .constant("DEFAULT_STYLE", ibis_engine::outputs::DEFAULT_STYLE)
         // Match Tauri's existing Promise rejection behavior.
         .error_handling(tauri_specta::ErrorHandlingMode::Throw)
         // usize counts/limits already cross the JSON bridge as JS numbers.

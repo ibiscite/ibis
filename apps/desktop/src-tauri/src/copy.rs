@@ -2,13 +2,10 @@
 
 use std::sync::Mutex;
 
-use ibis_core::cite::KeyFormat;
-use ibis_core::settings;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State};
 
 use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
-use crate::preferences::SettingsFile;
 
 #[derive(Serialize, specta::Type)]
 pub(crate) struct Copied {
@@ -132,16 +129,6 @@ pub(crate) fn write_token() -> Result<u32, String> {
     Ok(*token)
 }
 
-/// The format the picker starts with: the last one chosen, or Pandoc.
-#[tauri::command]
-#[specta::specta]
-pub(crate) fn copy_format(settings_file: State<'_, SettingsFile>) -> KeyFormat {
-    settings::load(&settings_file.path)
-        .settings
-        .copy_format
-        .unwrap_or(KeyFormat::Pandoc)
-}
-
 mod clipboard;
 #[cfg(test)]
 mod engine_file_acceptance;
@@ -172,8 +159,7 @@ pub(crate) async fn citation_details(
 #[specta::specta]
 pub(crate) async fn preview_file_citation(
     items: Vec<crate::library::engine_file::FileSelection>,
-    format: KeyFormat,
-    style: Option<settings::CitationStyle>,
+    output: String,
     expected_revision: String,
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
@@ -182,6 +168,11 @@ pub(crate) async fn preview_file_citation(
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
+    // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
+    let output = crate::output::listed(&output)
+        .ok_or_else(|| CommandError::from("This format is not available. Choose another."))?
+        .spec()
+        .clone();
     let (file, generation) = {
         let library = library
             .lock()
@@ -200,13 +191,14 @@ pub(crate) async fn preview_file_citation(
     let editor = editor.current();
     // Only a key output depends on what the project's file holds. A waiting
     // editor names its own output.
-    let key_output = editor.as_ref().map_or(style.is_none(), |request| {
-        matches!(request.output, ibis_core::contract::OutputSpec::Key { .. })
-    });
+    let key_output = matches!(
+        editor.as_ref().map_or(&output, |request| &request.output),
+        ibis_core::contract::OutputSpec::Key { .. }
+    );
     let project = project.current().filter(|_| key_output);
     let chosen: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let mut preview = file.preview_for(reservation, items, format, style, editor.as_ref())?;
+        let mut preview = file.preview_for(reservation, items, &output, editor.as_ref())?;
         if let Some(project) = &project {
             preview.warnings.extend(file.project_warnings(&chosen, project));
         }

@@ -6,6 +6,7 @@ import { vi } from "vitest";
 import { listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import { isStyle, listedOutput } from "../format/outputs";
 
 export async function resetApp() {
   cleanup();
@@ -96,8 +97,8 @@ export function result(key: string, title: string, source = "refs.bib") {
 export type SyntheticId = { library: string; key: string };
 export type PreviewRequest = {
   items: (Omit<FileSelection, "id"> & { id: SyntheticId })[];
-  format: api.CopyFormat;
-  style: string | null;
+  /** The engine output id the picker asked for. */
+  output: string;
   expectedRevision: string;
   intent: PreviewIntent;
 };
@@ -126,8 +127,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   const calls: string[] = [];
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
-  let preferences = { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
-  let copyFormat: api.CopyFormat = "pandoc";
+  let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
   let revision = 0;
   const written = new Map<string, number>();
   receipts.clear();
@@ -148,8 +148,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     read_window_position_undo: () => null,
     undo_window_position: () => false,
     dismiss_window_position_undo: () => null,
-    copy_format: () => "pandoc",
-    preview_file_citation: ({ items, style }) => {
+    preview_file_citation: ({ items, output }) => {
+      const style = isStyle(listedOutput(output as string) ?? "pandoc");
       const spans = items.flatMap(({ id }, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text: style ? "(Smith, 2020)" : `@${id.key}` }]);
       return { ...receipt(spans.map((span) => span.text).join("")), spans };
     },
@@ -190,16 +190,14 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       if (!handler) throw new Error(`unexpected command ${cmd}`);
       const value = handler((args ?? {}) as Parameters<Handler>[0]);
       if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
-      if (cmd === "copy_format") return Promise.resolve(value).then((loaded) => { copyFormat = loaded as api.CopyFormat; return loaded; });
       if (cmd === "set_picker_preferences") return Promise.resolve(value).then(() => {
-        const save = args as { preferences: Partial<api.PickerPreferences>; copyFormat: api.CopyFormat | null; revision: number };
+        const save = args as { preferences: Partial<api.PickerPreferences>; revision: number };
         if (!Number.isSafeInteger(save.revision) || save.revision <= 0 || save.revision > revision) throw "preference revision was not issued";
         const keep = (field: string) => save.revision > (written.get(field) ?? 0);
         const patch = Object.fromEntries(Object.entries(save.preferences).filter(([field]) => keep(field)));
         preferences = { ...preferences, ...patch };
         for (const field of Object.keys(patch)) written.set(field, save.revision);
-        if (save.copyFormat !== null && keep("copy_format")) { copyFormat = save.copyFormat; written.set("copy_format", save.revision); }
-        return { preferences, copy_format: copyFormat };
+        return { preferences };
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
         const result = preview as FilePreview;

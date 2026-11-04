@@ -3,12 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as nativeApi from "../../api";
 import type { FilePreview } from "../../bindings";
-import type { CopyFormat, LibraryStatus } from "../../api";
-import type { FormattedCitation } from "../../format/styles";
+import type { LibraryStatus } from "../../api";
 import { parse } from "../../format/markup";
-import { STYLE_NAMES, type StyleId } from "../../format/styles";
+import { outputName, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { pickerText } from "../../messages";
-import { choiceKey, styleOf, type Choice, type CitationReference } from "./choice";
+import { choiceKey, type CitationReference } from "./choice";
 
 export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot }: {
   /** The selection, or the highlighted result when nothing is selected. */
@@ -19,9 +18,9 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   /** Advances before a reopened window's first frame; a failure belongs to one. */
   opened?: number;
   isCurrentSession?: (id: number) => boolean;
-  format: Choice;
-  /** The citation style, when one is chosen and formatting is available. */
-  style: StyleId | null;
+  format: OutputId;
+  /** The format, when it is a style and formatting is available. */
+  style: OutputId | null;
   previewFileCitation: typeof nativeApi.previewFileCitation;
   /** Reads the library status again when the preview meets a newer snapshot. */
   refreshSnapshot: () => void;
@@ -39,7 +38,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   currentSession.current = sessionId;
   const chosenKey = choiceKey(chosen);
   const chosenRevision = chosen[0]?.revision;
-  const keyFormat = styleOf(format) === null ? (format as CopyFormat) : null;
+  // A style the engine cannot format now is not previewed as anything else.
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
   const retryKey = JSON.stringify([output, library?.revision, chosenKey]);
@@ -60,7 +59,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // What Enter would copy now; null while it is being formatted.
   const shown = ownsResult ? formatted?.result ?? null : null;
   // Why the preview failed, when the user can fix it.
-  const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError) : undefined;
+  const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(outputName(style)) : pickerText.previewError) : undefined;
   const previewReceipt = ownsResult ? formatted?.preview : undefined;
   const displayedOutput = chosen.length > 0 ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
@@ -91,7 +90,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
       ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
       ...(r.form ? { form: r.form } : {}),
-    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
+    })), output, chosenRevision, abort.signal).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {
@@ -117,5 +116,5 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       } });
     return () => { live = false; abort.abort(); };
   }, [previewKey, request, sessionId]);
-  return { formatted, previewReceipt, chosenKey, keyFormat, shown, previewProblem, displayedOutput };
+  return { formatted, previewReceipt, chosenKey, shown, previewProblem, displayedOutput };
 }

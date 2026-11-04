@@ -22,7 +22,6 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::cite::KeyFormat;
 use crate::destination::System;
 
 /// Version of the settings format this build reads and writes.
@@ -246,18 +245,6 @@ impl std::fmt::Debug for EditorEndpoint {
     }
 }
 
-/// A bundled citation style the picker can format with (ADR 0020).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
-#[serde(rename_all = "kebab-case")]
-pub enum CitationStyle {
-    Apa,
-    ChicagoAuthorDate,
-    HarvardCiteThemRight,
-    Ieee,
-    ModernLanguageAssociation,
-}
-
 /// How much each result row shows (ADR 0020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -317,16 +304,14 @@ pub struct Settings {
     /// The editor endpoint; absent means off (decision 0008).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub editor_endpoint: Option<EditorEndpoint>,
-    /// Syntax the picker copies citations in; remembered when chosen.
+    /// The default output: an id from the engine's `outputs` list, written
+    /// once chosen. An id this Ibis does not list means the engine's default.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub copy_format: Option<KeyFormat>,
+    pub output: Option<String>,
     /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_checks: Option<bool>,
-    /// Citation style the picker formats with; `None` copies in `copy_format`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub citation_style: Option<CitationStyle>,
     /// Result row density. `None` means comfortable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub density: Option<Density>,
@@ -363,9 +348,8 @@ impl Default for Settings {
             project_bibliography: None,
             zotero_profile: None,
             editor_endpoint: None,
-            copy_format: None,
+            output: None,
             update_checks: None,
-            citation_style: None,
             density: None,
             larger_text: None,
             picker_windows: BTreeMap::new(),
@@ -978,11 +962,7 @@ mod tests {
                         save(&path, &Settings::default())
                     } else {
                         update(&path, |s| {
-                            s.copy_format = Some(if attempt == 0 {
-                                KeyFormat::Keys
-                            } else {
-                                KeyFormat::Typst
-                            })
+                            s.output = Some(if attempt == 0 { "keys" } else { "typst" }.into())
                         })
                         .map(|_| ())
                     }
@@ -1019,7 +999,7 @@ mod tests {
                 .problem
                 .unwrap_or_else(|| panic!("expected a refused backup"));
             assert!(problem.to_string().contains("settings.json.bak"));
-            let error = update(&path, |s| s.copy_format = Some(KeyFormat::Keys))
+            let error = update(&path, |s| s.output = Some("keys".into()))
                 .err()
                 .unwrap_or_else(|| panic!("expected a failed save"));
             assert!(error.to_string().contains("settings.json.bak"));
@@ -1041,7 +1021,7 @@ mod tests {
         let occupied = path.with_extension("json.tmp-1");
         std::os::unix::fs::symlink(&temporary, &occupied).unwrap_or_else(|e| panic!("{e}"));
         assert!(load(&path).from_backup);
-        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        let saved = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(fs::read(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")), bytes);
         assert_eq!(fs::read(&temporary).unwrap_or_else(|e| panic!("{e}")), bytes);
         assert_eq!(fs::read_link(&occupied).unwrap_or_else(|e| panic!("{e}")), temporary);
@@ -1059,7 +1039,7 @@ mod tests {
         let temporary = path.with_extension("json.tmp-1");
         fs::write(&path, b"{}").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&temporary, backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
-        assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+        assert!(update(&path, |s| s.output = Some("keys".into())).is_err());
         assert_eq!(fs::read(&path).unwrap_or_default(), b"{}");
         assert_eq!(
             fs::read_link(backup_path(&path)).unwrap_or_else(|e| panic!("{e}")),
@@ -1106,11 +1086,11 @@ mod tests {
                 fs::write(backup_path(&path), backup).unwrap_or_else(|e| panic!("{e}"));
                 let mut expected = parse(backup).unwrap_or_else(|e| panic!("{e}"));
                 if change_first {
-                    expected.copy_format = Some(KeyFormat::Typst);
+                    expected.output = Some("typst".into());
                 }
                 let first = update(&path, |s| {
                     if change_first {
-                        s.copy_format = Some(KeyFormat::Typst);
+                        s.output = Some("typst".into());
                     }
                 })
                 .unwrap_or_else(|e| panic!("{e}"));
@@ -1122,8 +1102,8 @@ mod tests {
                 assert_eq!(restored.settings, expected);
                 assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), backup);
                 assert!(!path.with_extension("json.invalid-1").exists());
-                expected.copy_format = Some(KeyFormat::Keys);
-                let second = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+                expected.output = Some("keys".into());
+                let second = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
                 assert_eq!(second, expected);
                 assert_eq!(load(&path).settings, expected);
                 let saved_backup = fs::read_to_string(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
@@ -1194,7 +1174,7 @@ mod tests {
         let path = directory.path().join("nested/settings.json");
         let settings = Settings {
             shortcut: Shortcuts::only_here("Control+Command+R"),
-            copy_format: Some(KeyFormat::Typst),
+            output: Some("typst".into()),
             update_checks: Some(false),
             ..Settings::default()
         };
@@ -1208,15 +1188,15 @@ mod tests {
             assert_eq!(parse(text).map(|settings| settings.larger_text).ok(), Some(None));
         }
         let saved = serde_json::to_string(&Settings::default()).unwrap_or_default();
-        for field in ["citation_style", "density", "larger_text", "paste"] {
+        for field in ["output", "density", "larger_text", "paste"] {
             assert!(!saved.contains(field), "{field} is written only once chosen");
         }
         let settings = parse(
-            r#"{"schema_version": 2, "citation_style": "chicago-author-date", "density": "compact", "larger_text": true, "paste": false}"#,
+            r#"{"schema_version": 2, "output": "chicago-author-date", "density": "compact", "larger_text": true, "paste": false}"#,
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(settings.paste, Some(false));
-        assert_eq!(settings.citation_style, Some(CitationStyle::ChicagoAuthorDate));
+        assert_eq!(settings.output.as_deref(), Some("chicago-author-date"));
         assert_eq!(settings.density, Some(Density::Compact));
         assert_eq!(settings.larger_text, Some(true));
         let directory = dir("preferences");
@@ -1238,12 +1218,16 @@ mod tests {
     #[test]
     fn unknown_picker_preference_values_are_invalid_not_guessed() {
         for text in [
-            r#"{"citation_style": "vancouver"}"#,
+            r#"{"output": 7}"#,
             r#"{"density": "tiny"}"#,
             r#"{"larger_text": "yes"}"#,
         ] {
             assert!(matches!(parse(text), Err(SettingsError::Invalid(_))), "{text}");
         }
+        // An output id is the engine's to read: one this Ibis does not list
+        // keeps the file valid and means the default where it is used.
+        let later = parse(r#"{"output": "a-later-output"}"#).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(later.output.as_deref(), Some("a-later-output"));
     }
 
     #[test]
@@ -1292,7 +1276,7 @@ mod tests {
             let damaged = [
                 b"".as_slice(),
                 b"{ not json",
-                br#"{"copy_format":"unknown"}"#,
+                br#"{"output":["typst"]}"#,
                 br#"{"library":{"zotero":["user",{"group":-1}]}}"#,
                 b"\xff",
             ];
@@ -1335,7 +1319,7 @@ mod tests {
         std::os::unix::fs::symlink("missing-synthetic-target", &occupied).unwrap_or_else(|e| panic!("{e}"));
         fs::create_dir(path.with_extension("json.invalid-2")).unwrap_or_else(|e| panic!("{e}"));
 
-        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        let saved = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
         let archive = path.with_extension("json.invalid-3");
         assert_eq!(fs::read(&archive).unwrap_or_else(|e| panic!("{e}")), damaged);
         assert!(
@@ -1385,7 +1369,7 @@ mod tests {
                         .unwrap_or_else(|e| panic!("{e}"));
                 }
             }
-            assert!(update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).is_err());
+            assert!(update(&path, |s| s.output = Some("keys".into())).is_err());
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ damaged");
             assert_eq!(fs::read_to_string(backup_path(&path)).unwrap_or_default(), "{}");
             assert!(load(&path).from_backup);
@@ -1413,7 +1397,7 @@ mod tests {
         fs::write(backup_path(&path), "{}").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(path.with_extension("json.invalid-1"), path.with_extension("json.tmp"))
             .unwrap_or_else(|e| panic!("{e}"));
-        update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             fs::read_to_string(path.with_extension("json.invalid-1")).unwrap_or_default(),
             "{ damaged"
@@ -1537,17 +1521,17 @@ mod tests {
     fn updates_keep_edits_made_since_loading_and_refuse_invalid_files_without_a_backup() {
         let directory = dir("update");
         let path = directory.path().join("settings.json");
-        update(&path, |s| s.copy_format = Some(KeyFormat::Typst)).unwrap_or_else(|e| panic!("{e}"));
+        update(&path, |s| s.output = Some("typst".into())).unwrap_or_else(|e| panic!("{e}"));
         // The user edits the file while the app runs.
-        let edited = r#"{"schema_version": 2, "shortcut": "Alt+Space", "copy_format": "typst"}"#;
+        let edited = r#"{"schema_version": 2, "shortcut": "Alt+Space", "output": "typst"}"#;
         fs::write(&path, edited).unwrap_or_else(|e| panic!("{e}"));
-        let after = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        let after = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(after.shortcut.here(), Some("Alt+Space"));
         assert_eq!(load(&path).settings, after);
         fs::remove_file(backup_path(&path)).unwrap_or_else(|e| panic!("{e}"));
         fs::write(&path, "{ not json").unwrap_or_else(|e| panic!("{e}"));
         assert!(matches!(
-            update(&path, |s| s.copy_format = Some(KeyFormat::Pandoc)),
+            update(&path, |s| s.output = Some("pandoc".into())),
             Err(SettingsError::Invalid(_))
         ));
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), "{ not json");
@@ -1559,7 +1543,7 @@ mod tests {
         let path = directory.path().join("settings.json");
         let newer_build = serde_json::json!({
             "schema_version": 2,
-            "citation_style": "apa",
+            "output": "apa",
             "window_position": { "display": "synthetic", "x": 10, "y": -20 },
             "later_flag": [true, null, 1.5],
         });
@@ -1574,7 +1558,7 @@ mod tests {
                 .unwrap_or_default()],
             "Alt+Space"
         );
-        assert_eq!(saved["citation_style"], "apa");
+        assert_eq!(saved["output"], "apa");
         assert_eq!(saved["window_position"], newer_build["window_position"]);
         assert_eq!(saved["later_flag"], newer_build["later_flag"]);
     }
@@ -1597,8 +1581,8 @@ mod tests {
     #[test]
     fn old_formats_use_invalid_settings_recovery_without_migration() {
         for old in [
-            r#"{"schema_version": 1, "library": "/synthetic/refs.bib", "copy_format": "typst"}"#,
-            r#"{"library": "/synthetic/refs.bib", "copy_format": "typst"}"#,
+            r#"{"schema_version": 1, "library": "/synthetic/refs.bib", "output": "typst"}"#,
+            r#"{"library": "/synthetic/refs.bib", "output": "typst"}"#,
             r#"{"schema_version": 1, "shortcut": "Alt+Y"}"#,
             r#"{"schema_version": 0, "library": {"bibtex": "/synthetic/refs.bib"}}"#,
         ] {
@@ -1621,7 +1605,7 @@ mod tests {
             assert!(matches!(loaded.problem, Some(SettingsError::Invalid(_))));
             assert!(loaded.from_backup);
             assert_eq!(loaded.settings.shortcut.here(), Some("Alt+Space"));
-            assert_eq!(loaded.settings.copy_format, None);
+            assert_eq!(loaded.settings.output, None);
             assert_eq!(loaded.settings.library, None);
             assert_eq!(fs::read_to_string(&path).unwrap_or_default(), old);
 
@@ -1760,9 +1744,9 @@ mod tests {
             "the settings file is not valid: Zotero library entry 2 must be \"user\" or {\"group\": <non-negative integer ID>}"
         );
         assert_eq!(fs::read_to_string(&path).unwrap_or_default(), bad);
-        let saved = update(&path, |s| s.copy_format = Some(KeyFormat::Keys)).unwrap_or_else(|e| panic!("{e}"));
+        let saved = update(&path, |s| s.output = Some("keys".into())).unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(saved.library, good.library);
-        assert_eq!(saved.copy_format, Some(KeyFormat::Keys));
+        assert_eq!(saved.output.as_deref(), Some("keys"));
         assert_eq!(load(&path).settings, saved);
         assert!(load(&path).problem.is_none());
         assert_eq!(

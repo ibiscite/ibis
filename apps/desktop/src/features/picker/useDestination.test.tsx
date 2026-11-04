@@ -2,7 +2,7 @@ import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useDestination } from "./useDestination";
 import type { PickerDestination } from "../../api";
-import type { Choice } from "./choice";
+import type { OutputId } from "../../format/outputs";
 
 afterEach(cleanup);
 const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
@@ -25,23 +25,25 @@ test("a pick is remembered for the app, says so, and never changes the default",
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "pandoc", source: "default", pick: "app" });
   await act(async () => result.current.choose("cite"));
-  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", { key: "cite" }, null, null);
+  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", "cite", null, null);
   expect(result.current).toMatchObject({ format: "cite", source: "remembered", pick: "app" });
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
 
 test("a format comes from the app's memory, then its suggestion, then the default", async () => {
-  let destination: PickerDestination = { ...browser, output_question: null, automatic: { style: "apa" } };
+  // Rust works out the suggestion, a formatted app's style from the default included.
+  let destination: PickerDestination = { ...browser, output_question: null, automatic: "ieee" };
   const { result, rerender } = renderHook(({ fallback }) => useDestination({ pickerDestination: async () => destination,
-    rememberAppOutput: vi.fn(async () => null) }, { ...options(), fallback }), { initialProps: { fallback: "style:ieee" as Choice } });
+    rememberAppOutput: vi.fn(async () => null) }, { ...options(), fallback }), { initialProps: { fallback: "ieee" as OutputId } });
   await act(async () => result.current.read());
-  expect(result.current).toMatchObject({ format: "style:ieee", source: "suggested" });
+  expect(result.current).toMatchObject({ format: "ieee", source: "suggested" });
   rerender({ fallback: "pandoc" });
-  expect(result.current).toMatchObject({ format: "style:apa", source: "suggested" });
-  destination = { ...destination, remembered: { key: "typst" } };
+  expect(result.current).toMatchObject({ format: "ieee", source: "suggested" });
+  destination = { ...destination, remembered: "typst" };
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "typst", source: "remembered" });
-  destination = { ...browser, output_question: null };
+  // An id this Ibis does not list is as good as none.
+  destination = { ...browser, output_question: null, remembered: "a-later-output" };
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
 });
@@ -92,7 +94,7 @@ test("a choice made during a slow destination read wins over that read", async (
   const { result } = renderHook(() => useDestination({ pickerDestination: () => read.promise, rememberAppOutput: vi.fn() }, settings));
   act(() => result.current.read());
   act(() => result.current.choose("typst"));
-  await act(async () => read.resolve({ ...browser, remembered: { key: "cite" } }));
+  await act(async () => read.resolve({ ...browser, remembered: "cite" }));
   expect(result.current.format).toBe("typst");
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
@@ -126,7 +128,7 @@ test("a held pick and its save failure are dropped on reopening, which shows wha
   await act(async () => result.current.read());
   await act(async () => result.current.choose("cite"));
   expect(result.current.source).toBe("held");
-  destination = { ...browser, remembered: { key: "typst" } };
+  destination = { ...browser, remembered: "typst" };
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "typst", source: "remembered" });
   expect(settings.report).toHaveBeenCalledWith("appChoice", false);
@@ -143,7 +145,7 @@ test("a delivery answer to an open first-paste question accepts its format, so i
   expect(result.current.shouldAsk).toBe(true);
   await act(async () => result.current.choosePaste("copy-only", true));
   await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
-  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", { key: "pandoc" }, "copy-only", null);
+  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", "pandoc", "copy-only", null);
   expect(result.current).toMatchObject({ shouldAsk: false, source: "remembered" });
 });
 
@@ -215,7 +217,7 @@ test("a stale save completion cannot mark a different app as remembered", async 
   await act(async () => save.resolve(null));
   await waitFor(() => expect(result.current.app).toBe("Example Editor"));
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
-  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", { key: "cite" }, null, null);
+  expect(rememberAppOutput).toHaveBeenCalledWith("example.browser", "cite", null, null);
 });
 
 test("a save that finishes after a newer pick does not clear the newer pick", async () => {
@@ -228,7 +230,7 @@ test("a save that finishes after a newer pick does not clear the newer pick", as
   await act(async () => { first.resolve(null); });
   expect(result.current.format).toBe("typst");
   await waitFor(() => expect(result.current).toMatchObject({ format: "typst", source: "remembered", saving: false }));
-  expect(rememberAppOutput.mock.calls.map((call) => call[1])).toEqual([{ key: "cite" }, { key: "typst" }]);
+  expect(rememberAppOutput.mock.calls.map((call) => call[1])).toEqual(["cite", "typst"]);
 });
 
 test("an old successful copy cannot consume a newer held pick", async () => {
@@ -245,7 +247,7 @@ test("a remembered format answers the question through a Settings refresh", asyn
   let destination = browser;
   const settings = options();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination,
-    rememberAppOutput: vi.fn(async () => { destination = { ...browser, remembered: { key: "pandoc" } }; return null; }) }, settings));
+    rememberAppOutput: vi.fn(async () => { destination = { ...browser, remembered: "pandoc" }; return null; }) }, settings));
   await act(async () => result.current.read());
   expect(result.current.shouldAsk).toBe(true);
   await act(async () => result.current.choose("pandoc"));
@@ -258,7 +260,7 @@ test("a remembered format answers the question through a Settings refresh", asyn
 test("a held pick answers the question for one citation, then it comes back", async () => {
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput: refused() }, options()));
   await act(async () => result.current.read());
-  await act(async () => result.current.choose("style:apa"));
+  await act(async () => result.current.choose("apa"));
   expect(result.current.shouldAsk).toBe(false);
   act(() => result.current.consumeHeld(result.current.copyToken()));
   expect(result.current.shouldAsk).toBe(true);
@@ -271,7 +273,7 @@ test("returning from permission keeps the prepared output once while reading the
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   const oldCopy = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
   await act(async () => result.current.read(true, true));
   expect(result.current.app).toBe("Example Writer");
   expect(result.current).toMatchObject({ format: "typst", source: "held" });
@@ -293,7 +295,7 @@ test("superseding destination reads preserve the permission return's output and 
   await act(async () => result.current.choose("typst"));
   act(() => result.current.read(true, true));
   const token = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
   await act(async () => result.current.read(false));
   await act(async () => returning.resolve(browser));
   expect(result.current.app).toBe("Example Writer");

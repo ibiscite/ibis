@@ -288,8 +288,7 @@ fn system_label(system: System) -> &'static str {
 fn setting_label(setting: &str) -> String {
     let label = match setting {
         "library" => "Library",
-        "copy_format" => "Key format",
-        "citation_style" => "Citation style",
+        "output" => "Default format",
         "density" => "Row density",
         "larger_text" => "Larger text",
         "paste" => "Enter pastes",

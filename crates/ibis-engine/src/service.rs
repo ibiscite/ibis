@@ -635,7 +635,7 @@ impl Engine {
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
-                value(crate::outputs::list()?)?
+                value(crate::outputs::list())?
             }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;

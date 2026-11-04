@@ -1,14 +1,13 @@
 // UI conveniences around the generated Rust command contract.
-import { copyFormatLabels } from "./messages";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type CommandError, type KeyFormat, type LibraryStatus, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "./bindings";
+import type { OutputId } from "./format/outputs";
+import { commands, type CommandError, type LibraryStatus, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
-  AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
 } from "./bindings";
-export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
 
@@ -45,7 +44,6 @@ export const {
   copyFileCitation,
   citationDetails,
   recentReferences,
-  copyFormat,
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
@@ -78,9 +76,9 @@ export function onWindowReset(handler: (state: { revision: number; undo: number 
   return listen<{ revision: number; undo: number | null }>("picker:window-reset", ({ payload }) => handler(payload));
 }
 
-/** UI edits omit unchanged fields; null is meaningful only for citation_style. */
-export function setPickerPreferences(preferences: Partial<PickerPreferences>, copyFormat: CopyFormat | null, revision: number) {
-  return commands.setPickerPreferences(preferences, copyFormat, revision);
+/** UI edits omit unchanged fields. */
+export function setPickerPreferences(preferences: Partial<PickerPreferences>, revision: number) {
+  return commands.setPickerPreferences(preferences, revision);
 }
 
 // The limit default, page and request number are not part of the UI's API:
@@ -92,14 +90,13 @@ let previewRequest = 0;
 
 export function previewFileCitation(
   items: Parameters<typeof commands.previewFileCitation>[0],
-  format: KeyFormat,
-  style: Parameters<typeof commands.previewFileCitation>[2],
+  output: OutputId,
   expectedRevision: string,
   signal?: AbortSignal,
 ) {
   const intent = { page: searchPage, request: ++previewRequest, cancel: false };
-  const pending = commands.previewFileCitation(items, format, style, expectedRevision, intent);
-  const cancel = () => { void commands.previewFileCitation([], format, style, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
+  const pending = commands.previewFileCitation(items, output, expectedRevision, intent);
+  const cancel = () => { void commands.previewFileCitation([], output, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
   signal?.addEventListener("abort", cancel, { once: true });
   if (signal?.aborted) cancel();
   return pending.finally(() => signal?.removeEventListener("abort", cancel));
@@ -175,11 +172,6 @@ export function onProjectNotSaved(handler: () => void): Promise<UnlistenFn> {
 export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
   return listen("editor:request", () => handler());
 }
-
-export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]) => ({
-  value: value as KeyFormat,
-  label,
-}));
 
 /** The citation key another record also has, when that is why citing by key failed. */
 export function sharedCitationKey(error: unknown): string | null {

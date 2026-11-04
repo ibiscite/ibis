@@ -38,7 +38,7 @@ fn run(args: &[&str]) -> Result<(u8, String, String)> {
 
 #[test]
 fn format_takes_every_listed_id_and_writes_its_output() -> Result {
-    for output in outputs::outputs().map_err(|_| "outputs")? {
+    for output in outputs::outputs() {
         let (code, text, errors) = run(&["cite", "key", "--format", &output.id, "--json"])?;
         assert_eq!(code, 0, "{}: {errors}", output.id);
         let envelope: Value = serde_json::from_str(&text)?;
@@ -90,7 +90,7 @@ fn a_bibliography_needs_a_style_by_either_flag() -> Result {
 
 #[test]
 fn outputs_lists_each_id_with_its_one_name() -> Result {
-    let listed = outputs::outputs().map_err(|_| "outputs")?;
+    let listed = outputs::outputs();
     let (code, text, errors) = run(&["outputs"])?;
     assert_eq!(code, 0, "{errors}");
     let lines: Vec<_> = text.lines().collect();
@@ -106,7 +106,7 @@ fn outputs_lists_each_id_with_its_one_name() -> Result {
     let envelope: Value = serde_json::from_str(&json)?;
     assert_eq!(
         envelope["data"],
-        serde_json::to_value(outputs::list().map_err(|_| "outputs")?)?
+        serde_json::to_value(outputs::list())?
     );
     Ok(())
 }

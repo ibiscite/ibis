@@ -85,7 +85,7 @@ fn a_backup_restored_on_another_computer_finds_the_library_under_its_home() {
     let library = first.library();
     first.settings(
         STABLE,
-        &serde_json::json!({"library": {"bibtex": library}, "citation_style": "ieee", "update_checks": true,
+        &serde_json::json!({"library": {"bibtex": library}, "output": "ieee", "update_checks": true,
             "picker_windows": {"display-1": {"width": 600, "height": 400, "custom_size": true, "x": 1, "y": 2}}}),
     );
     let backup = first.file("Ibis settings.json");
@@ -116,7 +116,7 @@ fn a_backup_restored_on_another_computer_finds_the_library_under_its_home() {
     // Looking first changes nothing.
     let (code, stdout, stderr) = second.run(&["settings", "import", "--dry-run", &copied]);
     assert_eq!(code, 0, "{stderr}");
-    assert!(stdout.contains("Citation style: default → ieee"), "{stdout}");
+    assert!(stdout.contains("Default format: default → ieee"), "{stdout}");
     assert!(stdout.contains("Library: default → refs.bib"), "{stdout}");
     assert!(stdout.contains("Nothing changed"), "{stdout}");
     assert_eq!(std::fs::read_to_string(second.settings_path(STABLE)).unwrap(), before);
@@ -132,10 +132,10 @@ fn a_backup_restored_on_another_computer_finds_the_library_under_its_home() {
         .iter()
         .map(|c| c["setting"].clone())
         .collect();
-    assert_eq!(settings, ["citation_style", "density", "library"]);
+    assert_eq!(settings, ["density", "library", "output"]);
     assert!(!stdout.contains(&*first.root.to_string_lossy()) && !stdout.contains(&*second.root.to_string_lossy()));
     let saved = second.saved(STABLE);
-    assert_eq!(saved["citation_style"], "ieee");
+    assert_eq!(saved["output"], "ieee");
     assert_eq!(
         saved["update_checks"], false,
         "the update question stays this computer's"

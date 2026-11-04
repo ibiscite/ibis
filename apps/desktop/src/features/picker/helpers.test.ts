@@ -2,7 +2,8 @@ import { expect, test } from "vitest";
 import type React from "react";
 import type { SearchResult } from "../../api";
 import pickerConflicts from "../../testing/picker-shortcut-conflicts.json";
-import { choiceKey, choiceName, idKey, sameLibrary, styleOf } from "./choice";
+import { choiceKey, idKey, sameLibrary } from "./choice";
+import { outputName, styleOf } from "../../format/outputs";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
 import { commandFor, isFormatShortcut, isKeysShortcut, isMenuShortcut, isPinShortcut, isQuitShortcut } from "./shortcuts";
 
@@ -19,11 +20,11 @@ test.each(pickerConflicts)("the refused $name event belongs to its picker comman
   }
 });
 
-test("a choice names a key format or a citation style", () => {
+test("an output id names a key format or a citation style", () => {
   expect(styleOf("pandoc")).toBeNull();
-  expect(styleOf("style:apa")).toBe("apa");
-  expect(choiceName("style:apa")).toBe("APA");
-  expect(choiceName("pandoc")).toBeTruthy();
+  expect(styleOf("apa")).toBe("apa");
+  expect(outputName("apa")).toBe("APA");
+  expect(outputName("pandoc")).toBe("Pandoc");
 });
 
 test("selection identity is the record, not its key or position", () => {

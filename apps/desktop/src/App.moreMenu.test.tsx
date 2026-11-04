@@ -34,11 +34,11 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
 
 test("the native preferences smoke can virtually open Copy as and choose Typst with the keyboard", async () => {
   const saved: unknown[] = [];
-  backend({ set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });
+  backend({ set_picker_preferences: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
   await screen.findByText("No matching references");
-  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc key · Default" });
+  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc · Default" });
   expect(button.tagName).toBe("BUTTON");
   expect(button.type).toBe("button");
   expect(button.disabled).toBe(false);
@@ -47,13 +47,13 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   act(() => button.click());
   const filter = await screen.findByRole("searchbox");
   fireEvent.change(filter, { target: { value: "Typst" } });
-  await screen.findByRole("menuitemradio", { name: "Typst key" });
+  await screen.findByRole("menuitemradio", { name: "Typst" });
   fireEvent.keyDown(filter, { key: "ArrowDown" });
   const choice = document.activeElement!;
   fireEvent.keyDown(choice, { key: "Enter" });
   fireEvent.keyUp(choice, { key: "Enter" });
   await waitFor(() => expect(saved).toEqual(["typst"]));
-  expect(await screen.findByRole("button", { name: "Copy as Typst key · Default" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Copy as Typst · Default" })).toBeTruthy();
 });
 
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {

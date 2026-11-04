@@ -28,8 +28,8 @@ it("aborts only the numbered preview and removes abort listeners after completio
   vi.mocked(invoke).mockClear().mockImplementation(() => new Promise((resolve) => pending.push(() => resolve([]))));
   const old = new AbortController();
   const current = new AbortController();
-  const first = previewFileCitation([], "pandoc", null, "synthetic", old.signal);
-  const second = previewFileCitation([], "pandoc", null, "synthetic", current.signal);
+  const first = previewFileCitation([], "pandoc", "synthetic", old.signal);
+  const second = previewFileCitation([], "pandoc", "synthetic", current.signal);
   const calls = vi.mocked(invoke).mock.calls;
   const firstIntent = (calls[0]![1] as { intent: object }).intent;
   const secondIntent = (calls[1]![1] as { intent: { request: number } }).intent;

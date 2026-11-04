@@ -1,5 +1,5 @@
-import { choiceName, copyLabel, styleOf, type Choice } from "./choice";
-import { copiesEntry } from "../../format/styles";
+import { copyLabel } from "./choice";
+import { outputName, writesEntries, type OutputId } from "../../format/outputs";
 import { pickerText } from "../../messages";
 
 /** Whether Enter pastes rather than copies. The footer and the keys sheet both ask this. */
@@ -8,11 +8,10 @@ export function enterPastes(app: string | null, canPaste: boolean, stayOpen: boo
 }
 
 /** One phrase for the action and the output. Numeric styles still name entries. */
-export function enterLabel(format: Choice, count: number, app: string | null, canPaste: boolean, stayOpen: boolean, pastedList: boolean) {
-  const style = styleOf(format);
-  const entries = style !== null && copiesEntry(style);
-  const output = entries ? pickerText.entryOutput(choiceName(format), count) : choiceName(format);
+export function enterLabel(format: OutputId, count: number, app: string | null, canPaste: boolean, stayOpen: boolean, pastedList: boolean) {
+  const entries = writesEntries(format);
+  const output = entries ? pickerText.entryOutput(outputName(format), count) : outputName(format);
   if (enterPastes(app, canPaste, stayOpen)) return pickerText.pasteInto(app, output);
   if (entries) return copyLabel(format, count);
-  return pastedList ? `${pickerText.copyCitations(count)} · ${choiceName(format)}` : copyLabel(format, count);
+  return pastedList ? `${pickerText.copyCitations(count)} · ${outputName(format)}` : copyLabel(format, count);
 }

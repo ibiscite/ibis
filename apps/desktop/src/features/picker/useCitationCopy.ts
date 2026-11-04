@@ -4,7 +4,7 @@ import type { SessionState, SessionView } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
 import type { useOperations } from "./useOperations";
-import type { Choice } from "./choice";
+import type { OutputId } from "../../format/outputs";
 import type { MenuCloseReason } from "../../ui/ToolbarMenu";
 
 export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, view, setFormatOpen }: {
@@ -34,7 +34,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
         output: destination.copyToken() } });
   });
   const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
-  const chooseFormat = (choice: Choice) => {
+  const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });
   };

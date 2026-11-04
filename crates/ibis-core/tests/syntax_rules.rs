@@ -12,7 +12,7 @@ fn seed() -> GoldenCase {
     serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap()
 }
 
-/// An old `KeyFormat`, as the key syntax and command listed in `syntax::CAPABILITIES`.
+/// A key output, as the key syntax and command listed in `syntax::CAPABILITIES`.
 type Format = (KeySyntax, Option<&'static str>);
 const PANDOC: Format = (KeySyntax::Pandoc, None);
 const AUTOCITE: Format = (KeySyntax::Biblatex, Some("autocite"));

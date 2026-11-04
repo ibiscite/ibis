@@ -16,7 +16,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     const copy = vi.fn(() => ({ text, warnings: [] }));
     const calls = backend({
       library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false, name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
-      picker_preferences: () => ({ citation_style: style, density: "comfortable", larger_text: false }),
+      picker_preferences: () => ({ output: style ?? "pandoc", density: "comfortable", larger_text: false }),
       search: ({ query }) => query.text ? [{ ...result("demo", "Synthetic research"), id, source: id.library, cite }] : [],
       preview_file_citation: preview,
       copy_file_citation: copy,
@@ -30,7 +30,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     expect(copy).not.toHaveBeenCalled();
     await act(async () => { finish({ spans: [], ticket: "native-receipt", content_hash: "b".repeat(64), text, html: style ? "(Researcher, 2026)" : null, warnings: [] }); });
     await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: null }));
-    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], style }));
+    expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], output: style ?? "pandoc" }));
     expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(1);
   });
 }

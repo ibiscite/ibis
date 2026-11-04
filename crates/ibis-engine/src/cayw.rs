@@ -68,8 +68,6 @@ pub struct CaywPick {
     pub form: CitationForm,
     /// Also put the citation on the clipboard.
     pub clipboard: bool,
-    /// The format's name for the picker to show; fixed text, never the request's.
-    pub label: &'static str,
 }
 
 impl CaywPick {
@@ -246,13 +244,8 @@ fn options(query: &str) -> Result<CaywRequest, Refusal> {
     if probe {
         return Ok(CaywRequest::Probe);
     }
-    let (output, form, label) = output(format.as_deref().unwrap_or("pandoc"), command.as_deref(), brackets)?;
-    Ok(CaywRequest::Pick(CaywPick {
-        output,
-        form,
-        clipboard,
-        label,
-    }))
+    let (output, form) = output(format.as_deref().unwrap_or("pandoc"), command.as_deref(), brackets)?;
+    Ok(CaywRequest::Pick(CaywPick { output, form, clipboard }))
 }
 
 fn key(syntax: KeySyntax, command: Option<&str>) -> CaywOutput {
@@ -268,38 +261,38 @@ fn output(
     format: &str,
     command: Option<&str>,
     brackets: bool,
-) -> Result<(CaywOutput, CitationForm, &'static str), Refusal> {
+) -> Result<(CaywOutput, CitationForm), Refusal> {
     use CitationForm::{BibliographyOnly, Narrative, Normal};
-    let no_command = |result: (CaywOutput, CitationForm, &'static str)| match command {
+    let no_command = |result: (CaywOutput, CitationForm)| match command {
         None | Some("") => Ok(result),
         Some(_) => Err(Refusal::Format),
     };
     match format {
-        "pandoc" => no_command((key(KeySyntax::Pandoc, (!brackets).then_some("bare")), Normal, "Pandoc")),
+        "pandoc" => no_command((key(KeySyntax::Pandoc, (!brackets).then_some("bare")), Normal)),
         "biblatex" => match command {
-            None | Some("" | "autocite") => Ok((key(KeySyntax::Biblatex, Some("autocite")), Normal, "BibLaTeX")),
+            None | Some("" | "autocite") => Ok((key(KeySyntax::Biblatex, Some("autocite")), Normal)),
             Some(command @ ("parencite" | "textcite")) => {
-                Ok((key(KeySyntax::Biblatex, Some(command)), Normal, "BibLaTeX"))
+                Ok((key(KeySyntax::Biblatex, Some(command)), Normal))
             }
-            Some("cite") => Ok((key(KeySyntax::Latex, Some("cite")), Normal, "LaTeX")),
+            Some("cite") => Ok((key(KeySyntax::Latex, Some("cite")), Normal)),
             Some(_) => Err(Refusal::Format),
         },
         "natbib" => match command {
-            None | Some("" | "cite") => Ok((key(KeySyntax::Latex, Some("cite")), Normal, "natbib")),
-            Some("citep") => Ok((key(KeySyntax::Natbib, None), Normal, "natbib")),
-            Some("citet") => Ok((key(KeySyntax::Natbib, None), Narrative, "natbib")),
+            None | Some("" | "cite") => Ok((key(KeySyntax::Latex, Some("cite")), Normal)),
+            Some("citep") => Ok((key(KeySyntax::Natbib, None), Normal)),
+            Some("citet") => Ok((key(KeySyntax::Natbib, None), Narrative)),
             Some(_) => Err(Refusal::Format),
         },
-        "latex" | "cite" => no_command((key(KeySyntax::Latex, Some("cite")), Normal, "LaTeX")),
-        "citep" => no_command((key(KeySyntax::Natbib, None), Normal, "natbib")),
-        "citet" => no_command((key(KeySyntax::Natbib, None), Narrative, "natbib")),
-        "typst" => no_command((key(KeySyntax::Typst, None), Normal, "Typst")),
-        "mmd" => no_command((key(KeySyntax::MultiMarkdown, None), Normal, "MultiMarkdown")),
-        "asciidoctor-bibtex" => no_command((key(KeySyntax::AsciiDoc, None), Normal, "AsciiDoc")),
-        "jupyter" => no_command((key(KeySyntax::Jupyter, None), Normal, "Jupyter")),
-        "json" => no_command((key(KeySyntax::CaywJson, None), Normal, "JSON")),
-        "formatted-citation" => no_command((CaywOutput::Style, Normal, "Formatted citation")),
-        "formatted-bibliography" => no_command((CaywOutput::Style, BibliographyOnly, "Formatted bibliography")),
+        "latex" | "cite" => no_command((key(KeySyntax::Latex, Some("cite")), Normal)),
+        "citep" => no_command((key(KeySyntax::Natbib, None), Normal)),
+        "citet" => no_command((key(KeySyntax::Natbib, None), Narrative)),
+        "typst" => no_command((key(KeySyntax::Typst, None), Normal)),
+        "mmd" => no_command((key(KeySyntax::MultiMarkdown, None), Normal)),
+        "asciidoctor-bibtex" => no_command((key(KeySyntax::AsciiDoc, None), Normal)),
+        "jupyter" => no_command((key(KeySyntax::Jupyter, None), Normal)),
+        "json" => no_command((key(KeySyntax::CaywJson, None), Normal)),
+        "formatted-citation" => no_command((CaywOutput::Style, Normal)),
+        "formatted-bibliography" => no_command((CaywOutput::Style, BibliographyOnly)),
         _ => Err(Refusal::Format),
     }
 }
@@ -583,7 +576,7 @@ mod tests {
         for query in ["?format=%", "?format=%zz", "?format=%ff", "?format=%0a"] {
             assert_eq!(request(query), Err(Refusal::Malformed), "{query}");
         }
-        assert_eq!(pick("?format=%70andoc").label, "Pandoc");
+        assert_eq!(pick("?format=%70andoc"), pick("?format=pandoc"));
     }
 
     #[test]

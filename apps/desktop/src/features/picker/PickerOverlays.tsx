@@ -10,15 +10,15 @@ import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";
 import type { PickerApi } from "../../App";
-import type { StyleId } from "../../format/styles";
+import { defaultStyle, type OutputId } from "../../format/outputs";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { KeyBinding } from "../../keys";
 
 export function PickerOverlays({ api, style, menus, bindings }: {
   api: PickerApi;
-  /** The output's style; a key output has none, so its bibliography uses APA. */
-  style: StyleId | null;
+  /** The output's style; a key output has none, so its bibliography uses the default style. */
+  style: OutputId | null;
   menus: ReturnType<typeof usePickerMenus>;
   bindings: readonly KeyBinding[];
 }) {
@@ -26,7 +26,7 @@ export function PickerOverlays({ api, style, menus, bindings }: {
   return <>
     {menus.keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} />}
     {menus.sessionOpen && sessionReferences && editSessionReferences && sessionBibliography && copySessionBibliography && exportSessionBibliography
-      && <SessionReferencesDialog style={style ?? "apa"} onClose={menus.closeSession}
+      && <SessionReferencesDialog style={style ?? defaultStyle} onClose={menus.closeSession}
         api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
   </>;
 }

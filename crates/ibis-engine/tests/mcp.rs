@@ -160,7 +160,6 @@ fn cite_offers_exactly_the_engines_outputs() {
     let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
     // Every listed output but those that export whole records, in the list's order.
     let listed: Vec<_> = ibis_engine::outputs::outputs()
-        .unwrap()
         .iter()
         .filter(|output| !output.exports_records)
         .map(|output| output.id.as_str())

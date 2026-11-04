@@ -3,7 +3,8 @@ import { useEffect, useLayoutEffect } from "react";
 import { pickerText } from "./messages";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
-import { choiceKey, styleOf } from "./features/picker/choice";
+import { choiceKey } from "./features/picker/choice";
+import { styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
@@ -52,7 +53,7 @@ import { useInterfaceMessages } from "./i18n";
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
+  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
   Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "projectStatus" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
@@ -85,7 +86,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { density, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
-    fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report,
+    fallback: preferences.format, chooseDefault: preferences.chooseFormat, report,
   });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);

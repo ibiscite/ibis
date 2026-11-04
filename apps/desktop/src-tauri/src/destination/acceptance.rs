@@ -37,33 +37,28 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
         system: System::Macos,
         id: "TeXShop".into(),
     };
+    let default = crate::output::stored(None);
     let mut cases = vec![
-        (automatic(&word, None).ok_or("Word output")?, "(Researcher, 2026)"),
-        (automatic(&tex, None).ok_or("TeX output")?, "\\autocite{demo}"),
+        (automatic(&word, default).ok_or("Word output")?, "(Researcher, 2026)".to_owned()),
+        (automatic(&tex, default).ok_or("TeX output")?, "\\autocite{demo}".to_owned()),
     ];
-    cases.extend([
-        (AppOutput::Key(KeyFormat::Cite), "\\cite{demo}"),
-        (AppOutput::Key(KeyFormat::Autocite), "\\autocite{demo}"),
-        (AppOutput::Key(KeyFormat::Parencite), "\\parencite{demo}"),
-        (AppOutput::Key(KeyFormat::Textcite), "\\textcite{demo}"),
-        (AppOutput::Key(KeyFormat::Pandoc), "[@demo]"),
-        (AppOutput::Key(KeyFormat::Typst), "@demo"),
-        (AppOutput::Key(KeyFormat::Keys), "demo"),
-    ]);
+    // Every key output the engine lists, remembered, writes its own example.
+    cases.extend(ibis_engine::outputs::outputs().iter().filter_map(|output| {
+        let example = output.example.as_ref().filter(|_| matches!(output.output, OutputSpec::Key { .. }))?;
+        Some((crate::output::listed(&output.id)?, example.replace("key", "demo")))
+    }));
+    assert!(cases.len() > 10, "every key output");
     for (output, expected) in cases {
         memory.set(&browser, Some(output))?;
         let reopened = AppMemory::open(memory_path.clone());
         assert_eq!(reopened.get(&browser), (Some(output), false));
-        let (format, style) = match reopened.get(&browser).0.ok_or("remembered output")? {
-            AppOutput::Key(format) => (format, None),
-            AppOutput::Style(style) => (KeyFormat::Pandoc, Some(style)),
-        };
+        let remembered = reopened.get(&browser).0.ok_or("remembered output")?;
         let selection: FileSelection =
             serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
         let preview = file
-            .preview(file.reserve_preview(), vec![selection], format, style)
+            .preview(file.reserve_preview(), vec![selection], remembered.id())
             .map_err(|_| "native preview")?;
-        assert_eq!(preview.text, expected);
+        assert_eq!(preview.text, expected, "{output:?}");
         let mut writes = 0;
         let copied = file
             .copy(&preview.ticket, &preview.content_hash, |content| {

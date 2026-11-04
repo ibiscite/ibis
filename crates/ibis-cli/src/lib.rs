@@ -1293,8 +1293,7 @@ fn output_name(output: &OutputSpec) -> String {
 fn output_ids() -> clap::builder::PossibleValuesParser {
     clap::builder::PossibleValuesParser::new(
         ibis_engine::outputs::outputs()
-            .into_iter()
-            .flatten()
+            .iter()
             .map(|output| clap::builder::PossibleValue::new(output.id.as_str()).help(output.name.as_str())),
     )
 }

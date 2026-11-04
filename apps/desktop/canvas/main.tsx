@@ -7,6 +7,7 @@ import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
 import { useAppearance } from "../src/ui/appearance";
 import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
+import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 import { SettingsApp } from "../src/settings/SettingsApp";
@@ -84,7 +85,8 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   return {
     libraryStatus: async () => library,
     search: async (query) => ({ revision: "1", results: query && !fixture ? shown : [] }),
-    previewFileCitation: async (items, _format, style) => {
+    previewFileCitation: async (items, output) => {
+      const style = isStyle(output);
       const ticket = `synthetic-ticket-${++sequence}`;
       const spans = items.flatMap((item, index) => [
         ...(index ? [{ item: null, text: "; " }] : []),
@@ -100,7 +102,6 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
       if (text === undefined) throw new Error("Unknown synthetic preview");
       return { text, warnings: [] };
     },
-    copyFormat: async () => (await settings.pickerPreferences()).copy_format ?? "pandoc",
     pickerPreferences: settings.pickerPreferences, setPickerPreferences: settings.setPickerPreferences,
     shortcutStatus: settings.shortcutStatus, onShortcutStatus: settings.onShortcutStatus,
     onPreferencesChanged: async (changed) => settings.onPreferencesChanged(() => changed(null)),
@@ -248,7 +249,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
-  void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
+  void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, 0);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);

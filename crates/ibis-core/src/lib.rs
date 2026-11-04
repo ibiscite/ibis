@@ -1,7 +1,6 @@
 //! Shared contracts and pure rules for sources, search and citation output.
 
 pub mod citable;
-pub mod cite;
 pub mod contract;
 pub mod destination;
 pub mod find;
