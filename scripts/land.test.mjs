@@ -21,7 +21,9 @@ case "$1" in
   push) exit "$PUSH_STATUS" ;;
 esac`,
     gh: `printf 'gh %s\\n' "$*" >> "$CALLS"
-if [ "$1" = api ] && [ "$2" != -X ]; then echo "$PR_NUMBER"
+if [ "$1" = api ] && [ "$2" != -X ]; then
+  [ "$LOOKUP_STATUS" = 0 ] || exit "$LOOKUP_STATUS"
+  echo "$PR_NUMBER"
 elif [ "$*" = 'pr merge 42 --squash --auto' ]; then exit "$MERGE_STATUS"
 else echo 'unsupported GitHub command' >&2; exit 44
 fi`,
@@ -31,7 +33,7 @@ fi`,
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
       cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", PUSH_STATUS: "0", PR_NUMBER: "42", MERGE_STATUS: "0", ...overrides },
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", ...overrides },
     });
     return { ...result, calls: readFileSync(calls, "utf8").trim().split("\n") };
   };
@@ -64,6 +66,9 @@ test("landing preserves GitHub failures and explains a branch without a PR", { s
   const failed = run({ MERGE_STATUS: "74" });
   assert.equal(failed.status, 74);
   assert.doesNotMatch(failed.stdout, /merges itself/);
+  const unavailable = run({ LOOKUP_STATUS: "75" });
+  assert.equal(unavailable.status, 75);
+  assert.doesNotMatch(unavailable.stdout, /Open its pull request|merges itself/);
   for (const number of ["", "null"]) {
     const missing = run({ PR_NUMBER: number });
     assert.equal(missing.status, 0, missing.stderr);

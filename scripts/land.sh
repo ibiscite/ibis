@@ -35,7 +35,7 @@ fi
 [ -z "$scripts" ] || node --test scripts/*.test.mjs
 
 git push -q -u origin "$branch"
-pr=$(gh api "repos/{owner}/{repo}/pulls?head={owner}:$branch&state=open" --jq '.[0].number' 2>/dev/null || true)
+pr=$(gh api "repos/{owner}/{repo}/pulls?head={owner}:$branch&state=open" --jq '.[0].number')
 if [ -n "$pr" ] && [ "$pr" != null ]; then
   gh pr merge "$pr" --squash --auto && echo "Pushed; #$pr merges itself on a green CI result."
 else
