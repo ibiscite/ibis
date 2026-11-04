@@ -5,6 +5,7 @@ import { STYLE_NAMES, type StyleId } from "../../format/styles";
 import { sessionText } from "../../messages";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
+import { useLayer } from "../../ui/layers";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
 import "../../ui/Overlay.css";
@@ -32,6 +33,8 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const listing = useRef(0);
   const formatting = useRef(0);
   useEffect(() => { dialog.current?.focus(); }, []);
+  // Esc, a hide and any command that clears the way close it, like every sheet.
+  useLayer("sheet", true, () => onClose());
   // A removed row takes its focused button with it. The sheet keeps the keyboard,
   // or the next key would act on the picker behind it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: each new answer can remove the focused control.
@@ -80,11 +83,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     <div ref={dialog} role="dialog" aria-modal="true" tabIndex={-1} aria-labelledby="session-title" aria-describedby="session-about"
       className="keys-dialog session-dialog ui-overlay ui-sheet"
       onKeyDown={(e) => {
-        e.stopPropagation();
-        if (e.key === "Escape") {
-          e.preventDefault();
-          onClose();
-        } else if (e.key === "Tab") {
+        if (e.key === "Tab") {
           const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button:not([disabled]), [tabindex='0']") ?? [])];
           const at = focusable.indexOf(document.activeElement as HTMLElement);
           e.preventDefault();

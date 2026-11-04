@@ -79,7 +79,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                 let mut record = Record {
                     added_at: None,
                     id: ItemRef {
-                        library: LibraryId::file(b"synthetic-depth-fixture"),
+                        library: LibraryId::digest(b"synthetic-depth-fixture"),
                         key: if mode == 3 { "".into() } else { "work".into() },
                     },
                     csl: BTreeMap::new(),
@@ -94,7 +94,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                     objects.push(LibraryObject::Record(Record {
                         added_at: None,
                         id: ItemRef {
-                            library: LibraryId::file(b"synthetic-depth-fixture"),
+                            library: LibraryId::digest(b"synthetic-depth-fixture"),
                             key: "work".into(),
                         },
                         csl: BTreeMap::new(),

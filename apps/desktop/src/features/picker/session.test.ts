@@ -365,7 +365,7 @@ test("short selected text opens as a search that lasts one opening", () => {
   s.send({ type: "hidden", now: 0 });
   s.send({ type: "preparing", now: 10, selection: "smith 2020" });
   s.send({ type: "shown", now: 11, presentation: 1 });
-  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, restored: 1 });
+  expect(s.state).toMatchObject({ query: "smith 2020", fromDocument: true, selectAll: 1 });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: null });
   s.send({ type: "shown", now: 31, presentation: 2 });
@@ -404,7 +404,7 @@ test("Escape clears document text for good: it never comes back as a search", ()
   const s = scenario();
   s.send({ type: "preparing", now: 10, selection: "smith 2020" });
   s.send({ type: "escape-search" });
-  expect(s.state).toMatchObject({ query: "", escapedQuery: null, fromDocument: false });
+  expect(s.state).toMatchObject({ query: "", fromDocument: false });
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30, selection: null });
   expect(s.state.query).toBe("");

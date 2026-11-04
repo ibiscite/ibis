@@ -11,6 +11,7 @@ pub mod request;
 pub mod rpc;
 
 mod service;
+pub use ibis_sources::identity;
 pub use service::*;
 
 /// The most references one citation or bibliography can hold.

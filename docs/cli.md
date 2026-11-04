@@ -35,7 +35,10 @@ Each run reads the libraries you name and nothing else:
 
 Library options may come before or after the command; they add up in that order and
 duplicates are ignored. Reading never writes to a library, and one-shot commands
-watch no files. Library IDs in the output are opaque digests, never paths.
+watch no files. Library IDs in the output are opaque tokens: they say nothing about
+the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
+and last across runs on one computer, thanks to a private key Ibis saves once in its
+configuration folder. That key is the only file the command writes.
 
 When you name no library, `search`, `show`, `cite` and `libraries` read the one chosen
 in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
@@ -59,7 +62,7 @@ it stays a usage error (exit 2), so a script that forgets its command fails loud
 | `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The loaded libraries, their item counts and typed source warnings. |
-| `styles` | The bundled CSL styles. |
+| `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
 | `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |

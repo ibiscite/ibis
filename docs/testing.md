@@ -4,9 +4,8 @@ Test the whole task: summon Ibis, find references, choose an output, deliver it
 and keep writing. Vary the destination, settings and person using it. Every
 failure should leave a replay and a smaller regression.
 
-The maintainer approved this direction on 2026-10-28. This inventory describes
-the checks in this checkout; it does not certify a passing run. Behaviour comes
-from [design](design.md), limits from [architecture](architecture.md#desktop-app),
+This inventory describes the checks in this checkout; it does not certify a
+passing run. Behaviour comes from [design](design.md), limits from [architecture](architecture.md#desktop-app),
 and review rules from [AGENTS.md](../AGENTS.md).
 
 There is no budget for paid services. Default destinations are LibreOffice,
@@ -16,9 +15,7 @@ self-hosted machines, plus existing Linux CI. Agent personas use Codex on the
 maintainer's Mac within existing access, with no additional model spend.
 Office licences, paid accounts, paid runners and paid model/API use are
 optional extensions; none blocks the baseline plan or its release checks.
-
-2026-10-30: Run current Windows qualification on GitHub runners without waiting
-for a local Windows Ibis project; existing release gates remain.
+Windows qualification runs on GitHub runners.
 
 ## What exists
 
@@ -58,15 +55,12 @@ for a local Windows Ibis project; existing release gates remain.
   empty Notepad document, sends one Ctrl+V and reads its focused text. This
   bypasses the picker and citation preparation. Explicit OS denial of
   foreground permission can skip it; a green job alone cannot prove insertion.
-- **CI artifacts and budgets:** [PR CI](../.github/workflows/ci.yml) runs
-  applicable Rust/interface checks and Linux native smoke. The
+- **CI artifacts and budgets:** see [where checks run](#where-checks-run). The
   [Preview workflow](../.github/workflows/preview.yml) has startup screenshots,
   offline observation and package checks across the three systems; it skips
   startup capture on Intel macOS. Screenshot failure can be only a warning;
-  there are no reviewed visual comparisons. Linux release-mode gates enforce
-  engine search in PR CI and open/refresh in nightly/release builds; PR builds
-  also gate picker asset size. The native resource validator exists, but
-  requires measurements from named release machines.
+  there are no reviewed visual comparisons. The native resource validator
+  exists, but requires measurements from named release machines.
 - [Release download counts](../.github/workflows/release-counts.yml) snapshots
   public `stable` asset counters weekly into `stats:counts.csv`: UTC date, asset
   name, `download_count`, asset `updated_at`. These are rough estimates without
@@ -74,7 +68,7 @@ for a local Windows Ibis project; existing release gates remain.
   timestamps, no manifest download, formula-name refusal, CSV validation,
   append-only rows, weekly deduplication and API/ref failures and races.
 
-Run commands are in [AGENTS.md](../AGENTS.md); setup is in
+`node scripts/check.mjs` runs what CI would for a branch's changes; setup is in
 [CONTRIBUTING.md](../CONTRIBUTING.md). A test definition, screenshot or build
 result establishes only what its assertions and retained evidence show.
 
@@ -87,107 +81,36 @@ deadlines; ambiguity, changed ownership and uncertain input fail without another
 reopen or activation. Helper reports contain fixed stages and counts, never
 window text, private paths or native exception text.
 
-Run 41130217340 used the merged observation retries. Its supplied `update4.log`
-establishes:
+What each platform's offer turned out to be, from the update runs of October 2026:
 
-| Platform | Evidence and cause |
+| Platform | What the harness must do |
 |---|---|
-| Linux | Lines 1006–1030 prove one visible, focused native offer from 31.985 through 184.968 seconds. Lines 1036–1045 report a complete fresh AT-SPI scan with zero offer/action matches. Presentation works; this accessibility provider does not expose the native dialog. More cache invalidation or retries cannot establish an action that is absent from that tree. Qualification now uses the smoke harness's exact X11 title, PID, managed-client and native-focus checks, re-enumerates the same window identity, and deliberately activates the Install control in that XID (see the keyboard-safety update below). Replacement and restart must still follow. |
-| macOS | Lines 383–398 show `cg-window-title` failing persistently from 33.441 through 184.547 seconds; `code: null` comes from the harness's own missing-name assertion. Two CG windows are counted, but the picker/offer counts were assigned only after the loop, so zero counts do **not** prove either window disappeared. AX still sees one window without errors (426–434). The product parents its offer; locked `rfd 0.16.0` uses `beginSheetModalForWindow` and sets the alert's **message text**, not its window title. An anonymous sheet is therefore expected. The harness now ignores unnamed CG auxiliaries for identity, proves the visible picker separately, and enumerates owned AX sheets and separate windows by exact alert heading and button. It rechecks native focus and CF element identity before one AXPress. The original log cannot identify which of the two CG windows lacked a name. |
-| Windows | Lines 180–190 report seven owned native windows, **zero** offer captions, and one visible foreground picker, without census errors. This is a genuinely absent offer, not UIA hiding an existing native dialog. Lines 212–216 record successful availability. The product's remaining automatic presentation conditions are visibility, focus, the still-enabled choice, and a free chooser lease. The seeded choice stays enabled and no harness action acquires a chooser. The locked runtime reveals a focus defect: single-webview `IsFocused` reads Tao's top-level `is_active && is_focused` cache, which `WM_KILLFOCUS` clears when focus moves into WebView2; WebView2's separate focus events do not repair that cache. The harness proves exactly that foreground-with-focused-Search state. The updater now compares the foreground HWND with its exact picker HWND. The old log has no internal focus/lease sample; this source-based diagnosis still needs a rebuilt Windows nightly to verify. |
+| Linux | AT-SPI does not expose the native dialog. Qualification uses the smoke harness's exact X11 title, PID, managed-client and native-focus checks, re-enumerates the same window identity and activates the verified Install control in that XID. |
+| macOS | `rfd` sets the alert's message text, not a window title, so an anonymous parented sheet is expected. The harness ignores unnamed CG auxiliaries for identity, proves the visible picker separately, searches `AXSheets`, `AXWindows` and the picker's `AXChildren` for the exact heading and button, deduplicates native identities, and rechecks native focus and CF element identity before one AXPress. |
+| Windows | TaskDialog actions can be virtual, with no Button HWND. After UIA resolves and rechecks the exact Install label, ownership, ancestry, enabled/visible state and identities, the harness invokes it or sends one bounded `TDM_CLICK_BUTTON` for ID 1008 to the verified foreground dialog. An uncertain send is terminal. Tao's focus cache is cleared when focus moves into WebView2, so the updater compares the foreground HWND with its exact picker HWND. |
 
-The supplied `update2.log` for run 41107965372 contains only Windows and Linux
-jobs (446 and 778 lines). It supplies no passing macOS observation or action
-record, so a passing-Mac comparison cannot be reconstructed from that file.
+No extra Show, hide, explicit update check or invocation retry is used: turning
+an automatic check into an explicit one would change the qualified outcome. The
+harness never types or seeds a query, and the empty-input and 1.5-second idle
+rule stays. A product fix cannot repair an already-built previous nightly, so a
+native rerun needs a previous nightly that contains it.
 
-No extra Show, hide, explicit update check, or invocation retry is used. The
-Windows product focus fix cannot repair the already-built previous nightly;
-a native rerun must use a previous nightly containing that fix. Turning an
-automatic check into an explicit one would change the qualified outcome.
+The library check requires exactly one string-valued `bibtex` member naming the
+same existing regular file by native file identity, because startup canonicalizes
+the saved path (macOS's `/var` alias, Windows's `\\?\` prefix). The shortcut
+matches exactly. Other files, missing or unreadable identity, relative paths and
+malformed choices fail immediately without raw values in diagnostics.
 
 Run `update-e2e.py --self-test`, the native provider model tests, and focused
 workflow/feed tests before a native rerun. The Windows provider model requires
 `pwsh`; a skipped provider contract is not Windows evidence. The models prove
 refusal, I/O failure, delayed A after B, close/reopen, and one attempted action;
-only installed runs establish replacement/restart across the three systems.
-
-Local worker validation on 2026-10-30: 64 qualifier self-tests passed (the
-PowerShell provider test skipped because `pwsh` is absent), all 46 focused
-workflow/feed/macOS provider tests and all nine Rust offer tests passed, as did
-desktop Clippy and formatting. The full desktop run had 349 passes, nine
-sandbox-denied socket binds, one unchanged AppKit HTML decoder failure, and
-three ignored tests. Native reruns, the missing passing-Mac log, and independent
-review of the updater change remain outstanding. The full script runner also
-invokes Git and is outside this worker's no-Git boundary.
-
-Run 41165132554 qualified `0.2.3-nightly.20261031022408` against
-`0.2.3-nightly.20261031025230`. The maintainer reports the first complete Linux
-pass. The supplied `update5.log` contains the Windows and macOS failures:
-
-| Platform | Evidence and cause |
-|---|---|
-| Windows | Lines 154–183 prove a focused offer, one matching action, no InvokePattern and **no attempted activation**; 194–196 independently prove the visible foreground native offer. The failure is in the harness's activation fallback, after #1504's presentation fix worked. Source already selected the exact Install label and custom ID 1008 (Later is first, Install second); changing button order again would not fix it. The old fallback required a physical native Button HWND. TaskDialog actions can be virtual, so qualification now sends one bounded `TDM_CLICK_BUTTON` for ID 1008 to the verified foreground dialog when InvokePattern is absent. UIA must first resolve and recheck the exact Install label, ownership, ancestry, enabled/visible state and immutable identities. An uncertain send remains terminal; replacement and restart still prove its outcome. The log does not retain the particular failed Win32 observation. |
-| macOS | Lines 466–470 prove one successful automatic check for the expected version, with no failed check. At 33.262 seconds the census changes to three CG windows, one unnamed, and loses picker focus through 184.089 seconds, while still reporting zero sheets/actions (405–422). The observer only searched `AXSheets` and separate `AXWindows`, omitting attached sheets in the picker's standard `AXChildren` tree. Qualification now searches those children too, deduplicates native identities and retains parent/PID, heading, exact action, focus and final identity checks before one AXPress. This source/model diagnosis fits a missed focused sheet; the log has no AX hierarchy to prove that particular runtime representation. |
-
-The harness never types or seeds a query. No evidence here establishes a
-retained-query or idle-readiness product defect, so keep the empty-input and
-1.5-second idle rule and the product unchanged. Do not clear input, reopen
-again, force focus or issue an explicit check to repair automatic qualification.
-The child-only sheet and TaskDialog-action regressions failed before the fixes.
-The macOS model also uses Later as the initially focused first button, checks
-the same sheet exposed through multiple attributes, and refuses changed
-ownership, duplicate child sheets, failed child I/O and close/reopen before
-activation. The Windows provider model runs the production native readiness
-and click code against an OS boundary model, including virtual actions with no
-Button HWND, refusal, timeout, changed ownership/focus and replacement.
-
-Local validation: 69 qualifier self-tests passed; the PowerShell provider
-contract skipped because `pwsh` is absent. All 51 focused workflow, feed,
-macOS-provider and idle-input tests passed with Node 24. Windows provider
-execution and installed Windows/macOS reruns remain necessary; model tests do
-not establish package replacement or restart. No product or workflow files
-changed, and no commits were made.
-
-Run 41167455728 reaches replacement and a live restarted process on macOS and
-Windows, then fails the synthetic library comparison (`update6.log`, lines 192
-and 420). This is a harness path-spelling defect. Its SHA-256 matches the local
-qualifier before this fix. The nightlies' timestamps identify sources
-`cdfca68bc467` (02:24:08 UTC) and `a40f5152cba8` (02:52:30 UTC). Both use the same
-`com.ibiscite.ibis.nightly` identifier, app-config settings location, schema 2
-and BibTeX enum shape. #1512 does not change `crates/ibis-core/src/settings.rs`;
-#1500 only adds defaulted, optional `picker_windows` geometry there.
-
-Both versions already canonicalize the library during startup and persist the
-captured read identity: `library/tasks.rs`'s `OpenIntent::Read.saves_choice`
-allows the write, and `s.library = Some(chosen)` (line 410 in both sources)
-saves `PreparedFileLoad::source_path`. This resolves macOS's `/var` directory
-alias and retains Windows's `\\?\` prefix. Linux's synthetic path keeps its
-spelling. The old verifier instead compared the entire library object with
-`{"bibtex": str(library)}`. It therefore rejected the same file even though
-the previous app could already have rewritten it before offering the update.
-No Settings window interaction, schema migration or restart-write wait is
-involved. The supplied log does not contain the saved path itself.
-
-Qualification now requires exactly one string-valued `bibtex` member naming
-the same existing regular file by native file identity. The shortcut still
-matches exactly. Other files, even with identical contents, missing or unreadable
-identity, relative paths and malformed choices fail immediately without raw
-values in diagnostics. No retry or environment library override masks a lost
-choice. Regressions cover canonical spelling, directory aliases, failed identity
-I/O and the final restart result. Installed macOS/Windows reruns remain required.
-
-Local validation: 74 qualifier self-tests passed; the PowerShell provider
-contract skipped because `pwsh` is absent. All 26 focused feed, macOS-provider
-and idle-input Node tests, 36 Rust settings tests and three settings-helper
-tests passed. Node 24 with `NODE_OPTIONS=` and `NODE_USE_SYSTEM_CA=0` resolved
-the sandbox's Node certificate startup failure. The full script runner was
-not run because it invokes Git, outside this worker's boundary.
+only installed runs establish replacement and restart across the three systems.
 
 ## Update consent keyboard safety
 
-PR #1504's foreground fix exposed a pre-existing consent hazard: Return meant
-for Search could accept an automatic update. The locked sources were checked
-locally, without changing dependencies:
+Return meant for Search must never accept an automatic update. The locked
+sources behave as follows:
 
 | Locked source | Keyboard behaviour and resulting implementation |
 |---|---|
@@ -207,54 +130,24 @@ Node keyboard regressions dispatch Enter through that monitor and a picker
 handler, cover held keys, composition, failed I/O and delayed A after B, and run
 on both Node 22 and 24. Rust offer tests cover unknown/busy input, typing during
 a check, obsolete tickets and fresh metadata after idle. The Linux-only ignored
-`gtk_offer_return_declines_and_explicit_install_button_accepts` test waits for
-mapping and GTK's focused-widget state within a two-second deadline per phase.
-On fresh dialogs it proves that Return/default activation cancels, Later stays
-the default even when Install is focused, and clicking the native Install button
-emits Accept. It does not invoke the answer callback or fabricate a response.
-The existing Linux native CI step runs it under Xvfb before the picker smoke.
-Real Tab/Space navigation remains covered by the managed XTEST fixture below.
-Source inspection and mocks do not replace installed native keyboard
-qualification on each platform.
+`gtk_offer_return_declines_and_explicit_install_button_accepts` test proves on
+fresh dialogs that Return/default activation cancels, Later stays the default
+even when Install is focused, and clicking the native Install button emits
+Accept. Linux native CI runs it under Xvfb before the picker smoke. Source
+inspection and mocks do not replace installed native keyboard qualification on
+each platform.
 
 The Linux qualifier builds `scripts/update-gtk-probe.c` as a private GTK module
-and loads it only in its owned test processes. It resolves the AppImage’s GTK
-symbols, reads the visible offer’s actual button label, response membership and
-focus, and publishes only bounded numeric facts on that exact X11 window. It
-never changes focus, defaults, responses or input. This avoids the documented
-AT-SPI omission. Missing observations share the existing action deadline;
-invalid ownership, ambiguous Install controls and exhausted navigation fail
-before Space. At most six Tabs navigate to a verified Install; Space is sent
-once and never retried. Like native picker smoke, input uses the XTEST server
-keyboard path after proving focus, rather than directed `XSendEvent` input via
-`xdotool --window`. The GTK fixture requires exactly one real Space press and
-release with `send_event` false before accepting an Install response. The Linux native CI step runs
-`update-gtk-probe.test.py` with `IBIS_GTK_CONTROL_TEST=1` under Xvfb/dbus: real GTK
-dialogs exercise both button orders and refusal when Install is absent. Each
-`--layout old|new|missing` invocation gets its own Xvfb server and D-Bus session;
-an exited window manager's root properties cannot carry into the next case.
-CI uses the distro `/usr/bin/python3`, forces `GDK_BACKEND=x11`, and checks the
-wrapper tools before launching. Inside the display, a bounded preflight checks
-the native tools, Python GI/GTK3 and its X11 backend, and the XTEST extension.
-Missing dependencies, a nonlocal DISPLAY or an unavailable display fail rather than skip.
-The real qualification still refuses a desktop with an existing window manager.
-Fixtures write bounded result files and wait for their own PID to exit, so
-accessibility services retaining inherited stdio cannot extend an EOF wait.
-A process regression covers that inherited-pipe failure without requiring GTK. The
-AppImage rerun remains necessary to verify loading against its bundled GTK.
-
-The supplied `ci-1504c.log`, lines 82–98, shows a live fixture PID timing out
-after the attempted activation. That rules out the earlier inherited-pipe
-explanation for that run: availability, dialog observation and display setup
-had already succeeded. The subsequent `ci-1504-d.log`, lines 85–107, records all
-three managed GTK fixtures passing, including real Tab/Space on the Later-first
-layout. Lines 124–127 instead show Cancel from the Rust test's unobserved
-`move-focus` signal on bare Xvfb. That test did not establish its intermediate
-focus state and kept using the same dialog after cancellation, although
-production closes it. This is evidence of a test assumption, not a broken
-person-facing Tab chain. The Rust test now uses the deterministic consent
-checks above; its revised Linux execution and the bundled AppImage still need
-native verification.
+and loads it only in its owned test processes. It reads the visible offer's
+actual button label, response membership and focus, and publishes only bounded
+numeric facts on that exact X11 window; it never changes focus, defaults,
+responses or input. Invalid ownership, ambiguous Install controls and exhausted
+navigation fail before Space. At most six Tabs navigate to a verified Install;
+Space is sent once and never retried, through the XTEST server keyboard path
+after proving focus. `update-gtk-probe.test.py` exercises real GTK dialogs for
+both button orders and refusal when Install is absent, each `--layout` with its
+own Xvfb server and D-Bus session. Missing dependencies, a nonlocal DISPLAY or
+an unavailable display fail rather than skip.
 
 ## Capability matrix
 
@@ -344,24 +237,9 @@ pass. Relative times are diagnostic, not replayed delays. Unsupported/older
 formats, malformed JSON and changed inputs receive a fixed refusal message.
 Unobserved environment values remain coverage gaps on replay.
 
-Later native/agent adapters extend this evidence to the full contract below;
-the current bundle does not certify these unobserved fields or attach the
-planned readback, minimized sequences and visual artifacts:
-
-- Run ID, scenario/invariant IDs and result: passed, product failure, harness
-  failure or unavailable, with a reason and any missing capabilities.
-- Exact revision, dirty-patch hash if any, app version, build/artifact hash,
-  target architecture and debug/release profile; harness version too.
-- Synthetic fixture hashes and generator version, including initial document
-  and settings; destination app, OS/build and native webview versions.
-- Locale, citation language, keyboard layout and input method; display count,
-  size, scale/DPI, text size, theme, contrast, motion and font configuration.
-- Seed and ordered actions with stable IDs and relative times. Record request
-  dispatch and completion order, including rejection and cancellation, so a
-  race can be replayed independently of wall-clock timing.
-- Expected/observed outcome and failed invariant; `null` on success. Give a
-  reason for unavailable fields or an unused seed. Attach the replay command,
-  minimized sequence and relevant readback, images or numeric measurements.
+Later native and agent adapters extend this evidence with destination, keyboard,
+display and input-method details, minimized sequences and readback. An unobserved
+field needs a stated reason; the current bundle does not certify any of them.
 
 Use invented libraries, documents, settings and accounts in disposable,
 isolated desktop sessions, one GUI worker per desktop. Never run discovery
@@ -397,16 +275,48 @@ Bound artifact size and retention; never publish `.local/`.
 Skipped, blocked and unsupported combinations stay visible in run results and
 this matrix, with a reason and follow-up issue. A fallback cannot pass the
 capability it replaced. Move a cell to tested only with linked passing evidence
-and its exact scope. Fixes to shared behaviour follow the design rules; risky
-changes still need an independent review of the final head under AGENTS.md.
+and its exact scope. Fixes to shared behaviour follow the design rules.
+
+Rules for native harnesses, each learned from a false result:
+
+- Settle synthetic native windows before launching Ibis. Accessibility focus does
+  not prove keyboard ownership.
+- On Linux, bind a unique managed window to its fixed fixture title and PID
+  before testing hints; a visible auxiliary of the same process is not enough.
+- Control generated sandboxed Mac test apps by verified PID. App lookups can hang
+  or relaunch them, so give helper processes deadlines.
+- Before a benchmark, declare what makes a baseline valid and use a counterbalanced
+  order. Keep every result and reject comparisons with unexplained baseline jumps.
 
 ## Where checks run
 
-This is the intended schedule as the phases land. Existing jobs are listed
-above; placing a layer here does not mean it is implemented. Keep PR checks
-bounded and deterministic. Required checks report through `CI result`.
-Native nightly runs use the maintainer's machines when available;
-otherwise record unavailable coverage. Do not provision paid replacement runs.
+[CI](../.github/workflows/ci.yml) reports through one required check, `CI result`.
+A pull request runs only what its paths can affect
+([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
+`node scripts/check.mjs` makes the same choice locally. The merge queue and main always run everything.
+
+| What changed | What runs | Typical wait |
+|---|---|---|
+| Documentation | Script tests, dependency policy | 1 minute |
+| Website | Those, plus type check, lint, interface tests and picker size | 4 minutes |
+| Interface | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
+| Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
+| Crates, fixtures, scripts, workflows, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
+
+The crates' full tests run on macOS only on main: from 2026-10-25 to 2026-11-02,
+in 200 failed runs, macOS failed alone twice, while Windows found real bugs in the
+crates. The app's own tests still run on macOS on every native change.
+
+[Preview](../.github/workflows/preview.yml) builds, installs and publishes a nightly
+for each push to main, about 15 minutes after it lands; a run keeps only the newest
+waiting push. Documentation and website changes build no nightly. Release checks
+(release-mode tests, minimum Rust tests and speed limits) run beside the builds: a
+failure stops a numbered release and marks the run, but never holds a nightly back.
+
+The plan for each layer as the phases land; placing a layer here does not mean it
+is implemented. Keep pull request checks bounded and deterministic. Native nightly
+runs use the maintainer's machines when available; otherwise record unavailable
+coverage. Do not provision paid replacement runs.
 
 | Layer | PR CI | Nightly | Before release | On demand |
 |---|---|---|---|---|
@@ -420,7 +330,8 @@ otherwise record unavailable coverage. Do not provision paid replacement runs.
 
 Colours need the real engine: [`apps/desktop/gallery/webkit.swift`](../apps/desktop/gallery/webkit.swift)
 renders the canvas in the Mac's own WKWebView and checks every accent in System,
-Light and Dark. Run it on macOS after any change to colours or appearance.
+Light and Dark. Bugs that passed in jsdom have failed here, so it is required for
+every interface change, and `node scripts/check.mjs` runs it on a Mac.
 
 Native delivery must start with a selected placeholder and surrounding text,
 summon Ibis normally, then read the destination independently through saved
@@ -445,31 +356,28 @@ credits or switching to a paid service.
 Work in this order. Introduce destination adapters one app per PR; keep each
 slice independently useful. Later phases build on evidence and replay.
 
-1. **Common evidence and replay.** Done when an existing native scenario emits
-   the versioned bundle for pass, fail and unavailable outcomes, replays its
-   recorded actions, and reports missing coverage without passing it.
-2. **Sequence and race models.** Done when picker, Settings and Rust delivery
+1. **Sequence and race models.** Done when picker, Settings and Rust delivery
    models generate actions and reordered completions, assert stale-session,
    selection-order, composition and at-most-once invariants, and save minimized
    regressions; short campaigns run in PR CI and larger ones nightly.
-3. **Destination readback.** Done when Linux editor, Windows Notepad and macOS
+2. **Destination readback.** Done when Linux editor, Windows Notepad and macOS
    TextEdit journeys run through the picker and independently verify exact
    insertion, replacement and refusal, with bundles and visible blocked cases;
    LibreOffice on the maintainer's Mac and Windows PC verifies rich text too.
-4. **Visual states.** Done when setup, loading, empty/error/recovery, selection,
+3. **Visual states.** Done when setup, loading, empty/error/recovery, selection,
    formatting, menus, notices and Settings have a gallery and reviewed native
    comparisons per OS, including large text, contrast and mixed-direction text.
-5. **Screen readers and input methods.** Done when VoiceOver and NVDA complete
+4. **Screen readers and input methods.** Done when VoiceOver and NVDA complete
    search-to-document journeys with checked announcements, real Chinese,
    Japanese and Korean input methods commit without delivery, and an Orca
    pilot either passes or records the compatibility blocker; retain release
    checks with experienced users required by design.
-6. **Performance and idle resources.** Done when exact release builds on the
+5. **Performance and idle resources.** Done when exact release builds on the
    maintainer's Mac and Windows PC produce evidence accepted by the budget
    validator, with cycle/idle trends; existing Linux CI supplies measurements
    or an explicit coverage blocker. Stop UI polling during idle measurements;
    keep architecture's sampling rules and limits, with no paid runner required.
-7. **Bounded agent exploration and free web destinations.** Done when Codex
+6. **Bounded agent exploration and free web destinations.** Done when Codex
    personas on the maintainer's Mac run bounded goals with independent checks,
    replay/minimization and deduplicated regression proposals; Google Docs with
    a free Google account and Overleaf free tier or Community Edition each have

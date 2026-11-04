@@ -1,5 +1,6 @@
 import { KEY_TABLE, type KeyBinding } from "../../keys";
 import { keyText } from "../../messages";
+import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
@@ -36,17 +37,34 @@ export function usePickerActions({
   toggle: (result?: SearchResult) => void;
 }) {
   const { session, state, send, cancelCopy } = pickerSession;
-  const { pinned, input, keysOpen, menuOpen, closeKeys, closeMenu } = menus;
+  const { pinned, focusHome } = menus;
   const { choosingLibrary, welcomeShown, showCitations } = libraryState;
   const { ready, results, list, interpretation } = searchState;
   const { query, active, selected, interpretLocators } = state;
   const { format } = destination;
   const { hidePicker } = api;
-  const hide = () => {
+  // The bottom of the layer stack; overlays register themselves above these.
+  // Esc retains the chosen references at every step.
+  useLayer("panel", inspector.panel !== null, () => {
+    cancelCopy();
+    inspector.close();
+  });
+  useLayer("chooser", choosingLibrary, () => {
+    cancelCopy();
+    dismissChooser();
+  });
+  useLayer("search", Boolean(query) && !welcomeShown, () => {
+    cancelCopy();
+    send({ type: "escape-search" });
+    focusHome();
+  });
+  useLayer("window", true, () => {
+    cancelCopy();
     const presentation = session.getSnapshot().presentation;
     send({ type: "hiding" });
     void perform("hide", () => hidePicker(presentation));
-  };
+  });
+  const nearest = useNearestLayer();
   // A kept-open window or a citation with warnings stays open, so Enter copies.
   const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
   // The keys sheet names what Enter does from the same answer as the footer,
@@ -68,22 +86,11 @@ export function usePickerActions({
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
-  const escapeAction = keysOpen ? keyText.close : menuOpen ? keyText.closeMenu : inspector.panel ? keyText.close : query && !welcomeShown ? keyText.clearSearch : keyText.hide;
-  const escapeStep = () => {
-    cancelCopy();
-    // Escape steps back one layer, retaining the chosen references.
-    if (keysOpen) closeKeys();
-    else if (menuOpen) closeMenu(true);
-    else if (inspector.panel) inspector.close();
-    else if (choosingLibrary) dismissChooser();
-    else if (query && !welcomeShown) {
-      send({ type: "escape-search" });
-      input.current?.focus();
-    } else hide();
-  };
+  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
+    : nearest === "search" ? keyText.clearSearch : keyText.hide;
   const toggleHighlighted = () => {
     toggle(highlighted);
-    input.current?.focus();
+    focusHome();
   };
-  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, escapeStep, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { bindings, usingLocator, prepared, canApplyLocator, toggleHighlighted, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

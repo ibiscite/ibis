@@ -199,7 +199,12 @@ pub(crate) fn edit_session_references(
     let file = open_file(&library);
     let mut list = session.lock();
     match edit {
-        SessionEdit::Remove { id } => list.remove(&id.0),
+        // An identity from before the library changed names nothing listed.
+        SessionEdit::Remove { id } => {
+            if let Some(id) = id.0 {
+                list.remove(&id);
+            }
+        }
         SessionEdit::Reset => list.reset(),
         SessionEdit::Undo => list.undo(),
     }

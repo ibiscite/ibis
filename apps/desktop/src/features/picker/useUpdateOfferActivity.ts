@@ -5,10 +5,10 @@ import type { usePickerMenus } from "./usePickerMenus";
 import { monitorUpdateOfferInput } from "./updateOfferInput";
 
 export function useUpdateOfferActivity(api: PickerApi, state: SessionState,
-  { menuOpen, libraryMenuOpen, formatOpen, keysOpen, sessionOpen }: Pick<ReturnType<typeof usePickerMenus>, "menuOpen" | "libraryMenuOpen" | "formatOpen" | "keysOpen" | "sessionOpen">, choosingLibrary: boolean) {
+  { overlay }: Pick<ReturnType<typeof usePickerMenus>, "overlay">, choosingLibrary: boolean) {
   const { query, pendingCopy, selected } = state;
   const updateInputBlocked = useRef(false);
-  updateInputBlocked.current = Boolean(query || pendingCopy || menuOpen || libraryMenuOpen || choosingLibrary || formatOpen || keysOpen || sessionOpen || selected.size || state.activeCopy !== null);
+  updateInputBlocked.current = Boolean(query || pendingCopy || overlay || choosingLibrary || selected.size || state.activeCopy !== null);
   const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
   useEffect(() => {
     if (!api.updatePickerActivity) return;
@@ -22,5 +22,5 @@ export function useUpdateOfferActivity(api: PickerApi, state: SessionState,
     return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
   }, [api.updatePickerActivity]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each interaction transition invalidates the old idle ticket, including close/reopen; the monitor reads current blocking state through a ref.
-  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, menuOpen, libraryMenuOpen, choosingLibrary, formatOpen, keysOpen, sessionOpen, selected.size, state.activeCopy, state.visibility]);
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, overlay, choosingLibrary, selected.size, state.activeCopy, state.visibility]);
 }

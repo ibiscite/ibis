@@ -177,8 +177,8 @@ pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
     }
 }
 
-/// Settings' "Check now": the tray's check, ending with its result, which
-/// Settings shows in place. An update found still opens the offer.
+/// Settings' "Check now", which the tray's "Check for Updates…" opens and runs,
+/// so a result always shows in place. An update found still opens the offer.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn check_for_updates(app: AppHandle) -> super::CheckResult {

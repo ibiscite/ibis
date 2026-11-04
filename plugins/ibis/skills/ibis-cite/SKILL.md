@@ -50,7 +50,8 @@ Use these four tools from the `ibis` MCP server, in this order:
 3. `cite` with `items`, in order, each holding a `ref` and any `locator`, `prefix`,
    `suffix` or `omit_author`. Add either a `style` (default `apa`; ids from `styles`)
    or a key `syntax` (`pandoc`, `biblatex`, `natbib`, `latex`, `typst` or `keys`).
-4. `styles` lists the style ids `cite` accepts.
+4. `styles` finds a style id by journal or style name among every official CSL style,
+   and lists the languages `cite` can write in with `locale`.
 
 ```json
 {"items": [{"ref": "vale2024lanterns#6aa5054b", "locator": "p. 12", "prefix": "see"}], "style": "apa"}

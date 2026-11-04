@@ -273,7 +273,6 @@
       "enum": [
         "bibtex",
         "csl-json-citation-key",
-        "csl-json-id",
         "zotero",
         "extra",
         "better-bibtex"
@@ -345,6 +344,13 @@
           "$ref": "#/$defs/DisplayTree"
         },
         "html": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "language": {
+          "description": "The language a formatted citation is written in, whatever the interface\nuses. Key syntaxes have none: the destination's processor decides.",
           "type": [
             "string",
             "null"
@@ -703,7 +709,7 @@
           "const": "unknown-style"
         },
         {
-          "description": "The requested locale is not available; only en-US is for now.",
+          "description": "The requested locale is not bundled; `styles` lists the locales.",
           "type": "string",
           "const": "unknown-locale"
         },
@@ -716,6 +722,11 @@
           "description": "Several references share the key.",
           "type": "string",
           "const": "ambiguous-key"
+        },
+        {
+          "description": "A key output needs a citation key this reference does not have.",
+          "type": "string",
+          "const": "missing-key"
         },
         {
           "description": "The program started as the Ibis app does not exist.",
@@ -974,9 +985,9 @@
       ]
     },
     "LibraryId": {
-      "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
+      "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
       "type": "string",
-      "pattern": "^(file|zotero):[0-9a-f]{64}$"
+      "pattern": "^[A-Za-z0-9_-]{1,64}$"
     },
     "LibraryObject": {
       "oneOf": [

@@ -507,8 +507,8 @@ fn json_reloads_retain_failed_snapshot_and_accept_stable_empty_array() {
     std::fs::write(&replacement, r#"[{"id":"new","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
     std::fs::rename(replacement, &path).unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(
-        records(&next(&rx).unwrap_or_else(|error| panic!("{error}")))[0].citation_key(),
-        Ok(Some("new"))
+        records(&next(&rx).unwrap_or_else(|error| panic!("{error}")))[0].id.key,
+        "record:new"
     );
     std::fs::write(&path, "[]").unwrap_or_else(|error| panic!("{error}"));
     assert!(records(&next(&rx).unwrap_or_else(|error| panic!("{error}"))).is_empty());
@@ -550,8 +550,8 @@ fn long_identity_attachment_limits_keep_last_good_owner_until_recovery() {
     )
     .unwrap_or_else(|error| panic!("{error}"));
     assert_eq!(next(&rx).err(), Some(SourceError::LoadLimit));
-    assert_eq!(records(&initial)[0].citation_keys[0].value, "initial");
+    assert_eq!(records(&initial)[0].id.key, "record:initial");
     std::fs::write(&path, r#"[{"id":"recovered","type":"book"}]"#).unwrap_or_else(|error| panic!("{error}"));
     let recovered = next(&rx).unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(records(&recovered)[0].citation_keys[0].value, "recovered");
+    assert_eq!(records(&recovered)[0].id.key, "record:recovered");
 }
