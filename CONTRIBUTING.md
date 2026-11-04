@@ -47,4 +47,6 @@ node website/build.mjs               # the website
 
 The rules for every change, by people or agents, are in [AGENTS.md](AGENTS.md). Start a fix with a failing test and invented data. Use a Conventional Commit title (`feat`, `fix`, `perf`, `docs`, `test`, `ci`, `build`, `refactor`, `chore`, `revert`; at most 72 characters, lower case after the colon), sign off every commit (`git commit -s`, [DCO](https://developercertificate.org/)), and say if AI helped. Contributions keep their licences; there is no contributor licence agreement.
 
+Name branches `type/short-description`, using the change types above and lower-case words joined by hyphens, for example `fix/library-reload`. Branch and pull request names describe the change. Pull request descriptions lead with the problem and resulting behavior, then the validation and any remaining limitation.
+
 The code is AGPL-3.0-or-later; Ibis stays free, without ads, telemetry, paid tiers or closed editions.
