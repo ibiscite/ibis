@@ -183,10 +183,15 @@ impl Current {
     }
 
     /// A sentence for a key that is not plainly in the file. These join the
-    /// citation's own warnings, so the picker copies and stays open.
+    /// citation's own warnings, so the picker copies and stays open. A key
+    /// found only in the last good copy is not plainly in the file: the file
+    /// may have lost it since, so that is said too.
     pub(crate) fn warning(&self, key: &str, check: &KeyCheck) -> Option<String> {
         let name = &self.name;
         match check {
+            KeyCheck::In { .. } if self.read.problem().is_some() => Some(format!(
+                "Checked {key} against the last good copy of {name}; the file can't be read now."
+            )),
             KeyCheck::In { .. } => None,
             KeyCheck::Missing => Some(format!("{key} is missing from {name}.")),
             KeyCheck::CouldNotCheck => Some(format!("Couldn't check {key} against {name}.")),
