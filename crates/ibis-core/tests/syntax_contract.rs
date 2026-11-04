@@ -1309,6 +1309,12 @@ proptest! {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             prop_assert!(result.content_matches_hash());
+            // ConTeXt reads `a::b` as a dataset, so it refuses such a key
+            // rather than cite another entry.
+            if caps.escaping == Escaping::Context && key.contains("::") {
+                prop_assert_eq!(&result.outcomes, &[ItemOutcome::Refused { item: 0, error: CitationError::InvalidKey }]);
+                continue;
+            }
             prop_assert!(result.copy_content(1).is_some());
             match caps.escaping {
                 Escaping::BareKeys => prop_assert_eq!(&result.text, &key),
