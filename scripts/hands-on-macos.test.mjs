@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -113,22 +113,108 @@ test("an empty abandoned lock is reusable and unknown entries are refused", { sk
   assert.equal(readFileSync(join(lock, ".keep"), "utf8"), "leave me untouched");
 });
 
-test("the first seed snapshots current preferences after stopping and later seeds keep that snapshot", { skip }, (t) => {
-  const { root, run } = fixture(t);
-  mkdirSync(join(root, "profile"));
-  writeFileSync(join(root, "profile/settings.json"), "preferences changed during downloads");
-  writeFileSync(join(root, "profile/settings.json.bak"), "current backup");
-  const result = run(`settings="$dir/profile"
-    stop_app() { echo STOPPED; }
-    cp() {
-      if [ "$1" = -p ]; then printf 'SNAPSHOT %s\\n' "$(cat "$2")";
-      else printf 'SEED %s\\n' "$*"; fi
+function profileFixture(t, present = true) {
+  const f = fixture(t);
+  writeFileSync(join(f.root, "synthetic-settings.json"), "synthetic preferences");
+  writeFileSync(join(f.root, "untouched"), "outside the profile");
+  if (present) {
+    mkdirSync(join(f.root, "profile/nested"), { recursive: true });
+    for (const [name, text] of Object.entries({ "settings.json": "saved primary", "settings.json.bak": "saved backup", "apps.json": "saved per-app choices", "future.json": "another setting", "nested/keep": "nested data" })) writeFileSync(join(f.root, "profile", name), text);
+    chmodSync(join(f.root, "profile"), 0o750);
+    chmodSync(join(f.root, "profile/apps.json"), 0o600);
+    symlinkSync("../untouched", join(f.root, "profile/link"));
+  }
+  return f;
+}
+
+function assertOriginal(root, profile = "profile") {
+  assert.deepEqual(readdirSync(join(root, profile)).sort(), ["apps.json", "future.json", "link", "nested", "settings.json", "settings.json.bak"]);
+  for (const [name, text] of Object.entries({ "settings.json": "saved primary", "settings.json.bak": "saved backup", "apps.json": "saved per-app choices", "future.json": "another setting", "nested/keep": "nested data" })) assert.equal(readFileSync(join(root, profile, name), "utf8"), text);
+  assert.equal(readlinkSync(join(root, profile, "link")), "../untouched");
+  assert.equal(statSync(join(root, profile)).mode & 0o777, 0o750);
+  assert.equal(statSync(join(root, profile, "apps.json")).mode & 0o777, 0o600);
+  assert.equal(readFileSync(join(root, "untouched"), "utf8"), "outside the profile");
+}
+
+const profileSetup = `settings="$dir/profile"
+  stop_app() { :; }
+  ${traps}`;
+
+test("a whole synthetic profile is isolated and every original returns on exit or interruption", { skip }, (t) => {
+  for (const [action, status] of [["exit 0", 0], ["exit 41", 41], ["kill -INT $$", 130], ["kill -TERM $$", 143]]) {
+    const { root, run } = profileFixture(t);
+    const result = run(`${profileSetup}
+      seed_settings
+      [ ! -e "$settings/apps.json" ] && [ ! -e "$settings/future.json" ] && [ ! -e "$settings/link" ]
+      printf 'test app choice' > "$settings/apps.json"
+      printf 'new test file' > "$settings/new-file.json"
+      printf 'recovery artifact' > "$settings/settings.json.invalid-1"
+      seed_settings
+      [ "$(cat "$settings/apps.json")" = 'test app choice' ]
+      ${action}`);
+    assert.equal(result.status, status, result.stderr);
+    assertOriginal(root);
+    assert.equal(readdirSync(root).some(name => name.startsWith("profile.hands-on-original.")), false);
+  }
+});
+
+test("a profile absent before testing stays absent after completion and interruption", { skip }, (t) => {
+  for (const [action, status] of [["exit 0", 0], ["kill -TERM $$", 143]]) {
+    const { root, run } = profileFixture(t, false);
+    const result = run(`${profileSetup}\nseed_settings\nprintf 'test choice' > "$settings/apps.json"\n${action}`);
+    assert.equal(result.status, status, result.stderr);
+    assert.equal(existsSync(join(root, "profile")), false);
+    assert.equal(readdirSync(root).some(name => name.startsWith("profile.hands-on-original.")), false);
+  }
+});
+
+test("failed initial movement or seeding leaves the original profile intact", { skip }, (t) => {
+  for (const failure of [
+    `mv() { [ "$1" != "$settings" ] || return 74; command mv "$@"; }`,
+    `cp() { return 73; }`,
+    `stop_app() { return 76; }`,
+  ]) {
+    for (const invoke of ["seed_settings", "if seed_settings; then exit 0; else exit 77; fi"]) {
+      const { root, run } = profileFixture(t);
+      const result = run(`${profileSetup}\n${failure}\n${invoke}`);
+      assert.notEqual(result.status, 0);
+      assertOriginal(root);
     }
-    seed_settings
-    seed_settings`);
-  assert.equal(result.status, 0, result.stderr);
-  assert.match(result.stdout, /^STOPPED\nSNAPSHOT preferences changed during downloads\nSNAPSHOT current backup\nSEED .*\nSEED .*\nSTOPPED\nSEED .*\nSEED .*\n$/);
-  assert.equal(readFileSync(join(root, "profile/settings.json"), "utf8"), "preferences changed during downloads");
+  }
+});
+
+test("failed restoration preserves the whole original and refuses a later test session", { skip }, (t) => {
+  for (const failure of [
+    `mv() { [ "$1" != "$profile_stage/original" ] || return 75; command mv "$@"; }`,
+    `stop_app() { [ "$isolated" = 0 ]; }`,
+  ]) {
+    const { root, run } = profileFixture(t);
+    const result = run(`${profileSetup}\n${failure}\nseed_settings\nprintf 'test choice' > "$settings/apps.json"`);
+    assert.notEqual(result.status, 0);
+    const backups = readdirSync(root).filter(name => name.startsWith("profile.hands-on-original."));
+    assert.equal(backups.length, 1);
+    assertOriginal(root, `${backups[0]}/original`);
+    // A failed final rename can leave the destination absent; the original
+    // remains complete. A new session must leave either state untouched.
+    const testProfilePresent = existsSync(join(root, "profile"));
+    if (testProfilePresent) assert.equal(readFileSync(join(root, "profile/apps.json"), "utf8"), "test choice");
+    const again = run(`${profileSetup}\nseed_settings`);
+    assert.notEqual(again.status, 0);
+    assert.match(again.stderr, /earlier hands-on check/i);
+    assertOriginal(root, `${backups[0]}/original`);
+    assert.equal(existsSync(join(root, "profile")), testProfilePresent);
+    if (testProfilePresent) assert.equal(readFileSync(join(root, "profile/apps.json"), "utf8"), "test choice");
+  }
+});
+
+test("a symlinked profile is refused before isolation touches its target", { skip }, (t) => {
+  const { root, run } = profileFixture(t, false);
+  mkdirSync(join(root, "outside"));
+  writeFileSync(join(root, "outside/apps.json"), "keep this choice");
+  symlinkSync(join(root, "outside"), join(root, "profile"));
+  const result = run(`${profileSetup}\nseed_settings`);
+  assert.notEqual(result.status, 0);
+  assert.equal(readFileSync(join(root, "outside/apps.json"), "utf8"), "keep this choice");
 });
 
 test("checksums require exactly one well-formed entry per asset and strict verification", { skip }, (t) => {
@@ -203,35 +289,6 @@ test("symlinked files, dangling links and symlinked parents are refused without 
   assert.equal(readFileSync(join(root, "document"), "utf8"), "keep me");
 });
 
-test("exit and signals restore both originals only after stopping; absent originals stay absent", { skip }, (t) => {
-  const { root, run } = fixture(t);
-  mkdirSync(join(root, "original-settings"));
-  writeFileSync(join(root, "original-settings/settings.json"), "saved primary");
-  // All mutating commands are functions that only print: no settings are touched.
-  const mocks = `
-    settings="$dir/unused-settings"; isolated=1; snapshotted=1
-    stop_app() { echo STOPPED; }
-    cp() { printf 'COPY %s\\n' "$*"; }
-    rm() { printf 'REMOVE %s\\n' "$*"; }
-    ${traps}`;
-  for (const [action, status] of [["exit 0", 0], ["exit 41", 41], ["kill -INT $$", 130], ["kill -TERM $$", 143]]) {
-    const result = run(`${mocks}\n${action}`);
-    assert.equal(result.status, status, result.stderr);
-    assert.match(result.stdout, /^STOPPED\nCOPY -p .*original-settings\/settings.json .*unused-settings\/settings.json\nREMOVE -f .*unused-settings\/settings.json.bak\n$/);
-  }
-  writeFileSync(join(root, "original-settings/settings.json.bak"), "saved backup");
-  assert.match(run(`${mocks}\nexit 0`).stdout, /COPY -p .*original-settings\/settings.json.bak/);
-  const stopped = run(`${mocks}\nstop_app() { return 1; }\nexit 0`);
-  assert.notEqual(stopped.status, 0);
-  assert.doesNotMatch(stopped.stdout, /COPY|REMOVE/);
-  const launched = run(`${mocks}
-    isolated=0
-    open() { echo OPEN; }
-    sleep() { :; }
-    launch`);
-  assert.equal(launched.status, 0, launched.stderr);
-  assert.match(launched.stdout, /^STOPPED\nCOPY .*synthetic-settings.json .*settings.json\nCOPY .*synthetic-settings.json .*settings.json.bak\nOPEN\nSTOPPED\nCOPY -p /);
-});
 
 test("Zotero consent EOF exits instead of looping or allowing access", { skip }, (t) => {
   const { run } = fixture(t);

@@ -7,12 +7,15 @@
 set -euo pipefail
 quick=${1:-}
 branch=$(git rev-parse --abbrev-ref HEAD)
-[ "$branch" != main ] || { echo "On main: land a branch, not main."; exit 2; }
+[ "$branch" != main ] && [ "$branch" != HEAD ] || { echo "Land a named branch, not main or detached HEAD."; exit 2; }
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$(git rev-parse --show-toplevel)/target}
 
 git fetch -q origin main "$branch" 2>/dev/null || git fetch -q origin main
-git merge -q --no-edit origin/main || { echo "Merge conflict with main: resolve it, commit, and rerun."; exit 1; }
+git merge -q --no-commit origin/main || { echo "Merge conflict with main: resolve it, commit, and rerun."; exit 1; }
+if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
+  git commit -s --no-edit --trailer "Assisted-by: Ibis development tooling (AI-assisted)" >/dev/null
+fi
 
 changed=$(git diff --name-only origin/main...HEAD)
 rust=$(grep -E '\.rs$|Cargo\.(toml|lock)$' <<<"$changed" || true)
@@ -34,6 +37,7 @@ if [ -n "$web" ]; then
 fi
 [ -z "$scripts" ] || node --test scripts/*.test.mjs
 
+node scripts/check-agent-identity.mjs
 git push -q -u origin "$branch"
 pr=$(gh api "repos/{owner}/{repo}/pulls?head={owner}:$branch&state=open" --jq '.[0].number')
 if [ -n "$pr" ] && [ "$pr" != null ]; then
