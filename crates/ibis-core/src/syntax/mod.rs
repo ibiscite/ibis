@@ -45,8 +45,20 @@ pub enum Escaping {
 /// the implementation. `SingleItem` never silently degrades a multi-item form.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SyntaxCapabilities {
+    /// The output's one stable id, as settings store it and `--format` takes it.
+    pub id: &'static str,
+    /// Its one name, in every front end.
+    pub name: &'static str,
+    /// What it writes for one reference whose key is `key`.
+    pub example: Option<&'static str>,
     pub syntax: KeySyntax,
     pub command: Option<&'static str>,
+    /// The command of the same syntax that writes the narrative form, when
+    /// this command has none: a citation whose every reference is narrative
+    /// is written with it.
+    pub narrative: Option<&'static str>,
+    /// It writes each reference's whole record, not a citation of it.
+    pub exports_records: bool,
     pub forms: &'static [CitationForm],
     pub single_item_forms: &'static [CitationForm],
     pub locator: FieldSupport,
@@ -59,6 +71,21 @@ pub struct SyntaxCapabilities {
 }
 
 impl SyntaxCapabilities {
+    /// The output this entry writes, as a request names it.
+    pub fn output(&self) -> OutputSpec {
+        OutputSpec::Key {
+            syntax: self.syntax,
+            command: self.command.map(str::to_owned),
+        }
+    }
+    /// The forms one reference can be cited in, including a narrative form
+    /// written by the sibling command.
+    pub fn citable_forms(&self) -> Vec<CitationForm> {
+        CitationForm::ALL
+            .into_iter()
+            .filter(|form| self.forms.contains(form) || *form == Narrative && self.narrative.is_some())
+            .collect()
+    }
     pub fn prefix_support(&self, form: CitationForm) -> FieldSupport {
         self.prefix
             .iter()
@@ -72,8 +99,13 @@ use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
 pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
     SyntaxCapabilities {
+        id: "pandoc",
+        name: "Pandoc",
+        example: Some("[@key]"),
         syntax: KeySyntax::Pandoc,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
@@ -85,8 +117,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
     },
     // Better BibTeX's `format=pandoc`: no brackets when nothing needs them.
     SyntaxCapabilities {
+        id: "pandoc-bare",
+        name: "Pandoc without brackets",
+        example: Some("@key"),
         syntax: KeySyntax::Pandoc,
         command: Some("bare"),
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
@@ -97,8 +134,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Pandoc,
     },
     SyntaxCapabilities {
+        id: "autocite",
+        name: "BibLaTeX \\autocite",
+        example: Some("\\autocite{key}"),
         syntax: KeySyntax::Biblatex,
         command: Some("autocite"),
+        narrative: Some("textcite"),
+        exports_records: false,
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
@@ -109,8 +151,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
+        id: "parencite",
+        name: "BibLaTeX \\parencite",
+        example: Some("\\parencite{key}"),
         syntax: KeySyntax::Biblatex,
         command: Some("parencite"),
+        narrative: Some("textcite"),
+        exports_records: false,
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
@@ -121,8 +168,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
+        id: "textcite",
+        name: "BibLaTeX \\textcite",
+        example: Some("\\textcite{key}"),
         syntax: KeySyntax::Biblatex,
         command: Some("textcite"),
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative],
         single_item_forms: &[],
         locator: Native,
@@ -133,8 +185,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
+        id: "natbib",
+        name: "natbib",
+        example: Some("\\citep{key}"),
         syntax: KeySyntax::Natbib,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
         single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
         locator: SingleItem,
@@ -150,8 +207,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
+        id: "cite",
+        name: "LaTeX \\cite",
+        example: Some("\\cite{key}"),
         syntax: KeySyntax::Latex,
         command: Some("cite"),
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -162,8 +224,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Latex,
     },
     SyntaxCapabilities {
+        id: "context",
+        name: "ConTeXt",
+        example: Some("\\cite[key]"),
         syntax: KeySyntax::Context,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, CitationForm::AuthorOnly, YearOnly, CitationForm::Full],
         single_item_forms: &[],
         // ConTeXt sorts a citation's keys, and its texts follow the sorted order.
@@ -180,8 +247,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Context,
     },
     SyntaxCapabilities {
+        id: "typst",
+        name: "Typst",
+        example: Some("@key"),
         syntax: KeySyntax::Typst,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[
             Normal,
             Narrative,
@@ -204,8 +276,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Typst,
     },
     SyntaxCapabilities {
+        id: "org-cite",
+        name: "Org mode",
+        example: Some("[cite:@key]"),
         syntax: KeySyntax::OrgCite,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
         single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
         locator: Native,
@@ -221,8 +298,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Org,
     },
     SyntaxCapabilities {
+        id: "myst",
+        name: "MyST",
+        example: Some("{cite:p}`key`"),
         syntax: KeySyntax::Myst,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal, Narrative],
         single_item_forms: &[],
         locator: Unsupported,
@@ -233,8 +315,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Myst,
     },
     SyntaxCapabilities {
+        id: "multi-markdown",
+        name: "MultiMarkdown",
+        example: Some("[#key][]"),
         syntax: KeySyntax::MultiMarkdown,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -245,8 +332,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::MultiMarkdown,
     },
     SyntaxCapabilities {
+        id: "ascii-doc",
+        name: "AsciiDoc",
+        example: Some("cite:[key]"),
         syntax: KeySyntax::AsciiDoc,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -257,8 +349,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::AsciiDoc,
     },
     SyntaxCapabilities {
+        id: "jupyter",
+        name: "Jupyter",
+        example: Some("<cite data-cite=\"key\">key</cite>"),
         syntax: KeySyntax::Jupyter,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -269,8 +366,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Html,
     },
     SyntaxCapabilities {
+        id: "jekyll-scholar",
+        name: "Jekyll Scholar",
+        example: Some("{% cite key %}"),
         syntax: KeySyntax::JekyllScholar,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: SingleItem,
@@ -281,8 +383,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::Liquid,
     },
     SyntaxCapabilities {
+        id: "cayw-json",
+        name: "CAYW JSON",
+        example: Some(r#"[{"citationKey":"key"}]"#),
         syntax: KeySyntax::CaywJson,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -293,8 +400,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::CaywJson,
     },
     SyntaxCapabilities {
+        id: "keys",
+        name: "Keys only",
+        example: Some("key"),
         syntax: KeySyntax::Keys,
         command: None,
+        narrative: None,
+        exports_records: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -305,8 +417,13 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         escaping: Escaping::BareKeys,
     },
     SyntaxCapabilities {
+        id: "csl-json",
+        name: "CSL-JSON",
+        example: None,
         syntax: KeySyntax::CslJson,
         command: None,
+        narrative: None,
+        exports_records: true,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -351,7 +468,20 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     if request.items.len() > MAX_CITATION_ITEMS {
         return Err(CitationError::TooManyItems);
     }
-    let caps = capabilities(&request.output)?;
+    let mut caps = capabilities(&request.output)?;
+    // Narrative is its own command in some syntaxes (BibLaTeX's `\textcite`):
+    // a citation that is narrative throughout is written with that command.
+    if let Some(command) = caps.narrative
+        && request
+            .items
+            .iter()
+            .all(|item| item.form.unwrap_or(request.form) == Narrative)
+    {
+        caps = CAPABILITIES
+            .iter()
+            .find(|entry| entry.syntax == caps.syntax && entry.command == Some(command))
+            .ok_or(CitationError::UnsupportedOutput)?;
+    }
     validate_request(request)?;
     let owners = key_owners(snapshot);
     let mut outcomes = Vec::with_capacity(request.items.len());

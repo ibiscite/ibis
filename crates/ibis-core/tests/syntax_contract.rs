@@ -99,22 +99,17 @@ fn capabilities_drive_forms_and_report_each_dropped_field() {
     for caps in &CAPABILITIES {
         case.request.output = output(caps);
         assert_eq!(syntax::capabilities(&case.request.output).unwrap(), caps);
-        for form in [
-            CitationForm::Normal,
-            CitationForm::Narrative,
-            CitationForm::AuthorOnly,
-            CitationForm::YearOnly,
-            CitationForm::Full,
-            CitationForm::BibliographyOnly,
-        ] {
+        // A narrative citation in a command without one is written by its sibling.
+        let forms = caps.citable_forms();
+        for form in CitationForm::ALL {
             case.request.form = form;
             let result = syntax::cite(&case.library, &case.request).unwrap();
             assert_eq!(
                 result.copy_content(1).is_some(),
-                caps.forms.contains(&form),
+                forms.contains(&form),
                 "{caps:?} {form:?}"
             );
-            if !caps.forms.contains(&form) {
+            if !forms.contains(&form) {
                 assert_eq!(
                     result.outcomes,
                     [ItemOutcome::Refused {

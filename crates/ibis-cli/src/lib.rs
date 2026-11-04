@@ -190,31 +190,25 @@ fn command() -> Command {
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
                 )
-                .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser([
-                    "pandoc",
-                    "autocite",
-                    "parencite",
-                    "textcite",
-                    "cite",
-                    "context",
-                    "typst",
-                    "keys",
-                    "csl-json",
-                    "natbib",
-                    "org-cite",
-                    "myst",
-                    "multi-markdown",
-                    "ascii-doc",
-                    "jupyter",
-                    "jekyll-scholar",
-                    "cayw-json",
-                ]))
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .value_name("FORMAT")
+                        .help_heading(OUTPUT)
+                        .help(format!(
+                            "Output to write: a key syntax or a common style [default: {}]; list them with: ibis outputs",
+                            ibis_engine::outputs::DEFAULT
+                        ))
+                        .hide_possible_values(true)
+                        .conflicts_with("style")
+                        .value_parser(output_ids()),
+                )
                 .arg(
                     Arg::new("style")
                         .long("style")
                         .value_name("STYLE_ID")
                         .help_heading(OUTPUT)
-                        .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
+                        .help("Format with any CSL style instead; list them with: ibis styles"),
                 )
                 .arg(
                     Arg::new("for-app")
@@ -228,10 +222,9 @@ fn command() -> Command {
                     Arg::new("bibliography")
                         .long("bibliography")
                         .action(ArgAction::SetTrue)
-                        .requires("style")
                         .conflicts_with("form")
                         .help_heading(OUTPUT)
-                        .help("Format bibliography entries using --style"),
+                        .help("Format bibliography entries, in --style or a style --format names"),
                 )
                 .arg(Arg::new("form").long("form").value_name("FORM").help_heading(OUTPUT).help("Citation form [default: normal]").value_parser([
                     "normal",
@@ -343,6 +336,9 @@ fn command() -> Command {
                         .action(ArgAction::SetTrue)
                         .help("List citation languages instead of styles"),
                 ),
+            Method::Outputs => subcommand
+                .about("List the outputs cite writes: key syntaxes, then the common styles")
+                .after_help("Each id is what --format takes. Any other bundled style: ibis styles"),
             Method::Schema => subcommand
                 .about("Print the JSON Schema of each method")
                 .arg(
@@ -1076,27 +1072,25 @@ fn run_method<R: BufRead>(
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
-            let output = if let Some(style) = args.get_one::<String>("style") {
-                OutputSpec::Csl { style: style.clone() }
-            } else {
-                let (syntax, command) = match args.get_one::<String>("format").map(String::as_str).unwrap_or("pandoc") {
-                    "autocite" => (KeySyntax::Biblatex, Some("autocite")),
-                    "parencite" => (KeySyntax::Biblatex, Some("parencite")),
-                    "textcite" => (KeySyntax::Biblatex, Some("textcite")),
-                    "cite" => (KeySyntax::Latex, Some("cite")),
-                    "typst" => (KeySyntax::Typst, None),
-                    other => (
-                        serde_json::from_value(json!(other)).map_err(|_| EngineError::new(ErrorCode::Usage))?,
-                        None,
-                    ),
-                };
-                OutputSpec::Key {
-                    syntax,
-                    command: command.map(str::to_owned),
+            let output = match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
+                (Some(style), _) => OutputSpec::Csl { style: style.clone() },
+                (None, format) => {
+                    ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+                        .map(|output| output.output.clone())
+                        .ok_or_else(|| EngineError::new(ErrorCode::Internal))?
                 }
             };
+            if args.get_flag("bibliography") && !matches!(output, OutputSpec::Csl { .. }) {
+                return Err(Failure::new(
+                    ErrorCode::Usage,
+                    "--bibliography needs a style: give --style, or a --format that is a style.",
+                ));
+            }
             let destination = args.get_one::<String>("for-app").map(|app| {
-                let style = args.get_one::<String>("style").map_or("apa", String::as_str);
+                let style = match &output {
+                    OutputSpec::Csl { style } => style.as_str(),
+                    _ => ibis_engine::outputs::DEFAULT_STYLE,
+                };
                 destination(app, System::HERE, &output, style)
             });
             let output = destination
@@ -1136,14 +1130,7 @@ fn run_method<R: BufRead>(
                         .collect()
                     })
                     .collect(),
-                output: match &destination {
-                    Some(destination) => output_name(&destination.output),
-                    None => args
-                        .get_one::<String>("style")
-                        .or_else(|| args.get_one::<String>("format"))
-                        .cloned()
-                        .unwrap_or_else(|| "pandoc".into()),
-                },
+                output: output_name(&output),
                 form,
             };
             let mut result = engine
@@ -1228,6 +1215,7 @@ fn run_method<R: BufRead>(
                 "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
             })
         }
+        Method::Outputs => json!({}),
         Method::Schema => {
             json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
@@ -1289,15 +1277,26 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         form: request.form,
     })
 }
+/// An output's one name from the engine's list; a style outside it is named by its id.
 fn output_name(output: &OutputSpec) -> String {
-    match output {
-        OutputSpec::Csl { style } => style.clone(),
-        OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+    match (ibis_engine::outputs::named(output), output) {
+        (Some(entry), _) => entry.name.clone(),
+        (None, OutputSpec::Csl { style }) => style.clone(),
+        (None, OutputSpec::Preset { name }) => name.clone(),
+        (None, OutputSpec::Key { syntax, .. }) => serde_json::to_value(syntax)
             .ok()
             .and_then(|syntax| syntax.as_str().map(str::to_owned))
             .unwrap_or_default(),
-        OutputSpec::Preset { .. } => "this output".into(),
     }
+}
+/// `--format` takes exactly the engine's output ids, each shown by its name.
+fn output_ids() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(
+        ibis_engine::outputs::outputs()
+            .into_iter()
+            .flatten()
+            .map(|output| clap::builder::PossibleValue::new(output.id.as_str()).help(output.name.as_str())),
+    )
 }
 /// Keys with the options that follow each one, the way the picker attaches them.
 fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {

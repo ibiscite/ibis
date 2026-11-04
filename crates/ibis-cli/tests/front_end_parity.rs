@@ -35,10 +35,14 @@ const EXPOSES: [(FrontEnd, &[Method]); 5] = [
             Method::Show,
             Method::Cite,
             Method::Styles,
+            Method::Outputs,
             Method::Schema,
         ],
     ),
-    (FrontEnd::Human, &[Method::Libraries, Method::Search, Method::Styles]),
+    (
+        FrontEnd::Human,
+        &[Method::Libraries, Method::Search, Method::Styles, Method::Outputs],
+    ),
     (FrontEnd::Request, &[Method::Cite]),
     (
         FrontEnd::Call,
@@ -48,6 +52,7 @@ const EXPOSES: [(FrontEnd, &[Method]); 5] = [
             Method::Show,
             Method::Cite,
             Method::Styles,
+            Method::Outputs,
             Method::Schema,
         ],
     ),
@@ -59,6 +64,7 @@ const EXPOSES: [(FrontEnd, &[Method]); 5] = [
             Method::Show,
             Method::Cite,
             Method::Styles,
+            Method::Outputs,
             Method::Schema,
         ],
     ),
@@ -111,7 +117,7 @@ fn engine(case: &GoldenCase) -> Result<Engine> {
 fn human(method: Method, params: &Value) -> Option<Vec<String>> {
     let mut args = vec!["ibis".to_owned(), method.as_str().to_owned()];
     match method {
-        Method::Libraries | Method::Styles => (),
+        Method::Libraries | Method::Styles | Method::Outputs => (),
         Method::Search => {
             args.push(params["query"].as_str()?.to_owned());
             args.extend(["--limit".to_owned(), params["limit"].to_string()]);
@@ -241,6 +247,12 @@ fn golden_citations_are_identical_through_every_front_end() -> Result {
             _ => call(FrontEnd::Engine, &engine, Method::Cite, &request)?.ok_or("engine")?,
         };
         same(&case.name, &engine, Method::Cite, &request, &expected)?;
+        // The same output named by its id in the engine's list gives the same citation.
+        if let Some(listed) = ibis_engine::outputs::named(&case.request.output) {
+            let mut named = request.clone();
+            named["output"] = json!({"kind": "preset", "name": listed.id});
+            same(&case.name, &engine, Method::Cite, &named, &expected)?;
+        }
     }
     Ok(())
 }
@@ -265,6 +277,7 @@ fn reading_methods_are_identical_through_every_front_end() -> Result {
             (Method::Search, json!({"query": word, "limit": 5})),
             (Method::Search, json!({"query": "no such synthetic words", "limit": 5})),
             (Method::Styles, json!({})),
+            (Method::Outputs, Value::Null),
             (Method::Schema, json!({"method": "cite"})),
         ];
         if let Some(item) = item {

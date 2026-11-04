@@ -169,6 +169,44 @@ pub(crate) fn check_output(output: &OutputSpec, locale: Option<&str>) -> Result<
     locale.map(catalog::locale_tag).transpose().map(|_| ())
 }
 
+/// Whether `style` refuses one reference in `form`, in a citation of `items`
+/// references that is written as bibliography entries when `bibliography`.
+fn refuses_form(
+    style: &catalog::Resolved,
+    form: CitationForm,
+    bibliography: bool,
+    items: usize,
+    suppress_author: bool,
+) -> bool {
+    let traits = style.traits;
+    (form == CitationForm::AuthorOnly && (suppress_author || items > 1))
+        // A narrative citation is one sentence's subject: one reference.
+        || (form == CitationForm::Narrative && (suppress_author || bibliography || items > 1))
+        || (traits.numeric && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
+        // A nonempty locator cannot stand in for an absent publication year.
+        || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
+        || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography && !traits.numeric)
+        // Only styles whose output for these forms has been checked against
+        // Zotero offer them; anywhere else they can print residue ("…, pp.").
+        || ((matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
+            || suppress_author && !bibliography)
+            && !style.verified_forms)
+}
+
+/// The forms one reference can be cited in with this style, by the same rule
+/// that refuses the others.
+pub(crate) fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
+    let style = catalog::resolve(id)?;
+    Ok(CitationForm::ALL
+        .into_iter()
+        .filter(|form| {
+            let bibliography =
+                style.traits.numeric || matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
+            !refuses_form(&style, *form, bibliography, 1, false)
+        })
+        .collect())
+}
+
 pub(crate) fn prepare(
     snapshot: &Snapshot,
     request: &CitationRequest,
@@ -236,20 +274,7 @@ fn prepare_with_style(
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
-        let refusal = if (form == CitationForm::AuthorOnly && (pick.suppress_author || request.items.len() > 1))
-            // A narrative citation is one sentence's subject: one reference.
-            || (form == CitationForm::Narrative && (pick.suppress_author || bibliography || request.items.len() > 1))
-            || (traits.numeric && matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly))
-            // A nonempty locator cannot stand in for an absent publication year.
-            || (!traits.citation_has_issued && !bibliography && form == CitationForm::YearOnly)
-            || ((matches!(form, CitationForm::Full | CitationForm::BibliographyOnly)) != bibliography
-                && !traits.numeric)
-            // Only styles whose output for these forms has been checked against
-            // Zotero offer them; anywhere else they can print residue ("…, pp.").
-            || ((matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly | CitationForm::Narrative)
-                || pick.suppress_author && !bibliography)
-                && !style.verified_forms)
-        {
+        let refusal = if refuses_form(style, form, bibliography, request.items.len(), pick.suppress_author) {
             Some(CitationError::UnsupportedForm)
         } else {
             validate_pick(snapshot, pick)
