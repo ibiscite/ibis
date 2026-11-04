@@ -251,3 +251,18 @@ test("Enter while the project bibliography is still reading copies once the read
   await waitFor(() => expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1));
   expect(screen.queryAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).toHaveLength(0);
 });
+
+test("a status read that fails after a reading answer does not leave the preview waiting", async () => {
+  let fail = false;
+  backend({
+    project_status: () => fail ? Promise.reject(new Error("unreadable")) : file({ state: "reading" }),
+    search: () => [result("a", "First")],
+    preview_file_citation: () => Promise.reject({ code: "cancelled" }),
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "first" } });
+  await screen.findByText("First");
+  fail = true;
+  await act(() => emit("project:changed", [1, 2]));
+  expect((await screen.findAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).length).toBeGreaterThan(0);
+});

@@ -12,6 +12,8 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   const [version, setVersion] = useState(0);
   // A status read in flight: its answer may say the file is still being read.
   const [pending, setPending] = useState(false);
+  // After a failed status read, an older "reading" answer no longer means work in progress.
+  const [statusFailed, setStatusFailed] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const reading = useRef(0);
   const shown = useRef(JSON.stringify(null));
@@ -22,13 +24,14 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
     void projectStatus().then((next) => {
       if (request !== reading.current) return;
       setPending(false);
+      setStatusFailed(false);
       // Only a new answer asks searches again; nobody without a bibliography pays.
       const answer = JSON.stringify(next);
       if (answer === shown.current) return;
       shown.current = answer;
       setStatus(next);
       setVersion((old) => old + 1);
-    }, () => { if (request === reading.current) { setPending(false); report("project"); } });
+    }, () => { if (request === reading.current) { setPending(false); setStatusFailed(true); report("project"); } });
   }, [projectStatus, report]);
   useEffect(() => {
     read();
@@ -56,7 +59,7 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   return {
     status, version, notice, clearNotice, copyEntry,
     /** The engine refuses key citations until the file's first answer arrives. */
-    reading: pending || status?.state === "reading",
+    reading: pending || (!statusFailed && status?.state === "reading"),
     choose: chooseProject ? () => perform("project", chooseProject) : null,
     stop: stopProject ? () => perform("project", stopProject) : null,
     retry: retryProject ? () => perform("project", retryProject) : null,
