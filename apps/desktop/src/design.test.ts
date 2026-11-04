@@ -16,8 +16,7 @@ const strip = (css: string) => css.replace(/\/\*[^]*?\*\//g, "");
 const tokens = strip(read("tokens.css"));
 /** The tokens with the colour parameters written out, for the contrast checks. */
 const param = (name: string) => tokens.match(new RegExp(`${name}: (#[0-9a-f]{6});`))![1]!;
-const resolved = tokens.replaceAll("var(--ibis-dark)", param("--ibis-dark")).replaceAll("var(--ibis)", param("--ibis"))
-  .replace(/(--ac: (light-dark\([^)]*\));) --ac-selected: var\(--ac\); --ac-text: var\(--ac\);/, "$1 --ac-selected: $2; --ac-text: $2;");
+const resolved = tokens.replaceAll("var(--ibis-dark)", param("--ibis-dark")).replaceAll("var(--ibis)", param("--ibis"));
 const defined = new Set([...tokens.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!));
 const website = strip(readFileSync(new FileURL("../../../website/style.css", import.meta.url), "utf8")) + strip(readFileSync(new FileURL("../../../website/demo.css", import.meta.url), "utf8"));
 const all = parts.map((name) => [name, strip(read(name))] as const);
@@ -153,24 +152,20 @@ test.each([["--text", 4.5], ["--scarlet", 3]] as const)(
     expect(contrast(value[1], surface[1])).toBeGreaterThanOrEqual(ratio);
   });
 
-const colour = "(#[0-9a-f]{3,6})";
-const roles = [...resolved.matchAll(new RegExp(`:root\\[data-accent="([a-z]+)"\\] \\{ --ac: (?:light-dark\\()?${colour}(?:, ${colour}\\))?; --ac-selected: light-dark\\(${colour}, ${colour}\\); --ac-text: light-dark\\(${colour}, ${colour}\\);( --ac-on: light-dark\\(${colour}, ${colour}\\);)?(?: --ac-fill: var\\(--ac-selected\\);)? \\}`, "g"))];
+const parameters = /--ibis: (#[0-9a-f]{6}); --ibis-dark: (#[0-9a-f]{6});/.exec(tokens)!;
 const white = "#ffffff";
-const full = (hex: string) => hex.length === 4 ? `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}` : hex;
 
-test("all nine accents have their three roles", () => expect(roles.map((role) => role[1])).toHaveLength(9));
+test("the only fixed accent is Ibis scarlet", () => {
+  expect([...tokens.matchAll(/\[data-accent="([a-z]+)"\]/g)].map((match) => match[1])).toEqual(["ibis"]);
+  expect(tokens).not.toMatch(/--ac-|--dot-/);
+});
 
-test.each(roles.map((role) => [role[1]!, role] as const))("%s keeps its roles readable in both modes", (_, role) => {
-  [0, 1].forEach((mode) => {
-    const accent = role[2 + mode] ?? role[2]!, selected = role[4 + mode]!, text = role[6 + mode]!;
-    const on = role[9 + mode] ? full(role[9 + mode]!) : white;
-    expect(contrast(on, selected), `selection text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(text, surfaces[mode]!), `accent text, mode ${mode}`).toBeGreaterThanOrEqual(4.5);
-    expect(contrast(accent, surfaces[mode]!), `accent as a control, mode ${mode}`).toBeGreaterThanOrEqual(3);
-    const line = tokens.match(new RegExp(`\\[data-accent="${role[1]}"\\][^\\n]*`))![0];
-    // Blue is Apple's own default button, kept as measured.
-    expect(contrast(on, line.includes("--ac-fill") ? selected : accent), `primary button, mode ${mode}`).toBeGreaterThanOrEqual(role[1] === "blue" ? 4 : 4.5);
-  });
+test("Ibis scarlet carries white like every macOS accent, and stays readable in both modes", () => {
+  const [, light, dark] = parameters;
+  expect(tokens).toContain("--selected: var(--ibis); --primary: var(--selected); --selected-text: #fff;");
+  expect(contrast(white, light!), "white on the selection, in both modes").toBeGreaterThanOrEqual(4.5);
+  expect(contrast(light!, surfaces[0]!), "accent text, light").toBeGreaterThanOrEqual(4.5);
+  expect(contrast(dark!, surfaces[1]!), "accent text, dark").toBeGreaterThanOrEqual(4.5);
 });
 
 test("tertiary ink stays on placeholders and resting glyphs, never words a person reads", () => {
@@ -210,7 +205,7 @@ test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
 
 test("menus and buttons use title case, as the Mac does", () => {
   const messages = read("messages.ts");
-  for (const label of ["Clear Search", "Keep Window Open", "Show What Will Be Pasted", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
+  for (const label of ["Clear Search", "Keep Window Open", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library"]) expect(messages).toContain(`"${label}"`);
   for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…"]) expect(messages).not.toContain(`"${label}"`);
 });
 

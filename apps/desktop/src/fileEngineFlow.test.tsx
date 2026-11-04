@@ -16,7 +16,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     const copy = vi.fn(() => ({ text, warnings: [] }));
     const calls = backend({
       library_status: () => ({ state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false, name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
-      picker_preferences: () => ({ citation_style: style, density: "comfortable", larger_text: false, show_paste_preview: true }),
+      picker_preferences: () => ({ citation_style: style, density: "comfortable", larger_text: false }),
       search: ({ query }) => query.text ? [{ ...result("demo", "Synthetic research"), id, source: id.library, cite }] : [],
       preview_file_citation: preview,
       copy_file_citation: copy,

@@ -47,7 +47,7 @@ main > footer { grid-area: footer; }
    one --inset and their corners nest in the window's (docs/design.md, Corners). */
 .search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-row); }
 .search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-row); }
-#search::placeholder { color: var(--text-tertiary); }
+#search::placeholder { color: var(--text-placeholder); }
 /* The search box never shows a ring: it always has focus, and the caret is the
    cue. Contrast and forced colours restore it below. The clear glyph is quiet like the other icons: secondary colour,
    16 px glyph in a 32 px target. */
@@ -220,20 +220,18 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* No animation: reduced-motion users get the same immediate feedback. */
 
 /* Remembered picker preferences (ADR 0020). Compact rows keep the title and
-   year only; spacious rows get room for a third line. */
+   year only. */
 /* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
    so titles still start where the search text does; its control covers 32 px. */
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] [role="option"]:not([data-citation-selected]) .result-tile { background: transparent; }
 :root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - 1.5rem) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
-:root[data-density="spacious"] { --row-height: var(--row-spacious); }
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
 
-/* Rows that tell similar references apart (#492). Comfortable and Spacious
-   rows show shortened authors and the container on one line; Spacious adds
-   the item type; Compact puts the first author after the title. */
-.result-type { flex: none; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Rows that tell similar references apart (#492). Comfortable rows show
+   shortened authors and the container on one line; Compact puts the first
+   author after the title. */
 .result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 [data-active] .result-first-author { color: var(--selected-text-secondary); }
 :root[data-density="compact"] .result-title { flex: 0 1 auto; }
@@ -293,9 +291,6 @@ footer .key-hint-label { display: inline; }
 .search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .recent-heading h2 { margin: 0; font: inherit; }
-[data-active] .result-body > .result-type { color: var(--selected-text-secondary); }
-:root[data-density="spacious"] .result-meta { margin-top: var(--row-spacing); }
-.result-body > .result-type { color: var(--text-secondary); margin-top: var(--row-spacing); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 
 .query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 

@@ -58,7 +58,11 @@ fn private_urls_in_file_fields_and_note_overrides_never_reach_formatted_output()
                 assert!(!format!("{:?}", loaded.snapshot).contains("private.pdf"));
                 case.request.items[0].item = record.id.clone();
                 engine
-                    .publish_library(loaded.library.clone(), Arc::new(loaded.snapshot))
+                    .publish_library(
+                        loaded.library.clone(),
+                        ibis_engine::LibraryKind::Snapshot,
+                        Arc::new(loaded.snapshot),
+                    )
                     .map_err(|error| format!("{error:?}"))?;
                 let prepared = engine
                     .prepare_citation(&case.request, &Cancellation::default())

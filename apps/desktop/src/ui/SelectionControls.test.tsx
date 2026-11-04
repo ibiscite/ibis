@@ -17,7 +17,7 @@ function Controls() {
     <style>{css}</style>
     <Switch aria-label="Show invented preview" isSelected={enabled} onChange={setEnabled} />
     <Segmented label="Invented rows" value={rows} onChange={setRows}
-      options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "spacious", label: "Spacious" }]} />
+      options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }, { value: "wide", label: "Wide" }]} />
   </section>;
 }
 
@@ -50,7 +50,7 @@ test("switch activation and segmented arrow keys preserve names and controlled v
   const comfortable = screen.getByRole("radio", { name: "Comfortable", checked: true });
   act(() => comfortable.focus());
   fireEvent.keyDown(comfortable, { key: "ArrowRight" });
-  expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Spacious", checked: true }));
+  expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Wide", checked: true }));
   expect(screen.getByRole("radiogroup", { name: "Invented rows" })).toBeTruthy();
 });
 

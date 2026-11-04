@@ -61,9 +61,6 @@ general-paste-stale = Already on, but still waiting? In System Settings, remove 
 general-rows = Rows
 general-density-compact = Compact
 general-density-comfortable = Comfortable
-general-density-spacious = Spacious
-general-preview = Show what will be pasted
-general-preview-description = The line above the footer
 
 shortcuts-open = Open Ibis
 shortcuts-description = Click the shortcut, then type a new one. Esc cancels.
@@ -85,7 +82,6 @@ shortcuts-command-format = Choose Output Format
 shortcuts-command-pin = Keep Window Open
 shortcuts-command-keys = Keyboard Shortcuts
 shortcuts-command-more = More
-shortcuts-command-preview = Show What Will Be Pasted
 shortcuts-command-source = Open the Source
 shortcuts-command-settings = Settings
 shortcuts-command-quit = Quit Ibis
@@ -95,7 +91,6 @@ shortcuts-region-library = Your library
 shortcuts-region-picker = Anywhere in Ibis
 shortcuts-region-menu = In a menu
 shortcuts-region-system = From any app
-shortcuts-action-preview = Show what will be pasted
 shortcuts-action-source = Open the source
 shortcuts-action-choose-source = Choose a library
 shortcuts-action-reveal-source = Show the source in its folder
@@ -127,7 +122,6 @@ about-copied = Copied
 about-copy-failed = The version could not be copied.
 about-version = Version { $version }
 about-mission = One shortcut to cite from your library in any app.
-about-why = Why an ibis
 about-updates = Updates
 about-links = Links
 about-website = Website
@@ -143,6 +137,11 @@ settings-look = Look
 settings-citations = Citations
 settings-search = Search Settings
 settings-no-results = No matching settings
+settings-results = Search results
+settings-results-count = { $count ->
+    [one] 1 result
+   *[other] { $count } results
+    }
 settings-read-failed = Ibis could not read your settings; reopen Settings to try again.
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
@@ -154,39 +153,21 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-accent-multicolor =
-    { $platform ->
-        [macos] Follow the Mac · blue when the Mac is on Multicolor
-       *[other] Follow the system's accent colour
-    }
-look-accent-inside = { $name } · for Ibis only
 look-density-compact = Title and authors on one line
 look-density-comfortable = Title, then authors and journal
-look-density-spacious = Adds the kind of reference
 look-accent-system =
     { $platform ->
         [macos] Follow the Mac
        *[other] Follow the system
     }
 look-accent-ibis = Ibis scarlet
-look-accent-blue = Blue
-look-accent-purple = Purple
-look-accent-pink = Pink
-look-accent-red = Red
-look-accent-orange = Orange
-look-accent-yellow = Yellow
-look-accent-green = Green
-look-accent-graphite = Graphite
+look-accent-words = colour color scarlet red
 look-window-size = Window size
 look-window-small = Small
 look-window-medium = Medium
 look-window-large = Large
 look-window-custom = Custom
 look-window-custom-note = Drag an edge of the picker to set your own size. Ibis remembers it on each display.
-look-search-icon = Search icon
-look-ibis = Ibis mark
-look-magnifier = Magnifier
-look-none = None
 look-text-size = Text size
 look-default-text = Default
 look-larger-text = Larger
@@ -230,11 +211,10 @@ look-sample-title-3 = A map of quiet places
 
 # Quiet feedback, counted on this device only.
 delight-ibis = Ibis
-delight-thoth = Ancient Egyptians associated the ibis with Thoth, god of writing.
-delight-tip = ⇧⌘P keeps Ibis open
-delight-library100 = 100 references in { $library }. A good start.
-delight-library1000 = 1,000 references in { $library }. A solid library.
-delight-library10000 = 10,000 references in { $library }. A remarkable library.
+delight-tip = { $keys } keeps Ibis open between citations.
+delight-library100 = 100 references. A good start.
+delight-library1000 = 1,000 references. A solid library.
+delight-library10000 = 10,000 references. A remarkable library.
 delight-empty = Choose a reference to paste.
 delight-loading = Your library is still opening.
 delight-no-library = Open a library to paste a reference.
@@ -243,7 +223,7 @@ delight-citation = { $count ->
     [1] First citation
    *[other] Citation { NUMBER($count) }
     }
-delight-anniversary = One year with Ibis
+delight-anniversary = One year with Ibis today.
 delight-about-words = ibis version about thoth
 canvas-hovered = Hovered
 canvas-pressed = Pressed
@@ -251,20 +231,20 @@ canvas-focused = Keyboard focus
 
 general-small-surprises-label = Small surprises
 general-small-surprises-description = Bird facts, milestones and anniversaries.
+settings-surprises-words = delight easter egg fun
 delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
 delight-fact-touch = White ibises find food by touch as they probe the mud.
 delight-fact-scarlet = Scarlet ibises get their colour from pigments in the shellfish they eat.
 delight-fact-mummies = Ancient Egyptians mummified ibises as offerings to Thoth.
 delight-fact-national = The scarlet ibis is a national bird of Trinidad and Tobago.
 delight-fact-flight = Northern bald ibises take turns leading their V formation.
-delight-birthday = Ibis turns two today.
 undo-action = Undo { $action }
 undo-remove = Remove { $reference }
 undo-reset-window = Reset Window Position
 undo-forget-formats = Forget Formats
 undo-shortcut = Restore Default Shortcut
 
-undo-removed = Removed { $reference } from citation.
+undo-removed = Removed { $reference }
 
 choice-use-zotero = Use Zotero
 choice-zotero-help = Your Zotero library, open or closed

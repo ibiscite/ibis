@@ -29,7 +29,7 @@ AI-assisted contributions are welcome, under the rules below.
 
 ## Setup
 
-Use the Rust toolchain in `rust-toolchain.toml`, Node 22 or newer, and the pnpm version in `apps/desktop/package.json`, then run `pnpm -C apps/desktop install --frozen-lockfile`. Native builds need Xcode Command Line Tools on macOS, or the MSVC build tools and WebView2 on Windows. On Debian/Ubuntu install `build-essential pkg-config libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev patchelf`; other platforms: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). `node scripts/check.mjs` runs everything CI runs that your machine can (it exits 2 when a tool is missing).
+Use the Rust toolchain in `rust-toolchain.toml`, Node 22 or newer, and the pnpm version in `apps/desktop/package.json`, then run `pnpm -C apps/desktop install --frozen-lockfile`. Native builds need Xcode Command Line Tools on macOS, or the MSVC build tools and WebView2 on Windows. On Debian/Ubuntu install `build-essential pkg-config libwebkit2gtk-4.1-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev libayatana-appindicator3-dev patchelf`; other platforms: [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). `node scripts/check.mjs` runs what CI would for your changes, and `--all` runs everything your machine can (it exits 2 when a tool is missing).
 
 ```sh
 cargo run -p ibis -- --help          # the command line

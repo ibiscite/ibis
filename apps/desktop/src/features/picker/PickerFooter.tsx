@@ -13,10 +13,10 @@ export type KeyHints = { enter: string | null; shiftEnter: string | null; escape
 
 /** Status and its fix, Copy, then More. More's place never depends on the action:
  * shorten the status, then truncate the label, then fold labels to keys by width. */
-export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, feedback, passive, emptyAction }: {
+export function PickerFooter({ library, groupName, hints, altHeld, actions, more, status, emptyAction }: {
   library: LibraryStatus | null | undefined; groupName: (id: number) => string; hints: KeyHints; altHeld: boolean;
   actions: { copy: () => void; add: () => void; escape: () => void };
-  more: React.ReactNode; status?: React.ReactNode; feedback?: string | null; passive?: boolean; emptyAction?: boolean;
+  more: React.ReactNode; status?: React.ReactNode; emptyAction?: boolean;
 }) {
   const bar = useRef<HTMLElement>(null);
   const hintsRow = useRef<HTMLElement>(null);
@@ -81,7 +81,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
           : emptyAction && <FooterAction label={keyText.copy} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       <span key="more" ref={menu} className="more">{more}</span>
-      <QuietStatus passive={!library?.note && passive}>{library?.note ?? feedback}</QuietStatus>
+      <QuietStatus>{library?.note}</QuietStatus>
     </section>
   </footer>;
 }

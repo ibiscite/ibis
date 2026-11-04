@@ -27,14 +27,14 @@ test("real command failures stay fatal in report mode and numbers reach the job 
   }
 });
 
-test("Preview measures after preserving packages and keeps native paste outside packaging", () => {
+test("Preview measures and pastes beside packaging, and install still waits for the paste check", () => {
   const preview = readFileSync(new URL("../.github/workflows/preview.yml", import.meta.url), "utf8");
-  const build = preview.split("\n  build:\n")[1].split("\n  windows-paste:\n")[0];
-  assert.ok(build.indexOf("node scripts/preview-budgets.mjs") > build.indexOf("- name: Keep the packages"));
-  assert.doesNotMatch(build, /one_ctrl_v_pastes/);
+  const build = preview.split("\n  build:\n")[1].split("\n  release-checks:\n")[0];
+  assert.doesNotMatch(build, /preview-budgets|one_ctrl_v_pastes/);
+  assert.match(preview.split("\n  release-checks:\n")[1].split("\n  windows-paste:\n")[0], /node scripts\/preview-budgets\.mjs/);
   const windows = preview.split("\n  windows-paste:\n")[1].split("\n  sign-macos:\n")[0];
   assert.match(windows, /- name: Build the web interface\n        shell: bash/);
-  assert.match(preview, /windows-paste:[\s\S]*?needs: build[\s\S]*?one_ctrl_v_pastes_the_clipboard_into_the_app_in_front/);
+  assert.match(windows, /one_ctrl_v_pastes_the_clipboard_into_the_app_in_front/);
   const install = preview.split("\n  install:\n")[1].split(/\n  [a-z][\w-]*:\n/)[0];
   assert.match(install, /needs: \[build, sign-macos, windows-paste\]/);
   assert.match(install, /needs.windows-paste.result == 'success'/);

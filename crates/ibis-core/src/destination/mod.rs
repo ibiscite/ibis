@@ -177,6 +177,8 @@ pub enum CopyReason {
     NoPermission,
     /// macOS Accessibility trust is required for the identity-only focus proof.
     AccessibilityRequired,
+    /// A paste would replace selected text the search never showed.
+    SelectionNotShown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -190,6 +192,13 @@ pub enum Decision {
 pub fn lookup(app: &AppId) -> Option<&'static App> {
     let id = app.normalized();
     APPS.iter().find(|entry| entry.system == app.system && entry.id == id)
+}
+
+/// A word processor whose documents can hold live citations from a reference
+/// manager's plugin. Pasted text is not one, and Ibis cannot see a document, so
+/// only the app ID decides. Browsers stay out: Google Docs looks like any page.
+pub fn has_citation_plugins(app: &AppId) -> bool {
+    lookup(app).is_some_and(|app| matches!(app.name, "Microsoft Word" | "Pages" | "LibreOffice"))
 }
 
 /// Paste, or copy with the reason. Checks run from the user's own choice to

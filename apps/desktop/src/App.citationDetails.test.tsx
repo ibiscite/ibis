@@ -138,7 +138,7 @@ test("closing and reopening while Page has focus returns to Search and retains t
   expect((await openCitationDetails()).value).toBe("42");
 });
 
-test("reference and window Undo keep separate reachable actions and cannot consume each other", async () => {
+test("reference and window Undo take the slot in turn and cannot consume each other", async () => {
   const windowUndos: unknown[] = [];
   backend({ search: () => [result("a", "Invented work")], undo_window_position: (args) => { windowUndos.push(args); return true; } });
   render(<App />);
@@ -148,15 +148,13 @@ test("reference and window Undo keep separate reachable actions and cannot consu
   const segment = screen.getByRole("button", { name: "Edit Smith 2020" });
   act(() => segment.focus()); fireEvent.keyDown(segment, { key: "Backspace" });
   await act(async () => { await emit("picker:window-reset", { revision: 17, undo: 17 }); });
-  const actions = screen.getAllByRole("button", { name: /^Undo / });
-  expect(actions).toHaveLength(2);
-  const descriptions = actions.map((button) => document.getElementById(button.getAttribute("aria-describedby")!)?.textContent);
-  expect(descriptions).toEqual(["Removed Smith, 2020 from citation.", "Window position reset."]);
-  for (const button of actions) { act(() => button.focus()); expect(document.activeElement).toBe(button); }
-  await act(async () => { fireEvent.click(actions[1]!); });
+  // One slot: the newest offer shows, and the other waits with its action intact.
+  const newest = screen.getByRole("button", { name: /^Undo / });
+  expect(document.getElementById(newest.getAttribute("aria-describedby")!)?.textContent).toBe("Window position reset.");
+  await act(async () => { fireEvent.click(newest); });
   expect(windowUndos).toEqual([{ revision: 17 }]);
   expect(screen.queryByText("Window position reset.")).toBeNull();
-  expect(screen.getByText("Removed Smith, 2020 from citation.")).toBeTruthy();
+  expect(screen.getByText("Removed Smith 2020")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   expect(screen.queryByRole("button", { name: /^Undo / })).toBeNull();
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
@@ -199,7 +197,7 @@ test.each(["S.12", "pages of notes"])("a form edit preserves the captured page %
   expect(page.value).toBe(value);
 });
 
-test.each([false, true])("a label-only Page refuses copy until corrected (preview hidden: %s)", async (hidden) => {
+test("a label-only Page refuses copy until corrected", async () => {
   const message = "Reference 1: Page needs a page or range. Enter one after the label, or clear Page.";
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
@@ -213,7 +211,6 @@ test.each([false, true])("a label-only Page refuses copy until corrected (previe
   const page = await openCitationDetails();
   await within(screen.getByRole("region", { name: "Full citation" })).findByText("Original output");
   const search = screen.getByLabelText("Search references");
-  if (hidden) fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
   fireEvent.change(page, { target: { value: "pp." } });
   expect((await screen.findByRole("alert")).textContent).toBe(message);
   fireEvent.keyDown(search, { key: "Enter" });
@@ -257,7 +254,7 @@ test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and ed
   expect(calls).not.toContain("copy_file_citation");
 });
 
-test.each([true, false])("actionable refusals remain visible with the preview hidden (hide before failure: %s)", async (hideBefore) => {
+test("actionable refusals remain visible until corrected", async () => {
   const message = "Reference 1: Narrative cannot be expressed in this output. Choose Normal or another output.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
@@ -267,18 +264,13 @@ test.each([true, false])("actionable refusals remain visible with the preview hi
   render(<App />);
   await openCitationDetails();
   const search = screen.getByLabelText("Search references");
-  const hide = () => fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
-  if (hideBefore) hide();
   await chooseForm("Name in the sentence");
-  await screen.findByRole("alert");
-  if (!hideBefore) hide();
-  expect(screen.getByRole("alert").textContent).toBe(message);
+  expect((await screen.findByRole("alert")).textContent).toBe(message);
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(screen.getAllByRole("alert").map((alert) => alert.textContent)).toEqual([message]));
   expect(calls).not.toContain("copy_file_citation");
   await chooseForm("Name in brackets");
   await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
 });
 
 test("editing the highlighted reference freezes its page and form for preview and canonical copy", async () => {
@@ -399,7 +391,7 @@ test("changing only the form does not offer to reapply an unchanged search page"
   expect(screen.queryByRole("button", { name: "Apply locator to a" })).toBeNull();
 });
 
-test("page and form survive changing output and remain editable with the paste preview hidden", async () => {
+test("page and form survive changing output and remain editable", async () => {
   const previews: PreviewRequest[] = [];
   backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: (request) => { previews.push(request); return receipt(`preview ${previews.length}`); } });
@@ -413,8 +405,6 @@ test("page and form survive changing output and remain editable with the paste p
   fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst key" }));
   await waitFor(() => expect(previews.at(-1)?.format).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
-  fireEvent.keyDown(search, { key: "i", code: "KeyI", ctrlKey: true });
-  expect(screen.queryByRole("region", { name: "Preview" })).toBeNull();
   page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42–45" } });
   await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));
