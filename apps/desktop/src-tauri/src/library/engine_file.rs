@@ -1091,16 +1091,35 @@ impl FileLibrary {
                 .form_example(&self.engine, &original_output, item, form, &cancel)
                 .map_err(CommandError::from)?;
             let supported = result.outcomes.contains(&ItemOutcome::Rendered { item });
-            forms.push(FormOption { form: wire,
+            forms.push(FormOption {
+                form: wire,
                 example: supported.then(|| {
-                    let example = if result.outcomes.len() == 1 { result.text } else { result.display.nodes.iter().filter(|node| node.item == Some(item)).flat_map(|node| &node.content).map(|run| run.text.as_str()).collect() };
-                    if example.chars().count() > 256 { format!("{}…", example.chars().take(255).collect::<String>()) } else { example }
+                    let example = if result.outcomes.len() == 1 {
+                        result.text
+                    } else {
+                        result
+                            .display
+                            .nodes
+                            .iter()
+                            .filter(|node| node.item == Some(item))
+                            .flat_map(|node| &node.content)
+                            .map(|run| run.text.as_str())
+                            .collect()
+                    };
+                    if example.chars().count() > 256 {
+                        format!("{}…", example.chars().take(255).collect::<String>())
+                    } else {
+                        example
+                    }
                 }),
-                reason: (!supported).then(|| match form {
-                    CitationForm::YearOnly => "Only when cited alone",
-                    CitationForm::Narrative => "Only when cited alone",
-                    _ => "Not in this output",
-                }.into()),
+                reason: (!supported).then(|| {
+                    match form {
+                        CitationForm::YearOnly => "Only when cited alone",
+                        CitationForm::Narrative => "Only when cited alone",
+                        _ => "Not in this output",
+                    }
+                    .into()
+                }),
             });
         }
         self.preview_cancellation(reservation)?
