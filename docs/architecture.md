@@ -123,8 +123,6 @@ Failed Reloads record source health under the same guard, so queued notification
 cannot clear the failure or advance the last successful check.
 Concurrent failed reads retain their errors for unrelated libraries; a fresh repair
 clears its own error. Zotero's read guard must still match at acceptance.
-Obsolete-cache cleanup validates locality and resolves the local directory before
-its first filesystem probe, including when the configured cache path is a symlink.
 
 ### File availability and notification recovery (#1532, items 2, 3 and 7)
 
@@ -175,11 +173,10 @@ mount, Windows provider states and iCloud provider states separately.
 The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
 at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
 readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable
-when loaded. Startup removes recognized obsolete cache files only from the
-verified private directory under its exclusive lease; controls and unknown files
-stay. Fresh Reload and watches still share unchanged parsed records. Zotero's
-coherent-read barrier remains; future storage/memory work (#1298, #1251) needs
-separate evidence.
+when loaded. The obsolete-cache cleanup was removed on 2026-11-04; early testers
+may retain unused old cache files. Fresh Reload and watches still share unchanged
+parsed records. Zotero's coherent-read barrier remains; future storage/memory
+work (#1298, #1251) needs separate evidence.
 
 ## Citations (ibis-core, ibis-csl)
 
