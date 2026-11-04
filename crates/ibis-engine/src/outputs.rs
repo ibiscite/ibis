@@ -37,11 +37,11 @@ pub struct OutputInfo {
     pub forms: Vec<CitationForm>,
     /// It writes each reference's whole record, notes included, not a
     /// citation; agents are not offered it.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exports_records: bool,
     /// It writes reference entries, never in-text citations: a numbered
     /// style cannot number one citation alone.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub entries: bool,
 }
 

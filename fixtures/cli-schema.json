@@ -3478,6 +3478,10 @@
                   "null"
                 ]
               },
+              "entries": {
+                "description": "It writes reference entries, never in-text citations: a numbered\nstyle cannot number one citation alone.",
+                "type": "boolean"
+              },
               "example": {
                 "description": "What it writes for one invented reference: the key `key`, or for a\nstyle an article by A. García (2021).",
                 "type": [
@@ -3513,8 +3517,7 @@
               "id",
               "name",
               "output",
-              "forms",
-              "exports_records"
+              "forms"
             ],
             "type": "object"
           },
