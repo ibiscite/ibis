@@ -5,7 +5,7 @@ use ibis_core::{
     cite::KeyFormat,
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
-        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec,
+        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
     },
     settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
 };
@@ -47,6 +47,18 @@ pub(crate) struct FileSelection {
     pub(crate) page_input: Option<String>,
     #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
+}
+/// A formatted bibliography, shown before it is copied. The picker's own
+/// citation receipt is untouched.
+#[derive(Serialize, specta::Type)]
+pub(crate) struct SessionBibliography {
+    pub(crate) text: String,
+    pub(crate) html: Option<String>,
+    pub(crate) content_hash: String,
+    pub(crate) warnings: Vec<String>,
+    /// References this style cannot write, by key or title. They are named so
+    /// that the rest can still be used.
+    pub(crate) left_out: Vec<String>,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
 #[serde(rename_all = "kebab-case")]
@@ -189,6 +201,159 @@ impl FileLibrary {
             unfiltered: None,
         })
     }
+    /// Rows for listed records in the open library, in the list's order. Each
+    /// comes from the current snapshot; the list itself holds identities only.
+    pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
+        const FAILED: &str = "The references could not be read. Try again.";
+        let snapshot = self.engine.snapshot().map_err(|_| FAILED)?;
+        let revision = snapshot.fingerprints().full.as_str().to_owned();
+        Ok(ids
+            .iter()
+            .filter_map(|id| {
+                let object = snapshot.get(id)?;
+                let LibraryObject::Record(record) = &object.object else {
+                    return None;
+                };
+                let mut row =
+                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
+                row.sample = self.sample;
+                Some(row)
+            })
+            .collect())
+    }
+
+    fn session_item(&self, snapshot: &Snapshot, id: &ItemRef) -> Option<CitationItem> {
+        let object = snapshot.get(id)?;
+        matches!(object.object, LibraryObject::Record(_)).then(|| CitationItem {
+            item: id.clone(),
+            expected_cite: Some(object.fingerprints.cite.clone()),
+            form: None,
+            suppress_author: false,
+            locator: None,
+            prefix: vec![],
+            suffix: vec![],
+            annotation: None,
+            expected_annotation_cite: None,
+        })
+    }
+
+    fn bibliography_of(
+        &self,
+        items: Vec<CitationItem>,
+        style: CitationStyle,
+    ) -> Result<(PreparedCitation, bool), CommandError> {
+        let count = items.len();
+        let request = CitationRequest {
+            items,
+            form: CitationForm::BibliographyOnly,
+            keep_order: false,
+            output: OutputSpec::Csl {
+                style: style_id(style).into(),
+            },
+            input_language: None,
+            output_locale: None,
+        };
+        let citation = self
+            .engine
+            .prepare_citation(&request, &Cancellation::default())
+            .map_err(CommandError::from)?;
+        let whole = citation.result().copy_content(count).is_some();
+        Ok((citation, whole))
+    }
+
+    /// The list as a bibliography. A record the style cannot write must not
+    /// cost the person all the others, so it is found and named instead.
+    fn prepare_session_bibliography(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+    ) -> Result<Option<(PreparedCitation, Vec<String>)>, CommandError> {
+        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
+        let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
+        if items.is_empty() {
+            return Ok(None);
+        }
+        let first = self.bibliography_of(items.clone(), style);
+        let (citation, left_out) = if let Ok((citation, true)) = first {
+            (citation, vec![])
+        } else {
+            let mut kept = vec![];
+            let mut left_out = vec![];
+            for item in items {
+                // Refused, or a failure only this record causes. The engine names it.
+                match self.bibliography_of(vec![item.clone()], style) {
+                    Ok((_, true)) => kept.push(item),
+                    Ok((single, false)) => left_out.extend(single.item_label(0)),
+                    Err(_) => left_out.extend(session_key(&snapshot, &item.item)),
+                }
+            }
+            if kept.is_empty() {
+                return Err(format!("This style can't write these references: {}.", left_out.join(", ")).into());
+            }
+            let (citation, whole) = self.bibliography_of(kept, style)?;
+            if !whole {
+                return Err("These references cannot be written as a bibliography in this style.".into());
+            }
+            (citation, left_out)
+        };
+        let citation = if self.sample {
+            citation.mark_sample().map_err(CommandError::from)?
+        } else {
+            citation
+        };
+        Ok(Some((citation, left_out)))
+    }
+
+    pub(crate) fn session_bibliography(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+    ) -> Result<Option<SessionBibliography>, CommandError> {
+        Ok(self
+            .prepare_session_bibliography(ids, style)?
+            .map(|(citation, left_out)| {
+                // Formatted numbers do not follow the list, so each is named here.
+                let warnings = citation_warnings_named(&citation)
+                    .into_iter()
+                    .map(|warning| named_reference(&citation, warning))
+                    .collect();
+                let result = citation.into_result();
+                SessionBibliography {
+                    text: result.text,
+                    html: result.html,
+                    content_hash: result.content_hash.as_str().to_owned(),
+                    warnings,
+                    left_out,
+                }
+            }))
+    }
+
+    /// Hand `use_it` exactly what was shown, or refuse: the list, the library
+    /// or the style changed since. Same commit barrier as a citation.
+    pub(crate) fn commit_session_bibliography<T>(
+        &self,
+        ids: &[ItemRef],
+        style: CitationStyle,
+        hash: &str,
+        use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
+    ) -> Result<T, CommandError> {
+        let (citation, _) = self
+            .prepare_session_bibliography(ids, style)?
+            .ok_or(CommandError::SnapshotChanged)?;
+        if citation.result().content_hash.as_str() != hash {
+            return Err(CommandError::SnapshotChanged);
+        }
+        self.engine
+            .commit_citation(&citation, &citation.result().content_hash, use_it)
+            .map_err(|error| match error {
+                ibis_engine::CitationCommitError::Engine(_) => {
+                    CommandError::from("The bibliography could not be copied. Try again.")
+                }
+                _ => CommandError::SnapshotChanged,
+            })?
+            .map_err(CommandError::from)
+    }
+
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
         Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
     }
@@ -534,12 +699,26 @@ impl FileLibrary {
         }
         Ok(latest.1.clone())
     }
+    #[cfg(test)]
     pub(crate) fn preview(
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
         format: KeyFormat,
         style: Option<CitationStyle>,
+    ) -> Result<FilePreview, CommandError> {
+        self.preview_for(reservation, items, format, style, None)
+    }
+
+    /// As [`Self::preview`], with a waiting editor's output in place of the
+    /// picker's, so the preview is what that editor receives.
+    pub(crate) fn preview_for(
+        &self,
+        reservation: u64,
+        items: Vec<FileSelection>,
+        format: KeyFormat,
+        style: Option<CitationStyle>,
+        editor: Option<&crate::editor_endpoint::EditorRequest>,
     ) -> Result<FilePreview, CommandError> {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
@@ -557,14 +736,7 @@ impl FileLibrary {
         };
         let output = if let Some(style) = style {
             OutputSpec::Csl {
-                style: match style {
-                    CitationStyle::Apa => "apa",
-                    CitationStyle::ChicagoAuthorDate => "chicago-author-date",
-                    CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
-                    CitationStyle::Ieee => "ieee",
-                    CitationStyle::ModernLanguageAssociation => "modern-language-association",
-                }
-                .into(),
+                style: style_id(style).into(),
             }
         } else {
             let (syntax, command) = match format {
@@ -640,7 +812,7 @@ impl FileLibrary {
                 })
             })
             .collect::<Result<_, CommandError>>()?;
-        let request = CitationRequest {
+        let mut request = CitationRequest {
             items,
             output,
             form: if style == Some(CitationStyle::Ieee) {
@@ -652,6 +824,12 @@ impl FileLibrary {
             input_language: None,
             output_locale: None,
         };
+        if let Some(editor) = editor {
+            request.output = editor.output.clone();
+            request.form = editor.form;
+            request.keep_order = matches!(editor.output, OutputSpec::Key { .. });
+            original_output = editor.output.clone();
+        }
         let citation = self
             .engine
             .prepare_citation(&request, &cancel)
@@ -835,6 +1013,21 @@ impl FileLibrary {
             .map_err(CommandError::from)?;
         Ok(ReferenceDetails { forms, current_form })
     }
+    /// Whether the receipt `ticket` was prepared for this editor's request.
+    pub(crate) fn prepared_for(&self, ticket: &str, editor: &crate::editor_endpoint::EditorRequest) -> bool {
+        self.prepared.lock().is_ok_and(|prepared| {
+            prepared.as_ref().is_some_and(|(current, citation, _)| {
+                current == ticket
+                    && citation.request_output() == &editor.output
+                    && citation.request_form() == editor.form
+            })
+        })
+    }
+
+    pub(crate) fn invalidate_preview(&self) {
+        self.invalidate();
+    }
+
     pub(super) fn invalidate(&self) {
         self.reserve_preview();
         if let Ok(mut prepared) = self.prepared.lock() {
@@ -865,6 +1058,7 @@ impl FileLibrary {
             text: citation.result().text.clone(),
             warnings: citation_warnings_named(citation),
             delivery: None,
+            cited: citation.items(),
         })
     }
 }
@@ -893,6 +1087,45 @@ fn native_source(info: &ibis_engine::LibraryInfo) -> String {
         Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
         Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
         None => info.id.as_str().to_owned(),
+    }
+}
+
+/// "Reference 2: …" as the reference it means.
+fn named_reference(citation: &PreparedCitation, warning: String) -> String {
+    let Some((number, detail)) = warning
+        .strip_prefix("Reference ")
+        .and_then(|rest| rest.split_once(": "))
+    else {
+        return warning;
+    };
+    number
+        .parse::<usize>()
+        .ok()
+        .and_then(|number| citation.item_label(number.checked_sub(1)?))
+        .map_or_else(|| warning.clone(), |name| format!("{name}: {detail}"))
+}
+
+fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
+    let LibraryObject::Record(record) = &snapshot.get(id)?.object else {
+        return None;
+    };
+    Some(
+        record
+            .citation_key()
+            .ok()
+            .flatten()
+            .unwrap_or("a reference without a key")
+            .to_owned(),
+    )
+}
+
+pub(crate) fn style_id(style: CitationStyle) -> &'static str {
+    match style {
+        CitationStyle::Apa => "apa",
+        CitationStyle::ChicagoAuthorDate => "chicago-author-date",
+        CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
+        CitationStyle::Ieee => "ieee",
+        CitationStyle::ModernLanguageAssociation => "modern-language-association",
     }
 }
 

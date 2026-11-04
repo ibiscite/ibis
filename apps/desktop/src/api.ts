@@ -6,7 +6,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 
 export type { Sources } from "./bindings";
 export type {
-  AppOutput, AppPaste, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, SearchQuery, SearchResult, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
+  AppOutput, AppPaste, Copied, Density, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -24,6 +24,12 @@ export const {
   checkZoteroSharing,
   reloadLibrary,
   libraryStatus,
+  editorRequest,
+  sessionReferences,
+  editSessionReferences,
+  sessionBibliography,
+  copySessionBibliography,
+  exportSessionBibliography,
   openLibrarySource,
   librarySource,
   hidePicker,
@@ -149,6 +155,11 @@ export function onLibraryFileRefused(handler: () => void): Promise<UnlistenFn> {
 
 export function onLibraryChanged(handler: (status: LibraryStatus) => void): Promise<UnlistenFn> {
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
+}
+
+/** An editor began or stopped waiting for a citation. */
+export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
+  return listen("editor:request", () => handler());
 }
 
 export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]) => ({

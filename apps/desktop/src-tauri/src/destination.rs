@@ -375,8 +375,15 @@ pub(crate) fn picker_destination(
     app: AppHandle,
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> PickerDestination {
-    let Some((id, name, app_identity)) = crate::paste::last_app(&app) else {
+    // The editor already said what it wants and takes the citation itself.
+    let last = if editor.current().is_some() {
+        None
+    } else {
+        crate::paste::last_app(&app)
+    };
+    let Some((id, name, app_identity)) = last else {
         return PickerDestination {
             app: None,
             app_id: None,

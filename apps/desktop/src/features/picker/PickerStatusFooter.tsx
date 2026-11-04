@@ -83,6 +83,7 @@ export function PickerStatusFooter({
             cancelCopy();
             destination.choosePaste("copy-only");
           } } : null,
+          sessionReferences: api.sessionReferences ? menus.openSession : null,
           forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); focusHome(); } : null,
           quit: () => run("quit"),
         }} />

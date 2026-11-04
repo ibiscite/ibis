@@ -1,0 +1,13 @@
+{
+ "client": "Citation Picker for Zotero 0.2.1 (mblode/vscode-zotero fe4d6bbfc6)",
+ "node": "v22.20.0",
+ "requests": [
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=pandoc HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=pandoc HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=biblatex HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=natbib HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=typst HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=formatted-citation HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n",
+  "GET /0123456789abcdef0123456789abcdef/better-bibtex/cayw?format=formatted-bibliography HTTP/1.1\r\nUser-Agent: vscode-zotero/0.2.0\r\nAccept: */*\r\nHost: 127.0.0.1:{port}\r\nConnection: close\r\n\r\n"
+ ]
+}
