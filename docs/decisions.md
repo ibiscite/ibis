@@ -876,8 +876,8 @@ language in 0.4. The speed and resource budgets in
 [architecture](architecture.md#desktop-app) are limits: search and bundle
 checks fail pull request CI; checks with too little margin on shared runners
 report there and are enforced on the release machines before each release.
-0.5 cites from Zotero's annotations and the PDFs people already open before
-any reader inside Ibis (maintainer, 2026-10-28).
+The reader inside Ibis no longer waits for citing from Zotero's annotations
+(maintainer, 2026-11-04, replacing the 2026-10-28 order; see 0035).
 
 2026-10-31 (maintainer): limits come from what a person notices, at the size real
 libraries reach. They block a release at 10,000 generated realistic records
@@ -958,6 +958,102 @@ it on its own branch and credits the author; Dependabot's are reviewed and merge
 by hand. Rules: [AGENTS.md](../AGENTS.md). No workflow change was needed: an audit
 on 2026-11-02 found no `pull_request_target`, no secrets reachable by forks, and
 that every outside run needs approval.
+
+## 0035 The reader's trust boundary
+
+2026-11-04 (maintainer): Ibis gets a full-quality, page-level PDF reader so that
+nobody needs to open Zotero while writing. It comes forward and no longer waits
+for citing from annotations. It is a read-only viewer for PDFs already in the
+person's citation manager (a Zotero attachment or a `.bib` entry's `file` field),
+to look at a source and choose a page. It does not replace Zotero: Ibis never
+imports, stores, manages, downloads, edits or annotates a PDF, and Open in Zotero
+stays. It opens in the shared inspector panel beside the list, and the picker
+widens only to hold the PDF (0027, 2026-11-02). It is one priority among many;
+design polish, shortcuts and configuration matter as much.
+
+**Engine: PDF.js** (`pdfjs-dist`, legacy build, pinned exactly, behind one
+adapter module), compared on 2026-11-04 with a spike on the branch
+`claude/reader-boundary` (#1252):
+
+| | PDF.js in the web view | pdfium (`pdfium-render`) | Each system's own (PDFKit, Windows.Data.Pdf, poppler) |
+| --- | --- | --- | --- |
+| Untrusted input | Memory-safe JavaScript in a worker, inside the web view's sandboxed content process. 6.4.299 has no `eval` or `new Function`; CVE-2024-4367, code execution through its old `eval` font path, was fixed in 4.2.67 | A C++ parser inside the Ibis process, beside the engine, the clipboard and paste permissions; Chrome runs it only in a sandboxed renderer | Three C/C++ parsers (CoreGraphics' JBIG2 decoder was the FORCEDENTRY exploit, CVE-2021-30860); a native view inside the window also bypasses the one key listener and focus rules |
+| Same on every system | One code base. Upstream supports the legacy build on Chrome 125+ (WebView2) and "mostly" on Safari 18+, and does not test WebKit, so Ibis tests it | Same pixels | Three renderers that differ |
+| Text and screen readers | A DOM text layer that can be selected, found and read (the spike) | Text and glyph boxes; Ibis would rebuild the DOM layer | PDFKit is accessible; Windows.Data.Pdf has no text at all |
+| Page labels | `getPageLabels()`: null for absent or malformed labels, empty for unlabelled pages, never guessed (the spike) | `FPDF_GetPageLabel` | PDFKit yes, Windows.Data.Pdf no, poppler yes |
+| Size | A lazy chunk of 564 KiB gzipped (147 main, 382 worker, two fonts); about 1.8 MB in the installer with cMaps, image decoders and Foxit fonts. The picker grows by 0.7 KiB | About 5 to 7 MB of native library per system and architecture (not measured here) | Nothing on macOS or Windows; poppler and GLib on Linux |
+| Memory | Worker and canvases only while open; ended on hide | In the app process | Managed by the system |
+| Licence | Apache-2.0; bundled parts BSD (Foxit fonts, OpenJPEG, JBIG2 from PDFium, Adobe cMaps), MIT (qcms), CC0 (an ICC profile) | Crate MIT or Apache-2.0; the binary bundles FreeType, libjpeg-turbo, OpenJPEG and LCMS, which `cargo deny` cannot see | poppler is GPL (from Xpdf) and needs its own licence decision |
+
+PDF.js is the only option that keeps untrusted parsing out of the Ibis process,
+draws the same pages on every system and gives screen readers real text.
+
+- **Bytes, not paths.** One command, granted only to the picker window (0024),
+  takes an opaque attachment id the engine issued for the current library
+  generation (#1208) and returns the file's bytes as a raw IPC response
+  (`tauri::ipc::Response`, an `ArrayBuffer`, not JSON), which PDF.js then
+  transfers to its worker. The engine finds the file. No path, file URL, `asset:`
+  URL or `convertFileSrc` reaches the web view, an error or a log. Only `OnDisk`
+  attachments whose first 1,024 bytes hold `%PDF-` are read. Missing, unreadable,
+  not-downloaded and cloud-placeholder files are refused with their state and are
+  never downloaded or hydrated (a dataless file on macOS, a recall-on-access
+  placeholder on Windows). Bytes stay in memory only while the PDF is open: never
+  written, cached or sent anywhere.
+- **A viewer of bytes.** `getDocument({ data })` only: no URL, range requests,
+  streaming or auto-fetch. PDF.js runs in its own worker loaded from the app's
+  origin. No scripting (neither `pdf.sandbox` nor the QuickJS wasm ships), no XFA
+  and no annotation layer, so links, forms, JavaScript, launch, submit and
+  embedded files do nothing; stored annotation appearances are drawn as pictures.
+  Standard fonts, cMaps and image decoders are bundled and served by an in-memory
+  factory, as in the spike; any other request fails, so a PDF cannot make one. The
+  CSP keeps `default-src 'self'` and gains no `unsafe-eval`. `'wasm-unsafe-eval'`
+  is added only if measurement needs it, as its own reviewed change; until then
+  PDF.js's JavaScript image decoders run.
+- **Limits.** At most 256 MiB a file, checked from metadata and again while
+  reading. Opening, bytes to first page drawn, takes at most 15 s, then fails with
+  Open in Zotero. Images over 16 megapixels are skipped and canvases are capped at
+  16 megapixels (`maxImageSize`, `canvasMaxAreaInBytes`). Only the pages in view
+  and one either side are drawn; renders that leave the view are cancelled and
+  their canvases and text layers removed.
+- **One owner per load.** Each open belongs to the inspector's reader session and
+  has an immutable identity: load id, attachment id and library generation.
+  Opening another source, closing the reader or the panel, hiding the picker, a
+  reload that changes the attachment, or a newer open aborts the IPC read and
+  destroys the PDF.js task. A completion that is no longer current is destroyed
+  and reports nothing; a page render carries its load id and page and is
+  cancelled, never drawn, when stale. The Page field the reader fills belongs to
+  the citation item that opened it; if that item has left the shelf, nothing is
+  filled.
+- **Memory.** The reader is a dynamic import loaded on first open;
+  `scripts/picker-budget.mjs` counts only the picker's static graph, so startup
+  stays at today's 222 KiB of 400 KiB (the spike measured +0.7 KiB for the import
+  itself). Hiding the picker or closing the reader ends the document and the
+  worker; only the parsed module code stays. A release check opens an invented
+  300-page PDF, hides the picker and requires the hidden 200 MiB limit within 2 s.
+- **Page numbers.** The physical index, the printed label and an annotation's
+  label stay apart (architecture, **Reader**). A printed page comes from a
+  non-empty `/PageLabels` entry, a Zotero annotation's label or an offset the
+  person confirms; otherwise it is unknown, never the physical index. A label on
+  several pages is ambiguous and asks. pypdf, a widely used parser, fills in
+  "1, 2, 3" for a file with no labels and "3, 4" for pages a label range leaves
+  blank: the silent guess Ibis refuses.
+- **Notes HTML never reaches the DOM as HTML.** The engine parses Zotero note
+  HTML with html5ever (already in `Cargo.lock` through Tauri) into a small typed
+  tree: paragraphs, headings, lists, quotations, emphasis, strong, sub- and
+  superscript, code and text, at most 1 MiB and 32 levels deep. Links keep their
+  words and lose their target; images, styles, scripts, frames, forms and every
+  URL are dropped. React renders the tree as elements and text nodes, never
+  `innerHTML`. Annotation comments and PDF text are plain text (PDF.js's text
+  layer sets `textContent`).
+- **Still to prove.** The spike ran in Chromium 153, WebView2's engine.
+  WKWebView on each supported macOS and WebKitGTK on each supported Linux run the
+  same scenario before the reader ships. The legacy build needs Safari 18 or
+  later, so macOS 12 (last Safari 17.6) cannot have the reader.
+- **Licences.** `cargo deny` does not see JavaScript; PDF.js and each bundled part
+  are listed in `NOTICE.md` by hand and pinned in `pnpm-lock.yaml`. PDF.js also
+  ships Liberation Sans (GPL-2.0 with a font exception, under Red Hat's terms) as
+  its Helvetica substitute; Ibis leaves it out until the maintainer decides, and
+  PDFs that do not embed Helvetica use the system's sans-serif.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 
