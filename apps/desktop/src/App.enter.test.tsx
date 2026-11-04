@@ -140,5 +140,5 @@ test.each([
   expect(notices).toEqual([{ text: "@a", delivery: null, summary: null }]);
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await emit("picker:shown"); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title.replace(/[.+]/g, "\\$&")}`) })).toBeTruthy();
+  expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) })).toBeTruthy();
 }, 10_000);
