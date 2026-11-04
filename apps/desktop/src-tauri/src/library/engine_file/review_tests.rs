@@ -623,7 +623,7 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
                 details.forms[0]
                     .reason
                     .as_deref()
-                    .is_some_and(|reason| reason.contains("Textcite"))
+                    .is_some_and(|reason| reason.contains("\\textcite"))
             );
             assert_eq!(details.forms[1].example.as_deref(), Some("\\textcite{Synthetic2021}"));
         } else {
