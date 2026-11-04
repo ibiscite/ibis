@@ -323,7 +323,11 @@ pub(crate) fn convert(
         .chain(other_names)
     {
         if !people.is_empty() {
-            csl.insert(role, Value::Array(people.into_iter().map(name_json).collect()));
+            // A fresh vector: collecting in place would keep the larger `Name`
+            // allocation behind every list, several times what the values need.
+            let mut list = Vec::with_capacity(people.len());
+            list.extend(people.into_iter().map(name_json));
+            csl.insert(role, Value::Array(list));
         }
     }
     for (role, date) in issued.map(|date| ("issued".to_owned(), date)).into_iter().chain(dates) {
