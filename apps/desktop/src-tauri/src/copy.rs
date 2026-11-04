@@ -263,7 +263,7 @@ pub(crate) fn copy_file_citation(
             Ok(())
         })?;
         let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
-        if !editor.answer(request.id, &text) {
+        if !editor.answer(request.id, &text, || file.invalidate_preview()) {
             return Err("Your editor stopped waiting for this citation.".into());
         }
         // Only a request that was answered may leave its citation on the clipboard.

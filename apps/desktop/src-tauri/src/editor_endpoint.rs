@@ -91,12 +91,17 @@ impl Pending {
         self.lock().as_ref().map(|(request, _)| request.clone())
     }
 
-    /// Give `id` its citation. False when that request has ended. The caller's
-    /// copy has consumed its receipt, so nothing else needs retiring.
-    pub(crate) fn answer(&self, id: u64, text: &str) -> bool {
+    /// Give `id` its citation. False when that request has ended. A copy leaves
+    /// its receipt in place, so `retire` runs under the lock first: once the
+    /// editor has its answer, that receipt cannot be copied again as if it were
+    /// the picker's own (a second Enter would otherwise paste the editor's text).
+    pub(crate) fn answer(&self, id: u64, text: &str, retire: impl FnOnce()) -> bool {
         let mut active = self.lock();
         match active.take() {
-            Some((request, send)) if request.id == id => send.try_send(Some(text.to_owned())).is_ok(),
+            Some((request, send)) if request.id == id => {
+                retire();
+                send.try_send(Some(text.to_owned())).is_ok()
+            }
             other => {
                 *active = other;
                 false
@@ -619,7 +624,7 @@ mod tests {
         *fake.then.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(|pending: &Pending| {
             let request = pending.current().unwrap_or_else(|| panic!("a request"));
             assert_eq!(request.label, "Pandoc");
-            assert!(pending.answer(request.id, "@taylor2026"));
+            assert!(pending.answer(request.id, "@taylor2026", || ()));
         }));
         let (_listening, port, host) = server(fake);
         let mut stream = connect(port);
@@ -666,7 +671,7 @@ mod tests {
 
         let request = host.pending.current().unwrap_or_else(|| panic!("a request"));
         assert_eq!(request.label, "Typst", "the second changed nothing");
-        assert!(host.pending.answer(request.id, "@a"));
+        assert!(host.pending.answer(request.id, "@a", || ()));
         assert!(answer(&mut first).ends_with("@a"));
     }
 
@@ -688,10 +693,10 @@ mod tests {
         let (second, second_answer) = pending
             .begin(&pick, "apa", || {})
             .unwrap_or_else(|| panic!("a request"));
-        assert!(!pending.answer(first, "late"), "A finished after B began");
+        assert!(!pending.answer(first, "late", || panic!("a late answer retires nothing")), "A finished after B began");
         assert!(!pending.cancel(first, || panic!("nothing to retire for an ended request")));
         assert_eq!(pending.current().map(|request| request.id), Some(second));
-        assert!(pending.answer(second, "newer"));
+        assert!(pending.answer(second, "newer", || ()));
         assert_eq!(second_answer.recv().ok().flatten().as_deref(), Some("newer"));
     }
 
@@ -797,6 +802,13 @@ mod tests {
         );
         assert!(pending.cancel(id, || retired += 100));
         assert_eq!(retired, 101);
+        let (id, _answer) = pending
+            .begin(&pick, "apa", || retired += 1000)
+            .unwrap_or_else(|| panic!("a request"));
+        assert!(!pending.answer(id + 1, "@a", || retired += 10_000), "another request's answer retires nothing");
+        assert!(pending.answer(id, "@a", || retired += 100_000), "answering retires the editor's receipt");
+        assert!(!pending.answer(id, "@a", || retired += 1_000_000), "an answered request is gone");
+        assert_eq!(retired, 101_101);
     }
 
     #[test]
