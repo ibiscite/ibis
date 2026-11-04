@@ -2779,11 +2779,11 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(searching).toContainEqual(["Copy the citation", "Enter"]);
   expect(searching).toContainEqual(["Add another reference", "Shift+Enter or Ctrl+click"]);
   expect(groups.find((group) => group[0]?.[0] === "In the citation")).toEqual([["In the citation"], ["Move between references", "← or →"], ["Remove the reference", "Backspace or Delete"]]);
-  expect(rows).toContainEqual(["Undo what the notice offers", "Ctrl+Z"]);
+  expect(rows).toContainEqual(["Undo", "Ctrl+Z"]);
   expect(rows).toContainEqual(["Make text larger or smaller", "Ctrl+Plus or Ctrl+Minus"]);
   expect(rows).toContainEqual(["Show the source in its folder", "Ctrl+Alt+O"]);
   expect(groups.find((group) => group[0]?.[0] === "Anywhere in Ibis")).toContainEqual(["More actions", "Ctrl+K"]);
-  expect(rows).toContainEqual(["Show Keyboard Shortcuts", "Ctrl+/ or ?"]);
+  expect(rows).toContainEqual(["Show keyboard shortcuts", "Ctrl+/ or ?"]);
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
   await waitFor(() => expect(within(dialog).getByRole("row", { name: /^From any app/ }).textContent).toBe("From any appCtrl+Shift+Y"));
