@@ -71,6 +71,12 @@ explicit source disconnection or revocation stops affected work. See
 [Shared project edits](design.md#shared-project-edits-planned) for visible
 behavior (maintainer, 2026-11-04; decision 0028).
 
+Projects may optionally supply library or collection search defaults when a new
+task starts (maintainer, 2026-11-04; decision 0028, #1260). No saved scope means
+all connected libraries. Defaults are resolved at task start; temporary filters
+remain task-local, and existing tasks use the established material-update rules.
+Search scope and bibliography verification remain separate responsibilities.
+
 ## Data model (ibis-core)
 
 - **Objects:** `Record` (a citable work: CSL-normalised fields plus citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.
