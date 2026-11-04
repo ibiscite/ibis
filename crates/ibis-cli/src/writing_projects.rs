@@ -12,8 +12,18 @@ use serde_json::{Value, json};
 use std::path::PathBuf;
 
 pub(crate) fn command() -> Command {
-    let id = || Arg::new("id").value_name("PROJECT_ID").required(true);
-    let name = || Arg::new("name").value_name("NAME").required(true);
+    let id = || {
+        Arg::new("id")
+            .value_name("PROJECT_ID")
+            .required(true)
+            .help("The stable project ID printed by ibis projects list")
+    };
+    let name = || {
+        Arg::new("name")
+            .value_name("NAME")
+            .required(true)
+            .help("A unique name for this writing project")
+    };
     let format = || {
         Arg::new("format")
             .long("format")
@@ -23,11 +33,17 @@ pub(crate) fn command() -> Command {
             .value_parser(crate::output_ids())
             .conflicts_with("style")
     };
-    let style = || Arg::new("style").long("style").value_name("STYLE_ID");
+    let style = || {
+        Arg::new("style")
+            .long("style")
+            .value_name("STYLE_ID")
+            .help("Any bundled CSL style ID; list them with: ibis styles")
+    };
     let bibliography = || {
         Arg::new("bibliography")
             .long("bibliography")
             .value_name("FILE")
+            .help("The read-only project bibliography to check, as a .bib file")
             .value_parser(clap::value_parser!(PathBuf))
     };
     Command::new("projects")
