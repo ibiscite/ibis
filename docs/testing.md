@@ -295,7 +295,12 @@ A pull request runs only what its paths can affect
 ([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
 `node scripts/check.mjs` makes the same choice locally. Main always runs everything; there is no merge queue (see AGENTS.md › Merging).
 Workflow logic that a test covers lives in a script under `scripts/`, and the
-test runs that script; no test reads workflow YAML (decision 0035).
+test runs that script; no test matches workflow text with regular expressions
+(decision 0035). Rules only the structure can show, such as "CI result" running
+`always()` and needing every job, are read with a YAML parser
+(`scripts/test_workflow_policy.py`). Scripts the workflows run (`ci-*.sh`,
+`publish-*.sh`, `keep-previous-nightly.sh`, `update-test-decision.sh`) are
+workflow code: changing them needs the same review as the workflow.
 
 | What changed | What runs | Typical wait |
 |---|---|---|
