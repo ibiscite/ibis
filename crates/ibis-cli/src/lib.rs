@@ -192,13 +192,25 @@ fn command() -> Command {
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
                 )
-                .arg(Arg::new("format").long("format").value_name("FORMAT").help_heading(OUTPUT).help("Key syntax to write [default: pandoc]").conflicts_with("style").value_parser(writing_projects::FORMATS))
+                .arg(
+                    Arg::new("format")
+                        .long("format")
+                        .value_name("FORMAT")
+                        .help_heading(OUTPUT)
+                        .help(format!(
+                            "Output to write: a key syntax or a common style [default: {}]; list them with: ibis outputs",
+                            ibis_engine::outputs::DEFAULT
+                        ))
+                        .hide_possible_values(true)
+                        .conflicts_with("style")
+                        .value_parser(output_ids()),
+                )
                 .arg(
                     Arg::new("style")
                         .long("style")
                         .value_name("STYLE_ID")
                         .help_heading(OUTPUT)
-                        .help("Format with a CSL style instead, such as apa; list them with: ibis styles"),
+                        .help("Format with any CSL style instead; list them with: ibis styles"),
                 )
                 .arg(
                     Arg::new("project").long("project").value_name("PROJECT_ID")
@@ -220,10 +232,9 @@ fn command() -> Command {
                     Arg::new("bibliography")
                         .long("bibliography")
                         .action(ArgAction::SetTrue)
-                        .requires("style")
                         .conflicts_with("form")
                         .help_heading(OUTPUT)
-                        .help("Format bibliography entries using --style"),
+                        .help("Format bibliography entries, in --style or a style --format names"),
                 )
                 .arg(Arg::new("form").long("form").value_name("FORM").help_heading(OUTPUT).help("Citation form [default: normal]").value_parser([
                     "normal",
@@ -335,6 +346,9 @@ fn command() -> Command {
                         .action(ArgAction::SetTrue)
                         .help("List citation languages instead of styles"),
                 ),
+            Method::Outputs => subcommand
+                .about("List the outputs cite writes: key syntaxes, then the common styles")
+                .after_help("Each id is what --format takes. Any other bundled style: ibis styles"),
             Method::Schema => subcommand
                 .about("Print the JSON Schema of each method")
                 .arg(
@@ -1074,14 +1088,28 @@ fn run_method<R: BufRead>(
         Method::Cite => {
             let project = writing_projects::chosen(args)?;
             let output = if let Some(project) = &project {
-                project.output.clone()
-            } else if let Some(style) = args.get_one::<String>("style") {
-                OutputSpec::Csl { style: style.clone() }
+                ibis_engine::outputs::resolve(&project.output)?
             } else {
-                writing_projects::key_output(args.get_one::<String>("format").map(String::as_str).unwrap_or("pandoc"))?
+                match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
+                    (Some(style), _) => OutputSpec::Csl { style: style.clone() },
+                    (None, format) => {
+                        ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+                            .map(|output| output.output.clone())
+                            .ok_or_else(|| EngineError::new(ErrorCode::Internal))?
+                    }
+                }
             };
+            if args.get_flag("bibliography") && !matches!(output, OutputSpec::Csl { .. }) {
+                return Err(Failure::new(
+                    ErrorCode::Usage,
+                    "--bibliography needs a style: give --style, or a --format that is a style.",
+                ));
+            }
             let destination = args.get_one::<String>("for-app").map(|app| {
-                let style = args.get_one::<String>("style").map_or("apa", String::as_str);
+                let style = match &output {
+                    OutputSpec::Csl { style } => style.as_str(),
+                    _ => ibis_engine::outputs::DEFAULT_STYLE,
+                };
                 destination(app, System::HERE, &output, style)
             });
             let output = destination
@@ -1121,15 +1149,7 @@ fn run_method<R: BufRead>(
                         .collect()
                     })
                     .collect(),
-                output: match &destination {
-                    Some(destination) => output_name(&destination.output),
-                    None if project.is_some() => output_name(&output),
-                    None => args
-                        .get_one::<String>("style")
-                        .or_else(|| args.get_one::<String>("format"))
-                        .cloned()
-                        .unwrap_or_else(|| "pandoc".into()),
-                },
+                output: output_name(&output),
                 form,
             };
             let writing_project = project
@@ -1233,6 +1253,7 @@ fn run_method<R: BufRead>(
                 "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
             })
         }
+        Method::Outputs => json!({}),
         Method::Schema => {
             json!({"method":args.get_one::<String>("method").map(|name|method_named(name)).transpose()?})
         }
@@ -1294,15 +1315,26 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         form: request.form,
     })
 }
+/// An output's one name from the engine's list; a style outside it is named by its id.
 fn output_name(output: &OutputSpec) -> String {
-    match output {
-        OutputSpec::Csl { style } => style.clone(),
-        OutputSpec::Key { syntax, .. } => serde_json::to_value(syntax)
+    match (ibis_engine::outputs::named(output), output) {
+        (Some(entry), _) => entry.name.clone(),
+        (None, OutputSpec::Csl { style }) => style.clone(),
+        (None, OutputSpec::Preset { name }) => name.clone(),
+        (None, OutputSpec::Key { syntax, .. }) => serde_json::to_value(syntax)
             .ok()
             .and_then(|syntax| syntax.as_str().map(str::to_owned))
             .unwrap_or_default(),
-        OutputSpec::Preset { .. } => "this output".into(),
     }
+}
+/// `--format` takes exactly the engine's output ids, each shown by its name.
+fn output_ids() -> clap::builder::PossibleValuesParser {
+    clap::builder::PossibleValuesParser::new(
+        ibis_engine::outputs::outputs()
+            .into_iter()
+            .flatten()
+            .map(|output| clap::builder::PossibleValue::new(output.id.as_str()).help(output.name.as_str())),
+    )
 }
 /// Keys with the options that follow each one, the way the picker attaches them.
 fn key_items(args: &ArgMatches) -> Result<Vec<KeyItem>, Failure> {

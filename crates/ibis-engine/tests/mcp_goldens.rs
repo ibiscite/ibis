@@ -111,21 +111,22 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
         "form": request.form,
     });
     match &request.output {
-        OutputSpec::Key { syntax, command: None } if request.keep_order || request.items.len() < 2 => {
-            let syntax = serde_json::to_value(syntax).unwrap();
+        output @ OutputSpec::Key { .. } if request.keep_order || request.items.len() < 2 => {
+            // The output's id, when the engine lists it and MCP offers it.
+            let id = ibis_engine::outputs::named(output).map(|entry| json!(entry.id))?;
             let offered = mcp::handle(
                 &Engine::new().unwrap(),
                 &mut mcp::Session::default(),
                 &json!({"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":mcp::PROTOCOL_VERSION,"io.modelcontextprotocol/clientCapabilities":{}}}}),
             )
-            .unwrap()["result"]["tools"][2]["inputSchema"]["properties"]["syntax"]["enum"]
+            .unwrap()["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"]
                 .as_array()
                 .unwrap()
-                .contains(&syntax);
+                .contains(&id);
             if !offered {
                 return None;
             }
-            arguments["syntax"] = syntax;
+            arguments["format"] = id;
         }
         OutputSpec::Csl { style } if !request.keep_order || request.items.len() < 2 => {
             arguments["style"] = json!(style)

@@ -2,7 +2,7 @@
 //! selection belongs to one request, never the GUI's selected app or document.
 use crate::{Failure, human, settings_backup};
 use clap::{Arg, ArgAction, ArgMatches, Command};
-use ibis_core::contract::{EngineError, ErrorCode, ExitCode, KeySyntax, OutputSpec};
+use ibis_core::contract::{ErrorCode, ExitCode, OutputSpec};
 use ibis_core::settings::{
     self,
     writing_projects::{self as projects, ProjectError, WritingProject},
@@ -11,26 +11,6 @@ use ibis_engine::{DispatchResult, Engine, WritingProjectCitation, request::Style
 use serde_json::{Value, json};
 use std::path::PathBuf;
 
-pub(crate) const FORMATS: [&str; 17] = [
-    "pandoc",
-    "autocite",
-    "parencite",
-    "textcite",
-    "cite",
-    "context",
-    "typst",
-    "keys",
-    "csl-json",
-    "natbib",
-    "org-cite",
-    "myst",
-    "multi-markdown",
-    "ascii-doc",
-    "jupyter",
-    "jekyll-scholar",
-    "cayw-json",
-];
-
 pub(crate) fn command() -> Command {
     let id = || Arg::new("id").value_name("PROJECT_ID").required(true);
     let name = || Arg::new("name").value_name("NAME").required(true);
@@ -38,7 +18,9 @@ pub(crate) fn command() -> Command {
         Arg::new("format")
             .long("format")
             .value_name("FORMAT")
-            .value_parser(FORMATS)
+            .help("Output ID from ibis outputs: a key syntax or a common style")
+            .hide_possible_values(true)
+            .value_parser(crate::output_ids())
             .conflicts_with("style")
     };
     let style = || Arg::new("style").long("style").value_name("STYLE_ID");
@@ -104,20 +86,17 @@ fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Fail
         return Ok(Some(OutputSpec::Csl { style: style.clone() }));
     }
     args.get_one::<String>("format")
-        .map(|format| key_output(format).map_err(Failure::from))
+        .map(|format| {
+            ibis_engine::outputs::find(format)
+                .map(|output| output.output.clone())
+                .ok_or_else(|| {
+                    Failure::new(
+                        ErrorCode::BadInput,
+                        "That output is unavailable. List outputs with: ibis outputs",
+                    )
+                })
+        })
         .transpose()
-}
-
-pub(crate) fn key_output(format: &str) -> Result<OutputSpec, EngineError> {
-    let (syntax, command) = match format {
-        "autocite" | "parencite" | "textcite" => (KeySyntax::Biblatex, Some(format.to_owned())),
-        "cite" => (KeySyntax::Latex, Some(format.to_owned())),
-        name => (
-            serde_json::from_value(json!(name)).map_err(|_| EngineError::new(ErrorCode::Usage))?,
-            None,
-        ),
-    };
-    Ok(OutputSpec::Key { syntax, command })
 }
 
 fn bibliography(args: &ArgMatches) -> Result<Option<PathBuf>, Failure> {

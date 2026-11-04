@@ -47,6 +47,19 @@ From the engine review of 2026-11-02. These need no further decision; each step 
 - **Extending:** data files first, then pipes, never native code or scripts loaded into the engine. Extensions carry their own tests.
 - **Stays:** citeproc-js in QuickJS, JSON-RPC with LSP framing, a fixed list of source kinds, one repository and one version number until 1.0.
 
+### Task contexts (planned)
+
+Approved 2026-11-04 ([decision 0028](decisions.md#0028-engine-first-replaces-0003-and-0005)):
+saved project definitions and source updates can be reused across clients, but
+the selected project, source scope and output belong to each writing task.
+The picker switching from Thesis to Paper B cannot retarget an agent already
+working on Thesis, and the agent cannot switch the picker by selecting Paper B.
+An explicit request to use the picker's current project captures it at task
+start. Search, picks, previews, destinations and pending delivery stay local to
+their session. A source update still revalidates affected citations; separate
+contexts do not preserve permission to cite a changed work or conflicting key.
+This behavior does not require one shared running engine.
+
 ## Data model (ibis-core)
 
 - **Objects:** `Record` (a citable work: CSL-normalised fields plus citation key with aliases), `Attachment`, `Note`, `Annotation`, `Collection`, `Tag`, `SavedSearch` (name and conditions only). Each is addressed by `ItemRef { library, key }`; children point to their parent.

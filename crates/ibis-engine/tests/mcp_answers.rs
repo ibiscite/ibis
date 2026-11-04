@@ -130,7 +130,7 @@ fn a_citation_key_is_never_rewritten_into_another_records_key() {
     let found = tool(&engine, "search", json!({"query":"tide hidden"}));
     let hit = &answer(&found)["hits"][0];
     assert_eq!(hit["title"], "Tide hidden");
-    let refused = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}],"syntax":"pandoc"}));
+    let refused = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}],"format":"pandoc"}));
     assert!(refusal(&refused).contains("hidden characters"), "{refused}");
     let cited = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}],"style":"apa"}));
     assert!(answer(&cited)["text"].as_str().unwrap().contains("Tide"), "{cited}");
@@ -224,13 +224,13 @@ fn a_page_reaches_the_citation_or_the_call_is_refused() {
     let cited = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":"fen2023clouds","omit_author":true}],"syntax":"pandoc"}),
+        json!({"items":[{"ref":"fen2023clouds","omit_author":true}],"format":"pandoc"}),
     );
     assert_eq!(answer(&cited)["text"], "[-@fen2023clouds]");
     let lost = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":"fen2023clouds","locator":"p. 12"}],"syntax":"keys"}),
+        json!({"items":[{"ref":"fen2023clouds","locator":"p. 12"}],"format":"keys"}),
     );
     assert_eq!(answer(&lost)["losses"][0]["field"], "locator");
 
@@ -264,13 +264,13 @@ fn each_refusal_says_what_to_change() {
         ),
         (
             "cite",
-            json!({"items":[{"ref":"fen2023clouds"}],"style":"apa","syntax":"pandoc"}),
-            "either style or syntax",
+            json!({"items":[{"ref":"fen2023clouds"}],"style":"apa","format":"pandoc"}),
+            "either format or style",
         ),
         (
             "cite",
-            json!({"items":[{"ref":"fen2023clouds"}],"syntax":"word"}),
-            "pandoc, biblatex",
+            json!({"items":[{"ref":"fen2023clouds"}],"format":"word"}),
+            "format must be one of: pandoc, pandoc-bare, autocite,",
         ),
         (
             "cite",
@@ -284,7 +284,7 @@ fn each_refusal_says_what_to_change() {
         ),
         (
             "cite",
-            json!({"items":[{"ref":"fen2023clouds"}],"syntax":"pandoc","form":"bibliography-only"}),
+            json!({"items":[{"ref":"fen2023clouds"}],"format":"pandoc","form":"bibliography-only"}),
             "Item 1: this output cannot write it",
         ),
         ("styles", json!({"style":"apa"}), "'style'"),
@@ -393,7 +393,7 @@ fn library_text_stays_data() {
     let refused = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":"hostile"}],"syntax":"pandoc","form":"bibliography-only"}),
+        json!({"items":[{"ref":"hostile"}],"format":"pandoc","form":"bibliography-only"}),
     );
     assert!(!refusal(&refused).contains("Ignore"), "{refused}");
     // The first thing an agent reads says the same.

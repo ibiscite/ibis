@@ -15,10 +15,15 @@ pub struct PreparedCitation {
     sample: bool,
 }
 impl PreparedCitation {
+    /// Record exports do not emit citation keys even though they share the
+    /// key-output request family; their target needs no project bibliography.
+    pub fn uses_citation_keys(&self) -> bool {
+        ibis_core::syntax::capabilities(&self.request.output).is_ok_and(|capabilities| !capabilities.exports_records)
+    }
     /// Check exactly the emitted keys and record fields that made this receipt,
     /// even if a later source snapshot has renamed or replaced a reference.
     pub fn project_checks(&self, read: &ProjectRead) -> Vec<ProjectKey> {
-        if !matches!(self.request.output, OutputSpec::Key { .. }) {
+        if !self.uses_citation_keys() {
             return Vec::new();
         }
         self.request
@@ -95,17 +100,6 @@ impl PreparedCitation {
         let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
         pick.form = (form != CitationForm::Normal).then_some(form);
         pick.suppress_author = false;
-        // Narrative is the textcite member of the native BibLaTeX family.
-        if request.items.len() == 1
-            && form == CitationForm::Narrative
-            && let OutputSpec::Key {
-                syntax: KeySyntax::Biblatex,
-                command,
-            } = &mut request.output
-            && matches!(command.as_deref(), Some("autocite" | "parencite"))
-        {
-            *command = Some("textcite".into());
-        }
         engine.cite_snapshot(&self.snapshot, &request, cancel)
     }
 
@@ -195,12 +189,17 @@ impl Engine {
             return Err(error(ErrorCode::SourceUnavailable));
         }
         let snapshot = state.index.snapshot().clone();
-        let result = self.cite_snapshot(&snapshot, request, cancel)?;
+        // The receipt keeps the output the preset means, so copy-time checks know it.
+        let request = CitationRequest {
+            output: crate::outputs::resolve(&request.output)?,
+            ..request.clone()
+        };
+        let result = self.cite_snapshot(&snapshot, &request, cancel)?;
         let prepared = PreparedCitation {
             zotero_generation: uses_zotero.then_some(state.zotero_generation),
             origin: Arc::downgrade(&self.shared),
             snapshot,
-            request: request.clone(),
+            request,
             result,
             sample: false,
         };

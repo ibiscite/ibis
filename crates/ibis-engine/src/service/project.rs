@@ -93,7 +93,7 @@ impl Engine {
         let mut request = request.clone();
         request.output = project.output.clone();
         let prepared = self.prepare_citation(&request, cancel)?;
-        let checked = if matches!(prepared.request_output(), OutputSpec::Key { .. }) {
+        let checked = if prepared.uses_citation_keys() {
             project
                 .bibliography
                 .as_ref()

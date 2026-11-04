@@ -146,3 +146,22 @@ fn missing_project_bibliography_reports_uncertainty_alongside_the_citation() {
         "could-not-check"
     );
 }
+
+#[test]
+fn project_formats_accept_the_same_registry_ids_as_ordinary_citations() {
+    let home = Home::new();
+    for output in ibis_engine::outputs::outputs().unwrap() {
+        let (code, made, errors) = home.run(&[
+            "projects",
+            "create",
+            &format!("Project {}", output.id),
+            "--format",
+            &output.id,
+        ]);
+        assert_eq!(code, 0, "{}: {made} {errors}", output.id);
+        assert_eq!(
+            made["data"]["project"]["output"],
+            serde_json::to_value(&output.output).unwrap()
+        );
+    }
+}

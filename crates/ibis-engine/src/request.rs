@@ -150,6 +150,11 @@ fn default_styles_limit() -> usize {
     100
 }
 
+/// The `outputs` method takes no parameters.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct OutputsRequest {}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct SchemaRequest {
@@ -175,6 +180,7 @@ pub fn request_schema(method: Method) -> Value {
         Method::Project => schema_for!(ProjectRequest),
         Method::Entry => schema_for!(EntryRequest),
         Method::Styles => schema_for!(StylesRequest),
+        Method::Outputs => schema_for!(OutputsRequest),
         Method::Schema => schema_for!(SchemaRequest),
         Method::Call => schema_for!(CallRequest),
     }

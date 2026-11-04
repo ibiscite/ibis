@@ -91,3 +91,55 @@ fn prepared_bibliography_checks_keep_the_original_key_after_a_source_rename() {
     assert!(matches!(checked[0].check, KeyCheck::In { .. }));
     assert_eq!(prepared.result().text, "[@vale2024]");
 }
+
+#[test]
+fn a_project_key_preset_checks_the_bibliography_for_its_canonical_output() {
+    let engine = engine();
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("refs.bib");
+    std::fs::write(
+        &path,
+        "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n",
+    )
+    .unwrap();
+    let mut settings = Settings::default();
+    let project = writing_projects::create(
+        &mut settings,
+        "Atlas".into(),
+        OutputSpec::Preset {
+            name: "pandoc-bare".into(),
+        },
+        Some(path),
+    )
+    .unwrap();
+    let request: KeyCitationRequest =
+        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"csl","style":"apa"}})).unwrap();
+    let result = engine
+        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .unwrap();
+    assert_eq!(result.citation.text, "@vale2024");
+    assert!(matches!(result.project.unwrap().keys[0].check, KeyCheck::In { .. }));
+}
+
+#[test]
+fn a_project_record_export_does_not_check_a_bibliography() {
+    let engine = engine();
+    let directory = tempfile::tempdir().unwrap();
+    let mut settings = Settings::default();
+    let project = writing_projects::create(
+        &mut settings,
+        "Atlas".into(),
+        OutputSpec::Preset {
+            name: "csl-json".into(),
+        },
+        Some(directory.path().join("unavailable.bib")),
+    )
+    .unwrap();
+    let request: KeyCitationRequest =
+        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
+    let result = engine
+        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .unwrap();
+    assert!(serde_json::from_str::<serde_json::Value>(&result.citation.text).is_ok());
+    assert!(result.project.is_none());
+}

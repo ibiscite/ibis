@@ -272,7 +272,7 @@ fn plugin_citation(home: &Home, config: &str, key: &str) -> String {
             "protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"synthetic","version":"1"}
         }}),
         serde_json::json!({"jsonrpc":"2.0","id":2,"method":"tools/call","params":{
-            "name":"cite","arguments":{"items":[{"ref":key}],"syntax":"pandoc"}
+            "name":"cite","arguments":{"items":[{"ref":key}],"format":"pandoc"}
         }}),
     ]
     .iter()

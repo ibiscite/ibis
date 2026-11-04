@@ -6,6 +6,8 @@ pub mod cayw;
 
 pub mod mcp;
 
+pub mod outputs;
+
 pub mod protocol;
 
 pub mod request;
