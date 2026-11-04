@@ -507,7 +507,9 @@ mod tests {
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .unwrap_or_else(|error| panic!("{error}"));
             let slot = app.state::<ProjectBibliography>();
-            let ticket = slot.choose(Some(project.to_owned())).unwrap_or_else(|| panic!("a ticket"));
+            let ticket = slot
+                .choose(Some(project.to_owned()))
+                .unwrap_or_else(|| panic!("a ticket"));
             assert!(slot.finish(ticket.generation, read(&ticket)));
             Self {
                 app,
@@ -524,7 +526,12 @@ mod tests {
         /// The preview's warnings, then the copy's, of the one row `text` finds.
         fn cite(&self, text: &str, request: u32) -> (Vec<String>, crate::copy::Copied) {
             use ibis_engine::Cancellation;
-            let file = self.app.state::<Mutex<Library>>().lock().ok().and_then(|library| library.file.clone());
+            let file = self
+                .app
+                .state::<Mutex<Library>>()
+                .lock()
+                .ok()
+                .and_then(|library| library.file.clone());
             let file = file.unwrap_or_else(|| panic!("a library"));
             let query = serde_json::from_value(serde_json::json!({"text":text,"interpret_locators":false}))
                 .unwrap_or_else(|error| panic!("{error}"));
@@ -586,7 +593,10 @@ mod tests {
         let (_project_dir, project) = written("thesis.bib", A);
         let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &project);
         let (previewed, copied) = picker.cite("a2026", 1);
-        assert!(previewed.is_empty() && copied.warnings.is_empty(), "plainly in the file");
+        assert!(
+            previewed.is_empty() && copied.warnings.is_empty(),
+            "plainly in the file"
+        );
 
         // The key is deleted, and the file is left damaged.
         std::fs::write(&project, "@book{b2026,}\n@article{broken,title={Never closed\n")
@@ -595,7 +605,10 @@ mod tests {
         let expected = ["Checked a2026 against the last good copy of thesis.bib; the file can't be read now."];
         let (previewed, copied) = picker.cite("a2026", 2);
         assert_eq!(previewed, expected);
-        assert_eq!(copied.warnings, expected, "a warning keeps the picker open with its reason");
+        assert_eq!(
+            copied.warnings, expected,
+            "a warning keeps the picker open with its reason"
+        );
 
         // And the same once the file is gone.
         std::fs::remove_file(&project).unwrap_or_else(|error| panic!("{error}"));
