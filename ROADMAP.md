@@ -18,6 +18,12 @@ Ibis sits between the references people already keep and the apps they already w
 
 Each release claims only what it has demonstrated, in the [compatibility guide](docs/compatibility.md). Until 1.0 nothing is kept for compatibility (decision 0027): anything wrong is rebuilt.
 
+Cross-client citation behavior follows the maintainer's 2026-11-04 additions to
+[decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005):
+separate task contexts, refusal of conflicting project keys, and continued use
+of a last-good snapshot with a clear refresh warning. These are planned rules;
+the tracking issue's implementation order is unchanged.
+
 ## Releases
 
 ### 0.0 Foundation and 0.1 Picker (released)

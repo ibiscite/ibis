@@ -44,6 +44,33 @@ is developed in tandem with the app, with no compromises; the GUI is only a laye
 It must work with AI agents, run on every operating system and be there for anyone
 to build on.
 
+2026-11-04 (maintainer, planning only): correctness across the app, command
+line and agents is the priority. Three rules apply to that shared contract:
+
+- **Separate task contexts.** Saved project definitions and reference updates
+  can be shared; each writing task keeps its selected project, source scope
+  and output. Another client's project selection never redirects ongoing work.
+  An explicit “use the current Ibis project” captures that choice when the task
+  starts, rather than continuously following the picker.
+- **Refuse conflicting project keys.** When a selected project's bibliography
+  is known to bind a key to a different work, refuse that key output until the
+  conflict is resolved. This replaces warn-and-copy for that case; copying
+  instead of pasting does not make the conflicting key safe.
+- **Keep a last-good snapshot usable.** An ordinary refresh failure permits
+  continued citation from a coherent snapshot of the same established source,
+  with a clear warning and the last successful read time. No repeated
+  confirmation is needed. This does not override refusals for uncertain source
+  identity, changed selected records or conflicting keys. The same request and
+  explicit policy have the same outcome across clients; strict mode remains
+  the explicit option planned in #1538.
+
+These are planned rules, not a claim that implementation has landed. They do
+not choose a shared engine process or settle whether an unreadable project
+bibliography must block key output. Context and source ownership are described
+in [architecture](architecture.md#task-contexts-planned); visible behavior is
+in [design](design.md#source-checks-and-passage-reuse-planned). Follow-up belongs
+to #1697, #1260 and #1538, with the work order on #1300 unchanged.
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden
