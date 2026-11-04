@@ -14,6 +14,8 @@ export type SessionView = {
   queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
+  /** Recent Citations is on: only then is an app's last citation kept to change. */
+  remembersLast: boolean;
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: Choice | null; output: OutputToken; question?: "open" | "answered" };
@@ -86,10 +88,12 @@ const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
 /** Apps whose last citation stays in memory; the oldest goes first. */
 const LAST_CITATIONS = 8;
-const remembered = (last: ReadonlyMap<string, LastCitation>, app: string | null, citation: LastCitation) => {
+/** Kept only with Recent Citations on and for a known app, so one app's citation is never offered in another. */
+const remembered = (last: ReadonlyMap<string, LastCitation>, app: string | null | undefined, citation: LastCitation, on: boolean) => {
+  if (!on || !app) return last;
   const next = new Map(last);
-  next.delete(app ?? "");
-  next.set(app ?? "", citation);
+  next.delete(app);
+  next.set(app, citation);
   if (next.size > LAST_CITATIONS) next.delete(next.keys().next().value!);
   return next;
 };
@@ -156,6 +160,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
         key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
       const newOutput = old && (old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
+      if (!v.remembersLast && (s.lastCitations.size || s.changing)) s = { ...s, lastCitations: new Map(), changing: null };
       return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0),
         shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
     }
@@ -270,7 +275,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references },
-        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format }) };
+        lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format }, s.view?.remembersLast === true) };
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.
       const sameVisibleOutput = s.view?.defaultChoice === f.choice && s.view.shown && typeof s.view.shown === "object" && s.view.shown.text === outcome.text;

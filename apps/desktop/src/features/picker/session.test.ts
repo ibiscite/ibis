@@ -13,7 +13,7 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
+      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
     output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
@@ -664,4 +664,28 @@ test("removing the last reference ends the change", () => {
   s.send({ type: "change-last" });
   s.send({ type: "toggle", result: [...s.state.selected.values()][0]! });
   expect(s.state.changing).toBeNull();
+});
+
+test("with Recent Citations off nothing is remembered, and turning it off forgets at once", () => {
+  const off = withLast();
+  off.send(off.view({ appId: "example.writer", remembersLast: false }));
+  expect(off.state.lastCitations.size).toBe(0);
+  off.send({ type: "change-last" });
+  expect(off.state.changing).toBeNull();
+
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: "example.writer", remembersLast: false, chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  expect(s.state.lastCitations.size).toBe(0);
+});
+
+test("an app with no ID never shares a last citation with another", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: null, chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  expect(s.state.lastCitations.size).toBe(0);
 });
