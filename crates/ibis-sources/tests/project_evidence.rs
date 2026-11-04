@@ -217,3 +217,49 @@ fn complete_duplicate_keys_cannot_clear_a_previously_observed_work_conflict() {
         );
     }
 }
+
+#[test]
+fn complete_conflict_snapshots_and_fresh_duplicate_identities_never_become_safe_evidence() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("refs.bib");
+    let other = MATCHED.replace("10.1000/intended", "10.1000/other");
+    for previous_conflict in [true, false] {
+        for (first, second) in [(MATCHED, other.as_str()), (other.as_str(), MATCHED)] {
+            let previous = if previous_conflict {
+                std::fs::write(&path, &other).unwrap();
+                Some(ProjectRead::read(&path, None))
+            } else {
+                None
+            };
+            std::fs::write(&path, format!("{first}{second}")).unwrap();
+            let duplicates = ProjectRead::read(&path, previous.as_ref());
+            assert!(
+                duplicates.evidence_limited(),
+                "deduplication cannot certify a unique work mapping"
+            );
+            assert!(!duplicates.current_complete());
+            assert_eq!(
+                duplicates.last_checked_ms(),
+                previous.as_ref().and_then(ProjectRead::last_checked_ms)
+            );
+            std::fs::remove_file(&path).unwrap();
+            let failed = ProjectRead::read(&path, Some(&duplicates));
+            assert!(failed.evidence_limited());
+            assert_eq!(failed.last_good(), previous_conflict);
+            // Re-observing the same duplicated bytes after an I/O failure
+            // cannot take the unchanged-good optimization and clear the gate.
+            std::fs::write(&path, format!("{first}{second}")).unwrap();
+            let same_duplicates = ProjectRead::read(&path, Some(&failed));
+            assert!(same_duplicates.evidence_limited());
+            assert!(!same_duplicates.current_complete());
+            std::fs::write(&path, MATCHED).unwrap();
+            let repaired = ProjectRead::read(&path, Some(&same_duplicates));
+            assert!(!repaired.evidence_limited());
+            assert!(repaired.current_complete());
+            assert_eq!(
+                repaired.work_match("vale2024", &record(Some("10.1000/intended"))),
+                WorkMatch::Matched
+            );
+        }
+    }
+}

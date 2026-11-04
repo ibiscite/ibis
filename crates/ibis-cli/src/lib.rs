@@ -224,7 +224,7 @@ fn command() -> Command {
                     .requires("project").conflicts_with("strict-project")
                     .help("Deliberately emit an unverified project key for this request; never overrides a known wrong-work conflict"))
                 .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
-                    .requires("project").help("Require a current complete bibliography read for this project citation"))
+                    .requires("project").help("Require a current complete bibliography read for project key citations"))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")

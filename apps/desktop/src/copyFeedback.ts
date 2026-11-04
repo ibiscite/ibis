@@ -10,7 +10,8 @@ import { currentPlatform, platformOf, type Platform } from "./platform";
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
  * or stay open. A pinned picker stays beside the document and shows the
- * confirmation itself; warnings stay in the picker until dismissed.
+ * confirmation itself; blocking warnings stay in the picker until dismissed.
+ * Native evidence-only notices preserve intended delivery and travel in its receipt.
  */
 export function afterCopy(outcome: Copied, pinned: boolean): "hide-and-notify" | "stay" {
   return (outcome.warnings.length === 0 || outcome.project_warning_only === true) && !pinned ? "hide-and-notify" : "stay";

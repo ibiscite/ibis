@@ -104,6 +104,7 @@ pub struct ProjectBibliography {
     keys: KeyScan,
     records: HashMap<String, Record>,
     digest: Fingerprint,
+    coherent: bool,
 }
 
 impl std::fmt::Debug for ProjectBibliography {
@@ -130,15 +131,23 @@ impl ProjectBibliography {
                 _ => None,
             })
             .collect();
+        let coherent = keys.complete() && !keys.has_repeated_keys();
         Ok(Self {
             keys,
             records,
             digest: digest(text),
+            coherent,
         })
     }
 
     pub fn complete(&self) -> bool {
         self.keys.complete()
+    }
+
+    /// A full scan is not necessarily usable identity evidence: repeated keys
+    /// have had their records removed by the loader, even with valid syntax.
+    fn coherent(&self) -> bool {
+        self.coherent
     }
 
     fn check(&self, key: &str, library: Option<&Record>) -> KeyCheck {
@@ -246,7 +255,7 @@ impl ProjectRead {
             return previous.clone();
         }
         let unchanged = previous.and_then(|previous| previous.good.clone());
-        if let Some(good) = unchanged.filter(|good| good.digest == seen) {
+        if let Some(good) = unchanged.filter(|good| good.coherent() && good.digest == seen) {
             return Self {
                 damaged: good.keys.damaged.clone(),
                 good: Some(good),
@@ -263,15 +272,10 @@ impl ProjectRead {
         let mut observed_bytes = previous.map_or(0, |read| read.observed_bytes);
         let mut evidence_limited = previous.is_some_and(|read| read.evidence_limited);
         match &read {
-            Ok(bibliography) if bibliography.complete() => {
-                // A syntactically complete duplicate-key file still lost its
-                // per-work records during loading. It cannot erase earlier
-                // contradictions or a history we could not preserve safely.
-                if !bibliography.keys.has_repeated_keys() {
-                    observed_dois = Arc::default();
-                    observed_bytes = 0;
-                    evidence_limited = false;
-                }
+            Ok(bibliography) if bibliography.coherent() => {
+                observed_dois = Arc::default();
+                observed_bytes = 0;
+                evidence_limited = false;
             }
             Ok(bibliography) => {
                 // Deduplication discarded identities from ambiguous entries;
@@ -281,7 +285,7 @@ impl ProjectRead {
                     if let Some(doi) = doi(record) {
                         if previous
                             .and_then(|read| read.good.as_ref())
-                            .filter(|good| good.complete())
+                            .filter(|good| good.coherent())
                             .and_then(|good| good.records.get(key))
                             .and_then(self::doi)
                             .as_ref()
@@ -321,10 +325,10 @@ impl ProjectRead {
         }
         let kept = previous
             .and_then(|previous| previous.good.clone())
-            .filter(|good| good.complete());
+            .filter(|good| good.coherent());
         let mut result = match read {
             // A damaged read cannot replace a whole one; its lines are still reported.
-            Ok(bibliography) if !bibliography.complete() && kept.is_some() => Self {
+            Ok(bibliography) if !bibliography.coherent() && kept.is_some() => Self {
                 seen: Some(bibliography.digest.clone()),
                 damaged: bibliography.keys.damaged,
                 good: kept,
@@ -384,7 +388,7 @@ impl ProjectRead {
 
     /// The answers come from an earlier read, because this one failed.
     pub fn last_good(&self) -> bool {
-        self.problem.is_some() && self.good.as_ref().is_some_and(|good| good.complete())
+        self.problem.is_some() && self.good.as_ref().is_some_and(|good| good.coherent())
     }
 
     pub fn bibliography(&self) -> Option<&ProjectBibliography> {
@@ -409,7 +413,7 @@ impl ProjectRead {
     }
 
     pub fn current_complete(&self) -> bool {
-        self.problem.is_none() && self.good.as_ref().is_some_and(|good| good.complete())
+        self.problem.is_none() && self.good.as_ref().is_some_and(|good| good.coherent())
     }
 
     /// A retained copy may support a work match, not merely key presence.
@@ -421,10 +425,7 @@ impl ProjectRead {
                 _ => {}
             }
         }
-        if self.evidence_limited {
-            return WorkMatch::Uncertain;
-        }
-        let Some(good) = self.good.as_ref().filter(|good| good.complete()) else {
+        let Some(good) = self.good.as_ref().filter(|good| good.coherent()) else {
             return WorkMatch::Uncertain;
         };
         if !matches!(
@@ -437,9 +438,17 @@ impl ProjectRead {
         ) {
             return WorkMatch::Uncertain;
         }
-        good.records
+        let matched = good
+            .records
             .get(key)
-            .map_or(WorkMatch::Uncertain, |project| compare_work(library, project))
+            .map_or(WorkMatch::Uncertain, |project| compare_work(library, project));
+        // A retained coherent contradiction remains known even when later
+        // ambiguous edits prevent us from safely certifying other matches.
+        if self.evidence_limited && matched != WorkMatch::Conflict {
+            WorkMatch::Uncertain
+        } else {
+            matched
+        }
     }
 
     pub fn absent_from_retained_copy(&self, key: &str) -> bool {

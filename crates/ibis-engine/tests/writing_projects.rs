@@ -25,6 +25,33 @@ fn engine() -> Engine {
 }
 
 #[test]
+fn a_strict_key_project_without_a_bibliography_cannot_claim_a_successful_check() {
+    let engine = engine();
+    let mut settings = Settings::default();
+    let project = writing_projects::create(
+        &mut settings,
+        "Atlas".into(),
+        OutputSpec::Key {
+            syntax: KeySyntax::Pandoc,
+            command: None,
+        },
+        None,
+    )
+    .unwrap();
+    let request: KeyCitationRequest =
+        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
+    let normal = engine
+        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Normal, &Cancellation::default())
+        .unwrap();
+    assert_eq!(normal.citation.text, "[@vale2024]");
+    let strict = engine
+        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Strict, &Cancellation::default())
+        .unwrap();
+    assert!(strict.citation.text.is_empty());
+    assert_eq!(strict.assessment.unwrap().state, Assessment::Paused);
+}
+
+#[test]
 fn one_explicit_project_controls_output_and_checks_its_bibliography() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
@@ -440,5 +467,69 @@ fn a_complete_duplicate_file_never_releases_a_known_conflict_in_either_order() {
             prepared.project_evidence(&repaired, ProjectPolicy::Normal).state,
             Assessment::Ready
         );
+    }
+}
+
+#[test]
+fn complete_conflict_snapshots_and_new_duplicate_mappings_refuse_every_policy() {
+    let engine = engine();
+    let snapshot = engine.snapshot().unwrap();
+    let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
+        panic!("record");
+    };
+    record.csl.insert("DOI".into(), json!("10.1000/intended"));
+    engine
+        .publish_library(
+            record.id.library.clone(),
+            LibraryKind::Snapshot,
+            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
+        )
+        .unwrap();
+    let prepared = prepared(&engine);
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("refs.bib");
+    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024},doi={10.1000/intended}}\n";
+    let other = matched.replace("10.1000/intended", "10.1000/other");
+    for previous_conflict in [true, false] {
+        for (first, second) in [(matched, other.as_str()), (other.as_str(), matched)] {
+            let previous = if previous_conflict {
+                std::fs::write(&path, &other).unwrap();
+                let conflict = ProjectRead::read(&path, None);
+                assert_eq!(
+                    prepared.project_evidence(&conflict, ProjectPolicy::Normal).state,
+                    Assessment::Conflict
+                );
+                Some(conflict)
+            } else {
+                None
+            };
+            std::fs::write(&path, format!("{first}{second}")).unwrap();
+            let duplicates = ProjectRead::read(&path, previous.as_ref());
+            for policy in [ProjectPolicy::Normal, ProjectPolicy::Unchecked, ProjectPolicy::Strict] {
+                let assessment = prepared.project_evidence(&duplicates, policy);
+                assert!(!assessment.can_copy(), "duplicates cannot become a policy bypass");
+                let message = assessment.message.unwrap();
+                assert!(
+                    !message.contains("incomplete"),
+                    "a complete duplicated file needs a truthful identity-evidence message"
+                );
+            }
+            std::fs::remove_file(&path).unwrap();
+            let failed = ProjectRead::read(&path, Some(&duplicates));
+            assert!(!prepared.project_evidence(&failed, ProjectPolicy::Unchecked).can_copy());
+            std::fs::write(&path, format!("{first}{second}")).unwrap();
+            let same_duplicates = ProjectRead::read(&path, Some(&failed));
+            assert!(
+                !prepared
+                    .project_evidence(&same_duplicates, ProjectPolicy::Unchecked)
+                    .can_copy()
+            );
+            std::fs::write(&path, matched).unwrap();
+            let repaired = ProjectRead::read(&path, Some(&same_duplicates));
+            assert_eq!(
+                prepared.project_evidence(&repaired, ProjectPolicy::Normal).state,
+                Assessment::Ready
+            );
+        }
     }
 }

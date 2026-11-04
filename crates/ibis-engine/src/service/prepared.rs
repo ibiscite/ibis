@@ -70,11 +70,11 @@ impl PreparedCitation {
             )),
             ProjectAssessmentState::Retained => Some(format!("Couldn't read {name}. Using its last checked copy.")),
             ProjectAssessmentState::Unverified => Some(format!("This citation key is unverified against {name}.")),
+            ProjectAssessmentState::Paused if read.evidence_limited() => Some(format!(
+                "Couldn't safely match the citation keys to references in {name}. Fix the file and retry."
+            )),
             ProjectAssessmentState::Paused if policy == ProjectPolicy::Strict => Some(format!(
                 "A current successful check of {name} is required. Retry before citing."
-            )),
-            ProjectAssessmentState::Paused if read.evidence_limited() => Some(format!(
-                "Can't safely rule out a key conflict in the incomplete {name}. Retry with a complete bibliography."
             )),
             ProjectAssessmentState::Paused if matches.iter().any(|(key, _)| read.absent_from_retained_copy(key)) => {
                 Some(format!(

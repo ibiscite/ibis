@@ -184,6 +184,11 @@ impl Engine {
         } else {
             None
         };
+        if policy == ProjectPolicy::Strict && prepared.uses_citation_keys() && project.bibliography.is_none() {
+            let mut required = prepared.project_evidence(&ProjectRead::default(), policy);
+            required.message = Some("Choose a project bibliography before requesting a strict check.".to_owned());
+            assessment = Some(required);
+        }
         let mut citation = prepared.into_result();
         if let Some(check) = assessment.as_ref().filter(|check| !check.can_copy()) {
             let error = if check.state == ProjectAssessmentState::Conflict {
