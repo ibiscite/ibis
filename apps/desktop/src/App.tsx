@@ -86,6 +86,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
     fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report,
+    onProjectContext: (context) => send({ type: "project-observed", ...context }),
   });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
@@ -238,7 +239,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} />
-      <PickerOverlays api={api} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
     </main>
   );

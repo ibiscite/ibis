@@ -327,7 +327,10 @@ fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
 }
 
 fn changed(app: &AppHandle) {
-    report(app.emit("project:changed", ()), NativeIssue::LibraryEvent);
+    report(
+        app.emit("project:changed", app.state::<ProjectBibliography>().version()),
+        NativeIssue::LibraryEvent,
+    );
 }
 
 /// Install output ownership and its bibliography together. The same lock order

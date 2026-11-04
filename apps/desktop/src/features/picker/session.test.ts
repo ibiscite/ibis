@@ -24,28 +24,29 @@ test("a project switch keeps search, ordered references and pages but cancels pe
   const s = scenario();
   s.send({ type: "query", value: "synthetic" });
   s.send({ type: "toggle", result: a, locator: a.locator });
-  s.send(s.view({ shown: null, searchPending: true }));
+  s.send(s.view({ writingProjectId: "a", shown: null, searchPending: true }));
   s.send({ type: "enter", choice: null });
   expect(s.state.pendingCopy).not.toBeNull();
-  s.send({ type: "project-context" });
+  s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.pendingCopy).toBeNull();
   expect(s.state.changing).toBeNull();
   expect(s.state.query).toBe("synthetic");
   expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
-  expect(s.send(s.view())).toEqual([]);
+  expect(s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
 });
 
 test("a project switch does not offer another project's citation for replacement", () => {
   const s = scenario();
-  s.send(s.view({ appId: "example.editor" }));
+  s.send(s.view({ appId: "example.editor", writingProjectId: "a" }));
   s.send({ type: "enter", choice: choiceKey([a]) });
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.has("example.editor")).toBe(true);
   s.send({ type: "change-last" });
   expect(s.state.changing).toBe(prepared.text);
-  s.send({ type: "project-context" });
+  s.send(s.view({ appId: "example.editor", writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.changing).toBeNull();
-  expect(s.state.lastCitations.has("example.editor")).toBe(false);
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
 });
 
 test.each([
@@ -61,6 +62,44 @@ test.each([
   s.send(s.view({ appId: "example.editor", ...next }));
   s.send({ type: "change-last" });
   expect(s.state.changing).toBeNull();
+});
+
+test.each(["before", "after"] as const)("a refreshed checked receipt cannot adopt an earlier copy or let its response hide the picker (%s new Enter)", (oldResponse) => {
+  const s = scenario();
+  const first = { writingProjectId: "a", projectVersion: "1:0" };
+  s.send(s.view(first));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const checked = { writingProjectId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Using the last good bibliography copy."] } };
+  s.send(s.view(checked));
+  if (oldResponse === "before") {
+    s.complete(1);
+    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+  }
+  const second = s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(second).toMatchObject([{ type: "copy", id: 2, ticket: "checked-ticket" }]);
+  if (oldResponse === "after") {
+    s.complete(1);
+    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+  }
+  expect(s.state.activeCopy).toBe(2);
+  s.complete(2, { pinned: true, outcome: { text: prepared.text, warnings: checked.shown.warnings } });
+  expect(s.state.copied?.warnings).toEqual(checked.shown.warnings);
+});
+
+test("a stale checked copy cannot consume the one-time output a fresh Enter is waiting for", () => {
+  const s = scenario();
+  const original = { format: "cite" as const, projectVersion: "1:0" };
+  s.send(s.view(original));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const refreshing = { format: "cite" as const, projectVersion: "1:1", shown: null };
+  s.send(s.view(refreshing));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.complete(1, { pinned: true });
+  expect(s.effects).toEqual([]);
+  expect(s.state.pendingCopy).not.toBeNull();
+  expect(s.send(s.view({ ...refreshing, shown: { ...prepared, fileTicket: "fresh-checked" } })))
+    .toMatchObject([{ type: "copy", id: 2, ticket: "fresh-checked" }]);
 });
 
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {

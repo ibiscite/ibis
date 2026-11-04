@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useDestination } from "./useDestination";
-import type { PickerDestination } from "../../api";
+import type { PickerDestination, WritingProjectsView } from "../../api";
 import type { Choice } from "./choice";
 
 afterEach(cleanup);
@@ -43,6 +43,87 @@ test("switching projects with the same output retires the old copy token", async
   target = { ...target, context_version: [2, 0] };
   await act(async () => result.current.read(false));
   expect(result.current.isCurrentCopy(first)).toBe(false);
+});
+
+test("settling a reopened destination preserves an immutable token captured after that opening began", async () => {
+  const reopening = pending<PickerDestination>();
+  let reopened = false;
+  const initial: PickerDestination = { ...browser, remembered: { key: "cite" }, context_version: [1, 0] };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => reopened ? reopening.promise : initial, rememberAppOutput: vi.fn() }, options()));
+  await act(async () => result.current.read());
+  const retired = Object.freeze(result.current.copyToken());
+  reopened = true;
+  act(() => result.current.read());
+  const waiting = Object.freeze(result.current.copyToken());
+  expect(result.current.isCurrentCopy(retired)).toBe(false);
+  await act(async () => { reopening.resolve({ ...initial, remembered: { key: "typst" }, context_version: [2, 0] }); });
+  expect(result.current.format).toBe("typst");
+  expect(result.current.isCurrentCopy(waiting)).toBe(true);
+  expect(result.current.isCurrentCopy(retired)).toBe(false);
+});
+
+test("finishing a bibliography read in the selected project does not retire a waiting copy token", async () => {
+  let target: PickerDestination = { ...browser, remembered: { key: "cite" }, context_version: [1, 0] };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput: vi.fn() }, options()));
+  await act(async () => result.current.read());
+  const waiting = Object.freeze(result.current.copyToken());
+  target = { ...target, context_version: [1, 1] };
+  await act(async () => result.current.read(false));
+  expect(result.current.format).toBe("cite");
+  expect(result.current.isCurrentCopy(waiting)).toBe(true);
+});
+
+test("an activation event retires old intent before its read and a late older event cannot retire fresh intent", async () => {
+  const next = pending<PickerDestination>();
+  let changed = false;
+  const initial: PickerDestination = { ...browser, remembered: { key: "cite" }, context_version: [2, 0] };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => changed ? next.promise : initial, rememberAppOutput: vi.fn() }, options()));
+  await act(async () => result.current.read());
+  const old = Object.freeze(result.current.copyToken());
+  changed = true;
+  act(() => result.current.projectChanged([3, 0]));
+  expect(result.current.isCurrentCopy(old)).toBe(false);
+  const fresh = Object.freeze(result.current.copyToken());
+  act(() => result.current.projectChanged([2, 0]));
+  expect(result.current.isCurrentCopy(fresh)).toBe(true);
+  await act(async () => next.resolve({ ...initial, context_version: [3, 0] }));
+  expect(result.current.isCurrentCopy(fresh)).toBe(true);
+});
+
+test("a bibliography read started before selecting another project cannot settle that project's save or retire fresh intent", async () => {
+  const firstProject = { id: "project-a", name: "Project A", revision: "r1", output: { key: "cite" } as const, bibliography: "a.bib" };
+  const secondProject = { id: "project-b", name: "Project B", revision: "r1", output: { key: "typst" } as const, bibliography: "b.bib" };
+  const first: PickerDestination = { ...browser, writing_project: firstProject, writing_context: "opening-a", context_version: [1, 0] };
+  const second: PickerDestination = { ...browser, writing_project: secondProject, writing_context: "opening-b", context_version: [2, 0] };
+  const oldRead = pending<PickerDestination>(), newRead = pending<PickerDestination>(), save = pending<WritingProjectsView>();
+  const editWritingProject = vi.fn(() => save.promise);
+  let reads = 0;
+  const { result } = renderHook(() => useDestination({
+    pickerDestination: async () => ++reads === 1 ? first : reads === 2 ? oldRead.promise : newRead.promise,
+    rememberAppOutput: vi.fn(), editWritingProject,
+  }, options()));
+  await act(async () => result.current.read());
+  const retired = Object.freeze(result.current.copyToken());
+  act(() => result.current.projectChanged([1, 1]));
+  await waitFor(() => expect(reads).toBe(2));
+  let editing!: Promise<WritingProjectsView>;
+  act(() => { editing = result.current.editProject!("opening-a", { kind: "select", id: secondProject.id }); });
+  await waitFor(() => expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "select", id: secondProject.id }));
+  await act(async () => { oldRead.resolve({ ...first, context_version: [1, 1] }); });
+  // The earlier file read is not the owner of the project mutation now in progress.
+  expect.soft(result.current.ready).toBe(false);
+  expect(result.current.isCurrentCopy(retired)).toBe(false);
+  await act(async () => {
+    save.resolve({ projects: [firstProject, secondProject], selected: secondProject.id, context: "opening-b", session_only: false });
+    await editing;
+  });
+  await waitFor(() => expect(reads).toBe(3));
+  const fresh = Object.freeze(result.current.copyToken());
+  act(() => result.current.projectChanged([2, 0]));
+  expect.soft(result.current.isCurrentCopy(fresh)).toBe(true);
+  await act(async () => { newRead.resolve(second); });
+  expect(result.current).toMatchObject({ ready: true, format: "typst" });
+  expect(result.current.isCurrentCopy(fresh)).toBe(true);
 });
 
 test("a pick is remembered for the app, says so, and never changes the default", async () => {

@@ -29,7 +29,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
       pinned: () => currentPin.current, consume: destination.consumeHeld, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { appId: destination.appId, writingProjectId: destination.writingProject?.id ?? null, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
+      view: { appId: destination.appId, writingProjectId: destination.writingProject?.id ?? null, projectVersion: destination.projectVersion(), queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
         ready: destination.ready && view.ready, saving: destination.saving, shouldAsk: destination.shouldAsk, remembersLast: view.remembersLast,
         output: destination.copyToken() } });
   });

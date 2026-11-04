@@ -166,8 +166,8 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
 }
 
 /** The project bibliography's choice or its read changed. */
-export function onProjectChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("project:changed", () => handler());
+export function onProjectChanged(handler: (version: [number, number] | null) => void): Promise<UnlistenFn> {
+  return listen<[number, number]>("project:changed", ({ payload }) => handler(payload ?? null));
 }
 
 /** A chosen project bibliography could not be saved, so the old choice stands. */
