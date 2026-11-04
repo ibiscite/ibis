@@ -112,6 +112,21 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
             }
             Some(lines.join("\n"))
         }
+        Method::Outputs => data
+            .get("outputs")?
+            .as_array()?
+            .iter()
+            .map(|output| {
+                let example = output.get("example").and_then(Value::as_str).unwrap_or_default();
+                Some(format!(
+                    "{}\t{}\t{}",
+                    field(output.get("id")?.as_str()?),
+                    field(output.get("name")?.as_str()?),
+                    field(example)
+                ))
+            })
+            .collect::<Option<Vec<_>>>()
+            .map(|lines| lines.join("\n")),
         Method::Styles => {
             let styles = data.get("styles")?.as_array()?;
             let total = data.get("total")?.as_u64()?;
@@ -597,6 +612,7 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
 pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
     match reason {
         ErrorReason::UnknownStyle => "there is no style with that name; list the styles with: ibis styles",
+        ErrorReason::UnknownOutput => "there is no output with that id; list them with: ibis outputs",
         ErrorReason::UnknownLocale => "there is no such locale; list them with: ibis styles --locales",
         ErrorReason::DuplicateKey => {
             "the citation key is used by more than one entry, so Ibis skips them all; give each entry its own key."

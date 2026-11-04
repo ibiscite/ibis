@@ -60,9 +60,10 @@ forgets its command fails loudly. `ibis settings` alone lists its own commands t
 | --- | --- |
 | `search WORDS [--limit N]` | Find references by author, title, year or key. An empty result is a success. |
 | `show KEY` or `show --id ID_JSON` | One reference's main fields; `--json` gives all of its data. |
-| `cite KEY…` | A citation. Key syntaxes with `--format` (default `pandoc`), formatted text with `--style` (see `styles`), bibliography entries with `--style S --bibliography`. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
+| `cite KEY…` | A citation. `--format ID` writes one of the outputs `outputs` lists (default `pandoc`): a key syntax, or a common style; `--style` writes any CSL style (see `styles`); `--bibliography` writes bibliography entries in a style. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `libraries` | The open libraries, their item counts and each warning in words. |
+| `outputs` | Every output `cite` writes, each with its id, its one name and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
 | `styles [WORDS]` | Every official CSL style, with each one's updated date, the common ones first; `--locales` lists the citation languages. |
 | `schema [METHOD]` | The JSON Schema of each engine method's parameters and result. |
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
@@ -117,7 +118,7 @@ The envelope looks like this:
 
 Some errors add `reason` beside `code`, for example
 `{"error":{"code":"bad-input","reason":"unknown-style"}}`: `unknown-style`,
-`unknown-locale` (a wrong request, refused before anything is formatted),
+`unknown-locale`, `unknown-output` (a wrong request, refused before anything is formatted),
 `duplicate-key` (the library repeats the key, so every entry under it is skipped;
 `ibis libraries --json` lists each line with the key), `ambiguous-key`, and for
 `toggle`, `app-missing`, `not-ibis` or `no-answer`. `toggle` succeeds only when
@@ -160,6 +161,12 @@ guessed. Incomplete results stay inspectable in `--json`; plain output prints ci
 text only when the citation is complete, and reports notices and omitted fields on
 stderr.
 
+An output is `{"kind":"key","syntax":…}`, `{"kind":"csl","style":…}`, or
+`{"kind":"preset","name":ID}` with an id from `ibis outputs`, which is written as
+that entry's own output. Each entry also lists the `forms` it can write. In BibLaTeX,
+`autocite` and `parencite` write a citation that is narrative throughout with
+`\textcite`, so their entries list the narrative form.
+
 Styles that need a whole document return a full reference entry with that
 explanation. An output Ibis cannot write correctly is an explicit per-item
 `unsupported-output` refusal.
@@ -169,7 +176,7 @@ explanation. An output Ibis cannot write correctly is an explicit per-item
 `ibis cite KEY --for-app ID` gives what Ibis gives that app: `com.microsoft.Word` or
 `WINWORD.EXE` the formatted citation, `md.obsidian` Pandoc, `TeXShop` BibLaTeX. `ID` is a
 macOS bundle ID or a Windows executable, with or without its folder, on any system.
-`--style` picks the style a formatted app gets (APA without it). `--format` or `--style`
+A style named by `--style` or `--format` is the style a formatted app gets (APA without one). `--format` or `--style`
 is what an app with no output of its own gets; the table comes first, so `--format`
 does not change what Word gets.
 
@@ -196,7 +203,7 @@ behind a queue of eight; a long request delays the ones after it.
 | --- | --- | --- |
 | `search` | `query`, `limit` (1 to 25, default 10) | Short `hits`, each with a `ref`. `complete` is false when more references match. |
 | `show` | `ref` | One reference's fields. |
-| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `style` or `syntax`, `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
+| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `format` (an id from `ibis outputs`; CSL-JSON is left out because it would carry whole records) or any `style` (`apa` without either), `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
 | `styles` | nothing | The style ids `cite` accepts. |
 
 A `ref` is the citation key, or an `id:` string when no key selects that record alone,

@@ -144,16 +144,73 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     let exported = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":"demo2026"}],"syntax":"csl-json"}),
+        json!({"items":[{"ref":"demo2026"}],"format":"csl-json"}),
     );
     assert_eq!(exported["isError"], true);
     assert!(!exported.to_string().contains("private"));
     let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
-    let syntaxes = &tools["result"]["tools"][2]["inputSchema"]["properties"]["syntax"]["enum"];
-    assert_eq!(
-        syntaxes,
-        &json!(["pandoc", "biblatex", "natbib", "latex", "typst", "keys"])
+    let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
+    assert!(!formats.as_array().unwrap().contains(&json!("csl-json")));
+}
+
+#[test]
+fn cite_offers_exactly_the_engines_outputs() {
+    let (_dir, engine) = engine();
+    let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
+    let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
+    // Every listed output but those that export whole records, in the list's order.
+    let listed: Vec<_> = ibis_engine::outputs::outputs()
+        .unwrap()
+        .iter()
+        .filter(|output| !output.exports_records)
+        .map(|output| output.id.as_str())
+        .collect();
+    assert_eq!(formats, &json!(listed));
+    let item = engine
+        .show(&ibis_engine::request::ShowRequest {
+            item: ibis_engine::request::ItemSelector::Key("demo2026".into()),
+        })
+        .unwrap()
+        .object
+        .id()
+        .clone();
+    for id in &listed {
+        let cited = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"format":id}));
+        assert_eq!(cited["isError"], false, "{id}: {cited}");
+        // Each writes what the same output writes through the engine.
+        let direct = engine
+            .cite(
+                &serde_json::from_value(json!({
+                    "items":[{"item": item}],
+                    "output": {"kind": "preset", "name": id},
+                    "keep_order": matches!(ibis_engine::outputs::find(id).unwrap().output, ibis_core::contract::OutputSpec::Key { .. }),
+                }))
+                .unwrap(),
+                &ibis_engine::Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(cited["structuredContent"]["text"], direct.text, "{id}");
+    }
+    // Anything else is refused with the list.
+    let unknown = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":"demo2026"}],"format":"biblatex"}),
     );
+    assert_eq!(unknown["isError"], true);
+    let text = unknown["content"][0]["text"].as_str().unwrap();
+    assert!(
+        text.starts_with("error: bad-input. format must be one of: pandoc, autocite,"),
+        "{text}"
+    );
+    // With neither, the registry's default style.
+    let plain = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}]}));
+    let apa = tool(
+        &engine,
+        "cite",
+        json!({"items":[{"ref":"demo2026"}],"format":ibis_engine::outputs::DEFAULT_STYLE}),
+    );
+    assert_eq!(plain["structuredContent"]["text"], apa["structuredContent"]["text"]);
 }
 
 #[test]
@@ -184,7 +241,7 @@ fn search_preserves_partial_and_typo_matches_for_the_agent() {
 #[test]
 fn cite_formats_by_key_or_by_id() {
     let (_dir, engine) = engine();
-    let pandoc = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"syntax":"pandoc"}));
+    let pandoc = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}],"format":"pandoc"}));
     assert_eq!(pandoc["structuredContent"]["text"], "[@demo2026]");
     let apa = tool(&engine, "cite", json!({"items":[{"ref":"demo2026"}]}));
     assert_eq!(apa["structuredContent"]["text"], "(Researcher & Writer, 2026)");
@@ -211,13 +268,13 @@ fn cite_formats_by_key_or_by_id() {
 fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
     let (_dir, engine) = engine();
     let cite = |arguments| tool(&engine, "cite", arguments);
-    let word = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.Word","syntax":"typst"}));
+    let word = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.microsoft.Word","format":"typst"}));
     let apa = cite(json!({"items":[{"ref":"demo2026"}]}));
     assert_eq!(word["structuredContent"]["text"], apa["structuredContent"]["text"]);
     assert_eq!(word["structuredContent"]["destination"]["delivery"]["action"], "paste");
     let obsidian = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"md.obsidian"}));
     assert_eq!(obsidian["structuredContent"]["text"], "[@demo2026]");
-    let unknown = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.example.unknown","syntax":"typst"}));
+    let unknown = cite(json!({"items":[{"ref":"demo2026"}],"for_app":"com.example.unknown","format":"typst"}));
     assert_eq!(unknown["structuredContent"]["text"], "@demo2026");
     assert_eq!(
         unknown["structuredContent"]["destination"]["delivery"]["action"],
@@ -296,7 +353,7 @@ fn bad_calls_are_tool_errors_without_library_text() {
     let both = tool(
         &engine,
         "cite",
-        json!({"items":[{"ref":"demo2026"}],"style":"apa","syntax":"pandoc"}),
+        json!({"items":[{"ref":"demo2026"}],"style":"apa","format":"pandoc"}),
     );
     assert_eq!(both["isError"], true);
     assert!(
@@ -622,7 +679,7 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
         ("show", json!({"ref":"demo2026"})),
         ("show", json!({"ref":id})),
         ("cite", json!({"items":[{"ref":"demo2026"}]})),
-        ("cite", json!({"items":[{"ref":"demo2026"}],"syntax":"pandoc"})),
+        ("cite", json!({"items":[{"ref":"demo2026"}],"format":"pandoc"})),
         ("styles", json!({})),
     ];
     for (name, arguments) in calls {

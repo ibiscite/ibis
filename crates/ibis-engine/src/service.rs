@@ -454,6 +454,7 @@ impl Engine {
         }
         let state = self.state()?;
         let snapshot = state.index.snapshot();
+        let output = crate::outputs::resolve(&request.output)?;
         let items = request
             .keys
             .iter()
@@ -476,9 +477,9 @@ impl Engine {
         self.cite(
             &CitationRequest {
                 items,
-                output: request.output.clone(),
+                keep_order: matches!(output, OutputSpec::Key { .. }),
+                output,
                 form: request.form,
-                keep_order: matches!(request.output, OutputSpec::Key { .. }),
                 input_language: None,
                 output_locale: request.output_locale.clone(),
             },
@@ -500,6 +501,17 @@ impl Engine {
         }
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
+        let resolved;
+        let request = match &request.output {
+            OutputSpec::Preset { .. } => {
+                resolved = CitationRequest {
+                    output: crate::outputs::resolve(&request.output)?,
+                    ..request.clone()
+                };
+                &resolved
+            }
+            _ => request,
+        };
         let result = match &request.output {
             OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(|failure| {
                 error(if failure == CitationError::OutputTooLarge {
@@ -509,7 +521,7 @@ impl Engine {
                 })
             })?,
             OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
-            OutputSpec::Preset { .. } => formatting::refusal(request, CitationError::UnsupportedOutput),
+            OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
         cancel.check()?;
         ensure_budget(&result)?;
@@ -551,6 +563,10 @@ impl Engine {
                 return self.finalize(DispatchResult::citation(result, request.items.len())?);
             }
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
+            Method::Outputs => {
+                let OutputsRequest {} = parameters(params)?;
+                value(crate::outputs::list()?)?
+            }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
                 let methods: Vec<_> = request
@@ -764,6 +780,7 @@ fn response_schema(method: Method) -> Value {
         Method::Show => schema_for!(SnapshotObject),
         Method::Cite => schema_for!(CitationResult),
         Method::Styles => schema_for!(StylesResult),
+        Method::Outputs => schema_for!(crate::outputs::OutputsResult),
         _ => schema_for!(Value),
     }
     .into()

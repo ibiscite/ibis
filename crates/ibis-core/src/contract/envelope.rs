@@ -131,6 +131,8 @@ pub enum ErrorCode {
 pub enum ErrorReason {
     /// No style has the requested id; `styles` lists them.
     UnknownStyle,
+    /// No output has the requested id; `outputs` lists them.
+    UnknownOutput,
     /// The requested locale is not bundled; `styles` lists the locales.
     UnknownLocale,
     /// The key is repeated in a library, so every entry under it is skipped.

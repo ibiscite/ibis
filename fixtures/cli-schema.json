@@ -2045,6 +2045,7 @@
               },
               {
                 "additionalProperties": false,
+                "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
                 "properties": {
                   "kind": {
                     "const": "preset",
@@ -2584,6 +2585,7 @@
               },
               {
                 "additionalProperties": false,
+                "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
                 "properties": {
                   "kind": {
                     "const": "preset",
@@ -2867,6 +2869,184 @@
       }
     },
     {
+      "method": "outputs",
+      "params": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "The `outputs` method takes no parameters.",
+        "title": "OutputsRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "CitationForm": {
+            "enum": [
+              "normal",
+              "narrative",
+              "author-only",
+              "year-only",
+              "full",
+              "bibliography-only"
+            ],
+            "type": "string"
+          },
+          "KeySyntax": {
+            "enum": [
+              "pandoc",
+              "biblatex",
+              "natbib",
+              "latex",
+              "context",
+              "typst",
+              "org-cite",
+              "myst",
+              "multi-markdown",
+              "ascii-doc",
+              "jupyter",
+              "jekyll-scholar",
+              "scannable-cite",
+              "keys",
+              "csl-json",
+              "cayw-json"
+            ],
+            "type": "string"
+          },
+          "OutputInfo": {
+            "description": "One output, as the `outputs` method lists it.",
+            "properties": {
+              "example": {
+                "description": "What it writes for one invented reference: the key `key`, or for a\nstyle an article by A. García (2021).",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "exports_records": {
+                "description": "It writes each reference's whole record, notes included, not a\ncitation; agents are not offered it.",
+                "type": "boolean"
+              },
+              "forms": {
+                "description": "The forms one reference can be cited in.",
+                "items": {
+                  "$ref": "#/$defs/CitationForm"
+                },
+                "type": "array"
+              },
+              "id": {
+                "description": "Stable: settings store it, `--format` and MCP's `format` take it, and\n`{\"kind\":\"preset\",\"name\":ID}` names it in a request.",
+                "type": "string"
+              },
+              "name": {
+                "description": "The one name every front end shows.",
+                "type": "string"
+              },
+              "output": {
+                "$ref": "#/$defs/OutputSpec",
+                "description": "The output a request names for it."
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "output",
+              "forms",
+              "exports_records"
+            ],
+            "type": "object"
+          },
+          "OutputSpec": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "default": null,
+                    "description": "A command name for syntaxes that support it; engines validate its grammar.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "syntax": {
+                    "$ref": "#/$defs/KeySyntax"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "syntax"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "csl",
+                    "type": "string"
+                  },
+                  "style": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "style"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
+                "properties": {
+                  "kind": {
+                    "const": "preset",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "default": {
+            "description": "The id used when nothing names an output.",
+            "type": "string"
+          },
+          "default_style": {
+            "description": "The id of the style used when finished text is wanted and nothing names a style.",
+            "type": "string"
+          },
+          "outputs": {
+            "description": "The key outputs first, then the common styles, most used first.",
+            "items": {
+              "$ref": "#/$defs/OutputInfo"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "outputs",
+          "default",
+          "default_style"
+        ],
+        "title": "OutputsResult",
+        "type": "object"
+      }
+    },
+    {
       "method": "schema",
       "params": {
         "$defs": {
@@ -2877,6 +3057,7 @@
               "show",
               "cite",
               "styles",
+              "outputs",
               "schema",
               "call"
             ],
@@ -2917,6 +3098,7 @@
               "show",
               "cite",
               "styles",
+              "outputs",
               "schema",
               "call"
             ],

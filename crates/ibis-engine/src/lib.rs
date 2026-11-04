@@ -4,6 +4,8 @@ pub use method::Method;
 
 pub mod mcp;
 
+pub mod outputs;
+
 pub mod protocol;
 
 pub mod request;

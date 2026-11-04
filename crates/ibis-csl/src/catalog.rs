@@ -312,6 +312,11 @@ pub(crate) fn locale_xml(tag: &str) -> Result<Option<String>, FormatError> {
     row.map(|locale| file(locale.3, locale.4, locale.5)).transpose()
 }
 
+/// The common styles, most used first: each one's id and title.
+pub fn curated() -> Result<&'static [(String, String)], FormatError> {
+    Ok(&header()?.curated)
+}
+
 /// Styles matching every word, most useful first, then by id. An empty query
 /// gives the curated styles, then the rest.
 pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, FormatError> {

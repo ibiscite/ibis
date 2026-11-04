@@ -147,7 +147,7 @@ fn a_refused_citation_names_the_output_the_app_chose() -> Result {
         "--bibliography",
     ])?;
     assert_eq!((code, text.as_str()), (1, ""), "{errors}");
-    assert!(errors.contains("pandoc"), "{errors}");
+    assert!(errors.contains("in Pandoc"), "{errors}");
     assert!(
         !errors.contains("Ibis pastes"),
         "a refused citation goes nowhere: {errors}"
