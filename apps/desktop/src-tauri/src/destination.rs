@@ -270,7 +270,6 @@ impl AppMemory {
         });
         first && saved.is_ok()
     }
-    }
 
     fn change(&self, change: impl FnOnce(&mut Vec<Remembered>)) -> io::Result<()> {
         let mut state = self
