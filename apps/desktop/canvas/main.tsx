@@ -57,7 +57,7 @@ const fixtures: Partial<Record<Scenario, {
   missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "The invented library file is unavailable" } },
   "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero isn't open" } },
   unreadable: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The invented file has an entry Ibis can't read" } },
-  stale: { library: { stale: true, zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
+  stale: { library: { stale: true, zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero", error: "Zotero isn't open", problem: "zotero_closed" } },
   compact: { preferences: { density: "compact" } },
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
@@ -144,7 +144,11 @@ const family = (...prefixes: string[]) => tokenNames.filter((name) => prefixes.s
 /** The tokens as the app resolves them, so this page cannot drift from the code. */
 function Tokens({ theme }: { theme: Theme }) {
   useAppearance({ appearance: theme });
-  const colours = family("--text", "--surface", "--raised", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring");
+  // Only the tokens that resolve to a colour: sizes such as --status-dot and --ring-width share these prefixes.
+  // A browser without the resolved value (a DOM without a cascade) keeps them all.
+  const resolved = getComputedStyle(document.documentElement);
+  const colour = (name: string) => { const value = resolved.getPropertyValue(name).trim(); return !value || typeof CSS === "undefined" || CSS.supports("color", value); };
+  const colours = family("--text", "--surface", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring").filter(colour);
   return <div className="canvas-tokens"><style>{tokensStyle}</style>
     <h2>Colour</h2>
     <div className="canvas-token-grid">{colours.map((name) => <span key={name}><i style={{ background: `var(${name})` }} /><code>{name}</code></span>)}</div>
@@ -170,7 +174,7 @@ function Notice({ theme }: { theme: Theme }) {
     const element = root.current;
     if (!element) return;
     renderNotice(element, currentPlatform())({ text: "[Aster, 2026]", more: 0,
-      delivered: { outcome: "copied", reason: "disabled" } });
+      delivered: { outcome: "copied", reason: "paste-off" } });
     return () => element.replaceChildren();
   }, []);
   return <div ref={root} />;

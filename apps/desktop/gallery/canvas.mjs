@@ -7,11 +7,14 @@ const dist = process.argv[2], out = process.argv[3];
 await mkdir(out, { recursive: true });
 const browser = await chromium.launch({ headless: true });
 const size = (scenario) => scenario === "notice" ? { width: 560, height: 100 }
-  : scenario === "settings-look" ? { width: 920, height: 1320 }
-  : scenario === "tokens" ? { width: 920, height: 1000 }
-  : scenario === "parts" ? { width: 920, height: 1500 }
-  : scenario === "settings-shortcuts" ? { width: 920, height: 940 }
-  : scenario.startsWith("settings-") || scenario === "states" ? { width: 920, height: 560 } : { width: 720, height: 480 };
+  : boards(scenario) ? { width: 920, height: 560 } : { width: 720, height: 480 };
+// Boards and Settings pages are captured whole: the window grows until nothing
+// scrolls, so no picture is cut off by a fixed height. The picker keeps its one
+// steady size [C10], as people see it.
+const boards = (scenario) => scenario.startsWith("settings-") || ["states", "tokens", "parts"].includes(scenario);
+const overflow = (page) => page.evaluate(() => Math.max(document.documentElement.scrollHeight - innerHeight,
+  ...[...document.querySelectorAll("*")].filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY))
+    .map((node) => node.scrollHeight - node.clientHeight)));
 const load = async (viewport) => {
   const page = await browser.newPage({ viewport, deviceScaleFactor: 2 });
   // macOS is the reference design (docs/design.md), so pictures show Mac keys
@@ -37,6 +40,13 @@ for (const scenario of scenarios) for (const theme of ["light", "dark"]) {
   await page.evaluate(({ scenario, theme }) => { window.IbisCanvas.mount(document.getElementById("host"), { scenario, theme }); }, { scenario, theme });
   await page.waitForTimeout(700);
   await page.evaluate(() => document.fonts.ready);
+  for (let round = 0; boards(scenario) && round < 4; round++) {
+    const more = await overflow(page);
+    if (more <= 0) break;
+    const viewport = page.viewportSize();
+    await page.setViewportSize({ width: viewport.width, height: viewport.height + Math.ceil(more) });
+    await page.waitForTimeout(200);
+  }
   await page.screenshot({ path: `${out}/${scenario}-${theme}.png` });
   if (errors.length) failures.push(`${scenario}/${theme}: ${errors[0]}`);
   await page.close();
