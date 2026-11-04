@@ -437,11 +437,10 @@ pub(crate) fn picker_destination(
     } else {
         crate::paste::last_app(&app)
     };
-    let (writing, context, version) =
-        crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
-    let context_version = Some(version);
-    let writing_project = writing.map(|project| project.view());
-    let writing_context = editor.current().is_none().then_some(context);
+    let context = crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
+    let context_version = Some(context.version);
+    let writing_project = context.active.map(|project| project.view());
+    let writing_context = editor.current().is_none().then_some(context.edit);
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
             app: None,

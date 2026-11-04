@@ -101,7 +101,9 @@ impl ProjectBibliography {
     /// cannot retain another full bibliography parse while the person switches.
     fn enqueue_read(&self, ticket: Ticket) -> Option<Ticket> {
         let mut slot = self.lock();
-        if ticket.generation != slot.generation { return None; }
+        if ticket.generation != slot.generation {
+            return None;
+        }
         if slot.worker_running {
             slot.pending_read = Some(ticket);
             None
@@ -113,8 +115,13 @@ impl ProjectBibliography {
 
     fn next_read(&self) -> Option<Ticket> {
         let mut slot = self.lock();
-        let next = slot.pending_read.take().filter(|ticket| ticket.generation == slot.generation);
-        if next.is_none() { slot.worker_running = false; }
+        let next = slot
+            .pending_read
+            .take()
+            .filter(|ticket| ticket.generation == slot.generation);
+        if next.is_none() {
+            slot.worker_running = false;
+        }
         next
     }
 
@@ -300,15 +307,22 @@ impl Current {
 
 fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
     let Some(ticket) = ticket else { return };
-    let Some(mut ticket) = app.state::<ProjectBibliography>().enqueue_read(ticket) else { return };
+    let Some(mut ticket) = app.state::<ProjectBibliography>().enqueue_read(ticket) else {
+        return;
+    };
     let handle = app.clone();
-    tauri::async_runtime::spawn_blocking(move || loop {
-        let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
-        let project = handle.state::<ProjectBibliography>();
-        if project.finish(ticket.generation, read) {
-            changed(&handle);
+    tauri::async_runtime::spawn_blocking(move || {
+        loop {
+            let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
+            let project = handle.state::<ProjectBibliography>();
+            if project.finish(ticket.generation, read) {
+                changed(&handle);
+            }
+            match project.next_read() {
+                Some(next) => ticket = next,
+                None => break,
+            }
         }
-        match project.next_read() { Some(next) => ticket = next, None => break }
     });
 }
 
@@ -486,6 +500,7 @@ pub(crate) async fn copy_project_entry(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
     use ibis_core::contract::ItemRef;

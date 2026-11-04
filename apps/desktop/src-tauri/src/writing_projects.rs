@@ -358,15 +358,22 @@ fn activate(
 
 /// Output, edit authority and preview authority from one immutable native
 /// observation. Returning them separately could pair project A with B's token.
-pub(crate) fn destination_context(
-    app: &AppHandle,
-    captured: Option<&AppId>,
-) -> Result<(Option<ActiveProject>, String, (u32, u32)), String> {
+pub(crate) struct DestinationContext {
+    pub(crate) active: Option<ActiveProject>,
+    pub(crate) edit: String,
+    pub(crate) version: (u32, u32),
+}
+
+pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> Result<DestinationContext, String> {
     let target = target(app, captured);
     // An explicit editor request neither reads nor changes GUI project state.
     if target.editor {
         let version = app.state::<crate::project::ProjectBibliography>().version();
-        return Ok((None, context_token_for(&target, version.0), version));
+        return Ok(DestinationContext {
+            active: None,
+            edit: context_token_for(&target, version.0),
+            version,
+        });
     }
     let runtime = app.state::<Runtime>();
     let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
@@ -379,11 +386,15 @@ pub(crate) fn destination_context(
     if current_target(app) != target {
         return Err(REOPEN.to_owned());
     }
-    Ok((active, context_token_for(&target, version.0), version))
+    Ok(DestinationContext {
+        active,
+        edit: context_token_for(&target, version.0),
+        version,
+    })
 }
 
 pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveProject>, String> {
-    destination_context(app, captured).map(|(active, _, _)| active)
+    destination_context(app, captured).map(|context| context.active)
 }
 
 #[tauri::command]
