@@ -11,12 +11,12 @@ general-login-label =
         [windows] Start when you sign in
        *[linux] Start on Login
     }
-general-login-description = Keeps the shortcut ready after a restart
+general-login-description = Keeps the shortcut ready after a restart.
 general-login-place =
     { $platform ->
         [macos] System Settings > General > Login Items
         [windows] Settings > Apps > Startup
-       *[linux] your desktop's startup applications settings
+       *[linux] your desktop’s startup applications settings
     }
 general-login-when =
     { $platform ->
@@ -28,8 +28,8 @@ general-login-needs-approval = macOS is waiting for your approval. Turn on { $na
 general-login-refused = The system did not let { $name } change this. You can change it in { general-login-place }.
 general-login-unreadable = { $name } could not check whether it starts when you { general-login-when }. Look in { general-login-place }.
 
-general-menu-bar-label = Show in Menu Bar
-general-menu-bar-description = If hidden, open Ibis from Applications to come back here
+general-menu-bar-label = Show in menu bar
+general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
 general-paste-label = Paste into the app you came from
 general-paste-key =
@@ -37,7 +37,7 @@ general-paste-key =
         [macos] ⌘V
        *[other] Ctrl+V
     }
-general-paste-description = Otherwise Ibis copies and you press { general-paste-key }
+general-paste-description = Otherwise Ibis copies and you press { general-paste-key }.
 # $list is the system's permission-list name, not an interface message code.
 general-paste-allowed = Allowed in Privacy & Security › { $list }
 general-paste-allowed-note = Ibis presses ⌘V once, only in the app you opened it from.
@@ -51,11 +51,11 @@ general-paste-open = Open System Settings
 general-paste-drag = Drag { $name } to { $list }
 general-paste-drag-keyboard = Press to open System Settings.
 general-paste-drag-fallback = If Ibis is not in the list, drag it there.
-general-paste-drag-failed = Couldn't drag this copy of Ibis. Use the + button in System Settings to add it.
+general-paste-drag-failed = Couldn’t drag this copy of Ibis. Use the + button in System Settings to add it.
 general-paste-waiting = Waiting for your OK…
 general-paste-unreadable = Ibis could not read this permission, so pasting stays off until it can.
 general-paste-granted = Ibis can paste now.
-general-paste-return-failed = Couldn't return to your citation. Open Ibis with your shortcut to continue.
+general-paste-return-failed = Couldn’t return to your citation. Open Ibis with your shortcut to continue.
 general-paste-stale = Already on, but still waiting? In System Settings, remove { $name } from the list, add this copy again, then turn it on.
 
 general-rows = Rows
@@ -91,12 +91,15 @@ shortcuts-region-search = While searching
 shortcuts-region-library = Your library
 shortcuts-region-picker = Anywhere in Ibis
 shortcuts-region-menu = In a menu
-shortcuts-region-system = From any app
-shortcuts-action-change-last = Change the last citation
+shortcuts-region-system = Open Ibis
+shortcuts-region-citation = In the citation
+shortcuts-action-change-last = Edit the citation you just pasted
 shortcuts-action-source = Open the source
 shortcuts-action-choose-source = Choose a library
 shortcuts-action-reveal-source = Show the source in its folder
-shortcuts-action-copy = Paste the citation
+shortcuts-action-open = From any app
+shortcuts-action-copy = Paste or copy the citation
+shortcuts-action-paste = Paste the citation
 shortcuts-action-copy-only = Copy the citation
 shortcuts-action-add = Add another reference
 shortcuts-action-move = Move through results
@@ -104,9 +107,13 @@ shortcuts-action-escape = Step back or hide
 shortcuts-action-format = Change the format
 shortcuts-action-more = More actions
 shortcuts-action-pin = Keep the window open
-shortcuts-action-keys = Show this list
+shortcuts-action-keys = Show keyboard shortcuts
 shortcuts-action-settings = Open Settings
 shortcuts-action-quit = Quit Ibis
+shortcuts-action-undo = Undo
+shortcuts-action-text-size = Make text larger or smaller
+shortcuts-action-citation-move = Move between references
+shortcuts-action-citation-remove = Remove the reference
 shortcuts-action-menu-move = Move through the menu
 shortcuts-action-menu-ends = Go to the first or last item
 shortcuts-action-menu-choose = Choose the item
@@ -114,8 +121,9 @@ shortcuts-action-menu-leave = Leave the menu and return to the search
 shortcuts-or = or
 
 about-automatic = Check for updates automatically
-about-automatic-description = Reads a small update file from GitHub a few times a day
-about-check = Check now
+about-automatic-description = Reads a small update file from GitHub a few times a day.
+about-check = Check Now
+about-check-label = Check for updates
 about-checking = Checking…
 about-check-failed = Ibis could not check for updates. Try again.
 about-check-newest = You have the newest version.
@@ -178,19 +186,19 @@ look-sample-authors = Mira Vale and Noah Reed
 look-sample-journal = Journal of Imagined Studies
 citations-default = Default format
 
-citations-default-description = Used when an app has no remembered format
+citations-default-description = Used when an app has no remembered format.
 citations-recent = Recent citations
-citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them
+citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
 citations-recent-words = history recents cited here forget privacy
 citations-editor = Editor endpoint
-citations-editor-description = Lets an editor on this computer open the picker and receive the citation you choose, through Better BibTeX's Cite as You Write. Web pages can't use it, and nothing leaves this computer.
+citations-editor-description = Lets an editor on this computer open the picker and receive the citation you choose, through Better BibTeX’s Cite as You Write. Web pages can’t use it, and nothing leaves this computer.
 citations-editor-words = cayw cite as you write vs code vscode better bibtex zotero endpoint port url editor
 citations-editor-address = Address for your editor
-citations-editor-address-description = Paste this into the editor's Cite as You Write URL setting. Anyone with it can open the picker on this computer; switching off and on makes a new one.
+citations-editor-address-description = Paste this into the editor’s Cite as You Write URL setting. Anyone with it can open the picker on this computer; switching off and on makes a new one.
 citations-editor-copy = Copy Address
 citations-editor-copied = Copied
-citations-editor-port-in-use = Another program is using the endpoint's port, so it is off.
-citations-editor-bad-setting = The saved endpoint can't be used. Switch it off and on to make a new address.
+citations-editor-port-in-use = Another program is using the endpoint’s port, so it is off.
+citations-editor-bad-setting = The saved endpoint can’t be used. Switch it off and on to make a new address.
 citations-editor-not-saved = The endpoint could not be changed. Try again.
 citations-format-pandoc = Pandoc / Quarto
 citations-format-autocite = BibLaTeX \autocite
@@ -263,8 +271,6 @@ keys-close = Close
 keys-action = Action
 keys-shortcut = Shortcut
 shortcuts-filter = Filter shortcuts
-shortcuts-global = Open Ibis (global)
-shortcuts-system = System
 shortcuts-empty = No matching actions
 
 choice-use-file = Use { $name }
@@ -272,12 +278,12 @@ choice-back = Choose Another Source
 
 backup-words = backup restore export import move migrate new computer sync iCloud OneDrive
 backup-title = Another computer
-backup-label = Back Up Settings
+backup-label = Back up settings
 backup-description = A file to restore on another computer. Paste approvals and window places stay on this one.
 backup-button = Back Up…
 backup-saved = Saved to { $file }.
-restore-label = Restore Settings
-restore-description = Use a backup's settings here. Ibis shows what changes first and keeps the current settings as settings.json.bak.
+restore-label = Restore settings
+restore-description = Use a backup’s settings here. Ibis shows what changes first and keeps the current settings as settings.json.bak.
 restore-button = Restore…
 restore-from = Backup from { $system }, made by Ibis { $version }
 restore-same = This computer already has these settings.
@@ -285,8 +291,8 @@ restore-confirm = Restore and Restart
 restore-cancel = Cancel
 restore-restarting = Restarting Ibis with the restored settings…
 backup-change = { $setting }: { $from } → { $to }
-backup-note-library = The backup's bibliography is not on this computer. It is kept, and Ibis finds it once the file is there.
-backup-note-shortcut = The backup has no opening shortcut for this system, so this computer's stays.
+backup-note-library = The backup’s bibliography is not on this computer. It is kept, and Ibis finds it once the file is there.
+backup-note-shortcut = The backup has no opening shortcut for this system, so this computer’s stays.
 backup-note-repairs = The settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.
 backup-setting-library = Library
 backup-setting-copy-format = Key format
@@ -299,12 +305,12 @@ backup-value-off = Off
 backup-value-zotero = Zotero, My Library
 backup-value-zotero-many = { $count } Zotero libraries
 backup-value-zotero-group = Zotero group { $id }
-backup-problem-not-downloaded = The backup isn't downloaded to this computer yet. Let your cloud folder download it, then try again.
-backup-problem-unreadable = Ibis couldn't read that file. Nothing changed.
-backup-problem-not-a-backup = That file isn't an Ibis settings backup. Nothing changed.
-backup-problem-settings-file = That's Ibis's own settings file, not a backup. Choose a file made with Back Up Settings.
+backup-problem-not-downloaded = The backup isn’t downloaded to this computer yet. Let your cloud folder download it, then try again.
+backup-problem-unreadable = Ibis couldn’t read that file. Nothing changed.
+backup-problem-not-a-backup = That file isn’t an Ibis settings backup. Nothing changed.
+backup-problem-settings-file = That’s Ibis’s own settings file, not a backup. Choose a backup file instead.
 backup-problem-newer = That backup is from a newer version of Ibis. Update Ibis, then try again.
 backup-problem-invalid = That backup is damaged. Nothing changed.
-backup-problem-settings-unusable = Ibis can't use its settings file as it is. Nothing changed.
+backup-problem-settings-unusable = Ibis can’t use its settings file as it is. Nothing changed.
 backup-problem-changed = Settings changed after the backup was shown. Choose it again.
-backup-problem-not-saved = Ibis couldn't save. Nothing changed.
+backup-problem-not-saved = Ibis couldn’t save. Nothing changed.

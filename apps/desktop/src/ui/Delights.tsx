@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { composing } from "../composition";
 import { useInterfaceMessages } from "../i18n";
-import { matchesAccelerator } from "../keys";
+import { commandKey, matchesAccelerator } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
 import { appIcon } from "../brand";
@@ -80,7 +80,8 @@ export function useZoomFeedback(enabled: boolean) {
   useEffect(() => {
     let timer: number | undefined;
     const down = (event: KeyboardEvent) => {
-      if (!enabled || composing(event) || event.altKey || event.ctrlKey || !event.metaKey || !["+", "=", "-", "−"].includes(event.key)) return;
+      // KEY_TABLE's textSize row: ⌘+ and ⌘− (Ctrl elsewhere), with = and the hyphen typed unshifted.
+      if (!enabled || composing(event) || event.altKey || !commandKey(event, currentPlatform() === "macos") || !["+", "=", "-", "−"].includes(event.key)) return;
       event.preventDefault();
       if (event.repeat) return;
       zoom.current = Math.max(0.5, Math.min(2, Math.round((zoom.current + (["-", "−"].includes(event.key) ? -0.1 : 0.1)) * 10) / 10));

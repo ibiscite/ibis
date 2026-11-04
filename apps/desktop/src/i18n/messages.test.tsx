@@ -65,12 +65,15 @@ const panelEnglish = {
   "shortcuts-region-library": "Your library",
   "shortcuts-region-picker": "Anywhere in Ibis",
   "shortcuts-region-menu": "In a menu",
-  "shortcuts-region-system": "From any app",
+  "shortcuts-region-system": "Open Ibis",
+  "shortcuts-region-citation": "In the citation",
+  "shortcuts-action-open": "From any app",
   "shortcuts-action-choose-source": "Choose a library",
   "shortcuts-action-reveal-source": "Show the source in its folder",
   "shortcuts-action-source": "Open the source",
-  "shortcuts-action-change-last": "Change the last citation",
-  "shortcuts-action-copy": "Paste the citation",
+  "shortcuts-action-change-last": "Edit the citation you just pasted",
+  "shortcuts-action-copy": "Paste or copy the citation",
+  "shortcuts-action-paste": "Paste the citation",
   "shortcuts-action-copy-only": "Copy the citation",
   "shortcuts-action-add": "Add another reference",
   "shortcuts-action-move": "Move through results",
@@ -78,17 +81,22 @@ const panelEnglish = {
   "shortcuts-action-format": "Change the format",
   "shortcuts-action-more": "More actions",
   "shortcuts-action-pin": "Keep the window open",
-  "shortcuts-action-keys": "Show this list",
+  "shortcuts-action-keys": "Show keyboard shortcuts",
   "shortcuts-action-settings": "Open Settings",
   "shortcuts-action-quit": "Quit Ibis",
+  "shortcuts-action-undo": "Undo",
+  "shortcuts-action-text-size": "Make text larger or smaller",
+  "shortcuts-action-citation-move": "Move between references",
+  "shortcuts-action-citation-remove": "Remove the reference",
   "shortcuts-action-menu-move": "Move through the menu",
   "shortcuts-action-menu-ends": "Go to the first or last item",
   "shortcuts-action-menu-choose": "Choose the item",
   "shortcuts-action-menu-leave": "Leave the menu and return to the search",
   "shortcuts-or": "or",
   "about-automatic": "Check for updates automatically",
-  "about-automatic-description": "Reads a small update file from GitHub a few times a day",
-  "about-check": "Check now",
+  "about-automatic-description": "Reads a small update file from GitHub a few times a day.",
+  "about-check": "Check Now",
+  "about-check-label": "Check for updates",
   "about-copied": "Copied",
   "about-copy-failed": "The version could not be copied.",
   "about-unavailable": "This build does not update itself.",
@@ -131,9 +139,9 @@ test("the pseudolocale marks and expands interface text while keeping external v
 
 test("settings wording follows the platform, and a backend reason ends on one full stop", () => {
   const says = (id: Parameters<typeof englishMessages.text>[0], platform: string) => englishMessages.text(id, { platform });
-  expect(says("general-paste-description", "macos")).toBe("Otherwise Ibis copies and you press ⌘V");
+  expect(says("general-paste-description", "macos")).toBe("Otherwise Ibis copies and you press ⌘V.");
   for (const platform of ["windows", "linux"]) {
-    expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V");
+    expect(says("general-paste-description", platform)).toBe("Otherwise Ibis copies and you press Ctrl+V.");
     expect(says("look-accent-system", platform)).toBe("Follow the system");
   }
   expect(says("look-accent-system", "macos")).toBe("Follow the Mac");

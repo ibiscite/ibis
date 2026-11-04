@@ -211,8 +211,6 @@ const ratchet = [
   "src/styles.css › .keys-scroll td › .keys-scroll",
   "src/styles.css › .keys-scroll th[scope=\"rowgroup\"] › .keys-scroll",
   "src/styles.css › .keys-scroll kbd › .keys-scroll",
-  // features/picker/EmptyState.css: key hints that wrap under an empty state.
-  "src/features/picker/EmptyState.css › .empty-keys > .key-hint › .key-hint",
   // features/picker/PickerFooter.css: the footer grid places and truncates its parts by their own classes.
   "src/features/picker/PickerFooter.css › .library-bar > :is(.ui-quiet-status, .library-action-error) › .ui-quiet-status",
   "src/features/picker/PickerFooter.css › .library-bar .ui-button.footer-action › .ui-button",

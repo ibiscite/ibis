@@ -482,21 +482,22 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
             <Group id="about-updates" title={text("about-updates")}>
-              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text(checkSaid ?? "about-automatic-description")} {...feedback("automatic")}>
-                {(updates !== null || readProblems.has("automatic")) && <>
-                  <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                  <span className="visually-hidden" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</span>
-                  <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
+              {/* One control per row [D17]: the switch, then Check Now with its outcome. */}
+              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
+                {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
                       setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
                       const saved = updates;
                       void api.setUpdateChecks(on).catch(() => {
                         if (live.current && operation === updateReads.current) { setUpdates(saved); setProblemRow({ id: "automatic", message: "settings-choice-failed" }); }
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
-                    }} />
-                </>}
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+                    }} />}
               </Row>
+              {(updates !== null || readProblems.has("automatic")) && <Row id="check-updates" label={text("about-check-label")} description={checkSaid ? text(checkSaid) : undefined} highlighted={highlighted === "check-updates"}>
+                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
+                <span className="visually-hidden" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</span>
+                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+              </Row>}
             </Group>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>
               {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}

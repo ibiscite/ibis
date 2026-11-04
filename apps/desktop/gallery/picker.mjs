@@ -86,7 +86,7 @@ await page.addInitScript(() => {
 await page.goto("http://ibis.fixture/");
 page.on("pageerror", (e) => console.log("PAGEERROR", e.message));
 await page.getByRole("option", { name: /^Zotero/ }).waitFor();
-await page.getByRole("option", { name: /^Try sample references/ }).press("Enter");
+await page.getByRole("option", { name: /^Try Sample References/ }).press("Enter");
 await page.waitForTimeout(500);
 
 

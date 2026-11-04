@@ -253,7 +253,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   render(<App />);
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
-  const message = "More than one reference has the key same, so it can't be cited by key.";
+  const message = "More than one reference has the key same, so it can’t be cited by key.";
   const refusal = await screen.findByRole("alert");
   expect(refusal.textContent).toContain(message);
   expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
@@ -453,12 +453,12 @@ test("typing after a library load failure keeps its single explanation visible",
     search: () => { throw new Error("no library is open"); },
   });
   render(<App />);
-  expect(await screen.findByRole("heading", { name: "Can't open the library" })).toBeTruthy();
+  expect(await screen.findByRole("heading", { name: "Can’t open the library" })).toBeTruthy();
   expect(screen.getByText("The synthetic library is unreadable.")).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.queryByText("Ibis could not search your library. Use Reload, then try again.")).toBeNull();
   expect(screen.getAllByRole("alert")).toHaveLength(1);
-  expect(choiceRow(/^Try again/)).toBeTruthy();
+  expect(choiceRow(/^Try Again/)).toBeTruthy();
 });
 
 test("the empty-state chooser opens the existing dialog and remains available after cancellation", async () => {
@@ -1257,10 +1257,10 @@ test("an unavailable initial library is named once without a duplicate search er
   render(<App />);
   const notice = await screen.findByRole("alert");
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(notice.textContent).toBe("Can't open 研究 refs.bib. The library file is unavailable.");
+  expect(notice.textContent).toBe("Can’t open 研究 refs.bib. The library file is unavailable.");
   // The choice list fills its rows after the notice renders.
-  expect(await screen.findByRole("option", { name: /^Try again/ })).toBeTruthy();
-  expect(choiceRow(/^Use another library/)).toBeTruthy();
+  expect(await screen.findByRole("option", { name: /^Try Again/ })).toBeTruthy();
+  expect(choiceRow(/^Use Another Library/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "sleep" } });
   expect(screen.getAllByRole("alert")).toHaveLength(1);
   expect(document.body.textContent).not.toContain("No library chosen");
@@ -1268,7 +1268,7 @@ test("an unavailable initial library is named once without a duplicate search er
   expect(document.body.textContent).not.toContain("No matching references");
   expect(calls).not.toContain("search");
   // The chosen row goes away, so the list that replaces it keeps the keyboard.
-  pressRow(choiceRow(/^Use another library/));
+  pressRow(choiceRow(/^Use Another Library/));
   await waitFor(() => expect(document.activeElement).toBe(choiceRow(/^Use Zotero/)));
   await chooseFromLibrary("Choose Library…");
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
@@ -2114,8 +2114,8 @@ test("first-run setup lists found .bib files by name and folder, and opens one b
     open_found_library: (args) => { opened.push(args); return null; },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
-  pressRow(await screen.findByRole("option", { name: /^Choose a found library/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Choose a Found Library/ }));
   await screen.findByRole("option", { name: /^Use thesis\.bib/ });
   const found = [...document.querySelectorAll<HTMLElement>("[data-key^='found-']")];
   expect(found.map((row) => row.querySelector(".choice-tag")?.textContent)).toEqual(["PhD", "Downloads"]);
@@ -2137,7 +2137,7 @@ test("a refused choice from an older list looks again and shows the new list", a
     open_found_library: () => { throw new Error("That file is no longer offered"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   pressRow(await screen.findByRole("option", { name: /^Use v1\.bib/ }));
   expect(await screen.findByRole("option", { name: /^Use v2\.bib/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /^Use v1\.bib/ })).toBeNull();
@@ -2150,11 +2150,11 @@ test("when looking for libraries fails, setup still offers the file chooser and 
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
   expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
-  expect(choiceRow(/^Look again/).getAttribute("aria-disabled")).toBeNull();
+  expect(choiceRow(/^Look Again/).getAttribute("aria-disabled")).toBeNull();
   expect(document.querySelector("[data-key^='found-']")).toBeNull();
 });
 
@@ -2165,7 +2165,7 @@ test("setup failures go away once a library is chosen", async () => {
     find_sources: () => { throw new Error("synthetic failure"); },
   });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
@@ -2177,11 +2177,11 @@ test("setup replaces Find with its discovered file and leaves a usable focused t
   const answer = { zotero: "available", list: 1, files: [{ name: "refs.bib", folder: "Documents" }], cut_short: false };
   backend({ library_status: () => NO_LIBRARY, find_sources: () => answer });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   const file = await screen.findByRole("option", { name: /^Use refs\.bib/ });
   expect(file.textContent).toContain("Found in Documents");
   expect(choiceRow(/^Use Zotero/).textContent).toContain("Found on this");
-  expect(screen.queryByRole("option", { name: /^Look again/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /^Look Again/ })).toBeNull();
   expect(screen.getAllByRole("option")).toHaveLength(4);
   expect(document.activeElement).toBe(file);
 });
@@ -2409,7 +2409,7 @@ test("two Zotero libraries turned on before the first is reported are both kept,
 test("when Zotero refuses other apps and no files are found, setup explains Zotero without saying nothing was found", async () => {
   backend({ library_status: () => NO_LIBRARY, find_sources: () => ({ zotero: "access_off", list: 1, files: [], cut_short: false }) });
   render(<App />);
-  pressRow(await screen.findByRole("option", { name: /^Find them on this computer/ }));
+  pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   expect(await screen.findByText(/To read your references, in Zotero/)).toBeTruthy();
   expect(screen.queryByText(/No Zotero or .bib files found/)).toBeNull();
 });
@@ -2661,7 +2661,7 @@ test("alternate footer buttons use the current add, remove, clear and hide actio
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
   fireEvent.keyDown(box, { key: "Alt", altKey: true });
-  fireEvent.click(await screen.findByRole("button", { name: "Add to citation" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add to Citation" }));
   expect(await screen.findByRole("group", { name: "Selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
   expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
@@ -2681,7 +2681,7 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   const hints = screen.getByRole("group", { name: "Keys" });
   const searchHint = hints.firstElementChild!;
   const text = searchHint.textContent;
-  expect(text).toContain(alt ? "Add to citation" : "Copy as Pandoc");
+  expect(text).toContain(alt ? "Add to Citation" : "Copy as Pandoc");
   const more = screen.getByRole("button", { name: /^More/ });
   // As a native menu button, More focuses itself and opens on pointer down.
   fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
@@ -2727,7 +2727,7 @@ test("the footer names the source and count, the age only when it matters, and t
     error: "Zotero is not running, or it is not accepting connections; keeping the last loaded references" };
   await emit("library:changed", status);
   await waitFor(() => expect(item.textContent).toBe("Zotero not updated · 2 h"));
-  expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("stop");
+  expect(item.closest(".library-status-controls")?.getAttribute("data-health")).toBe("look");
   expect(plain(item.getAttribute("title"))).toMatch(/^Zotero · 1,205 references\nMy Library, Lab group · last read 2 hours ago, .+ · 2 Zotero libraries could not be read\. Zotero is not running, or it is not accepting connections; keeping the last loaded references\. Open Zotero, then reload\.$/);
 });
 
@@ -2771,15 +2771,22 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   expect(document.activeElement).toBe(dialog);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
-  expect(groups.map((group) => group[0])).toEqual([["While searching"], ["Your library"], ["From any app"], ["Anywhere in Ibis"]].slice(0, groups.length));
+  // Settings' groups in Settings' order; Open Ibis joins once the shortcut is known to work.
+  const headings = groups.map((group) => group[0]![0]);
+  expect(headings).toEqual(["Open Ibis", "While searching", "In the citation", "Your library", "Anywhere in Ibis"].filter((name) => name !== "Open Ibis" || headings.includes(name)));
   const rows = groups.flatMap((group) => group.slice(1));
-  expect(groups[0]).toContainEqual(["Copy the citation", "Enter"]);
-  expect(groups[0]).toContainEqual(["Add another reference", "Shift+Enter"]);
+  const searching = groups.find((group) => group[0]?.[0] === "While searching");
+  expect(searching).toContainEqual(["Copy the citation", "Enter"]);
+  expect(searching).toContainEqual(["Add another reference", "Shift+Enter or Ctrl+click"]);
+  expect(groups.find((group) => group[0]?.[0] === "In the citation")).toEqual([["In the citation"], ["Move between references", "← or →"], ["Remove the reference", "Backspace or Delete"]]);
+  expect(rows).toContainEqual(["Undo", "Ctrl+Z"]);
+  expect(rows).toContainEqual(["Make text larger or smaller", "Ctrl+Plus or Ctrl+Minus"]);
+  expect(rows).toContainEqual(["Show the source in its folder", "Ctrl+Alt+O"]);
   expect(groups.find((group) => group[0]?.[0] === "Anywhere in Ibis")).toContainEqual(["More actions", "Ctrl+K"]);
-  expect(rows).toContainEqual(["Show this list", "Ctrl+/ or ?"]);
+  expect(rows).toContainEqual(["Show keyboard shortcuts", "Ctrl+/ or ?"]);
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);
   // The global shortcut, labelled for this platform, is listed once it works.
-  await waitFor(() => expect(within(dialog).getByRole("row", { name: /^Open Ibis/ }).textContent).toBe("Open IbisCtrl+Shift+Y"));
+  await waitFor(() => expect(within(dialog).getByRole("row", { name: /^From any app/ }).textContent).toBe("From any appCtrl+Shift+Y"));
   // Focus stays in the dialog.
   fireEvent.keyDown(close, { key: "Tab" });
   expect(dialog.contains(document.activeElement)).toBe(true);
@@ -3424,7 +3431,7 @@ test.each([false, true])("retained stale freshness stays in accessible footer de
   await screen.findByText("Retained searchable reference");
   expect(screen.queryByRole("alert")).toBeNull();
   expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not updated");
-  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("stop");
+  expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(container.querySelector(".library-detail")?.textContent).toContain(reason);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   expect(screen.getByRole("menu").textContent).toContain(reason);
@@ -3686,7 +3693,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
+  expect(screen.getByRole("alert").textContent).toContain("Check Now in Settings › About");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

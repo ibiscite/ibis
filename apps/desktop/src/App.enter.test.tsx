@@ -131,7 +131,7 @@ test.each([true, false])("the footer names action and output together (paste=%s)
 
 test.each([
   [{ outcome: "pasted", app: "Example Word" }, "Pasted into Example Word"],
-  [{ outcome: "copied", reason: "terminal" }, "Copied. Not pasted into a terminal"],
+  [{ outcome: "copied", reason: "terminal" }, "Copied. Not pasted into a terminal. Press Ctrl+V to paste."],
 ] as const)("More retains the actual delivery outcome after the short feedback expires (%s)", async (delivered, title) => {
   const notices: unknown[] = [];
   backend({ search: () => [result("a", "First")], show_copied_notice: (args) => { notices.push(args); return delivered; } });
@@ -140,5 +140,5 @@ test.each([
   expect(notices).toEqual([{ text: "@a", delivery: null, summary: null }]);
   await act(async () => { await emit("picker:hidden"); await vi.advanceTimersByTimeAsync(3000); await emit("picker:shown"); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title}`) })).toBeTruthy();
+  expect(screen.getByRole("group", { name: new RegExp(`^Last outcome\\. ${title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`) })).toBeTruthy();
 }, 10_000);

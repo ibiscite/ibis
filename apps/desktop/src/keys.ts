@@ -15,8 +15,12 @@ export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
  * Add a row only together with the code that handles it. */
 export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "search", action: "copy", keys: ["Enter"] },
-  { region: "search", action: "add", keys: ["Shift+Enter"] },
+  // ⌘-click is rowClickAction's toggle; listed with the key that does the same.
+  { region: "search", action: "add", keys: ["Shift+Enter", "CmdOrCtrl+Click"] },
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
+  // A focused shelf segment: CitationShelf's segmentKeys.
+  { region: "citation", action: "citationMove", keys: ["ArrowLeft", "ArrowRight"] },
+  { region: "citation", action: "citationRemove", keys: ["Backspace", "Delete"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
   { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },
   { region: "picker", action: "more", keys: ["CmdOrCtrl+K"] },
@@ -26,6 +30,10 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "library", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"] },
   { region: "library", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"] },
   { region: "picker", action: "keys", keys: ["CmdOrCtrl+/", "?"] },
+  // The notice slot's Undo offer: ui/editUndo.
+  { region: "picker", action: "undo", keys: ["CmdOrCtrl+Z"] },
+  // ui/Delights' useZoomFeedback, which also takes = and the hyphen.
+  { region: "picker", action: "textSize", keys: ["CmdOrCtrl+Plus", "CmdOrCtrl+Minus"] },
   { region: "picker", action: "settings", keys: ["CmdOrCtrl+,"] },
   { region: "picker", action: "quit", keys: ["CmdOrCtrl+Q"] },
   { region: "menu", action: "menuMove", keys: ["ArrowDown", "ArrowUp"] },
@@ -40,22 +48,34 @@ export function keysFor(action: KeyAction): string {
 }
 
 const NAMED: Record<string, [mac: string, other: string]> = {
-  enter: ["↵", "Enter"], escape: ["Esc", "Esc"], arrowdown: ["↓", "↓"], arrowup: ["↑", "↑"],
-  home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"], backspace: ["⌫", "Backspace"],
+  enter: ["↵", "Enter"], escape: ["Esc", "Esc"], arrowdown: ["↓", "↓"], arrowup: ["↑", "↑"], arrowleft: ["←", "←"], arrowright: ["→", "→"],
+  home: ["Home", "Home"], end: ["End", "End"], tab: ["Tab", "Tab"], space: ["Space", "Space"], backspace: ["⌫", "Backspace"], delete: ["⌦", "Delete"],
+  plus: ["+", "Plus"], minus: ["−", "Minus"],
 };
+
+/** Modifiers in the order each system's menus write them: ⌃⌥⇧⌘ on macOS,
+ * Ctrl+Alt+Shift elsewhere. Anything else is the key, and stays last. */
+const MODIFIER_ORDER = { mac: ["⌃", "⌥", "⇧", "⌘"], other: ["Ctrl", "Alt", "Shift", "Super"] };
 
 /** Display order only; accelerator matching retains the original binding. */
 function joinKeyLabels(keys: string[], mac: boolean): string {
-  if (!mac) return keys.join("+");
+  const modifiers = mac ? MODIFIER_ORDER.mac : MODIFIER_ORDER.other;
   const order = (key: string) => {
-    const index = key.length === 1 ? "⌃⌥⇧⌘".indexOf(key) : -1;
-    return index < 0 ? 4 : index;
+    const index = modifiers.indexOf(key);
+    return index < 0 ? modifiers.length : index;
   };
-  return keys.sort((a, b) => order(a) - order(b)).join("");
+  return keys.sort((a, b) => order(a) - order(b)).join(mac ? "" : "+");
 }
+
+/** A pointer binding such as `CmdOrCtrl+Click`, written as Apple and Microsoft write it: ⌘-click, Ctrl+click. */
+const isClick = (accelerator: string) => /(^|\+)Click$/.test(accelerator);
 
 /** A key label in the platform's own words: ⌘ ⌥ ⇧ on macOS, Ctrl Alt Shift elsewhere. */
 export function keyLabel(accelerator: string, mac: boolean): string {
+  if (isClick(accelerator)) {
+    const held = accelerator.slice(0, -"Click".length).replace(/\+$/, "");
+    return held ? `${keyLabel(held, mac)}${mac ? "-click" : "+click"}` : "Click";
+  }
   // "+" separates keys, so a lone "+" or a trailing one is the key itself.
   const parts = accelerator === "+" ? ["+"] : accelerator.split(/\+(?!$)/);
   return joinKeyLabels(parts.map((part) => {
@@ -70,8 +90,9 @@ export function keyCapLabels(accelerator: string, mac: boolean): string[] {
   return [keyLabel(accelerator, mac)];
 }
 
-/** The aria-keyshortcuts value for an accelerator. */
+/** The aria-keyshortcuts value for an accelerator; empty for a pointer binding, which is no key. */
 export function ariaKeys(accelerator: string, mac: boolean): string {
+  if (isClick(accelerator)) return "";
   return accelerator.split(/\+(?!$)/).map((part) =>
     part === "CmdOrCtrl" ? (mac ? "Meta" : "Control") : part.length === 1 ? part.toUpperCase() : part).join("+");
 }

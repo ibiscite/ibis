@@ -3,9 +3,8 @@ import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
 import type { LibraryStatus, ZoteroProfiles } from "../../api";
 import { ChoiceIcon, Icon } from "../../icons";
 import { keysFor } from "../../keys";
-import { keyText, libraryMessages, pickerText, setupText } from "../../messages";
+import { libraryMessages, pickerText, setupText } from "../../messages";
 import { ChoiceList, type Choice } from "../../ui/ChoiceList";
-import { KeyHint } from "../../ui/KeyCaps";
 import { IndeterminateProgress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { IbisMark } from "../../ui/IbisMark";
@@ -45,6 +44,11 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
       <div className="update-track" aria-hidden="true"><div /></div>
     </IndeterminateProgress>
   </div>;
+}
+
+/** Every choice row has a help line [C12]: what opening the source does here. */
+export function sourceHelp(zotero: boolean, label: string): string {
+  return zotero && label === pickerText.openZotero ? setupText.openZoteroHelp : setupText.openFileHelp;
 }
 
 /** How often a screen waiting on Zotero asks it; only while that screen shows. */
@@ -106,7 +110,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
     : missing ? [{ ...another, suggested: true }, tryAgain]
     : [{ ...tryAgain, suggested: true }, another];
   if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) {
-    const open: Choice = { id: "source", title: source.label, icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: waiting && profileRows.length === 0 };
+    const open: Choice = { id: "source", title: source.label, help: sourceHelp(library.zotero, source.label), icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: waiting && profileRows.length === 0 };
     if (open.suggested) choices.unshift(open); else choices.push(open);
   }
   return (
@@ -163,7 +167,7 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
     return <div className="empty-state">{setup(false, {
       title: title === fullTitle ? title : <><span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span></>,
       zotero: library.zotero,
-      source,
+      source: source && { ...source, help: setupText.addReferencesHelp },
     })}</div>;
   }
   // The one obstacle to name, with its one fix: the nearest thing to undo first.
@@ -183,10 +187,6 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
           : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>
           : <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>}
       </div> : null}
-      {!query && <div className="empty-keys" aria-hidden="true">
-        <KeyHint label={keyText.copy} keys={keysFor("copy")} />
-        <KeyHint label={keyText.addToCitation} keys={keysFor("add")} />
-      </div>}
     </div>
   );
 }

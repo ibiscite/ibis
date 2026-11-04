@@ -335,28 +335,28 @@ test("the menu says why the next paste uses its format and where a pick goes", a
   destination = BROWSER;
   await says("Pandoc key · Default", "Example Browser has no remembered format, so your default applies. Your pick is remembered for this app.");
   destination = { ...BROWSER, app: null, app_id: null, output_question: null };
-  await says("Pandoc key · Default", "Ibis can't tell which app this is for, so your default applies. Your pick becomes your default.");
+  await says("Pandoc key · Default", "Ibis can’t tell which app this is for, so your default applies. Your pick becomes your default.");
 });
 
 test("an unreadable per-app file says defaults apply and offers the app's own paste answer", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true, can_choose_paste: true }));
   await screen.findByText("First");
-  expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy only in the format menu");
+  expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy Only in the format menu");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
-  expect(await screen.findByRole("menuitem", { name: "Copy only" })).toBeTruthy();
-  expect(screen.getByRole("menuitem", { name: "Paste into Example Word from now on" })).toBeTruthy();
+  expect(await screen.findByRole("menuitem", { name: "Copy Only" })).toBeTruthy();
+  expect(screen.getByRole("menuitem", { name: "Paste into Example Word from Now On" })).toBeTruthy();
   fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
   expect(calls).not.toContain("remember_app_output");
 });
 
-test.each([["the open first-paste question", true], ["the format menu with nothing asked", false]])("answering Copy only in %s saves a format only for the open question", async (_where, asked) => {
+test.each([["the open first-paste question", true], ["the format menu with nothing asked", false]])("answering Copy Only in %s saves a format only for the open question", async (_where, asked) => {
   const { remembered } = opened(() => ({ ...BROWSER, can_choose_paste: true }));
   await screen.findByText("First");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   if (asked) fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   else openFormats();
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Copy only" }));
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Copy Only" }));
   await waitFor(() => expect(remembered).toEqual([asked ? { key: "pandoc" } : null]));
 });
 
@@ -365,7 +365,7 @@ test("an unread destination says what applies and never points at paste choices 
   const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { set_picker_preferences: ({ copyFormat }) => { saved.push(copyFormat); return null; } });
   await screen.findByText("First");
   expect((await screen.findByText(/could not tell which app this is for/)).textContent).toContain("Reopen Ibis to try again");
-  expect(screen.queryByText(/Choose Paste or Copy only/)).toBeNull();
+  expect(screen.queryByText(/Choose Paste or Copy Only/)).toBeNull();
   await pick("Typst key");
   await waitFor(() => expect(formatShown()).toBe("Typst key · This paste"));
   openFormats();

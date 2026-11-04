@@ -17,6 +17,8 @@ ibis-sources = { path = "../ibis-sources" }
 ibis-csl = { path = "../ibis-csl" }
 
 [dev-dependencies]
+# Counts requested heap bytes for the library memory check; no unsafe code here.
+stats_alloc = "0.1.10"
 tempfile = "3.27.0"
 
 [lints]

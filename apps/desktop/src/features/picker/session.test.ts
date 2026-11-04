@@ -128,7 +128,7 @@ test("exhausted presentation reads refuse Enter and later readiness cannot repla
 });
 
 test.each([
-  ["no-permission", "Copied. Ibis needs your OK to paste"],
+  ["no-permission", "Copied. Ibis needs your OK to paste. Press Ctrl+V to paste."],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
 ])("a %s refusal retains its reason and prepared shelf", (reason, message) => {
   const s = scenario();
