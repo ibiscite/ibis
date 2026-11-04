@@ -171,10 +171,12 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
     })}</div>;
   }
   // The one obstacle to name, with its one fix: the nearest thing to undo first.
+  // Left-out libraries are not why nothing matched, only where else to look:
+  // the title says nothing matched, the line names them, the button searches all.
   const filtered = Boolean(query) && unfiltered !== null && Boolean(onRemoveFilter);
   const scoped = Boolean(query) && !filtered && narrowed;
   const absent = Boolean(query) && !filtered && !scoped && missing;
-  const title = filtered ? pickerText.filterObstacle : scoped ? pickerText.scopeObstacle : absent ? pickerText.notInLibraries : query ? pickerText.noMatches : pickerText.typeToFind;
+  const title = filtered ? pickerText.filterObstacle : absent ? pickerText.notInLibraries : query ? pickerText.noMatches : pickerText.typeToFind;
   const description = filtered ? pickerText.filterObstacleHint : scoped ? pickerText.scopeObstacleHint : absent ? pickerText.notInLibrariesHint
     : query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
   return (

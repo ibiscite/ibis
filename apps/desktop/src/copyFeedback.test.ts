@@ -108,13 +108,6 @@ test("the notice is a polite status that shows text as text and replays when sho
 test("the notice says where the citation was pasted, or why it was only copied", () => {
   expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" } })).toBe("Pasted into Writer");
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null } })).toBe("Pasted");
-  expect(noticeTitle(copied("[@a]", "terminal"), "macos")).toBe("Copied. Not pasted into a terminal. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "no-permission"), "macos")).toBe("Copied. Ibis needs your OK to paste. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "accessibility-required"), "macos")).toBe("Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "key-release-failed"), "macos")).toBe("Copied. Press and release Ctrl and V to paste.");
-  expect(noticeTitle(copied("[@a]", "paste-off"), "macos")).toBe("Copied. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "unsupported-system"), "macos")).toBe("Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "no-target"), "macos")).toBe("Copied. There was no app to paste into. Press ⌘V to paste.");
   expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste.");
 });
 
@@ -160,9 +153,11 @@ test("every reason reads as docs/design.md's Notices table says, ending with its
   // Where the fix is pasting, the same words say so, in the system's key.
   const pastes = Object.entries(copiedNoticeText.reasons).filter(([, words]) => words.includes("⌘V to paste")).map(([reason]) => reason as CopyReason);
   expect(pastes.length).toBeGreaterThan(15);
-  for (const reason of pastes) {
-    expect(noticeTitle(copied("[@a]", reason), "macos")).toMatch(/ Press ⌘V to paste\.$/);
-    expect(noticeTitle(copied("[@a]", reason), "windows")).toMatch(/ Press Ctrl\+V to paste\.$/);
+  for (const reason of pastes) expect(noticeTitle(copied("[@a]", reason), "macos")).toMatch(/ Press ⌘V to paste\.$/);
+  // Each system shows the table's words whole, in its own paste key.
+  for (const [reason, words] of Object.entries(copiedNoticeText.reasons) as [CopyReason, string][]) {
+    expect(noticeTitle(copied("[@a]", reason), "macos")).toBe(words);
+    for (const platform of ["windows", "linux"] as const) expect(noticeTitle(copied("[@a]", reason), platform)).toBe(words.replaceAll("⌘V", "Ctrl+V"));
   }
 });
 
@@ -197,12 +192,6 @@ test.each<[CopyReason, string]>([
   renderNotice(root, "macos")(copy);
   expect(root.querySelector("strong")?.textContent).toBe(message);
   expect(root.querySelector(".copied-notice")?.getAttribute("data-outcome")).toBe("copied");
-});
-
-test.each(["windows", "linux"] as const)("unavailable safety evidence uses %s's manual paste key", (platform) => {
-  const root = document.createElement("div");
-  renderNotice(root, platform)(copied("[@invented]", "paste-unavailable"));
-  expect(root.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste.");
 });
 
 test("the first paste into a word processor adds the plugin note, once, in the status region", () => {

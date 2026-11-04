@@ -243,6 +243,21 @@ test.each([
   expect(copy()).toBeTruthy();
 });
 
+test("a preview the engine keeps refusing says so, and Copy is gone instead of waiting on Formatting…", async () => {
+  const calls = backend({
+    search: () => [result("a", "First")],
+    preview_file_citation: () => Promise.reject({ code: "cancelled" }),
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  expect((await screen.findAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).length).toBeGreaterThan(0);
+  expect(screen.queryByText("Formatting…")).toBeNull();
+  expect(within(screen.getByRole("group", { name: "Keys" })).queryByRole("button", { name: /^Copy/ })).toBeNull();
+  fireEvent.keyDown(box, { key: "Enter" });
+  expect(calls).not.toContain("copy_file_citation");
+});
+
 test("a duplicate-key refusal stays visible before Details and copying stays blocked", async () => {
   const shared = { code: "shared_citation_key", key: "same" };
   const calls = backend({
