@@ -1,0 +1,12 @@
+.session-dialog.ui-sheet { display: flex; flex-direction: column; }
+.session-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; }
+.session-body:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: calc(-1 * var(--ring-width)); }
+.session-body p { margin: var(--space-2) 0; }
+.session-note { color: var(--text-secondary); }
+.session-heading { margin: var(--space-3) 0 var(--space-1); font: inherit; font-weight: 600; }
+.session-list { margin: 0; padding: 0; list-style: none; }
+.session-list li { display: flex; align-items: center; gap: var(--space-3); padding-block: var(--space-1); }
+.session-reference { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.session-bibliography { white-space: pre-wrap; user-select: text; }
+.session-actions { display: flex; flex: none; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-block-start: var(--space-3); }
+.session-spacer { flex: 1; }

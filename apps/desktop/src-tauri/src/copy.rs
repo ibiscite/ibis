@@ -21,6 +21,9 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+    /// What was cited, for the session's list; stays on this side of the bridge.
+    #[serde(skip)]
+    pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -236,5 +239,15 @@ pub(crate) fn copy_file_citation(
         Ok(())
     })?;
     copied.delivery = delivery;
+    tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
+        .cited(std::mem::take(&mut copied.cited));
     Ok(copied)
+}
+
+/// Whole content with no delivery: it is copied, never pasted.
+pub(crate) fn write_copy_only(
+    app: &AppHandle,
+    content: ibis_core::contract::ClipboardContent<'_>,
+) -> Result<(), String> {
+    clipboard::write(app, content).map(|_| ())
 }
