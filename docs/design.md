@@ -257,19 +257,20 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 [C20] A read-only view of a reference's PDF that is already in Zotero or a `.bib` `file` field, for looking at a source and choosing its page without opening Zotero (decision 0036). Ibis never imports, downloads, edits or annotates a PDF; **Open in Zotero** stays beside it.
 
-- **Where**: the Inspector's document area. **Show PDF** (proposed ⌘D, added to `KEY_TABLE` with its code) sits under the source action. Opening widens the window once, toward its trailing side and within the screen, by the width of one page at Fit Width: the one planned exception to [C10], with no animated resize. The column, list, shelf and footer stay where they were. Closing the reader returns the window to its steady size; the details stay open. Below 36 rem the reader takes the list's place, as the panel does.
+- **Where**: the Inspector's document area. **Show PDF** (proposed ⌘D, Ctrl+D elsewhere, added to `KEY_TABLE` with its code) sits under the source action. Opening widens the window once, toward its trailing side and within the screen, by the width of one page at Fit Width: the one planned exception to [C10], with no animated resize. The column, list, shelf and footer stay where they were. Closing the reader returns the window to its steady size; the details stay open. Below 36 rem the reader takes the list's place, as the panel does.
 - **Anatomy**: a toolbar on one line above the pages, built from `ui/` parts only: the page indicator, then a zoom `PopupButton` and a find `IconButton` at the trailing edge. Pages scroll vertically and alone on `--surface-grouped`, each a sheet with one `--separator` edge and `--inset` between them. With several PDFs a pop-up names each by its title, never a path, and the reader asks before showing one.
-- **Page indicator**: "PDF page 8 of 312 · cite p. 416", `tabular-nums`. An unknown label reads "PDF page 8 of 312 · Citation page unknown"; a label printed on two pages adds "also PDF page 3". The tooltip and accessible description say where the printed page came from: the PDF's page labels, a Zotero annotation, or an offset you confirmed. It never shows the physical number as the citation page.
-- **Choosing the page**: the Page field follows the page in view, but only to a known printed page; an unknown page leaves Page as it was and the indicator says why. Typing in Page stops it following, and **Cite This Page** (⌘↵ in the reader) starts it again. Choosing a page never copies or pastes; Enter still does what the footer says.
-- **Go to a page** (⌥⌘G): a field in the toolbar. "417" goes to the page printed 417; with none it says "No page printed 417 in this PDF" and offers **Go to PDF Page 417** as a named choice; with several it lists them. It never jumps silently.
-- **Zoom**: Fit Width by default, then Actual Size and 50 to 400 %. With focus in the pages ⌘+, ⌘− and ⌘0 zoom as in Preview; elsewhere they keep changing text size. Pages redraw sharp at the screen's scale; zoom lasts the session only and is never a setting.
-- **Find in the PDF** (⌘F with focus in the reader): the toolbar becomes a search field with "3 of 12" and previous and next; ↵ and ⌘G go forward, ⇧↵ and ⇧⌘G back, Esc closes it. Matches are a quiet fill, the current one `--selected`; the count, not colour, says where you are. It searches the PDF's own text, page by page in the worker, stops when closed and never runs while hidden. A page without text says so ("This page is an image without text"), never "no matches".
-- **Keys**: all by key, Tab in order (column, toolbar, pages). In the pages: ↑ ↓ scroll, Space and ⇧Space or Page Down and Page Up by a screen, ⌥↑ ⌥↓ by a page, Home and End to the first and last page. Esc steps back: find, Go to page, the reader (focus returns to Show PDF), then the panel. The keys sheet lists the reader's keys under their own heading.
-- **Screen readers**: the pages are one region named by the PDF's title; each page is a group named by its indicator words, holding its text in reading order; the drawn page is hidden from them. Moving page by key announces the indicator once, politely; scrolling announces only where it settles.
+- **Page indicator**: "PDF page 8 of 312 · cite p. 416", `tabular-nums`. An unknown label reads "PDF page 8 of 312 · Citation page unknown"; a label printed on two pages adds "also PDF page 3". The tooltip and accessible description say where the printed page came from: the PDF's page labels, a Zotero annotation, or an offset you confirmed. It never shows the physical number as the citation page. A label that is not a citable page (decision 0036) shows in quotes with "Citation page unknown"; one outside the record's pages shows both ("cite p. 12 · record pp. 413–440").
+- **Choosing the page**: once scrolling settles, the Page field follows the page in view, but only to a known, citable printed page, and only within the record's page range when it has one. Otherwise Page stays as it was and the indicator says why; a page outside the range is taken only when the person confirms it with **Cite This Page**. Typing in Page stops it following, and **Cite This Page** (⌘↵, Ctrl+Enter elsewhere, in the reader) starts it again. Choosing a page never copies or pastes; Enter still does what the footer says.
+- **Go to a page** (⌥⌘G, Ctrl+G elsewhere): a field in the toolbar. "417" goes to the page printed 417; with none it says "No page printed 417 in this PDF" and offers **Go to PDF Page 417** as a named choice; with several it lists them. It never jumps silently.
+- **Zoom**: Fit Width by default, then Actual Size and 50 to 400 %. With focus in the pages ⌘+, ⌘− and ⌘0 (Ctrl elsewhere) zoom as in Preview; elsewhere they keep changing text size. Pages redraw sharp at the screen's scale; zoom lasts the session only and is never a setting.
+- **Find in the PDF** (⌘F, Ctrl+F elsewhere, with focus in the reader): the toolbar becomes a search field with "3 of 12" and previous and next; ↵ and ⌘G (F3) go forward, ⇧↵ and ⇧⌘G (Shift+F3) back, Esc closes it. Matches are a quiet fill, the current one `--selected`; the count, not colour, says where you are. It searches the PDF's own text, page by page in the worker, stops when closed and never runs while hidden. A page without text says so ("This page is an image without text"), never "no matches".
+- **Keys**: all by key, Tab in order (column, toolbar, pages). In the pages: ↑ ↓ scroll, Space and ⇧Space or Page Down and Page Up by a screen, ⌥↑ ⌥↓ by a page, Home and End to the first and last page; typing there never goes to search. On Windows and Linux no reader key uses Ctrl+Alt, which is AltGr. Esc steps back: find, Go to page, the reader (focus returns to Show PDF), then the panel. The keys sheet lists the reader's keys under their own heading.
+- **Screen readers**: the pages are one region named by the reference's title, never the PDF's own /Title; each page is a group named by its indicator words, holding its text in reading order; the drawn page is hidden from them. Moving page by key announces the indicator once, politely; scrolling announces only where it settles.
 - **Light, dark and contrast**: the paper is drawn as the PDF draws it, white in dark mode as in Preview; only the surround follows the theme. Increase Contrast adds `--stroke-field` to each sheet. Forced colours draw the page in `Canvas` and `CanvasText`, and text selection uses `Highlight`.
 - **Motion**: page jumps and zoom are instant; nothing scrolls or zooms by animation, so Reduce Motion changes nothing here.
 - **Right to left**: the panel and toolbar mirror; the pages, their text and the numbers in the indicator never do (each number is isolated).
 - **Hidden and reopened**: hiding the picker closes the PDF and frees it. Reopening within a minute returns to the same page from memory; the place is never saved to disk.
+- **Where it is unavailable**: on Linux until the web view sandbox is on, and where the web view's engine is too old (decision 0036), Show PDF stays, dimmed, with the reason in one quiet line; **Open in Zotero** still works.
 - **When it cannot open**: the document area shows one sentence and one fix, centred, never a dialog; the column stays usable, so a page can still be typed. Nothing passes through the notice slot.
 
 | State | Words | Fix |
@@ -282,6 +283,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Over 256 MB | This PDF is too large to open in Ibis (412 MB) | Open in Zotero |
 | Over 15 s | This PDF took too long to open | Try Again |
 | One page fails | That page shows "Couldn't draw this page"; the rest stay | — |
+| An image over the limits | That page shows "Part of this page is too large to draw", never a blank page as its content | Open in Zotero |
 
 ### Footer
 
@@ -321,7 +323,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⇧⌘F | The format chooser |
 | ⌘Y | Peek |
 | ⌘+ / ⌘− | Text size |
-| Typing outside a field | Types into search |
+| Typing outside a field | Types into search, except in the reader's pages |
 
 ### Copying and pasting
 
