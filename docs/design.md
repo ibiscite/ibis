@@ -333,6 +333,18 @@ saved scope start with **All Connected Libraries**.
 - New tasks start with the project's saved scope; ongoing tasks keep their applied choices and adopt external material edits through **Apply Updates**.
 - Collection membership filters discovery. The selected bibliography remains the separate authority for checking emitted keys; a collection does not establish what the document compiles against.
 
+### Historical citations (planned)
+
+Approved 2026-11-04, decision 0028: distinguish recovering saved output,
+recreating a historical rendering, and citing with current information.
+
+- Plain citation text already pasted stays as inserted. A corrected record supplies new citations; a change affecting a prepared citation requires review before insertion, never a silent replacement under Enter.
+- A saved result is dated and shows the text actually retained. Where a current record differs, the historical view can show "Saved on November 4: (Vale, 2023)" and "Current record: publication year 2024", with **Copy Saved Text** and **Create Current Citation** as distinct actions. Do not interrupt ordinary searching with notices for every metadata change.
+- **Recreate the Earlier Citation** requires the necessary old records, request and formatting inputs. If unavailable, say, for example, "The original formatting rules weren’t saved. Ibis can create a citation using current rules." Never label current rendering an exact reproduction. Exact saved text and markup do not guarantee the same destination layout.
+- Updated formatting rules can improve new citations without rewriting old text. A generation job uses a consistent set of rules; inability to resume with those rules is explained before continuing.
+- A receipt records what was used and checked, including relevant formatting versions; it does not restore material never retained. Historical key text alone does not preserve what a document resolves it to. Reusing a key in a current project still enforces current key-to-work validation and known-conflict refusal.
+- Durable preservation is an explicit project export of the relevant references, citation requests, rendered outputs and formatting inputs. Do not silently archive old libraries, documents or attachments, or imply that recents and Change Last Citation are permanent history. Saved historical output remains distinct from current verification.
+
 ### Keys
 
 `KEY_TABLE` in [`apps/desktop/src/keys.ts`](../apps/desktop/src/keys.ts) is the one source of shortcuts; the keys sheet, footer and More read it. A key is added only with the code that handles it.

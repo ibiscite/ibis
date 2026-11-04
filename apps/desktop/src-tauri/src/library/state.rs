@@ -861,7 +861,8 @@ mod tests {
             );
             install_loaded(&library, &requests, 0, loaded).unwrap_or_else(|| panic!("current"))
         };
-        for contents in ["@misc{partial,", "@string{incomplete = {Value}"] {
+        // Bytes that are not UTF-8 fail the reread; a damaged entry would only warn.
+        for contents in [&b"@misc{\xff}"[..], &b"\xc3\x28"[..]] {
             std::fs::write(&file, contents).unwrap_or_else(|e| panic!("{e}"));
             let status = reread();
             assert_eq!(status.references, 1);

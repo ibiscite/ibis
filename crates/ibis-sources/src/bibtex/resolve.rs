@@ -1215,7 +1215,7 @@ mod tests {
                         })
                     })
                     .collect();
-                let (loaded, limited) = super::super::load_with_budget(
+                let loaded = super::super::load_with_budget(
                     &LibraryId::digest(b"synthetic-resolver-regression.bib"),
                     text,
                     Budget::new(credits),
@@ -1230,7 +1230,7 @@ mod tests {
                     "records": records,
                     "fingerprints": snapshot.fingerprints(),
                     "warnings": loaded.warnings,
-                    "limited": limited,
+                    "limited": loaded.warnings.iter().any(|warning| warning.code == crate::WarningCode::WorkLimit),
                 }));
             }
             let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|e| panic!("{e}")));
