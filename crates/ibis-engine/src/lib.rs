@@ -2,6 +2,8 @@
 mod method;
 pub use method::Method;
 
+pub mod cayw;
+
 pub mod mcp;
 
 pub mod protocol;

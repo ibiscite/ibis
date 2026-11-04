@@ -21,6 +21,12 @@ impl PreparedCitation {
     pub fn into_result(self) -> CitationResult {
         self.result
     }
+    pub fn request_output(&self) -> &OutputSpec {
+        &self.request.output
+    }
+    pub fn request_form(&self) -> CitationForm {
+        self.request.form
+    }
     /// The records this citation cites, in its order.
     pub fn items(&self) -> Vec<ItemRef> {
         self.request.items.iter().map(|pick| pick.item.clone()).collect()

@@ -149,6 +149,20 @@ Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
 `127.0.0.1` only, on its own port, refusing any request with a browser
 `Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
 
+2026-11-02, the editor endpoint as built (#42): port 23124, never Zotero's 23119.
+Following the architecture's rule for local endpoints, the address carries a
+random 128-bit token in its path, because `Origin` alone cannot keep a web page out:
+an `<img src>` sends none. Requests with `Origin`, `Referer`, `Cookie`, any `Sec-`
+header or a CORS preflight header are refused, as is any `Host` but `127.0.0.1` or
+`localhost` on that port (DNS rebinding), anything but `GET`, and any body. Answers
+carry no CORS header, are `text/plain` with `nosniff`, and repeat nothing a client
+sent. One request waits at a time. Switching off forgets the token and refuses
+connections already open, so switching on again makes a new address. If the port is
+taken at launch, the endpoint switches itself off, so whoever holds the port cannot
+learn the token from an editor. The token is kept in `settings.json` (and its `.bak`
+until the next save), never in exported backups, logs or the picker. It exposes only
+whether Ibis is ready and the citation the person chooses.
+
 2026-10-30 (maintainer-approved): A weekly GitHub workflow reads only the rolling
 `stable` release's public asset names, aggregate download counters and asset
 `updated_at` timestamps, appending rows of UTC date, asset name, `download_count`

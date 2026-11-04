@@ -401,6 +401,33 @@ fn pandoc_reads_org_citations_as_the_same_picks() {
 }
 
 #[test]
+fn bare_pandoc_drops_brackets_only_when_nothing_needs_them() {
+    let bare = |change: fn(&mut CitationRequest)| {
+        let mut case = seed();
+        case.request.output = OutputSpec::Key {
+            syntax: KeySyntax::Pandoc,
+            command: Some("bare".into()),
+        };
+        change(&mut case.request);
+        syntax::cite(&case.library, &case.request).unwrap()
+    };
+    let plain = render(KeySyntax::Pandoc, |_| {});
+    let one = bare(|_| {});
+    assert_eq!(
+        format!("[{}]", one.text),
+        plain.text,
+        "the same citation without its brackets"
+    );
+    assert!(!one.text.starts_with('['), "{}", one.text);
+    let both = bare(two);
+    assert!(both.text.contains("; ") && !both.text.starts_with('['), "{}", both.text);
+    // A locator, prefix or suffix means something only inside brackets.
+    let noted_bare = bare(noted);
+    assert_eq!(noted_bare.text, render(KeySyntax::Pandoc, noted).text);
+    assert!(noted_bare.losses.is_empty());
+}
+
+#[test]
 fn context_writes_its_cite_command_in_every_form_it_has() {
     let form = |form| render(KeySyntax::Context, |r| r.form = form).text;
     assert_eq!(form(CitationForm::Normal), "\\cite[Example2026]");
