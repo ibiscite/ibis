@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import type { PickerApi } from "../../App";
 import { operationFailures as FAILURE_MESSAGES } from "../../messages";
 import type { Operation } from "./Notices";
+import { closeOverlays } from "../../ui/layers";
 import type { useOperations } from "./useOperations";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -11,7 +12,7 @@ import type { usePickerPreferences } from "./usePickerPreferences";
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "send">;
-  menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "setKeysOpen" | "setLibraryMenuOpen" | "setMenuOpen">;
+  menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "focusHome">;
   destination: ReturnType<typeof useDestination>;
   preferences: ReturnType<typeof usePickerPreferences>;
   resetPointer: () => void;
@@ -20,7 +21,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
   setAltHeld: (held: boolean) => void;
 }) {
   const { session, send } = pickerSession;
-  const { input, setKeysOpen, setLibraryMenuOpen, setMenuOpen } = menus;
+  const { input, focusHome } = menus;
   const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged } = api;
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
@@ -36,7 +37,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       return () => undefined;
     };
     const selectSearch = () => {
-      input.current?.focus();
+      focusHome();
       input.current?.select();
     };
     const activated = (event: FocusEvent) => {
@@ -74,9 +75,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       document.documentElement.dataset.pickerHidden = "";
       resetPointer();
       send({ type: "hidden", now: performance.now() });
-      setKeysOpen(false);
-      setLibraryMenuOpen(false);
-      setMenuOpen(false);
+      closeOverlays();
       setAltHeld(false);
     })
       .catch(() => subscriptionFailure("pickerEvents"));

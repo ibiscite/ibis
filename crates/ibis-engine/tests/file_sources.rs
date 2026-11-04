@@ -298,7 +298,7 @@ fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
 }
 
 #[test]
-fn a_repeated_csl_json_id_keeps_the_first_and_names_no_skipped_key() {
+fn a_repeated_csl_json_id_refuses_every_record_and_lookup_says_why() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("synthetic.json");
     std::fs::write(
@@ -315,13 +315,17 @@ fn a_repeated_csl_json_id_keeps_the_first_and_names_no_skipped_key() {
         )
         .unwrap();
     let warnings = &engine.libraries().unwrap().libraries[0].warnings;
-    assert_eq!(warnings.len(), 1);
-    assert_eq!(warnings[0].key, None);
+    assert_eq!(warnings.len(), 2);
+    assert!(warnings.iter().all(|warning| warning.key.as_deref() == Some("x")));
     let show = |key: &str| {
         engine.show(&ShowRequest {
             item: ItemSelector::Key(key.into()),
         })
     };
-    assert!(show("first").is_ok());
+    assert_eq!(show("first").unwrap_err(), EngineError::new(ErrorCode::NotFound));
     assert_eq!(show("second").unwrap_err(), EngineError::new(ErrorCode::NotFound));
+    assert_eq!(
+        show("x").unwrap_err(),
+        EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
+    );
 }

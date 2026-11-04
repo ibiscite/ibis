@@ -1,4 +1,5 @@
 //! Target syntax generation after identity, intent and input validation.
+use std::collections::HashSet;
 use std::io::Write;
 
 use serde::{Serialize, Serializer, ser::SerializeMap};
@@ -555,6 +556,10 @@ fn locator_label(term: LocatorTerm, plural: bool) -> &'static str {
     }
 }
 
+pub(super) fn source_id(record: &Record) -> Option<&str> {
+    record.csl.get("id").and_then(serde_json::Value::as_str)
+}
+
 /// Serialize borrowed CSL fields directly into a bounded writer. Large repeated
 /// records cannot create an unbounded series of cloned maps before the limit.
 fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
@@ -562,7 +567,9 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let mut map = serializer.serialize_map(None)?;
-            map.serialize_entry("id", self.0.key)?;
+            // The key has its own field; a source `id` stays what it was, so
+            // the export still matches the file it came from.
+            map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
             for (key, value) in &self.0.record.csl {
                 if key != "id" && key != "citation-key" {
@@ -586,7 +593,14 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
         }
     }
     let mut output = Bounded(Vec::new());
-    let records: Vec<_> = picks.iter().map(Export).collect();
+    // A record cited twice is one record: an export repeating its `id` could
+    // not be read back.
+    let mut seen = HashSet::new();
+    let records: Vec<_> = picks
+        .iter()
+        .filter(|pick| seen.insert(&pick.record.id))
+        .map(Export)
+        .collect();
     serde_json::to_writer(&mut output, &records).map_err(|failure| {
         if failure.io_error_kind() == Some(std::io::ErrorKind::FileTooLarge) {
             CitationError::OutputTooLarge

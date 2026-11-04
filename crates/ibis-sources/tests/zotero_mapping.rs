@@ -13,7 +13,7 @@ fn neutral_book_maps_without_zotero_export() {
         "date": "2026-10-25", "citationKey": "Synthetic2026"
     }))
     .unwrap();
-    let mapped = zotero::map_item(LibraryId::zotero(b"invented library"), &item).unwrap();
+    let mapped = zotero::map_item(LibraryId::digest(b"invented library"), &item).unwrap();
     assert_eq!(mapped.record.csl["type"], "book");
     assert_eq!(mapped.record.csl["title"], "Invented book");
     assert_eq!(
@@ -33,7 +33,7 @@ fn differential_against_pinned_zotero_covers_every_bibliographic_type() {
     let mut differences = Vec::new();
     for case in &cases {
         let item: zotero::ZoteroItem = serde_json::from_value(case["item"].clone()).unwrap();
-        let mapped = zotero::map_item(LibraryId::zotero(b"invented library"), &item).unwrap();
+        let mapped = zotero::map_item(LibraryId::digest(b"invented library"), &item).unwrap();
         let actual = serde_json::to_value(&mapped.record.csl).unwrap();
         if actual != case["expected"] {
             differences.push(format!(
@@ -68,7 +68,7 @@ fn item(fields: serde_json::Value) -> zotero::ZoteroItem {
     serde_json::from_value(item).unwrap()
 }
 fn mapped(fields: serde_json::Value) -> zotero::MappedItem {
-    zotero::map_item(LibraryId::zotero(b"invented library"), &item(fields)).unwrap()
+    zotero::map_item(LibraryId::digest(b"invented library"), &item(fields)).unwrap()
 }
 
 #[test]
@@ -166,13 +166,13 @@ fn malformed_oversized_and_nonbibliographic_inputs_are_bounded_and_private() {
     use zotero::{MappingError, MappingWarning};
     for item_type in ["attachment", "note", "annotation", "unrecognized"] {
         assert_eq!(
-            zotero::map_item(LibraryId::zotero(b"invented"), &item(json!({"itemType": item_type}))),
+            zotero::map_item(LibraryId::digest(b"invented"), &item(json!({"itemType": item_type}))),
             Err(MappingError::UnsupportedType)
         );
     }
     for key in ["", "bad key", "bad\nkey"] {
         assert_eq!(
-            zotero::map_item(LibraryId::zotero(b"invented"), &item(json!({"key": key}))),
+            zotero::map_item(LibraryId::digest(b"invented"), &item(json!({"key": key}))),
             Err(MappingError::InvalidIdentity)
         );
     }
@@ -181,7 +181,7 @@ fn malformed_oversized_and_nonbibliographic_inputs_are_bounded_and_private() {
         json!({"creators": vec![json!({"creatorType":"author"}); 4097]}),
     ] {
         assert_eq!(
-            zotero::map_item(LibraryId::zotero(b"invented"), &item(fields)),
+            zotero::map_item(LibraryId::digest(b"invented"), &item(fields)),
             Err(MappingError::InputLimit)
         );
     }
@@ -231,7 +231,7 @@ fn aggregate_work_limits_and_invalid_keys_do_not_hide_other_sources() {
         .map(|index| (format!("invented-{index}"), String::new()))
         .collect();
     assert_eq!(
-        zotero::map_item(LibraryId::zotero(b"invented"), &source),
+        zotero::map_item(LibraryId::digest(b"invented"), &source),
         Err(MappingError::InputLimit)
     );
     let many_keys = (0..4097)
@@ -247,7 +247,7 @@ fn aggregate_work_limits_and_invalid_keys_do_not_hide_other_sources() {
     );
     for extra in [many_keys, many_aliases] {
         assert_eq!(
-            zotero::map_item(LibraryId::zotero(b"invented"), &item(json!({"extra": extra}))),
+            zotero::map_item(LibraryId::digest(b"invented"), &item(json!({"extra": extra}))),
             Err(MappingError::InputLimit)
         );
     }
@@ -256,7 +256,7 @@ fn aggregate_work_limits_and_invalid_keys_do_not_hide_other_sources() {
         .map(|index| (format!("invented-{index}"), "x".repeat(256 * 1024)))
         .collect();
     assert_eq!(
-        zotero::map_item(LibraryId::zotero(b"invented"), &source),
+        zotero::map_item(LibraryId::digest(b"invented"), &source),
         Err(MappingError::InputLimit)
     );
     for citation_key in ["bad key", "bad\0key"] {

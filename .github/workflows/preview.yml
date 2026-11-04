@@ -5,8 +5,10 @@ name: Preview builds
 #
 # - Every push to main replaces the rolling "nightly" pre-release, so the
 #   newest merged state can always be downloaded from one place.
-# - Nightly/release builds also check MSRV, release-mode tests and 60 seconds
-#   of offline behaviour. Real Zotero runs here and on the daily schedule.
+# - Nightly/release builds also check 60 seconds of offline behaviour. Real
+#   Zotero runs here and on the daily schedule. Release checks (minimum Rust,
+#   release-mode tests and speed limits) run beside the builds: a failure
+#   stops a numbered release, never a nightly.
 # - Once a day, and when run manually with "Only rerun the update test", the
 #   update-e2e job updates the nightly that the newest nightly replaced to the
 #   newest nightly, using the packages that nightly's run kept. Until #493 is
@@ -33,7 +35,7 @@ on:
     branches: [main]
     tags: ["v*"]
     # Path filters never apply to tag pushes, so releases always build.
-    paths-ignore: ["**.md", "docs/**"]
+    paths-ignore: ["**.md", "docs/**", "website/**"]
   schedule:
     - cron: "37 4 * * *"
   workflow_dispatch:
@@ -248,20 +250,6 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
-      - name: Test core and sources in release mode (Linux)
-        if: runner.os == 'Linux'
-        env:
-          RUSTFLAGS: -D warnings
-        run: cargo test -p ibis-core -p ibis-sources --release --locked
-
-      - name: Test the declared minimum Rust version (Linux)
-        if: runner.os == 'Linux'
-        env:
-          RUSTFLAGS: -D warnings
-        run: |
-          rustup toolchain install 1.90.0 --profile minimal
-          cargo +1.90.0 test --locked
-
       # hdiutil on hosted macOS runners intermittently fails with "Resource
       # busy" while creating the disk image; a second attempt reuses the
       # compiled app and normally succeeds. Other failures are not retried.
@@ -475,16 +463,41 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-      - name: Report or enforce 100k open/refresh budgets (Linux, release)
-        if: runner.os == 'Linux'
+  release-checks:
+    name: Release checks (Linux)
+    if: github.event_name != 'schedule' && !inputs.update_test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Test core and sources in release mode
+        run: cargo test -p ibis-core -p ibis-sources --release --locked
+
+      - name: Test the declared minimum Rust version
+        run: |
+          rustup toolchain install 1.90.0 --profile minimal
+          cargo +1.90.0 test --locked
+
+      - name: Report or enforce 100k open/refresh budgets (release)
         env:
-          RUSTFLAGS: -D warnings
           BUILD_REF: ${{ github.ref }}
         run: node scripts/preview-budgets.mjs "$BUILD_REF"
 
   windows-paste:
     name: Paste into Notepad (Windows)
-    needs: build
+    if: github.event_name != 'schedule' && !inputs.update_test
     runs-on: windows-2025
     timeout-minutes: 20
     steps:
@@ -818,7 +831,7 @@ jobs:
   publish:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
-    needs: [build, install]
+    needs: [build, install, release-checks]
     # The Latest read and publish must not interleave.
     concurrency:
       group: publish-numbered-release

@@ -5,8 +5,8 @@
       "params": {
         "$defs": {
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "ZoteroLibrary": {
@@ -137,14 +137,23 @@
             "type": "string"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryInfo": {
             "properties": {
+              "capabilities": {
+                "items": {
+                  "$ref": "#/$defs/SourceCapability"
+                },
+                "type": "array"
+              },
               "id": {
                 "$ref": "#/$defs/LibraryId"
+              },
+              "kind": {
+                "$ref": "#/$defs/LibraryKind"
               },
               "objects": {
                 "format": "uint",
@@ -202,12 +211,46 @@
             },
             "required": [
               "id",
+              "kind",
+              "capabilities",
               "objects",
               "warnings",
               "warnings_total",
               "updated_at_ms"
             ],
             "type": "object"
+          },
+          "LibraryKind": {
+            "description": "What a library is. Front ends read this, never the library's id.",
+            "oneOf": [
+              {
+                "enum": [
+                  "zotero"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "file",
+                "description": "A BibTeX, BibLaTeX or CSL-JSON file.",
+                "type": "string"
+              },
+              {
+                "const": "snapshot",
+                "description": "Data handed to the engine whole, with no source behind it.",
+                "type": "string"
+              }
+            ]
+          },
+          "SourceCapability": {
+            "description": "A fixed list per kind, not a plugin system. Zotero's two read paths share\none kind, so running and closed Zotero cannot offer different lists.",
+            "enum": [
+              "bibliographic-records",
+              "native-citation-keys",
+              "extra-citation-keys",
+              "key-aliases",
+              "key-conflicts"
+            ],
+            "type": "string"
           },
           "SourceWarning": {
             "additionalProperties": false,
@@ -216,7 +259,7 @@
                 "$ref": "#/$defs/WarningCode"
               },
               "key": {
-                "description": "The repeated BibTeX citation key, for `duplicate-key` only. It is the person's own\ndata and is shown only to them; no other warning carries source text.",
+                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only to them; no other warning carries source text.",
                 "type": [
                   "string",
                   "null"
@@ -311,8 +354,8 @@
       "params": {
         "$defs": {
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           }
         },
@@ -470,7 +513,6 @@
             "enum": [
               "bibtex",
               "csl-json-citation-key",
-              "csl-json-id",
               "zotero",
               "extra",
               "better-bibtex"
@@ -629,8 +671,8 @@
             "type": "object"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryObject": {
@@ -1167,8 +1209,8 @@
             ]
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           }
         },
@@ -1304,7 +1346,6 @@
             "enum": [
               "bibtex",
               "csl-json-citation-key",
-              "csl-json-id",
               "zotero",
               "extra",
               "better-bibtex"
@@ -1463,8 +1504,8 @@
             "type": "object"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "LibraryObject": {
@@ -1902,8 +1943,8 @@
             "type": "string"
           },
           "LibraryId": {
-            "description": "A source identity digest, never a source location. Sources hash the full\ncanonical file identity, or profile/data-directory/library identity.",
-            "pattern": "^(file|zotero):[0-9a-f]{64}$",
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
             "type": "string"
           },
           "Locator": {
@@ -2600,6 +2641,13 @@
               "null"
             ]
           },
+          "language": {
+            "description": "The language a formatted citation is written in, whatever the interface\nuses. Key syntaxes have none: the destination's processor decides.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "losses": {
             "items": {
               "$ref": "#/$defs/Loss"
@@ -2652,38 +2700,162 @@
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
+        "description": "A page of the style list: the curated styles first, then the rest by id.",
+        "properties": {
+          "limit": {
+            "default": 100,
+            "format": "uint",
+            "maximum": 20000,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "offset": {
+            "default": 0,
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
+          },
+          "query": {
+            "default": null,
+            "description": "Words from a style's title or id; every word must match.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
         "title": "StylesRequest",
         "type": "object"
       },
       "result": {
         "$defs": {
+          "LocaleInfo": {
+            "properties": {
+              "english": {
+                "type": "string"
+              },
+              "native": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "tag",
+              "native",
+              "english"
+            ],
+            "type": "object"
+          },
           "StyleInfo": {
             "properties": {
+              "curated": {
+                "description": "One of the styles offered first.",
+                "type": "boolean"
+              },
+              "default_locale": {
+                "description": "The language this style is written in unless a request names another.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "fields": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "format": {
+                "description": "CSL's citation format, such as `author-date`, `numeric` or `note`.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "id": {
                 "type": "string"
               },
+              "parent": {
+                "description": "The independent style whose rules this one uses.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "title": {
+                "type": "string"
+              },
+              "updated": {
+                "description": "The style's own last-changed date: its only version marker.",
                 "type": "string"
               }
             },
             "required": [
               "id",
-              "title"
+              "title",
+              "updated",
+              "curated",
+              "fields"
+            ],
+            "type": "object"
+          },
+          "UpstreamRelease": {
+            "properties": {
+              "commit": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "tag",
+              "commit"
             ],
             "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "locales": {
+            "description": "Every language a style can be written in.",
+            "items": {
+              "$ref": "#/$defs/LocaleInfo"
+            },
+            "type": "array"
+          },
+          "locales_release": {
+            "$ref": "#/$defs/UpstreamRelease"
+          },
           "styles": {
             "items": {
               "$ref": "#/$defs/StyleInfo"
             },
             "type": "array"
+          },
+          "styles_release": {
+            "$ref": "#/$defs/UpstreamRelease",
+            "description": "Styles change only with an Ibis release; these say which release."
+          },
+          "total": {
+            "description": "How many styles match the request, beyond this page.",
+            "format": "uint",
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
-          "styles"
+          "styles",
+          "total",
+          "locales",
+          "styles_release",
+          "locales_release"
         ],
         "title": "StylesResult",
         "type": "object"

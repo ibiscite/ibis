@@ -346,6 +346,9 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     let mut losses = Vec::new();
     let mut warnings = Vec::new();
     let mut key_bytes = 0_usize;
+    // CSL-JSON keeps each record's source `id`, and two records from different
+    // libraries can share one; an export naming both would be unreadable.
+    let mut exported = HashMap::<&str, &ItemRef>::new();
     for (index, item) in request.items.iter().enumerate() {
         match resolve(snapshot, item, request.form, caps, request.items.len(), &owners) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
@@ -429,6 +432,14 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                         field: LossField::RichText,
                         reason: LossReason::Flattened,
                     });
+                }
+                let id = render::source_id(record).unwrap_or(key);
+                if caps.syntax == KeySyntax::CslJson && *exported.entry(id).or_insert(&record.id) != &record.id {
+                    outcomes.push(ItemOutcome::Refused {
+                        item: index,
+                        error: CitationError::AmbiguousKey,
+                    });
+                    continue;
                 }
                 picks.push(Pick {
                     index,
