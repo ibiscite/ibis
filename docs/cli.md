@@ -39,7 +39,8 @@ duplicates are ignored. Reading never writes to a library, and one-shot commands
 watch no files. Library IDs in the output are opaque tokens: they say nothing about
 the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
 and last across runs on one computer, thanks to a private key Ibis saves once in its
-configuration folder. That key is the only file the command writes.
+configuration folder. Library commands write only that key; explicit `settings`
+and `projects` commands also write the app settings you choose.
 
 When you name no library, `search`, `show`, `cite`, `libraries` and `call` of the first
 three read the one chosen in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
@@ -64,6 +65,7 @@ forgets its command fails loudly. `ibis settings` alone lists its own commands t
 | `cite KEY…` | A citation. `--format ID` writes one of the outputs `outputs` lists (default `pandoc`): a key syntax, or a common style; `--style` writes any CSL style (see `styles`); `--bibliography` writes bibliography entries in a style. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
+| `projects list\|create\|rename\|update\|remove` | Manage local writing projects; `cite KEY --project ID` uses one for this request ([below](#writing-projects)). |
 | `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
 | `libraries` | The open libraries, their item counts and each warning in words. |
 | `outputs` | Every output `cite` writes, each with its id, its one short name (a style's full title is its `description`) and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
@@ -97,7 +99,8 @@ The envelope looks like this:
 ```
 
 - `ibis` is the envelope version. It changes only when the envelope itself changes.
-- `data` is the method's result, described by `ibis schema METHOD`.
+- `data` is the method's result, described by `ibis schema METHOD`; `cite --project`
+  uses the wrapper described by `ibis projects schema`.
 - `error.code` is stable and is the thing to branch on. The sentence that explains it,
   naming the argument, key or file at fault, goes to stderr as one `ibis: …` line, in
   both modes. Sentences may be reworded; codes are not.
@@ -202,6 +205,51 @@ To use the file with other tools, point them at the same `.bib`: Overleaf projec
 upload it beside the document, Quarto names it under `bibliography:` in the front matter,
 and Typst uses `#bibliography("thesis.bib")`. Quarto and Typst can use several files; the
 check covers only the one you name.
+### Writing projects
+
+A writing project remembers its citation output and an optional bibliography to
+check, separately from the libraries searched. The CLI uses a project only when
+you name its stable ID; it never inherits the project's selection in a GUI app.
+
+```sh
+ibis projects create "Field Guide" --format autocite --bibliography refs.bib
+ibis projects list --json
+ibis cite vale2024lanterns --file library.bib --project PROJECT_ID
+ibis projects rename PROJECT_ID "Revised Field Guide"
+ibis projects update PROJECT_ID --style apa --no-bibliography
+ibis projects remove PROJECT_ID
+```
+
+`create` requires `--format` (an output ID from `ibis outputs`, including common
+styles) or `--style` (any bundled CSL style). `update` keeps the fields you omit;
+`--no-bibliography` clears its check. Renaming keeps the ID. Removing a project
+removes its app selections and keeps every bibliography file. Definitions and
+app selections stay on this computer and are excluded from settings backups.
+Use `--nightly` on a `projects` command or alongside `cite --project` to choose
+Nightly's definitions; otherwise the stable app wins, or Nightly when only it has
+settings. A busy settings writer refuses immediately; retry the command after
+the other save finishes. Failed saves leave the old definitions intact.
+
+`--project` conflicts with `--format`, `--style`, `--for-app` and `--request`, so a
+script cannot accidentally mix two output authorities. For a project's formatted
+bibliography, use `--form bibliography-only`. Outputs that emit citation keys check
+the named bibliography; formatted outputs and record exports do not. A current
+missing or uncertain entry reports findings with exit 1. A known wrong-work
+conflict or an unreadable bibliography without matching evidence withholds the
+copyable citation. `--unchecked-project` is an explicit exception for this request
+and reports an unverified result; it never bypasses a known conflict or lost
+conflict history. `--strict-project` requires a complete current read. These
+options cannot be combined and never change a saved project. No project or CLI
+action grants paste permission.
+
+With `--json`, `cite --project` returns a typed wrapper in `data`: `id`, `name`,
+`revision`, the ordinary `citation`, `assessment` (the shared evidence-policy
+outcome), and `project` (the bibliography check, or `null`). A paused or conflicting
+assessment returns typed refusals and no copyable citation text. The definition's opaque `revision` changes when its name, output or
+bibliography changes. `ibis projects schema --json` describes the wrapper.
+Project lists and results show only bibliography file names, never their folders.
+Plain `cite` keeps its existing result shape.
+
 ### Output for an app
 
 `ibis cite KEY --for-app ID` gives what Ibis gives that app: `com.microsoft.Word` or

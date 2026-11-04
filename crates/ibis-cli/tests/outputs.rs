@@ -104,9 +104,6 @@ fn outputs_lists_each_id_with_its_one_name() -> Result {
     let (code, json, _) = run(&["outputs", "--json"])?;
     assert_eq!(code, 0);
     let envelope: Value = serde_json::from_str(&json)?;
-    assert_eq!(
-        envelope["data"],
-        serde_json::to_value(outputs::list())?
-    );
+    assert_eq!(envelope["data"], serde_json::to_value(outputs::list())?);
     Ok(())
 }

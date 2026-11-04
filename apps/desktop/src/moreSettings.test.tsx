@@ -75,7 +75,7 @@ test("Settings owns automatic checks, follows saved events, and Check now explic
   expect(item.checked).toBe(true);
   await act(async () => { await emit("update:automatic", false); });
   expect(item.checked).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Check now" }));
+  fireEvent.click(screen.getByRole("button", { name: "Check Now" }));
   await waitFor(() => expect(calls.filter((c) => c === "check_for_updates")).toHaveLength(1));
 });
 

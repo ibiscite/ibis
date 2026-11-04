@@ -83,6 +83,8 @@ fn same_through_the_picker(
         return Ok(None);
     };
     // The picker keeps key order; formatted styles sort as the style says.
+    // It names no output language, so a style writes in its own.
+    request.output_locale = None;
     request.keep_order = matches!(request.output, OutputSpec::Key { .. });
     let expected = engine.cite(&request, &Cancellation::default());
     let file = FileLibrary::from_engine(engine);
@@ -192,7 +194,13 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
     for output in outputs {
         let spec = crate::output::spec(output);
         let style = matches!(spec, OutputSpec::Csl { .. });
-        let biblatex = matches!(spec, OutputSpec::Key { syntax: KeySyntax::Biblatex, .. });
+        let biblatex = matches!(
+            spec,
+            OutputSpec::Key {
+                syntax: KeySyntax::Biblatex,
+                ..
+            }
+        );
         let entries = crate::output::listed(output).is_some_and(|listed| listed.info().entries);
         for form in ["normal", "narrative", "year-only"] {
             for page in ["12", "12–15"] {
@@ -347,11 +355,7 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
             .cite(&request, &Cancellation::default())
             .map_err(|_| "cite")?;
         let preview = file
-            .preview(
-                file.reserve_preview(),
-                vec![selection(label, value)?],
-                "pandoc",
-            )
+            .preview(file.reserve_preview(), vec![selection(label, value)?], "pandoc")
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
@@ -368,13 +372,7 @@ fn invalid_page_editor_input_refuses_preview_and_copy_with_an_actionable_message
         .ok_or("case")?;
     let file = FileLibrary::from_engine(engine_for(&case)?);
     let pick = &case.library.objects()[0];
-    for output in [
-        "pandoc",
-        "typst",
-        "autocite",
-        "apa",
-        "ieee",
-    ] {
+    for output in ["pandoc", "typst", "autocite", "apa", "ieee"] {
         for value in [
             "",
             " ",
@@ -444,11 +442,7 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
         serde_json::from_value::<FileSelection>(json!({"id":pick.object.id(),
         "cite":pick.fingerprints.cite,"locator":{"label":"page","value":"12"},"form":form}))
     };
-    for output in [
-        "pandoc",
-        "autocite",
-        "apa",
-    ] {
+    for output in ["pandoc", "autocite", "apa"] {
         let preview = file
             .preview(
                 file.reserve_preview(),
@@ -478,11 +472,7 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
             .is_some_and(|reason| reason.contains("Year only"))
     );
     let preview = file
-        .preview(
-            file.reserve_preview(),
-            vec![selection("normal")?],
-            "keys",
-        )
+        .preview(file.reserve_preview(), vec![selection("normal")?], "keys")
         .map_err(|e| e.to_string())?;
     assert!(
         preview
@@ -725,11 +715,7 @@ fn source_file_goldens_preview_and_copy_as_pinned_zotero_formats_them() -> Resul
             }
             let name = format!("{source} {style}");
             let preview = file
-                .preview(
-                    file.reserve_preview(),
-                    serde_json::from_value(json!(items))?,
-                    &style,
-                )
+                .preview(file.reserve_preview(), serde_json::from_value(json!(items))?, &style)
                 .map_err(|_| name.clone())?;
             assert_eq!(preview.text, case["text"].as_str().ok_or("text")?, "{name}");
             assert_eq!(preview.html.as_deref(), case["html"].as_str(), "{name}");

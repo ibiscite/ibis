@@ -7,7 +7,7 @@ import { pickerText } from "../../messages";
 import type { useOperations } from "./useOperations";
 
 export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
-  const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry } = api;
+  const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry, retryProject } = api;
   const [status, setStatus] = useState<ProjectStatus | null>(null);
   const [version, setVersion] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
@@ -52,6 +52,7 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
     status, version, notice, clearNotice, copyEntry,
     choose: chooseProject ? () => perform("project", chooseProject) : null,
     stop: stopProject ? () => perform("project", stopProject) : null,
+    retry: retryProject ? () => perform("project", retryProject) : null,
   };
 }
 

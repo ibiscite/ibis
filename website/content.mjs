@@ -10,14 +10,14 @@ export async function content(html) {
   if (!design) throw Error("Canonical Coming features section is missing");
   const rows = [...design.matchAll(/^\| ([^|]+) \|/gm)].map(([, feature]) => feature);
   const plans = [
-    ["Paste into the app you came from", "Paste straight into your document on Windows too"],
-    ["Citation forms", "Use any citation style"],
-    ["Browse", "Cite the exact page from your PDFs"],
-  ].map(([name, label]) => {
+    ["Citation forms", "Build any citation", "Any official style, page ranges, prefixes, suffixes and citation forms, all in the picker."],
+    ["Browse", "Cite the exact page from your highlights", "Search your Zotero highlights and notes, and cite the page they came from."],
+    ["`ibis check`", "Check a manuscript before you build it", "Find citations whose keys are missing from your bibliography, even ones typed by hand."],
+  ].map(([name, label, note]) => {
     const row = rows.find(value => value.startsWith(name));
     const version = row?.match(/\((0\.\d)/)?.[1];
     if (!row || !version || !roadmap.includes(`\n### ${version} `)) throw Error(`Canonical roadmap item missing: ${name}`);
-    return `<li><strong>${escape(label)}</strong></li>`;
+    return `<li><strong>${escape(label)}</strong><span>${escape(note)}</span></li>`;
   });
-  return html.replaceAll("{{headline}}", escape(headline)).replaceAll("{{version}}", version).replace("{{roadmap}}", `<ul class="roadmap">${plans.join("")}</ul>`);
+  return html.replaceAll("{{headline}}", escape(headline)).replaceAll("{{version}}", version).replace("{{roadmap}}", `<ul class="roadmap" data-planned>${plans.join("")}</ul>`);
 }

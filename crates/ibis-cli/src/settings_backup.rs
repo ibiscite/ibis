@@ -65,7 +65,7 @@ pub(crate) fn command() -> clap::Command {
 
 /// The settings file a command uses: Nightly's when asked; otherwise the
 /// stable app's, or Nightly's when only Nightly has settings here.
-fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
+pub(crate) fn settings_file(nightly: bool) -> Result<(&'static str, PathBuf), Failure> {
     let directory = ibis_engine::identity::config_dir().ok_or_else(|| {
         Failure::new(
             ErrorCode::Usage,

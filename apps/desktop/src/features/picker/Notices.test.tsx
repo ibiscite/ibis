@@ -86,7 +86,7 @@ test("update progress keeps known, unknown, checking and failed phases honest", 
   expect(screen.getByRole("progressbar").querySelector<SVGElement>(".update-ring-fill")?.style.getPropertyValue("--progress")).toBe("");
   rerender(<UpdateNotice progress={{ ...progress, phase: "failed" }} />);
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check now in Settings > About");
+  expect(screen.getByRole("alert").textContent).toContain("Check Now in Settings › About");
 });
 
 test("a failed update passes once seen, and waits while the picker is hidden", () => {

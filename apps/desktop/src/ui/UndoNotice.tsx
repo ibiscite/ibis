@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { pickerText } from "../messages";
+import { keysFor } from "../keys";
 import { Button } from "./Button";
 import { useInterfaceMessages } from "../i18n";
 import { registerUndo, subscribeUndo } from "./editUndo";
@@ -69,6 +70,6 @@ export function UndoNotice({ message, action, onUndo, onExpire, paused = false, 
     <span id={description} role={error ? "alert" : "status"} title={noticeText(message)}>{error ? pickerText.undoFailed : noticeText(message)}</span>
     {/* Retain native focus while waiting, so dismissal can return it to Search. */}
     {/* The message names the action; the key cap says ⌘Z does the same. */}
-    <Button variant="quiet" size="small" label={pickerText.undo} keys="CmdOrCtrl+Z" aria-label={label} aria-describedby={description} isPending={pending} onPress={() => invoke.current()} />
+    <Button variant="quiet" size="small" label={pickerText.undo} keys={keysFor("undo")} aria-label={label} aria-describedby={description} isPending={pending} onPress={() => invoke.current()} />
   </div>;
 }

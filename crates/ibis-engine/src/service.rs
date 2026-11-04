@@ -25,8 +25,11 @@ pub use formatting::Cancellation;
 mod prepared;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
-pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
-pub use project::{EntryResult, ProjectKey, ProjectResult, project_name};
+pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead, WorkMatch};
+pub use project::{
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectResult,
+    WritingProjectCitation, project_name,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -478,6 +481,13 @@ impl Engine {
         request: &KeyCitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
+        self.cite(&self.key_citation_request(request, cancel)?, cancel)
+    }
+    fn key_citation_request(
+        &self,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<CitationRequest, EngineError> {
         cancel.check()?;
         if request.keys.is_empty() || request.keys.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
             return Err(error(ErrorCode::BadInput));
@@ -504,17 +514,14 @@ impl Engine {
                 })
             })
             .collect::<Result<Vec<_>, EngineError>>()?;
-        self.cite(
-            &CitationRequest {
-                items,
-                keep_order: matches!(output, OutputSpec::Key { .. }),
-                output,
-                form: request.form,
-                input_language: None,
-                output_locale: request.output_locale.clone(),
-            },
-            cancel,
-        )
+        Ok(CitationRequest {
+            items,
+            keep_order: matches!(output, OutputSpec::Key { .. }),
+            output,
+            form: request.form,
+            input_language: None,
+            output_locale: request.output_locale.clone(),
+        })
     }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
         self.prepare_citation(request, cancel)

@@ -5,9 +5,7 @@ use std::path::{Path, PathBuf};
 
 use ibis_core::destination::System;
 use ibis_core::settings::backup::{self, BackupError, Note};
-use ibis_core::settings::{
-    self, Density, LibrarySetting, PickerWindow, Settings, SettingsError, ZoteroLibrary,
-};
+use ibis_core::settings::{self, Density, LibrarySetting, PickerWindow, Settings, SettingsError, ZoteroLibrary};
 use serde_json::{Value, json};
 
 fn folder() -> tempfile::TempDir {
@@ -407,13 +405,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
     assert_eq!(plan.notes, [Note::ShortcutKept]);
     let changed: Vec<_> = plan.changes.iter().map(|change| change.setting.as_str()).collect();
     let other_shortcut = format!("shortcut.{}", system_name(other_system()));
-    let mut expected = vec![
-        "accent",
-        "density",
-        "library",
-        "output",
-        other_shortcut.as_str(),
-    ];
+    let mut expected = vec!["accent", "density", "library", "output", other_shortcut.as_str()];
     expected.sort_unstable();
     assert_eq!(changed, expected);
     let density = plan.changes.iter().find(|change| change.setting == "density");

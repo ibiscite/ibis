@@ -24,7 +24,7 @@ for (const theme of ["light", "dark"]) for (const panel of ["general", "look", "
             if (command === "set_picker_preferences") {
               preferences = { ...preferences, ...args.preferences };
               sessionStorage.setItem("preferences", JSON.stringify(preferences));
-              return { preferences, copy_format: "pandoc" };
+              return { preferences };
             }
             if (command === "login_item") return { name: "Synthetic App", enabled: false, problem: "refused" };
             if (command === "paste_permission") return { pastes: true, needed: true, granted, list: "Synthetic List" };

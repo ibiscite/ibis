@@ -70,9 +70,9 @@ export function usePickerActions({
   const stayOpen = pinned || Boolean(shown && typeof shown === "object" && (shown.warnings.length || closestMatchWarnings(offered).length));
   // The keys sheet names what Enter does from the same answer as the footer,
   // and lists the global shortcut too, when it works.
-  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? null : "shortcuts-action-copy-only" as const;
+  const enterRow = enterPastes(destination.app, canPaste, stayOpen) ? "shortcuts-action-paste" as const : "shortcuts-action-copy-only" as const;
   const bindings: readonly KeyBinding[] = [
-    ...KEY_TABLE.map((binding) => binding.action === "copy" && enterRow ? { ...binding, label: enterRow } : binding),
+    ...KEY_TABLE.map((binding) => binding.action === "copy" ? { ...binding, label: enterRow } : binding),
     ...shortcut?.registered ? [{ region: "system", action: "open", keys: [shortcut.shortcut], displayLabel: shortcut.desktop ? shortcut.shortcut : undefined } as const] : [],
   ];
   // What Enter does now, from the same state the copy uses; null when it does nothing.
@@ -90,7 +90,9 @@ export function usePickerActions({
     ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
     : nearest === "search" ? keyText.clearSearch : keyText.hide;
-  const lastCitation = showCitations && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
+  const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
+  const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writingProject?.id ?? null)
+    && (!destination.writingProject || rememberedCitation.format === format) ? rememberedCitation : undefined;
   /** Change Last Citation acts on the shelf, so nothing stays in its way. */
   const changeLast = () => {
     if (!lastCitation) return;

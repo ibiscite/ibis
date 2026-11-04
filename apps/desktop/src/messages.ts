@@ -48,7 +48,7 @@ export const operationFailures = {
   updateChecksChange: "Ibis could not change its update setting. Try again.",
   checkForUpdates: "Ibis could not check for updates. Try again.",
   settings: "Settings could not open. Try again.",
-  appChoices: "Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy only in the format menu.",
+  appChoices: "Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy Only in the format menu.",
   appRead: "Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.",
   appChoice: "Ibis could not save the choice for this app. Try again.",
 } as const;
@@ -57,7 +57,7 @@ export const operationFailures = {
 export function loginItemsPlace(platform: Platform): string {
   if (platform === "macos") return "System Settings > General > Login Items";
   if (platform === "windows") return "Settings > Apps > Startup";
-  return "your desktop's startup applications settings";
+  return "your desktop’s startup applications settings";
 }
 
 /**
@@ -90,28 +90,28 @@ function signIn(platform: Platform) {
 /** Choice screens [C12]: first run, no library, and a library that cannot be opened. */
 export const setupText = {
   sourcesTitle: "Where do your references live?",
-  sourcesLine: "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.",
+  sourcesLine: "Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.",
   returnHint: (shortcut: string) => `After this, open Ibis from any app with ${shortcut}.`,
   shortcutUnavailable: "The shortcut is unavailable. Open Ibis from the menu bar or tray.",
   noShortcut: "No shortcut is set.",
   openWithoutShortcut: "Open Ibis from the menu bar or tray.",
   openingLine: "Reading your library. Zotero can stay closed.",
-  samples: "Try sample references",
+  samples: "Try Sample References",
   samplesHelp: "Three invented ones to try",
   sampleLabel: "Sample",
   sampleTitle: "Sample references",
   sampleSearchHelp: "Search for “lantern”, choose the lantern gardens reference, then press Enter.",
-  ownLibrary: "Use your own library",
+  ownLibrary: "Use Your Own Library",
   ownLibraryHelp: "Choose Zotero or a library file instead of samples",
   emptyLine: "Choose a library with references.",
   zotero: "Zotero",
   foundOn: (platform: Platform) => `Found on this ${platform === "macos" ? "Mac" : platform === "windows" ? "PC" : "computer"}`,
-  findLibraries: "Find them on this computer",
+  findLibraries: "Find Them on This Computer",
   foundIn: (folder: string) => `Found in ${folder}`,
-  chooseFound: "Choose a found library",
+  chooseFound: "Choose a Found Library",
   foundTitle: "Libraries found on this computer",
   findHelp: "Zotero and .bib files nearby",
-  lookAgain: "Look again",
+  lookAgain: "Look Again",
   looking: "Looking for Zotero and .bib files…",
   zoteroAccessOff:
     "To read your references, in Zotero › Settings › Advanced turn on " +
@@ -121,25 +121,30 @@ export const setupText = {
   found: (files: number, zotero: ZoteroPresence | null) =>
     [zotero === "available" ? "Zotero is open." : zotero === "closed" ? "Zotero is on this computer." : "",
       files ? `${files} .bib ${files === 1 ? "file" : "files"} found.` : ""].filter(Boolean).join(" "),
-  missingTitle: (name: string) => `Can't find ${name}`,
+  missingTitle: (name: string) => `Can’t find ${name}`,
   missingLine: "It may have moved, or its drive is disconnected.",
   find: (name: string) => `Find ${name}`,
   findFileHelp: "Choose where it is now",
-  unreadableTitle: (name: string) => `Can't read ${name}`,
-  zoteroClosedTitle: "Ibis needs Zotero open",
-  zoteroMissingTitle: "Ibis can't find Zotero's library",
-  zoteroMissingLine: "If Zotero isn't installed, install it and open it once. Ibis will carry on by itself.",
-  zoteroClosedLine: "Open Zotero and Ibis will carry on by itself.",
-  zoteroAccessOffTitle: "Zotero isn't sharing your library",
-  zoteroAccessOffWaiting: "Ibis will carry on by itself once it's on.",
+  unreadableTitle: (name: string) => `Can’t read ${name}`,
+  /** Ibis reads Zotero open or closed; this time the closed read could not, so opening it is the fix. */
+  zoteroClosedTitle: "Open Zotero to read your library",
+  zoteroClosedLine: "Ibis usually reads it with Zotero closed, but not this time.",
+  zoteroMissingTitle: "Ibis can’t find Zotero’s library",
+  zoteroMissingLine: "If Zotero isn’t installed, install it and open it once. Ibis will carry on by itself.",
+  zoteroAccessOffTitle: "Zotero isn’t sharing your library",
+  zoteroAccessOffWaiting: "Ibis will carry on by itself once it’s on.",
+  /** The help line under a source row: what opening it does here. */
+  openZoteroHelp: "Ibis carries on by itself once it’s open",
+  openFileHelp: "See the file in its own app",
+  addReferencesHelp: "Add references there",
   zoteroProfilesTitle: "Which Zotero profile?",
   zoteroProfilesLine: "Zotero is closed. Choose the profile to read.",
   zoteroProfilesFailed: "Ibis could not list your Zotero profiles. Open Zotero and Ibis will carry on by itself.",
-  otherTitle: (name: string) => `Can't open ${name}`,
+  otherTitle: (name: string) => `Can’t open ${name}`,
   theLibrary: "the library",
-  tryAgain: "Try again",
+  tryAgain: "Try Again",
   tryAgainHelp: "Read the library again",
-  another: "Use another library",
+  another: "Use Another Library",
   anotherHelp: "Zotero or another library file",
   /** A backend reason as a sentence: capitalised, with a full stop. */
   sentence: (reason: string) => {
@@ -152,7 +157,7 @@ export const setupText = {
 export const sessionText = {
   menu: "References Used This Session…",
   title: "References used this session",
-  about: "What you copied with Ibis since it opened or since you reset this list. Ibis can't see your document, so check this against it.",
+  about: "What you copied with Ibis across all projects this session, since it opened or since you reset this list. Ibis can’t see your document, so check this against it.",
   empty: "Nothing yet. References you copy appear here.",
   close: "Close",
   remove: "Remove",
@@ -160,8 +165,8 @@ export const sessionText = {
   reset: "Reset List",
   undoReset: "Undo Reset List",
   undoRemove: (name: string | null) => name ? `Undo Remove ${isolate(name)}` : "Undo Remove",
-  absent: (count: number) => count === 1 ? "1 reference isn't in the open library, so it is left out." : `${count} references aren't in the open library, so they are left out.`,
-  leftOut: (names: string[]) => `Left out because this style can't write them: ${names.map(isolate).join(", ")}.`,
+  absent: (count: number) => count === 1 ? "1 reference isn’t in the open library, so it is left out." : `${count} references aren’t in the open library, so they are left out.`,
+  leftOut: (names: string[]) => `Left out because this style can’t write them: ${names.map(isolate).join(", ")}.`,
   full: "This list is full, so later references were not added.",
   bibliographyIn: (style: string) => `Bibliography in ${isolate(style)}`,
   copy: "Copy Bibliography",
@@ -175,6 +180,62 @@ export const sessionText = {
   notSaved: "The bibliography could not be saved. Try again.",
 } as const;
 
+export const writingProjectText = {
+  title: "Writing Projects",
+  loading: "Loading writing projects…",
+  saving: "Saving project…",
+  menu: "Writing Projects…",
+  about: "A writing project keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this project. Ibis does not identify the document.",
+  sessionOnly: "Ibis can’t identify the app, so this project applies to this session only.",
+  close: "Close",
+  none: "No Writing Project",
+  empty: "No writing projects yet. Your app’s format applies until you choose one.",
+  use: (name: string) => `Use ${name}`,
+  selected: "Selected writing project",
+  selectedLabel: "Selected",
+  apply: "Apply Updates",
+  changedElsewhere: (name: string) => `${isolate(name)} settings changed elsewhere.`,
+  bibliographyChanged: "The bibliography file or location changed.",
+  savedUpdates: "Saved updates",
+  retained: (name: string) => `${isolate(name)} was removed elsewhere. Using retained settings.`,
+  using: (format: string, bibliography: string | null) => `Using ${format} · ${bibliography ? isolate(bibliography) : "No bibliography"}.`,
+  conflictTitle: "Saved settings from another writer",
+  conflictReview: "Review these saved settings before saving your changes. Your input is kept below.",
+  conflictDeleted: "This saved project was removed elsewhere. Your task settings and input are kept. Create another project to save them.",
+  saveMyName: "Save My Name",
+  removeUpdated: "Remove Updated Project",
+  format: (name: string) => `Format: ${name}`,
+  bibliography: (name: string) => `Bibliography: ${name}`,
+  noBibliography: "No bibliography selected.",
+  chooseBibliography: "Choose Bibliography…",
+  removeBibliography: "Remove Bibliography",
+  create: "New Writing Project…",
+  confirmCreate: "Create Project",
+  startsWith: (format: string) => `Starts with ${format}. Change it in the format menu after creating the project.`,
+  name: "Project name",
+  rename: "Rename Project…",
+  saveName: "Save Name",
+  remove: "Remove Project…",
+  confirmRemove: "Remove Project",
+  removeQuestion: (name: string) => `Remove ${isolate(name)} from Ibis? Its bibliography file stays where it is.`,
+  cancel: "Cancel",
+  unsupported: "This app version cannot use this project’s format.",
+  notRead: "The writing projects could not be read. Close this sheet, then try again.",
+  notSaved: "The project could not be saved. Your previous choice still applies. Try again.",
+  bibliographyNotSaved: "The bibliography choice could not be saved. Try again.",
+  remembered: (name: string) => `Saved for ${isolate(name)}.`,
+  pick: "Your pick changes this project’s format.",
+} as const;
+
+export const projectCheckText = {
+  retry: "Retry",
+  locate: "Locate Bibliography…",
+  copyUnverified: "Copy Unverified Key",
+  pasteUnverified: "Paste Unverified Key",
+  lastChecked: (time: string) => `Last checked ${time}.`,
+  unknownCheckTime: "The last checked time is unavailable.",
+} as const;
+
 export const densityNames = {
   compact: "Compact",
   comfortable: "Comfortable",
@@ -183,7 +244,7 @@ export const densityNames = {
 export const pickerText = {
   projectState: (state: ProjectKeyState, name: string, lastGood: boolean, lines: number[] = []) => {
     const file = isolate(name);
-    const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn't check ${file}`,
+    const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn’t check ${file}`,
       repeated: "Key appears more than once", "may-name-another": "Key may name another reference" }[state];
     const where = lines.length ? ` (${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")})` : "";
     return lastGood ? `${text}${where} (last good copy)` : `${text}${where}`;
@@ -193,8 +254,8 @@ export const pickerText = {
     const file = isolate(name);
     const where = lines.length ? ` Check ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.` : "";
     if (state === "reading") return `Reading ${file}`;
-    if (state === "damaged") return `Couldn't read all of ${file}, so nothing is called missing.${where}`;
-    if (state === "failed") return `Couldn't read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
+    if (state === "damaged") return `Couldn’t read all of ${file}, so nothing is called missing.${where}`;
+    if (state === "failed") return `Couldn’t read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
     return `Checking against ${file}`;
   },
   chooseProject: "Check Against a Project Bibliography…",
@@ -203,10 +264,10 @@ export const pickerText = {
   copyProjectEntry: (name: string) => `Copy Entry for ${isolate(name)}`,
   projectEntry: (outcome: EntryCopy, key: string, name: string) => ({
     copied: `Copied the entry for ${isolate(key)} as your file has it, including any file or note field. Check it, then add it to ${isolate(name)}.`,
-    "no-original": "This reference has no original BibTeX entry here. Export it from your reference manager in your project's dialect, keeping its key.",
+    "no-original": "This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.",
     changed: "The library or the bibliography changed. Search again, then try again.",
-    repeated: "The library file repeats this key, so Ibis can't tell which entry to copy.",
-    dependency: "This entry relies on a crossref, xdata or @string that can't come with it. Export it from your reference manager, keeping its key.",
+    repeated: "The library file repeats this key, so Ibis can’t tell which entry to copy.",
+    dependency: "This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.",
   })[outcome],
   /** An editor asked through the endpoint; it receives exactly what is shown. */
   editorWaiting: (format: string) => `Citing for your editor in ${isolate(format)}. Enter sends what you see; Esc cancels.`,
@@ -215,7 +276,7 @@ export const pickerText = {
   findSource: "Find…",
   findSourceFile: (name: string | null) => name ? `Find ${isolate(name)}…` : "Find…",
   sourceChanged: "The library changed; select the reference again.",
-  showSourceFolder: (mac: boolean) => mac ? "Show in Finder" : "Show in folder",
+  showSourceFolder: (mac: boolean) => mac ? "Show in Finder" : "Show in Folder",
   openSource: (name: string | null) => `Open ${isolate(name ?? "library")}`,
   sourceOpenFailed: (zotero: boolean) => zotero ? "Zotero could not open. Try again." : "The source file could not open. Try again.",
   searchLabel: "Search references",
@@ -224,7 +285,7 @@ export const pickerText = {
   searchError: "Ibis could not search your library. Use Reload, then try again.",
   copyError: "Nothing was copied. Try again, or use Reload.",
   snapshotChanged: "The library changed. Search again and reselect the references before copying.",
-  sharedKey: (key: string) => `More than one reference has the key ${key}, so it can't be cited by key. Give one of them a different key in Zotero or your .bib file.`,
+  sharedKey: (key: string) => `More than one reference has the key ${key}, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.`,
   usingLocator: (label: string, value: string) => `Using ${label} ${value}`,
   searchAsTyped: "Search as typed",
   applyLocator: (key: string) => `Apply locator to ${key}`,
@@ -241,7 +302,7 @@ export const pickerText = {
   formatRemembered: (app: string) => `Remembered for ${app}.`,
   formatSuggested: (app: string) => `Suggested for ${app}.`,
   formatAppDefault: (app: string) => `${app} has no remembered format, so your default applies.`,
-  formatNoApp: "Ibis can't tell which app this is for, so your default applies.",
+  formatNoApp: "Ibis can’t tell which app this is for, so your default applies.",
   formatHeld: (format: string) => `${format} applies to this paste only.`,
   pickReplaces: "Your pick replaces it.",
   pickRemembered: "Your pick is remembered for this app.",
@@ -250,9 +311,9 @@ export const pickerText = {
   pickToRemember: "Pick a format to remember it for this app.",
   pickToSetDefault: "Pick a format to make it your default.",
   forApp: (app: string) => `For ${app}`,
-  pasteFromNowOn: (app: string) => `Paste into ${app} from now on`,
-  copyOnly: "Copy only",
-  copyOnlyHere: (app: string) => `Copy only in ${app}`,
+  pasteFromNowOn: (app: string) => `Paste into ${app} from Now On`,
+  copyOnly: "Copy Only",
+  copyOnlyHere: (app: string) => `Copy Only in ${app}`,
   preview: "Preview",
   citationDetails: "Citation details",
   editCitation: "Edit citation",
@@ -305,7 +366,7 @@ export const pickerText = {
   filterObstacle: "No matches with this filter",
   filterObstacleHint: "A tag, year or field in your search leaves nothing.",
   removeFilter: "Remove Filter",
-  scopeObstacle: "Not in the libraries you're searching",
+  scopeObstacle: "Not in the libraries you’re searching",
   scopeObstacleHint: "Some of your Zotero libraries are left out of this search.",
   notInLibraries: "Not in your libraries",
   notInLibrariesHint: "Add it to your library, then search again.",
@@ -371,28 +432,33 @@ export const keyText = {
     library: "Your library",
     picker: "Anywhere in Ibis",
     menu: "In a menu",
-    system: "From any app",
+    system: "Open Ibis",
+    citation: "In the citation",
   },
   actions: {
     source: "Open the source",
     chooseSource: "Choose a library",
     revealSource: "Show the source in its folder",
-    copy: "Paste the citation",
+    copy: "Paste or copy the citation",
     add: "Add another reference",
     move: "Move through results",
     escape: "Step back or hide",
     format: "Change the format",
     more: "More actions",
-    changeLast: "Change the last citation",
+    changeLast: "Edit the citation you just pasted",
     pin: "Keep the window open",
-    keys: "Show this list",
+    keys: "Show keyboard shortcuts",
     settings: "Open Settings",
     quit: "Quit Ibis",
+    undo: "Undo",
+    textSize: "Make text larger or smaller",
+    citationMove: "Move between references",
+    citationRemove: "Remove the reference",
     menuMove: "Move through the menu",
     menuEnds: "Go to the first or last item",
     menuChoose: "Choose the item",
     menuLeave: "Leave the menu and return to the search",
-    open: "Open Ibis",
+    open: "From any app",
   },
   allKeys: "Shortcuts",
   footer: "Keys",
@@ -400,9 +466,9 @@ export const keyText = {
   copyAs: (format: string) => `Copy as ${format}`,
   copySeveralAs: (count: number, format: string) => `Copy ${count} as ${format}`,
   copyEntries: (count: number, style: string) => (count === 1 ? `Copy ${style} entry` : `Copy ${count} ${style} entries`),
-  addToCitation: "Add to citation",
+  addToCitation: "Add to Citation",
   removeFromCitation: "Remove from Citation",
-  closeMenu: "Close menu",
+  closeMenu: "Close Menu",
   clearSearch: "Clear Search",
   hide: "Hide Ibis",
 } as const;
@@ -582,34 +648,36 @@ const itemTypeWords: Record<string, string> = {
 // app the picker was opened from (#27), or copied and why it was not pasted.
 export const copiedNoticeText = {
   title: "Copied",
-  hint: (platform: Platform) => `Copied. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste`,
+  /** Every "copied, not pasted" sentence ends with its fix. Written with ⌘V;
+   * noticeTitle shows Ctrl+V on other systems. The words are docs/design.md's
+   * Notices table, which a test reads. */
+  hint: "Copied. Press ⌘V to paste.",
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
-  /** Keyed by the destination's copy reason codes; any other reason says "Copied". */
+  /** Keyed by the destination's copy reason codes; any other reason says the hint. */
   reasons: {
-    "paste-off": "Copied. Pasting is off",
-    "unsupported-system": "Copied. Paste it into your document",
-    "no-target": "Copied. No app to paste into",
-    "unknown-app": "Copied. Automatic paste is not approved for this app",
-    "copy-only": "Copied. Copy only is set for this app",
-    "nonstandard-shortcut": "Copied. Use this app's paste command",
-    "target-changed": "Copied. The target app or window changed",
-    "clipboard-changed": "Copied. The clipboard changed; copy the citation again",
-    "paste-expired": "Copied. The paste expired; paste it yourself",
-    "no-permission": "Copied. Ibis needs your OK to paste",
+    "paste-off": "Copied. Press ⌘V to paste.",
+    "unsupported-system": "Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.",
+    "no-target": "Copied. There was no app to paste into. Press ⌘V to paste.",
+    "unknown-app": "Copied. Automatic paste is not approved for this app. Press ⌘V to paste.",
+    "copy-only": "Copied. Copy Only is set for this app. Press ⌘V to paste.",
+    "nonstandard-shortcut": "Copied. This app’s paste key does something else. Use its own paste command.",
+    "target-changed": "Copied. The target app or window changed. Press ⌘V to paste.",
+    "clipboard-changed": "Copied. The clipboard changed since. Copy the citation again.",
+    "paste-expired": "Copied. The paste expired. Press ⌘V to paste.",
+    "no-permission": "Copied. Ibis needs your OK to paste. Press ⌘V to paste.",
     "accessibility-required": "Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.",
-    "terminal": "Copied. Not pasted into a terminal",
-    "remote-desktop": "Copied. Not pasted into a remote desktop",
-    "virtual-machine": "Copied. Not pasted into a virtual machine",
-    "secure-field": "Copied. Not pasted into a password field",
+    "terminal": "Copied. Not pasted into a terminal. Press ⌘V to paste.",
+    "remote-desktop": "Copied. Not pasted into a remote desktop. Press ⌘V to paste.",
+    "virtual-machine": "Copied. Not pasted into a virtual machine. Press ⌘V to paste.",
+    "secure-field": "Copied. This field hides what you type. Press ⌘V to paste.",
     "secure-input": "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.",
     "paste-unavailable": "Copied. Press ⌘V to paste.",
-    "elevated-app": "Copied. Not pasted into an administrator app",
-    "key-release-failed": "Copied. Press and release Ctrl and V",
+    "elevated-app": "Copied. Not pasted into an administrator app. Press ⌘V to paste.",
+    "key-release-failed": "Copied. Press and release Ctrl and V to paste.",
     "selection-not-shown": "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.",
     "citation-not-selected": "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.",
   } as Record<string, string>,
-  pluginNote: "If this document uses a reference manager's plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
-  windowsTitle: "Citation copied. Press Ctrl+V to paste.",
+  pluginNote: "If this document uses a reference manager’s plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",
 };
@@ -618,5 +686,5 @@ export const updateText = {
   title: "Updating Ibis",
   downloading: "Downloading",
   installing: "Checking and installing",
-  failed: "The update could not be installed. Use Check now in Settings > About to try again later.",
+  failed: "The update could not be installed. Use Check Now in Settings › About to try again later.",
 };

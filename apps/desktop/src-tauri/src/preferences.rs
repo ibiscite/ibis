@@ -862,7 +862,7 @@ mod tests {
         for (field, value) in [
             ("appearance", serde_json::json!("light")),
             ("accent", serde_json::json!("system")),
-                        ("density", serde_json::json!("comfortable")),
+            ("density", serde_json::json!("comfortable")),
             ("larger_text", serde_json::json!(false)),
             ("paste", serde_json::json!(true)),
             ("menu_bar", serde_json::json!(true)),
@@ -1208,10 +1208,7 @@ mod tests {
             .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
         let chosen = PickerPreferences::from_settings(&settings::Settings::default());
         for (text, expected) in [
-            (
-                r#"{"density":"synthetic-private-value"}"#,
-                "settings.json is not valid",
-            ),
+            (r#"{"density":"synthetic-private-value"}"#, "settings.json is not valid"),
             (
                 r#"{"schema_version":3,"private":"synthetic-private-value"}"#,
                 "settings.json was written by a newer version of Ibis",
@@ -1281,11 +1278,8 @@ mod tests {
             assert!(notice.ends_with(backup.to_string_lossy().as_ref()));
             for _ in 0..2 {
                 assert_eq!(
-                    file.save_preferences(
-                        PickerPreferences::from_settings(&loaded.settings),
-                        Some("keys")
-                    )
-                    .err(),
+                    file.save_preferences(PickerPreferences::from_settings(&loaded.settings), Some("keys"))
+                        .err(),
                     Some(expected.to_string())
                 );
             }
@@ -1701,9 +1695,7 @@ mod tests {
                         released.recv().unwrap_or_else(|e| panic!("{e}"));
                         let patch: PickerPreferencesPatch =
                             serde_json::from_value(patch).unwrap_or_else(|e| panic!("{e}"));
-                        let saved = file
-                            .save_preferences(patch, None)
-                            .unwrap_or_else(|e| panic!("{e}"));
+                        let saved = file.save_preferences(patch, None).unwrap_or_else(|e| panic!("{e}"));
                         completed.send((index, saved)).unwrap_or_else(|e| panic!("{e}"));
                     });
                 }
@@ -1749,7 +1741,10 @@ mod tests {
             serde_json::json!({"citation_style":"apa"}),
             serde_json::json!({"document":"synthetic"}),
         ] {
-            assert!(serde_json::from_value::<PickerPreferencesPatch>(refused.clone()).is_err(), "{refused}");
+            assert!(
+                serde_json::from_value::<PickerPreferencesPatch>(refused.clone()).is_err(),
+                "{refused}"
+            );
         }
     }
 }

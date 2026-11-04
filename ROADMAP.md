@@ -18,6 +18,12 @@ Ibis sits between the references people already keep and the apps they already w
 
 Each release claims only what it has demonstrated, in the [compatibility guide](docs/compatibility.md). Until 1.0 nothing is kept for compatibility (decision 0027): anything wrong is rebuilt.
 
+Cross-client citation behavior follows the maintainer's 2026-11-04 additions to
+[decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005):
+separate task contexts, refusal of conflicting project keys, and continued use
+of a last-good snapshot with a clear refresh warning. These are planned rules;
+the tracking issue's implementation order is unchanged.
+
 ## Releases
 
 ### 0.0 Foundation and 0.1 Picker (released)
@@ -46,6 +52,7 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 - **Everything Zotero's citation dialog does, visible in place:** several references, reordering (also by dragging), all 29 locator types behind one searchable control with ranges and a literal fallback, prefix and suffix with italics, citation forms (full, year only, mixed within one citation) and keep my order.
 - **Every key syntax Ibis can write correctly** (Typst, org-cite, MyST, AsciiDoc, ConTeXt and more), each with its capability table. **Any official CSL style and locale**, output presets, bibliography entries, and "References used this session" as an editable bibliography.
 - **The project's own bibliography as the authority:** results say "In thesis.bib" or "Missing from thesis.bib", and a missing entry can be copied with its existing key.
+- **Optional writing projects** ([#1697](https://github.com/ibiscite/ibis/issues/1697)): remember the citation output and checked bibliography together. Each app remembers its own selected project; its name stays visible in the picker, with a quick explicit switch. No project restores the app's ordinary format. Explicit editor and CLI requests keep their own context ([decision 0031](docs/decisions.md#0031-what-ibis-remembers-per-app), approved 2026-11-04).
 - **Overleaf-only bibliographies** on free plans without Git or Dropbox: after one setup step (the project link, a dropped download or a pasted bibliography), one key opens the project to download it, and Ibis reads every `.bib` in that file or project ZIP. A newer download with the same name that keeps most keys replaces it with a footer note; otherwise Ibis asks and lists the keys that would go. It keeps its last good copy and needs no sign-in or network use. A browser extension that reads the open Overleaf project's bibliography and inserts keys there, only if Overleaf agrees in writing.
 - **More sources:** RIS files (the export of EndNote Web, Citavi Web and many research portals) for formatted citations, since RIS has no keys; a CSV template for references kept in a spreadsheet; a setup line for each reference manager in the compatibility guide, saying which keep their export current.
 - **Live citations, where they work:** for Zotero items, markers in LibreOffice `.odt` files that the ODF Scan add-on turns into live citations; trials of pasting real footnotes for note styles (Word, Pages, LibreOffice) and live Zotero citations into Word through Zotero's own field. Each ships only if it works.

@@ -57,6 +57,12 @@ pub(crate) struct PickerDestination {
     pub(crate) paste_question: bool,
     /// A proven ordinary target can accept an explicit delivery choice, including recovery.
     pub(crate) can_choose_paste: bool,
+    #[specta(optional)]
+    pub(crate) writing_project: Option<crate::writing_projects::WritingProjectView>,
+    #[specta(optional)]
+    pub(crate) context_version: Option<(u32, u32)>,
+    #[specta(optional)]
+    pub(crate) writing_context: Option<String>,
 }
 
 /// The output an app's documents use, from the destination table through
@@ -66,7 +72,13 @@ pub(crate) struct PickerDestination {
 pub(crate) fn automatic(app: &AppId, default: OutputRef) -> Option<OutputRef> {
     lookup(app)?.output?;
     let style = crate::output::default_style(default);
-    let output = output_for(Some(app), &OutputSpec::Csl { style: style.to_owned() }, style);
+    let output = output_for(
+        Some(app),
+        &OutputSpec::Csl {
+            style: style.to_owned(),
+        },
+        style,
+    );
     ibis_engine::outputs::named(&output).and_then(|entry| crate::output::listed(&entry.id))
 }
 
@@ -362,15 +374,19 @@ pub(crate) fn picker_destination(
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
-) -> PickerDestination {
+) -> Result<PickerDestination, String> {
     // The editor already said what it wants and takes the citation itself.
     let last = if editor.current().is_some() {
         None
     } else {
         crate::paste::last_app(&app)
     };
+    let context = crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
+    let context_version = Some(context.version);
+    let writing_project = context.active.map(|project| project.view());
+    let writing_context = editor.current().is_none().then_some(context.edit);
     let Some((id, name, app_identity)) = last else {
-        return PickerDestination {
+        return Ok(PickerDestination {
             app: None,
             app_id: None,
             app_identity: None,
@@ -382,7 +398,10 @@ pub(crate) fn picker_destination(
             paste: None,
             paste_question: false,
             can_choose_paste: false,
-        };
+            writing_project,
+            context_version,
+            writing_context,
+        });
     };
     let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
@@ -395,7 +414,7 @@ pub(crate) fn picker_destination(
     let ordinary = lookup(&id).is_none_or(|entry| entry.safety == PasteSafety::Normal);
     let paste = ordinary.then(|| policy.ok().flatten()).flatten();
     let paste_question = lookup(&id).is_none() && paste.is_none() && can_choose_paste;
-    PickerDestination {
+    Ok(PickerDestination {
         app: Some(name),
         app_id: Some(id.normalized()),
         app_identity,
@@ -407,7 +426,10 @@ pub(crate) fn picker_destination(
         paste,
         paste_question,
         can_choose_paste,
-    }
+        writing_project,
+        context_version,
+        writing_context,
+    })
 }
 
 /// Remember a format, a delivery choice or both for the captured app. Whichever
@@ -510,11 +532,17 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let memory = memory_in(&directory);
         assert!(memory.take_plugin_note(&word()));
-        memory.set(&word(), Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed"))))?;
+        memory.set(
+            &word(),
+            Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed"))),
+        )?;
         memory.set_choice(&word(), None, Some(AppPaste::CopyOnly))?;
         assert!(!memory.take_plugin_note(&word()), "a choice keeps the note shown");
         let reopened = memory_in(&directory);
-        assert_eq!(reopened.get(&word()).0, Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed"))));
+        assert_eq!(
+            reopened.get(&word()).0,
+            Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed")))
+        );
         assert!(!reopened.take_plugin_note(&word()));
         Ok(())
     }
@@ -602,7 +630,12 @@ mod tests {
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         assert_eq!(reopened.paste_for(&app, None), Ok(None));
         // A format save from the replacement program cannot carry the old approval forward.
-        reopened.set_bound_choice(&app, Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))), None, other.clone())?;
+        reopened.set_bound_choice(
+            &app,
+            Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))),
+            None,
+            other.clone(),
+        )?;
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         let json = fs::read_to_string(path)?;
         assert!(!json.contains("/invented/"), "only an identity digest is saved");
@@ -619,7 +652,10 @@ mod tests {
         fs::write(&path, "damaged invented preferences")?;
         let memory = AppMemory::open(path.clone());
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        memory.set(&other, Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))))?;
+        memory.set(
+            &other,
+            Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))),
+        )?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         let reopened = AppMemory::open(path.clone());
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
@@ -645,7 +681,10 @@ mod tests {
             assert_eq!(reopened.get(&mac("ORG.EXAMPLE.WRITER")), (format, false));
             assert_eq!(reopened.paste(&mac("ORG.EXAMPLE.WRITER")), Ok(Some(paste)));
             // A later format pick preserves delivery; a format alone never grants it.
-            reopened.set(&app, Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))))?;
+            reopened.set(
+                &app,
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))),
+            )?;
             assert_eq!(reopened.paste(&app), Ok(Some(paste)));
             // A delivery answer keeps the format the person chose.
             reopened.set_choice(&app, None, Some(paste))?;
@@ -722,7 +761,10 @@ mod tests {
         // A formatted app takes the default when it is a style, else the engine's style.
         assert_eq!(id(&mac("com.microsoft.Word"), "pandoc"), Some("apa"));
         assert_eq!(id(&mac("com.microsoft.Word"), "ieee"), Some("ieee"));
-        assert_eq!(id(&mac("com.microsoft.Word"), "typst"), Some(ibis_engine::outputs::DEFAULT_STYLE));
+        assert_eq!(
+            id(&mac("com.microsoft.Word"), "typst"),
+            Some(ibis_engine::outputs::DEFAULT_STYLE)
+        );
         assert_eq!(id(&mac("md.obsidian"), "ieee"), Some("pandoc"));
         assert_eq!(id(&mac("texshop"), "pandoc"), Some("autocite"));
         let windows = AppId {
@@ -803,7 +845,7 @@ mod tests {
         assert_eq!(file["apps"].as_array().map(Vec::len), Some(MAX_APPS));
         assert_eq!(
             file["apps"][0],
-            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app1" }, "output": { "key": "pandoc" } })
+            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app1" }, "output": "pandoc" })
         );
     }
 
@@ -886,7 +928,10 @@ mod tests {
         fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
         assert!(
             memory
-                .set(&mac("example.browser"), Some(crate::output::listed("typst").unwrap_or_else(|| panic!("listed"))))
+                .set(
+                    &mac("example.browser"),
+                    Some(crate::output::listed("typst").unwrap_or_else(|| panic!("listed")))
+                )
                 .is_err()
         );
         assert_eq!(memory.get(&mac("example.browser")), (Some(cite), false));
@@ -901,7 +946,10 @@ mod tests {
         fs::write(&occupied, "synthetic existing data").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&occupied, path.with_extension("json.tmp-1")).unwrap_or_else(|e| panic!("{e}"));
         AppMemory::open(path)
-            .set(&mac("example.browser"), Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))))
+            .set(
+                &mac("example.browser"),
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))),
+            )
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             fs::read_to_string(occupied).unwrap_or_default(),

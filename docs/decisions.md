@@ -44,6 +44,93 @@ is developed in tandem with the app, with no compromises; the GUI is only a laye
 It must work with AI agents, run on every operating system and be there for anyone
 to build on.
 
+2026-11-04 (maintainer, planning only): correctness across the app, command
+line and agents is the priority. Three rules apply to that shared contract:
+
+- **Separate task contexts.** Saved project definitions and reference updates
+  can be shared; each writing task keeps its selected project, source scope
+  and output. Another client's project selection never redirects ongoing work.
+  An explicit “use the current Ibis project” captures that choice when the task
+  starts, rather than continuously following the picker.
+- **Refuse conflicting project keys.** When a selected project's bibliography
+  is known to bind a key to a different work, refuse that key output until the
+  conflict is resolved. This replaces warn-and-copy for that case; copying
+  instead of pasting does not make the conflicting key safe.
+- **Keep a last-good snapshot usable.** An ordinary refresh failure permits
+  continued citation from a coherent snapshot of the same established source,
+  with a clear warning and the last successful read time. No repeated
+  confirmation is needed. This does not override refusals for uncertain source
+  identity, changed selected records or conflicting keys. The same request and
+  explicit policy have the same outcome across clients; strict mode remains
+  the explicit option planned in #1538.
+
+These are planned rules, not a claim that implementation has landed. They do
+not choose a shared engine process. Context and source ownership are described
+in [architecture](architecture.md#task-contexts-planned); visible behavior is
+in [design](design.md#source-checks-and-passage-reuse-planned). Follow-up belongs
+to #1697, #1260 and #1538, with the work order on #1300 unchanged.
+
+2026-11-04 (maintainer, planning only): unreadable project bibliographies use
+the evidence available for the selected key and work, rather than a blanket
+refusal or blanket warning:
+
+- A retained, complete and coherent copy of the same selected bibliography
+  may support the match, including for a newly selected reference. Normal
+  Enter, copy and paste remain available with a clear last-checked warning
+  and time; the result never claims a current successful check.
+- Without usable evidence for the match, pause normal insertion, preserve
+  the selection and preview, and offer Retry or locating the bibliography.
+  A deliberate one-off unchecked copy or paste is available, honestly named
+  and reported as unverified. It does not bypass a known wrong-work conflict
+  or any source-identity refusal, and agents never choose it silently.
+- A newer successful read supersedes older evidence, including conflicts;
+  an older matching copy cannot hide a later detected conflict. A changed
+  project or bibliography cannot inherit the previous selection's check.
+  Absence in a retained copy is not claimed as absence in the current file.
+- Strict freshness explicitly requires a successful current check. Retry
+  recovery never triggers a delayed insertion; the person acts afresh.
+
+Visible behavior is specified in design.md's Source checks section. These
+rules supersede the unresolved bibliography question in the initial review.
+
+2026-11-04 (maintainer, planning only): saved project edits become available
+to every client, while ongoing tasks adopt citation-affecting changes
+deliberately:
+
+- An edit intended for the current task applies after saving, regenerates
+  and revalidates the preview, and cancels queued insertion. Saving or applying
+  settings never releases an earlier Enter.
+- A material edit from elsewhere leaves the task's project choices in place
+  and offers one persistent, nonmodal Apply Updates action. The current
+  format and bibliography stay visible. Completing one citation or hiding
+  the picker does not automatically end a writing task; an agent keeps one
+  context across its whole job. A deliberately started new task uses the
+  latest saved definition. Cosmetic renames update the label directly.
+- Applying an update keeps selected references, pages, prefixes and suffixes
+  where valid, then prepares a fresh preview and requires a fresh insertion
+  action. The already bound sources and bibliography still refresh normally;
+  pinning project choices never overrides new conflict evidence. Changing
+  which bibliography is selected is a context edit, not a content refresh.
+- Deleting a saved project elsewhere leaves the ongoing task's settings
+  available, clearly labelled as retained settings, rather than silently
+  selecting another project or defaults. Explicit source disconnection or
+  revocation stops affected work; it is not deletion of a reusable preset.
+- Failed or conflicting saves leave current task choices intact. Show what
+  another writer changed before overwriting the shared definition.
+
+The UX is in [Shared project edits](design.md#shared-project-edits-planned),
+under #1697 and #1260. Historical reproducibility is a separate question;
+retaining task choices is not a promise to archive old records or styles.
+
+2026-11-04 (maintainer, planned under #1260): writing projects may optionally
+save an explicit default search scope, naming libraries or collections for new
+tasks. A project without one starts with all connected libraries. Temporary
+task filters stay local and never silently replace the saved project default.
+Existing tasks retain their applied scope under the shared-edit rules above.
+This is a later extension to decision 0031's connected-library search default;
+it does not make collection membership evidence of the document's bibliography.
+See [Project search defaults](design.md#project-search-defaults-planned).
+
 ## 0004 Desktop shell (with 0012)
 
 Tauri 2 with a React interface, in one process: the picker window is hidden
@@ -727,7 +814,22 @@ libraries and sources (0033).
 
 ## 0031 What Ibis remembers per app
 
-2026-11-02 (maintainer): one rule replaces the format scopes. Ibis remembers a
+2026-11-04 (maintainer, #1697): an optional writing project remembers its output
+and optional checked bibliography together. Each app remembers its own selected
+project; selecting No Writing Project restores that app's ordinary output.
+The selected project's output takes precedence over the app's format, and a
+format pick changes the project while it is selected. The picker continuously
+names that project and offers a quick explicit switch. A project is chosen by
+the person, never inferred from a document, window title or browser URL.
+Selection grants no paste permission. Explicit editor and command-line requests
+keep their own output and do not change the GUI selection. Project switches
+replace format and bibliography together and retire pending copy authority;
+failed saves keep the previous context whole. Search continues across connected
+libraries by default; optional project search defaults are planned under
+decision 0028. The checked bibliography remains one read-only file, not proof about
+the actual document. Implementation and acceptance scenarios: #1697.
+
+2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
 format per app, and the person changes it in the format menu. One default in
 Settings › Citations applies to apps with no remembered format. "Just this
 once", "Automatic", "Use as global default" and "Forget formats for apps" are
@@ -1185,6 +1287,32 @@ draws the same pages on every system and gives screen readers real text.
   ships Liberation Sans (GPL-2.0 with a font exception, under Red Hat's terms) as
   its Helvetica substitute; Ibis leaves it out until the maintainer decides, and
   PDFs that do not embed Helvetica use the system's sans-serif.
+
+## 0037 One source per fact; everything else is generated, checked or a command
+
+Maintainer, 2026-11-04: Ibis is built mostly by agents for one maintainer, so the
+cost that matters is what each change must read, retype and remember. A fact
+lives in one place, in a form a program can read; everything that repeats it is
+generated from it or checked against it; and every routine step is a command.
+Before 1.0, anything that fights this is restructured, with no compatibility kept.
+
+- **Contract outward.** The engine schema generates the app's types, the CLI
+  reference, MCP's tool schemas and the golden cases (0035, #1260, #1687).
+- **Specs as data.** A table in a design or architecture document that code must
+  match (notices, keys, footer states, status words, budgets) becomes a small data
+  file the code imports and the document renders or a test compares, as the
+  Notices table already is. People change one row, not prose.
+- **One catalogue** of words for the command line, MCP and the app (#1675).
+- **One seam per platform concern** with a capability report (#1676), so each
+  system is tuned in one place.
+- **Pictures are the design baseline.** The canvas renders every state; a pull
+  request that changes how something looks shows the pictures that changed, and
+  judges look only at those.
+- **Budgets as data:** one table of limits, each with its check; deterministic
+  counts where possible, timings only reported on shared runners.
+- **Routine steps as commands:** `scripts/cloud-setup.sh` sets up a session and
+  `scripts/land.sh` lands a branch (merge main, check what changed, push, auto-merge).
+- **Small documents:** a session reads the one file its task needs (#1690).
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

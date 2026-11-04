@@ -20,6 +20,142 @@ function scenario() {
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
+test.each(["paused", "conflict"] as const)("normal Enter refuses a %s project check without losing the preview or references", (project_check) => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  const shown = { ...prepared, project_check, project_message: "Check the invented bibliography." };
+  s.send(s.view({ shown }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toEqual([]);
+  expect(s.state.copyError).toBe(shown.project_message);
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.state.view?.shown).toBe(shown);
+  expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
+});
+
+test("an explicit unchecked action permits just the paused citation and is never remembered", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "paused", project_message: "Could not check." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]), unverified: true })).toMatchObject([{ type: "copy", unverified: true }]);
+  s.complete(1, { pinned: true, outcome: { text: prepared.text, warnings: ["Unverified project key."] } });
+  expect(s.state.copied?.warnings).toEqual(["Unverified project key."]);
+  s.send(s.view({ shown: { ...prepared, project_check: "paused", project_message: "Could not check." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toEqual([]);
+  expect(s.state.copyError).toBe("Could not check.");
+});
+
+test("a known project conflict cannot be bypassed by an unchecked action", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "conflict", project_message: "This key names another work." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]), unverified: true })).toEqual([]);
+  expect(s.state.copyError).toBe("This key names another work.");
+});
+
+test("a project check retry never releases an earlier normal insertion", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "paused" } }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.send(s.view({ shown: prepared }))).toEqual([]);
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toMatchObject([{ type: "copy" }]);
+});
+
+test("retained evidence permits normal delivery, while an independent closest-match warning still keeps the picker open", () => {
+  const clean = scenario();
+  clean.send(clean.view());
+  clean.send({ type: "enter", choice: choiceKey([a]) });
+  expect(clean.complete(1, { outcome: { text: prepared.text, warnings: ["Using the last checked bibliography."], project_warning_only: true } }))
+    .toMatchObject([{ type: "hide" }]);
+  const uncertain = scenario();
+  uncertain.send(uncertain.view({ chosen: [{ ...a, partial: true }] }));
+  uncertain.send({ type: "enter", choice: choiceKey([a]) });
+  expect(uncertain.complete(1, { outcome: { text: prepared.text, warnings: ["Using the last checked bibliography."], project_warning_only: true } })
+    .some((effect) => effect.type === "hide")).toBe(false);
+  expect(uncertain.state.copied?.project_warning_only).toBe(false);
+  expect(uncertain.state.copied?.warnings.length).toBe(2);
+});
+
+test("a project switch keeps search, ordered references and pages but cancels pending Enter and replacement", () => {
+  const s = scenario();
+  s.send({ type: "query", value: "synthetic" });
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send(s.view({ writingProjectId: "a", shown: null, searchPending: true }));
+  s.send({ type: "enter", choice: null });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.state.changing).toBeNull();
+  expect(s.state.query).toBe("synthetic");
+  expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
+  expect(s.send(s.view({ writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }))).toEqual([]);
+});
+
+test("a project switch does not offer another project's citation for replacement", () => {
+  const s = scenario();
+  s.send(s.view({ appId: "example.editor", writingProjectId: "a" }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1, { pinned: true });
+  expect(s.state.lastCitations.has("example.editor")).toBe(true);
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBe(prepared.text);
+  s.send(s.view({ appId: "example.editor", writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
+  expect(s.state.changing).toBeNull();
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
+});
+
+test.each([
+  { writingProjectId: "project-b", format: "pandoc" as const },
+  { writingProjectId: "project-a", format: "typst" as const },
+  { writingProjectId: null, format: "pandoc" as const },
+])("a last citation cannot cross project or output identity even before its change event: $writingProjectId $format", (next) => {
+  const s = scenario();
+  s.send(s.view({ appId: "example.editor", writingProjectId: "project-a" }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  s.complete(1, { pinned: true });
+  expect(s.state.lastCitations.get("example.editor")?.project).toBe("project-a");
+  s.send(s.view({ appId: "example.editor", ...next }));
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
+});
+
+test.each(["before", "after"] as const)("a refreshed checked receipt cannot adopt an earlier copy or let its response hide the picker (%s new Enter)", (oldResponse) => {
+  const s = scenario();
+  const first = { writingProjectId: "a", projectVersion: "1:0" };
+  s.send(s.view(first));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const checked = { writingProjectId: "a", projectVersion: "1:1", shown: { ...prepared, fileTicket: "checked-ticket", warnings: ["Using the last good bibliography copy."] } };
+  s.send(s.view(checked));
+  if (oldResponse === "before") {
+    s.complete(1);
+    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+  }
+  const second = s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(second).toMatchObject([{ type: "copy", id: 2, ticket: "checked-ticket" }]);
+  if (oldResponse === "after") {
+    s.complete(1);
+    expect(s.effects.some((effect) => effect.type === "hide" || effect.type === "notice")).toBe(false);
+  }
+  expect(s.state.activeCopy).toBe(2);
+  s.complete(2, { pinned: true, outcome: { text: prepared.text, warnings: checked.shown.warnings } });
+  expect(s.state.copied?.warnings).toEqual(checked.shown.warnings);
+});
+
+test("a stale checked copy cannot consume the one-time output a fresh Enter is waiting for", () => {
+  const s = scenario();
+  const original = { format: "cite" as const, projectVersion: "1:0" };
+  s.send(s.view(original));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  const refreshing = { format: "cite" as const, projectVersion: "1:1", shown: null };
+  s.send(s.view(refreshing));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.state.pendingCopy).not.toBeNull();
+  s.complete(1, { pinned: true });
+  expect(s.effects).toEqual([]);
+  expect(s.state.pendingCopy).not.toBeNull();
+  expect(s.send(s.view({ ...refreshing, shown: { ...prepared, fileTicket: "fresh-checked" } })))
+    .toMatchObject([{ type: "copy", id: 2, ticket: "fresh-checked" }]);
+});
+
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
   const c = { ...b, id: { synthetic: "third" }, key: "third" };
@@ -128,7 +264,7 @@ test("exhausted presentation reads refuse Enter and later readiness cannot repla
 });
 
 test.each([
-  ["no-permission", "Copied. Ibis needs your OK to paste"],
+  ["no-permission", "Copied. Ibis needs your OK to paste. Press Ctrl+V to paste."],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
 ])("a %s refusal retains its reason and prepared shelf", (reason, message) => {
   const s = scenario();

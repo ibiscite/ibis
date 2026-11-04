@@ -222,11 +222,7 @@ fn italics_and_non_latin_text_reach_every_clipboard_flavor_from_one_result() -> 
     let row = &rows["results"][0];
     let selection: FileSelection = serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
     let preview = file
-        .preview(
-            file.reserve_preview(),
-            vec![selection],
-            "apa",
-        )
+        .preview(file.reserve_preview(), vec![selection], "apa")
         .map_err(|e| e.to_string())?;
     let mut written = vec![];
     file.copy(&preview.ticket, &preview.content_hash, |content| {

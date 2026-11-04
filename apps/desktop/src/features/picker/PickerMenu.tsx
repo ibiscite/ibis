@@ -38,7 +38,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       {/* Where the references come from and how fresh they are, read
           as the group's name when the menu is reached by keyboard. */}
       <MenuSection id="library" label={[lastOutcome && pickerText.lastOutcome(lastOutcome), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ")}
-        header={lastOutcome || libraryDetail ? <>{lastOutcome && <MenuDetail title={lastOutcome} />}{libraryDetail && <LibraryDetail lines={libraryDetail} />}</> : undefined}>
+        header={lastOutcome || libraryDetail ? <>{lastOutcome && <MenuDetail title={lastOutcome} />}{/* The age and problems live in the library menu; More names the library once. */}{libraryDetail && <LibraryDetail lines={[libraryDetail[0], null]} />}</> : undefined}>
         {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
       </MenuSection>
       <MenuSeparator />

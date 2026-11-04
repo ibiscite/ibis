@@ -39,12 +39,21 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
     };
     let default = crate::output::stored(None);
     let mut cases = vec![
-        (automatic(&word, default).ok_or("Word output")?, "(Researcher, 2026)".to_owned()),
-        (automatic(&tex, default).ok_or("TeX output")?, "\\autocite{demo}".to_owned()),
+        (
+            automatic(&word, default).ok_or("Word output")?,
+            "(Researcher, 2026)".to_owned(),
+        ),
+        (
+            automatic(&tex, default).ok_or("TeX output")?,
+            "\\autocite{demo}".to_owned(),
+        ),
     ];
     // Every key output the engine lists, remembered, writes its own example.
     cases.extend(ibis_engine::outputs::outputs().iter().filter_map(|output| {
-        let example = output.example.as_ref().filter(|_| matches!(output.output, OutputSpec::Key { .. }))?;
+        let example = output
+            .example
+            .as_ref()
+            .filter(|_| matches!(output.output, OutputSpec::Key { .. }))?;
         Some((crate::output::listed(&output.id)?, example.replace("key", "demo")))
     }));
     assert!(cases.len() > 10, "every key output");

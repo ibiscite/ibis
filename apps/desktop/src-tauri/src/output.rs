@@ -68,6 +68,16 @@ pub(crate) fn default_style(default: OutputRef) -> &'static str {
     }
 }
 
+/// The listed output a writing project's stored output writes. A project
+/// made in the command line can name a style the picker does not list; that is
+/// refused, never replaced by a plausible wrong output.
+pub(crate) fn of_project(output: &OutputSpec) -> Result<OutputRef, String> {
+    outputs::named(output).map(OutputRef).ok_or_else(|| {
+        "This project's output is available in the command line. Choose a listed output there before using it in the picker."
+            .into()
+    })
+}
+
 /// A stored id read leniently: anything but a listed id, as a file from
 /// another version may hold, is no choice at all.
 pub(crate) fn lenient<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OutputRef>, D::Error> {
@@ -117,7 +127,13 @@ mod tests {
 
     #[test]
     fn a_stored_id_this_ibis_does_not_list_fails_closed_to_the_default() {
-        for unknown in [None, Some(""), Some("no-such-output"), Some("Pandoc"), Some("style:apa")] {
+        for unknown in [
+            None,
+            Some(""),
+            Some("no-such-output"),
+            Some("Pandoc"),
+            Some("style:apa"),
+        ] {
             assert_eq!(stored(unknown).id(), outputs::DEFAULT, "{unknown:?}");
         }
         assert_eq!(stored(Some("typst")).id(), "typst");

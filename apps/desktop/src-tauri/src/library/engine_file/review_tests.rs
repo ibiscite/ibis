@@ -187,11 +187,7 @@ fn an_older_blocking_worker_finishing_last_cannot_retire_the_newer_preview() -> 
         started.wait();
         let newer = file.reserve_preview();
         let ready = file
-            .preview(
-                newer,
-                vec![serde_json::from_value(selected.clone())?],
-                "pandoc",
-            )
+            .preview(newer, vec![serde_json::from_value(selected.clone())?], "pandoc")
             .map_err(|_| "newer preview")?;
         release.wait();
         assert!(
@@ -354,11 +350,7 @@ fn same_author_year_notice_survives_native_preview_and_copy() -> Result<(), Box<
         .collect::<Result<Vec<FileSelection>, _>>()?;
     assert_eq!(selected.len(), 2);
     let preview = file
-        .preview(
-            file.reserve_preview(),
-            selected,
-            "apa",
-        )
+        .preview(file.reserve_preview(), selected, "apa")
         .map_err(|e| e.to_string())?;
     assert_eq!(
         preview.warnings,
@@ -421,12 +413,8 @@ fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<d
     assert_eq!(writes.get(), 0);
     // Conflicting keys do not prevent a formatted citation of this record.
     assert!(
-        file.preview(
-            file.reserve_preview(),
-            vec![serde_json::from_value(selected)?],
-            "apa"
-        )
-        .is_ok()
+        file.preview(file.reserve_preview(), vec![serde_json::from_value(selected)?], "apa")
+            .is_ok()
     );
     Ok(())
 }

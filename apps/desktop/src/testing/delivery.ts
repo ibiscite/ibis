@@ -144,7 +144,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
-      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: "pandoc", remembered: choice?.output ?? null, unreadable: false,
         can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null && (!captured.selection || shows(captured.selection)),
         output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },

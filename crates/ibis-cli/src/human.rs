@@ -163,7 +163,7 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
 }
 
 /// One line per key, the file's own state first, in the words the app uses.
-fn project_report(data: &Value) -> Option<String> {
+pub(super) fn project_report(data: &Value) -> Option<String> {
     let result: ProjectResult = serde_json::from_value(data.clone()).ok()?;
     let name = field(&result.name);
     let lines = |lines: &[usize]| lines.iter().map(usize::to_string).collect::<Vec<_>>().join(", ");

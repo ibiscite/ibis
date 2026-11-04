@@ -41,10 +41,7 @@ fn selection(bridge: &FileLibrary) -> Result<FileSelection, Box<dyn std::error::
 fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn std::error::Error>> {
     let server = fixture::Server::new();
     let bridge = opened(&server)?;
-    for (style, option, value) in [
-        (None, "--format", "pandoc"),
-        (Some("apa"), "--style", "apa"),
-    ] {
+    for (style, option, value) in [(None, "--format", "pandoc"), (Some("apa"), "--style", "apa")] {
         let cli = Engine::with_zotero_port(server.port).map_err(|_| "synthetic CLI")?;
         let (mut output, mut errors) = (vec![], vec![]);
         assert_eq!(
@@ -92,11 +89,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
     let server = fixture::Server::new();
     let bridge = Arc::new(opened(&server)?);
     let preview = bridge
-        .preview(
-            bridge.reserve_preview(),
-            vec![selection(&bridge)?],
-            "pandoc",
-        )
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
         .map_err(|e| e.to_string())?;
     server.instance.store(2, Ordering::SeqCst);
     server.pause.store(true, Ordering::SeqCst);
@@ -120,11 +113,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
             .is_err()
     );
     let current = bridge
-        .preview(
-            bridge.reserve_preview(),
-            vec![selection(&bridge)?],
-            "pandoc",
-        )
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
         .map_err(|e| e.to_string())?;
     let mut copied = String::new();
     bridge
@@ -204,11 +193,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
     );
     assert!(
         bridge
-            .preview(
-                bridge.reserve_preview(),
-                vec![selection(&bridge)?],
-                "pandoc"
-            )
+            .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
             .is_ok()
     );
     let missing = bridge.refresh_zotero(&ZoteroLibrary::Group(99).into(), None, true, &Cancellation::default());

@@ -3,16 +3,18 @@ import type { KeyAction, KeyRegion } from "../keys";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
-  chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-open", changeLast: "shortcuts-action-change-last", copy: "shortcuts-action-copy",
+  chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-action-open", changeLast: "shortcuts-action-change-last", copy: "shortcuts-action-copy",
   add: "shortcuts-action-add", move: "shortcuts-action-move", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
+  undo: "shortcuts-action-undo", textSize: "shortcuts-action-text-size",
+  citationMove: "shortcuts-action-citation-move", citationRemove: "shortcuts-action-citation-remove",
   menuMove: "shortcuts-action-menu-move", menuEnds: "shortcuts-action-menu-ends",
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<KeyAction, MessageId>;
 export const SHORTCUT_REGIONS = {
   search: "shortcuts-region-search", library: "shortcuts-region-library", picker: "shortcuts-region-picker",
-  menu: "shortcuts-region-menu", system: "shortcuts-region-system",
+  menu: "shortcuts-region-menu", system: "shortcuts-region-system", citation: "shortcuts-region-citation",
 } as const satisfies Record<KeyRegion, MessageId>;
 export const SHORTCUT_COMMANDS = {
   format: "shortcuts-command-format", pin: "shortcuts-command-pin", keys: "shortcuts-command-keys",

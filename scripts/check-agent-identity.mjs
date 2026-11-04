@@ -35,6 +35,12 @@ function eventInput() {
 
 export function checkAgentIdentities(event = eventInput()) {
   if (process.env.GITHUB_EVENT_NAME === "pull_request" && !event?.pull_request || process.env.GITHUB_EVENT_NAME === "merge_group" && !event?.merge_group) fail("the intended event range is missing.");
+  // Cloud sessions start from shallow clones; CI checks out full history and
+  // enforces this, so a local shallow run reports and moves on.
+  if (!process.env.GITHUB_ACTIONS && git(["rev-parse", "--is-shallow-repository"]) === "true") {
+    console.log("Commit identity check skipped locally: shallow clone (CI checks it with full history).");
+    return { errors: [], count: 0 };
+  }
   if (git(["rev-parse", "--is-shallow-repository"]) !== "false") fail("full history is required; shallow inputs cannot establish the intended range.");
   const head = git(["rev-parse", "--verify", "HEAD^{commit}"]);
   const verify = (sha) => {

@@ -12,6 +12,7 @@
 //! kept per system. [`backup`] makes and restores a backup file from it.
 
 pub mod backup;
+pub mod writing_projects;
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -297,6 +298,12 @@ pub struct Settings {
     /// The `.bib` results are checked against, read-only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_bibliography: Option<PathBuf>,
+    /// Explicit writing contexts; bibliography locations stay on this computer.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writing_projects: Vec<writing_projects::WritingProject>,
+    /// Normalized system/app identifiers mapped to stable writing-project IDs.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub writing_project_apps: BTreeMap<String, String>,
     /// The Zotero profile read while Zotero is closed, by its safe name;
     /// `None` until a computer with several profiles needs a choice.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -346,6 +353,8 @@ impl Default for Settings {
             shortcut: Shortcuts::default(),
             library: None,
             project_bibliography: None,
+            writing_projects: Vec::new(),
+            writing_project_apps: BTreeMap::new(),
             zotero_profile: None,
             editor_endpoint: None,
             output: None,
@@ -447,7 +456,7 @@ fn parse_value(mut value: Value) -> Result<Settings, SettingsError> {
     if version < u64::from(SCHEMA_VERSION) {
         return Err(SettingsError::Invalid(format!("unsupported settings format {version}")));
     }
-    Settings::deserialize(&value).map_err(|error| {
+    let settings = Settings::deserialize(&value).map_err(|error| {
         // Untagged enums discard the failing member's context. Inspect the
         // existing JSON only after failure; never include that value in text.
         if let Some(libraries) = value.pointer("/library/zotero").and_then(Value::as_array) {
@@ -458,7 +467,23 @@ fn parse_value(mut value: Value) -> Result<Settings, SettingsError> {
             }
         }
         invalid(error)
-    })
+    })?;
+    validate_writing_context(&settings)?;
+    Ok(settings)
+}
+
+fn validate_writing_context(settings: &Settings) -> Result<(), SettingsError> {
+    writing_projects::validate(&settings.writing_projects)
+        .map_err(|error| SettingsError::Invalid(error.to_string()))?;
+    if settings.writing_project_apps.len() > 200
+        || settings
+            .writing_project_apps
+            .keys()
+            .any(|key| key.is_empty() || key.len() > 512 || key.chars().any(char::is_control))
+    {
+        return Err(SettingsError::Invalid("invalid writing-project app choices".into()));
+    }
+    Ok(())
 }
 
 /// Load settings, falling back to the backup, then to defaults. Report a missing
@@ -510,10 +535,47 @@ pub fn load(path: &Path) -> Loaded {
 /// Save settings atomically, keeping the previous file as a backup. Refuses to
 /// replace a file written by a newer version.
 pub fn save(path: &Path, settings: &Settings) -> Result<(), SettingsError> {
+    let _writer = writer_lock(path)?;
     write_settings(path, settings, false)
 }
 
+/// All Ibis settings writers share a stable side-file lock across processes.
+/// A busy writer is reported immediately; no hidden retries or stale lock files.
+/// The empty lock file stays in place: removing it would split the lock domain.
+fn writer_lock(path: &Path) -> Result<fs::File, SettingsError> {
+    let target = match fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            let linked = fs::canonicalize(path)?;
+            if is_side_file(path, &linked) {
+                path.to_path_buf()
+            } else {
+                linked
+            }
+        }
+        _ => path.to_path_buf(),
+    };
+    let lock = target.with_extension("json.lock");
+    if let Some(parent) = lock.parent().filter(|parent| !parent.as_os_str().is_empty()) {
+        fs::create_dir_all(parent)?;
+    }
+    match fs::symlink_metadata(&lock) {
+        Ok(metadata) if !metadata.file_type().is_file() => {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "settings lock is not a regular file").into());
+        }
+        Err(error) if error.kind() != io::ErrorKind::NotFound => return Err(error.into()),
+        _ => {}
+    }
+    let mut options = fs::OpenOptions::new();
+    options.read(true).write(true).create(true).truncate(false);
+    #[cfg(unix)]
+    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+    let file = options.open(lock)?;
+    file.try_lock().map_err(io::Error::from)?;
+    Ok(file)
+}
+
 fn write_settings(path: &Path, settings: &Settings, recovering: bool) -> Result<(), SettingsError> {
+    validate_writing_context(settings)?;
     if let Some(problem) = load(path).problem {
         let source = match &problem {
             SettingsError::Backup(error) => error.as_ref(),
@@ -744,6 +806,20 @@ fn sync_directory(path: &Path) {
 /// save; the backup is kept. Missing primaries and invalid UTF-8 can recover too;
 /// other read errors, newer versions and invalid files without a valid backup are refused.
 pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Settings, SettingsError> {
+    transaction(path, |settings| {
+        change(settings);
+        Ok::<_, SettingsError>(())
+    })
+    .map(|(settings, ())| settings)
+}
+
+/// One checked read/change/write transaction, shared by CLI and app commands.
+/// Refused edits publish nothing, and concurrent Ibis processes cannot lose edits.
+pub fn transaction<T, E: From<SettingsError>>(
+    path: &Path,
+    change: impl FnOnce(&mut Settings) -> Result<T, E>,
+) -> Result<(Settings, T), E> {
+    let _writer = writer_lock(path).map_err(E::from)?;
     let loaded = load(path);
     let recovering = loaded.from_backup
         && match &loaded.problem {
@@ -756,15 +832,16 @@ pub fn update(path: &Path, change: impl FnOnce(&mut Settings)) -> Result<Setting
     if let Some(problem) = loaded.problem
         && !recovering
     {
-        return Err(problem);
+        return Err(problem.into());
     }
     let current = loaded.settings;
     let mut changed = current.clone();
-    change(&mut changed);
+    let result = change(&mut changed)?;
+    validate_writing_context(&changed).map_err(E::from)?;
     if changed != current || recovering {
-        write_settings(path, &changed, recovering)?;
+        write_settings(path, &changed, recovering).map_err(E::from)?;
     }
-    Ok(changed)
+    Ok((changed, result))
 }
 
 // Metadata follows ordinary file symlinks, preserving their existing behavior.

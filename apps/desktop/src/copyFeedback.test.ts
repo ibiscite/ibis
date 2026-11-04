@@ -24,16 +24,16 @@ test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as con
   const root = document.createElement("div"), show = renderNotice(root, platform);
   for (let copy = 0; copy < 4; copy++) {
     show(copied(`[@invented${copy}]`));
-    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste`);
+    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste.`);
   }
   renderNotice(root, platform)(copied("[@reopened]"));
-  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste`);
+  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste.`);
 });
 
-test("the paste key never replaces a refusal, Linux's explanation or a pasted result", () => {
+test("on Linux every refusal keeps its reason and ends with Ctrl+V, and a paste names the app", () => {
   const root = document.createElement("div"), show = renderNotice(root, "linux");
-  for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal"],
-    ["unsupported-system", "Copied. Paste it into your document"], ["paste-off", "Copied. Pasting is off"]] as const) {
+  for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal. Press Ctrl+V to paste."],
+    ["unsupported-system", "Copied. Ibis can’t paste on this system yet. Press Ctrl+V to paste."], ["paste-off", "Copied. Press Ctrl+V to paste."]] as const) {
     show(copied("[@invented]", reason));
     expect(root.querySelector("strong")?.textContent).toBe(title);
   }
@@ -41,11 +41,13 @@ test("the paste key never replaces a refusal, Linux's explanation or a pasted re
   expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
 });
 
-test("only a clean copy from an unpinned picker hides it and says Copied", () => {
+test("only unpinned copies without blocking warnings hide the picker", () => {
   expect(afterCopy({ text: "[@a]", warnings: [] }, false)).toBe("hide-and-notify");
   expect(afterCopy({ text: "[@a]", warnings: [] }, true)).toBe("stay");
   expect(afterCopy({ text: "a", warnings: ["bare keys cannot carry page numbers"] }, false)).toBe("stay");
   expect(afterCopy({ text: "a", warnings: ["w"] }, true)).toBe("stay");
+  expect(afterCopy({ text: "a", warnings: ["Using the last checked bibliography copy."], project_warning_only: true }, false)).toBe("hide-and-notify");
+  expect(afterCopy({ text: "a", warnings: ["Explicit unverified key."], project_warning_only: true }, true)).toBe("stay");
 });
 
 const click: RowClick = { shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, detail: 1, moved: 0, onControl: false, selectedText: false };
@@ -99,21 +101,21 @@ test("the notice is a polite status that shows text as text and replays when sho
   expect(notice.querySelectorAll("code")).toHaveLength(1);
   const windows = document.createElement("div");
   renderNotice(windows, "windows")(copied("[@a]"));
-  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste");
+  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste.");
   expect(windows.textContent).not.toContain("⌘V");
 });
 
 test("the notice says where the citation was pasted, or why it was only copied", () => {
   expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" } })).toBe("Pasted into Writer");
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null } })).toBe("Pasted");
-  expect(noticeTitle(copied("[@a]", "terminal"))).toBe("Copied. Not pasted into a terminal");
-  expect(noticeTitle(copied("[@a]", "no-permission"))).toBe("Copied. Ibis needs your OK to paste");
+  expect(noticeTitle(copied("[@a]", "terminal"), "macos")).toBe("Copied. Not pasted into a terminal. Press ⌘V to paste.");
+  expect(noticeTitle(copied("[@a]", "no-permission"), "macos")).toBe("Copied. Ibis needs your OK to paste. Press ⌘V to paste.");
   expect(noticeTitle(copied("[@a]", "accessibility-required"), "macos")).toBe("Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.");
-  expect(noticeTitle(copied("[@a]", "key-release-failed"))).toBe("Copied. Press and release Ctrl and V");
-  expect(noticeTitle(copied("[@a]", "paste-off"))).toBe("Copied. Pasting is off");
-  expect(noticeTitle(copied("[@a]", "unsupported-system"))).toBe("Copied. Paste it into your document");
-  expect(noticeTitle(copied("[@a]", "no-target"))).toBe("Copied. No app to paste into");
-  expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste");
+  expect(noticeTitle(copied("[@a]", "key-release-failed"), "macos")).toBe("Copied. Press and release Ctrl and V to paste.");
+  expect(noticeTitle(copied("[@a]", "paste-off"), "macos")).toBe("Copied. Press ⌘V to paste.");
+  expect(noticeTitle(copied("[@a]", "unsupported-system"), "macos")).toBe("Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.");
+  expect(noticeTitle(copied("[@a]", "no-target"), "macos")).toBe("Copied. There was no app to paste into. Press ⌘V to paste.");
+  expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste.");
 });
 
 test("a reason Rust sends that this build does not know is reported and still says how to paste", () => {
@@ -122,7 +124,7 @@ test("a reason Rust sends that this build does not know is reported and still sa
     const wire: NoticeMessage = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" };
     const notice = readNotice(wire);
     expect(notice.delivered).toEqual({ outcome: "copied", reason: null });
-    expect(noticeTitle(notice, "macos")).toBe("Copied. Press ⌘V to paste");
+    expect(noticeTitle(notice, "macos")).toBe("Copied. Press ⌘V to paste.");
     expect(error).toHaveBeenCalledExactlyOnceWith("Unknown copy reason: unknown-future-code");
     expect(readNotice({ delivered: { outcome: "copied", reason: "terminal" }, text: "[@a]" }).delivered).toEqual({ outcome: "copied", reason: "terminal" });
     expect(error).toHaveBeenCalledOnce();
@@ -141,6 +143,29 @@ test("the copy reasons are exactly the ones Rust sends, and each has its words",
   expect(Object.keys(copiedNoticeText.reasons).sort()).toEqual([...COPY_REASONS].sort());
 });
 
+test("every reason reads as docs/design.md's Notices table says, ending with its fix", async () => {
+  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
+  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
+  const design = readFileSync(new FileURL("../../../docs/design.md", import.meta.url), "utf8");
+  const section = design.slice(design.indexOf("### Notices"), design.indexOf("### Window behaviour"));
+  const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
+  const table = Object.fromEntries(rows.filter(([, code]) => code !== "—").map(([, code, words]) => [code!.replaceAll("`", ""), words]));
+  expect(table).toEqual(copiedNoticeText.reasons);
+  expect(rows.find(([, code]) => code === "—")?.[2]).toBe(copiedNoticeText.hint);
+  for (const words of [copiedNoticeText.hint, ...Object.values(copiedNoticeText.reasons)]) {
+    expect(words).toMatch(/^Copied\. .*\.$/);
+    expect(words).not.toMatch(/password/i);
+    expect(words).not.toContain("'");
+  }
+  // Where the fix is pasting, the same words say so, in the system's key.
+  const pastes = Object.entries(copiedNoticeText.reasons).filter(([, words]) => words.includes("⌘V to paste")).map(([reason]) => reason as CopyReason);
+  expect(pastes.length).toBeGreaterThan(15);
+  for (const reason of pastes) {
+    expect(noticeTitle(copied("[@a]", reason), "macos")).toMatch(/ Press ⌘V to paste\.$/);
+    expect(noticeTitle(copied("[@a]", reason), "windows")).toMatch(/ Press Ctrl\+V to paste\.$/);
+  }
+});
+
 test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce the result without moving document focus", (platform) => {
   const editor = document.createElement("input"), root = document.createElement("div");
   document.body.append(editor, root);
@@ -151,16 +176,16 @@ test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce t
     expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
     show(copied("[@invented]", "paste-off"));
     expect(root.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
-    expect(root.querySelector("strong")?.textContent).toBe("Copied. Pasting is off");
+    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
     expect(document.activeElement).toBe(editor);
   } finally { editor.remove(); root.remove(); }
 });
 
 test.each<[CopyReason, string]>([
-  ["unknown-app", "Copied. Automatic paste is not approved for this app"],
-  ["target-changed", "Copied. The target app or window changed"],
-  ["clipboard-changed", "Copied. The clipboard changed; copy the citation again"],
-  ["paste-expired", "Copied. The paste expired; paste it yourself"],
+  ["unknown-app", "Copied. Automatic paste is not approved for this app. Press ⌘V to paste."],
+  ["target-changed", "Copied. The target app or window changed. Press ⌘V to paste."],
+  ["clipboard-changed", "Copied. The clipboard changed since. Copy the citation again."],
+  ["paste-expired", "Copied. The paste expired. Press ⌘V to paste."],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
   ["paste-unavailable", "Copied. Press ⌘V to paste."],
   ["selection-not-shown", "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it."],

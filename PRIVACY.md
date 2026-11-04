@@ -53,8 +53,14 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   `settings.json.bak`, and `settings.json.tmp` while saving. An interrupted save
   may leave the temporary file. Settings include the library path or Zotero
   library IDs, shortcut, copy format, style, display choices and update consent.
-  Older or hand-added fields are preserved. The command line has no settings
-  file of its own and writes its results to the terminal.
+  Optional writing projects add the names you enter, their output, bibliography
+  paths and each app's selected project. These remain on this computer and are
+  excluded from settings backups. The picker receives only bibliography file
+  names, never their paths. Ibis never infers projects from browser URLs or
+  document contents. A stable `settings.json.lock` serializes settings writers;
+  it contains no project or library data. Older or hand-added fields are
+  preserved. The command line shares these settings for explicit project
+  management and writes its results to the terminal.
 - **Library ID key:** the app and the `ibis` command keep one random key,
   `library-ids.key`, in the app's configuration folder, readable only by you. It
   makes library IDs last across runs without revealing a path, holds no library

@@ -8,7 +8,7 @@ test("Shortcuts filters action names, keeps alternatives whole, edits only Open 
   const table = screen.getByRole("table", { name: "Keyboard Shortcuts" });
   expect(within(table).getAllByRole("columnheader").map((node) => node.textContent)).toEqual(["Action", "Shortcut"]);
   expect(within(table).getAllByRole("rowgroup").slice(1).map((node) => within(node).getAllByRole("row")[0]!.textContent))
-    .toEqual(["Open Ibis (global)", "While searching", "Your library", "Anywhere in Ibis", "In a menu"]);
+    .toEqual(["Open Ibis", "While searching", "In the citation", "Your library", "Anywhere in Ibis", "In a menu"]);
   const quit = within(table).getByRole("row", { name: /Quit Ibis/ });
   expect(quit.querySelector("kbd")?.textContent).toBeTruthy();
   // Only the recorder edits a key, so every key the table lists is plain text, none a cap.

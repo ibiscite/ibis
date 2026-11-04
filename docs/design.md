@@ -125,7 +125,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 
 ### Key caps
 
-- One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
+- One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K and Ctrl+Alt+Shift+K, modifiers in that order, on Windows and Linux (`ui/KeyCaps`). A pointer binding reads ⌘-click (Ctrl+click elsewhere).
 - Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
 - A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
@@ -142,7 +142,9 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 - Focus order: search, header pop-ups, pin, browsing tabs, footer actions, More. The list is not a Tab stop (↑ ↓ move it from search). Nothing takes focus except search on open.
 - Screen readers hear a row as title, first author, year, container, type and why it matched. "Copied" is announced politely; a Rows change is announced once.
 - An input method's confirming Enter never copies or pastes. Every release passes the whole citation with VoiceOver and NVDA and with CJK input methods (decision 0032).
-- **Capitalisation:** on macOS, menu items, buttons, window, sheet titles and choice rows use title case ("Keep Window Open"); everything else is sentence case. One string never appears in both styles.
+- **Capitalisation:** on macOS, menu items, buttons, window, sheet titles and choice rows use title case ("Keep Window Open", "Try Again", "Find Them on This Computer"); everything else is sentence case. One string never appears in both styles; a sentence that names a command writes it as the command does ("Copy Only is set for this app").
+- **Settings words:** a row label is sentence case, as System Settings writes it ("Window size", "Back up settings"); only the system's own name for a setting keeps its capitals ("Open at Login"). A row's description is one or two sentences, each ending in a full stop. Shortcut rows describe an action in sentence case ("Move through results"), naming a sheet or command by its title ("Show Keyboard Shortcuts").
+- **Punctuation:** typographic apostrophes and quotes (’ “ ”) in everything a person reads; a test reads `messages.ts` and `en-US.ftl` for typewriter ones.
 - **Long text:** containers grow to fit wrapped text with the same padding; in Settings the control moves below the label. Data truncates with a tooltip; file names shorten in the middle. Budget +35 % for German and Greek. RTL uses logical properties; citation keys stay LTR. Check at normal, Larger and 200 % text.
 
 ## Components and their states
@@ -167,6 +169,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | --- | --- |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
 | IconButton | Square, one size and glyph size per context, `--r-control`; rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
+| TextField | A visible label above one single-line input; `--surface-field`, the shared control height and corner, and the same keyboard focus ring. Forms keep validation beside the field and own saving. |
 | Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). Quiet in a band that is itself a fill (the shelf's count). |
 | Menu (`ui/Menu`) | See **Menus**. |
 | Segmented | `--r-seg` thumb on a quiet track. |
@@ -301,11 +304,34 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" |
 | Changed while open | "… · updated 2 minutes ago" (only when references changed) |
 | Reloading | "… · reloading…", count kept; rows and the citation stay until it ends |
-| Problem, old copy kept | "Zotero not updated · 2 h", then one fix button ("Open Zotero", "Find thesis.bib…") |
+| Problem, old copy kept | Warning dot, never the stop red, since the old copy is still searched; "Zotero not updated · 2 h", then one fix button with its key ("Open Zotero ⌘O", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.
-- The status opens the **library menu**: the library with count and age; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn't load"; Choose Library… ⇧⌘O; Reload Library.
-- **Open the source** (⌘O): the words always name the target. **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
+- **Failed refresh with a last-good copy** (planned, maintainer, 2026-11-04): keep a coherent snapshot of the same established source searchable and citable. The persistent source status clearly says that refreshing failed and gives the last successful read time; it clears after a successful refresh. Enter keeps the action the footer promises, without a repeated confirmation or a forced switch from paste to copy. This does not permit a citation whose source identity is uncertain or whose selected work or key binding is known to have changed (decision 0028).
+- The status opens the **library menu** (`top end`, like every footer menu): a heading with the library, its count and age, then a separator; with several Zotero profiles and Zotero not running, a **Zotero Profile** heading with one checked row each; with several Zotero libraries, a **Search in** heading, All Libraries, then one checked row per library; a library that could not load stays dimmed with "Couldn’t load"; then, after a separator, Choose Library… ⇧⌘O, Use Zotero for a file, and Reload Library.
+- **Open the source** (⌘O): the words always name the target. While opening Zotero is the fix, ⌘O opens Zotero, so the fix button and More both read "Open Zotero ⌘O". **Show in Zotero** selects the reference in Zotero (starting it if closed); **Open thesis.bib** opens the file; **Open Zotero** only when Zotero is the source and not running. ⌥ turns "Open thesis.bib" into "Show in Finder". If the source cannot open, offer Choose Library… or Find….
+
+### Shared project edits (planned)
+
+Approved 2026-11-04, decision 0028: a saved project is shared, while each ongoing
+writing task keeps its established citation choices.
+
+- An edit made for the current task applies after it saves, regenerates and revalidates the preview, and cancels queued insertion. Saving never pastes automatically.
+- A citation-affecting edit elsewhere shows one persistent, nonmodal notice: "Thesis settings changed elsewhere. Using APA · thesis.bib · Apply Updates". Enter continues to use the shown task choices and preview. No repeated prompt, automatic switch between citations, or visible version-management interface. Completing one citation or hiding the picker does not itself end the writing task; a deliberately started new task uses the latest saved project.
+- **Apply Updates** keeps valid picks, pages, prefixes and suffixes, shows the changed format or bibliography, and prepares a fresh preview. It requires a fresh insertion action and never replays a queued Enter. A running agent adopts updates for its whole affected output, not halfway through a citation list.
+- A cosmetic rename updates the displayed project name without changing its identity or citation choices. A project removed elsewhere leaves the ongoing task's settings available and clearly labelled as retained settings; it never silently selects a different project or app defaults.
+- Changing the project's selected bibliography or source scope is a pending context edit. New contents in the already bound bibliography or sources are factual updates: refresh and validate them normally, apply the unreadability policy below, and refuse newly conflicting keys. Explicit source disconnection or access revocation stops affected work.
+- Failed or conflicting saves keep current task choices intact. Show the other writer's change before overwriting the shared definition; preserve valid user input.
+
+### Project search defaults (planned)
+
+Approved 2026-11-04, decision 0028, under #1260: a writing project may optionally
+save which libraries or collections a new task searches. Projects without a
+saved scope start with **All Connected Libraries**.
+
+- Saving a project search default is explicit. A temporary task filter stays local and never silently changes that default.
+- New tasks start with the project's saved scope; ongoing tasks keep their applied choices and adopt external material edits through **Apply Updates**.
+- Collection membership filters discovery. The selected bibliography remains the separate authority for checking emitted keys; a collection does not establish what the document compiles against.
 
 ### Keys
 
@@ -316,26 +342,30 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⇧⌘Y (Ctrl+Shift+Y elsewhere) | Opens Ibis from any app (the default; follows the active layout's letter) |
 | Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
 | Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
-| ⌘-click, the tile's +, ⇧Enter | Adds to the citation, in order |
+| ⌘-click, the tile’s +, ⇧Enter | Adds to the citation, in order |
+| ← → / ⌫ or ⌦ on a shelf segment | Moves between the citation’s references / removes the focused one, with Undo |
 | Esc | Steps back one layer, from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held Esc takes one step |
 | ⌘O / ⇧⌘O | Opens the source / Choose Library… |
 | ⌘K | More |
 | ⌘/, or `?` outside a field | Keyboard shortcuts |
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
-| ⌘Y | Peek |
+| ⌘Y | Peek (planned: not in `KEY_TABLE` until its handler exists) |
 | ⌘E | Change the last citation for this app |
 | ⌘+ / ⌘− | Text size |
+| ⌘Z | Undo what the notice slot offers |
 | Typing outside a field | Types into search, except in the reader's pages |
 
 ### Copying and pasting
 
 - Cancelled work is not a failure and never reaches the person: a preview stopped by a newer choice or a reload says nothing. A preview that fails belongs to the opening that saw it: reopening or choosing the citation again prepares it afresh, and the failure is gone from the first frame.
 - Enter does what the footer says. Pressed while results or the preview load, it waits and runs once. Repeated activations on the same citation never copy twice; a changed query, reference, page or format, arrows, Esc or hiding cancel a waiting Enter. A stale reply never replaces newer shelf or feedback.
-- **One format rule** (decision 0031): Ibis remembers a format per app, and you change it in the format menu. An app with none starts from the table's suggestion (Word uses your default style, Obsidian Pandoc) or else your **Default format** in Settings › Citations. When Ibis can't tell the app, the default applies and a pick changes it, so no choice is lost. There is no one-time override and no reset; a later pick replaces the old one.
+- **One format rule** (decision 0031): a selected writing project's format takes precedence; otherwise Ibis remembers a format per app. You change either in the format menu, which names where the pick goes. An app with none starts from the table's suggestion (Word uses your default style, Obsidian Pandoc) or else your **Default format** in Settings › Citations. Without a project, when Ibis can't tell the app the default applies and a pick changes it, so no choice is lost. There is no one-time override and no reset; a later pick replaces the old one.
 - **The format control always says why.** Closed, it reads "APA · Word" for a format belonging to the app, "APA · Default" for the default, or "APA · This paste" for a format that could not be saved or that a permission return kept. Opened, one plain line says why that format applies and where a pick goes ("Remembered for Word. Your pick replaces it."). The same reason is announced to screen readers.
-- **First paste in an app**: a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app. In a browser or code editor, answering Paste or Copy only in that question accepts the format it shows. An unrecognised app also asks **Paste into [app name] from now on** or **Copy only**; answering never replays the held Enter.
-- Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}").
+- **Writing projects** (maintainer, 2026-11-04, #1697): optional named choices keep one format and an optional bibliography together. The selected project is remembered **per app**: Thesis in a browser does not become the project for Word. The closed format control names it, "BibLaTeX \parencite · Thesis"; its menu says "Saved for Thesis. Your pick changes this project's format." **Writing Projects…** opens a sheet with the projects, **No Writing Project** and **New Writing Project…**. The list is shared across apps; selecting a project in another app is explicit. The sheet says edits are shared; an ongoing task in another app offers Apply Updates while keeping its established choices. An unidentified app uses a session-only selection and says so. Ibis never infers a project from a window title, URL or document contents.
+- **The writing-project sheet** uses the shared sheet geometry with one scrolling body. Creating starts with the current format, asks for a name, selects the project after it is saved and leaves the sheet open to choose a bibliography. The selected project offers **Choose Bibliography…**, **Remove Bibliography**, **Rename Project…** and **Remove Project…**; removal asks once in place and removes only the Ibis choice, never its file. Selecting an existing project or **No Writing Project** saves before returning to search. A failed save leaves the earlier project, format and bibliography together. A project without a bibliography inherits none; **No Writing Project** restores the app/default output and the standalone bibliography check. Switching keeps the search, references and pages, retires any earlier Enter or Change Last Citation when the change starts, and prepares the citation afresh. A fresh Enter after that boundary waits for the new context and preview; finishing an opening or a bibliography read never cancels it. Explicit editor requests keep their requested output; project changes wait until that request finishes or is cancelled. Selecting a project grants no paste permission.
+- **First paste in an app**: without a selected writing project, a browser, a code editor or an unrecognised app opens the format chooser once; the pick is remembered for that app. In a browser or code editor, answering Paste or Copy only in that question accepts the format it shows. An unrecognised app also asks **Paste into [app name] from Now On** or **Copy Only** even with a project selected; answering never replays the held Enter.
+- **One name per output** (#1260): every format is named once, by the engine's output list, and the menu, the format control, the footer, Settings, the command line and agents all use that name ("Pandoc", "BibLaTeX \parencite", "APA"). Chooser items read as that name with a quiet example ("BibLaTeX \parencite   \parencite{key}"); a style also shows its full title as a quiet detail ("APA   American Psychological Association 7th edition"). A remembered format that this Ibis no longer lists falls back to the default, never to a lookalike.
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter; newly selected text still opens as the search, with the shelf kept, because Enter would replace it.
 - **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
 - **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change.
@@ -349,19 +379,32 @@ Built in `ibis-core` so every front end shares them (#1204).
 - **One notice slot per window** (`ui/NoticeSlot`): notices never float. Everything that passes takes the window's status area: in the picker the footer's left side, standing in for the library status, which returns after 8 s; in Settings one line at the foot of the content area. The slot is in the layout, so it never covers content, never moves anything and opens no layer: it can sit behind any open menu or panel. One notice shows: the newest Undo offer, which is also what ⌘Z acts on, then a remark, then a running update. A notice's time runs only while it shows, so one that waits returns with the rest of its time and none passes unseen, including a failed update.
 - A notice is one line ending in an ellipsis, with short names ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
-| Reason | Words |
-| --- | --- |
-| Pasting off or unavailable | Copied. Press ⌘V to paste. |
-| Secure Event Input on | Copied. Secure typing is on, possibly in another app. Press ⌘V to paste. |
-| Accessibility missing | Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste. |
-| Unapproved app | Copied. Automatic paste is not approved for this app |
-| Copy only chosen | Copied. Copy only is set for this app |
-| Target changed | Copied. The target app or window changed |
-| Clipboard replaced | Copied. The clipboard changed; copy the citation again |
-| Selected text never shown | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
-| Old citation not selected | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
-| Expired | Copied. The paste expired; paste it yourself |
-| Windows keys stuck | Copied. Press and release Ctrl and V |
+Every "copied, not pasted" sentence ends with its fix, with full stops, and the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). These are the exact words; a test compares them with `copiedNoticeText`.
+
+| Reason | Code | Words |
+| --- | --- | --- |
+| No reason given | — | Copied. Press ⌘V to paste. |
+| Pasting off | `paste-off` | Copied. Press ⌘V to paste. |
+| Paste check unavailable | `paste-unavailable` | Copied. Press ⌘V to paste. |
+| No paste on this system | `unsupported-system` | Copied. Ibis can’t paste on this system yet. Press ⌘V to paste. |
+| No app to paste into | `no-target` | Copied. There was no app to paste into. Press ⌘V to paste. |
+| Unapproved app | `unknown-app` | Copied. Automatic paste is not approved for this app. Press ⌘V to paste. |
+| Copy Only chosen | `copy-only` | Copied. Copy Only is set for this app. Press ⌘V to paste. |
+| App with another paste key | `nonstandard-shortcut` | Copied. This app’s paste key does something else. Use its own paste command. |
+| Target changed | `target-changed` | Copied. The target app or window changed. Press ⌘V to paste. |
+| Clipboard replaced | `clipboard-changed` | Copied. The clipboard changed since. Copy the citation again. |
+| Expired | `paste-expired` | Copied. The paste expired. Press ⌘V to paste. |
+| Paste permission missing | `no-permission` | Copied. Ibis needs your OK to paste. Press ⌘V to paste. |
+| Accessibility missing | `accessibility-required` | Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste. |
+| Terminal | `terminal` | Copied. Not pasted into a terminal. Press ⌘V to paste. |
+| Remote desktop | `remote-desktop` | Copied. Not pasted into a remote desktop. Press ⌘V to paste. |
+| Virtual machine | `virtual-machine` | Copied. Not pasted into a virtual machine. Press ⌘V to paste. |
+| A field that hides typing | `secure-field` | Copied. This field hides what you type. Press ⌘V to paste. |
+| Secure Event Input on | `secure-input` | Copied. Secure typing is on, possibly in another app. Press ⌘V to paste. |
+| Administrator app (Windows) | `elevated-app` | Copied. Not pasted into an administrator app. Press ⌘V to paste. |
+| Windows keys stuck | `key-release-failed` | Copied. Press and release Ctrl and V to paste. |
+| Selected text never shown | `selection-not-shown` | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
+| Old citation not selected | `citation-not-selected` | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 
 Never call the destination a password field. The right paste key is shown per system.
 
@@ -384,24 +427,24 @@ Never call the destination a password field. The right paste key is shown per sy
 - One row per goal: label the outcome, start with a verb, never two rows to the same place. At most one suggested row gets an accent tile.
 - Rows are a list box: ↓ from search enters, arrows move, Enter or a click chooses. Choice screens hide the result heading, shelf and Copy.
 - A superseded source search or file request reports nothing.
-- **Welcome**: the whole window, with no search header. The mark, a title, the line "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.", then four starts as a 2 × 2 grid of tiles (Zotero, a .bib file, Find them on this computer, Try sample references), each with its own centred glyph. The note names the registered shortcut ("After this, open Ibis from any app with ⇧⌘Y."), or says **No shortcut is set** with how to open Ibis instead. Esc dismisses a menu, then hides.
+- **Welcome**: the whole window, with no search header. The mark, a title, the line "Ibis finds a reference and pastes its citation where you're typing. It only reads your library, never changes it.", then four starts as a 2 × 2 grid of tiles (Zotero, a .bib file, Find Them on This Computer, Try Sample References), each with its own centred glyph. The note names the registered shortcut ("After this, open Ibis from any app with ⇧⌘Y."), or says **No shortcut is set** with how to open Ibis instead. Esc dismisses a menu, then hides.
 - **Opening a library**: nothing for 400 ms, then the mark, "Opening example.bib…", "Reading your library. Zotero can stay closed." and a thin progress bar. Rows kept from before stay instead.
 - **No library**: "Where do your references live?" with the welcome grid; nothing is searched until Find is chosen.
 - **Zotero found**: Ibis still asks. When Zotero is running or its library is on this computer, the welcome screen keeps every start and highlights Zotero, so Enter takes it. Only that look happens first; no library is read until it is chosen.
 - **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a .bib or CSL-JSON file into this window."
-- **Could not open, nothing kept**: the title names the library and the fix; "Use another library" shows the no-library screen. A failure with references kept stays a notice above them.
+- **Could not open, nothing kept**: the title names the library and the fix, and the line under it says why in the backend’s words, never the title again; **Use Another Library** shows the no-library screen. Every row has a help line, the source row too ("Ibis carries on by itself once it’s open", "See the file in its own app"). A failure with references kept stays a notice above them.
 
 | Problem | Title | Rows |
 | --- | --- | --- |
-| `missing` | Can't find thesis.bib | Find thesis.bib, Use another library |
-| `unreadable`, `other` | Can't read thesis.bib / Can't open thesis.bib | Try again, Use another library |
-| `zotero_closed` | Ibis needs Zotero open | Open Zotero, Use another library |
-| `zotero_missing` | Ibis can't find Zotero's library | Use another library, Try again |
-| `zotero_access_off` | Zotero isn't sharing your library | Open Zotero, Use another library |
-| `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use another library |
+| `missing` | Can’t find thesis.bib | Find thesis.bib, Use Another Library |
+| `unreadable`, `other` | Can’t read thesis.bib / Can’t open thesis.bib | Try Again, Use Another Library |
+| `zotero_closed` | Open Zotero to read your library ("Ibis usually reads it with Zotero closed, but not this time.") | Open Zotero (accented), Use Another Library |
+| `zotero_missing` | Ibis can’t find Zotero’s library | Use Another Library, Try Again |
+| `zotero_access_off` | Zotero isn’t sharing your library | Open Zotero, Use Another Library |
+| `zotero_profiles` | Which Zotero profile? | One row per profile, Open Zotero, Use Another Library |
 
 - Setup finishes itself: Ibis never asks "What do you write in?"; with Zotero closed Ibis reads the library anyway. A screen waiting on Zotero says where the fix is and asks Zotero every two seconds while it is shown, never while the picker is hidden, so it carries on by itself as soon as Zotero answers. With several profiles the closed path asks once, by the profile's name, and only a closed read that used it remembers the answer; a saved profile that is gone or unreadable asks again and never reads another. With references on screen the choice stays out of the way: the footer offers **Choose Zotero Profile…**, and the library menu lists the profiles whenever there are several and Zotero is not running, so a mistaken choice can be changed. A running Zotero answers for the profile it opened, so it offers no choice.
-- **Try sample references** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
+- **Try Sample References** loads three invented references (lantern gardens, clockwork clouds, the invented sea) for this run only, marked by the footer status "Sample references"; every desktop sample citation ends with ` [Sample]`. The website demo and help screenshots use the same set without the suffix. The practice task is identical on every surface: Search for “lantern”, choose the lantern gardens reference, then press Enter.
 
 ## Settings
 
@@ -419,7 +462,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Accent**: a segmented choice of **Follow the Mac** (the default) and **Ibis scarlet**. No other hues, free colour picker, custom fonts, themes or CSS.
 - A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Preference resets offer Undo.
 
-**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text at body size, as menus write key equivalents, in full ink under Increase Contrast. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
+**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards in one order (`SHORTCUT_GROUPS`: Open Ibis, While searching, In the citation, Your library, Anywhere in Ibis, In a menu); the keys sheet shows the same groups, named the same, in the same order, less In a menu, which every menu shares. Open Ibis holds one row, "From any app", with the opening shortcut. Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text at body size, as menus write key equivalents, in full ink under Increase Contrast. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
 
 - The recorder shows the shortcut in system notation; clicking says **Type a shortcut…**; Esc, Tab or leaving cancels.
 - A shortcut needs Control, Option or Command; **⌘ + one key is refused**, as are picker commands and, on Windows, Ctrl+Alt with a printable key (AltGr). Refusals name the owner and keep the working shortcut.
@@ -429,17 +472,19 @@ Never call the destination a password field. The right paste key is shown per sy
 
 **Citations › Editor endpoint.** A switch, off by default. On, it shows the address to paste into the editor's Cite as You Write URL setting, with **Copy Address**, and says who can use it: editors on this computer, never web pages. While an editor waits, the picker's notices say "Citing for your editor in Pandoc" and the preview is in that format; Enter sends it, Esc answers with nothing. The format menu, paste and the app question step aside for that one citation.
 
-**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Small surprises** closes the same card. **Show in Menu Bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
+**General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Small surprises** closes the same card. **Show in menu bar** is planned (on by default; off, opening Ibis from Applications opens Settings). The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
 
-**Another computer.** Settings › General ends with **Back Up Settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore Settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
+**Another computer.** Settings › General ends with **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](moving-to-a-new-computer.md)).
 
-**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page; then Updates (automatic checks, Check now), links and the free-software note. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
+**About.** A centred hero with the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page; then Updates (the automatic-checks switch, then **Check Now** in a row of its own, one control per row), links and the free-software note. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray opens About and runs Check Now, so its result shows there, never in an alert. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).
 
 ## Source checks and passage reuse (planned)
 
 Approved directions from ROADMAP.md; planned behaviour. No new notebook, source writes, cloud access or agent permission; MCP gains no notes, annotations or private links.
 
 **Check the bibliography.** Does the exact key occur in one chosen read-only `.bib`? Name that file, never "the whole document". Kept separate from loaded search libraries; an unknown result is never "missing", and Ibis never silently swaps a key.
+
+With a writing project selected, choosing or removing this bibliography changes that project. With none selected it changes the standalone check. A project with no bibliography never borrows the standalone check or a previous project's file.
 
 | Checked-file state | What the person sees |
 | --- | --- |
@@ -448,8 +493,16 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 | Unreadable, incomplete or uncertain | Couldn't check thesis.bib; retry or find the file |
 | Several occurrences | Key appears more than once; inspect its locations |
 | Conflicting fields | Key may name another reference; compare the entries |
+| Key is known to identify a different work | Refuse this key citation until the conflict is resolved |
 
-Built for key outputs: **More › Check Against a Project Bibliography…** chooses the file, and each result row then says its state in words, naming the file ("In thesis.bib", or with "(last good copy)" when the newest read failed or was damaged), with the lines to look at for a repeated or doubtful key. The file is read when chosen, at launch and when the picker opens; nothing polls. More names the file, what is wrong with it if anything, and offers **Stop Checking thesis.bib**. Anything but "In" joins the citation's warnings, in the preview and in the copy's own result, so Enter copies, says why and stays open, as for any warning. Copy Entry says the entry comes as the file has it, `file` and `note` fields included. Formatted citations show no marks: a style has no key to check.
+Built for key outputs: **More › Check Against a Project Bibliography…** chooses the file, and each result row then says its state in words, naming the file ("In thesis.bib", or with "(last good copy)" when the newest read failed or was damaged), with the lines to look at for a repeated or doubtful key. The file is read when chosen, at launch and when the picker opens; nothing polls. More names the file, what is wrong with it if anything, and offers **Stop Checking thesis.bib**. A key known to identify a different work is refused: Enter neither copies nor pastes that key, keeps the selection and explains the conflict. This rule replaces warn-and-copy for that case (maintainer, 2026-11-04, decision 0028). Other states outside "In" join the citation's warnings, in the preview and in the copy's own result, so Enter copies, says why and stays open, except for the unreadable-bibliography policy below: retained verified evidence or an explicit one-off unverified action keeps the intended delivery available, with the warning also shown in its receipt. Copy Entry says the entry comes as the file has it, `file` and `note` fields included. Formatted citations show no marks: a style has no key to check.
+
+**Unreadable project bibliography** (maintainer, 2026-11-04; decision 0028):
+
+- If a retained complete, coherent copy of the same selected bibliography supports the key-to-work match, normal Enter, copy and paste remain available. A persistent status says "Couldn’t read thesis.bib. Using its last checked copy from 10:42", with Retry. No repeated confirmation or forced switch to copy; a newly selected reference may also be checked against that copy.
+- If no usable copy exists or it cannot establish the match, pause normal insertion with "Couldn’t check this citation against thesis.bib" and Retry or Locate Bibliography…. Keep the picks, pages, output and preview; never silently detach the bibliography, change projects or substitute formatted text. An explicit one-off **Paste Unverified Key** or **Copy Unverified Key** is available for the intended action, reported as unverified and never saved as a hidden permanent preference. It cannot bypass a known wrong-work conflict or source-identity refusal; agents do not silently choose it to escape a refusal.
+- Say "Not found in the last checked copy" for an old absence, never "Missing" from the current file. New coherent evidence supersedes old evidence; never fall back behind a detected conflict. Project or bibliography changes cannot reuse another selection's check.
+- Strict freshness requires a successful current check in every client. Successful Retry updates the evidence and preview but never replays a stopped insertion; a fresh action is required. A current local check still makes no promise about which bibliography the actual document or remote project uses.
 
 - **Copy bibliography entry** (More, on a missing row) keeps the key, never edits a source, and supplies a self-contained entry or explains how to export one.
 - **Find a passage**: search Zotero highlights, notes and comments, labelled Highlight, Comment or Note; a note is never treated as a quotation from a guessed reference; image-only annotations show "No text quotation".
@@ -460,7 +513,7 @@ Built for key outputs: **More › Check Against a Project Bibliography…** choo
 
 ## References used this session
 
-**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says so. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
+**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead explicitly says **across all projects this session**; choosing a project neither partitions nor clears the list. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
 
 ## Small delights
 
@@ -511,6 +564,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
 - The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
 - The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point `Screen.dc.html` at them); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
-- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. A pass merges when no view scores any screen lower than before; work continues until every view scores every screen 9 or better, and anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
+- **Judged from pictures** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left, Windows key labels and the forced-colours and Increase Contrast captures where it matters) and is judged by a reviewer who did not make it. A small change needs one judge; a batch gets the panel of independent views (macOS, visual design, first-time user, keyboard only, accessibility, Windows and Linux). A pass merges when no view scores any screen lower than before; work continues until every view scores every screen 9 or better. A defect is fixed in the rule that allowed it, so it cannot come back.
 - Record maintainer decisions in [decisions.md](decisions.md) and update the rule here in place, deleting the text it replaces.
 - Review this page against Apple's guidelines on each new macOS release.

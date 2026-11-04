@@ -24,11 +24,7 @@ fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePrev
     preview_output(file, term, "apa")
 }
 
-fn preview_output(
-    file: &engine_file::FileLibrary,
-    term: &str,
-    output: &str,
-) -> engine_file::FilePreview {
+fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> engine_file::FilePreview {
     let query =
         serde_json::from_value(json!({"text":term,"interpret_locators":false})).unwrap_or_else(|e| panic!("{e}"));
     let found = file

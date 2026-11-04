@@ -29,7 +29,7 @@ for (const [style, text] of [[null, "[@demo]"], ["apa", "(Researcher, 2026)"]] a
     fireEvent.keyDown(input, { key: "Enter" });
     expect(copy).not.toHaveBeenCalled();
     await act(async () => { finish({ spans: [], ticket: "native-receipt", content_hash: "b".repeat(64), text, html: style ? "(Researcher, 2026)" : null, warnings: [] }); });
-    await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: null }));
+    await waitFor(() => expect(copy).toHaveBeenCalledWith({ ticket: "native-receipt", contentHash: "b".repeat(64), replaces: null, unverifiedProject: false }));
     expect(preview).toHaveBeenCalledWith(expect.objectContaining({ items: [{ id, cite, locator: null }], output: style ?? "pandoc" }));
     expect(calls.filter((command) => command === "copy_file_citation")).toHaveLength(1);
   });

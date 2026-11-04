@@ -13,6 +13,6 @@
   .copy-receipt-mark { background: Canvas; stroke: CanvasText; border: var(--border-width) solid CanvasText; }
 }
 
-.copy-receipt-note { grid-column: 2; min-width: 0; margin-top: var(--space-1); text-wrap: pretty; }
+.copy-receipt-note { grid-column: 2; min-width: 0; margin-top: var(--space-1); text-wrap: pretty; overflow-wrap: anywhere; }
 .copy-receipt-excerpt { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .copy-receipt-more { flex: none; color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-body-line) var(--font); }

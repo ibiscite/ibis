@@ -29,11 +29,11 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
       pinned: () => currentPin.current, consume: destination.consumeHeld, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { appId: destination.appId, queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
+      view: { appId: destination.appId, writingProjectId: destination.writingProject?.id ?? null, projectVersion: destination.projectVersion(), queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
         ready: destination.ready && view.ready, saving: destination.saving, shouldAsk: destination.shouldAsk, remembersLast: view.remembersLast,
         output: destination.copyToken() } });
   });
-  const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
+  const requestCopy = (choice: string | null, unverified = false) => send({ type: "enter", choice, output: destination.copyToken(), ...(unverified ? { unverified: true } : {}) });
   const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });

@@ -26,7 +26,7 @@ test("it is named for what Ibis knows and shows what Copy writes", async () => {
   });
   const dialog = await open();
   expect(within(dialog).getByRole("heading", { name: "References used this session" })).toBeTruthy();
-  expect(dialog.textContent).toContain("Ibis can't see your document");
+  expect(dialog.textContent).toContain("Ibis can’t see your document");
   expect(dialog.textContent).not.toMatch(/your bibliography|document's bibliography/i);
   await within(dialog).findByText("Morgan, A. Taylor, A.");
   fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
@@ -123,13 +123,13 @@ test("a saved file is named, and a cancelled dialog says nothing", async () => {
 test("references from a library that is not open are counted, not hidden", async () => {
   backend({ session_references: () => list({ rows: [taylor], absent: 2 }), session_bibliography: () => formatted("text") });
   const dialog = await open();
-  await within(dialog).findByText("2 references aren't in the open library, so they are left out.");
+  await within(dialog).findByText("2 references aren’t in the open library, so they are left out.");
 });
 
 test("a reference the style cannot write is named, and the rest can still be copied", async () => {
   backend({ session_references: () => list(), session_bibliography: () => formatted("Morgan, A.", ["taylor2026"]) });
   const dialog = await open();
-  await waitFor(() => expect(plain(dialog.textContent)).toContain("Left out because this style can't write them: taylor2026."));
+  await waitFor(() => expect(plain(dialog.textContent)).toContain("Left out because this style can’t write them: taylor2026."));
   expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(false);
 });
 

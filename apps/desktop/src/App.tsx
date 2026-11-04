@@ -39,6 +39,7 @@ import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { useProjectBibliography } from "./features/picker/useProjectBibliography";
+import { ProjectCheckStatus, WritingProjectTaskStatus } from "./features/picker/ProjectContextStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -55,7 +56,7 @@ import { useInterfaceMessages } from "./i18n";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "projectStatus" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -87,6 +88,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
     fallback: preferences.format, chooseDefault: preferences.chooseFormat, report,
+    onProjectContext: (context) => send({ type: "project-observed", ...context }),
   });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
@@ -116,9 +118,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, refreshSnapshot,
+    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
+  const checkedPreview = shown && typeof shown === "object" ? shown : null;
+  const taskProject = destination.writingProject;
+  const taskNotice = taskProject?.pending ? `${taskProject.id}:${taskProject.pending.revision}`
+    : taskProject?.retained ? `${taskProject.id}:retained` : taskProject?.saved_problem ?? null;
+  const contextNotice = checkedPreview?.project_check ? `${checkedPreview.project_check}:${checkedPreview.project_message}:${destination.projectVersion()}` : taskNotice;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
@@ -204,6 +211,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatButtonRef={formatButtonRef}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
+        writingProject={destination.writingProject} onWritingProjects={api.writingProjects && !editor.label ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
@@ -211,14 +219,26 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat}
       />
-      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}>
+      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}
+        contextNotice={contextNotice} contextNoticeIdentity={checkedPreview?.project_check === "paused" || checkedPreview?.project_check === "conflict" ? formatted?.request : undefined}>
         {shortcut?.error && <div className="notices">
           <p role="status">
             {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <Notices projectNotice={project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
+        <ProjectCheckStatus check={checkedPreview?.project_check ?? null} message={checkedPreview?.project_message ?? null}
+          checkedAtMs={checkedPreview?.project_checked_at_ms ?? null}
+          onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
+          onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
+          onUnverified={checkedPreview?.project_unverified_allowed === false ? undefined : () => requestCopy(choiceKey(shownChoice), true)} paste={deliveryTarget.canPaste && !pinned}
+          disabled={!destination.ready || destination.saving || !ready || searchPending} />
+        <WritingProjectTaskStatus project={destination.writingProject} disabled={!destination.ready || destination.saving}
+          onApply={destination.editProject && destination.writingContext && destination.writingProject?.pending ? () => {
+            const activeProject = destination.writingProject!;
+            void perform("project", () => destination.editProject!(destination.writingContext!, { kind: "apply", id: activeProject.id, revision: activeProject.pending!.revision }));
+          } : undefined} />
+        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
@@ -233,12 +253,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
         changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} />
       <PickerStatusFooter
+        copyProblem={checkedPreview?.project_check === "paused" || checkedPreview?.project_check === "conflict" ? checkedPreview.project_message ?? "Check the project bibliography before inserting." : null}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} />
-      <PickerOverlays api={api} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
     </main>
   );

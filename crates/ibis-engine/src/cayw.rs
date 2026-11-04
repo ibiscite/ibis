@@ -245,7 +245,11 @@ fn options(query: &str) -> Result<CaywRequest, Refusal> {
         return Ok(CaywRequest::Probe);
     }
     let (output, form) = output(format.as_deref().unwrap_or("pandoc"), command.as_deref(), brackets)?;
-    Ok(CaywRequest::Pick(CaywPick { output, form, clipboard }))
+    Ok(CaywRequest::Pick(CaywPick {
+        output,
+        form,
+        clipboard,
+    }))
 }
 
 fn key(syntax: KeySyntax, command: Option<&str>) -> CaywOutput {
@@ -257,11 +261,7 @@ fn key(syntax: KeySyntax, command: Option<&str>) -> CaywOutput {
 
 /// One row per format in docs/parity.md. A command the syntax cannot write is
 /// refused rather than swapped for one it can.
-fn output(
-    format: &str,
-    command: Option<&str>,
-    brackets: bool,
-) -> Result<(CaywOutput, CitationForm), Refusal> {
+fn output(format: &str, command: Option<&str>, brackets: bool) -> Result<(CaywOutput, CitationForm), Refusal> {
     use CitationForm::{BibliographyOnly, Narrative, Normal};
     let no_command = |result: (CaywOutput, CitationForm)| match command {
         None | Some("") => Ok(result),
@@ -271,9 +271,7 @@ fn output(
         "pandoc" => no_command((key(KeySyntax::Pandoc, (!brackets).then_some("bare")), Normal)),
         "biblatex" => match command {
             None | Some("" | "autocite") => Ok((key(KeySyntax::Biblatex, Some("autocite")), Normal)),
-            Some(command @ ("parencite" | "textcite")) => {
-                Ok((key(KeySyntax::Biblatex, Some(command)), Normal))
-            }
+            Some(command @ ("parencite" | "textcite")) => Ok((key(KeySyntax::Biblatex, Some(command)), Normal)),
             Some("cite") => Ok((key(KeySyntax::Latex, Some("cite")), Normal)),
             Some(_) => Err(Refusal::Format),
         },

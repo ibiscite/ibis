@@ -79,7 +79,7 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
-	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null, unverifiedProject: boolean | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces, unverifiedProject }),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
 	/**
@@ -91,11 +91,14 @@ export const commands = {
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */
 	last_good: boolean,
+	last_checked_ms?: number | null,
 	/**  Why the newest read failed, as a sentence ending in a full stop. */
 	reason: string | null,
 	/**  The first lines that could not be read. */
 	damaged_lines: number[],
 } | null>("project_status"),
+	/**  Recheck only after a person's explicit action; never a background timer. */
+	retryProject: () => __TAURI_INVOKE<void>("retry_project"),
 	/**  Choose the file with the system dialog; the interface never handles a path. */
 	chooseProject: () => __TAURI_INVOKE<void>("choose_project"),
 	/**  Stop checking. The file itself is untouched. */
@@ -105,6 +108,8 @@ export const commands = {
 	 *  file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
+	writingProjects: () => __TAURI_INVOKE<WritingProjectsView_Serialize>("writing_projects"),
+	editWritingProject: (context: string, action: WritingProjectEdit) => __TAURI_INVOKE<WritingProjectsView_Serialize>("edit_writing_project", { context, action }),
 	/**  `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<{
 	request: number,
@@ -155,7 +160,7 @@ export const commands = {
 	/**  Remember the picker preferences; other settings in the file are kept. */
 	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
-	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
+	pickerDestination: () => __TAURI_INVOKE<PickerDestination_Serialize>("picker_destination"),
 	/**
 	 *  Remember a format, a delivery choice or both for the captured app. Whichever
 	 *  is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
@@ -201,6 +206,8 @@ export const commands = {
 	showCopiedNotice: (text: string, delivery: number | null, summary: {
 	text: string,
 	more: number,
+	project_warning?: string | null,
+	project_checked_at_ms?: number | null,
 } | null) => __TAURI_INVOKE<Delivered>("show_copied_notice", { text, delivery, summary }),
 	/**
 	 *  The notice being shown, for a notice page that has just loaded and missed
@@ -210,6 +217,8 @@ export const commands = {
 	delivered: Delivered,
 	text: string,
 	more?: number | null,
+	project_warning?: string | null,
+	project_checked_at_ms?: number | null,
 	milestone?: number | null,
 	/**
 	 *  The first paste into this word processor: insert with its plugin if the
@@ -378,6 +387,8 @@ export type Copied_Deserialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
+	/**  Only an evidence-policy notice remains; other warnings still keep the picker open. */
+	project_warning_only?: boolean | null,
 	summary?: ReceiptSummary | null,
 	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
@@ -387,6 +398,8 @@ export type Copied_Serialize = {
 	text: string,
 	/**  What the chosen syntax could not express, and other problems the user should see. */
 	warnings: string[],
+	/**  Only an evidence-policy notice remains; other warnings still keep the picker open. */
+	project_warning_only?: boolean | null,
 	summary?: ReceiptSummary | null,
 	/**  Unique clipboard-write identity for receipts, even without a native paste proof. */
 	delivery?: number | null,
@@ -497,6 +510,10 @@ export type FilePreview_Deserialize = {
 	warnings: string[],
 	spans: CitationSpan_Deserialize[],
 	problem?: string | null,
+	project_check?: ProjectCheck | null,
+	project_message?: string | null,
+	project_checked_at_ms?: number | null,
+	project_unverified_allowed?: boolean | null,
 };
 
 export type FilePreview_Serialize = {
@@ -507,6 +524,10 @@ export type FilePreview_Serialize = {
 	warnings: string[],
 	spans: CitationSpan_Serialize[],
 	problem?: string | null,
+	project_check?: ProjectCheck | null,
+	project_message?: string | null,
+	project_checked_at_ms?: number | null,
+	project_unverified_allowed?: boolean | null,
 };
 
 export type FileSelection = {
@@ -669,6 +690,8 @@ export type NoticeMessage_Deserialize = {
 	delivered: Delivered,
 	text: string,
 	more?: number | null,
+	project_warning?: string | null,
+	project_checked_at_ms?: number | null,
 	milestone?: number | null,
 	/**
 	 *  The first paste into this word processor: insert with its plugin if the
@@ -685,6 +708,8 @@ export type NoticeMessage_Serialize = {
 	delivered: Delivered,
 	text: string,
 	more?: number | null,
+	project_warning?: string | null,
+	project_checked_at_ms?: number | null,
 	milestone?: number | null,
 	/**
 	 *  The first paste into this word processor: insert with its plugin if the
@@ -723,7 +748,10 @@ export type PastedList = {
 export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
-export type PickerDestination = {
+export type PickerDestination = PickerDestination_Serialize | PickerDestination_Deserialize;
+
+/**  What the picker needs to know about the app it was opened from. */
+export type PickerDestination_Deserialize = {
 	/**  The app's own name; `None` when no app was captured. */
 	app: string | null,
 	/**  The captured OS app identifier, used to refuse a save after the target changes. */
@@ -746,6 +774,38 @@ export type PickerDestination = {
 	paste_question: boolean,
 	/**  A proven ordinary target can accept an explicit delivery choice, including recovery. */
 	can_choose_paste: boolean,
+	writing_project?: WritingProjectView_Deserialize | null,
+	context_version?: [number, number] | null,
+	writing_context?: string | null,
+};
+
+/**  What the picker needs to know about the app it was opened from. */
+export type PickerDestination_Serialize = {
+	/**  The app's own name; `None` when no app was captured. */
+	app: string | null,
+	/**  The captured OS app identifier, used to refuse a save after the target changes. */
+	app_id: string | null,
+	/**  Opaque app-location fingerprint; no path crosses IPC. */
+	app_identity: string | null,
+	/**  The app suggestion, an engine output id; `None` follows the saved default. */
+	automatic: string | null,
+	/**  The output the person chose to always use for this app. */
+	remembered: string | null,
+	/**  This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
+	unreadable: boolean,
+	/**  The current paste policy permits an attempt; final delivery checks still apply. */
+	can_paste: boolean,
+	/**  The app cannot identify document syntax; ask until an output is remembered. */
+	output_question: OutputQuestion | null,
+	/**  The separate delivery choice; never inferred from a remembered format. */
+	paste: AppPaste | null,
+	/**  An unrecognised app has a proven target but no delivery choice yet. */
+	paste_question: boolean,
+	/**  A proven ordinary target can accept an explicit delivery choice, including recovery. */
+	can_choose_paste: boolean,
+	writing_project?: WritingProjectView_Serialize | null,
+	context_version?: [number, number] | null,
+	writing_context?: string | null,
 };
 
 /**
@@ -861,7 +921,10 @@ export type PreviewIntent = {
 	page: number,
 	request: number,
 	cancel: boolean,
+	context?: [number, number] | null,
 };
+
+export type ProjectCheck = "paused" | "conflict" | "retained";
 
 /**  The state of one emitted key in the project bibliography, for the row. */
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
@@ -895,6 +958,7 @@ export type ProjectStatus = {
 	state: ProjectState,
 	/**  Answers come from an earlier read, because the newest one failed. */
 	last_good: boolean,
+	last_checked_ms?: number | null,
 	/**  Why the newest read failed, as a sentence ending in a full stop. */
 	reason: string | null,
 	/**  The first lines that could not be read. */
@@ -904,6 +968,8 @@ export type ProjectStatus = {
 export type ReceiptSummary = {
 	text: string,
 	more: number,
+	project_warning?: string | null,
+	project_checked_at_ms?: number | null,
 };
 
 export type RecentGroup = "cited" | "added";
@@ -1183,6 +1249,72 @@ export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Seri
 
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
+
+export type WritingProjectEdit = { kind: "create"; name: string; output: string } | { kind: "rename"; id: string; revision: string; name: string } | { kind: "remove"; id: string; revision: string } | { kind: "select"; id: string | null } | { kind: "output"; id: string; revision: string; output: string } | { kind: "apply"; id: string; revision: string };
+
+export type WritingProjectUpdate = WritingProjectUpdate_Serialize | WritingProjectUpdate_Deserialize;
+
+export type WritingProjectUpdate_Deserialize = {
+	name: string,
+	output: string | null,
+	bibliography: string | null,
+	revision: string,
+	bibliography_changed?: boolean,
+};
+
+export type WritingProjectUpdate_Serialize = {
+	name: string,
+	output: string | null,
+	bibliography: string | null,
+	revision: string,
+	bibliography_changed?: boolean,
+};
+
+export type WritingProjectView = WritingProjectView_Serialize | WritingProjectView_Deserialize;
+
+export type WritingProjectView_Deserialize = {
+	id: string,
+	name: string,
+	/**  A CLI project can name outputs not yet available in the picker. */
+	output: string | null,
+	bibliography: string | null,
+	revision: string,
+	pending?: WritingProjectUpdate_Deserialize | null,
+	retained?: boolean,
+	saved_problem?: string | null,
+};
+
+export type WritingProjectView_Serialize = {
+	id: string,
+	name: string,
+	/**  A CLI project can name outputs not yet available in the picker. */
+	output: string | null,
+	bibliography: string | null,
+	revision: string,
+	pending?: WritingProjectUpdate_Serialize | null,
+	retained?: boolean,
+	saved_problem?: string | null,
+};
+
+export type WritingProjectsView = WritingProjectsView_Serialize | WritingProjectsView_Deserialize;
+
+export type WritingProjectsView_Deserialize = {
+	projects: WritingProjectView_Deserialize[],
+	selected: string | null,
+	active?: WritingProjectView_Deserialize | null,
+	session_only: boolean,
+	/**  Owns one picker opening and captured destination; never a path or title. */
+	context: string,
+};
+
+export type WritingProjectsView_Serialize = {
+	projects: WritingProjectView_Serialize[],
+	selected: string | null,
+	active?: WritingProjectView_Serialize | null,
+	session_only: boolean,
+	/**  Owns one picker opening and captured destination; never a path or title. */
+	context: string,
+};
 
 /**  A Zotero group library the user can choose. */
 export type ZoteroGroup = {

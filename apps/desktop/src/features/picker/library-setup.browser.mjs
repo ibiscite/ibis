@@ -58,7 +58,6 @@ try {
             if (command === "picker_presentation") return presentation;
             if (command === "native_appearance") return "opaque";
             if (command === "picker_preferences") return preferences;
-            if (command === "copy_format") return "pandoc";
             if (command === "picker_destination") return { app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
             if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: null };
             if (command === "library_status") return library;
@@ -119,7 +118,7 @@ try {
       await page.evaluate(() => window.fixtureReopen());
       // The native show handler must not focus a hidden Search control.
       assert.equal(await page.evaluate(() => !!document.activeElement?.closest(".choice-list")), true, `${label}: reopen focus`);
-      await page.getByRole("option", { name: /^Try sample references/ }).press("Enter");
+      await page.getByRole("option", { name: /^Try Sample References/ }).press("Enter");
       await page.getByText("Invented lantern gardens reference", { exact: true }).waitFor();
       const mark = page.locator(".search-mark");
       const artwork = await mark.evaluate((node) => {

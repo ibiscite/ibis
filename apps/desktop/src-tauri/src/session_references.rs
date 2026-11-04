@@ -555,11 +555,10 @@ mod bibliography_tests {
         let (_dir, file, ids) = opened(LIBRARY);
         let bibliography = shown(&file, &ids);
         let mut wrote = false;
-        let refused =
-            file.commit_session_bibliography(&ids[..1], "apa", &bibliography.content_hash, |_| {
-                wrote = true;
-                Ok(())
-            });
+        let refused = file.commit_session_bibliography(&ids[..1], "apa", &bibliography.content_hash, |_| {
+            wrote = true;
+            Ok(())
+        });
         assert!(matches!(refused, Err(CommandError::SnapshotChanged)));
         assert!(!wrote);
     }
@@ -583,10 +582,9 @@ mod bibliography_tests {
         assert_eq!(bibliography.left_out, ["others2026"], "{}", bibliography.text);
         assert!(bibliography.text.contains("Morgan, A. (2025)"), "{}", bibliography.text);
         assert!(!bibliography.text.contains("Taylor"), "{}", bibliography.text);
-        let written =
-            file.commit_session_bibliography(&ids, "apa", &bibliography.content_hash, |content| {
-                Ok(content.text.to_owned())
-            });
+        let written = file.commit_session_bibliography(&ids, "apa", &bibliography.content_hash, |content| {
+            Ok(content.text.to_owned())
+        });
         assert_eq!(
             written.ok().as_deref(),
             Some(bibliography.text.as_str()),
