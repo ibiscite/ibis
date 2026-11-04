@@ -31,12 +31,13 @@
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .ui-settings-keys .keys-binding { align-items: baseline; gap: var(--space-2); }
 /* Keys and the "or" between them share one baseline and the label size in a key
-   list. Settings writes fixed keys as macOS menus write shortcuts: plain text at
-   body size in the text colour (4.5:1), with "or" secondary; no box, even in
-   forced colours, and one shortcut never wraps. */
+   list. Settings writes fixed keys as macOS menus write key equivalents: plain
+   secondary text at body size (Apple's measured label colour), in full ink under
+   Increase Contrast; no box, even in forced colours, and one shortcut never wraps. */
 .ui-settings-keys { display: inline-flex; align-items: baseline; gap: var(--space-2); font-size: var(--type-label-size); flex-wrap: wrap; justify-content: end; color: var(--text-secondary); vertical-align: middle; }
 .ui-settings-keys:has(kbd[data-plain]) { font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.ui-settings-keys kbd[data-plain] { height: auto; min-width: 0; padding-inline: 0; border-width: 0; background: transparent; color: var(--text); font-size: inherit; font-weight: 400; line-height: inherit; }
+.ui-settings-keys kbd[data-plain] { height: auto; min-width: 0; padding-inline: 0; border-width: 0; background: transparent; color: var(--text-secondary); font-size: inherit; font-weight: 400; line-height: inherit; }
+@media (prefers-contrast: more) { .ui-settings-keys kbd[data-plain] { color: var(--text); } }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
 .ui-shortcut-table tr[data-highlighted] > * { background-color: var(--highlight); }

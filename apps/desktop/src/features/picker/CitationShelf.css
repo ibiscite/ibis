@@ -1,6 +1,9 @@
 /* C7: one band, on the result columns, regardless of selection or open menu. */
-/* One band, one corner and one hover for every control in it: segments and the count. */
-.shelf { --band-control-radius: var(--r-band-control); --band-control-hover: var(--fill-control-hover); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
+/* One band, one padding, corner, hover and pressed fill for every control in it:
+   segments and the count. Hover and open steps are even: band, tertiary, system fill.
+   At rest the count shows only its chevron, whose glyph is drawn inside its box, so
+   it takes no end padding and the glyph ends on the year column [C3]. */
+.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-band-control); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 /* Text starts on the title column; trailing controls keep the same gap S to the
@@ -47,7 +50,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }
 
-.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: var(--row-gap) var(--space-1); margin: calc(-1 * var(--row-gap)) calc(-1 * var(--space-1)); }
+.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: var(--row-gap) var(--band-control-pad); margin: calc(-1 * var(--row-gap)) calc(-1 * var(--band-control-pad)); }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--text-secondary); }
 

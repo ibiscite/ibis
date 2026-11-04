@@ -38,7 +38,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | Search icon | Magnifier | The Ibis mark, as Alfred shows its hat |
 | In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
-| Key caps | Shortcuts only in menus | Caps in the footer and key lists |
+| Key caps | Shortcuts only in menus | Caps in the footer and key lists; Settings writes keys as menus do |
 | Focus ring | A translucent keyboard focus colour | Solid accent text, so it keeps 3:1 on every surface |
 
 ## Foundations
@@ -56,7 +56,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 ### Colour
 
 - **Labels** [D5]: `--text`, `--text-secondary`, `--text-tertiary` (resting glyphs, never sentences), `--text-disabled`; Apple's label ladder at AppKit alphas. `--text-placeholder` is AppKit's placeholder colour, which equals its secondary label.
-- **Fills**: Apple's fill ladder `--fill-1` … `--fill-4`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover is quaternary. Grouped content (`--surface-grouped`, Settings cards) is tertiary (secondary in dark), a step above the sidebar, so groups separate by fill, not by their edge; Increase Contrast uses the system fill.
+- **Fills**: Apple's fill ladder `--fill-1` … `--fill-4`. Control rest, hover and pressed are tertiary, secondary and system fill (`--fill-control` and its states); quiet hover is quaternary. Grouped content (`--surface-grouped`, Settings cards) is tertiary (secondary in dark), a step above the sidebar, so groups separate by fill; the hairline backs it up. Increase Contrast uses the system fill.
 - **Separators**: one `--separator` for hairlines and dividers; `--stroke-field` is the control edge that only Increase Contrast and forced colours draw. Never a coloured border on a control. **One edge per shape**: a border, an inset shadow or an overlay's shadow ring, never two; a divider belongs to one side.
 - **Accent and selection** [D6]: there are two choices, **Follow the Mac** and **Ibis scarlet**, and each resolves to three roles with light and dark values: `--accent` (controls, switches, focus), `--selected` with `--selected-text` (selected rows, menu highlight, focused citation; text 4.5:1, never brighter in dark than light) and accent text on surfaces (4.5:1, also the progress ring). Follow the Mac reads the same roles from the system: on macOS `--selected` is WebKit's selection background, deeper than the accent and following it; accent text is the accent moved toward black or white only as far as 4.5:1 needs. The default button is `--accent` with `--text-on-accent`, or the deeper `--selected` where a Mac accent would fall below 4:1 with white; it keeps one text colour through hover and press. Hover and press darken toward black. Secondary text on a selection stays at full `--selected-text`; weight and size carry the hierarchy.
 - **Focus** [D8]: `--ring`, solid accent text, only on `:focus-visible`; the system ink with Increase Contrast.
@@ -126,7 +126,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ### Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K on Windows and Linux (`ui/KeyCaps`).
-- Caps appear only in the footer, the notice slot and key lists. Menus write shortcuts as plain trailing text in native order (⇧⌘C) [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
 - A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
@@ -415,7 +415,7 @@ Never call the destination a password field. The right paste key is shown per sy
 - **Accent**: a segmented choice of **Follow the Mac** (the default) and **Ibis scarlet**. No other hues, free colour picker, custom fonts, themes or CSS.
 - A failed save shows an alert and restores the saved choice; queued choices finish saving (at most two seconds) before the window closes. Preference resets offer Undo.
 
-**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain text at body size, as menus write shortcuts, with "or" secondary. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
+**Shortcuts.** Settings › Shortcuts has a search field, then grouped cards (Open Ibis, While searching, Your library, Anywhere in Ibis, In a menu). Only the opening-shortcut recorder edits a key; fixed keys are plain secondary text at body size, as menus write key equivalents, in full ink under Increase Contrast. Group headings scroll with their cards, never sticking over a card's edge. Keys and the "or" between them share one baseline with equal gaps. General and Shortcuts share `ui/ShortcutSetting`. The Keyboard Shortcuts sheet (⌘/) is a readable overlay of two equal columns that hugs its content and closes with the square IconButton [C13].
 
 - The recorder shows the shortcut in system notation; clicking says **Type a shortcut…**; Esc, Tab or leaving cancels.
 - A shortcut needs Control, Option or Command; **⌘ + one key is refused**, as are picker commands and, on Windows, Ctrl+Alt with a printable key (AltGr). Refusals name the owner and keep the working shortcut.
@@ -499,6 +499,6 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 - Change `tokens.css` or the shared component in `src/ui/`, never one screen; fix a visual bug in the rule or component that allowed it, with a regression test.
 - The five parameters at the top of `tokens.css` (spacing unit, control radius, body text size, Ibis red light and dark) are the knobs. The canvas's Parameters board turns them live; `node apps/desktop/canvas/apply-params.mjs --radius=10px …` writes chosen values back (then `python3 brand/build.py` for the reds).
 - The canvas boards run the real app live (`pnpm -C apps/desktop build:canvas`, then upload `ibis-canvas.js` and `.css` and point `Screen.dc.html` at them); a missing state gets a scenario in `apps/desktop/canvas/main.tsx`, never a hand-drawn copy.
-- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. It merges at 9 out of 10 or better from every view; anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
+- **Judged from pictures, by several eyes** (maintainer, 2026-11-04): every visible change renders its canvas scenarios (light and dark, plus larger text, right-to-left and Windows key labels where it matters) and is scored by independent reviewers who did not make it, each from one view: a macOS purist, a first-time user, a keyboard-only user, accessibility, a visual designer and a Windows or Linux user. A pass merges when no view scores any screen lower than before; work continues until every view scores every screen 9 or better, and anything short of 10 names why. A defect is fixed in the rule that allowed it, so it cannot come back.
 - Record maintainer decisions in [decisions.md](decisions.md) and update the rule here in place, deleting the text it replaces.
 - Review this page against Apple's guidelines on each new macOS release.

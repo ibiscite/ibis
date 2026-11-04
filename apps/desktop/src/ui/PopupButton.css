@@ -6,12 +6,11 @@
 :root[data-platform="macos"] .ui-popup-button[data-size="small"] { min-height: var(--control-small-h); }
 
 .ui-popup-button .popup-indicator { flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--text-secondary); }
-/* Quiet, inside a band that is itself a fill (the shelf's count; "Quiet bands"):
-   no fill or edge at rest. At rest only the chevron shows, and its glyph is drawn
-   inside its box, so the box takes no end padding and the glyph ends where the
-   band's text column ends. A band may set its controls' corner and fills
-   (--band-control-radius, -hover, -pressed); elsewhere the shared quiet ones apply. */
-.ui-popup-button.ui-button[data-variant="quiet"] { padding-inline: var(--space-2) 0; border-radius: var(--band-control-radius, var(--r-control)); }
+/* Quiet: no fill or edge at rest. A band that is itself a fill (the shelf; "Quiet
+   bands") sets its controls' padding, corner and fills (--band-control-pad, -pad-end,
+   -radius, -hover, -pressed); any other quiet pop-up keeps a pop-up's own padding,
+   corner and the shared quiet fills, so nothing here reaches past the band. */
+.ui-popup-button.ui-button[data-variant="quiet"] { padding-inline: var(--band-control-pad, var(--space-3)) var(--band-control-pad-end, var(--space-2)); border-radius: var(--band-control-radius, var(--r-control)); }
 .ui-popup-button.ui-button[data-variant="quiet"]:is([data-pressed], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--band-control-pressed, var(--fill-control-hover)); }
 @media (hover: hover) {
   .ui-popup-button.ui-button[data-variant="quiet"][data-hovered]:not([data-pressed], [aria-expanded="true"], [data-disabled], [aria-disabled="true"]) { background: var(--band-control-hover, var(--fill-quiet-hover)); }

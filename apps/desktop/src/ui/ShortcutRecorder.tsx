@@ -3,6 +3,7 @@ import { composing } from "../composition";
 import { shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
+import "./ShortcutRecorder.css";
 
 /** Capture before button activation or browser commands consume the key. */
 export function ShortcutRecorder({ shortcut, label, prompt, isDisabled, onRecord }: {
@@ -28,7 +29,7 @@ export function ShortcutRecorder({ shortcut, label, prompt, isDisabled, onRecord
     }}>
       <Button aria-label={`${label}: ${recording ? prompt : shortcutLabel(shortcut, currentPlatform() === "macos")}`}
         aria-pressed={recording} isDisabled={isDisabled} onBlur={() => setRecording(false)} onPress={() => setRecording(true)}>
-        {recording ? prompt : shortcutLabel(shortcut, currentPlatform() === "macos")}
+        {recording ? prompt : <span className="ui-shortcut-recorder-keys" dir="ltr">{shortcutLabel(shortcut, currentPlatform() === "macos")}</span>}
       </Button>
     </span>
   );
