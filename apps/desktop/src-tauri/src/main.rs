@@ -31,6 +31,7 @@ mod picker;
 mod placement;
 mod preferences;
 mod row_context;
+mod session_references;
 mod settings_backup;
 mod settings_window;
 mod setup;
@@ -164,6 +165,7 @@ fn main() {
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
+        .manage(session_references::SessionReferences::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
         .manage(picker::Moving::default())
