@@ -3,7 +3,7 @@ import { commandKey, keysFor, matchesAccelerator, type KeyPress } from "../../ke
 import { isMac } from "../../platform";
 
 /** Everything the picker does by name. A key and its menu item run the same one. */
-export type PickerCommand = "format" | "more" | "pin" | "source" | "revealSource" | "chooseSource" | "keys" | "settings" | "quit";
+export type PickerCommand = "format" | "more" | "pin" | "source" | "revealSource" | "chooseSource" | "keys" | "changeLast" | "settings" | "quit";
 
 type Press = KeyPress & Pick<KeyboardEvent, "target" | "getModifierState">;
 
@@ -25,6 +25,11 @@ export function isKeysShortcut(e: Press, mac = isMac, focused: EventTarget | nul
 /** The More menu shortcut from the key table: ⌘K on macOS, Ctrl+K elsewhere. */
 export function isMenuShortcut(e: Press, mac = isMac): boolean {
   return matchesAccelerator(e, keysFor("more"), mac);
+}
+
+/** Reopen the last citation for this app; the shortcut that opens Ibis never does. */
+export function isChangeLastShortcut(e: Press, mac = isMac): boolean {
+  return matchesAccelerator(e, keysFor("changeLast"), mac);
 }
 
 /** The quit shortcut from the key table: ⌘Q on macOS, Ctrl+Q elsewhere. */
@@ -66,6 +71,7 @@ export function commandFor(e: Press, focused: EventTarget | null, mac = isMac): 
   if (isSourceShortcut(e, mac)) return e.altKey ? "revealSource" : "source";
   if (isFormatShortcut(e, mac)) return "format";
   if (isPinShortcut(e, mac)) return "pin";
+  if (isChangeLastShortcut(e, mac)) return "changeLast";
   if (isKeysShortcut(e, mac, focused)) return "keys";
   if (isMenuShortcut(e, mac)) return "more";
   if (isSettingsShortcut(e, mac)) return "settings";

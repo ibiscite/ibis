@@ -8,7 +8,7 @@ import { usePin } from "./usePin";
 import { useWindowResetUndo } from "./useWindowResetUndo";
 
 /** The picker's own overlay: at most one is open, whichever way it was reached. */
-type Overlay = "more" | "library" | "format" | "keys";
+type Overlay = "more" | "library" | "format" | "keys" | "session";
 
 export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
   { welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "welcomeShown">, cancelCopy: () => void) {
@@ -35,8 +35,8 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   const windowUndo = useWindowResetUndo(api);
   // A commit cannot flush the closes it causes, so they follow it.
   useEffect(() => { if (windowUndo.ticket !== null) queueMicrotask(closeOverlays); }, [windowUndo.ticket]);
-  // Where focus goes back to when the keys overlay closes.
-  const keysReturn = useRef<HTMLElement | null>(null);
+  // Where focus goes back to when a sheet closes.
+  const sheetReturn = useRef<HTMLElement | null>(null);
   const openMore = () => {
     cancelCopy();
     closeOverlays();
@@ -63,20 +63,22 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
     leaveOverlays();
     void perform(operation, action);
   };
-  const openKeys = () => {
+  const openSheet = (sheet: "keys" | "session") => {
     cancelCopy();
     closeOverlays();
     const focused = document.activeElement;
-    keysReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
-    setOverlay("keys");
+    sheetReturn.current = focused instanceof HTMLElement && !focusLost() ? focused : null;
+    setOverlay(sheet);
   };
-  const closeKeys = () => {
-    closed("keys");
-    const back = keysReturn.current;
+  const closeSheet = (sheet: "keys" | "session") => {
+    closed(sheet);
+    const back = sheetReturn.current;
     if (back?.isConnected && !back.closest("[hidden]")) back.focus();
     else focusHome();
   };
-  return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys",
+  return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session",
     setFormatOpen: (open: boolean) => { if (open) setOverlay("format"); else closed("format"); },
-    pinned, currentPin, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu, openKeys, closeKeys };
+    pinned, currentPin, togglePin, windowUndo, openMore, closeMore: () => closed("more"), openLibrary, closeLibrary: () => closed("library"), openFormat, focusHome, leaveOverlays, runFromMenu,
+    openKeys: () => openSheet("keys"), closeKeys: () => closeSheet("keys"),
+    openSession: () => openSheet("session"), closeSession: () => closeSheet("session") };
 }

@@ -13,7 +13,7 @@ function scenario() {
   const send = (event: SessionEvent) => { [state, effects] = reduceSession(state, event); return effects; };
   const view = (change: Partial<SessionView> = {}): SessionEvent => ({ type: "view", session: state.session, interaction: state.interaction,
     view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
-      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false,
+      chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change } });
   const complete = (id: number, change: Partial<Extract<SessionEvent, { type: "copied" }>> = {}) => send({ type: "copied", id, session: 0, outcome: { text: prepared.text, warnings: [] },
     output: { opening: 0, choice: 0, delivery: 0 }, pinned: false, ...change });
@@ -495,4 +495,197 @@ test("a selection arriving with a waiting Enter cancels it: Enter never pastes a
   expect(s.state.pendingCopy).not.toBeNull();
   s.send({ type: "preparing", now: 10, selection: "smith 2020" });
   expect(s.state.pendingCopy).toBeNull();
+});
+
+const copyOnce = (s: ReturnType<typeof scenario>, id: number, text: string) => {
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()], shown: { ...prepared, text } }));
+  const effects = s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id, session: s.state.session, outcome: { text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  return effects;
+};
+const withLast = () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
+  copyOnce(s, 1, "(2020, p. 12)");
+  return s;
+};
+
+test("Change Last reopens the app's last citation with its pages and options, and clears the search", () => {
+  const s = withLast();
+  expect(s.state.selected.size).toBe(0);
+  s.send({ type: "query", value: "something" });
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  expect(s.state).toMatchObject({ query: "", changing: "(2020, p. 12)" });
+  const [reference] = [...s.state.selected.values()];
+  expect(reference).toMatchObject({ locator: a.locator, form: "year-only" });
+});
+
+test("only the changed citation's copy carries the text it may replace", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { form: "normal" } });
+  const [copy] = copyOnce(s, 2, "(Smith, 2020, p. 12)");
+  expect(copy).toMatchObject({ type: "copy", replaces: "(2020, p. 12)" });
+  expect(s.state.changing).toBeNull();
+  s.send({ type: "toggle", result: b });
+  const [plain] = copyOnce(s, 3, "(Jones, 2021)");
+  expect(plain).toMatchObject({ type: "copy", replaces: null });
+});
+
+test("the shortcut alone starts a new search: hiding abandons a change", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send({ type: "hidden", now: 10 });
+  s.send({ type: "preparing", now: 20 });
+  s.send({ type: "shown", now: 21, presentation: 1 });
+  expect(s.state).toMatchObject({ changing: null, query: "" });
+  expect(s.state.selected.size).toBe(0);
+});
+
+test("a permission detour keeps the change, so a fresh Enter still may only replace the old citation", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  expect(s.effects).toMatchObject([{ type: "copy", replaces: "(2020, p. 12)" }]);
+  s.send({ type: "copied", id: 2, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: false });
+  s.send({ type: "hidden", now: 10 });
+  expect(s.state.changing).toBe("(2020, p. 12)");
+  s.send({ type: "hid", id: 2, session: 0 });
+  s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  expect(s.state.changing).toBe("(2020, p. 12)");
+  expect(s.state.selected.size).toBe(1);
+  s.send({ type: "hidden", now: 20 });
+  s.send({ type: "preparing", now: 30 });
+  s.send({ type: "shown", now: 31, presentation: 0 });
+  expect(s.state.changing).toBe("(2020, p. 12)");
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  expect(s.effects).toMatchObject([{ type: "copy", replaces: "(2020, p. 12)" }]);
+});
+
+test("a selection ending a detour leaves the change it held, so Enter still proves the old citation", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id: 2, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: false });
+  s.send({ type: "hid", id: 2, session: 0 });
+  s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  s.send({ type: "hidden", now: 10 });
+  s.send({ type: "preparing", now: 20, selection: "(2020, p. 12)" });
+  expect(s.state).toMatchObject({ changing: "(2020, p. 12)", permissionDetour: false, query: "(2020, p. 12)" });
+  expect(s.state.selected.size).toBe(1);
+});
+
+test("reopening while the changed citation is on its way abandons the change", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "hidden", now: 10 });
+  expect(s.state.changing).toBe("(2020, p. 12)");
+  s.send({ type: "preparing", now: 20 });
+  s.send({ type: "shown", now: 21, presentation: 1 });
+  expect(s.state.changing).toBeNull();
+  expect(s.state.selected.size).toBe(0);
+});
+
+test("an older copy in flight cannot keep a new change past hiding", () => {
+  const s = withLast();
+  s.send({ type: "toggle", result: b });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "change-last" });
+  expect(s.state.activeCopy).not.toBeNull();
+  s.send({ type: "hidden", now: 10 });
+  expect(s.state.changing).toBeNull();
+});
+
+test("Enter on the same shelf joins a copy only when both may replace the same text", () => {
+  const s = withLast();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
+  const chosen = [...s.state.selected.values()];
+  s.send(s.view({ appId: "example.writer", chosen }));
+  s.send({ type: "enter", choice: choiceKey(chosen) });
+  expect(s.state.flights).toHaveLength(1);
+  s.send({ type: "change-last" });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  const [copy] = s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  expect(copy).toMatchObject({ type: "copy", replaces: "(2020, p. 12)" });
+  expect(s.state.flights).toHaveLength(2);
+});
+
+test("a change remembers the format the citation was written in", () => {
+  const s = withLast();
+  expect(s.state.lastCitations.get("example.writer")?.format).toBe("pandoc");
+});
+
+test("each app has its own last citation, and an app without one changes nothing", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.other" }));
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
+  expect(s.state.selected.size).toBe(0);
+});
+
+test("memory stays small: the app used longest ago is dropped", () => {
+  const s = scenario();
+  for (let id = 1; id <= 9; id += 1) {
+    s.send({ type: "toggle", result: a });
+    s.send(s.view({ appId: `example.app${id}`, chosen: [...s.state.selected.values()], shown: { ...prepared, text: `(${id})` }, defaultChoice: `${id}` }));
+    s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+    s.send({ type: "copied", id, session: 0, outcome: { text: `(${id})`, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  }
+  expect(s.state.lastCitations.size).toBe(8);
+  expect(s.state.lastCitations.has("example.app1")).toBe(false);
+});
+
+test("Forget clears the memory and an open change with it", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send({ type: "forget-last" });
+  expect(s.state.lastCitations.size).toBe(0);
+  expect(s.state.changing).toBeNull();
+});
+
+test("removing the last reference ends the change", () => {
+  const s = withLast();
+  s.send(s.view({ appId: "example.writer" }));
+  s.send({ type: "change-last" });
+  s.send({ type: "toggle", result: [...s.state.selected.values()][0]! });
+  expect(s.state.changing).toBeNull();
+});
+
+test("with Recent Citations off nothing is remembered, and turning it off forgets at once", () => {
+  const off = withLast();
+  off.send(off.view({ appId: "example.writer", remembersLast: false }));
+  expect(off.state.lastCitations.size).toBe(0);
+  off.send({ type: "change-last" });
+  expect(off.state.changing).toBeNull();
+
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: "example.writer", remembersLast: false, chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  expect(s.state.lastCitations.size).toBe(0);
+});
+
+test("an app with no ID never shares a last citation with another", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: null, chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
+  expect(s.state.lastCitations.size).toBe(0);
 });

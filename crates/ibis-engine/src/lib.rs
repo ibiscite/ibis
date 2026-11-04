@@ -16,6 +16,9 @@ mod service;
 pub use ibis_sources::identity;
 pub use service::*;
 
+/// The most references one citation or bibliography can hold.
+pub use ibis_core::syntax::MAX_CITATION_ITEMS;
+
 /// The words of a search with its filters taken off, so a front end can offer
 /// to search without them.
 pub use ibis_core::search::without_filters;

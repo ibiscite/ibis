@@ -323,6 +323,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
 | ⌘Y | Peek |
+| ⌘E | Change the last citation for this app |
 | ⌘+ / ⌘− | Text size |
 | Typing outside a field | Types into search, except in the reader's pages |
 
@@ -336,6 +337,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}").
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter; newly selected text still opens as the search, with the shelf kept, because Enter would replace it.
 - **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
+- **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change.
 - A successful copy hides Ibis, returns focus to the previous window and shows the notice. Pinned, Ibis stays.
 
 ### Notices
@@ -356,6 +358,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Target changed | Copied. The target app or window changed |
 | Clipboard replaced | Copied. The clipboard changed; copy the citation again |
 | Selected text never shown | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
+| Old citation not selected | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 | Expired | Copied. The paste expired; paste it yourself |
 | Windows keys stuck | Copied. Press and release Ctrl and V |
 
@@ -449,6 +452,10 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 - **Export evidence brief**: chosen passages in order, an optional question, one new Markdown file; local Zotero links labelled apart; no private paths.
 - **Changed copied key**: "You previously copied oldKey; this item's current key is newKey", only for sources whose identity survives a rename (Zotero, CSL-JSON with a stable `id`).
 
+## References used this session
+
+**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says so. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
+
 ## Small delights
 
 The approved, final list; no new delights until the next design pass. Each lives only in About, the welcome, the notice slot or existing feedback; never changes results, output or focus; happens once within the motion cap; never loops or plays a sound. Warm, never childish: at most one short sentence, no slang, exclamation marks, emoji or jokes about the person's work. A delight is a person's action answered, or a real moment marked; nothing appears at random. The fun items sit behind Settings › General › **Small surprises** (on by default).
@@ -489,7 +496,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the components 
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | **Settings** |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "References used this session", project `.bib` (0.4) | More and the format pop-up; rows say "In refs.bib" or "Missing from refs.bib" |
+| Bibliography, "References used this session", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
 | A source's PDF, choosing the page there (#1252) | **Reader**: the **Inspector** widens with the picker, the one planned exception to [C10]; its document shows the pages beside the list, and the column stays put, its Page field following a known printed page in view |
 

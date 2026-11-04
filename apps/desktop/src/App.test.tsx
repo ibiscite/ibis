@@ -1509,7 +1509,7 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
   const menu = await screen.findByRole("menu");
   const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable›", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
+  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Rows: Comfortable›", "References Used This Session…", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
   expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
   expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
   fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
@@ -3841,7 +3841,7 @@ test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and cop
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

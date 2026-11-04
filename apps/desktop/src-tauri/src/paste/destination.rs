@@ -48,6 +48,12 @@ pub(super) fn delivery_decision(captured: &Captured, permission: PastePermission
     match policy_decision(captured, permission) {
         // A paste replaces the selection; Ibis never deletes text it did not show.
         Decision::Paste if captured.selection == Selection::Ignored => Decision::Copy(CopyReason::SelectionNotShown),
+        // Only macOS can read a selection, so nowhere else can prove the old citation.
+        Decision::Paste
+            if matches!(captured.selection, Selection::Citation(_)) && captured.target.system != System::Macos =>
+        {
+            Decision::Copy(CopyReason::CitationNotSelected)
+        }
         decision => decision,
     }
 }

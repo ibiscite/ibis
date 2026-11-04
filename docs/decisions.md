@@ -174,6 +174,10 @@ counts of people or active installs; replacements reset counters and downloads
 between snapshots can be lost. No telemetry, identifiers, app changes or server:
 nothing leaves the app.
 
+"References used this session" (#356) holds record identities in memory, cleared by
+quitting or a reset, and leaves memory only through a file the person saves. It is a new
+data flow of references already read, with no network use (2026-11-02).
+
 ## 0009 Insertion
 
 Every insertion ends in exactly one visible state: pasted, or copied with a

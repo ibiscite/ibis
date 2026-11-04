@@ -56,22 +56,37 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
-	copyFileCitation: (ticket: string, contentHash: string) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	/**  The format the picker starts with: the last one chosen, or Pandoc. */
 	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
-	/**  `None` when no editor is waiting. */
-	editorRequest: () => __TAURI_INVOKE<{
-	request: number,
-	format: string,
-} | null>("editor_request"),
-	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
+	sessionReferences: () => __TAURI_INVOKE<SessionReferencesView_Serialize>("session_references"),
+	editSessionReferences: (edit: SessionEdit) => __TAURI_INVOKE<SessionReferencesView_Serialize>("edit_session_references", { edit }),
 	/**
-	 *  Switch the endpoint. Off closes the port and forgets the address, so the next
-	 *  time it is on, an old copy of that address no longer works.
+	 *  The list as a formatted bibliography, for the person to look at before
+	 *  copying it. `None` when nothing listed is in the open library.
 	 */
-	setEditorEndpoint: (on: boolean) => __TAURI_INVOKE<EndpointStatus>("set_editor_endpoint", { on }),
-	/**  Put the address on the clipboard for pasting into an editor's settings. */
-	copyEditorEndpoint: () => __TAURI_INVOKE<null>("copy_editor_endpoint"),
+	sessionBibliography: (style: CitationStyle) => __TAURI_INVOKE<{
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
+} | null>("session_bibliography", { style }),
+	/**
+	 *  Copy what was shown. Prepared again from the list as it is now, and refused
+	 *  unless that is exactly what the person saw.
+	 */
+	copySessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	/**
+	 *  Save what was shown, as rich text, a web page or plain text. This is the one
+	 *  way the list leaves memory, and only because the person asked. `None` when
+	 *  the dialog was cancelled; otherwise the file's name.
+	 */
+	exportSessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -395,32 +410,6 @@ export type DisplayRun_Serialize = {
 	underline?: boolean,
 };
 
-/**
- *  A waiting editor, for the picker to name. Each request has its own number,
- *  so two in the same format are still two.
- */
-export type EditorWaiting = {
-	request: number,
-	format: string,
-};
-
-/**  Why the endpoint could not listen. */
-export type EndpointProblem =
-/**  Another program has the port. */
-"port-in-use" |
-/**  The saved port or token cannot be used. */
-"bad-setting" | "not-saved";
-
-/**
- *  What Settings shows. The address holds the token: anyone who has it can open
- *  the picker, so it stays on this computer and in this window.
- */
-export type EndpointStatus = {
-	on: boolean,
-	url: string | null,
-	problem: EndpointProblem | null,
-};
-
 export type FilePreview = FilePreview_Serialize | FilePreview_Deserialize;
 
 export type FilePreview_Deserialize = {
@@ -667,7 +656,7 @@ export type PastedList = {
 };
 
 /**  Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "source" | "settings" | "quit";
+export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
 
 /**  What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -955,6 +944,54 @@ export type SearchResult_Serialize = {
 	item_type: string,
 };
 
+/**
+ *  A formatted bibliography, shown before it is copied. The picker's own
+ *  citation receipt is untouched.
+ */
+export type SessionBibliography = {
+	text: string,
+	html: string | null,
+	content_hash: string,
+	warnings: string[],
+	/**
+	 *  References this style cannot write, by key or title. They are named so
+	 *  that the rest can still be used.
+	 */
+	left_out: string[],
+};
+
+export type SessionEdit = { kind: "remove"; id: RecentIdentity } | { kind: "reset" } | { kind: "undo" };
+
+export type SessionReferencesView = SessionReferencesView_Serialize | SessionReferencesView_Deserialize;
+
+export type SessionReferencesView_Deserialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Deserialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Deserialize | null,
+};
+
+export type SessionReferencesView_Serialize = {
+	revision: number,
+	/**  The listed references that are in the open library. */
+	rows: SearchResult_Serialize[],
+	/**
+	 *  Listed references from a library that is not open, left out of the
+	 *  bibliography until it is.
+	 */
+	absent: number,
+	/**  The list reached its limit, so a later citation was left off. */
+	overflowed: boolean,
+	undo: UndoView_Serialize | null,
+};
+
 /**  Why a shortcut change failed. Only NotSaved changes the working shortcut. */
 export type ShortcutRefusal =
 /**  Not a key combination Ibis can register. */
@@ -1024,6 +1061,15 @@ export type SystemIcon = {
 	mime: string,
 	bytes: number[],
 };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView = UndoView_Serialize | UndoView_Deserialize;
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Deserialize = { kind: "removed"; reference: SearchResult_Deserialize | null } | ({ kind: "reset" }) & { reference?: never };
+
+/**  The edit Undo would reverse, for its label. Only the removed row is named. */
+export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Serialize | null } | ({ kind: "reset" }) & { reference?: never };
 
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";

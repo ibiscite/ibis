@@ -21,6 +21,9 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
+    /// What was cited, for the session's list; stays on this side of the bridge.
+    #[serde(skip)]
+    pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -230,12 +233,13 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
 pub(crate) fn copy_file_citation(
     ticket: String,
     content_hash: String,
+    replaces: Option<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
     editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
-    let attempt = crate::paste::begin_copy(&app);
+    let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
     // The library lock is held only to take the engine; the engine's own
     // commit barrier guards the write.
     let file = {
@@ -289,10 +293,20 @@ pub(crate) fn copy_file_citation(
         }
         #[cfg(not(target_os = "windows"))]
         {
-            delivery = clipboard::write(&app, content)?;
+            delivery = clipboard::write(&app, content, replaces.as_deref())?;
         }
         Ok(())
     })?;
     copied.delivery = delivery;
+    tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
+        .cited(std::mem::take(&mut copied.cited));
     Ok(copied)
+}
+
+/// Whole content with no delivery: it is copied, never pasted.
+pub(crate) fn write_copy_only(
+    app: &AppHandle,
+    content: ibis_core::contract::ClipboardContent<'_>,
+) -> Result<(), String> {
+    clipboard::write(app, content).map(|_| ())
 }

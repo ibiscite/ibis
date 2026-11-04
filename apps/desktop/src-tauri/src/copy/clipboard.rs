@@ -35,10 +35,15 @@ fn macos_html(fragment: &str) -> String {
 
 /// The general pasteboard, cleared once and then given every flavor.
 #[cfg(target_os = "macos")]
-pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+pub(crate) fn write(
+    app: &tauri::AppHandle,
+    content: ClipboardContent<'_>,
+    replaces: Option<&str>,
+) -> Result<Option<u32>, String> {
     use tauri::Manager;
     app.state::<crate::paste::LastTarget>().write_copy(
         content.text,
+        replaces,
         |target| app.state::<crate::destination::AppMemory>().for_capture(target),
         || publish_macos(&objc2_app_kit::NSPasteboard::generalPasteboard(), content),
     )
@@ -187,7 +192,11 @@ impl WindowsWrite {
 
 /// Text and HTML; Linux apps read HTML for formatting and rarely RTF.
 #[cfg(target_os = "linux")]
-pub(crate) fn write(app: &tauri::AppHandle, content: ClipboardContent<'_>) -> Result<Option<u32>, String> {
+pub(crate) fn write(
+    app: &tauri::AppHandle,
+    content: ClipboardContent<'_>,
+    _replaces: Option<&str>,
+) -> Result<Option<u32>, String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     let html = flavors(&content)
         .into_iter()

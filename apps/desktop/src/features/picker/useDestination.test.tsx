@@ -73,6 +73,19 @@ test("an unread destination may be a real app, so a pick holds for this paste an
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
 });
 
+test("the format a changed citation was written in applies once and is never remembered", async () => {
+  const remember = vi.fn(async () => null);
+  const writer = { ...browser, output_question: null, can_choose_paste: true };
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => writer, rememberAppOutput: remember }, options()));
+  act(() => result.current.read());
+  await waitFor(() => expect(result.current.ready).toBe(true));
+  act(() => result.current.chooseOnce("cite"));
+  expect(result.current.format).toBe("cite");
+  act(() => result.current.choosePaste("copy-only"));
+  await waitFor(() => expect(remember).toHaveBeenCalledOnce());
+  expect(remember).toHaveBeenCalledWith(writer.app_id, null, "copy-only", null);
+});
+
 test("a choice made during a slow destination read wins over that read", async () => {
   const read = pending<PickerDestination>();
   const settings = options();
