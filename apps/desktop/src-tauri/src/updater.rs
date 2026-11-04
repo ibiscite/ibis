@@ -169,24 +169,6 @@ fn present_question(
     });
 }
 
-/// "Check for Updates…" in the menu.
-pub(crate) fn check_now(app: &AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn(async move {
-        let text = match check(&app, true).await {
-            CheckResult::Offered => return,
-            CheckResult::Newest => format!("You have the newest version, {}.", app.package_info().version),
-            CheckResult::NotRun => {
-                "Ibis is already checking for updates, or an update is waiting for your answer.".to_owned()
-            }
-            CheckResult::Failed => {
-                "Ibis could not check for updates. Check your internet connection and try again later.".to_owned()
-            }
-        };
-        tell(&app, &text);
-    });
-}
-
 /// The request names Ibis and its version, as `PRIVACY.md` says, instead of
 /// the plugin's own name.
 pub(crate) fn user_agent<R: tauri::Runtime>(app: &AppHandle<R>) -> String {

@@ -30,7 +30,7 @@ fn source_added_dates_are_separate_from_printed_data() -> Result<(), Box<dyn std
         assert!(!record.csl.contains_key("timestamp"));
     }
     let mapped = map_item(
-        LibraryId::file(b"synthetic"),
+        LibraryId::digest(b"synthetic"),
         &ZoteroItem {
             key: "SYNTH001".into(),
             item_type: "book".into(),

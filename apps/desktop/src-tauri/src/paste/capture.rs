@@ -59,7 +59,8 @@ impl OldCitation {
     }
 
     /// The longest selection that could still be this citation once its
-    /// white space is folded.
+    /// white space is folded. Only the macOS read uses it.
+    #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn limit(&self) -> usize {
         self.units.saturating_add(32)
     }

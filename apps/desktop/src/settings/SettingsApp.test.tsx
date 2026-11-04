@@ -342,6 +342,7 @@ test("a window size that cannot be read says so and offers no choice", async () 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });
   expect(pageOf("about")).toEqual({ page: "about", focus: null });
+  expect(pageOf("updates")).toEqual({ page: "about", focus: null });
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
@@ -1686,6 +1687,20 @@ test.each([
   fireEvent.click(await screen.findByRole("button", { name: "Check now" }));
   await screen.findByRole("button", { name: "Check now" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
+});
+
+test("the tray's update check opens About, checks once and says its result in place", async () => {
+  const { api, state } = fakeApi();
+  let finish!: (result: "newest") => void;
+  const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+  render(<SettingsApp api={api} initialPage="updates" />);
+  await waitFor(() => expect(check).toHaveBeenCalledOnce());
+  await act(async () => { for (const handler of state.pages) handler("updates"); });
+  expect(check).toHaveBeenCalledOnce();
+  await act(async () => { finish("newest"); });
+  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
+  await act(async () => { for (const handler of state.pages) handler("updates"); });
+  expect(check).toHaveBeenCalledTimes(2);
 });
 
 test("a check that ends on another page says its result back on About", async () => {

@@ -1,0 +1,8 @@
+[
+  {"type":"book","title":"Synthetic signals: an invented study","author":[{"family":"Taylor","given":"Avery"},{"family":"Dale","given":"Morgan"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press","publisher-place":"Nowhere","ISBN":"978-0-00-000000-2"},
+  {"type":"article-journal","title":"A made-up measure of nothing","author":[{"family":"Reed","given":"Quinn"},{"family":"Sato","given":"Hana"},{"family":"Okoye","given":"Ifeoma"}],"container-title":"Journal of Invented Results","volume":"12","issue":"3","page":"45-67","issued":{"date-parts":[[2024,5,1]]},"DOI":"10.0000/invented.2024.12"},
+  {"type":"chapter","title":"Thinking about placeholders","author":[{"family":"Moreau","given":"Camille"}],"editor":[{"family":"Lund","given":"Erik"}],"container-title":"The Handbook of Examples","publisher":"Fictive Books","publisher-place":"Elsewhere","page":"101-120","issued":{"date-parts":[[2019]]}},
+  {"type":"webpage","title":"A page that does not exist","author":[{"literal":"Institute of Examples"}],"URL":"https://example.org/invented","accessed":{"date-parts":[[2026,1,2]]},"issued":{"date-parts":[[2025]]}},
+  {"type":"thesis","title":"On imaginary data","author":[{"family":"Ali","given":"Noor"}],"genre":"PhD thesis","publisher":"University of Nowhere","issued":{"date-parts":[[2021]]}},
+  {"type":"legal_case","title":"Example v. Invented","authority":"Supreme Court of Nowhere","volume":"1","page":"2","issued":{"date-parts":[[2001]]}}
+]

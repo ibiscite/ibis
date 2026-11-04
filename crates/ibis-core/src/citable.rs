@@ -210,7 +210,11 @@ pub fn is_variable(name: &str) -> bool {
 /// shares and application links (`zotero://`, …) are private to this device.
 pub fn public_url(url: &str) -> bool {
     let url = url.trim();
-    if url.is_empty() || url.contains('\\') || url.chars().any(|c| c.is_control() || c.is_whitespace()) {
+    if url.is_empty()
+        || url.contains('\\')
+        || url.chars().any(|c| c.is_control() || c.is_whitespace())
+        || private_host(url)
+    {
         return false;
     }
     match url.split_once(':') {
@@ -235,6 +239,47 @@ pub fn public_url(url: &str) -> bool {
                 && top.bytes().all(|b| b.is_ascii_alphabetic())
         }
     }
+}
+
+/// Whether a web address carries a login or names this computer or its network.
+/// A reader elsewhere could not open it, and it says where the person keeps files.
+fn private_host(url: &str) -> bool {
+    let address = url.split_once("://").map_or(url, |(_, rest)| rest);
+    let authority = address.split(['/', '?', '#']).next().unwrap_or_default();
+    if url.contains("://") && authority.contains('@') {
+        return true;
+    }
+    let bracketed = authority.strip_prefix('[').and_then(|rest| rest.split_once(']'));
+    let host = bracketed.map_or_else(|| authority.split(':').next().unwrap_or_default(), |(host, _)| host);
+    let host = host.to_ascii_lowercase();
+    let local_name = ["localhost", "local", "internal", "lan", "home"]
+        .iter()
+        .any(|name| host == *name || host.ends_with(&format!(".{name}")));
+    local_name
+        || host.parse::<std::net::IpAddr>().is_ok_and(|address| match address {
+            std::net::IpAddr::V4(address) => {
+                address.is_loopback() || address.is_private() || address.is_link_local() || address.is_unspecified()
+            }
+            std::net::IpAddr::V6(address) => address.is_loopback() || address.is_unspecified(),
+        })
+}
+
+/// Whether text from a note points at this device anywhere in it. Notes can hold
+/// anything, and such a line is not something the person wrote to be printed.
+fn points_to_device(value: &str) -> bool {
+    value.split_whitespace().any(|word| {
+        let word = word.trim_matches(|c: char| "<>()[]{},;.\"'".contains(c));
+        let bytes = word.as_bytes();
+        let unix_path = (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2;
+        let windows_path = word.starts_with("\\\\")
+            || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"));
+        let lower = word.to_ascii_lowercase();
+        unix_path
+            || windows_path
+            || lower.starts_with("file:/")
+            || lower.starts_with("zotero:/")
+            || (lower.contains("://") && !public_url(word))
+    })
 }
 
 const DOCUMENT_SUFFIXES: &[&str] = &[
@@ -374,7 +419,7 @@ fn apply_overrides(fields: &mut Map<String, Value>, note: &str) {
             break;
         };
         let value = js_trim(value);
-        if value.is_empty() {
+        if value.is_empty() || points_to_device(value) {
             continue;
         }
         if key == "type" {

@@ -643,6 +643,22 @@ test("Change Last Citation replaces the old citation only when it is selected", 
   expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 3]");
 });
 
+test("⌘E changes the last citation from inside More, and More closes", async () => {
+  const harness = await pastedOnce();
+  harness.document.selection = [7, 11];
+  await act(async () => { await harness.reopen(); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
+  expect(screen.getByRole("menuitem", { name: /Change Last Citation/ })).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", code: "KeyE", ctrlKey: true }); });
+  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(document.activeElement).toBe(searchBox());
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a, p. 3] ends.");
+});
+
 test("with nothing selected the changed citation is copied, the document is untouched and the notice says so", async () => {
   const harness = await pastedOnce();
   await act(async () => { await harness.reopen(); });

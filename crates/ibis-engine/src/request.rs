@@ -95,9 +95,31 @@ pub struct KeyCitationRequest {
     pub output_locale: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// A page of the style list: the curated styles first, then the rest by id.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct StylesRequest {}
+pub struct StylesRequest {
+    /// Words from a style's title or id; every word must match.
+    #[serde(default)]
+    pub query: Option<String>,
+    #[serde(default = "default_styles_limit")]
+    #[schemars(range(min = 1, max = 20_000))]
+    pub limit: usize,
+    #[serde(default)]
+    pub offset: usize,
+}
+impl Default for StylesRequest {
+    fn default() -> Self {
+        Self {
+            query: None,
+            limit: default_styles_limit(),
+            offset: 0,
+        }
+    }
+}
+fn default_styles_limit() -> usize {
+    100
+}
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]

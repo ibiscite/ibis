@@ -111,7 +111,7 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
     else if (ready && !app && !onceOnly && (!pickerDestination || destination)) { chooseDefault(choice); setOnce(null); }
   };
   /** This citation's format, and only this one: consumed like "Just this once". */
-  const useOnce = (choice: Choice) => {
+  const chooseOnce = (choice: Choice) => {
     choices.current += 1;
     setOnce(choice);
     setOnceOnly(true);
@@ -160,6 +160,6 @@ export function useDestination({ pickerDestination, rememberAppOutput }: Destina
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
   const shouldAsk = askPaste || Boolean(rememberAppOutput && destination?.app_id && destination.output_question && !remembered && once === null);
   return { appId: destination?.app_id ?? null, app: rememberAppOutput ? app : null, format, ready, saving, scope, shouldAsk, remembered: remembered !== null, read, choose,
-    onceOnly, useOnce, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
+    onceOnly, chooseOnce, toggleOnce: () => { choices.current += 1; setOnceOnly((old) => !old); }, copyToken, isCurrentCopy, consumeOnce, restoreAutomatic, useDefault,
     askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }

@@ -22,7 +22,7 @@
 @keyframes about-said { from { opacity: 0; } }
 .ui-about-links { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-1); }
 .ui-about-free { margin: 0; text-align: center; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
-.ui-about-line, .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
+.ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .ui-quiet-status { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; }
 [data-empty-action] .footer-action { animation: ibis-refusal var(--dur-panel) var(--ease); }
 @keyframes ibis-refusal { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(calc(-1 * var(--space-1))); } 75% { transform: translateX(var(--space-1)); } }

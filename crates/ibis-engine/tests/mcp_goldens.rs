@@ -35,7 +35,11 @@ fn golden_cases_replay_through_mcp() {
                 .map(|item| item.object.clone())
                 .collect();
             engine
-                .publish_library(library, Arc::new(Snapshot::new(objects).unwrap()))
+                .publish_library(
+                    library,
+                    ibis_engine::LibraryKind::Snapshot,
+                    Arc::new(Snapshot::new(objects).unwrap()),
+                )
                 .unwrap();
         }
         let reply = mcp::handle(
@@ -56,12 +60,18 @@ fn golden_cases_replay_through_mcp() {
         }) {
             Some((data, content)) => {
                 assert_eq!(answer["isError"], false, "{}", case.name);
-                let mut expected = json!({"text": content.text, "notices": data.notices, "losses": data.losses});
+                let mut expected = json!({
+                    "text": content.text, "notices": data.notices, "losses": data.losses,
+                    "provenance": answer["structuredContent"]["provenance"],
+                });
                 // Nonempty warnings are part of citation feedback, including
                 // APA's sentence-case reminder for the bibliography case.
                 // Keep the established response shape for clean citations.
                 if !data.warnings.is_empty() {
                     expected["warnings"] = json!(data.warnings);
+                }
+                if let Some(language) = &data.language {
+                    expected["language"] = json!(language);
                 }
                 assert_eq!(answer["structuredContent"], expected, "{}", case.name);
                 let text: Value = serde_json::from_str(answer["content"][0]["text"].as_str().unwrap()).unwrap();
@@ -97,7 +107,7 @@ fn arguments(request: &CitationRequest) -> Option<Value> {
         return None;
     }
     let mut arguments = json!({
-        "items": request.items.iter().map(|item| json!({"id": item.item})).collect::<Vec<_>>(),
+        "items": request.items.iter().map(|item| json!({"ref": mcp::reference(&item.item)})).collect::<Vec<_>>(),
         "form": request.form,
     });
     match &request.output {

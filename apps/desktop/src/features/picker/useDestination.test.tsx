@@ -33,7 +33,7 @@ test("the format a changed citation was written in applies once and is never rem
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => writer, rememberAppOutput: remember }, options()));
   act(() => result.current.read());
   await waitFor(() => expect(result.current.ready).toBe(true));
-  act(() => result.current.useOnce("cite"));
+  act(() => result.current.chooseOnce("cite"));
   expect(result.current.format).toBe("cite");
   act(() => result.current.choosePaste("copy-only"));
   await waitFor(() => expect(remember).toHaveBeenCalledOnce());
