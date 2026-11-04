@@ -118,7 +118,7 @@ impl SessionReferences {
         self.lock().add(items);
     }
 
-    fn items(&self) -> Vec<ItemRef> {
+    pub(crate) fn items(&self) -> Vec<ItemRef> {
         self.lock().items.clone()
     }
 }

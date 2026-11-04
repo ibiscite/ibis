@@ -21,9 +21,13 @@ pub(crate) struct Copied {
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     pub(crate) delivery: Option<u32>,
-    /// What was cited, for the session's list; stays on this side of the bridge.
+    /// What was cited, for the session's list and the project check; stays
+    /// on this side of the bridge.
     #[serde(skip)]
     pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
+    /// The output emits citation keys, so a project bibliography applies.
+    #[serde(skip)]
+    pub(crate) key_output: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
@@ -175,6 +179,7 @@ pub(crate) async fn preview_file_citation(
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
     editor: State<'_, crate::editor_endpoint::Pending>,
+    project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     let (file, generation) = {
@@ -193,8 +198,19 @@ pub(crate) async fn preview_file_citation(
     };
     let reservation = file.reserve_preview_with(cancel);
     let editor = editor.current();
+    // Only a key output depends on what the project's file holds. A waiting
+    // editor names its own output.
+    let key_output = editor.as_ref().map_or(style.is_none(), |request| {
+        matches!(request.output, ibis_core::contract::OutputSpec::Key { .. })
+    });
+    let project = project.current().filter(|_| key_output);
+    let chosen: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        file.preview_for(reservation, items, format, style, editor.as_ref())
+        let mut preview = file.preview_for(reservation, items, format, style, editor.as_ref())?;
+        if let Some(project) = &project {
+            preview.warnings.extend(file.project_warnings(&chosen, project));
+        }
+        Ok(preview)
     })
     .await
     .map_err(|_| CommandError::from("The preview is unavailable. Try again."))?;
@@ -223,6 +239,8 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
     )
 }
 
+// Each managed state is its own argument: Tauri hands them to commands that way.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(
@@ -232,18 +250,11 @@ pub(crate) fn copy_file_citation(
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
     editor: State<'_, crate::editor_endpoint::Pending>,
+    project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
-    // The library lock is held only to take the engine; the engine's own
-    // commit barrier guards the write.
-    let file = {
-        let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
-        if library.opening {
-            return Err("The library is loading. Try again after it opens.".into());
-        }
-        library.file.clone().ok_or(CommandError::SnapshotChanged)?
-    };
+    let file = open_file(&library)?;
     // A waiting editor gets the citation in place of the clipboard. It is
     // handed over under the same commit barrier, and nothing is pasted.
     if let Some(request) = editor.current() {
@@ -279,22 +290,53 @@ pub(crate) fn copy_file_citation(
         }
         return Ok(copied);
     }
-    let mut delivery = None;
-    let mut copied = file.copy(&ticket, &content_hash, |content| {
+    let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
+    commit_copy(&file, &ticket, &content_hash, &project, &session, |content| {
         #[cfg(target_os = "windows")]
-        {
+        let delivery = {
             let (token, sequence) = clipboard::write(&app, content)?;
-            delivery = crate::paste::remember_copy(&app, attempt, sequence, token);
-        }
+            crate::paste::remember_copy(&app, attempt, sequence, token)
+        };
         #[cfg(not(target_os = "windows"))]
-        {
-            delivery = clipboard::write(&app, content, replaces.as_deref())?;
-        }
+        let delivery = clipboard::write(&app, content, replaces.as_deref())?;
+        Ok(delivery)
+    })
+}
+
+/// The open library's engine. The lock is held only to take it; the engine's
+/// own commit barrier guards the write.
+fn open_file(
+    library: &Mutex<Library>,
+) -> Result<std::sync::Arc<crate::library::engine_file::FileLibrary>, CommandError> {
+    let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+    if library.opening {
+        return Err("The library is loading. Try again after it opens.".into());
+    }
+    library.file.clone().ok_or(CommandError::SnapshotChanged)
+}
+
+/// Commit the shown citation through `write`, which returns its delivery,
+/// then say what the copy needs said and remember what it cited.
+pub(crate) fn commit_copy(
+    file: &crate::library::engine_file::FileLibrary,
+    ticket: &str,
+    content_hash: &str,
+    project: &crate::project::ProjectBibliography,
+    session: &crate::session_references::SessionReferences,
+    write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
+) -> Result<Copied, CommandError> {
+    let mut delivery = None;
+    let mut copied = file.copy(ticket, content_hash, |content| {
+        delivery = write(content)?;
         Ok(())
     })?;
     copied.delivery = delivery;
-    tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
-        .cited(std::mem::take(&mut copied.cited));
+    // As at the preview: a key not plainly in the file keeps the picker open
+    // and says why. The check and the session list each read what was cited,
+    // so neither can leave the other with nothing.
+    let warnings = file.copy_project_warnings(&copied.cited, copied.key_output, project.current().as_ref());
+    copied.warnings.extend(warnings);
+    session.cited(copied.cited.clone());
     Ok(copied)
 }
 

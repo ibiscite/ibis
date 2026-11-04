@@ -466,7 +466,9 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 | Several occurrences | Key appears more than once; inspect its locations |
 | Conflicting fields | Key may name another reference; compare the entries |
 
-- **Copy bibliography entry** keeps the key, never edits a source, and supplies a self-contained entry or explains how to export one.
+Built for key outputs: **More › Check Against a Project Bibliography…** chooses the file, and each result row then says its state in words, naming the file ("In thesis.bib", or with "(last good copy)" when the newest read failed or was damaged), with the lines to look at for a repeated or doubtful key. The file is read when chosen, at launch and when the picker opens; nothing polls. More names the file, what is wrong with it if anything, and offers **Stop Checking thesis.bib**. Anything but "In" joins the citation's warnings, in the preview and in the copy's own result, so Enter copies, says why and stays open, as for any warning. Copy Entry says the entry comes as the file has it, `file` and `note` fields included. Formatted citations show no marks: a style has no key to check.
+
+- **Copy bibliography entry** (More, on a missing row) keeps the key, never edits a source, and supplies a self-contained entry or explains how to export one.
 - **Find a passage**: search Zotero highlights, notes and comments, labelled Highlight, Comment or Note; a note is never treated as a quotation from a guessed reference; image-only annotations show "No text quotation".
 - **Open passage** opens a verified Zotero annotation, or says it is page-only. Physical and printed pages show apart ("PDF page 8 · cite p. 417"); an unknown printed page shows "Citation page unknown".
 - **Copy quote with reference**: the stored text, printed page, reference and link as plain text or escaped Markdown; comments stay separate; nothing summarised or truncated.

@@ -13,14 +13,16 @@ import type { useShortcutStatus } from "./useShortcutStatus";
 import type { useOperations } from "./useOperations";
 import type { usePointerSelection } from "../../pointerSelection";
 import type { useCitationRows } from "./useCitationRows";
-import type { Density } from "../../api";
+import type { Density, ProjectStatus } from "../../api";
 
 const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck,
+  resultArea, setQuery, peck, project,
 }: {
+  /** The bibliography rows are marked against; null for formatted output. */
+  project: ProjectStatus | null;
   setQuery: (value: string) => void;
   peck?: boolean;
   api: PickerApi;
@@ -74,7 +76,7 @@ export function PickerResults({
     </p>
     {busy && emptyState}
     {showCitations && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
-      libraryOf={severalLibraries ? libraryOf : noLibrary} onMouseMove={pointer.onMouseMove}
+      libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}

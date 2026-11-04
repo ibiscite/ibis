@@ -282,6 +282,36 @@ fn command() -> Command {
                         .action(ArgAction::Append)
                         .help("Leave out the author of the key before it"),
                 ),
+            Method::Project => subcommand
+                .about("Check citation keys against a project's own .bib, read-only")
+                .after_help(
+                    "Each exact key is reported as in the file, missing, repeated, doubtful or not checkable.\n\
+                     Name a library too, and a key whose entry disagrees with it is flagged.\n\n\
+                     Examples:\n  \
+                     ibis project thesis.bib vale2024lanterns fen2023clouds\n  \
+                     ibis project thesis.bib vale2024lanterns --file refs.bib --json",
+                )
+                .arg(
+                    Arg::new("bib")
+                        .value_name("BIB_FILE")
+                        .required(true)
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .help("The .bib the document compiles against; it is never changed"),
+                )
+                .arg(
+                    Arg::new("keys")
+                        .value_name("KEY")
+                        .required(true)
+                        .num_args(1..)
+                        .help("Citation keys, exactly as the document uses them"),
+                ),
+            Method::Entry => subcommand
+                .about("Print a reference's original BibTeX entry, with what it needs to stand alone")
+                .after_help(
+                    "The entry comes as written, key included, with its @string, crossref and xdata.\n\n\
+                     Example:\n  ibis entry vale2024lanterns --file refs.bib >> thesis.bib",
+                )
+                .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
                 .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
@@ -832,7 +862,7 @@ fn open_libraries(
     let called = matches
         .subcommand_matches("call")
         .and_then(|call| call.get_one::<String>("method"));
-    let reads_app = matches!(name, "search" | "show" | "cite" | "libraries")
+    let reads_app = matches!(name, "search" | "show" | "cite" | "entry" | "libraries")
         || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
@@ -1159,6 +1189,31 @@ fn run_method<R: BufRead>(
             result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
             return Ok(Execution::Result(result, Some(citing)));
+        }
+        Method::Project => {
+            let path = args.get_one::<PathBuf>("bib").cloned().unwrap_or_default();
+            let keys: Vec<&String> = args.get_many::<String>("keys").into_iter().flatten().collect();
+            let result = explain(
+                engine.dispatch(method, &json!({"path":path,"keys":keys}), &cancel),
+                |EngineError { code, .. }| match code {
+                    ErrorCode::BadInput => "at most 1000 keys can be checked at once.".into(),
+                    code => human::code_sentence(code).into(),
+                },
+            )?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                None,
+            ));
+        }
+        Method::Entry => {
+            let key = args.get_one::<String>("key").cloned().unwrap_or_default();
+            let result = engine
+                .dispatch(method, &json!({"item":{"by":"key","value":key}}), &cancel)
+                .map_err(|error| key_failure(engine, &key, error, libraries_open()))?;
+            return Ok(Execution::Result(
+                human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
+                None,
+            ));
         }
         Method::Styles => {
             let words: Vec<&str> = args

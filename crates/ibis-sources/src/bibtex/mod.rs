@@ -19,6 +19,7 @@
 mod convert;
 mod dates;
 mod lexer;
+pub(crate) mod project;
 mod resolve;
 
 use std::cell::Cell;

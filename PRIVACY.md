@@ -8,9 +8,13 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
 - **Reads:** files passed to the `ibis` command, the desktop library you choose,
   or your selected Zotero libraries through Zotero's local API. First-run setup
   looks for `.bib` names and modification times in Documents, Desktop, Downloads
-  and a few levels of subfolders; it opens a file only after you choose it.
+  and a few levels of subfolders; it opens a file only after you choose it. The
+  project bibliography you choose is read when chosen, at launch and when the
+  picker opens, and is never changed; only its file name reaches the picker window.
 - **Clipboard:** copying writes the citation to your system clipboard. Clipboard
   history, cloud clipboard and other apps may keep it under your system settings.
+  Copy Entry writes the entry as your file has it, including any `file` or `note`
+  field, so check it before adding it to a shared bibliography.
 - **References used this session:** which references you copied, by identity only,
   in memory until you quit or reset the list. Ibis writes it nowhere unless you
   save the bibliography, to the file you choose.

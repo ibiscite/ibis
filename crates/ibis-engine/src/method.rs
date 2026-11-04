@@ -10,16 +10,20 @@ pub enum Method {
     Search,
     Show,
     Cite,
+    Project,
+    Entry,
     Styles,
     Schema,
     Call,
 }
 impl Method {
-    pub const ALL: [Self; 7] = [
+    pub const ALL: [Self; 9] = [
         Self::Libraries,
         Self::Search,
         Self::Show,
         Self::Cite,
+        Self::Project,
+        Self::Entry,
         Self::Styles,
         Self::Schema,
         Self::Call,
@@ -30,6 +34,8 @@ impl Method {
             Self::Search => "search",
             Self::Show => "show",
             Self::Cite => "cite",
+            Self::Project => "project",
+            Self::Entry => "entry",
             Self::Styles => "styles",
             Self::Schema => "schema",
             Self::Call => "call",
