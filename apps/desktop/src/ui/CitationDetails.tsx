@@ -29,7 +29,7 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
   return <div className="citation-details">
     {shared ? <p className="citation-note">{shared}</p> : <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{text.form}</span>
-      <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} label={text.form} value={text.forms.find((option) => option.value === current)?.label ?? text.none} selectedKey={current ?? ""}
+      <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} placement="bottom start" label={text.form} value={text.forms.find((option) => option.value === current)?.label ?? text.none} selectedKey={current ?? ""}
         sections={[{ id: "forms", note: choices === "failed" ? text.examplesUnavailable : undefined, items: text.forms.map((option) => {
           const choice = answer?.forms.find((choice) => choice.form === option.value);
           return { id: option.value, label: option.label, sample: choice?.example ?? undefined, note: choice?.reason ?? undefined, disabled: Boolean(choice?.reason) };
@@ -40,7 +40,7 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
     </div>}
     <TextField className="citation-field" value={page} onChange={onPageChange}>
       <Label className="citation-label">{text.page}</Label>
-      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.none} onKeyDown={(event) => {
+      <Input ref={pageRef} autoFocus={autoFocus} placeholder={text.pagePlaceholder} onKeyDown={(event) => {
         if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
       }} />
       <Text slot="description" className="visually-hidden">{text.pageHint}</Text>

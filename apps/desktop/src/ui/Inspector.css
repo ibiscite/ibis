@@ -13,8 +13,10 @@
 /* Under the column, the document starts after a divider like the column's own. */
 .inspector-document { padding-block: var(--space-1); }
 .inspector-document::before { content: ""; display: block; margin-block-end: var(--space-3); border-top: var(--border-width) solid var(--separator); }
-.inspector-heading { flex: none; display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); min-height: var(--control-h); }
-.inspector-heading h2 { min-width: 0; margin: 0; overflow: hidden; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); text-overflow: ellipsis; white-space: nowrap; }
+/* The full title, once: two lines, then an ellipsis; × stays level with its first line. */
+.inspector-heading { flex: none; display: flex; align-items: start; justify-content: space-between; gap: var(--space-2); min-height: var(--control-h); }
+.inspector-heading h2 { min-width: 0; margin: 0; padding-block: calc((var(--control-h) - var(--type-body-line)) / 2) 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
+.inspector-column > .inspector-byline { margin: calc((var(--type-body-line) - var(--control-h)) / 2) 0 var(--space-1); overflow: hidden; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); text-overflow: ellipsis; white-space: nowrap; }
 .inspector-heading .ui-icon-button { flex: none; margin-inline-end: calc(-1 * var(--space-1)); }
 .inspector-column > p { margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
 .inspector-column > h3 { margin: 0; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }

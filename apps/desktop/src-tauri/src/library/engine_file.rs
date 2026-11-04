@@ -1075,7 +1075,7 @@ impl FileLibrary {
             } else if bare_keys {
                 Some("Keys only has no name forms. Choose another output.")
             } else if textcite && form == CitationForm::Normal {
-                Some("Textcite puts the name in the sentence. Choose Parencite for Name in brackets.")
+                Some("Not with \\textcite")
             } else {
                 None
             };
@@ -1097,9 +1097,9 @@ impl FileLibrary {
                     if example.chars().count() > 256 { format!("{}…", example.chars().take(255).collect::<String>()) } else { example }
                 }),
                 reason: (!supported).then(|| match form {
-                    CitationForm::YearOnly => "This output cannot show this reference’s year in this group. Choose another style or cite it alone.",
-                    CitationForm::Narrative => "This output cannot put this reference’s name in the sentence in this group. Cite it alone or choose another output.",
-                    _ => "This reference cannot be expressed in this output. Choose another output.",
+                    CitationForm::YearOnly => "Only when cited alone",
+                    CitationForm::Narrative => "Only when cited alone",
+                    _ => "Not in this output",
                 }.into()),
             });
         }

@@ -296,7 +296,7 @@ function chooseFormat(value: string) {
 function formatValue() {
   const shown = formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
   const choices = [...Object.keys(copyFormatNames), ...Object.keys(STYLE_NAMES).map((id) => `style:${id}`)] as Choice[];
-  return choices.find((choice) => shown === `${outputName(choice)} · Default` || shown === `${outputName(choice)} · This paste`);
+  return choices.find((choice) => shown === `${outputName(choice)}` || shown === `${outputName(choice)} · This paste`);
 }
 
 
@@ -3484,7 +3484,7 @@ test("replacing an engine preview ignores the older style's late result", async 
 test.each(["p", "З"])("the keep-open shortcut toggles from Format and leaves it open (%s)", async (key) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   const filter = screen.getByRole("searchbox");
   fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1));
@@ -3499,7 +3499,7 @@ test.each([
 ])("Format ignores an isolated invalid keep-open key (%s, %j)", async (key, invalid) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   fireEvent.keyDown(screen.getByRole("searchbox"), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
   // Let a wrongly queued command finish; another key must not cancel the probe.
   await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
@@ -3512,7 +3512,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   const saved: unknown[] = [];
   const calls = backend({ set_picker_preferences: (args) => { saved.push(args.copyFormat); return null; } });
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   expect(screen.getByRole("group", { name: "Key formats" })).toBeTruthy();
   expect(screen.getByRole("group", { name: "Citation styles" })).toBeTruthy();
   expect(screen.getAllByRole("menuitemradio")).toHaveLength(12);
@@ -3520,7 +3520,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   fireEvent.click(screen.getByRole("menuitemradio", { name: "\\autocite" }));
   await waitFor(() => expect(saved).toContain("autocite"));
   expect(calls).not.toContain("copy_file_citation");
-  expect(formatButton("Copy as \\autocite · Default")).toBeTruthy();
+  expect(formatButton("Copy as \\autocite")).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
@@ -3528,7 +3528,7 @@ test("engine citation styles are reachable and save their choice without copying
   const saved = vi.fn(() => null);
   backend({ set_picker_preferences: saved });
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   const filter = screen.getByRole("searchbox");
   fireEvent.keyDown(filter, { key: "End" });
   const mla = screen.getByRole("menuitemradio", { name: /MLA/ });
@@ -3545,7 +3545,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   render(<App />);
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(search, { target: { value: "sleep" } });
-  const trigger = await waitFor(() => formatButton("Copy as Pandoc key · Default"));
+  const trigger = await waitFor(() => formatButton("Copy as Pandoc key"));
   fireEvent.click(trigger);
   const filter = screen.getByRole("searchbox");
   fireEvent.change(filter, { target: { value: "APA" } });
@@ -3570,7 +3570,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   render(<App />);
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(search, { target: { value: "sleep" } });
-  const trigger = await waitFor(() => formatButton("Copy as Pandoc key · Default"));
+  const trigger = await waitFor(() => formatButton("Copy as Pandoc key"));
   fireEvent.click(trigger);
   const filter = screen.getByRole("searchbox");
   fireEvent.change(filter, { target: { value: "Typst" } });
@@ -3587,7 +3587,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
 test.each(["k", "/"])("hiding the picker closes what Format's Ctrl+%s left open", async (key) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
@@ -3602,7 +3602,7 @@ test("Format shortcut opening gives Escape a More invoker at once", async () => 
   backend();
   render(<App />);
   const more = screen.getByRole("button", { name: /^More/ });
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key · Default")));
+  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc key")));
   let popover: Element | undefined;
   const focusMore = more.focus.bind(more);
   const focus = vi.spyOn(more, "focus").mockImplementation(() => {
@@ -3693,7 +3693,7 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();
-  expect(screen.getByRole("alert").textContent).toContain("Check Now in Settings › About");
+  expect(screen.getByRole("alert").textContent).toContain("Check for Updates in Settings › About");
 });
 
 test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {

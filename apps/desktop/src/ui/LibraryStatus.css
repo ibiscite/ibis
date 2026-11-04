@@ -3,7 +3,7 @@
 /* A notice stands in for the status over the same box, so the footer's controls never move. */
 .library-status-controls { position: relative; }
 .library-status-controls:has(> .notice-slot) > :not(.notice-slot) { visibility: hidden; }
-.library-status-controls > .notice-slot { --notice-start: calc(var(--status-dot) + var(--space-3)); position: absolute; inset: 0; }
+.library-status-controls > .notice-slot { --notice-start: var(--title-start); position: absolute; inset: 0; }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
 /* The quiet button's padding sits in the footer's inset, so the dot stays on

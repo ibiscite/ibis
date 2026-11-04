@@ -34,11 +34,14 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 /* Four starts, row-major, at every text size. Natural row heights and wrapping
    keep both columns reachable without introducing a nested scroller. */
 .choice-screen[data-grid] { max-width: 37.5rem; }
-.choice-screen[data-grid] .choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2); }
-.choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: var(--space-2); margin: 0; min-height: 4rem; background: var(--fill-control); padding: var(--space-3); }
+/* Every card is as tall as the tallest, and each glyph sits level with its title,
+   so a card with an extra fact never stands out or moves its icon. */
+.choice-screen[data-grid] .choice-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: 1fr; gap: var(--space-2); }
+.choice-screen[data-grid] .choice-row { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-rows: min-content; align-items: start; align-content: center; gap: 0 var(--space-2); margin: 0; min-height: 4rem; background: var(--fill-control); padding: var(--space-3); }
+.choice-screen[data-grid] .choice-tile { grid-row: 1; height: var(--type-body-line); }
 .choice-screen[data-grid] .choice-tile { background: transparent; }
 .choice-screen[data-grid] .result-title { font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.choice-screen[data-grid] .choice-tag { grid-column: 2; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.choice-screen[data-grid] .choice-tag { grid-column: 2; max-width: 100%; margin-top: var(--space-1); white-space: normal; overflow-wrap: anywhere; text-align: start; }
 .choice-screen[data-grid] .choice-row[data-focused] { background: var(--selected); }
 @media (hover: hover) {
   .choice-screen[data-grid] .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-control-hover); }

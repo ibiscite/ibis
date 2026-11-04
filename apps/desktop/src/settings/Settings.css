@@ -1,8 +1,12 @@
 /* Page content; the shared SettingsLayout owns the window and its scrollers. */
+/* The title stays put while the page scrolls under it, as System Settings keeps its
+   title in the toolbar; a hairline appears once something is beneath it. */
 .settings-page-title {
-  margin: 0; overflow-wrap: anywhere;
+  position: sticky; inset-block-start: 0; z-index: 1; background: var(--surface);
+  margin: 0 calc(-1 * var(--space-6)); padding: 0 var(--space-6) var(--space-2); overflow-wrap: anywhere;
   font-size: var(--type-display-size); line-height: var(--type-display-line); font-weight: 700;
 }
+.settings-page[data-more-above] > .settings-page-title { box-shadow: 0 var(--border-width) 0 var(--separator); }
 .settings-description { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); margin: 0; }
 .settings-problem { margin: 0; color: var(--text); }
 /* The paste permission guide (#1292): a picture of the switch to turn on,

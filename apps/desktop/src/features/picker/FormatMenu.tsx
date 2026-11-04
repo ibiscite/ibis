@@ -51,6 +51,9 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
     : app ? source === "remembered" ? pickerText.formatRemembered(app) : pickerText.formatSuggested(app) : pickerText.formatNoApp;
   const next = writingProject ? writingProjectText.pick : source === "held" ? pick === "app" ? pickerText.pickToRemember : pick === "default" ? pickerText.pickToSetDefault : ""
     : pick === "paste" ? pickerText.pickThisPaste : pick === "default" ? pickerText.pickDefault : source === "remembered" ? pickerText.pickReplaces : pickerText.pickRemembered;
-  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
+  // One line says where a pick goes; the full reason is the menu's description.
+  const heading = writingProject ? pickerText.forApp(writingProject.name) : pick === "paste" ? pickerText.pickHeadingThisPaste
+    : pick === "default" || !app ? pickerText.pickHeadingDefault : pickerText.forApp(app);
+  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
     filterLabel={pickerText.filterFormats} onAction={(key) => key === "writing-projects" ? onWritingProjects?.() : key === "paste" || key === "copy-only" ? onPasteChange?.(key) : onChange(key as Choice)} returnFocusRef={searchRef} /></>;
 }

@@ -54,6 +54,8 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
     await page.waitForTimeout(200);
   }
   await page.screenshot({ path: `${out}/${scenario}-${theme}${mode.suffix}.png` });
+  // The layout rules (canvas/geometry.ts) hold in every mode and theme.
+  for (const broken of await page.evaluate(() => window.IbisCanvas.geometry())) errors.push(`layout ${broken}`);
   pictures++;
   if (errors.length) failures.push(`${scenario}/${theme}${mode.suffix}: ${errors[0]}`);
   await page.close();
