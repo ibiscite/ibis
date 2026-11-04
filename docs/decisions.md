@@ -825,7 +825,8 @@ Selection grants no paste permission. Explicit editor and command-line requests
 keep their own output and do not change the GUI selection. Project switches
 replace format and bibliography together and retire pending copy authority;
 failed saves keep the previous context whole. Search continues across connected
-libraries. The checked bibliography remains one read-only file, not proof about
+libraries by default; optional project search defaults are planned under
+decision 0028. The checked bibliography remains one read-only file, not proof about
 the actual document. Implementation and acceptance scenarios: #1697.
 
 2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
