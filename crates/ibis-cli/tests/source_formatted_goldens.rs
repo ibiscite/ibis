@@ -74,8 +74,7 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
             engine.clone(),
             vec![
                 "ibis".into(),
-                "search".into(),
-                "".into(),
+                "libraries".into(),
                 "--file".into(),
                 path.clone(),
                 "--json".into(),

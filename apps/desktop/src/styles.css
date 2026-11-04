@@ -136,8 +136,8 @@ main > footer { grid-area: footer; }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
-   Coarse targets and wrapped actions grow the band instead of clipping. */
-.library-bar { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
+   Coarse targets grow the band instead of clipping; its columns are in PickerFooter.css. */
+.library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
 /* The dot sits at the footer's edge with the text 12 px after it, as system
@@ -163,8 +163,8 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 .status-dot[data-health="stop"] { background: var(--status-error); }
 
 
-/* More stays at the far end even when the footer wraps, so its menu opens inward. */
-.more { position: relative; margin-inline-start: auto; }
+/* More keeps the last column, so its menu opens inward. */
+.more { position: relative; }
 
 @media (prefers-contrast: more) {
 
@@ -245,11 +245,11 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 }
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
-   keys. They stay in narrow windows and wrap instead of overlapping. */
+   keys. They stay in narrow windows and truncate instead of overlapping. */
 .enter-hints:empty { display: none; }
 .enter-hints { display: inline-flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-4); min-width: 0; color: var(--text-secondary); font-size: var(--type-label-size); overflow-wrap: anywhere; }
-/* Corners nest: the key sits 4 px inside the action on three sides, and the
-   action ends on the same edge as the rows, 8 px inside the window's corner. */
+/* Corners nest: the key sits 4 px inside the action on three sides, and More
+   ends on the same edge as the rows, 8 px inside the window's corner. */
 /* At large system text sizes the label and caps may need separate lines;
    their visible content must stay inside the button's actual hit target. */
 footer .key-hint-label { display: inline; }

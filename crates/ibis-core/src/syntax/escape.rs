@@ -135,6 +135,24 @@ fn latex_character(out: &mut String, c: char) {
     }
 }
 
+/// ConTeXt text inside a brace-protected setting, where the outer braces keep
+/// commas and brackets literal. Checked against ConTeXt itself: its letter
+/// commands for these specials do not survive a citation's text; \char does.
+pub(crate) fn context_escape(text: &str) -> String {
+    let mut out = String::new();
+    for c in text.chars() {
+        match c {
+            '\\' | '{' | '}' | '^' | '~' | '|' => out.push_str(&format!("\\char{}{{}}", u32::from(c))),
+            '#' | '$' | '%' | '&' | '_' => {
+                out.push('\\');
+                out.push(c);
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 pub(crate) fn typst_simple_label(key: &str) -> bool {
     // This ASCII subset is accepted by Typst's XID-based label grammar.
     // Other keys retain their exact identity through the string constructor.
@@ -235,11 +253,16 @@ pub(crate) fn key_fits(escaping: Escaping, key: &str) -> bool {
         Escaping::Myst => &['`', ';', '<', '>'],
         Escaping::MultiMarkdown => &['[', ']', '\\', '^'],
         Escaping::AsciiDoc => &['(', ')', '[', ']'],
+        // ConTeXt reads `a=b` in the citation's bracket as a setting, `a::b` as a
+        // dataset, `*` as every entry and `match(...)` or `tag(...)` as a search.
+        Escaping::Context => &['[', ']', '=', '%', '#', '\\', '~', '^', '$', '&', '|', '(', ')'],
         Escaping::Liquid => &['%', '"', '\''],
         Escaping::Org => &[';', '[', ']', ',', '"', '\\', '='],
         _ => &[],
     };
-    !key.contains(forbidden) && !(escaping == Escaping::Liquid && key.starts_with('-'))
+    !key.contains(forbidden)
+        && !(escaping == Escaping::Liquid && key.starts_with('-'))
+        && !(escaping == Escaping::Context && (key == "*" || key.contains("::")))
 }
 
 pub(crate) fn locator_fits(escaping: Escaping, locator: &Locator) -> bool {
