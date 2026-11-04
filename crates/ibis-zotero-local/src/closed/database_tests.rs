@@ -368,8 +368,8 @@ fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() 
         read_fixture(dir.path()).map(|snapshot| snapshot.owner)
     };
     let settings = "CREATE TABLE settings(setting TEXT,key TEXT,value,PRIMARY KEY(setting,key));";
-    let account = format!("{settings} INSERT INTO settings VALUES('account','userID',4242);");
-    assert_eq!(owner(&account), Ok(4242));
+    let signed_in = format!("{settings} INSERT INTO settings VALUES('account','userID',4242);");
+    assert_eq!(owner(&signed_in), Ok(4242));
     // Signed out, or a value Zotero would not report as a number.
     assert_eq!(owner(""), Ok(0));
     assert_eq!(owner(settings), Ok(0));
@@ -387,7 +387,7 @@ fn the_owner_is_the_account_the_local_api_names_from_the_first_top_level_item() 
     );
     // A standalone note or file is a top-level item; a trashed item, a child
     // and an annotation are not, and without one the API names owner 0.
-    let trashed = format!("{account} INSERT INTO deletedItems VALUES(10);");
+    let trashed = format!("{signed_in} INSERT INTO deletedItems VALUES(10);");
     assert_eq!(owner(&trashed), Ok(4242));
     let children = format!(
         "{trashed} INSERT INTO itemNotes VALUES(13,10,'',''); INSERT INTO itemAttachments VALUES(14,10,0,'','');"
