@@ -93,6 +93,11 @@ main > footer { grid-area: footer; }
   .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
 }
 [data-active] .result-tile { background: var(--on-selected-fill); }
+/* A resting result shows its type as a glyph alone: the plate appears only where the
+   tile does something (hover, selection: Add) or says something (cited). Every row
+   carrying the same grey square was chrome, not information. */
+#results [role="option"]:not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
+@media (hover: hover) { #results [role="option"][data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
 [role="option"][data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }

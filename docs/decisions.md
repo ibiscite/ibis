@@ -1392,6 +1392,12 @@ System Settings for its own window.
   repeated title and its separate document block, menu example columns (now a
   second line under the label), the format menu's two-line note (now one
   heading), the separate Check for Updates row, and Page following scroll.
+- **Chrome only where it acts** (same day, from the canvas pictures): a resting
+  result row has no tile plate, the footer's main action is quiet text with the
+  footer's one accent on its ↵ cap (as Raycast's), the search bar's format pop-up
+  is quiet like its neighbours, Settings cards separate by fill alone, and More
+  no longer repeats the footer's library line. Each removes an element that
+  repeated what something nearby already said.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

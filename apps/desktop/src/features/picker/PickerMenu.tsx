@@ -1,7 +1,6 @@
 import type { Ref, RefObject } from "react";
 import type { Density, ProjectStatus } from "../../api";
 import { keyLabel, keysFor } from "../../keys";
-import { LibraryDetail } from "../../LibraryStatusLine";
 import { densityNames, keyText, pickerText, sessionText } from "../../messages";
 import { isMac } from "../../platform";
 import { SourceIcon } from "../../ui/SourceAction";
@@ -38,7 +37,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       {/* Where the references come from and how fresh they are, read
           as the group's name when the menu is reached by keyboard. */}
       <MenuSection id="library" label={[lastOutcome && pickerText.lastOutcome(lastOutcome), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ")}
-        header={lastOutcome || libraryDetail ? <>{lastOutcome && <MenuDetail title={lastOutcome} />}{/* The age and problems live in the library menu; More names the library once. */}{libraryDetail && <LibraryDetail lines={[libraryDetail[0], null]} />}</> : undefined}>
+        // The footer's status already names the library right under this menu, so More
+        // shows it only in the section's name for screen readers, never a second time.
+        header={lastOutcome ? <MenuDetail title={lastOutcome} /> : undefined}>
         {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
       </MenuSection>
       <MenuSeparator />

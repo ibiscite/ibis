@@ -465,15 +465,14 @@ test("any pointer movement over an item highlights it, also after arrow keys", a
   expect(menu.isConnected).toBe(true);
 });
 
-test("rows keep equal insets, fit intrinsic labels to the viewport and wrap at its limit", () => {
+test("rows keep equal insets, fit intrinsic labels to the viewport and end in an ellipsis at its limit", () => {
   const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
   expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
   expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
   expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);/);
   expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
   expect(menuCss).toMatch(/\.menu-popover \{[^}]*width: max-content;/);
-  expect(menuCss).toMatch(/\.menu-label \{[^}]*white-space: normal;/);
-  expect(menuCss).not.toMatch(/\.menu-label \{[^}]*text-overflow: ellipsis/);
+  expect(menuCss).toMatch(/\.menu-label \{[^}]*text-overflow: ellipsis; white-space: nowrap;/);
   expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
   const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
   // The filter text and section headings start where the labels do.
