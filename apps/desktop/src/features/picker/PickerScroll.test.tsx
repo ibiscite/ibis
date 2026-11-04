@@ -5,9 +5,51 @@ import { PickerScroll } from "./PickerScroll";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-function Picker({ rows, notice, citationProblem, citationProblemIdentity, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; citationProblemIdentity?: object; extraNotice?: string; rows: number; generation?: number }) {
-  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblemIdentity}>{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
+function Picker({ rows, notice, citationProblem, citationProblemIdentity, contextNotice, contextNoticeIdentity, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; citationProblemIdentity?: object; contextNotice?: string; contextNoticeIdentity?: object; extraNotice?: string; rows: number; generation?: number }) {
+  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblemIdentity} contextNotice={contextNotice} contextNoticeIdentity={contextNoticeIdentity}>{contextNotice && <div className="notices project-context-status" role="status"><p>Thesis settings changed elsewhere. Using the current bibliography.</p><button>Apply Updates</button></div>}{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
 }
+
+test("new project context status is revealed once without focus changes, then keeps its reading place across updates", () => {
+  let noticeHeight = 120, resized = () => {};
+  vi.stubGlobal("ResizeObserver", class {
+    constructor(callback: () => void) { resized = callback; }
+    observe() {} disconnect() {}
+  });
+  const computed = window.getComputedStyle;
+  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
+    if (!node.matches(".results-area, .picker-content")) return computed(node);
+    const style = document.createElement("div").style;
+    style.overflowY = node.matches(".picker-content") ? "auto" : "visible";
+    return style;
+  });
+  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const middle = this.closest(".picker-content")!;
+    if (this.matches(".picker-content")) return new DOMRect(0, 80, 480, 120);
+    if (this.matches(".project-context-status")) return new DOMRect(24, 92 - middle.scrollTop, 432, noticeHeight);
+    if (this.matches('[role="option"]')) return new DOMRect(8, 116 + (middle.querySelector(".project-context-status") ? noticeHeight : 0) - middle.scrollTop, 464, 58);
+    return new DOMRect();
+  });
+  const rendered = render(<Picker rows={14} />);
+  const middle = rendered.container.querySelector<HTMLElement>(".picker-content")!;
+  const search = rendered.container.querySelector<HTMLInputElement>("#search")!;
+  search.value = "invented"; search.focus(); search.setSelectionRange(2, 5);
+  middle.scrollTop = 380; fireEvent.scroll(middle);
+  const identity = {};
+  rendered.rerender(<Picker rows={14} contextNotice="project-thesis-r2" contextNoticeIdentity={identity} />);
+  const status = rendered.container.querySelector<HTMLElement>(".project-context-status")!;
+  expect(status.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  expect(document.activeElement).toBe(search);
+  expect([search.selectionStart, search.selectionEnd]).toEqual([2, 5]);
+  middle.scrollTop += 40; fireEvent.scroll(middle);
+  const readingTop = status.getBoundingClientRect().top;
+  rendered.rerender(<Picker rows={14} contextNotice="project-thesis-r2" contextNoticeIdentity={identity} generation={1} />);
+  expect(status.getBoundingClientRect().top).toBe(readingTop);
+  noticeHeight += 80; resized();
+  expect(status.getBoundingClientRect().top).toBe(readingTop);
+  rendered.rerender(<Picker rows={14} contextNotice="project-thesis-r2" contextNoticeIdentity={{}} generation={1} />);
+  expect(status.getBoundingClientRect().top).toBe(middle.getBoundingClientRect().top);
+  expect(document.activeElement).toBe(search);
+});
 
 test.each([{ scrollTop: 800, offset: 48 }, { scrollTop: 0, offset: 480 }])("a refusal arriving offscreen at doubled text is revealed after layout (%j)", ({ scrollTop, offset }) => {
   const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);

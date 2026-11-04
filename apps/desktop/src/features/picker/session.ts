@@ -22,7 +22,7 @@ export type SessionView = {
   remembersLast: boolean;
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
-  format: Choice | null; output: OutputToken; question?: "open" | "answered" };
+  format: Choice | null; output: OutputToken; question?: "open" | "answered"; unverified?: boolean };
 type Flight = { id: number; session: number; presentation: number; choice: string; format: Choice; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
   references: unknown[]; shelf: CitationReference[]; replaces: string | null; appId: string | null; writingProjectId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
@@ -60,7 +60,7 @@ export type SessionEvent =
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
   | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
-  | { type: "enter"; choice: string | null; output?: OutputToken }
+  | { type: "enter"; choice: string | null; output?: OutputToken; unverified?: boolean }
   | { type: "question"; format?: Choice; output?: OutputToken; answer: "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "preparing"; now: number; selection?: string | null }
@@ -73,7 +73,7 @@ export type SessionEvent =
   | (Completion & { type: "hid" | "hide-failed" | "hide-refused" })
   | (Completion & { type: "delivered"; delivered: Delivered | null });
 export type SessionEffect =
-  | (Completion & { type: "copy"; ticket: string; hash: string; replaces: string | null })
+  | (Completion & { type: "copy"; ticket: string; hash: string; replaces: string | null; unverified?: boolean })
   | (Completion & { type: "hide"; presentation: number })
   | (Completion & { type: "notice"; outcome: Copied })
   | { type: "hide-status"; failed: boolean }
@@ -148,6 +148,9 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: pickerText.snapshotChanged }, [{ type: "refresh" }]];
+  if (v.shown.project_check === "conflict" || v.shown.project_check === "paused" && !p.unverified) {
+    return [{ ...s, copyError: v.shown.project_message ?? "Couldn’t check this citation against the project bibliography." }, []];
+  }
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: pickerText.previewError }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
   const existing = s.flights.find((f) => (f.projectVersion ?? null) === (v.projectVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session);
@@ -155,7 +158,7 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const id = s.nextCopy + 1;
   const flight: Flight = { id, session: s.session, presentation, choice: key, format: v.format, projectVersion: v.projectVersion, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), references: v.chosen.filter((r) => !r.sample).map((r) => r.id), shelf: v.chosen, replaces: s.changing, appId: v.appId ?? null, writingProjectId: v.writingProjectId };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
-    [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing }]];
+    [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing, ...(p.unverified ? { unverified: true } : {}) }]];
 }
 
 export function reduceSession(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
@@ -240,8 +243,15 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "enter": {
       if (s.hiddenAt !== null || !s.view) return [s, []];
       const output = event.output ?? s.view.output;
+      if (event.unverified && s.view.shown && typeof s.view.shown === "object" && s.view.shown.project_check === "conflict") {
+        return [{ ...s, pendingCopy: null, copyError: s.view.shown.project_message ?? "This key identifies another reference in the project bibliography." }, []];
+      }
+      // A one-off exception belongs only to the paused citation currently shown.
+      // It cannot wait across an unfinished preview or become a saved preference.
+      if (event.unverified && (!s.view.ready || s.view.saving || s.viewInteraction !== s.interaction || !sameOutput(s.view.output, output)
+        || !s.view.shown || typeof s.view.shown !== "object" || s.view.shown.project_check !== "paused" || s.view.shown.project_unverified_allowed === false)) return [s, []];
       const next = { ...s, pendingCopy: { choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
-        format: s.view.ready && s.viewInteraction === s.interaction && sameOutput(s.view.output, output) ? s.view.format : null, output } };
+        format: s.view.ready && s.viewInteraction === s.interaction && sameOutput(s.view.output, output) ? s.view.format : null, output, ...(event.unverified ? { unverified: true } : {}) } };
       return s.presentation === null ? readPresentation(next, true) : advance(next);
     }
     case "question": {
@@ -292,7 +302,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "copy-failed": return f.phase !== "copy" ? [s, []] : [finish(ownsCompletion(s, f, event.output) ? { ...s, copyError: event.message } : s, f), event.stale ? [{ type: "refresh" }] : []];
     case "copied": {
       if (f.phase !== "copy") return [s, []];
-      const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
+      const outcome = { ...event.outcome, ...(f.warnings.length ? { project_warning_only: false } : {}), warnings: [...event.outcome.warnings, ...f.warnings] };
       if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title, recentCopy: { app: f.appId, ids: f.references },
         lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format, ...f.writingProjectId ? { project: f.writingProjectId } : {} }, s.view?.remembersLast === true) };
       // Consuming a built citation can reveal a different default reference.

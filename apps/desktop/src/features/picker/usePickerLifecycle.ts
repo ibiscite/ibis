@@ -22,7 +22,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
 }) {
   const { session, send } = pickerSession;
   const { input, focusHome } = menus;
-  const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged } = api;
+  const { pickerVisible, onPickerPreparing, onPickerShown, onPickerHidden, onPreferencesChanged, onProjectChanged, onWritingProjectsChanged } = api;
   // When the picker is shown, put the cursor in the search box with the
   // previous query selected, so typing replaces it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once on mount. The handlers only call setters, refs and native calls that never change, so the first render's copies are current.
@@ -113,6 +113,9 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       if (!mounted) return;
       destination.projectChanged(version);
     }).catch(() => subscriptionFailure("project"));
+    const unlistenWritingProjects = onWritingProjectsChanged?.(() => {
+      if (mounted) destination.read(false);
+    }).catch(() => subscriptionFailure("project"));
     return () => {
       mounted = false;
       window.removeEventListener("focus", activated);
@@ -122,6 +125,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       void unlistenPreparing?.then((stop) => stop?.());
       void unlistenPreferences?.then((stop) => stop?.());
       void unlistenProject?.then((stop) => stop?.());
+      void unlistenWritingProjects?.then((stop) => stop?.());
     };
   }, [resetPointer]);
 }

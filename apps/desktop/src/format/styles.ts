@@ -8,6 +8,10 @@ export interface FormattedCitation {
   html: string;
   warnings: string[];
   spans?: CitationSpan[];
+  project_check?: "paused" | "conflict" | "retained" | null;
+  project_message?: string | null;
+  project_checked_at_ms?: number | null;
+  project_unverified_allowed?: boolean | null;
 }
 
 // The bundled citation styles by id and title. Kept apart from the engine so

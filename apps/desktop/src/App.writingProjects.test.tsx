@@ -290,3 +290,50 @@ test("a bibliography event retires an old copy proof before its delayed destinat
   await waitFor(() => expect(delivered).toEqual([{ text: "cite:current checked context [1,1]", delivery: 29 }]));
   expect(hidden).toBe(1);
 });
+
+test("Apply Updates keeps task choices until save and cancels a queued insertion before preparing the new choices", async () => {
+  const current = writingDestination("Project A", "cite", [1, 0]);
+  const latest = { name: "Project A", output: { key: "typst" as const }, bibliography: "updated.bib", revision: "r2" };
+  const project = { ...current.writing_project!, pending: latest };
+  let applied = false;
+  const save = pending<WritingProjectsView>(), earlier = pending<FilePreview>(), refreshed = pending<FilePreview>();
+  let earlierStarted = false, refreshedStarted = false;
+  const edits: unknown[] = [], copied: string[] = [];
+  const appliedProject = { ...project, ...latest, pending: null };
+  backend({
+    search: () => [result("a", "Synthetic source")],
+    picker_destination: () => applied ? { ...current, writing_project: appliedProject, writing_context: "opening-2", context_version: [2, 0] }
+      : { ...current, writing_project: project },
+    edit_writing_project: async ({ context, action }) => {
+      edits.push({ context, action });
+      const next = await save.promise;
+      applied = true;
+      await emit("project:changed", [2, 0]);
+      return next;
+    },
+    preview_file_citation: (request) => {
+      if (request.intent.context?.[0] === 2) { refreshedStarted = true; return refreshed.promise; }
+      if (request.intent.context?.[0] === 1) { earlierStarted = true; return earlier.promise; }
+      return receipt("initial context");
+    },
+    copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
+  });
+  render(<App />);
+  await screen.findByText("Synthetic source");
+  await waitFor(() => expect(earlierStarted).toBe(true));
+  const apply = await screen.findByRole("button", { name: "Apply Updates" });
+  expect(apply.closest('[role="status"]')?.textContent).toContain("refs.bib");
+  expect(apply.closest('[role="status"]')?.textContent).not.toContain("updated.bib");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(apply);
+  await waitFor(() => expect(edits).toEqual([{ context: "opening-1", action: { kind: "apply", id: "Project A", revision: "r2" } }]));
+  expect(copied).toEqual([]);
+  await act(async () => { save.resolve({ projects: [appliedProject], selected: "Project A", active: appliedProject, context: "opening-2", session_only: false }); });
+  await waitFor(() => expect(refreshedStarted).toBe(true));
+  await act(async () => { refreshed.resolve(receipt("typst:updated choices [2,0]")); });
+  expect(copied).toEqual([]);
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(copied).toEqual(["typst:updated choices [2,0]"]));
+  await act(async () => { earlier.resolve(receipt("cite:earlier pinned choices")); });
+  expect(copied).toEqual(["typst:updated choices [2,0]"]);
+});

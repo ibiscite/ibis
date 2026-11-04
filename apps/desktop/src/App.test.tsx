@@ -3850,7 +3850,7 @@ test.each(Object.keys(copyFormatNames) as api.CopyFormat[])("%s previews and cop
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null, unverifiedProject: false }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

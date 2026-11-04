@@ -28,6 +28,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   onProjectContext?: (context: { output: CopyToken; version: string | null; clearReplacement: boolean }) => void;
 }) {
   const [destination, setDestination] = useState<PickerDestination | null>(null);
+  const [editProblem, setEditProblem] = useState<string | null>(null);
   // Beats the app's format until saved or copied: a pick being saved, a pick
   // that could not be saved, or the output a permission return prepared.
   const [held, setHeld] = useState<Choice | null>(null);
@@ -57,6 +58,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     if (!pickerDestination) return;
     const request = ++reads.current;
     if (reset) {
+      setEditProblem(null);
       settlingOpening.current = true;
       openings.current += 1;
       lastPolicy.current = undefined;
@@ -160,6 +162,8 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const editProject = editWritingProject ? (context: string, action: Parameters<typeof editWritingProject>[1]) => {
     reads.current += 1;
     choices.current += 1;
+    const opening = openings.current, choice = choices.current;
+    setEditProblem(null);
     settlingProject.current = true;
     notifyContext(true);
     preserveOpeningOutput.current = false;
@@ -169,7 +173,11 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     const pending = saves.current.then(() => editWritingProject(context, action)).then((view) => {
       read(false);
       return view;
-    }, (error: unknown) => { read(false); throw error; });
+    }, (error: unknown) => {
+      if (opening === openings.current && choice === choices.current && typeof error === "string") setEditProblem(error);
+      read(false);
+      throw error;
+    });
     const settled = pending.then(() => undefined, () => undefined);
     saves.current = settled;
     void settled.then(() => { if (saves.current === settled) setSaving(false); });
@@ -226,7 +234,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
   const shouldAsk = askPaste || Boolean(!writingProject && rememberAppOutput && destination?.app_id && destination.output_question && !remembered && held === null);
   return { appId: destination?.app_id ?? null, app, format, ready, saving, source, pick, shouldAsk, read, choose,
-    writingProject, readProblem, contextVersion: destination?.context_version ?? null, projectChanged, editProject,
+    writingProject, writingContext: destination?.writing_context ?? null, readProblem: editProblem ?? readProblem, contextVersion: destination?.context_version ?? null, projectChanged, editProject,
     projectVersion: () => observedVersion.current?.join(":") ?? null,
     chooseOnce, copyToken, isCurrentCopy, consumeHeld, askPaste, pasteChoices, choosePaste, quitAfterSaving };
 }

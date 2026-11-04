@@ -92,7 +92,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
       ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
       ...(r.form ? { form: r.form } : {}),
-    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal, projectContext).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
+    })), keyFormat ?? "pandoc", style, chosenRevision, abort.signal, projectContext).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, project_check: result.project_check, project_message: result.project_message, project_checked_at_ms: result.project_checked_at_ms, project_unverified_allowed: result.project_unverified_allowed, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {

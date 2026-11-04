@@ -22,7 +22,7 @@ import type { useProjectBibliography } from "./useProjectBibliography";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted,
+  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem,
 }: {
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
@@ -44,6 +44,7 @@ export function PickerStatusFooter({
   cancelCopy: () => void;
   emptyAction?: boolean;
   notices?: ReactNode;
+  copyProblem?: string | null;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -54,7 +55,7 @@ export function PickerStatusFooter({
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
-  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction}
+  return <PickerFooter library={library} groupName={groupName} emptyAction={emptyAction} copyProblem={copyProblem}
     status={<PickerLibraryStatus library={library} groupName={groupName} notice={notices} isOpen={libraryMenuOpen}
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}

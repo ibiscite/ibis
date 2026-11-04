@@ -41,6 +41,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "native_appearance",
     "row_context",
     "project_status",
+    "retry_project",
     "choose_project",
     "stop_project",
     "copy_project_entry",

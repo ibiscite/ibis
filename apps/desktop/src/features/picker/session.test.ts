@@ -20,6 +20,60 @@ function scenario() {
   return { send, view, complete, get state() { return state; }, get effects() { return effects; } };
 }
 
+test.each(["paused", "conflict"] as const)("normal Enter refuses a %s project check without losing the preview or references", (project_check) => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  const shown = { ...prepared, project_check, project_message: "Check the invented bibliography." };
+  s.send(s.view({ shown }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toEqual([]);
+  expect(s.state.copyError).toBe(shown.project_message);
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.state.view?.shown).toBe(shown);
+  expect([...s.state.selected.values()]).toMatchObject([{ key: a.key, locator: a.locator }]);
+});
+
+test("an explicit unchecked action permits just the paused citation and is never remembered", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "paused", project_message: "Could not check." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]), unverified: true })).toMatchObject([{ type: "copy", unverified: true }]);
+  s.complete(1, { pinned: true, outcome: { text: prepared.text, warnings: ["Unverified project key."] } });
+  expect(s.state.copied?.warnings).toEqual(["Unverified project key."]);
+  s.send(s.view({ shown: { ...prepared, project_check: "paused", project_message: "Could not check." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toEqual([]);
+  expect(s.state.copyError).toBe("Could not check.");
+});
+
+test("a known project conflict cannot be bypassed by an unchecked action", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "conflict", project_message: "This key names another work." } }));
+  expect(s.send({ type: "enter", choice: choiceKey([a]), unverified: true })).toEqual([]);
+  expect(s.state.copyError).toBe("This key names another work.");
+});
+
+test("a project check retry never releases an earlier normal insertion", () => {
+  const s = scenario();
+  s.send(s.view({ shown: { ...prepared, project_check: "paused" } }));
+  s.send({ type: "enter", choice: choiceKey([a]) });
+  expect(s.send(s.view({ shown: prepared }))).toEqual([]);
+  expect(s.state.pendingCopy).toBeNull();
+  expect(s.send({ type: "enter", choice: choiceKey([a]) })).toMatchObject([{ type: "copy" }]);
+});
+
+test("retained evidence permits normal delivery, while an independent closest-match warning still keeps the picker open", () => {
+  const clean = scenario();
+  clean.send(clean.view());
+  clean.send({ type: "enter", choice: choiceKey([a]) });
+  expect(clean.complete(1, { outcome: { text: prepared.text, warnings: ["Using the last checked bibliography."], project_warning_only: true } }))
+    .toMatchObject([{ type: "hide" }]);
+  const uncertain = scenario();
+  uncertain.send(uncertain.view({ chosen: [{ ...a, partial: true }] }));
+  uncertain.send({ type: "enter", choice: choiceKey([a]) });
+  expect(uncertain.complete(1, { outcome: { text: prepared.text, warnings: ["Using the last checked bibliography."], project_warning_only: true } })
+    .some((effect) => effect.type === "hide")).toBe(false);
+  expect(uncertain.state.copied?.project_warning_only).toBe(false);
+  expect(uncertain.state.copied?.warnings.length).toBe(2);
+});
+
 test("a project switch keeps search, ordered references and pages but cancels pending Enter and replacement", () => {
   const s = scenario();
   s.send({ type: "query", value: "synthetic" });

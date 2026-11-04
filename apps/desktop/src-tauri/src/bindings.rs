@@ -28,6 +28,7 @@ pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
             crate::copy::copy_file_citation,
             crate::copy::copy_format,
             crate::project::project_status,
+            crate::project::retry_project,
             crate::project::choose_project,
             crate::project::stop_project,
             crate::project::copy_project_entry,

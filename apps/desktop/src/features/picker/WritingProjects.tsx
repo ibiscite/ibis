@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
-import type { WritingProjectEdit, WritingProjectsView } from "../../api";
+import type { WritingProjectEdit, WritingProjectsView, WritingProjectView } from "../../api";
 import { writingProjectText as text } from "../../messages";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
@@ -8,6 +8,7 @@ import { Progress } from "../../ui/Progress";
 import { useLayer } from "../../ui/layers";
 import { outputName, type Choice } from "./choice";
 import { choiceOf, outputOf } from "./useDestination";
+import { WritingProjectTaskStatus } from "./ProjectContextStatus";
 import "../../ui/Overlay.css";
 import "../../ui/KeysSheet.css";
 import "./WritingProjects.css";
@@ -36,6 +37,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
   const [view, setView] = useState<WritingProjectsView | null>(null);
   const [form, setForm] = useState<Form | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<{ id: string; project: WritingProjectView | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyVisible, setBusyVisible] = useState(false);
   const reads = useRef(0);
@@ -85,7 +87,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
   }, [read, onProjectChanged]);
 
   const edit = (change: WritingProjectEdit, leave = false) => {
-    if (mutation.current !== null || !view) return;
+    if (mutation.current !== null || !view || view.active?.saved_problem) return;
     const owner = {};
     mutation.current = owner;
     reads.current += 1;
@@ -95,8 +97,22 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
       if (!alive.current || mutation.current !== owner) return;
       setView(next);
       setForm(null);
+      setConflict(null);
       if (leave) close();
-    }, (error) => { if (alive.current && mutation.current === owner) setProblem(failure(error, text.notSaved)); })
+    }, async (error) => {
+      if (!alive.current || mutation.current !== owner) return;
+      setProblem(failure(error, text.notSaved));
+      if (!("id" in change) || !("revision" in change)) return;
+      // A refusal may mean another client saved first. Read its definition
+      // without replacing the user's input or rebasing their edit silently.
+      try {
+        const latest = await writingProjects();
+        if (!alive.current || mutation.current !== owner) return;
+        setView(latest);
+        const project = latest.projects.find((item) => item.id === change.id) ?? null;
+        if (project?.revision !== change.revision) setConflict({ id: change.id, project });
+      } catch { /* Keep the task and the original refusal when rereading fails. */ }
+    })
       .finally(() => {
         if (!alive.current || mutation.current !== owner) return;
         mutation.current = null;
@@ -108,12 +124,13 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
     setProblem(null);
     void action().then(read, (error) => { if (alive.current) setProblem(failure(error, text.bibliographyNotSaved)); });
   };
-  const selected = view?.projects.find((project) => project.id === view.selected);
+  const selected = view?.active;
   const selectedFormat = selected ? choiceOf(selected.output) : null;
+  const editingDisabled = busy || Boolean(selected?.saved_problem);
   const saveName = () => {
-    if (!form || form.kind === "remove" || !form.name.trim() || busy) return;
+    if (!form || form.kind === "remove" || !form.name.trim() || editingDisabled || conflict?.project === null) return;
     edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: outputOf(format) }
-      : { kind: "rename", id: form.id, revision: form.revision, name: form.name.trim() });
+      : { kind: "rename", id: form.id, revision: conflict?.id === form.id ? conflict.project?.revision ?? form.revision : form.revision, name: form.name.trim() });
   };
   return <div className="keys-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) close(); }}>
     <div ref={dialog} role="dialog" aria-modal="true" tabIndex={-1} aria-labelledby={title} aria-describedby={about}
@@ -134,15 +151,15 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
         {view?.session_only && <p className="writing-projects-note">{text.sessionOnly}</p>}
         {!view && !problem && <p role="status">{text.loading}</p>}
         {view && <>
-          <Button label={text.none} aria-pressed={view.selected === null} data-selected={view.selected === null || undefined} isDisabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
-          {view.projects.length === 0 && <p>{text.empty}</p>}
+          <Button label={text.none} aria-pressed={view.selected === null} data-selected={view.selected === null || undefined} isDisabled={editingDisabled} onPress={() => edit({ kind: "select", id: null }, true)} />
+          {view.projects.length === 0 && !selected?.saved_problem && <p>{text.empty}</p>}
           <ul className="writing-projects-list" aria-label={text.title}>
             {view.projects.map((project) => {
               const choice = choiceOf(project.output);
               return <li key={project.id}>
                 <Button label={project.name} aria-label={text.use(project.name)} aria-pressed={project.id === view.selected}
                   data-selected={project.id === view.selected || undefined}
-                  isDisabled={busy || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />
+                  isDisabled={editingDisabled || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />
                 {project.id === view.selected && <span className="writing-projects-note">{text.selectedLabel}</span>}
                 <span className="writing-projects-note" dir="auto">{choice ? outputName(choice) : text.unsupported}</span>
               </li>;
@@ -150,30 +167,48 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
           </ul>
           {selected && <section className="writing-projects-current" aria-label={text.selected}>
             <h3 dir="auto">{selected.name}</h3>
+            <WritingProjectTaskStatus project={selected} disabled={editingDisabled} onApply={selected.pending
+              ? () => edit({ kind: "apply", id: selected.id, revision: selected.pending!.revision }) : undefined} />
             {selectedFormat && <p>{text.format(outputName(selectedFormat))}</p>}
             <p dir="auto">{selected.bibliography ? text.bibliography(selected.bibliography) : text.noBibliography}</p>
+            {selected.pending && !selected.retained && <section className="writing-projects-updates" aria-label={text.savedUpdates}>
+              <h4>{text.savedUpdates}</h4>
+              <p>{text.format(choiceOf(selected.pending.output) ? outputName(choiceOf(selected.pending.output)!) : text.unsupported)}</p>
+              <p dir="auto">{selected.pending.bibliography ? text.bibliography(selected.pending.bibliography) : text.noBibliography}</p>
+            </section>}
             <div className="writing-projects-actions">
-              {api.chooseProject && <Button label={text.chooseBibliography} isDisabled={busy} onPress={() => bibliography(api.chooseProject)} />}
-              {selected.bibliography && api.stopProject && <Button label={text.removeBibliography} isDisabled={busy} onPress={() => bibliography(api.stopProject)} />}
-              <Button label={text.rename} isDisabled={busy} onPress={() => setForm({ kind: "rename", id: selected.id, revision: selected.revision, name: selected.name })} />
-              <Button label={text.remove} isDisabled={busy} onPress={() => setForm({ kind: "remove", id: selected.id, revision: selected.revision, name: selected.name })} />
+              {!selected.retained && <>
+                {api.chooseProject && <Button label={text.chooseBibliography} isDisabled={editingDisabled} onPress={() => bibliography(api.chooseProject)} />}
+                {selected.bibliography && api.stopProject && <Button label={text.removeBibliography} isDisabled={editingDisabled} onPress={() => bibliography(api.stopProject)} />}
+                <Button label={text.rename} isDisabled={editingDisabled} onPress={() => { setConflict(null); setForm({ kind: "rename", id: selected.id, revision: selected.revision, name: selected.name }); }} />
+                <Button label={text.remove} isDisabled={editingDisabled} onPress={() => { setConflict(null); setForm({ kind: "remove", id: selected.id, revision: selected.revision, name: selected.name }); }} />
+              </>}
             </div>
           </section>}
-          {!form && <Button label={text.create} isDisabled={busy} onPress={() => { setProblem(null); setForm({ kind: "new", name: "" }); }} />}
+          {!form && <Button label={text.create} isDisabled={editingDisabled} onPress={() => { setProblem(null); setConflict(null); setForm({ kind: "new", name: "" }); }} />}
         </>}
+        {conflict && <section className="writing-projects-conflict" aria-label={text.conflictTitle}>
+          <h3>{text.conflictTitle}</h3>
+          {conflict.project ? <>
+            <p dir="auto">{conflict.project.name}</p>
+            <p>{text.format(choiceOf(conflict.project.output) ? outputName(choiceOf(conflict.project.output)!) : text.unsupported)}</p>
+            <p dir="auto">{conflict.project.bibliography ? text.bibliography(conflict.project.bibliography) : text.noBibliography}</p>
+            <p>{text.conflictReview}</p>
+          </> : <p>{text.conflictDeleted}</p>}
+        </section>}
         {form && <div className="writing-projects-form">
           {form.kind === "remove" ? <>
             <p>{text.removeQuestion(form.name)}</p>
             <div className="writing-projects-actions">
-              <Button label={text.cancel} isDisabled={busy} onPress={() => setForm(null)} />
-              <Button label={text.confirmRemove} isDisabled={busy} onPress={() => edit({ kind: "remove", id: form.id, revision: form.revision })} />
+              <Button label={text.cancel} isDisabled={busy} onPress={() => { setForm(null); setConflict(null); }} />
+              <Button label={conflict ? text.removeUpdated : text.confirmRemove} isDisabled={editingDisabled || conflict?.project === null} onPress={() => edit({ kind: "remove", id: form.id, revision: conflict?.id === form.id ? conflict.project?.revision ?? form.revision : form.revision })} />
             </div>
           </> : <form onSubmit={(event) => { event.preventDefault(); saveName(); }}>
-            <TextField label={text.name} value={form.name} maxLength={80} isDisabled={busy} autoFocus onChange={(name) => setForm({ ...form, name })} />
+            <TextField label={text.name} value={form.name} maxLength={80} isDisabled={editingDisabled} autoFocus onChange={(name) => setForm({ ...form, name })} />
             {form.kind === "new" && <p className="writing-projects-note">{text.startsWith(outputName(format))}</p>}
             <div className="writing-projects-actions">
-              <Button label={text.cancel} isDisabled={busy} onPress={() => setForm(null)} />
-              <Button variant="primary" label={form.kind === "new" ? text.confirmCreate : text.saveName} isDisabled={busy || !form.name.trim()} onPress={saveName} />
+              <Button label={text.cancel} isDisabled={busy} onPress={() => { setForm(null); setConflict(null); }} />
+              <Button variant="primary" label={form.kind === "new" ? text.confirmCreate : conflict ? text.saveMyName : text.saveName} isDisabled={editingDisabled || !form.name.trim() || conflict?.project === null} onPress={saveName} />
             </div>
           </form>}
         </div>}

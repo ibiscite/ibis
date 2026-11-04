@@ -50,6 +50,7 @@
     "allow-native-appearance",
     "allow-row-context",
     "allow-project-status",
+    "allow-retry-project",
     "allow-choose-project",
     "allow-stop-project",
     "allow-copy-project-entry",

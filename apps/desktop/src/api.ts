@@ -7,7 +7,7 @@ import { commands, type CommandError, type KeyFormat, type LibraryStatus, type P
 export type { Sources } from "./bindings";
 export type {
   AppOutput, AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
-  WritingProjectView, WritingProjectsView, WritingProjectEdit,
+  WritingProjectView, WritingProjectsView, WritingProjectEdit, WritingProjectUpdate,
 } from "./bindings";
 export type CopyFormat = KeyFormat;
 /** What the notice after a copy says: pasted into an app, or copied and why. */
@@ -45,7 +45,6 @@ export const {
   setPinned,
   quit,
   shortcutStatus,
-  copyFileCitation,
   citationDetails,
   recentReferences,
   copyFormat,
@@ -65,6 +64,16 @@ export const {
   updatePickerActivity,
   openSettings,
 } = commands;
+
+/** Unverified insertion is one explicit action; ordinary copies never opt in. */
+export function copyFileCitation(ticket: string, contentHash: string, replaces: string | null, unverifiedProject?: boolean) {
+  return commands.copyFileCitation(ticket, contentHash, replaces, unverifiedProject ?? false);
+}
+
+/** Retry refreshes evidence only; the person chooses insertion afresh. */
+export function retryProject() {
+  return commands.retryProject();
+}
 
 /** Native saves are ordered by the settings owner before publishing a result. */
 export function onWindowSizeSaved(handler: (saved: boolean) => void): Promise<UnlistenFn> {
@@ -168,6 +177,11 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
 /** The project bibliography's choice or its read changed. */
 export function onProjectChanged(handler: (version: [number, number] | null) => void): Promise<UnlistenFn> {
   return listen<[number, number]>("project:changed", ({ payload }) => handler(payload ?? null));
+}
+
+/** Saved-definition metadata can change without retargeting the current task. */
+export function onWritingProjectsChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("writing-projects:changed", handler);
 }
 
 /** A chosen project bibliography could not be saved, so the old choice stands. */

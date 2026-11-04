@@ -43,6 +43,8 @@ pub(crate) struct ProjectStatus {
     pub(crate) state: ProjectState,
     /// Answers come from an earlier read, because the newest one failed.
     pub(crate) last_good: bool,
+    #[specta(optional)]
+    pub(crate) last_checked_ms: Option<u64>,
     /// Why the newest read failed, as a sentence ending in a full stop.
     pub(crate) reason: Option<String>,
     /// The first lines that could not be read.
@@ -208,18 +210,39 @@ impl ProjectBibliography {
 
     /// Install a finished read, if its choice is still current. True when that
     /// changed what the picker shows; an unchanged file wakes nothing.
-    fn finish(&self, generation: u32, read: ProjectRead) -> bool {
+    fn finish_with(&self, generation: u32, read: ProjectRead, retire_delivery: impl FnOnce()) -> bool {
         let mut slot = self.lock();
         if slot.generation != generation {
             return false;
         }
         slot.reading = false;
         let unchanged = slot.read.as_ref().is_some_and(|old| old.same_answers(&read));
+        if !unchanged {
+            // The same project→delivery boundary guards clipboard commits and
+            // final native posting, including workers that already took a proof.
+            retire_delivery();
+        }
         slot.read = Some(read);
         if !unchanged {
             slot.revision = slot.revision.wrapping_add(1);
         }
         !unchanged
+    }
+
+    pub(crate) fn finish_read<R: tauri::Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        generation: u32,
+        read: ProjectRead,
+    ) -> bool {
+        self.finish_with(generation, read, || {
+            let _ = crate::paste::change_destination(app, true, |_| Ok(()));
+        })
+    }
+
+    #[cfg(test)]
+    fn finish(&self, generation: u32, read: ProjectRead) -> bool {
+        self.finish_with(generation, read, || {})
     }
 
     pub(crate) fn status(&self) -> Option<ProjectStatus> {
@@ -237,6 +260,7 @@ impl ProjectBibliography {
             name,
             state,
             last_good,
+            last_checked_ms: slot.read.as_ref().and_then(ProjectRead::last_checked_ms),
             reason: slot
                 .read
                 .as_ref()
@@ -315,7 +339,7 @@ fn start_read(app: &AppHandle, ticket: Option<Ticket>) {
         loop {
             let read = ProjectRead::read(&ticket.path, ticket.previous.as_ref());
             let project = handle.state::<ProjectBibliography>();
-            if project.finish(ticket.generation, read) {
+            if project.finish_read(&handle, ticket.generation, read) {
                 changed(&handle);
             }
             match project.next_read() {
@@ -390,6 +414,14 @@ pub(crate) fn project_status(slot: State<'_, ProjectBibliography>) -> Option<Pro
     slot.status()
 }
 
+/// Recheck only after a person's explicit action; never a background timer.
+#[tauri::command]
+#[specta::specta]
+pub(crate) fn retry_project(app: AppHandle) {
+    let ticket = app.state::<ProjectBibliography>().check_again();
+    start_read(&app, ticket);
+}
+
 /// Choose the file with the system dialog; the interface never handles a path.
 #[tauri::command]
 #[specta::specta]
@@ -401,6 +433,7 @@ pub(crate) fn choose_project(app: AppHandle) {
     crate::panel::activate_for_dialog(&app);
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     let Ok(bibliography_owner) = crate::writing_projects::bibliography_owner(&app) else {
+        let _ = app.emit("project:not-saved", ());
         return;
     };
     let mut dialog = app
@@ -819,8 +852,14 @@ mod tests {
             slot.finish(again.generation, read(&again));
         }
 
-        /// The preview's warnings, then the copy's, of the one row `text` finds.
-        fn cite(&self, text: &str, request: u32) -> (Vec<String>, crate::copy::Copied) {
+        fn prepare(
+            &self,
+            text: &str,
+            request: u32,
+        ) -> (
+            std::sync::Arc<crate::library::engine_file::FileLibrary>,
+            crate::library::engine_file::FilePreview,
+        ) {
             use ibis_engine::Cancellation;
             let file = self
                 .app
@@ -856,12 +895,21 @@ mod tests {
                 self.app.state(),
             ))
             .unwrap_or_else(|_| panic!("a preview"));
+            (file, preview)
+        }
+
+        /// The preview's warnings, then the copy's, of the one row `text` finds.
+        fn cite(&self, text: &str, request: u32) -> (Vec<String>, crate::copy::Copied) {
+            let (file, preview) = self.prepare(text, request);
             let copied = crate::copy::commit_copy(
                 &file,
                 &preview.ticket,
                 &preview.content_hash,
-                &self.app.state::<ProjectBibliography>(),
-                &self.app.state::<crate::session_references::SessionReferences>(),
+                crate::copy::ProjectCopy {
+                    project: &self.app.state::<ProjectBibliography>(),
+                    session: &self.app.state::<crate::session_references::SessionReferences>(),
+                    unverified: false,
+                },
                 |_| Ok(None),
             )
             .unwrap_or_else(|_| panic!("a copy"));
@@ -887,8 +935,90 @@ mod tests {
     }
 
     #[test]
-    fn a_key_found_only_in_the_last_good_copy_warns_so_the_copy_stays_open() {
-        let (_project_dir, project) = written("thesis.bib", A);
+    fn a_proven_wrong_work_key_cannot_reach_the_clipboard_even_when_unverified_is_requested() {
+        let (_project_dir, path) = written("thesis.bib", "@book{a2026,title={Another work},doi={10.5555/other}}\n");
+        let picker = Picker::new("@book{a2026,title={Intended work},doi={10.5555/intended}}\n", &path);
+        let (file, preview) = picker.prepare("a2026", 1);
+        assert!(matches!(
+            preview.project_check,
+            Some(crate::library::engine_file::ProjectCheck::Conflict)
+        ));
+        let mut writes = 0;
+        for unverified in [false, true] {
+            assert!(
+                crate::copy::commit_copy(
+                    &file,
+                    &preview.ticket,
+                    &preview.content_hash,
+                    crate::copy::ProjectCopy {
+                        project: &picker.app.state::<ProjectBibliography>(),
+                        session: &picker.app.state::<crate::session_references::SessionReferences>(),
+                        unverified
+                    },
+                    |_| {
+                        writes += 1;
+                        Ok(None)
+                    }
+                )
+                .is_err()
+            );
+        }
+        assert_eq!(writes, 0);
+        assert!(picker.listed().is_empty());
+    }
+
+    #[test]
+    fn an_unreadable_unchecked_key_requires_a_one_off_action_and_reports_its_policy() {
+        let (_project_dir, path) = written("thesis.bib", A);
+        std::fs::remove_file(&path).unwrap();
+        let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &path);
+        let (file, preview) = picker.prepare("a2026", 1);
+        assert!(matches!(
+            preview.project_check,
+            Some(crate::library::engine_file::ProjectCheck::Paused)
+        ));
+        assert_eq!(
+            preview.text, "[@a2026]",
+            "the selection and rendered preview remain available"
+        );
+        let mut writes = 0;
+        let mut commit = |unverified| {
+            crate::copy::commit_copy(
+                &file,
+                &preview.ticket,
+                &preview.content_hash,
+                crate::copy::ProjectCopy {
+                    project: &picker.app.state::<ProjectBibliography>(),
+                    session: &picker.app.state::<crate::session_references::SessionReferences>(),
+                    unverified,
+                },
+                |_| {
+                    writes += 1;
+                    Ok(Some(17))
+                },
+            )
+        };
+        assert!(commit(false).is_err());
+        let copied = commit(true).unwrap();
+        assert_eq!(copied.project_warning_only, Some(true));
+        assert!(
+            copied
+                .summary
+                .as_ref()
+                .unwrap()
+                .project_warning
+                .as_ref()
+                .is_some_and(|warning| warning.to_lowercase().contains("unverified"))
+        );
+        assert_eq!(copied.delivery, Some(17));
+        assert!(commit(false).is_err(), "the exception never changes the normal policy");
+        assert_eq!(writes, 1);
+        assert_eq!(picker.listed().len(), 1);
+    }
+
+    #[test]
+    fn a_key_verified_against_the_last_good_copy_warns_without_forcing_copy_only() {
+        let (_project_dir, project) = written("thesis.bib", "@book{a2026,title={A},author={Lee, Kim},year={2026}}\n");
         let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &project);
         let (previewed, copied) = picker.cite("a2026", 1);
         assert!(
@@ -900,12 +1030,18 @@ mod tests {
         std::fs::write(&project, "@book{b2026,}\n@article{broken,title={Never closed\n")
             .unwrap_or_else(|error| panic!("{error}"));
         picker.read_again();
-        let expected = ["Checked a2026 against the last good copy of thesis.bib; the file can't be read now."];
+        let expected = ["Couldn't read thesis.bib. Using its last checked copy."];
         let (previewed, copied) = picker.cite("a2026", 2);
         assert_eq!(previewed, expected);
         assert_eq!(
+            copied.project_warning_only,
+            Some(true),
+            "retained verified evidence keeps the intended action available"
+        );
+        assert!(copied.summary.as_ref().unwrap().project_checked_at_ms.is_some());
+        assert_eq!(
             copied.warnings, expected,
-            "a warning keeps the picker open with its reason"
+            "the copy reports the same freshness warning as its preview"
         );
 
         // And the same once the file is gone.

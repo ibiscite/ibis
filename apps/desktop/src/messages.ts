@@ -194,6 +194,17 @@ export const writingProjectText = {
   use: (name: string) => `Use ${name}`,
   selected: "Selected writing project",
   selectedLabel: "Selected",
+  apply: "Apply Updates",
+  changedElsewhere: (name: string) => `${isolate(name)} settings changed elsewhere.`,
+  bibliographyChanged: "The bibliography file or location changed.",
+  savedUpdates: "Saved updates",
+  retained: (name: string) => `${isolate(name)} was removed elsewhere. Using retained settings.`,
+  using: (format: string, bibliography: string | null) => `Using ${format} · ${bibliography ? isolate(bibliography) : "No bibliography"}.`,
+  conflictTitle: "Saved settings from another writer",
+  conflictReview: "Review these saved settings before saving your changes. Your input is kept below.",
+  conflictDeleted: "This saved project was removed elsewhere. Your task settings and input are kept. Create another project to save them.",
+  saveMyName: "Save My Name",
+  removeUpdated: "Remove Updated Project",
   format: (name: string) => `Format: ${name}`,
   bibliography: (name: string) => `Bibliography: ${name}`,
   noBibliography: "No bibliography selected.",
@@ -215,6 +226,15 @@ export const writingProjectText = {
   bibliographyNotSaved: "The bibliography choice could not be saved. Try again.",
   remembered: (name: string) => `Saved for ${isolate(name)}.`,
   pick: "Your pick changes this project’s format.",
+} as const;
+
+export const projectCheckText = {
+  retry: "Retry",
+  locate: "Locate Bibliography…",
+  copyUnverified: "Copy Unverified Key",
+  pasteUnverified: "Paste Unverified Key",
+  lastChecked: (time: string) => `Last checked ${time}.`,
+  unknownCheckTime: "The last checked time is unavailable.",
 } as const;
 
 export const densityNames = {
