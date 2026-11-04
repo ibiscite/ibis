@@ -258,6 +258,7 @@ mod tests {
         let token = last
             .write_copy_observed(
                 "[@invented]",
+                None,
                 SafetyStamp {
                     epoch: 0,
                     elapsed: Duration::ZERO,

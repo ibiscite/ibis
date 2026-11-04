@@ -324,6 +324,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
 | ⌘Y | Peek |
+| ⌘E | Change the last citation for this app |
 | ⌘+ / ⌘− | Text size |
 | Typing outside a field | Types into search, except in the reader's pages |
 
@@ -337,6 +338,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 - Chooser items read as plain names with a quiet example ("BibLaTeX brackets   \parencite{key}").
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter; newly selected text still opens as the search, with the shelf kept, because Enter would replace it.
 - **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
+- **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change.
 - A successful copy hides Ibis, returns focus to the previous window and shows the notice. Pinned, Ibis stays.
 
 ### Notices
@@ -357,6 +359,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Target changed | Copied. The target app or window changed |
 | Clipboard replaced | Copied. The clipboard changed; copy the citation again |
 | Selected text never shown | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
+| Old citation not selected | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 | Expired | Copied. The paste expired; paste it yourself |
 | Windows keys stuck | Copied. Press and release Ctrl and V |
 

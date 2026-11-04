@@ -91,7 +91,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged);
+  const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
@@ -126,6 +126,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
       // The citation stays in view through a reload, but Enter waits for its end.
       searchPending, ready: preferences.ready && library?.state !== "reloading",
+      remembersLast: preferences.recentCitations === true,
     },
   });
   useLibrarySetup(library, setFailures, send, focusHome);

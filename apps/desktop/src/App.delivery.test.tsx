@@ -613,3 +613,86 @@ test("closing and reopening with nothing selected starts empty, not on the old d
   await act(async () => { await harness.reopen(); });
   expect((searchBox() as HTMLInputElement).value).toBe("");
 });
+
+const pastedOnce = async () => {
+  const harness = await selectedScenario((h) => { h.document.selection = [7, 7]; h.document.text = "Draft:  ends."; });
+  await choose(harness, "first");
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+  return harness;
+};
+const changeLast = async () => {
+  const more = screen.getByRole("button", { name: /^More/ });
+  await act(async () => { fireEvent.click(more); });
+  await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: /Change Last Citation/ })); });
+};
+
+test("Change Last Citation replaces the old citation only when it is selected", async () => {
+  const harness = await pastedOnce();
+  harness.document.selection = [7, 11];
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  expect((searchBox() as HTMLInputElement).value).toBe("");
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a, p. 3] ends.");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 3]");
+});
+
+test("⌘E changes the last citation from inside More, and More closes", async () => {
+  const harness = await pastedOnce();
+  harness.document.selection = [7, 11];
+  await act(async () => { await harness.reopen(); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
+  expect(screen.getByRole("menuitem", { name: /Change Last Citation/ })).toBeTruthy();
+  await act(async () => { fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", code: "KeyE", ctrlKey: true }); });
+  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(document.activeElement).toBe(searchBox());
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a, p. 3] ends.");
+});
+
+test("with nothing selected the changed citation is copied, the document is untouched and the notice says so", async () => {
+  const harness = await pastedOnce();
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+  expect(harness.clipboard.text).toBe("[@a, p. 3]");
+  expectReceipt(harness, "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.", "[@a, p. 3]");
+});
+
+test("the shortcut alone never reopens the last citation", async () => {
+  const harness = await pastedOnce();
+  await act(async () => { await harness.reopen(); });
+  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+  expect(screen.queryByText("Change Citation", { exact: false })).toBeNull();
+  // Nothing from the last citation came back: the shelf has no reference, so
+  // Enter on the empty search copies nothing.
+  await enter();
+  expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
+});
+
+test("More offers no Change Last Citation until this app has one", async () => {
+  await open();
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
+  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+});
+
+test("the last citation is never written anywhere", async () => {
+  const before = { ...window.localStorage };
+  const harness = await pastedOnce();
+  expect(JSON.stringify({ ...window.localStorage })).not.toContain("[@a]");
+  expect(Object.keys(window.localStorage).filter((key) => !(key in before))).toEqual(expect.not.arrayContaining(["lastCitation"]));
+  expect(harness.calls.filter((call) => /^(set_|save|write)/.test(String(call)))).toEqual([]);
+});

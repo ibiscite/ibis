@@ -10,7 +10,9 @@ const storage = { getItem: (key: string) => window.localStorage.getItem(key), se
  * Every saved "off" forgets as it arrives, even when a quick "on" follows it
  * before the picker reads the settings again. */
 export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true,
-  onPreferencesChanged?: typeof nativeApi.onPreferencesChanged) {
+  onPreferencesChanged?: typeof nativeApi.onPreferencesChanged, onForget?: () => void) {
+  const forgetting = useRef(onForget);
+  forgetting.current = onForget;
   const [history, setHistory] = useState(() => readHistory(storage));
   const latest = useRef(history);
   latest.current = history;
@@ -34,6 +36,7 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   const forget = useCallback(() => {
     setHistory([]);
     latest.current = [];
+    forgetting.current?.();
     setForgotten((value) => value + 1);
     try { storage.setItem(storageKey, "[]"); setForgetFailed(false); return true; } catch { setForgetFailed(true); return false; }
   }, []);

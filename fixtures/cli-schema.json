@@ -2422,6 +2422,11 @@
                 "const": "selection-not-shown",
                 "description": "A paste would replace selected text the search never showed.",
                 "type": "string"
+              },
+              {
+                "const": "citation-not-selected",
+                "description": "A changed citation replaces only the old citation, selected.",
+                "type": "string"
               }
             ]
           },
