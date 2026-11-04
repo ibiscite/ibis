@@ -10,20 +10,25 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry, retryProject } = api;
   const [status, setStatus] = useState<ProjectStatus | null>(null);
   const [version, setVersion] = useState(0);
+  // A status read in flight: its answer may say the file is still being read.
+  const [pending, setPending] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const reading = useRef(0);
   const shown = useRef(JSON.stringify(null));
   const read = useCallback(() => {
     const request = ++reading.current;
-    void projectStatus?.().then((next) => {
+    if (!projectStatus) return;
+    setPending(true);
+    void projectStatus().then((next) => {
       if (request !== reading.current) return;
+      setPending(false);
       // Only a new answer asks searches again; nobody without a bibliography pays.
       const answer = JSON.stringify(next);
       if (answer === shown.current) return;
       shown.current = answer;
       setStatus(next);
       setVersion((old) => old + 1);
-    }, () => { if (request === reading.current) report("project"); });
+    }, () => { if (request === reading.current) { setPending(false); report("project"); } });
   }, [projectStatus, report]);
   useEffect(() => {
     read();
@@ -50,6 +55,8 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
   }, [copyProjectEntry, perform, status?.name]);
   return {
     status, version, notice, clearNotice, copyEntry,
+    /** The engine refuses key citations until the file's first answer arrives. */
+    reading: pending || status?.state === "reading",
     choose: chooseProject ? () => perform("project", chooseProject) : null,
     stop: stopProject ? () => perform("project", stopProject) : null,
     retry: retryProject ? () => perform("project", retryProject) : null,

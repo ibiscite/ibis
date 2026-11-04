@@ -227,3 +227,27 @@ test("a choice that could not be saved says so", async () => {
   await act(() => emit("project:not-saved"));
   expect(await screen.findByText("The project bibliography could not be changed. Try again.")).toBeTruthy();
 });
+
+test("Enter while the project bibliography is still reading copies once the read ends, without a failure", async () => {
+  let reading = true;
+  const calls = backend({
+    project_status: () => file({ state: reading ? "reading" : "ready", revision: reading ? 1 : 2 }),
+    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false, context_version: reading ? [1, 1] : [1, 2] }),
+    search: () => [result("a", "First")],
+    // The engine refuses a key output whose project read has not finished.
+    preview_file_citation: () => reading ? Promise.reject({ code: "cancelled" }) : receipt("[@a]"),
+    copy_file_citation: () => ({ outcome: "copied", warnings: [] }),
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  await waitFor(() => expect(calls.filter((call) => call === "preview_file_citation").length).toBeGreaterThan(0));
+  fireEvent.keyDown(box, { key: "Enter" });
+  await act(async () => { await Promise.resolve(); });
+  expect(screen.queryAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).toHaveLength(0);
+  reading = false;
+  await act(() => emit("project:changed", [1, 2]));
+  await waitFor(() => expect(calls.filter((call) => call === "copy_file_citation")).toHaveLength(1));
+  expect(screen.queryAllByText("This citation could not be prepared. Close and reopen Ibis to try again.")).toHaveLength(0);
+});

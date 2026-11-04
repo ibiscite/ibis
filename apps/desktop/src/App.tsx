@@ -117,7 +117,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion, contextReady: destination.ready,
+    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
