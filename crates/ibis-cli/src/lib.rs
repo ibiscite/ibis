@@ -181,6 +181,7 @@ fn command() -> Command {
                     "parencite",
                     "textcite",
                     "cite",
+                    "context",
                     "typst",
                     "keys",
                     "csl-json",

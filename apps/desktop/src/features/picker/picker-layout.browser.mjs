@@ -89,7 +89,7 @@ try {
           if (command === "recent_references") return { revision: "1", results: shelfDetails === "recents" && args.ids.length ? Array.from({ length: args.includeAdded ? 6 : 3 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] };
           if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => row(i)) : [],
             ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { label: "page", value: "12" }, typed: "p12" } } : {}) };
-          if (command === "preview_file_citation" && args.intent.cancel) throw { code: "failed", message: "Synthetic preview replaced" };
+          if (command === "preview_file_citation" && args.intent.cancel) throw { code: "cancelled" };
           if (command === "preview_file_citation" && shelfDetails === "failed") throw { code: "failed", message: formatFailure };
           if (command === "preview_file_citation") {
             const ticket = `synthetic-ticket-${++previewNumber}`;
@@ -276,6 +276,56 @@ try {
     await page.getByText("No matching references", { exact: true }).waitFor();
     assert.deepEqual(page.viewportSize(), frame, "no matches and the pin keep the opening frame");
     await search.fill("invented");
+    // More's box is the oracle: no action label, Alt or absent action moves it.
+    if (!shelfDetails && viewState === "loaded" && !startupNotice && !largeNotice && !pointerNotice && !shortcutNotice) {
+      await page.getByRole("button", { name: /^Copy/ }).first().waitFor();
+      const footer = await page.evaluate(async () => {
+        const rect = (node) => { const { left, right, top } = node.getBoundingClientRect(); return { left, right, top }; };
+        const moreBox = () => rect(document.querySelector(".library-bar > .more button"));
+        const action = document.querySelector(".footer-action"), label = action.querySelector(".key-hint-label");
+        const original = label.textContent, boxes = [moreBox()], ends = [];
+        const settle = async () => { dispatchEvent(new Event("resize")); for (let frame = 0; frame < 3; frame += 1) await new Promise(requestAnimationFrame); };
+        for (const text of ["Copy IEEE entry", "Copy 2 IEEE entries", "Paste into Claude · IEEE entry", `Paste into ${"an invented app ".repeat(12)}· IEEE entry`]) {
+          label.textContent = text;
+          await settle();
+          boxes.push(moreBox()); ends.push(action.getBoundingClientRect().right);
+        }
+        const folded = document.querySelector(".library-bar").hasAttribute("data-hints-compact") || getComputedStyle(label).display === "none";
+        const truncated = folded || label.scrollWidth > label.clientWidth + 1 && getComputedStyle(label).textOverflow === "ellipsis";
+        const clear = action.getBoundingClientRect().right <= boxes[0].left + 1;
+        label.textContent = original;
+        action.closest(".enter-hints").style.display = "none";
+        await settle();
+        boxes.push(moreBox());
+        action.closest(".enter-hints").style.display = "";
+        return { boxes, ends, truncated, clear };
+      });
+      for (const box of footer.boxes) assert.deepEqual(box, footer.boxes[0], `${caseLabel}: More stays put for any action`);
+      assert.ok(footer.truncated, `${caseLabel}: a long action label truncates, or folds to keys by width`);
+      assert.ok(footer.clear, `${caseLabel}: the action never reaches More`);
+      for (const end of footer.ends) assert.ok(Math.abs(end - footer.ends[0]) < 1, `${caseLabel}: the action keeps its end against More`);
+      const steady = () => page.evaluate(() => {
+        const { left, right, top } = document.querySelector(".library-bar > .more button").getBoundingClientRect();
+        return { left, right, top, height: document.querySelector("footer").getBoundingClientRect().height };
+      });
+      const before = await steady();
+      await page.keyboard.down("Alt");
+      await page.waitForFunction(() => document.querySelectorAll(".enter-hints > *").length > 1 || !document.querySelector(".enter-hints")?.getClientRects().length);
+      await page.evaluate(() => new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done))));
+      const held = await steady();
+      const covered = await page.evaluate(() => {
+        const more = document.querySelector(".library-bar > .more button").getBoundingClientRect();
+        const row = document.querySelector(".enter-hints");
+        const bound = row.getBoundingClientRect(), clipped = getComputedStyle(row).overflow === "hidden";
+        return [...row.querySelectorAll("button")].some((button) => {
+          const box = button.getBoundingClientRect(), right = clipped ? Math.min(box.right, bound.right) : box.right, left = clipped ? Math.max(box.left, bound.left) : box.left;
+          return box.width > 0 && right > more.left + 1 && left < more.right - 1;
+        });
+      });
+      assert.equal(covered, false, `${caseLabel}: Alt's actions never cover More`);
+      await page.keyboard.up("Alt");
+      assert.deepEqual(held, before, `${caseLabel}: Alt moves neither More nor the footer's height`);
+    }
     await page.getByRole("option").last().waitFor();
     await checkScan("results");
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");

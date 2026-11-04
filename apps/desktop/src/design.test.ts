@@ -22,7 +22,7 @@ const website = strip(readFileSync(new FileURL("../../../website/style.css", imp
 const all = parts.map((name) => [name, strip(read(name))] as const);
 const local = new Set([...all, ["website", website] as const].flatMap(([, css]) => [...css.matchAll(/(--[a-z0-9-]+)\s*:/g)].map((match) => match[1]!)));
 // Set from script at run time: the native accent and how far a list can scroll.
-const fromScript = /^--(native-accent|scroll-fade-|choice-columns)/;
+const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix)/;
 // These two state each system's own materials, so they hold values as tokens.css does.
 const values = new Set(["nativeAppearance.css", "nativeAccent.css"]);
 

@@ -292,6 +292,8 @@ export type CommandError =
 { code: "snapshot_changed" } |
 /**  The library is being read; ask again when it has opened. */
 { code: "library_loading" } |
+/**  The work stopped because it was cancelled or replaced. Nothing failed. */
+{ code: "cancelled" } |
 /**  Another loaded record has this citation key, so citing by key would be ambiguous. */
 { code: "shared_citation_key"; key: string } |
 /**  Anything else, with fixed text for the user. */

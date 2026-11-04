@@ -26,6 +26,7 @@ pub enum FieldSupport {
 pub enum Escaping {
     Pandoc,
     Latex,
+    Context,
     Typst,
     BareKeys,
     Json,
@@ -69,7 +70,7 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 16] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 17] = [
     SyntaxCapabilities {
         syntax: KeySyntax::Pandoc,
         command: None,
@@ -146,6 +147,24 @@ pub const CAPABILITIES: [SyntaxCapabilities; 16] = [
         rich_text: Native,
         author_suppression: Unsupported,
         escaping: Escaping::Latex,
+    },
+    SyntaxCapabilities {
+        syntax: KeySyntax::Context,
+        command: None,
+        forms: &[Normal, CitationForm::AuthorOnly, YearOnly, CitationForm::Full],
+        single_item_forms: &[],
+        // ConTeXt sorts a citation's keys, and its texts follow the sorted order.
+        locator: SingleItem,
+        prefix: &[
+            (Normal, SingleItem),
+            (CitationForm::AuthorOnly, SingleItem),
+            (YearOnly, SingleItem),
+            (CitationForm::Full, SingleItem),
+        ],
+        suffix: SingleItem,
+        rich_text: Flattened,
+        author_suppression: Unsupported,
+        escaping: Escaping::Context,
     },
     SyntaxCapabilities {
         syntax: KeySyntax::Typst,
@@ -338,8 +357,10 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                     item: index,
                     code: *code,
                 }));
-                // A MyST role applies one form to every key it contains.
-                if caps.syntax == KeySyntax::Myst && picks.first().is_some_and(|first: &Pick<'_>| first.form != form) {
+                // A MyST role and a ConTeXt `\cite` apply one form to every key they contain.
+                if matches!(caps.syntax, KeySyntax::Myst | KeySyntax::Context)
+                    && picks.first().is_some_and(|first: &Pick<'_>| first.form != form)
+                {
                     outcomes.push(ItemOutcome::Refused {
                         item: index,
                         error: CitationError::UnsupportedForm,
