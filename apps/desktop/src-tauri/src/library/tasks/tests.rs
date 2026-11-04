@@ -21,10 +21,11 @@ fn picker_open_file_refresh_reads_bytes_and_keeps_failed_or_stale_candidates_pri
     let requests = LoadRequests::default();
     let force = OpenIntent::Refresh.rereads_source(&source, true);
     for (text, references, failed) in [
-        (Some("@book{fresh}\n@book{second}"), 2, false),
-        (Some("@book{unfinished,"), 2, true),
+        (Some(&b"@book{fresh}\n@book{second}"[..]), 2, false),
+        // Bytes that are not UTF-8 are a failed read; a damaged entry is only a warning.
+        (Some(&b"@book{\xff}"[..]), 2, true),
         (None, 2, true),
-        (Some("@book{repaired}"), 1, false),
+        (Some(&b"@book{repaired}"[..]), 1, false),
     ] {
         let before = file.revision();
         match text {
