@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
-function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
+function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
   return { revision: "1", id: { source: "invented.bib", native_key: key }, key, title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
@@ -64,7 +64,7 @@ test("formatted segments preserve engine emphasis and keep source strings inert"
 });
 
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
-  expect(referenceLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
+  expect(referenceLabels([record("a"), record("b", "Okafor", "2019"), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
 });
 

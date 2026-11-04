@@ -93,7 +93,7 @@ test.each([[720, 480, 1], [480, 360, 1], [480, 360, 2]])("the probe selects one 
   });
   const records = Array.from({ length: 9 }, (_, i) => ({
     revision: "1", id: { source: "invented.bib", native_key: `reference${i}` }, key: `reference${i}`, title: `Invented reference ${i}`,
-    authors: "Aster", first_author: "Aster", author_count: 1, year: 2026, container: null, item_type: "book", partial: false, matched: ["title"],
+    authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null, item_type: "book", partial: false, matched: ["title"],
   }));
   const Shelf = (props) => <CitationShelf inspector={useCitationInspector()} {...props} />;
   render(<main><Shelf announce={false} selected={new Map(records.map((r) => [r.key, r]))} removeLabel={(r) => `Remove ${r.key} from the selection`}

@@ -133,7 +133,7 @@ fn agents_never_see_private_notes_and_long_text_is_cut() {
     let data = &shown["structuredContent"];
     assert_eq!(data["title"], "Synthetic research on sleep");
     assert_eq!(data["authors"], json!(["Synthetic Researcher", "Example Writer"]));
-    assert_eq!(data["year"], 2026);
+    assert_eq!(data["year"], "2026");
     let text = shown.to_string();
     assert!(!text.contains("private"));
     let summary = data["fields"]["abstract"].as_str().unwrap();
@@ -448,7 +448,7 @@ fn every_answer_is_bounded() {
                 "type": "book",
                 "title": "Invented bound",
                 // About 6 MB in all, inside the engine's own result budget.
-                "issued": {"date-parts": [["9".repeat(200_000)]]},
+                "issued": {"literal": "9".repeat(200_000)},
                 "author": [{"family": "x".repeat(20_000)}, {"family": "y".repeat(20_000)}],
             })
         })
@@ -458,7 +458,11 @@ fn every_answer_is_bounded() {
     assert_eq!(hits["isError"], false);
     assert!(hits["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
     let first = &hits["structuredContent"]["hits"][0];
-    assert_eq!(first["year"].as_str().unwrap().chars().count(), mcp::MAX_TEXT + 1);
+    // Date text is cut where every front end cuts it.
+    assert_eq!(
+        first["year"].as_str().unwrap().chars().count(),
+        ibis_core::summary::DATE_TEXT_LIMIT
+    );
     assert_eq!(
         hits["structuredContent"]["hits"].as_array().unwrap().len(),
         mcp::MAX_HITS

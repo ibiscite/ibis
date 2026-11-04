@@ -1,0 +1,27 @@
+[
+  {
+    "id": "quill-id",
+    "citation-key": "quill1890",
+    "type": "book",
+    "title": "Synthetic <i>tide</i> tables",
+    "author": [{"family": "Quill", "given": "Ada"}, {"literal": "Invented Survey Office"}, {"family": "Moss", "given": "Ben"}],
+    "publisher": "Invented Press",
+    "issued": {"raw": "circa spring 1890s"}
+  },
+  {
+    "id": "stone-id",
+    "citation-key": "stone2016",
+    "type": "article-journal",
+    "title": "Synthetic tide gauges",
+    "author": [{"family": "Stone", "given": "Cy"}, {"family": "Reed", "given": "Di"}],
+    "container-title": "Journal of Invented Tides",
+    "issued": {"date-parts": [["2016"]]}
+  },
+  {
+    "id": "nokey-id",
+    "type": "report",
+    "title": "Synthetic tide report",
+    "author": [{"family": "Vale", "given": "Eli"}],
+    "issued": {"date-parts": [[2021, 4]]}
+  }
+]

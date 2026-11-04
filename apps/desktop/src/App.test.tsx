@@ -1554,7 +1554,7 @@ test("a row says why it matched only when the match is not visible", async () =>
 });
 
 test("rows with the same first author and year are told apart by their container", async () => {
-  const garcia = { authors: "García, Okafor", first_author: "García", author_count: 2, year: 2021 };
+  const garcia = { authors: "García, Okafor", first_author: "García", author_count: 2, year: "2021" };
   let density = "comfortable";
   backend({
     picker_preferences: () => ({ citation_style: null, density, larger_text: false }),
@@ -1604,8 +1604,8 @@ test("rows with the same first author and year are told apart by their container
   // Compact: the first author follows the title on the one line, before the year.
   const line = rows[0]?.querySelector(".result-line");
   expect(line?.querySelector(".result-first-author")?.getAttribute("dir")).toBe("auto");
-  // "et al." is isolated, so it keeps its order beside a right-to-left name.
-  expect(line?.querySelector(".result-first-author bdi")?.textContent).toBe("et al.");
+  // Two authors are both named, as in Comfortable; "et al." starts at three.
+  expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
   // No reliance on text-align: match-parent, which Chromium ignores here: the
   // container is only as wide as its text, so it sits beside its separator.
   expect(styles).not.toMatch(/match-parent/);
@@ -1613,7 +1613,7 @@ test("rows with the same first author and year are told apart by their container
   expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: 30%;[^}]*text-overflow: ellipsis/);
   // A very narrow Compact row gives the title its own line instead.
   expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ display: grid;/);
-  expect(line?.textContent).toBe("Sleep spindlesGarcía et al.2021");
+  expect(line?.textContent).toBe("Sleep spindlesGarcía, Okafor2021");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container")).toBeNull();

@@ -11,7 +11,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const styles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
 
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
-  revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: 2020,
+  revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: "2020",
   matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
 
@@ -51,7 +51,7 @@ test.each<Density>(["compact", "comfortable"])("%s rows reserve the trailing col
 });
 
 test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and do not change row actions (%#)", (key) => {
-  const record = { ...rows[0]!, key, year: 0 };
+  const record = { ...rows[0]!, key, year: "0" };
   const onChoose = vi.fn();
   const { container, getByRole } = render(<ResultList results={[record]} active={0} selected={new Map()} density="comfortable"
     libraryOf={() => null} onMouseMove={vi.fn()} onChoose={onChoose} onToggle={vi.fn()} />);
