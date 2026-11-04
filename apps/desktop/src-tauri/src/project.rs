@@ -351,14 +351,7 @@ pub(crate) async fn copy_project_entry(
     if !app.state::<ProjectBibliography>().is_current(generation) {
         return Ok(EntryCopy::Changed);
     }
-    crate::copy::write_copy_only(
-        &app,
-        ibis_core::contract::ClipboardContent {
-            text: &text,
-            html: None,
-            rtf: None,
-        },
-    )?;
+    crate::copy::write_plain(&app, &text)?;
     Ok(EntryCopy::Copied)
 }
 
@@ -486,7 +479,7 @@ mod tests {
     }
 
     /// One picker copy on the mock app, as `copy_file_citation` makes it with
-    /// the clipboard left out: the preview, then the commit.
+    /// no editor waiting and the clipboard left out: the preview, then the commit.
     struct Picker {
         app: tauri::App<tauri::test::MockRuntime>,
         _library_dir: tempfile::TempDir,
@@ -502,6 +495,7 @@ mod tests {
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(open))
                 .manage(crate::library::PreviewRequests::default())
+                .manage(crate::editor_endpoint::Pending::default())
                 .manage(ProjectBibliography::default())
                 .manage(crate::session_references::SessionReferences::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
@@ -556,12 +550,13 @@ mod tests {
                 self.app.state(),
                 self.app.state(),
                 self.app.state(),
+                self.app.state(),
             ))
             .unwrap_or_else(|_| panic!("a preview"));
             let copied = crate::copy::commit_copy(
+                &file,
                 &preview.ticket,
                 &preview.content_hash,
-                &self.app.state::<Mutex<Library>>(),
                 &self.app.state::<ProjectBibliography>(),
                 &self.app.state::<crate::session_references::SessionReferences>(),
                 |_| Ok(None),

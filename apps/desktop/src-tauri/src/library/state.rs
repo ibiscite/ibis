@@ -313,6 +313,7 @@ mod tests {
             )))
             .manage(super::super::PreviewRequests::default())
             .manage(crate::project::ProjectBibliography::default())
+            .manage(crate::editor_endpoint::Pending::default())
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
             .unwrap_or_else(|e| panic!("{e}"));
         let preview = |request| {
@@ -327,6 +328,7 @@ mod tests {
                     request,
                     cancel: false,
                 },
+                app.state(),
                 app.state(),
                 app.state(),
                 app.state(),
@@ -425,6 +427,7 @@ mod tests {
                 .manage(Mutex::new(Library::default()))
                 .manage(super::super::PreviewRequests::default())
                 .manage(crate::project::ProjectBibliography::default())
+                .manage(crate::editor_endpoint::Pending::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
                 .unwrap();
             let library = app.state::<Mutex<Library>>();
@@ -465,6 +468,7 @@ mod tests {
                     request: 1,
                     cancel: false,
                 },
+                app.state(),
                 app.state(),
                 app.state(),
                 app.state(),

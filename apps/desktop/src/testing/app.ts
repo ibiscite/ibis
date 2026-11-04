@@ -136,6 +136,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     shortcut_status: () => ({ shortcut: "CommandOrControl+Shift+Y", registered: true, error: null }),
     search: () => [],
     project_status: () => null,
+    editor_request: () => null,
     session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
     session_bibliography: () => null,
     hide_picker: () => true,

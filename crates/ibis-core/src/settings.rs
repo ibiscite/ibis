@@ -229,6 +229,23 @@ pub enum ZoteroLibrary {
     Group(u64),
 }
 
+/// Where the editor endpoint listens, and the token that opens it. The token
+/// is a capability, so it never prints and never leaves in a backup.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct EditorEndpoint {
+    pub port: u16,
+    pub token: String,
+}
+
+impl std::fmt::Debug for EditorEndpoint {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EditorEndpoint")
+            .field("port", &self.port)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A bundled citation style the picker can format with (ADR 0020).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[cfg_attr(feature = "type-export", derive(specta::Type))]
@@ -293,6 +310,9 @@ pub struct Settings {
     /// The `.bib` results are checked against, read-only.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub project_bibliography: Option<PathBuf>,
+    /// The editor endpoint; absent means off (decision 0008).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub editor_endpoint: Option<EditorEndpoint>,
     /// Syntax the picker copies citations in; remembered when chosen.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub copy_format: Option<KeyFormat>,
@@ -337,6 +357,7 @@ impl Default for Settings {
             shortcut: Shortcuts::default(),
             library: None,
             project_bibliography: None,
+            editor_endpoint: None,
             copy_format: None,
             update_checks: None,
             citation_style: None,

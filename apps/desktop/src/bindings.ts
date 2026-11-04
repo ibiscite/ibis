@@ -84,6 +84,19 @@ export const commands = {
 	 *  file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
+	/**  `None` when no editor is waiting. */
+	editorRequest: () => __TAURI_INVOKE<{
+	request: number,
+	format: string,
+} | null>("editor_request"),
+	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
+	/**
+	 *  Switch the endpoint. Off closes the port and forgets the address, so the next
+	 *  time it is on, an old copy of that address no longer works.
+	 */
+	setEditorEndpoint: (on: boolean) => __TAURI_INVOKE<EndpointStatus>("set_editor_endpoint", { on }),
+	/**  Put the address on the clipboard for pasting into an editor's settings. */
+	copyEditorEndpoint: () => __TAURI_INVOKE<null>("copy_editor_endpoint"),
 	sessionReferences: () => __TAURI_INVOKE<SessionReferencesView_Serialize>("session_references"),
 	editSessionReferences: (edit: SessionEdit) => __TAURI_INVOKE<SessionReferencesView_Serialize>("edit_session_references", { edit }),
 	/**
@@ -433,6 +446,32 @@ export type DisplayRun_Serialize = {
 	script: Script,
 	small_caps?: boolean,
 	underline?: boolean,
+};
+
+/**
+ *  A waiting editor, for the picker to name. Each request has its own number,
+ *  so two in the same format are still two.
+ */
+export type EditorWaiting = {
+	request: number,
+	format: string,
+};
+
+/**  Why the endpoint could not listen. */
+export type EndpointProblem =
+/**  Another program has the port. */
+"port-in-use" |
+/**  The saved port or token cannot be used. */
+"bad-setting" | "not-saved";
+
+/**
+ *  What Settings shows. The address holds the token: anyone who has it can open
+ *  the picker, so it stays on this computer and in this window.
+ */
+export type EndpointStatus = {
+	on: boolean,
+	url: string | null,
+	problem: EndpointProblem | null,
 };
 
 /**  How an entry copy ended; a refusal says how to get the entry another way. */

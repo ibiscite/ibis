@@ -178,6 +178,7 @@ pub(crate) async fn preview_file_citation(
     intent: PreviewIntent,
     library: State<'_, Mutex<Library>>,
     requests: State<'_, PreviewRequests>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
@@ -196,11 +197,16 @@ pub(crate) async fn preview_file_citation(
         (file, library.source_generation)
     };
     let reservation = file.reserve_preview_with(cancel);
-    // Only a key output depends on what the project's file holds.
-    let project = project.current().filter(|_| style.is_none());
+    let editor = editor.current();
+    // Only a key output depends on what the project's file holds. A waiting
+    // editor names its own output.
+    let key_output = editor.as_ref().map_or(style.is_none(), |request| {
+        matches!(request.output, ibis_core::contract::OutputSpec::Key { .. })
+    });
+    let project = project.current().filter(|_| key_output);
     let chosen: Vec<_> = items.iter().map(|item| item.id.clone()).collect();
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let mut preview = file.preview(reservation, items, format, style)?;
+        let mut preview = file.preview_for(reservation, items, format, style, editor.as_ref())?;
         if let Some(project) = &project {
             preview.warnings.extend(file.project_warnings(&chosen, project));
         }
@@ -221,6 +227,20 @@ pub(crate) async fn preview_file_citation(
         result
     }
 }
+/// Plain text with no delivery.
+pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
+    write_copy_only(
+        app,
+        ibis_core::contract::ClipboardContent {
+            text,
+            html: None,
+            rtf: None,
+        },
+    )
+}
+
+// Each managed state is its own argument: Tauri hands them to commands that way.
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn copy_file_citation(
@@ -229,12 +249,49 @@ pub(crate) fn copy_file_citation(
     replaces: Option<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
+    let file = open_file(&library)?;
+    // A waiting editor gets the citation in place of the clipboard. It is
+    // handed over under the same commit barrier, and nothing is pasted.
+    if let Some(request) = editor.current() {
+        if !file.prepared_for(&ticket, &request) {
+            return Err(CommandError::SnapshotChanged);
+        }
+        // The text leaves the commit barrier first; the editor is answered with no
+        // lock held, because ending a request takes these locks the other way round.
+        let mut text = None;
+        let copied = file.copy(&ticket, &content_hash, |content| {
+            text = Some((
+                content.text.to_owned(),
+                content.html.map(str::to_owned),
+                content.rtf.map(str::to_owned),
+            ));
+            Ok(())
+        })?;
+        let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
+        if !editor.answer(request.id, &text, || file.invalidate_preview()) {
+            return Err("Your editor stopped waiting for this citation.".into());
+        }
+        // Only a request that was answered may leave its citation on the clipboard.
+        if request.clipboard {
+            write_copy_only(
+                &app,
+                ibis_core::contract::ClipboardContent {
+                    text: &text,
+                    html: html.as_deref(),
+                    rtf: rtf.as_deref(),
+                },
+            )
+            .map_err(CommandError::from)?;
+        }
+        return Ok(copied);
+    }
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
-    commit_copy(&ticket, &content_hash, &library, &project, &session, |content| {
+    commit_copy(&file, &ticket, &content_hash, &project, &session, |content| {
         #[cfg(target_os = "windows")]
         let delivery = {
             let (token, sequence) = clipboard::write(&app, content)?;
@@ -246,25 +303,28 @@ pub(crate) fn copy_file_citation(
     })
 }
 
+/// The open library's engine. The lock is held only to take it; the engine's
+/// own commit barrier guards the write.
+fn open_file(
+    library: &Mutex<Library>,
+) -> Result<std::sync::Arc<crate::library::engine_file::FileLibrary>, CommandError> {
+    let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
+    if library.opening {
+        return Err("The library is loading. Try again after it opens.".into());
+    }
+    library.file.clone().ok_or(CommandError::SnapshotChanged)
+}
+
 /// Commit the shown citation through `write`, which returns its delivery,
 /// then say what the copy needs said and remember what it cited.
 pub(crate) fn commit_copy(
+    file: &crate::library::engine_file::FileLibrary,
     ticket: &str,
     content_hash: &str,
-    library: &Mutex<Library>,
     project: &crate::project::ProjectBibliography,
     session: &crate::session_references::SessionReferences,
     write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
 ) -> Result<Copied, CommandError> {
-    // The library lock is held only to take the engine; the engine's own
-    // commit barrier guards the write.
-    let file = {
-        let library = library.lock().map_err(|_| CommandError::SnapshotChanged)?;
-        if library.opening {
-            return Err("The library is loading. Try again after it opens.".into());
-        }
-        library.file.clone().ok_or(CommandError::SnapshotChanged)?
-    };
     let mut delivery = None;
     let mut copied = file.copy(ticket, content_hash, |content| {
         delivery = write(content)?;

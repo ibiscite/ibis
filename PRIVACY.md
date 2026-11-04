@@ -98,6 +98,11 @@ the same as Ibis's settings.
   permissions. Library reads and clipboard writes go through Ibis's
   window-scoped commands ([decision 0024](docs/decisions.md#0024-window-permissions)).
   Its content security policy restricts `connect-src` to local IPC.
+- **Editor endpoint:** off until you switch it on in Settings › Citations. Then Ibis
+  listens on `127.0.0.1:23124` only, for editors on your computer that know the
+  address Settings shows. It answers whether Ibis is ready, and the citation you
+  choose in the picker, nothing else. Web pages are refused, and nothing it receives
+  is kept or leaves your computer.
 - **Zotero:** Ibis connects to `127.0.0.1:23119` on your computer. Setup checks
   Zotero's greeting; choosing Zotero reads the selected libraries and refreshes
   them when the picker opens. Zotero's local API must be enabled. For items

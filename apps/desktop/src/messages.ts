@@ -202,6 +202,8 @@ export const pickerText = {
     repeated: "The library file repeats this key, so Ibis can't tell which entry to copy.",
     dependency: "This entry relies on a crossref, xdata or @string that can't come with it. Export it from your reference manager, keeping its key.",
   })[outcome],
+  /** An editor asked through the endpoint; it receives exactly what is shown. */
+  editorWaiting: (format: string) => `Citing for your editor in ${isolate(format)}. Enter sends what you see; Esc cancels.`,
   openZotero: "Open Zotero",
   showInZotero: "Show in Zotero",
   findSource: "Find…",

@@ -11,6 +11,7 @@ mod copy;
 mod delights;
 mod destination;
 mod diagnostics;
+mod editor_endpoint;
 mod feedback;
 mod library;
 mod login_item;
@@ -167,6 +168,8 @@ fn main() {
         .manage(settings_backup::PendingRestore::default())
         .manage(row_context::RowContext::default())
         .manage(project::ProjectBibliography::default())
+        .manage(editor_endpoint::Pending::default())
+        .manage(editor_endpoint::Endpoint::default())
         .manage(session_references::SessionReferences::default())
         .on_menu_event(row_context::selected)
         .manage(Pinned::default())
@@ -348,6 +351,7 @@ fn main() {
             // The library from settings; IBIS_LIBRARY overrides it for development.
             project::start(app.handle(), loaded.settings.project_bibliography.clone());
             project::watch_openings(app.handle());
+            editor_endpoint::start(app.handle(), loaded.settings.editor_endpoint.clone());
             let library = std::env::var_os("IBIS_LIBRARY")
                 .map(|path| Source::File(PathBuf::from(path)))
                 .or_else(|| loaded.settings.library.clone().map(Source::from));

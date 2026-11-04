@@ -25,6 +25,7 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
+  editorRequest,
   sessionReferences,
   editSessionReferences,
   sessionBibliography,
@@ -164,6 +165,11 @@ export function onProjectChanged(handler: () => void): Promise<UnlistenFn> {
 /** A chosen project bibliography could not be saved, so the old choice stands. */
 export function onProjectNotSaved(handler: () => void): Promise<UnlistenFn> {
   return listen("project:not-saved", () => handler());
+}
+
+/** An editor began or stopped waiting for a citation. */
+export function onEditorRequest(handler: () => void): Promise<UnlistenFn> {
+  return listen("editor:request", () => handler());
 }
 
 export const COPY_FORMATS = Object.entries(copyFormatLabels).map(([value, label]) => ({

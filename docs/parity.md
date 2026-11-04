@@ -63,27 +63,30 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 ## Better BibTeX Cite as You Write
 
 The endpoint is #42. Under [decision 0008](decisions.md#0008-offline-by-default)
-it listens only on `127.0.0.1`, on its own port, refuses requests that carry a
-browser `Origin`, and is off until switched on in Settings. The formats below
-render from the same `CitationRequest` as everything else, so CAYW output is
-exactly what the picker would copy.
+it listens only on `127.0.0.1`, on its own port (23124), and is off until switched
+on in Settings › Citations, which shows the address to paste into the editor. That
+address holds a token, and a request without it, from a browser or through another
+host name is refused. The formats below render from the same `CitationRequest` as
+everything else, and the picker previews in the editor's format, so CAYW output is
+exactly what the picker shows. Which editors pass is in the
+[compatibility guide](compatibility.md#editors-cite-as-you-write).
 
 | Parameter or format | Status | Issue | Proof |
 | --- | --- | --- | --- |
-| `probe` answers `ready` without opening the picker | planned | #42 | to add |
-| Opens the picker and returns the citation | planned | #42 | to add |
-| `format=biblatex` with `command` (default `autocite`) | done as a syntax | #42 | `syntax_rules.rs::biblatex_multicite_keeps_one_locator_per_reference` |
-| `format=natbib` with `command`; aliases `latex`, `cite`, `citep`, `citet` | done as a syntax | #42 | `natbib_sources.rs` |
-| `format=pandoc` with `brackets` | done as a syntax | #42 | `syntax_contract.rs` |
+| `probe` answers `ready` without opening the picker (`No` while no library is open) | done | #42 | `editor_endpoint.rs::a_probe_answers_without_opening_the_picker` |
+| Opens the picker and returns the citation; hiding the picker or an editor that gives up answers with nothing | done | #42 | `editor_endpoint.rs::a_pick_opens_the_picker_and_returns_what_the_person_chose`, `hiding_the_picker_answers_with_nothing`, `an_editor_that_gives_up_ends_its_request` |
+| `format=biblatex` with `command` (default `autocite`; also `parencite`, `textcite`, `cite`; any other is refused) | done | #42 | `syntax_rules.rs::biblatex_multicite_keeps_one_locator_per_reference`, `cayw.rs::every_listed_format_has_its_output` |
+| `format=natbib` with `command`; aliases `latex`, `cite`, `citep`, `citet` | done | #42 | `natbib_sources.rs`, `cayw.rs::every_listed_format_has_its_output` |
+| `format=pandoc` with `brackets`; without it `@key` as BBT gives, with brackets kept where a locator or affix needs them | done | #42 | `key_syntaxes.rs::bare_pandoc_drops_brackets_only_when_nothing_needs_them` |
 | `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
 | `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
 | `format=scannable-cite` | planned | #1531 | to add |
 | ConTeXt `\cite`; key form, author, year and full entry, with notes for one reference | done as a syntax (`context`), checked in ConTeXt itself; narrative refused | #1207 | `key_syntaxes.rs`, `scripts/syntax-tools.mjs` |
-| `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the chosen style) | planned | #42 | to add |
+| `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the default style chosen in Settings) | done | #42 | `cayw.rs::every_listed_format_has_its_output`, `editor_endpoint.rs::a_formatted_request_takes_the_persons_style_and_a_numeric_one_its_entry` |
 | `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
-| Picks carry locator, prefix, suffix and suppress author | done in the contract | #42 | to add, one recorded request per editor |
-| `clipboard` also copies the result | planned | #42 | to add |
-| `selected` cites what is selected in Zotero | planned | #1314 | to add |
+| Picks carry locator, prefix, suffix and suppress author | done: the picker's own editor sets them | #42 | `cayw_clients.rs::the_vs_code_citation_picker_gets_each_format_it_offers` (recorded requests) |
+| `clipboard` also copies the result | done | #42 | `cayw.rs::options_that_change_nothing_are_allowed_and_clipboard_is_kept` |
+| `selected` cites what is selected in Zotero | planned; refused until then | #1314 | `cayw.rs::a_format_or_option_ibis_cannot_honour_is_refused_not_replaced` |
 | `format=translate` (any Zotero export translator) | excluded | — | Export translators belong to Better BibTeX (ROADMAP non-goals) |
 | `format=eta` (user templates) | excluded | — | Arbitrary templates cannot be checked; capability tables cannot describe them |
 | Locator label overrides in the query (`page=`, `Section=sec.`) | excluded | — | Labels come from the style or the syntax; a plain-text override would bypass typed losses |

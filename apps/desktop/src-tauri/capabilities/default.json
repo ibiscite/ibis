@@ -49,6 +49,7 @@
     "allow-choose-project",
     "allow-stop-project",
     "allow-copy-project-entry",
+    "allow-editor-request",
     "allow-session-references",
     "allow-edit-session-references",
     "allow-session-bibliography",

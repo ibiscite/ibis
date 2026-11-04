@@ -695,12 +695,26 @@ impl FileLibrary {
         }
         Ok(latest.1.clone())
     }
+    #[cfg(test)]
     pub(crate) fn preview(
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
         format: KeyFormat,
         style: Option<CitationStyle>,
+    ) -> Result<FilePreview, CommandError> {
+        self.preview_for(reservation, items, format, style, None)
+    }
+
+    /// As [`Self::preview`], with a waiting editor's output in place of the
+    /// picker's, so the preview is what that editor receives.
+    pub(crate) fn preview_for(
+        &self,
+        reservation: u64,
+        items: Vec<FileSelection>,
+        format: KeyFormat,
+        style: Option<CitationStyle>,
+        editor: Option<&crate::editor_endpoint::EditorRequest>,
     ) -> Result<FilePreview, CommandError> {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
@@ -794,7 +808,7 @@ impl FileLibrary {
                 })
             })
             .collect::<Result<_, CommandError>>()?;
-        let request = CitationRequest {
+        let mut request = CitationRequest {
             items,
             output,
             form: if style == Some(CitationStyle::Ieee) {
@@ -806,6 +820,12 @@ impl FileLibrary {
             input_language: None,
             output_locale: None,
         };
+        if let Some(editor) = editor {
+            request.output = editor.output.clone();
+            request.form = editor.form;
+            request.keep_order = matches!(editor.output, OutputSpec::Key { .. });
+            original_output = editor.output.clone();
+        }
         let citation = self
             .engine
             .prepare_citation(&request, &cancel)
@@ -989,6 +1009,21 @@ impl FileLibrary {
             .map_err(CommandError::from)?;
         Ok(ReferenceDetails { forms, current_form })
     }
+    /// Whether the receipt `ticket` was prepared for this editor's request.
+    pub(crate) fn prepared_for(&self, ticket: &str, editor: &crate::editor_endpoint::EditorRequest) -> bool {
+        self.prepared.lock().is_ok_and(|prepared| {
+            prepared.as_ref().is_some_and(|(current, citation, _)| {
+                current == ticket
+                    && citation.request_output() == &editor.output
+                    && citation.request_form() == editor.form
+            })
+        })
+    }
+
+    pub(crate) fn invalidate_preview(&self) {
+        self.invalidate();
+    }
+
     pub(super) fn invalidate(&self) {
         self.reserve_preview();
         if let Ok(mut prepared) = self.prepared.lock() {
@@ -1081,7 +1116,7 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     )
 }
 
-fn style_id(style: CitationStyle) -> &'static str {
+pub(crate) fn style_id(style: CitationStyle) -> &'static str {
     match style {
         CitationStyle::Apa => "apa",
         CitationStyle::ChicagoAuthorDate => "chicago-author-date",
