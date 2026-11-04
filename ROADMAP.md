@@ -73,6 +73,7 @@ The first command line, BibTeX reading that survives damaged files, key outputs,
 ### 0.6 Your document
 
 - Export what a document cites to `.bib`, Hayagriva or CSL-JSON.
+- Deliberately preserve project citations with their relevant references, requests, rendered outputs and formatting inputs. Recovering saved text, recreating an earlier rendering and citing with current information are distinct; receipts and lock files alone cannot restore material never saved ([decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005), [historical citations](docs/design.md#historical-citations-planned)).
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate that also catches citations typed without Ibis, with an optional lock file so co-authors get the same references.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
 - Opt-in DOI lookup for references not in the library (network decision first).
