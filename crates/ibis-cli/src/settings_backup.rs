@@ -1,6 +1,6 @@
 //! `ibis settings export|import`: back up the Ibis app's settings and restore
 //! them on this computer or another one (#1561). The rules are the engine's
-//! (`ibis_core::settings::backup`); this module only finds the app's settings
+//! (`ibis_engine::settings_backup`); this module only finds the app's settings
 //! file and words the result. Paste approvals are never read or written.
 
 use std::fs;
@@ -9,9 +9,8 @@ use std::path::{Path, PathBuf};
 use clap::ArgMatches;
 use ibis_core::contract::{ErrorCode, ExitCode};
 use ibis_core::destination::System;
-use ibis_core::settings::backup::{self, Backup, BackupError, Change, Note};
-use ibis_core::settings::{self, PrimaryRead, SettingsError};
 use ibis_engine::DispatchResult;
+use ibis_engine::settings_backup::{self as backup, Backup, BackupError, Note};
 use serde_json::{Value, json};
 
 use crate::{Failure, app_libraries, bounded};
@@ -110,25 +109,7 @@ fn within<T: Send + 'static>(what: &str, operation: impl FnOnce() -> T + Send + 
 
 fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     let (app, path) = settings_file(args.get_flag("nightly"))?;
-    let loaded = within("the settings file", move || settings::load(&path))?;
-    if loaded.primary_read == PrimaryRead::Missing && loaded.problem.is_none() && !loaded.from_backup {
-        return Err(Failure::new(
-            ErrorCode::NotFound,
-            format!("{app} has no settings on this computer yet; open it and choose some first."),
-        ));
-    }
-    if let Some(problem) = &loaded.problem {
-        // A backup of recovered or default settings would not be what the person chose.
-        return Err(Failure::new(
-            settings_code(problem),
-            format!(
-                "{app}'s settings cannot be backed up as they are: {}. Open {app} to repair them.",
-                settings_text(problem)
-            ),
-        ));
-    }
-    let text = backup::export(&loaded.settings, ibis_core::VERSION)
-        .map_err(|_| Failure::new(ErrorCode::ResourceLimit, "the backup would be larger than 1 MiB."))?;
+    let text = backup::export_file(path, ibis_core::VERSION).map_err(|error| backup_failure(&error))?;
     let destination = args.get_one::<PathBuf>("output").filter(|path| path.as_os_str() != "-");
     let Some(destination) = destination.cloned() else {
         let data: Value = serde_json::from_str(&text).unwrap_or_default();
@@ -137,16 +118,7 @@ fn export(args: &ArgMatches) -> Result<DispatchResult, Failure> {
     let force = args.get_flag("force");
     // A write the person asked for runs to the end, so the result reported is
     // the one on disk.
-    backup::save(&destination, &text, force).map_err(|error| {
-        if error.kind() == std::io::ErrorKind::AlreadyExists {
-            Failure::new(
-                ErrorCode::Usage,
-                "that file exists already; choose another name, or add --force to replace it.",
-            )
-        } else {
-            Failure::new(ErrorCode::SourceUnavailable, "the backup could not be written there.")
-        }
-    })?;
+    backup::save(&destination, &text, force).map_err(|error| backup_failure(&error))?;
     let name = file_name(&destination);
     Ok(result(
         json!({"app": app, "written": name}),
@@ -162,47 +134,19 @@ fn import(args: &ArgMatches) -> Result<DispatchResult, Failure> {
         .get_one::<PathBuf>("backup")
         .cloned()
         .ok_or_else(|| Failure::new(ErrorCode::Usage, "name the backup file to restore."))?;
-    let file = chosen.clone();
-    let backup = within("the backup file", move || backup::read(&file))?.map_err(|error| backup_failure(&error))?;
-    let settings_path = path.clone();
-    let loaded = within("the settings file", move || settings::load(&settings_path))?;
-    if let Some(problem) = &loaded.problem
-        && settings_code(problem) == ErrorCode::NewerFormat
-    {
-        return Err(current_failure(app, problem));
-    }
-    let library = match &backup.settings.library {
-        Some(settings::LibrarySetting::Bibtex(file)) => Some(file.clone()),
-        _ => None,
-    };
-    let found = match library {
-        Some(file) => bounded(move || file.try_exists().unwrap_or(false)).unwrap_or(false),
-        None => true,
-    };
-    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::needs_repair(&loaded));
+    let (backup, plan) = backup::prepare(path.clone(), chosen).map_err(|error| backup_failure(&error))?;
     let dry_run = args.get_flag("dry-run");
     if !dry_run && !plan.is_empty() {
-        backup::restore(&path, &plan).map_err(|error| match &error {
-            BackupError::Settings(problem) => current_failure(app, problem),
-            BackupError::Changed => Failure::new(
-                ErrorCode::SourceUnavailable,
-                format!("{app}'s settings changed while restoring; nothing was restored. Try again."),
-            ),
-            _ => Failure::new(
-                ErrorCode::SourceUnavailable,
-                "the settings could not be saved; nothing was restored.",
-            ),
-        })?;
+        backup::restore(&path, &plan).map_err(|error| backup_failure(&error))?;
     }
     let restored = !dry_run && !plan.is_empty();
-    let changes: Vec<Value> = plan.changes.iter().map(change_value).collect();
-    let notes: Vec<&str> = plan.notes.iter().map(note_id).collect();
+    let changes: Vec<_> = plan.changes.iter().map(backup::shown).collect();
     let data = json!({
         "app": app,
         "made_on": backup.made_on,
         "made_by": backup.made_by,
         "changes": changes,
-        "notes": notes,
+        "notes": plan.notes,
         "restored": restored,
     });
     Ok(result(data, Some(import_text(app, &backup, &plan, dry_run))))
@@ -264,19 +208,6 @@ fn file_name(path: &Path) -> String {
         .map_or_else(|| "the backup".into(), |name| name.to_string_lossy().into_owned())
 }
 
-fn change_value(change: &Change) -> Value {
-    let change = backup::shown(change);
-    json!({"setting": change.setting, "from": change.from, "to": change.to})
-}
-
-fn note_id(note: &Note) -> &'static str {
-    match note {
-        Note::LibraryNotFound => "library-not-found",
-        Note::ShortcutKept => "shortcut-kept",
-        Note::RepairsSettings => "repairs-settings",
-    }
-}
-
 fn system_label(system: System) -> &'static str {
     match system {
         System::Macos => "macOS",
@@ -327,70 +258,5 @@ fn value_label(setting: &str, value: Option<&Value>) -> String {
 }
 
 fn backup_failure(error: &BackupError) -> Failure {
-    let (code, sentence) = match error {
-        BackupError::NotDownloaded => (
-            ErrorCode::SourceUnavailable,
-            "the backup is not downloaded to this computer yet; open it in Finder or File Explorer so it downloads, then try again.".into(),
-        ),
-        BackupError::Unreadable(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            (ErrorCode::NotFound, "there is no backup file at that path.".into())
-        }
-        BackupError::Unreadable(_) => (ErrorCode::SourceUnavailable, "the backup file could not be read.".into()),
-        BackupError::NotABackup => (ErrorCode::BadInput, "that file is not an Ibis settings backup.".into()),
-        BackupError::SettingsFile => (
-            ErrorCode::BadInput,
-            "that is an Ibis settings file, not a backup; make a backup with: ibis settings export FILE".into(),
-        ),
-        BackupError::NewerFormat(_) | BackupError::Settings(SettingsError::NewerVersion(_)) => (
-            ErrorCode::NewerFormat,
-            "the backup was made by a newer version of Ibis; update this ibis command to restore it.".into(),
-        ),
-        BackupError::Invalid(reason) => (ErrorCode::BadInput, format!("the backup is not valid: {reason}.")),
-        BackupError::Settings(SettingsError::InvalidZoteroLibraryEntry { position }) => (
-            ErrorCode::BadInput,
-            format!("the backup is not valid: its Zotero library entry {position} is wrong."),
-        ),
-        BackupError::Settings(_) | BackupError::Changed => {
-            (ErrorCode::BadInput, "the settings in the backup are not valid.".into())
-        }
-    };
-    Failure::new(code, format!("{sentence} Nothing was changed."))
-}
-
-/// This computer's settings file cannot take a restore.
-fn current_failure(app: &str, problem: &SettingsError) -> Failure {
-    let fix = if settings_code(problem) == ErrorCode::NewerFormat {
-        format!("update this ibis command to match {app}")
-    } else {
-        format!("open {app} to repair them")
-    };
-    Failure::new(
-        settings_code(problem),
-        format!(
-            "{app}'s settings cannot be replaced: {}; {fix}. Nothing was changed.",
-            settings_text(problem)
-        ),
-    )
-}
-
-fn settings_code(problem: &SettingsError) -> ErrorCode {
-    match problem {
-        SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
-        SettingsError::Backup(inner) => settings_code(inner),
-        SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Unreadable(_) => ErrorCode::SourceUnavailable,
-    }
-}
-
-/// A fixed description, never the file's own text.
-fn settings_text(problem: &SettingsError) -> &'static str {
-    match problem {
-        SettingsError::NewerVersion(_) => "they were written by a newer version of Ibis",
-        SettingsError::Backup(inner) => settings_text(inner),
-        SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => "the settings file is not valid",
-        SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
-            "this program is not allowed to read the settings file"
-        }
-        SettingsError::Unreadable(_) => "the settings file could not be read",
-    }
+    Failure::new(backup::code(error), backup::message(error))
 }

@@ -412,6 +412,20 @@ pub struct Loaded {
     pub from_backup: bool,
 }
 
+impl Loaded {
+    /// A valid recovery copy permits repairing the primary on the next save.
+    pub fn recovering(&self) -> bool {
+        self.from_backup
+            && match &self.problem {
+                Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
+                Some(SettingsError::Unreadable(error)) => {
+                    matches!(error.kind(), io::ErrorKind::InvalidData | io::ErrorKind::NotFound)
+                }
+                _ => false,
+            }
+    }
+}
+
 fn backup_path(path: &Path) -> PathBuf {
     path.with_extension("json.bak")
 }
@@ -831,14 +845,7 @@ pub fn transaction<T, E: From<SettingsError>>(
 ) -> Result<(Settings, T), E> {
     let _writer = writer_lock(path).map_err(E::from)?;
     let loaded = load(path);
-    let recovering = loaded.from_backup
-        && match &loaded.problem {
-            Some(SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. }) => true,
-            Some(SettingsError::Unreadable(error)) => {
-                matches!(error.kind(), io::ErrorKind::InvalidData | io::ErrorKind::NotFound)
-            }
-            _ => false,
-        };
+    let recovering = loaded.recovering();
     if let Some(problem) = loaded.problem
         && !recovering
     {

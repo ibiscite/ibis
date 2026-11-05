@@ -271,10 +271,10 @@ export const commands = {
 	chooseSettingsBackup: () => __TAURI_INVOKE<{
 	/**  Names this preview; only the latest one can be restored. */
 	ticket: number,
-	made_on: BackupSystem,
+	made_on: System,
 	made_by: string,
 	changes: RestoreChange[],
-	notes: RestoreNote[],
+	notes: Note[],
 } | null>("choose_settings_backup"),
 	/**
 	 *  Restore the previewed backup, then restart so every part of Ibis starts
@@ -336,8 +336,6 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 "settings-unusable" |
 /**  The settings changed, or another backup was chosen, after the preview. */
 "changed" | "not-saved";
-
-export type BackupSystem = "macos" | "windows" | "linux";
 
 /**  How a check ended. Whoever asked says so in its own place. */
 export type CheckResult =
@@ -676,6 +674,21 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 /**  An ISBN, PubMed ID or arXiv ID given as the whole query. */
 "identifier";
 
+/**  Something the person should know before restoring. */
+export type Note =
+/**
+ *  The backup's bibliography file is not on this computer. It is restored
+ *  anyway and found again once the file is there.
+ */
+"library-not-found" |
+/**  The backup has no opening shortcut for this system; this computer's is kept. */
+"shortcut-kept" |
+/**
+ *  This computer's settings file is damaged or missing. Restoring writes
+ *  it, even with the same settings, and keeps a damaged file beside it.
+ */
+"repairs-settings";
+
 /**
  *  What the notice says: whether the citation was pasted or only copied, and
  *  one line of it.
@@ -997,16 +1010,14 @@ export type RestoreChange = {
 	to: string | null,
 };
 
-export type RestoreNote = "library-not-found" | "shortcut-kept" | "repairs-settings";
-
 /**  What restoring the chosen backup would change, before anything does. */
 export type RestorePreview = {
 	/**  Names this preview; only the latest one can be restored. */
 	ticket: number,
-	made_on: BackupSystem,
+	made_on: System,
 	made_by: string,
 	changes: RestoreChange[],
-	notes: RestoreNote[],
+	notes: Note[],
 };
 
 export type RowAction = "copy" | "toggle";
@@ -1234,6 +1245,9 @@ export type Sources = {
 	 */
 	cut_short: boolean,
 };
+
+/**  The operating system an app ID belongs to. */
+export type System = "macos" | "windows" | "linux";
 
 export type SystemIcon = {
 	mime: string,

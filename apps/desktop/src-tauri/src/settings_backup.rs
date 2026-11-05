@@ -1,51 +1,19 @@
 //! Back up and restore settings from Settings › General (#1561). The rules are
-//! the engine's (`ibis_core::settings::backup`), shared with `ibis settings`;
+//! the engine's (`ibis_engine::settings_backup`), shared with `ibis settings`;
 //! this module owns the system dialogs, the one pending restore and the
 //! restart that applies it. Paste approvals in `apps.json` are never touched.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
-use std::time::Duration;
 
+pub(crate) use backup::{BackupProblem, within};
 use ibis_core::destination::System;
-use ibis_core::settings::backup::{self, BackupError, Note, Plan};
-use ibis_core::settings::{self, LibrarySetting, SettingsError};
+use ibis_engine::settings_backup::{self as backup, Note, Plan};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 
 use crate::preferences::SettingsFile;
-
-/// A file or folder that does not answer within this time is reported, never waited on.
-use std::sync::atomic::{AtomicUsize, Ordering};
-
-const MAX_IN_FLIGHT: usize = 8;
-const DEADLINE: Duration = Duration::from_secs(2);
-
-/// Why a backup or restore did not happen; the Settings window words it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum BackupProblem {
-    NotDownloaded,
-    Unreadable,
-    NotABackup,
-    SettingsFile,
-    Newer,
-    Invalid,
-    /// This computer's settings are damaged, from a newer Ibis or unreadable.
-    SettingsUnusable,
-    /// The settings changed, or another backup was chosen, after the preview.
-    Changed,
-    NotSaved,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum BackupSystem {
-    Macos,
-    Windows,
-    Linux,
-}
 
 /// One setting a restore changes. Values are as the settings file writes
 /// them, as text; `None` is the default. A bibliography is its file name only.
@@ -56,23 +24,15 @@ pub(crate) struct RestoreChange {
     pub(crate) to: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum RestoreNote {
-    LibraryNotFound,
-    ShortcutKept,
-    RepairsSettings,
-}
-
 /// What restoring the chosen backup would change, before anything does.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct RestorePreview {
     /// Names this preview; only the latest one can be restored.
     pub(crate) ticket: u32,
-    pub(crate) made_on: BackupSystem,
+    pub(crate) made_on: System,
     pub(crate) made_by: String,
     pub(crate) changes: Vec<RestoreChange>,
-    pub(crate) notes: Vec<RestoreNote>,
+    pub(crate) notes: Vec<Note>,
 }
 
 /// The one restore that may be applied: the latest preview's plan.
@@ -84,7 +44,8 @@ impl PendingRestore {
     /// chosen, can no longer be restored.
     fn begin(&self) -> Option<u32> {
         let mut pending = self.0.lock().ok()?;
-        pending.0 = pending.0.wrapping_add(1);
+        // Reserve the last identity for cancellation; never reuse a ticket.
+        pending.0 = pending.0.checked_add(1).filter(|ticket| *ticket < u32::MAX)?;
         pending.1 = None;
         Some(pending.0)
     }
@@ -108,39 +69,13 @@ impl PendingRestore {
     }
 
     fn cancel(&self, ticket: u32) {
-        let _ = self.take(ticket);
-    }
-}
-
-/// Run file work on its own thread for at most [`DEADLINE`].
-/// At most [`MAX_IN_FLIGHT`] calls run at once: a call stuck in a stalled
-/// folder keeps its place until it really finishes, so retries cannot pile up
-/// threads (docs/architecture.md).
-pub(crate) fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-    bounded(&IN_FLIGHT, work)
-}
-
-fn bounded<T: Send + 'static>(in_flight: &'static AtomicUsize, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    struct Place(&'static AtomicUsize);
-    impl Drop for Place {
-        fn drop(&mut self) {
-            self.0.fetch_sub(1, Ordering::AcqRel);
+        if let Ok(mut pending) = self.0.lock()
+            && pending.0 == ticket
+        {
+            pending.0 = pending.0.saturating_add(1);
+            pending.1 = None;
         }
     }
-    let place = Place(in_flight);
-    if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
-        return None;
-    }
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("ibis-settings-file".into())
-        .spawn(move || {
-            let _place = place;
-            let _ = sender.send(work());
-        })
-        .ok()?;
-    receiver.recv_timeout(DEADLINE).ok()
 }
 
 /// Where the save dialog starts: the folder people already sync, when there
@@ -166,26 +101,6 @@ fn backup_folder(
         .find(|folder| is_dir(folder))
 }
 
-fn system(system: System) -> BackupSystem {
-    match system {
-        System::Macos => BackupSystem::Macos,
-        System::Windows => BackupSystem::Windows,
-        System::Linux => BackupSystem::Linux,
-    }
-}
-
-fn problem(error: &BackupError) -> BackupProblem {
-    match error {
-        BackupError::NotDownloaded => BackupProblem::NotDownloaded,
-        BackupError::Unreadable(_) => BackupProblem::Unreadable,
-        BackupError::NotABackup => BackupProblem::NotABackup,
-        BackupError::SettingsFile => BackupProblem::SettingsFile,
-        BackupError::NewerFormat(_) | BackupError::Settings(SettingsError::NewerVersion(_)) => BackupProblem::Newer,
-        BackupError::Invalid(_) | BackupError::Settings(_) => BackupProblem::Invalid,
-        BackupError::Changed => BackupProblem::Changed,
-    }
-}
-
 fn text(value: Option<&serde_json::Value>) -> Option<String> {
     match value? {
         serde_json::Value::Null => None,
@@ -209,7 +124,7 @@ fn text(value: Option<&serde_json::Value>) -> Option<String> {
 fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview {
     RestorePreview {
         ticket,
-        made_on: system(backup.made_on),
+        made_on: backup.made_on,
         made_by: backup.made_by.clone(),
         changes: plan
             .changes
@@ -221,15 +136,7 @@ fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview 
                 setting: change.setting,
             })
             .collect(),
-        notes: plan
-            .notes
-            .iter()
-            .map(|note| match note {
-                Note::LibraryNotFound => RestoreNote::LibraryNotFound,
-                Note::ShortcutKept => RestoreNote::ShortcutKept,
-                Note::RepairsSettings => RestoreNote::RepairsSettings,
-            })
-            .collect(),
+        notes: plan.notes.clone(),
     }
 }
 
@@ -238,16 +145,9 @@ fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview 
 #[specta::specta]
 pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<String>, BackupProblem> {
     let app = window.app_handle().clone();
-    // A read-only load needs no writer lock (saves replace the file whole),
-    // and a stalled folder gives up after the file deadline.
     let path = app.state::<SettingsFile>().path.clone();
-    let loaded = within(move || settings::load(&path)).ok_or(BackupProblem::SettingsUnusable)?;
-    // A backup of recovered or default settings would not be what was chosen.
-    if loaded.problem.is_some() {
-        return Err(BackupProblem::SettingsUnusable);
-    }
-    let text = backup::export(&loaded.settings, &app.package_info().version.to_string())
-        .map_err(|_| BackupProblem::NotSaved)?;
+    let text =
+        backup::export_file(path, &app.package_info().version.to_string()).map_err(|error| backup::problem(&error))?;
     let folder = within(|| {
         backup_folder(
             System::HERE,
@@ -307,25 +207,8 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
         .map_err(|_| BackupProblem::Unreadable)?;
     let Some(chosen) = chosen else { return Ok(None) };
     let path = chosen.into_path().map_err(|_| BackupProblem::Unreadable)?;
-    let backup = within(move || backup::read(&path))
-        .ok_or(BackupProblem::Unreadable)?
-        .map_err(|error| problem(&error))?;
-    // A read-only load needs no writer lock (saves replace the file whole),
-    // and a stalled folder gives up after the file deadline.
-    let path = app.state::<SettingsFile>().path.clone();
-    let loaded = within(move || settings::load(&path)).ok_or(BackupProblem::SettingsUnusable)?;
-    // Damaged settings can be replaced; settings from a newer Ibis never are.
-    if let Some(SettingsError::NewerVersion(_)) = &loaded.problem {
-        return Err(BackupProblem::SettingsUnusable);
-    }
-    let found = match &backup.settings.library {
-        Some(LibrarySetting::Bibtex(library)) => {
-            let library = library.clone();
-            within(move || library.try_exists().unwrap_or(false)).unwrap_or(false)
-        }
-        _ => true,
-    };
-    let plan = backup::plan(&loaded.settings, &backup, |_| found).repairing(backup::needs_repair(&loaded));
+    let settings = app.state::<SettingsFile>().path.clone();
+    let (backup, plan) = backup::prepare(settings, path).map_err(|error| backup::problem(&error))?;
     if !app.state::<PendingRestore>().offer(ticket, plan.clone()) {
         return Ok(None);
     }
@@ -348,11 +231,7 @@ pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Resu
         .await
         .map_err(|_| BackupProblem::NotSaved)?
         .map_err(|_| BackupProblem::NotSaved)?
-        .map_err(|error| match error {
-            BackupError::Changed => BackupProblem::Changed,
-            BackupError::Settings(_) => BackupProblem::SettingsUnusable,
-            _ => BackupProblem::NotSaved,
-        })?;
+        .map_err(|error| backup::problem(&error))?;
     app.request_restart();
     Ok(())
 }
@@ -368,44 +247,13 @@ pub(crate) fn cancel_settings_restore(pending: State<'_, PendingRestore>, ticket
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::settings::Settings;
+    use ibis_core::settings::backup as rules;
+    use ibis_core::settings::{LibrarySetting, Settings};
 
     fn plan(settings: &Settings) -> Plan {
-        let text = backup::export(settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
-        let backup = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
-        backup::plan(&Settings::default(), &backup, |_| true)
-    }
-
-    #[test]
-    fn stuck_file_calls_have_a_fixed_limit_until_they_finish() {
-        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-        let within = |work: fn() -> i32| bounded(&IN_FLIGHT, work);
-        let (release, wait) = std::sync::mpsc::channel::<()>();
-        let wait = std::sync::Arc::new(Mutex::new(wait));
-        let stuck: Vec<_> = (0..MAX_IN_FLIGHT)
-            .map(|_| {
-                let wait = wait.clone();
-                std::thread::spawn(move || bounded(&IN_FLIGHT, move || drop(wait.lock().map(|w| w.recv()))))
-            })
-            .collect();
-        for call in stuck {
-            assert!(
-                call.join().ok().flatten().is_none(),
-                "a stalled call gives up at the deadline"
-            );
-        }
-        assert!(within(|| 1).is_none(), "no new worker while eight are stuck");
-        for _ in 0..MAX_IN_FLIGHT {
-            let _ = release.send(());
-        }
-        let started = std::time::Instant::now();
-        while within(|| 1).is_none() {
-            assert!(
-                started.elapsed() < DEADLINE * 2,
-                "places come back once the calls finish"
-            );
-            std::thread::yield_now();
-        }
+        let text = rules::export(settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
+        let backup = rules::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+        rules::plan(&Settings::default(), &backup, |_| true)
     }
 
     #[test]
@@ -426,6 +274,25 @@ mod tests {
         assert!(pending.offer(third, plan(&Settings::default())));
         pending.cancel(third);
         assert!(pending.take(third).is_none());
+    }
+
+    #[test]
+    fn cancellation_retires_a_late_choice_without_consuming_the_reopened_choice() {
+        let pending = PendingRestore::default();
+        let closed = pending.begin().unwrap_or_default();
+        pending.cancel(closed);
+        assert!(!pending.offer(closed, plan(&Settings::default())));
+        let reopened = pending.begin().unwrap_or_default();
+        assert!(pending.offer(reopened, plan(&Settings::default())));
+        pending.cancel(closed);
+        assert!(!pending.offer(closed, plan(&Settings::default())));
+        assert!(pending.take(reopened).is_some());
+
+        let exhausted = PendingRestore(Mutex::new((u32::MAX - 2, None)));
+        let last = exhausted.begin().unwrap_or_default();
+        exhausted.cancel(last);
+        assert!(!exhausted.offer(last, plan(&Settings::default())));
+        assert!(exhausted.begin().is_none(), "exhaustion never reuses a ticket");
     }
 
     #[test]
@@ -466,13 +333,13 @@ mod tests {
             larger_text: Some(true),
             ..Settings::default()
         };
-        let text = backup::export(&settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
-        let backup = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
-        let plan = backup::plan(&Settings::default(), &backup, |_| false);
+        let text = rules::export(&settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
+        let backup = rules::parse(&text).unwrap_or_else(|error| panic!("{error}"));
+        let plan = rules::plan(&Settings::default(), &backup, |_| false);
         let shown = preview(7, &backup, &plan);
         assert_eq!(shown.ticket, 7);
         assert_eq!(shown.made_by, "0.0.0");
-        assert_eq!(shown.notes, [RestoreNote::LibraryNotFound]);
+        assert_eq!(shown.notes, [Note::LibraryNotFound]);
         let library = shown.changes.iter().find(|change| change.setting == "library");
         assert_eq!(
             library.and_then(|change| change.to.clone()).as_deref(),
@@ -484,35 +351,5 @@ mod tests {
             larger.map(|change| (change.from.clone(), change.to.clone())),
             Some((None, Some("on".into())))
         );
-    }
-
-    #[test]
-    fn a_restore_through_the_settings_writer_saves_and_keeps_the_replaced_file() {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("settings.json");
-        std::fs::write(&path, r#"{"density":"compact"}"#).unwrap_or_else(|error| panic!("{error}"));
-        let file = SettingsFile::new(path.clone());
-        let settings = Settings {
-            larger_text: Some(true),
-            ..Settings::default()
-        };
-        let text = backup::export(&settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));
-        let backup = backup::parse(&text).unwrap_or_else(|error| panic!("{error}"));
-        let plan = backup::plan(&settings::load(&path).settings, &backup, |_| true);
-        // A change from another window after the preview refuses the restore.
-        file.update(|s| s.paste = Some(false))
-            .unwrap_or_else(|error| panic!("{error}"));
-        let refused = file
-            .exclusive(|path| backup::restore(path, &plan))
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert!(matches!(refused, Err(BackupError::Changed)));
-        let plan = backup::plan(&settings::load(&path).settings, &backup, |_| true);
-        let restored = file
-            .exclusive(|path| backup::restore(path, &plan))
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert!(restored.is_ok());
-        assert_eq!(settings::load(&path).settings.larger_text, Some(true));
-        let replaced = std::fs::read_to_string(path.with_extension("json.bak")).unwrap_or_default();
-        assert!(replaced.contains("compact"));
     }
 }
