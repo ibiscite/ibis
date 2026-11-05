@@ -1,11 +1,14 @@
 /* [C19] A sidebar beside the list, as in Preview, inside one steady window.
    Where the two cannot share the width it takes the list's place instead. */
-.inspector { --inspector-pad: var(--row-pad); grid-area: panel; container: inspector / size; width: var(--inspector-width); min-width: 0; min-height: 0; margin-block: var(--inset); border-inline-start: var(--border-width) solid var(--separator); }
+.inspector { --inspector-pad: var(--row-pad); grid-area: panel; container: inspector / size; width: var(--inspector-width); min-width: 0; min-height: 0; border-inline-start: var(--border-width) solid var(--separator); }
+/* A pane divider runs the whole region it splits, as a Mac split view's does: it
+   meets the search bar's divider at the top and the shelf at the bottom. The
+   content keeps S from both inside it. */
 @container (max-width: 36rem) {
   .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
-.inspector-body { display: flex; flex-direction: column; height: 100%; overflow: auto; overscroll-behavior: contain; }
+.inspector-body { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: auto; overscroll-behavior: contain; }
 .inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: var(--inspector-pad); }
 /* One vertical step: every row is a 32 px target, one --space-1 apart, as the
    label and control rows (CitationDetails) are. */
@@ -33,10 +36,11 @@ main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
-  .inspector-body.scroll-area { flex-direction: row-reverse; overflow: hidden; }
+  .inspector-body.scroll-area { flex-direction: row-reverse; padding-block: 0; overflow: hidden; }
+  .inspector-column, .inspector-document { box-sizing: border-box; padding-block: var(--inset); }
   .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
   .inspector-column:only-child { flex: 1; }
-  .inspector-document { flex: 1; padding-block: 0; overflow: auto; }
+  .inspector-document { flex: 1; overflow: auto; }
   .inspector-document::before { content: none; }
   .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
 }
