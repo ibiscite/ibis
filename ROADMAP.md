@@ -2,7 +2,7 @@
 
 Ibis is a writing companion for the references people already keep. One shortcut, in any app, finds anything in their sources (a reference, its PDF page, a highlight or a note), shows it to be sure, and cites or quotes it where they are writing. People writing in LaTeX, Markdown, Quarto and Typst decide close calls; first-time and expert users, every major operating system and many languages all count. Ibis stays about references and research material, never a general file or web search (maintainer, 2026-11-05).
 
-Every feature planned here ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
+Every feature in the releases below ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
 
 ## How we build
 
@@ -17,7 +17,7 @@ Every feature planned here ships before 1.0. Versions before 1.0 are working ste
 ## Sources and writing apps
 
 - **Sources:** Zotero with or without Better BibTeX, `.bib` files, BibDesk, CSL-JSON, spreadsheets, and exports from other managers (RIS, EndNote XML). EndNote and Mendeley are reached only through their exports, which Ibis says can go stale. PDFs and notes outside a reference manager can be found, previewed and quoted; Ibis cites them only when it knows their details. Ibis never writes to a library or reads another app's private database or cloud account; the one exception is Zotero's own database, read from a private copy while Zotero is closed (decision 0006).
-- **Writing apps:** keys first. LaTeX and Overleaf, Markdown, Quarto and Typst get keys in their own syntax. Word, Google Docs and others get formatted citations, and keys reach them too: Zotero's free ODF/DOCX Scan turns keys in a `.docx` or `.odt` into live Zotero citations, and `ibis format` writes a finished copy for people without Zotero.
+- **Writing apps:** keys first. LaTeX and Overleaf, Markdown, Quarto and Typst get keys in their own syntax. Word, Google Docs and others get formatted citations, and keys reach them too: Zotero's free ODF/DOCX Scan turns keys in a `.docx` or `.odt` into live Zotero citations, and `ibis format` writes a finished copy for people without Zotero. The website and first run say this plainly, since Word users expect a plugin.
 - **Agents and scripts:** `ibis` does everything with `--json`, a JSON-RPC server and an MCP server ([decision 0033](docs/decisions.md#0033-the-engine-for-agents-and-tools)). Ibis's edge is citations that can be checked, from any source, offline. Agents reach highlights and notes only after the person turns that on for a library.
 
 ## Releases
@@ -28,15 +28,16 @@ The first command line and picker; then one Rust engine for the command line and
 
 ### Consolidation (now, alongside finishing 0.3)
 
-A month of fast building left parallel paths, rules no one has used and code that does one job twice. This stage makes Ibis smaller and clearer without losing a feature, in this order; new 0.4 features start once steps 1 to 4 have landed, while 0.3 fixes continue. Success is fewer owners, conversions and failure paths for the same behaviour; less code (roughly 10 to 15%) is a sign of it, not the goal. Reviewed by Sol on 2026-11-05.
+A month of fast building left parallel paths, rules no one has used and code that does one job twice. This stage makes Ibis smaller and clearer without losing a feature, in this order; 0.3 is released and new 0.4 features start once steps 1 to 4 have landed, while 0.3 fixes continue. Success is fewer owners, conversions and failure paths for the same behaviour; less code (roughly 10 to 15%) is a sign of it, not the goal. Reviewed by Sol on 2026-11-05.
 
 1. **Small docs and a short tracking issue** ([#1690](https://github.com/ibiscite/ibis/issues/1690)): one short file per decision with an index; `design.md` keeps its principles while component rules move beside the components and the gallery; measurement logs live on pull requests; the tracking issue holds only ordered work, owners, pull requests and blockers.
 2. **One complete native journey test:** summon Ibis, choose a reference, deliver it into an invented document and read it back, by extending an existing harness; plus the fake clock and platform seam the next steps need ([#1676](https://github.com/ibiscite/ibis/issues/1676)), not a universal simulator.
 3. **Withdrawn rules leave the code** ([#1697](https://github.com/ibiscite/ibis/issues/1697), [#1377](https://github.com/ibiscite/ibis/issues/1377)): Apply Updates and retained project settings, last-good bibliography copies and the unverified-key paths, in the engine, the command line and the app (about 2,000 lines).
 4. **One engine contract for the app** ([#1260](https://github.com/ibiscite/ibis/issues/1260), [#1693](https://github.com/ibiscite/ibis/issues/1693), [#1675](https://github.com/ibiscite/ibis/issues/1675)): the app talks only to `ibis-engine` and stops depending on `ibis-zotero-local`; types and message codes are generated once from the engine; the engine returns codes and every front end words them from one catalogue.
-5. **One owner for shared settings:** settings, formats per app, the selected project and backup change through one engine transaction; the app's own file and ordering code goes. Paste permissions, windows and other system effects stay with the app.
-6. **The picker session, in working slices** ([#1260](https://github.com/ibiscite/ibis/issues/1260)): session behaviour moves into one state machine a slice at a time, the library's lifecycle separately; shared sheets, menus and buttons in `ui/` are consolidated as each screen is touched.
-7. **Leaner checks** ([#1678](https://github.com/ibiscite/ibis/issues/1678), [#1693](https://github.com/ibiscite/ibis/issues/1693)): `scripts/check.mjs` plans the checks and `land.sh` uses the same plan; finer CI path classes; long inline programs in `preview.yml` move into scripts; tests that read source or CSS become rendered outcome checks; sleeps become fake clocks; engine output checks become reviewed snapshots.
+5. **One set of interface parts and plain words:** buttons, fields, sheets, list rows and the Inspector come from `ui/`, and a check fails a screen that brings its own spacing or colours; the visible glitches go with them (key badges over controls, the sheet without padding, a two-line title over the byline). Every message the app and command line show uses people's words (design principle 12).
+6. **One owner for shared settings:** settings, formats per app, the selected project and backup change through one engine transaction; the app's own file and ordering code goes. Paste permissions, windows and other system effects stay with the app.
+7. **The picker session, in working slices** ([#1260](https://github.com/ibiscite/ibis/issues/1260)): session behaviour moves into one state machine a slice at a time, the library's lifecycle separately; shared sheets, menus and buttons in `ui/` are consolidated as each screen is touched.
+8. **Leaner checks** ([#1678](https://github.com/ibiscite/ibis/issues/1678), [#1693](https://github.com/ibiscite/ibis/issues/1693)): `scripts/check.mjs` plans the checks and `land.sh` uses the same plan; finer CI path classes; long inline programs in `preview.yml` move into scripts; tests that read source or CSS become rendered outcome checks; sleeps become fake clocks; engine output checks become reviewed snapshots.
 
 ### 0.3 Straight into your document
 
@@ -87,11 +88,14 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - A library on another computer over the person's own SSH ([#1542](https://github.com/ibiscite/ibis/issues/1542)).
 - Adding a missing item to Zotero through its official local write API (opt-in, decided first).
 - More translations; EndNote XML and Word Sources.xml files; ARM64 builds; search by meaning.
-- Short research briefs, then builds where Ibis can get them right: decision memory, resuming research and an AI companion.
 
 ### 1.0 Stable
 
 No new features. People test everything, then the maintainer moves to 1.0. Gates: VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop; the documentation site; licence notices and supply-chain records. macOS keeps its self-signed identity and Windows installers stay unsigned; paid signing is revisited near 1.0 (decision 0032).
+
+## After 1.0, maybe
+
+Research briefs beyond exported passages, decision memory, resuming research and an AI companion. These are a different product from finding and citing; agents already get Ibis's part through `ibis` and `ibis mcp` (maintainer, 2026-11-05).
 
 ## Needs paid signing
 

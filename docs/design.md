@@ -23,6 +23,7 @@ Tags such as [C12] are cited by code and tests; keep each beside its rule.
 9. **Great defaults, then choice.** Most people never open Settings; no setting exists because a choice was hard.
 10. **The bar for anything people see.** A beginner succeeds with no reading, in plain words, without opening Settings; a pro does everything by keyboard, with nothing waiting or confirming.
 11. **One next action.** Every screen has one clear next action, and every failure says why and what to do.
+12. **People's words, not the engine's** (maintainer, 2026-11-05). Name things by what the person already has: "thesis.bib", "your Zotero library", "cited since Ibis opened". Engine words (session, project bibliography, context, scope, source health) never reach the interface, and the command line's human output uses the same words. Where a citation goes is read from the footer alone: the action names the app and format, the status names the library and any linked `.bib`; no other strip of selectors.
 
 ## Where Ibis departs from macOS
 
@@ -520,9 +521,9 @@ Built for key outputs: **More › Check Against a Project Bibliography…** choo
 - **Export evidence brief**: chosen passages in order, an optional question, one new Markdown file; local Zotero links labelled apart; no private paths.
 - **Changed copied key**: "You previously copied oldKey; this item's current key is newKey", only for sources whose identity survives a rename (Zotero, CSL-JSON with a stable `id`).
 
-## References used this session
+## References cited since Ibis opened
 
-**More › References Used This Session…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead explicitly says **across all projects this session**; choosing a project neither partitions nor clears the list. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
+**More › Cited Since Opening…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says it covers **every project since Ibis opened**; choosing a project neither partitions nor clears the list. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.
 
 ## Small delights
 
