@@ -17,6 +17,7 @@ pub struct Cancellation(Arc<CancelState>);
 struct CancelState {
     cancelled: AtomicBool,
     handlers: Mutex<Handlers>,
+    parent: Option<Cancellation>,
 }
 #[derive(Default)]
 struct Handlers {
@@ -39,6 +40,13 @@ impl Drop for Registration {
     }
 }
 impl Cancellation {
+    /// Native inspection can expire without cancelling its caller's request.
+    pub(crate) fn child(&self) -> Self {
+        Self(Arc::new(CancelState {
+            parent: Some(self.clone()),
+            ..CancelState::default()
+        }))
+    }
     pub fn cancel(&self) {
         self.0.cancelled.store(true, Ordering::Release);
         let tasks: Vec<_> = self
@@ -56,7 +64,7 @@ impl Cancellation {
         }
     }
     pub fn is_cancelled(&self) -> bool {
-        self.0.cancelled.load(Ordering::Acquire)
+        self.0.cancelled.load(Ordering::Acquire) || self.0.parent.as_ref().is_some_and(Self::is_cancelled)
     }
     pub fn check(&self) -> Result<(), EngineError> {
         if self.is_cancelled() {

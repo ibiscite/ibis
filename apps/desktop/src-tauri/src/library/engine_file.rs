@@ -1,6 +1,6 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
+use super::CommandError;
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
-use super::{CommandError, LibraryStatus};
 use ibis_core::{
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
@@ -139,11 +139,6 @@ pub(super) fn zotero_profiles() -> Result<Vec<String>, ibis_core::contract::Engi
         return Err(ibis_core::contract::ErrorCode::SourceUnavailable.into());
     }
     Ok(names)
-}
-
-/// Whether a Zotero library is on this computer; reads none.
-pub(crate) fn zotero_installed() -> bool {
-    Engine::new().is_ok_and(|engine| engine_list(&engine, "zotero-profiles", "zotero_installed").unwrap_or(false))
 }
 
 impl FileLibrary {
@@ -549,35 +544,6 @@ impl FileLibrary {
             .snapshot()
             .map(|s| s.fingerprints().full.as_str().to_owned())
             .unwrap_or_default()
-    }
-    pub(super) fn status(&self, status: &mut LibraryStatus) {
-        let Ok(snapshot) = self.engine.snapshot() else { return };
-        status.revision = snapshot.fingerprints().full.as_str().to_owned();
-        let mut references = HashMap::<_, usize>::new();
-        for item in snapshot.objects() {
-            if let LibraryObject::Record(record) = &item.object {
-                *references.entry(&record.id.library).or_default() += 1;
-            }
-        }
-        status.references = references.values().sum();
-        if let Ok(info) = self.engine.libraries() {
-            status.warnings = info.libraries.iter().map(|i| i.warnings_total).sum();
-            status.source_counts = info
-                .libraries
-                .iter()
-                .map(|i| (native_source(i), references.get(&i.id).copied().unwrap_or_default()))
-                .collect();
-            if info.libraries.iter().any(|i| i.refresh_error.is_some()) {
-                status.stale = true;
-                if status.error.is_none() {
-                    status.error =
-                        Some("The library could not be refreshed; keeping the last loaded references.".into());
-                }
-            }
-            if status.note.is_none() && info.libraries.iter().any(|i| i.watch_warning.is_some()) {
-                status.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
-            }
-        }
     }
     pub(crate) fn search(
         &self,
@@ -1143,7 +1109,7 @@ fn file_reload_error(error: ibis_core::contract::EngineError) -> super::LoadErro
     }
 }
 
-fn native_source(info: &ibis_engine::LibraryInfo) -> String {
+pub(super) fn native_source(info: &ibis_engine::LibraryInfo) -> String {
     match info.zotero {
         Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
         Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
