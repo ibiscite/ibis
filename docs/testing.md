@@ -303,7 +303,7 @@ Rules for native harnesses, each learned from a false result:
 [CI](../.github/workflows/ci.yml) reports through one required check, `CI result`.
 A pull request runs only what its paths can affect
 ([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
-`node scripts/check.mjs` makes the same choice locally. Main always runs everything; there is no merge queue (see AGENTS.md › Merging).
+`node scripts/check.mjs` makes the same choice locally. Main always runs everything, and so does the merge queue, which checks each pull request combined with current main before it merges (see AGENTS.md › Merging).
 Workflow logic that a test covers lives in a script under `scripts/`, and the
 test runs that script; no test matches workflow text with regular expressions
 (decision 0035). Rules only the structure can show, such as "CI result" running

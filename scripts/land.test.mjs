@@ -54,7 +54,7 @@ test("landing pushes before requesting squash auto-merge through gh", { skip: pr
     assert.equal(result.status, 0, result.stderr);
     assert.ok(result.calls.indexOf("git push -q -u origin fix/synthetic") < result.calls.indexOf("gh pr merge 42 --squash --auto"));
     assert.equal(result.calls.at(-1), "gh pr merge 42 --squash --auto");
-    assert.match(result.stdout, /#42 merges itself on a green CI result/);
+    assert.match(result.stdout, /#42 joins the merge queue once its CI is green/);
   }
 });
 
@@ -89,10 +89,10 @@ test("landing preserves GitHub failures and explains a branch without a PR", { s
   const run = fixture(t);
   const failed = run({ MERGE_STATUS: "74" });
   assert.equal(failed.status, 74);
-  assert.doesNotMatch(failed.stdout, /merges itself/);
+  assert.doesNotMatch(failed.stdout, /joins the merge queue/);
   const unavailable = run({ LOOKUP_STATUS: "75" });
   assert.equal(unavailable.status, 75);
-  assert.doesNotMatch(unavailable.stdout, /Open its pull request|merges itself/);
+  assert.doesNotMatch(unavailable.stdout, /Open its pull request|joins the merge queue/);
   for (const number of ["", "null"]) {
     const missing = run({ PR_NUMBER: number });
     assert.equal(missing.status, 0, missing.stderr);
