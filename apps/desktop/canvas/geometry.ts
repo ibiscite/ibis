@@ -72,7 +72,9 @@ export function geometry(root: ParentNode = document): string[] {
   const popover = root.querySelector(anchored.popover), trigger = root.querySelector(anchored.trigger);
   if (popover && trigger) {
     const menu = popover.getBoundingClientRect(), button = trigger.getBoundingClientRect();
-    if (Math.abs(lead(menu) - lead(button)) > tolerance) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
+    // A menu wider than the room left moves back only as far as the window's inset needs [D15].
+    const pushed = width - lead(menu, true) <= 8 + tolerance && lead(menu) < lead(button);
+    if (Math.abs(lead(menu) - lead(button)) > tolerance && !pushed) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
     if (menu.width + tolerance < button.width) failures.push(`[C21] ${name(popover)}: ${menu.width.toFixed(1)} wide, narrower than its button (${button.width.toFixed(1)})`);
   }
 
@@ -93,6 +95,13 @@ export function geometry(root: ParentNode = document): string[] {
     if (Math.abs(rect.top - header) > tolerance) failures.push(`[C19] ${name(pane)}: divider starts ${rect.top.toFixed(1)}, the search bar ends ${header.toFixed(1)}`);
     const floor = bottom && visible(bottom) ? bottom.getBoundingClientRect().top : null;
     if (floor !== null && Math.abs(rect.bottom - floor) > tolerance) failures.push(`[C19] ${name(pane)}: divider ends ${rect.bottom.toFixed(1)}, the shelf starts ${floor.toFixed(1)}`);
+  }
+
+  // Nothing scrolls sideways: a sub-pixel overhang draws a whole scroll bar in Chromium.
+  for (const node of root.querySelectorAll<HTMLElement>("*")) {
+    const overflowX = getComputedStyle(node).overflowX;
+    if ((overflowX === "auto" || overflowX === "scroll") && visible(node) && node.scrollWidth > node.clientWidth && !node.closest(".page-strip, .reader-pages"))
+      failures.push(`[scroll] ${name(node)} scrolls sideways by ${node.scrollWidth - node.clientWidth}px`);
   }
 
   for (const stack of root.querySelectorAll(stacks.join(", "))) {

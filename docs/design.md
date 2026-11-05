@@ -227,7 +227,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - **Menu heading**: small bold secondary type that never reads as an item.
 - Sections keep one order: what it is about, what you can do, Ibis itself. Labels name the result; a quiet example of the output sits on a second line under the label, as macOS menu subtitles do, in full up to the menu's width, never cut to a column.
 - An unavailable choice stays in the list, dimmed, with why in a few plain words on that second line ("Only when cited alone"); it never sets the menu's width and never needs two lines.
-- **A pop-up anchors to itself** [C21]: a pop-up that fills a form row (Show as) opens its menu under its own leading edge, at least as wide as the button, as `NSPopUpButton` does; toolbar pop-ups keep `bottom end`.
+- **A pop-up anchors to itself** [C21]: a pop-up that fills a form row (Show as) opens its menu under its own leading edge, at least as wide as the button, as `NSPopUpButton` does (a menu wider than the room left moves back only as far as the window's inset needs); toolbar pop-ups keep `bottom end`.
 - **A menu's reason is a heading**, one line, never a paragraph: the format menu says "For Word", "Default format", "For Thesis" or "This paste only".
 - Menus over seven items get a filter field aligned with the labels. Header menus open `bottom end`, footer menus `top end`, flipping and shifting to stay within the window.
 - Menus size to their labels up to the viewport and never wrap, as Mac menus; only at the window's edge does a label end in an ellipsis, its full name kept for screen readers. A scrolling menu ends on a whole row. Any pointer movement highlights an item.

@@ -8,7 +8,9 @@
   .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
-.inspector-body { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: auto; overscroll-behavior: contain; }
+.inspector-body { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: hidden auto; overscroll-behavior: contain; }
+/* The panel scrolls only up and down: a sub-pixel overhang (the quiet rows' hover
+   fill) must never draw a sideways scroll bar. */
 .inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: var(--inspector-pad); }
 /* One vertical step: every row is a 32 px target, one --space-1 apart, as the
    label and control rows (CitationDetails) are. */
@@ -39,9 +41,9 @@ main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
   .inspector-body.scroll-area { flex-direction: row-reverse; padding-block: 0; overflow: hidden; }
   .inspector-column, .inspector-document { box-sizing: border-box; padding-block: var(--inset); }
-  .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
+  .inspector-column { flex: 0 0 var(--inspector-column); overflow: hidden auto; }
   .inspector-column:only-child { flex: 1; }
-  .inspector-document { flex: 1; overflow: auto; }
+  .inspector-document { flex: 1; overflow: hidden auto; }
   .inspector-document::before { content: none; }
   .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
 }
