@@ -101,8 +101,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged, () => send({ type: "forget-last" }));
-  useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
+  const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     search: api.search, emptySearch: recents.load, query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
     libraryVersion: checkVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
@@ -238,7 +237,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             const activeProject = destination.writingProject!;
             void perform("project", () => destination.editProject!(destination.writingContext!, { kind: "apply", id: activeProject.id, revision: activeProject.pending!.revision }));
           } : undefined} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
+        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />

@@ -240,7 +240,10 @@ fn container_fallback_uses_trimmed_visible_text() {
                 record.csl.insert(field.into(), json!(value));
             }
         }
-        let result = SearchResult::from_engine(&record, "synthetic", Vec::new(), false, "revision");
+        let object = ibis_core::contract::SnapshotObject::new(ibis_core::contract::LibraryObject::Record(record))
+            .unwrap_or_else(|error| panic!("{error}"));
+        let result = SearchResult::from_engine(&object, Vec::new(), false, "revision", false)
+            .unwrap_or_else(|| panic!("a record row"));
         assert_eq!(result.container.as_deref(), expected, "{container:?}, {publisher:?}");
     }
 }

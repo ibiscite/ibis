@@ -17,6 +17,16 @@ Office licences, paid accounts, paid runners and paid model/API use are
 optional extensions; none blocks the baseline plan or its release checks.
 Windows qualification runs on GitHub runners.
 
+## What a test must earn
+
+Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect, not counted.
+
+- **Keep:** citation fidelity (golden cases and pinned Zotero comparisons, written independently of the code), parser properties, the public CLI, JSON-RPC and MCP contracts, failed saves that keep the old state, cancellation and late replies, exactly-once delivery, privacy boundaries, a few complete journeys across layers, and native behaviour no simulation can show.
+- **Each new test** names a distinct supported outcome or regression a person or client sees, and fails without the change. Prefer adding a golden case to writing a new test.
+- **Delete:** tests for withdrawn behaviour, a second test of an outcome already covered, and assertions that pin implementation (source text, CSS declarations, call order). In a mixed file keep the behavioural assertions. One stylesheet check and the native WebKit colour checks stay; architecture and security rules may use structured static checks.
+- **No real sleeps** in unit tests: use deferred promises and fake clocks. Native tests may wait with a bounded deadline.
+- **Size:** consolidation should shrink test code. A pull request that adds more test lines than product lines says why.
+
 ## What exists
 
 - **Rust and proptest:** unit, integration and generated properties check

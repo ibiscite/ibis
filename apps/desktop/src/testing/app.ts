@@ -23,7 +23,6 @@ export async function resetApp() {
   await act(async () => { await new Promise(requestAnimationFrame); });
   clearMocks();
   receipts.clear();
-  localStorage.removeItem("ibis-citation-history");
   delete document.documentElement.dataset.pickerHidden;
 }
 
@@ -205,7 +204,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
         return result;
       });
       if (cmd === "library_status") return Promise.resolve(value).then((status) => { lastLibrary = status as api.LibraryStatus; return { revision: "1", source_generation: "1", source_is_requested: true, ...status as object }; });
-      if (cmd === "search" || cmd === "recent_references") return Promise.resolve(value).then((reply) => Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply);
+      if (cmd === "search" || cmd === "recent_references") return Promise.resolve(value).then((reply) => {
+        if (cmd === "recent_references" && Array.isArray(reply) && typeof reply[1] === "boolean") return reply;
+        const rows = Array.isArray(reply) ? { revision: reply[0]?.revision ?? "1", results: reply } : reply;
+        return cmd === "recent_references" ? [rows, Boolean((rows as { results?: unknown[] }).results?.length), false] : rows;
+      });
       return value;
     },
     { shouldMockEvents: true },
