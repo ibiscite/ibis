@@ -389,7 +389,7 @@ impl Snapshot {
             }
         }
         matches!(&self.objects[position].object, LibraryObject::Record(old)
-            if old == record && old.csl.json_values().zip(record.csl.json_values()).all(|(a, b)| same_encoding(a, b)))
+            if old == record && old.csl.json_pairs(&record.csl).all(|(a, b)| same_encoding(a, b)))
         .then_some(position)
     }
 

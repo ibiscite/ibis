@@ -109,11 +109,32 @@ impl PartialEq for Names {
 impl Eq for Names {}
 
 /// One variable's value as it is held.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 enum Held {
     Json(Value),
     Names(Names),
 }
+
+/// Equal when they mean the same JSON, however each is held: a list changed
+/// in place and back is the same record. Builds no cached JSON.
+impl PartialEq for Held {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Json(a), Self::Json(b)) => a == b,
+            (Self::Names(a), Self::Names(b)) => a == b,
+            (Self::Names(names), Self::Json(value)) | (Self::Json(value), Self::Names(names)) => {
+                value.as_array().is_some_and(|list| {
+                    list.len() == names.names.len()
+                        && list
+                            .iter()
+                            .zip(names.names.iter())
+                            .all(|(value, name)| *value == name.to_value())
+                })
+            }
+        }
+    }
+}
+impl Eq for Held {}
 
 impl Held {
     fn from_value(value: Value) -> Self {
@@ -296,6 +317,18 @@ impl Csl {
         })
     }
 
+    /// Each variable's value in both, by name, where both hold it as JSON; a
+    /// compact name list holds only text, so it has no number encoding to
+    /// compare. Use after the two compare equal.
+    pub fn json_pairs<'a>(&'a self, other: &'a Self) -> impl Iterator<Item = (&'a Value, &'a Value)> {
+        self.0
+            .iter()
+            .filter_map(move |(key, held)| match (held, other.0.get(key)?) {
+                (Held::Json(a), Held::Json(b)) => Some((a, b)),
+                _ => None,
+            })
+    }
+
     /// The values held as JSON, by value; compact name lists are dropped.
     pub fn into_json_values(self) -> impl Iterator<Item = Value> {
         self.0.into_values().filter_map(|held| match held {
@@ -419,6 +452,28 @@ mod tests {
             assert_eq!(held.get("author"), Some(&list));
             assert_eq!(serde_json::to_value(&held).unwrap_or_default(), json!({"author": list}));
         }
+    }
+
+    #[test]
+    fn a_list_changed_in_place_and_back_is_the_same_record() {
+        let original = csl(json!({"author": [{"family": "Vale"}], "title": "Synthetic"}));
+        let mut touched = original.clone();
+        let _ = touched.get_mut("author");
+        assert_eq!(touched, original);
+        assert_eq!(original, touched);
+        let reread: Csl =
+            serde_json::from_value(serde_json::to_value(&touched).unwrap_or_default()).unwrap_or_default();
+        assert_eq!(reread, touched);
+        assert_eq!(
+            touched.json_pairs(&original).count(),
+            1,
+            "only the title is JSON in both"
+        );
+        let mut changed = original.clone();
+        if let Some(Value::Array(names)) = changed.get_mut("author") {
+            names.push(json!({"family": "Okafor"}));
+        }
+        assert_ne!(changed, original);
     }
 
     #[test]
