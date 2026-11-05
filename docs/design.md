@@ -248,7 +248,10 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 - **One record summary** (#1675): the row, `ibis search`, `ibis show` and agents read a record's title, authors, year and container from the engine's one summary, so a record shows the same year everywhere. The year is the date's year (also when a source writes it as text, "2016"), else the source's own date text cut to 20 characters ("circa spring 1890s"), else "No date". A year written as text is found by searching for it.
 - **Chrome only where it acts**: a resting row shows its type as a glyph alone, with no plate; the plate appears where the tile does something (hover and selection: the add button, + or a check) or says something (a row in the citation: the scarlet tile with a check), without reflow.
 - Titles wrap to two lines then end in an ellipsis; the byline stays one line.
-- **Hover card**: resting half a second on a cut-off row shows its full details beside it; it never takes focus. ⌘Y opens Peek for the selected row.
+- **Peek** (⌘Y, as Quick Look by keyboard; Space types a space in the search): the highlighted row's full details in a card under it, with the menu's material: title, every author, where it was published, year, type and citation key. It never takes focus, so typing carries on; ⌘Y again, Esc, or a new highlight closes it.
+- **Command search**: ">" first in the search lists the picker's commands as one-line rows with their keys, as Raycast does; words narrow them by title or description, ↑ ↓ move, Enter or a click runs one and clears the search, and the footer reads "Run <command> ↵". The library is not searched and nothing would be pasted. Each command's title, key and description come from the menus' words and `KEY_TABLE` (`features/picker/commands.ts`), so a command is written once.
+- **Page with the search**: a trailing page typed after the words ("vale 417", "vale pp. 417-419") becomes the "p. 417" token beside the query and the highlighted reference's page; × on the token searches as typed.
+- **Drag the citation**: the shelf's beak is the citation's proxy, as a Mac window's title icon is its document's: drag it into any app to drop exactly what Enter pastes (plain text, and rich text for a formatted style).
 - **Hover** [C5] only tints a row under a moving pointer; a click selects, so reaching across rows for Copy never changes what is copied. Double-click copies.
 - **List scrolling**: a clicked row stays under the pointer and only that row consumes the click, even if results re-render first. Arrow keys take back ownership.
 - **Empty search** [C11]: a new library shows the hint ("Type to find a reference") centred in the middle area, with no keys. With history it shows **Cited here recently** (up to three, for the app Ibis came from) then **Recently added** (three), as ordinary rows navigated as one list.
@@ -396,7 +399,8 @@ recreating a historical rendering, and citing with current information.
 | ⌘/, or `?` outside a field | Keyboard shortcuts |
 | ⇧⌘P | Keep window open |
 | ⇧⌘F | The format chooser |
-| ⌘Y | Peek (planned: not in `KEY_TABLE` until its handler exists) |
+| ⌘Y | Peek at the highlighted reference |
+| `>` first in the search | Command search |
 | ⌘E | Change the last citation for this app |
 | ⌘+ / ⌘− | Text size |
 | ⌘Z | Undo what the notice slot offers |

@@ -221,7 +221,15 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
         tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
-        <span className="shelf-leading"><Beak /></span>
+        {/* The beak is the citation's proxy, as a Mac window's title icon is its
+            document's: drag it into any app to drop exactly what Enter pastes. */}
+        <span className="shelf-leading" draggable={Boolean(text) && !copied || undefined} title={text && !copied ? pickerText.dragCitation : undefined}
+          onDragStart={(event) => {
+            if (!text) return event.preventDefault();
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData("text/plain", text);
+            if (!keys && visible?.html) event.dataTransfer.setData("text/html", visible.html);
+          }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">

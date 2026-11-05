@@ -27,7 +27,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -51,6 +51,9 @@ const fixtures: Partial<Record<Scenario, {
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
   "empty-search": { query: "" },
+  commands: { query: ">" },
+  "page-in-search": { query: "invented 417" },
+  peek: { keys: [{ key: "y", code: "KeyY", metaKey: true }] },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
@@ -94,7 +97,12 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   const receipts = new Map<string, string>();
   return {
     libraryStatus: async () => library,
-    search: async (query) => ({ revision: "1", results: query && !fixture ? shown : [] }),
+    // As the engine does: a trailing page number is read as the page ("invented 417").
+    search: async (query, _limit, _scope, interpret) => {
+      const page = interpret !== false ? /^(.*\S)\s+(?:pp?\.\s*)?(\d+(?:[-–]\d+)?)$/.exec(query) : null;
+      return { revision: "1", results: query && !fixture ? shown : [],
+        ...page ? { interpretation: { search: page[1]!, locator: { label: "page" as const, value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
+    },
     previewFileCitation: async (items, _format, style) => {
       const ticket = `synthetic-ticket-${++sequence}`;
       const spans = items.flatMap((item, index) => [

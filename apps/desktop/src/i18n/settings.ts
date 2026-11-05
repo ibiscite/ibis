@@ -4,7 +4,7 @@ import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
   chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-action-open", changeLast: "shortcuts-action-change-last", copy: "shortcuts-action-copy",
-  add: "shortcuts-action-add", move: "shortcuts-action-move", escape: "shortcuts-action-escape",
+  add: "shortcuts-action-add", move: "shortcuts-action-move", peek: "shortcuts-action-peek", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
   undo: "shortcuts-action-undo", textSize: "shortcuts-action-text-size",

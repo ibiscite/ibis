@@ -22,7 +22,7 @@ import type { useProjectBibliography } from "./useProjectBibliography";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem,
+  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem, command,
 }: {
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
@@ -45,6 +45,8 @@ export function PickerStatusFooter({
   emptyAction?: boolean;
   notices?: ReactNode;
   copyProblem?: string | null;
+  /** ">" in the search: Enter runs this, so the footer says so. */
+  command?: { label: string | null; run: () => void } | null;
 }) {
   const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
@@ -70,8 +72,8 @@ export function PickerStatusFooter({
       listProfiles={api.zoteroProfiles} chooseProfile={api.useZoteroProfile && ((name) => runFromMenu("zotero", async () => api.useZoteroProfile!(name)))}
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
 
-    hints={hints}
-    altHeld={altHeld} actions={{ copy: copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}
+    hints={command ? { ...hints, enter: command.label, shiftEnter: null } : hints}
+    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}
     more={
       <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}

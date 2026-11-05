@@ -1,6 +1,11 @@
 import * as nativeApi from "./api";
-import { useEffect, useLayoutEffect } from "react";
-import { pickerText } from "./messages";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { idKey } from "./features/picker/choice";
+import { keysFor, matchesAccelerator } from "./keys";
+import { isMac } from "./platform";
+import { PeekCard } from "./ui/PeekCard";
+
+import { peekText, pickerText, rowText } from "./messages";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { choiceKey, styleOf } from "./features/picker/choice";
@@ -44,6 +49,8 @@ import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
 import { useCitationInspector } from "./features/picker/useCitationInspector";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
+import { useCommandSearch } from "./features/picker/useCommandSearch";
+import { COMMAND_PREFIX } from "./features/picker/commands";
 import { useWindowSizeStatus } from "./features/picker/useWindowSizeStatus";
 import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
@@ -103,7 +110,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
   const searchState = useLibrarySearch({
-    search: api.search, emptySearch: recents.load, query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
+    // ">" asks for commands, never the library.
+    search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
     libraryVersion: checkVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
@@ -180,9 +188,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: deliveryTarget.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
   });
+  const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    quitAfterSaving,
+    quitAfterSaving, commandKeys,
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -190,6 +199,24 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     },
   });
   useWindowSizeStatus(api.onWindowSizeSaved, report);
+  // ">" in the search lists commands by name (docs/design.md, Command search).
+  const commands = useCommandSearch({
+    query: showCitations ? query : "", run: keys.run, setQuery,
+    source: api.openLibrarySource && source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
+  });
+  // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
+  const [peeked, setPeeked] = useState<string | null>(null);
+  const peekRecord = !commands.mode && showCitations ? results[active] : undefined;
+  const peekOpen = Boolean(peekRecord && peeked === idKey(peekRecord.id));
+  const peekAnchor = useRef<Element | null>(null);
+  peekAnchor.current = peekOpen ? document.getElementById(`result-${active}`) : null;
+  commandKeys.current = (event) => {
+    if (commands.keys(event)) return true;
+    if (!matchesAccelerator(event, keysFor("peek"), isMac)) return false;
+    event.preventDefault();
+    setPeeked(peekOpen || !peekRecord ? null : idKey(peekRecord.id));
+    return true;
+  };
 
   return (
     <main
@@ -207,7 +234,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           changeLocator={rows.changeLocator} send={send} focusHome={focusHome} />}
         onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         expanded={results.length > 0 && showCitations}
-        activeDescendant={showCitations && results[active] ? `result-${active}` : undefined}
+        activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatButtonRef={formatButtonRef}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
         writingProject={destination.writingProject} onWritingProjects={api.writingProjects && !editor.label ? menus.openProjects : undefined}
@@ -245,11 +272,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
           shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={rows}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
-          project={styleOf(format) === null ? project.status : null} />
+          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
-        state={state} send={send} showCitations={showCitations} results={results} output={output} chosen={shownChoice}
+        state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
         changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} />
       <PickerStatusFooter
         copyProblem={checkedPreview?.project_check === "paused" || checkedPreview?.project_check === "conflict" ? checkedPreview.project_message ?? "Check the project bibliography before inserting." : null}
@@ -257,9 +284,17 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        cancelCopy={cancelCopy} />
+        cancelCopy={cancelCopy} command={commands.footer} />
       <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
+      {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
+        label={peekText.label(peekRecord.title || peekRecord.key)} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}
+        facts={[
+          ...peekRecord.container ? [{ label: peekText.container, value: peekRecord.container }] : [],
+          { label: peekText.year, value: peekRecord.year ? String(peekRecord.year) : pickerText.noDate },
+          ...rowText.itemType(peekRecord.item_type) ? [{ label: peekText.type, value: rowText.itemType(peekRecord.item_type)! }] : [],
+          { label: peekText.key, value: peekRecord.key, mono: true },
+        ]} />}
     </main>
   );
 }

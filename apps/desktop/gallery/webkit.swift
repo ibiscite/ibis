@@ -18,7 +18,7 @@ let out = URL(fileURLWithPath: CommandLine.arguments[2])
 let accents = ["system", "ibis"]
 let screens = ["results", "settings-look"]
 // Picker screens whose layout rules are checked; the list grows with the canvas.
-let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "format-menu", "library-menu"]
+let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "commands", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "format-menu", "library-menu"]
 // The Mac's appearance, then Ibis's own Appearance setting.
 let modes: [(mac: NSAppearance.Name, name: String, chosen: String)] = [
   (.aqua, "light", "system"), (.darkAqua, "dark", "system"), (.aqua, "dark", "dark"), (.darkAqua, "light", "light"),
