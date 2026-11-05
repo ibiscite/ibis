@@ -89,22 +89,22 @@ impl From<LoadError> for LibraryProblem {
         use ibis_core::zotero::api::{TransportError, ZoteroError};
         match error {
             LoadError::EngineZotero(error) => match error.reason {
-                Some(ErrorReason::ZoteroSharingOff) => LibraryProblem::ZoteroAccessOff,
-                Some(ErrorReason::ZoteroProfileNeeded) => LibraryProblem::ZoteroProfiles,
-                Some(ErrorReason::ZoteroNeedsOpening) => LibraryProblem::ZoteroClosed,
-                Some(ErrorReason::ZoteroNotFound) => LibraryProblem::ZoteroMissing,
-                _ => LibraryProblem::Other,
+                Some(ErrorReason::ZoteroSharingOff) => Self::ZoteroAccessOff,
+                Some(ErrorReason::ZoteroProfileNeeded) => Self::ZoteroProfiles,
+                Some(ErrorReason::ZoteroNeedsOpening) => Self::ZoteroClosed,
+                Some(ErrorReason::ZoteroNotFound) => Self::ZoteroMissing,
+                _ => Self::Other,
             },
-            LoadError::Source(SourceError::Unavailable) => LibraryProblem::Missing,
+            LoadError::Source(SourceError::Unavailable) => Self::Missing,
             LoadError::InvalidData
             | LoadError::Source(
                 SourceError::NotRegular | SourceError::TooLarge | SourceError::Unreadable | SourceError::Incomplete,
-            ) => LibraryProblem::Unreadable,
+            ) => Self::Unreadable,
             LoadError::Zotero(ZoteroError::Transport(TransportError::Unreachable | TransportError::TimedOut)) => {
-                LibraryProblem::ZoteroClosed
+                Self::ZoteroClosed
             }
-            LoadError::Zotero(ZoteroError::NotAllowed) => LibraryProblem::ZoteroAccessOff,
-            _ => LibraryProblem::Other,
+            LoadError::Zotero(ZoteroError::NotAllowed) => Self::ZoteroAccessOff,
+            _ => Self::Other,
         }
     }
 }
@@ -119,28 +119,30 @@ pub(crate) enum LibraryState {
     Error,
 }
 
-fn has_references(library: &Library) -> bool {
-    library
-        .file
-        .as_ref()
-        .and_then(|file| file.engine.snapshot().ok())
-        .is_some_and(|snapshot| {
-            snapshot
-                .objects()
-                .iter()
-                .any(|item| matches!(item.object, ibis_core::contract::LibraryObject::Record(_)))
-        })
-}
-
 pub(crate) fn status(library: &Library) -> LibraryStatus {
-    let has_references = has_references(library);
+    let observed = library.file.as_ref().and_then(|file| file.engine.health().ok());
+    let (snapshot, sources) = observed
+        .as_ref()
+        .map(|(snapshot, sources)| (Some(snapshot), sources.as_slice()))
+        .unwrap_or_default();
+    let counts = snapshot
+        .map(|snapshot| ibis_engine::health::counts(snapshot))
+        .unwrap_or_default();
+    let requested = library.requested.as_ref().or(library.source.as_ref());
+    let references = counts.values().sum();
+    let source_is_requested = library
+        .requested
+        .as_ref()
+        .is_none_or(|requested| library.source.as_ref() == Some(requested));
+    let zotero = matches!(library.source, Some(Source::Zotero(_)));
+    let kept_references = library
+        .error
+        .is_some_and(|error| ibis_engine::health::retains(error.source_error(), references > 0, zotero));
+    let stale = library.source.is_some() && source_is_requested && kept_references;
     let mut result = LibraryStatus {
-        revision: String::new(),
+        revision: snapshot.map_or_else(String::new, |snapshot| snapshot.fingerprints().full.as_str().to_owned()),
         source_generation: library.source_generation.to_string(),
-        source_is_requested: library
-            .requested
-            .as_ref()
-            .is_none_or(|requested| library.source.as_ref() == Some(requested)),
+        source_is_requested,
         state: if library.opening {
             if library.source.is_some() && library.source == library.requested {
                 LibraryState::Reloading
@@ -154,33 +156,31 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         } else {
             LibraryState::None
         },
-        zotero: matches!(
-            library.requested.as_ref().or(library.source.as_ref()),
-            Some(Source::Zotero(_))
-        ),
-        zotero_libraries: match library.requested.as_ref().or(library.source.as_ref()) {
+        zotero: matches!(requested, Some(Source::Zotero(_))),
+        zotero_libraries: match requested {
             Some(Source::Zotero(chosen)) => chosen.libraries().to_vec(),
             _ => Vec::new(),
         },
         has_snapshot: library.source.is_some(),
-        name: library
-            .requested
-            .as_ref()
-            .or(library.source.as_ref())
-            .and_then(Source::name),
+        name: requested.and_then(Source::name),
         snapshot_name: library.source.as_ref().and_then(Source::name),
-        references: 0,
-        source_counts: BTreeMap::new(),
-        warnings: 0,
-        error: library.error.map(|error| {
-            let zotero = matches!(library.source, Some(Source::Zotero(_)));
-            error_with_snapshot_context(error, has_references, zotero)
-        }),
+        references,
+        source_counts: sources
+            .iter()
+            .map(|info| {
+                (
+                    super::engine_file::native_source(info),
+                    counts.get(&info.id).copied().unwrap_or_default(),
+                )
+            })
+            .collect(),
+        warnings: sources.iter().map(|info| info.warnings_total).sum(),
+        error: library
+            .error
+            .map(|error| error.with_snapshot_context(references > 0, zotero)),
         problem: library.error.map(LibraryProblem::from),
         error_reason: library.error,
-        kept_references: library
-            .error
-            .is_some_and(|error| retains(error, has_references, matches!(library.source, Some(Source::Zotero(_))))),
+        kept_references,
         choice_not_saved: library.choice_save_warning.is_some(),
         note: match &library.retained_error {
             Some(error) => {
@@ -196,14 +196,22 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         settings_notice: library.settings_notice.clone(),
         snapshot_zotero: matches!(library.source, Some(Source::Zotero(_))),
         sample: matches!(library.source, Some(Source::Samples(_))),
-        stale: stale(library),
+        stale,
         updated_at: library.changed_at.and_then(epoch_millis),
         checked_at: library.checked_at.and_then(epoch_millis),
     };
-    if let Some(file) = &library.file {
-        file.status(&mut result);
+    for info in sources {
+        if ibis_engine::health::classify(info).1 == "refresh-failed" {
+            result.stale = true;
+            result.error.get_or_insert_with(|| {
+                "The library could not be refreshed; keeping the last loaded references.".into()
+            });
+        }
+        if result.note.is_none() && info.watch_warning.is_some() {
+            result.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
+        }
     }
-    if result.stale && library.error.is_some() && library.requested.is_some() && library.requested != library.source {
+    if result.stale && library.error.is_some() && !source_is_requested {
         let note = "The retained library could not be refreshed; keeping the last loaded references.";
         result.note = Some(match result.note.take() {
             Some(previous) => format!("{previous}\n{note}"),
@@ -213,39 +221,11 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     result
 }
 
-/// The searched library's own update failed: the error is about the source
-/// that produced the references, not a different library that was chosen.
-pub(super) fn stale(library: &Library) -> bool {
-    let (Some(error), Some(source)) = (&library.error, &library.source) else {
-        return false;
-    };
-    library.requested.as_ref().is_none_or(|requested| requested == source)
-        && retains(*error, has_references(library), matches!(source, Source::Zotero(_)))
-}
-
 /// A time for the interface, which shows it relative to its own clock.
 pub(super) fn epoch_millis(time: SystemTime) -> Option<f64> {
     time.duration_since(UNIX_EPOCH)
         .ok()
         .map(|since| since.as_secs_f64() * 1000.0)
-}
-
-/// Added to a failure while the last good references stay searchable.
-const KEPT: &str = "; keeping the last loaded references";
-
-/// Retention belongs to the installed desktop snapshot, not the source error.
-/// Any failure to refresh Zotero keeps the references already read.
-pub(super) fn error_with_snapshot_context(error: LoadError, has_references: bool, zotero: bool) -> String {
-    if retains(error, has_references, zotero) {
-        format!("{error}{KEPT}")
-    } else {
-        error.to_string()
-    }
-}
-
-/// Whether this failure leaves the loaded references searchable.
-pub(super) fn retains(error: LoadError, has_references: bool, zotero: bool) -> bool {
-    has_references && (zotero || error.keeps_references())
 }
 
 #[cfg(test)]
@@ -543,7 +523,7 @@ mod tests {
             LoadError::Stopped,
             LoadError::NotLocal,
         ] {
-            assert_eq!(error_with_snapshot_context(error, true, false), error.to_string());
+            assert_eq!(error.with_snapshot_context(true, false), error.to_string());
         }
     }
 
