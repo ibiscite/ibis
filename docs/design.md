@@ -213,7 +213,8 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 
 ### Results
 
-- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Compact puts the first author after the title. The citation key is in the accessible name, not the row.
+- **List and row**: type tile, title, meta line, trailing year (or "No date") level with the title's first line in every density. Comfortable's meta line: authors as in a citation, then the container; Compact puts the authors after the title. One rule in both: one or two authors by surname ("García, Okafor"), three or more as "García et al.". The citation key is in the accessible name, not the row.
+- **One record summary** (#1675): the row, `ibis search`, `ibis show` and agents read a record's title, authors, year and container from the engine's one summary, so a record shows the same year everywhere. The year is the date's year (also when a source writes it as text, "2016"), else the source's own date text cut to 20 characters ("circa spring 1890s"), else "No date". A year written as text is found by searching for it.
 - On hover or selection the add button replaces the tile (+, or a check when added) without reflow; a row in the citation shows the scarlet tile with a check.
 - Titles wrap to two lines then end in an ellipsis; the byline stays one line.
 - **Hover card**: resting half a second on a cut-off row shows its full details beside it; it never takes focus. ⌘Y opens Peek for the selected row.

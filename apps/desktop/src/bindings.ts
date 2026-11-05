@@ -1059,7 +1059,8 @@ export type SearchResult_Deserialize = {
 	key: string,
 	title: string,
 	authors: string,
-	year: number | null,
+	/**  The year, or the source's own date text: `RecordSummary::year`. */
+	year: string | null,
 	matched: MatchField[],
 	/**  Only some query words matched; shown under "Closest matches". */
 	partial: boolean,
@@ -1097,7 +1098,8 @@ export type SearchResult_Serialize = {
 	key: string,
 	title: string,
 	authors: string,
-	year: number | null,
+	/**  The year, or the source's own date text: `RecordSummary::year`. */
+	year: string | null,
 	matched: MatchField[],
 	/**  Only some query words matched; shown under "Closest matches". */
 	partial: boolean,

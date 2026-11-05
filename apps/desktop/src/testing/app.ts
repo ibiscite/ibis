@@ -89,7 +89,7 @@ export function closeCitationDetails() {
 
 export function result(key: string, title: string, source = "refs.bib") {
   return {
-    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: 2020, matched: ["title" as const],
+    revision: "1", id: { library: source, key }, cite: `synthetic-cite-${key}`, source, key, title, authors: "Smith", year: "2020", matched: ["title" as const],
     first_author: "Smith", author_count: 1, container: null as string | null, item_type: "article-journal", partial: false,
   };
 }
