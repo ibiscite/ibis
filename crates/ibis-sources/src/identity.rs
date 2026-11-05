@@ -58,14 +58,20 @@ pub fn use_key_file(path: PathBuf, create: bool) {
 
 /// Whether ids made in this process last beyond it.
 pub fn ids_last() -> bool {
-    key().1
+    key(true).1
+}
+
+/// Observe the process key without creating or repairing a saved file. This
+/// must precede source inspection, even if the host normally permits writes.
+pub fn inspect_saved_key() -> bool {
+    key(false).1
 }
 
 /// The id of the source that `parts` identify. Parts are length-framed, so two
 /// different identities can never concatenate to the same input.
 pub(crate) fn library_id(kind: LibraryKind, parts: &[&[u8]]) -> LibraryId {
     let mut identity = Vec::with_capacity(KEY_BYTES + 64);
-    identity.extend_from_slice(&key().0);
+    identity.extend_from_slice(&key(true).0);
     identity.push(kind as u8);
     for part in parts {
         identity.extend_from_slice(&(part.len() as u64).to_le_bytes());
@@ -74,11 +80,14 @@ pub(crate) fn library_id(kind: LibraryKind, parts: &[&[u8]]) -> LibraryId {
     LibraryId::digest(&identity)
 }
 
-fn key() -> &'static (Key, bool) {
+fn key(allow_create: bool) -> &'static (Key, bool) {
     KEY.get_or_init(|| {
-        FILE.get()
-            .and_then(|(path, create)| saved(path, *create).ok())
-            .map_or_else(|| (random(), false), |key| (key, true))
+        match FILE.get() {
+            Some((path, create)) => saved(path, allow_create && *create).ok(),
+            None if !allow_create => config_dir().and_then(|dir| saved(&dir.join(KEY_FILE), false).ok()),
+            None => None,
+        }
+        .map_or_else(|| (random(), false), |key| (key, true))
     })
 }
 

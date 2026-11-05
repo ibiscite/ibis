@@ -143,6 +143,56 @@ fn broken_config_does_not_hide_sources_or_repair_primary_or_backup() {
 }
 
 #[test]
+#[allow(clippy::unwrap_used)]
+fn doctor_leaves_an_entire_invented_home_and_selected_sources_unchanged() {
+    fn contents(root: &std::path::Path) -> Vec<(PathBuf, Vec<u8>)> {
+        let mut entries = Vec::new();
+        for entry in std::fs::read_dir(root).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                entries.push((path.clone(), Vec::new()));
+                entries.extend(contents(&path));
+            } else {
+                entries.push((path.clone(), std::fs::read(path).unwrap()));
+            }
+        }
+        entries.sort();
+        entries
+    }
+    let home = tempfile::tempdir().unwrap();
+    let config = home.path().join("settings.json");
+    let file = home.path().join("invented.bib");
+    std::fs::write(&config, b"{invalid invented settings").unwrap();
+    std::fs::write(
+        config.with_extension("json.bak"),
+        serde_json::to_vec(&ibis_core::settings::Settings::default()).unwrap(),
+    )
+    .unwrap();
+    std::fs::write(&file, "@misc{invented,title={Invented}}").unwrap();
+    std::fs::create_dir_all(home.path().join("Documents")).unwrap();
+    std::fs::write(home.path().join("Documents/unselected.bib"), "not reference data").unwrap();
+    let before = contents(home.path());
+    let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+        .env("HOME", home.path())
+        .env("USERPROFILE", home.path())
+        .env("APPDATA", home.path())
+        .env("XDG_CONFIG_HOME", home.path())
+        .args(["doctor", "--json", "--zotero", "--zotero-group", "42", "--config"])
+        .arg(config)
+        .arg("--file")
+        .arg(file)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    let report: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(report["data"]["sources"][0]["status"], "ok");
+    assert_eq!(report["data"]["sources"][1]["code"], "zotero-not-checked");
+    assert_eq!(report["data"]["sources"][2]["code"], "zotero-not-checked");
+    assert_eq!(contents(home.path()), before);
+    assert!(output.stderr.is_empty());
+}
+
+#[test]
 fn zotero_without_a_running_service_is_explicitly_unchecked_and_does_not_read_home() {
     let home = directory("unused-home");
     let output = Command::new(env!("CARGO_BIN_EXE_ibis"))

@@ -7,10 +7,10 @@ use ibis_core::contract::{CitationKeySource, ErrorReason, ItemRef, LibraryId, Li
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries;
 pub use ibis_core::zotero::libraries::Group;
-pub use ibis_zotero_local::DEFAULT_PORT;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 pub use ibis_zotero_local::live::{AttachmentKind, Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
+pub use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
 use ibis_zotero_local::{closed, discovery};
 use serde_json::Value;
 use std::collections::BTreeMap;

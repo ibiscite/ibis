@@ -17,6 +17,8 @@ use std::{
     },
 };
 
+#[path = "health.rs"]
+pub mod health;
 mod sources;
 pub use sources::PreparedFileReload;
 

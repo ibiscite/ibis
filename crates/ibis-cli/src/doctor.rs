@@ -3,7 +3,7 @@
 use super::{OutputMode, source_values};
 use clap::ArgMatches;
 use ibis_core::{contract::*, settings};
-use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryInfo, Method, request::LibrariesRequest};
+use ibis_engine::{Cancellation, DispatchResult, Engine, LibraryInfo, Method, health};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -11,21 +11,21 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let args = matches
         .subcommand_matches("doctor")
         .ok_or(EngineError::new(ErrorCode::Usage))?;
-    let config = config_check(args.get_one::<PathBuf>("config").map(PathBuf::as_path));
+    let cancel = Cancellation::default();
+    let ids_last = health::inspect_identity(&cancel)?;
+    let config = config_check(args.get_one::<PathBuf>("config").map(PathBuf::as_path), &cancel);
     // Capture existing state once. A later check cannot relabel this observation.
-    let mut sources: Vec<_> = engine.libraries()?.libraries.iter().map(library_report).collect();
-    // Serial checks own their results. Nothing polls or completes after reporting.
+    let (_, sources) = engine.health()?;
+    let mut sources: Vec<_> = sources.iter().map(library_report).collect();
+    // Each selected file owns its result; late native I/O cannot revise the report.
     sources.extend(
         source_values::<PathBuf>(matches, "file")
             .iter()
-            .map(|path| inspect_file(path)),
+            .map(|path| file_report(path, &cancel)),
     );
     let groups = source_values::<u64>(matches, "zotero-group");
     for _ in 0..usize::from(matches.get_flag("zotero")) + groups.len() {
-        sources.push(unavailable(
-            "zotero", "not-checked", "zotero-not-checked",
-            "Zotero was not checked: its loader contacts the local API and may copy the database. Doctor sends nothing and writes nothing. Export a file and use --file to check it offline.",
-        ));
+        sources.push(unavailable("zotero", "not-checked", "zotero-not-checked"));
     }
     for (index, source) in sources.iter_mut().enumerate() {
         // Stable within this report; no private location is needed to identify a check.
@@ -34,17 +34,9 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let findings =
         sources.is_empty() || config["status"] == "failed" || sources.iter().any(|source| source["status"] != "ok");
     let library_check = if sources.is_empty() {
-        check(
-            "failed",
-            "no-library",
-            "No library selected. Give --file <library.bib> (repeat for several libraries).",
-        )
+        check("failed", "no-library")
     } else {
-        check(
-            "ok",
-            "sources-reported",
-            "Each selected source has its own result below.",
-        )
+        check("ok", "sources-reported")
     };
     let key_outputs: Vec<_> = ibis_core::syntax::CAPABILITIES
         .iter()
@@ -58,14 +50,10 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let styles = engine
         .dispatch(Method::Styles, &json!({}), &Cancellation::default())?
         .data;
-    let library_ids = if ibis_engine::identity::ids_last() {
-        check("ok", "ids-last", "Library ids last across runs on this computer.")
+    let library_ids = if ids_last {
+        check("ok", "ids-last")
     } else {
-        check(
-            "not-checked",
-            "ids-this-run",
-            "Library ids hold for this run: there is no usable saved key, and doctor writes none. Any other command saves one where it can.",
-        )
+        check("not-checked", "ids-this-run")
     };
     let data = json!({
         "contract_version": Version,
@@ -98,16 +86,13 @@ fn unix_ms() -> u64 {
 /// The report for a person: a plain verdict line per check, then one conclusion.
 /// `--json` keeps every field; only these words are free to change.
 fn report_text(data: &Value, now_ms: u64) -> String {
-    let engine = format!(
-        "{} engine methods, {} key outputs, {} styles",
+    let mut text = format!(
+        "Ibis {} · contract {} · {} engine methods, {} key outputs, {} styles\n\n",
+        ibis_core::VERSION,
+        data["contract_version"],
         data["capabilities"]["methods"].as_array().map_or(0, Vec::len),
         data["capabilities"]["key_outputs"].as_array().map_or(0, Vec::len),
         data["capabilities"]["csl_styles"].as_array().map_or(0, Vec::len),
-    );
-    let mut text = format!(
-        "Ibis {} · contract {} · {engine}\n\n",
-        ibis_core::VERSION,
-        data["contract_version"]
     );
     let mut checks = vec![("Settings".to_owned(), &data["config"])];
     // Each library has its own line; this one only matters when there are none.
@@ -166,171 +151,117 @@ fn age(elapsed_ms: u64) -> String {
     format!("{count} {unit}{} ago", if count == 1 { "" } else { "s" })
 }
 
-fn check(status: &str, code: &str, message: &str) -> Value {
+fn check(status: &str, reason: &str) -> Value {
+    let code = match reason {
+        "path-not-utf8" => "library-invalid",
+        "library-permission" => "library-unavailable",
+        "config-timeout" => "config-unreadable",
+        "config-not-found" => "config-missing",
+        _ => reason,
+    };
+    let message = match reason {
+        "no-library" => "No library selected. Give --file <library.bib> (repeat for several libraries).",
+        "sources-reported" => "Each selected source has its own result below.",
+        "ids-last" => "Library ids last across runs on this computer.",
+        "ids-this-run" => {
+            "Library ids hold for this run: there is no usable saved key, and doctor writes none. Any other command saves one where it can."
+        }
+        "zotero-not-checked" => {
+            "Zotero was not checked: its loader contacts the local API and may copy the database. Doctor sends nothing and writes nothing. Export a file and use --file to check it offline."
+        }
+        "config-not-requested" => {
+            "Use --config <settings.json> to check a chosen settings file. CLI library choices come from flags."
+        }
+        "config-timeout" => "The chosen config could not be read in time. It was left unchanged.",
+        "config-missing" => "The chosen config does not exist.",
+        "config-not-found" => "The chosen config does not exist. It was left unchanged.",
+        "config-ok" => "The chosen config is valid.",
+        "config-invalid" => "The chosen config is invalid. It was left unchanged.",
+        "config-newer-format" => "The chosen config needs a newer Ibis. It was left unchanged.",
+        "config-unreadable" => "The chosen config could not be read. Check its permissions and file type.",
+        "path-not-utf8" => "The selected path is not UTF-8. Choose a file with a UTF-8 path.",
+        "library-missing" => "The selected file does not exist. Check the --file argument.",
+        "library-permission" => "The selected file could not be read. Check its permissions.",
+        "library-not-regular" => "The selected library must be a regular file.",
+        "library-invalid" => "The selected file is not a supported, readable library.",
+        "resource-limit" => "The selected library exceeds an Ibis resource limit.",
+        "newer-format" => "The selected library needs a newer Ibis.",
+        "internal" => "The selected library check failed internally.",
+        "refresh-failed" => "The last refresh failed; this is the last successful snapshot.",
+        "source-warnings" => {
+            "The library loaded with warnings. See them with ibis libraries and the same library options."
+        }
+        "source-ok" => "The library was read successfully.",
+        _ => "The selected file could not be read. Check its permissions or try again when it stops changing.",
+    };
     json!({"status":status, "code":code, "message":message})
 }
 
-fn config_check(path: Option<&Path>) -> Value {
-    let Some(path) = path else {
-        return check(
-            "not-checked",
-            "config-not-requested",
-            "Use --config <settings.json> to check a chosen settings file. CLI library choices come from flags.",
-        );
-    };
-    // Within the filesystem deadline: a stalled disk reports unreadable, never hangs.
-    let owned = path.to_owned();
-    let Some(loaded) = crate::bounded(move || settings::load(&owned)) else {
-        let mut result = check(
-            "failed",
-            "config-unreadable",
-            "The chosen config could not be read in time. It was left unchanged.",
-        );
+fn config_check(path: Option<&Path>, cancel: &Cancellation) -> Value {
+    path.map_or_else(
+        || check("not-checked", "config-not-requested"),
+        |path| config_report(health::inspect_config(path.to_owned(), cancel)),
+    )
+}
+
+fn config_report(loaded: Option<settings::Loaded>) -> Value {
+    let Some(loaded) = loaded else {
+        let mut result = check("failed", "config-timeout");
         result["from_backup"] = json!(false);
         return result;
     };
-    let mut result = match loaded.problem.as_ref() {
-        None if loaded.primary_read == settings::PrimaryRead::Missing => {
-            check("failed", "config-missing", "The chosen config does not exist.")
-        }
-        None => check("ok", "config-ok", "The chosen config is valid."),
-        Some(problem) => {
-            let (code, message) = config_problem(problem);
-            check("failed", code, message)
-        }
+    let reason = match loaded.problem.as_ref() {
+        Some(problem) => config_problem(problem),
+        None if loaded.primary_read == settings::PrimaryRead::Missing => "config-missing",
+        None => "config-ok",
     };
+    let mut result = check(if reason == "config-ok" { "ok" } else { "failed" }, reason);
     result["from_backup"] = json!(loaded.from_backup);
     result
 }
 
-fn config_problem(problem: &settings::SettingsError) -> (&'static str, &'static str) {
+fn config_problem(problem: &settings::SettingsError) -> &'static str {
     match problem {
         settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
-            ("config-invalid", "The chosen config is invalid. It was left unchanged.")
+            "config-invalid"
         }
-        settings::SettingsError::NewerVersion(_) => (
-            "config-newer-format",
-            "The chosen config needs a newer Ibis. It was left unchanged.",
-        ),
+        settings::SettingsError::NewerVersion(_) => "config-newer-format",
         settings::SettingsError::Backup(problem) => config_problem(problem),
-        settings::SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::NotFound => (
-            "config-missing",
-            "The chosen config does not exist. It was left unchanged.",
-        ),
-        settings::SettingsError::Unreadable(_) => (
-            "config-unreadable",
-            "The chosen config could not be read. Check its permissions and file type.",
-        ),
+        settings::SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            "config-not-found"
+        }
+        settings::SettingsError::Unreadable(_) => "config-unreadable",
     }
 }
 
-fn inspect_file(path: &Path) -> Value {
-    let Ok(params) = serde_json::to_value(LibrariesRequest::OpenFile { path: path.to_owned() }) else {
-        return unavailable(
-            "file",
-            "failed",
-            "library-invalid",
-            "The selected path is not UTF-8. Choose a file with a UTF-8 path.",
-        );
-    };
-    match std::fs::metadata(path) {
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            return unavailable(
-                "file",
-                "failed",
-                "library-missing",
-                "The selected file does not exist. Check the --file argument.",
-            );
-        }
-        Err(_) => {
-            return unavailable(
-                "file",
-                "failed",
-                "library-unavailable",
-                "The selected file could not be read. Check its permissions.",
-            );
-        }
-        Ok(metadata) if !metadata.is_file() => {
-            return unavailable(
-                "file",
-                "failed",
-                "library-not-regular",
-                "The selected library must be a regular file.",
-            );
-        }
-        Ok(_) => {}
-    }
-    // Each file has a disposable engine: warnings and failures cannot bleed
-    // into another source, and memory is bounded by the largest selected file.
-    let loaded = Engine::new().and_then(|engine| {
-        let engine = engine.without_file_watches();
-        engine.dispatch(Method::Libraries, &params, &Cancellation::default())?;
-        engine.libraries()
-    });
-    match loaded {
-        Ok(result) => result
-            .libraries
-            .first()
-            .map(library_report)
-            .unwrap_or_else(|| unavailable("file", "failed", "internal", "The source returned no library report.")),
-        Err(error) => {
-            let (code, message) = match error.code {
-                ErrorCode::BadInput => (
-                    "library-invalid",
-                    "The selected file is not a supported, readable library.",
-                ),
-                ErrorCode::ResourceLimit => ("resource-limit", "The selected library exceeds an Ibis resource limit."),
-                ErrorCode::NewerFormat => ("newer-format", "The selected library needs a newer Ibis."),
-                ErrorCode::Internal => ("internal", "The selected library check failed internally."),
-                _ => (
-                    "library-unavailable",
-                    "The selected file could not be read. Check its permissions or try again when it stops changing.",
-                ),
-            };
-            unavailable("file", "failed", code, message)
-        }
-    }
+fn file_report(path: &Path, cancel: &Cancellation) -> Value {
+    health::inspect_file(health::InspectionPolicy::ReadOnly, path, cancel).map_or_else(
+        |reason| unavailable("file", "failed", reason),
+        |info| library_report(&info),
+    )
 }
 
-fn unavailable(kind: &str, status: &str, code: &str, message: &str) -> Value {
-    let mut result = check(status, code, message);
+fn unavailable(kind: &str, status: &str, code: &str) -> Value {
+    let mut result = check(status, code);
     result["kind"] = json!(kind);
     result["freshness"] = json!({"state":"unknown", "updated_at_ms":null});
     result
 }
 
 fn library_report(library: &LibraryInfo) -> Value {
-    let (status, code, message) = if library.refresh_error.is_some() {
-        (
-            "findings",
-            "refresh-failed",
-            "The last refresh failed; this is the last successful snapshot.",
-        )
-    } else if library.warnings_total > 0 {
-        (
-            "findings",
-            "source-warnings",
-            "The library loaded with warnings. See them with ibis libraries and the same library options.",
-        )
-    } else {
-        ("ok", "source-ok", "The library was read successfully.")
-    };
-    let mut result = check(status, code, message);
+    let (status, code) = health::classify(library);
+    let mut result = check(status, code);
     result["kind"] = json!(library.kind);
     result["id"] = json!(library.id);
     result["warning_count"] = json!(library.warnings_total);
     result["refresh_error"] = json!(library.refresh_error);
-    result["freshness"] = json!({
-        "state":if library.refresh_error.is_some() { "stale" } else { "current" },
-        "updated_at_ms":library.updated_at_ms,
-    });
+    result["freshness"] = json!({"state":if code == "refresh-failed" { "stale" } else { "current" }, "updated_at_ms":library.updated_at_ms});
     result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
     #[test]
     fn a_failed_refresh_reports_the_retained_snapshot_as_stale() {
         let library = LibraryInfo {
@@ -354,18 +285,30 @@ mod tests {
         assert!(summary("Source 1", &source).contains("last successful snapshot"));
     }
 
+    #[test]
+    fn a_stalled_config_reports_unreadable_without_recovery() {
+        let result = config_report(None);
+        assert_eq!(result["status"], "failed");
+        assert_eq!(result["code"], "config-unreadable");
+        assert_eq!(
+            result["message"],
+            "The chosen config could not be read in time. It was left unchanged."
+        );
+        assert_eq!(result["from_backup"], false);
+    }
+
     fn report(sources: Vec<Value>) -> Value {
         json!({
             "contract_version": 1,
             "capabilities": {"methods": ["search", "cite"], "key_outputs": [{}], "csl_styles": [{}, {}, {}]},
-            "config": check("not-checked", "config-not-requested", "Add --config to check settings."),
-            "library_check": check("ok", "sources-reported", "Each selected source has its own result below."),
+            "config": {"status":"not-checked", "code":"config-not-requested", "message":"Add --config to check settings."},
+            "library_check": {"status":"ok", "code":"sources-reported", "message":"Each selected source has its own result below."},
             "sources": sources,
         })
     }
 
     fn source(status: &str, code: &str, freshness: Value) -> Value {
-        let mut source = check(status, code, "The fixed message.");
+        let mut source = json!({"status":status, "code":code, "message":"The fixed message."});
         source["kind"] = json!("file");
         source["index"] = json!(1);
         source["freshness"] = freshness;
