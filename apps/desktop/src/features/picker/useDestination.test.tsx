@@ -36,7 +36,7 @@ test("a project's format beats the app and a failed project save keeps both old 
 });
 
 test("a conflicting format save names the other writer's saved choices while retaining the task", async () => {
-  const message = "The writing project changed elsewhere. Saved choices: Typst keys · updated.bib. Apply Updates before saving your changes.";
+  const message = "The writing project changed elsewhere. Saved choices: Typst · updated.bib. Apply Updates before saving your changes.";
   const project = { id: "thesis", name: "Thesis", revision: "r1", output: "cite", bibliography: "refs.bib" };
   const target: PickerDestination = { ...browser, writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target,

@@ -10,6 +10,7 @@ import type { LibraryStatus, SearchResult } from "../src/bindings";
 import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
+export { geometry } from "./geometry";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
 import type { SettingsApi } from "../src/settings/api";
@@ -27,7 +28,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -47,11 +48,13 @@ const longRows = rows.map((row) => ({ ...row, title: longTitle, authors: "Aster,
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
   query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean };
-  click?: string; keys?: KeyboardEventInit[];
+  /** Clicked in order, each once the one before has drawn what it opens. */
+  click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
   "empty-search": { query: "" },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
+  "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
   "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
@@ -215,19 +218,20 @@ function Notice({ theme }: { theme: Theme }) {
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     const fixed = fixtures[scenario];
-    const selector = scenario === "more" ? 'button[aria-label="More"]' : scenario === "format-menu" ? 'button[aria-label^="Copy as"]' : fixed?.click;
+    const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Copy as"]'] : [fixed?.click ?? []].flat();
     const keys = [...fixed?.keys ?? []];
-    if (!selector && !keys.length) return;
+    if (!clicks.length && !keys.length) return;
     // Act on the real controls once they are ready; no polling or stale completion.
     const open = () => {
       const search = host.querySelector<HTMLInputElement>("#search");
       if (keys.length && (!search || !host.querySelector('[role="option"]'))) return;
       // One key per commit: each acts on the state the last one left.
       if (keys.length) { search!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...keys.shift()! })); return; }
-      if (!selector) { observer.disconnect(); return; }
-      const button = host.querySelector<HTMLButtonElement>(selector);
+      if (!clicks.length) { observer.disconnect(); return; }
+      const button = host.querySelector<HTMLButtonElement>(clicks[0]!);
       if (!button || button.disabled || document.documentElement.hasAttribute("data-picker-hidden")) return;
-      observer.disconnect();
+      clicks.shift();
+      if (!clicks.length) observer.disconnect();
       button.click();
     };
     const observer = new MutationObserver(open);

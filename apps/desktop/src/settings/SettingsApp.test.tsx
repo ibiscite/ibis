@@ -79,12 +79,12 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
-  // One control per row: the switch alone, then Check Now in a row of its own.
+  // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
   const rowOf = (node: Element) => node.closest(".ui-settings-row")!;
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
-  expect(rowOf(check)).not.toBe(rowOf(automatic));
+  expect(check.closest(".ui-about-hero")).toBeTruthy();
   expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
-  expect(rowOf(check).textContent).toContain(pseudo.text("about-check-label"));
+  expect(document.querySelectorAll("#about-updates .ui-settings-row")).toHaveLength(1);
   fireEvent.click(check);
   fireEvent.click(automatic);
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
@@ -249,7 +249,7 @@ test("Show in menu bar is a Mac choice that saves as a patch and goes back on fa
   document.documentElement.dataset.system = "linux";
   try {
     render(<SettingsApp api={api} initialPage="general" />);
-    await screen.findByText("Start on Login");
+    await screen.findByText("Start on login");
     expect(screen.queryByRole("switch", { name: "Show in menu bar" })).toBeNull();
   } finally { delete document.documentElement.dataset.system; }
 });
@@ -1369,7 +1369,7 @@ test("a failed initial preference read explains uncertainty and leaves navigatio
 test("native login and automatic update choices persist, and a refused update explains its cause", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="general" />);
-  const login = await screen.findByRole("switch", { name: /Open at Login|Start when|Start on Login/ });
+  const login = await screen.findByRole("switch", { name: /Open at login|Start when|Start on login/ });
   fireEvent.click(login);
   await act(async () => state.closes[0]!());
   expect(login).toHaveProperty("checked", true);
@@ -1383,7 +1383,7 @@ test("native login and automatic update choices persist, and a refused update ex
   expect(automatic).toHaveProperty("checked", false);
   mounted.unmount();
   render(<SettingsApp api={api} initialPage="general" />);
-  expect(await screen.findByRole("switch", { name: /Open at Login|Start when|Start on Login/ })).toHaveProperty("checked", true);
+  expect(await screen.findByRole("switch", { name: /Open at login|Start when|Start on login/ })).toHaveProperty("checked", true);
 });
 
 test("Look picture radios have keyboard selection, inert real components and no axe violations", async () => {
@@ -1578,10 +1578,10 @@ test("a successful manual update check cannot turn an unreadable update setting 
   const check = vi.spyOn(api, "checkForUpdates").mockResolvedValue(undefined as never);
   render(<SettingsApp api={api} initialPage="about" />);
   await screen.findByText("Ibis could not read your settings; reopen Settings to try again.");
-  const button = screen.getByRole("button", { name: "Check Now" });
+  const button = screen.getByRole("button", { name: "Check for Updates" });
   await act(async () => fireEvent.click(button));
   expect(check).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", { name: "Check Now" })).toBe(button);
+  expect(screen.getByRole("button", { name: "Check for Updates" })).toBe(button);
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("disabled", true);
   expect(screen.getByText("Ibis could not read your settings; reopen Settings to try again.")).toBeTruthy();
   expect(screen.queryByText("This build does not update itself.")).toBeNull();
@@ -1606,7 +1606,7 @@ test("Check now says it is checking until the same check ends, across pages", as
   let finish!: () => void;
   const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as () => void; }));
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
   const busy = await screen.findByRole("button", { name: "Checking…" });
   expect(busy.getAttribute("aria-disabled")).toBe("true");
   expect(screen.getAllByRole("status").some((status) => status.textContent === "Checking…")).toBe(true);
@@ -1616,7 +1616,7 @@ test("Check now says it is checking until the same check ends, across pages", as
   fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
   expect(await screen.findByRole("button", { name: "Checking…" })).toBeTruthy();
   await act(async () => { finish(); });
-  expect(await screen.findByRole("button", { name: "Check Now" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Check for Updates" })).toBeTruthy();
 });
 
 test.each([
@@ -1626,8 +1626,8 @@ test.each([
   const { api } = fakeApi();
   vi.spyOn(api, "checkForUpdates").mockResolvedValue(result);
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
-  await screen.findByRole("button", { name: "Check Now" });
+  fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
+  await screen.findByRole("button", { name: "Check for Updates" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
 });
 
@@ -1650,7 +1650,7 @@ test("a check that ends on another page says its result back on About", async ()
   let finish!: (result: "newest") => void;
   vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise<never>((resolve) => { finish = resolve as never; }));
   render(<SettingsApp api={api} initialPage="about" />);
-  fireEvent.click(await screen.findByRole("button", { name: "Check Now" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
   fireEvent.click(await screen.findByRole("option", { name: "General" }));
   await act(async () => { finish("newest"); });
   fireEvent.click(await screen.findByRole("option", { name: "About Ibis" }));
@@ -1676,11 +1676,11 @@ test("manual update-check failure and retry leave the known automatic setting in
   vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented manual check failure")).mockResolvedValue(undefined as never);
   render(<SettingsApp api={api} initialPage="about" />);
   const automatic = await screen.findByRole("switch", { name: "Check for updates automatically" });
-  fireEvent.click(screen.getByRole("button", { name: "Check Now" }));
+  fireEvent.click(screen.getByRole("button", { name: "Check for Updates" }));
   await screen.findByText("Ibis could not check for updates. Try again.");
   expect(screen.queryByText("Ibis could not read your settings; reopen Settings to try again.")).toBeNull();
   expect(automatic).toHaveProperty("disabled", false);
-  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check Now" })));
+  await act(async () => fireEvent.click(screen.getByRole("button", { name: "Check for Updates" })));
   expect(screen.queryByText("Ibis could not check for updates. Try again.")).toBeNull();
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
 });
@@ -1693,7 +1693,7 @@ test.each(["version copy", "manual update check"])("About keeps %s failure when 
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
   vi.spyOn(api, "checkForUpdates").mockRejectedValueOnce(new Error("invented update failure")).mockResolvedValue(undefined as never);
   const failureText = action === "version copy" ? "The version could not be copied." : "Ibis could not check for updates. Try again.";
-  const buttonName = action === "version copy" ? "Version 0.3.0" : "Check Now";
+  const buttonName = action === "version copy" ? "Version 0.3.0" : "Check for Updates";
   render(<SettingsApp api={api} initialPage="about" />);
   fireEvent.click(await screen.findByRole("button", { name: buttonName }));
   await screen.findByText(failureText);

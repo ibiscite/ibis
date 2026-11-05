@@ -26,8 +26,11 @@
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--preview-window-w); transform: scale(var(--preview)); transform-origin: top left; }
 :dir(rtl) .ui-picker-picture-content { transform-origin: top right; }
-.ui-picker-picture[data-rows] { width: 100%; height: auto; }
-.ui-picker-picture[data-rows] .ui-picker-picture-mask { position: static; display: flow-root; }
+/* A strip of rows already sits on a card: it is the rows alone, with no frame or
+   surface of its own, so a picture is never framed twice. The choice's ring is
+   its one edge, and only when chosen. */
+.ui-picker-picture[data-rows] { width: 100%; height: auto; box-shadow: none; }
+.ui-picker-picture[data-rows] .ui-picker-picture-mask { position: static; display: flow-root; background: transparent; }
 .ui-picker-picture[data-rows] .ui-picker-picture-content { position: static; display: block; width: auto; transform: none; zoom: var(--preview-rows); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-picture-choice { border: var(--border-width) solid CanvasText; }

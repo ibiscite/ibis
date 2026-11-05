@@ -18,10 +18,8 @@ mod database_bounds;
 mod keys;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 mod mounts;
-mod obsolete_cache;
 mod platform;
 mod private_copy;
-pub use obsolete_cache::{PrivateStorageError, remove_obsolete_file_cache};
 
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 use platform::resident;

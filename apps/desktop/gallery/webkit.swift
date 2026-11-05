@@ -1,5 +1,6 @@
 // Renders the real canvas in the system's own WKWebView, offscreen, and checks the colours a
-// person sees, for every accent in System, Light and Dark. Chromium cannot show these: WebKit's
+// person sees, for every accent in System, Light and Dark, then the layout rules of
+// canvas/geometry.ts on every picker screen. Chromium cannot show these: WebKit's
 // system colours and light-dark() both behave differently there. macOS only, invented data.
 // pnpm -C apps/desktop build:canvas
 // swiftc -O apps/desktop/gallery/webkit.swift -o /tmp/ibis-webkit
@@ -16,6 +17,8 @@ let dist = URL(fileURLWithPath: CommandLine.arguments[1]).standardizedFileURL
 let out = URL(fileURLWithPath: CommandLine.arguments[2])
 let accents = ["system", "ibis"]
 let screens = ["results", "settings-look"]
+// Picker screens whose layout rules are checked; the list grows with the canvas.
+let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "format-menu", "library-menu"]
 // The Mac's appearance, then Ibis's own Appearance setting.
 let modes: [(mac: NSAppearance.Name, name: String, chosen: String)] = [
   (.aqua, "light", "system"), (.darkAqua, "dark", "system"), (.aqua, "dark", "dark"), (.darkAqua, "light", "light"),
@@ -85,7 +88,22 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
     }
     window.orderOut(nil); window.contentView = nil
   } } }
-  print(failures.isEmpty ? "WebKit colours: every accent and mode passes." : failures.joined(separator: "\n"))
+  // The layout rules (canvas/geometry.ts), once per screen: they hold in every mode.
+  for screen in geometryScreens {
+    let size = NSSize(width: 720, height: 480)
+    let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: size), styleMask: .borderless, backing: .buffered, defer: false)
+    let view = WKWebView(frame: NSRect(origin: .zero, size: size))
+    window.contentView = view; window.orderBack(nil)
+    let loaded = Loaded(); view.navigationDelegate = loaded
+    await withCheckedContinuation { loaded.done = $0; view.loadFileURL(page, allowingReadAccessTo: dist) }
+    _ = try? await view.evaluateJavaScript("IbisCanvas.mount(document.getElementById('host'), { scenario: '\(screen)', theme: 'light' }); 0")
+    try? await Task.sleep(nanoseconds: 900_000_000)
+    let raw = (try? await view.evaluateJavaScript("JSON.stringify(IbisCanvas.geometry())")) as? String ?? "[\"geometry did not run\"]"
+    let broken = (try? JSONSerialization.jsonObject(with: Data(raw.utf8))) as? [String] ?? [raw]
+    failures += broken.map { "\(screen): \($0)" }
+    window.orderOut(nil); window.contentView = nil
+  }
+  print(failures.isEmpty ? "WebKit colours and layout: every accent, mode and screen passes." : failures.joined(separator: "\n"))
   return failures.isEmpty ? 0 : 1
 }
 

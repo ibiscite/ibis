@@ -247,7 +247,7 @@ test.each([
 ] as const)("a browser-hosted key workflow uses the chosen global %s default and exact preview", async (format, name) => {
   const { previews, copies } = opened(() => BROWSER, { picker_preferences: () => ({ output: format }) });
   await screen.findByText("First");
-  await waitFor(() => expect(formatShown()).toBe(`${name} · Default`));
+  await waitFor(() => expect(formatShown()).toBe(`${name}`));
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ output: format }));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByRole("menuitemradio", { name: "APA" });
@@ -310,7 +310,7 @@ test("a new default reaches apps with no remembered format and leaves remembered
   await waitFor(() => expect(saved).toEqual(["typst"]));
   destination = { ...BROWSER, app: "Example Editor", app_id: "example.editor" };
   await act(async () => { await emit("picker:shown"); });
-  await waitFor(() => expect(formatShown()).toBe("Typst · Default"));
+  await waitFor(() => expect(formatShown()).toBe("Typst"));
   destination = { ...BROWSER, remembered: "cite" };
   await act(async () => { await emit("picker:shown"); });
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
@@ -335,9 +335,9 @@ test("the menu says why the next paste uses its format and where a pick goes", a
   destination = { ...WORD, remembered: "typst" };
   await says("Typst · Example Word", "Remembered for Example Word. Your pick replaces it.");
   destination = BROWSER;
-  await says("Pandoc · Default", "Example Browser has no remembered format, so your default applies. Your pick is remembered for this app.");
+  await says("Pandoc", "Example Browser has no remembered format, so your default applies. Your pick is remembered for this app.");
   destination = { ...BROWSER, app: null, app_id: null, output_question: null };
-  await says("Pandoc · Default", "Ibis can’t tell which app this is for, so your default applies. Your pick becomes your default.");
+  await says("Pandoc", "Ibis can’t tell which app this is for, so your default applies. Your pick becomes your default.");
 });
 
 test("an unreadable per-app file says defaults apply and offers the app's own paste answer", async () => {

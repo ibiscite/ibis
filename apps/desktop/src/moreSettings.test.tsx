@@ -23,7 +23,7 @@ test("Settings shows login state from the system and follows changes made elsewh
     login_item: () => ({ name: "Ibis", enabled: system, problem: null }),
     set_login_item: ({ enabled }) => { system = Boolean(enabled); return { name: "Ibis", enabled: system, problem: null }; },
   });
-  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on login" });
   expect(item.checked).toBe(true);
   fireEvent.click(item);
   await waitFor(() => expect(calls).toContain("set_login_item"));
@@ -36,7 +36,7 @@ test("Settings shows login state from the system and follows changes made elsewh
 
 test("a refused login change is explained in Settings and never shown as on", async () => {
   settings("general", { set_login_item: () => ({ name: "Ibis", enabled: false, problem: "refused" }) });
-  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on login" });
   fireEvent.click(item);
   await screen.findByText(/The system did not let .*Ibis.* change this/);
   expect(item.checked).toBe(false);
@@ -45,7 +45,7 @@ test("a refused login change is explained in Settings and never shown as on", as
 
 test("a failed login command keeps the saved state and explains failure in Settings", async () => {
   settings("general", { set_login_item: () => { throw new Error("SYNTHETIC_PRIVATE_ERROR"); } });
-  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on login" });
   fireEvent.click(item);
   expect((await screen.findByRole("alert")).textContent).toBe("Ibis could not save this choice; the saved value is shown.");
   expect(item.checked).toBe(false);
@@ -54,7 +54,7 @@ test("a failed login command keeps the saved state and explains failure in Setti
 
 test("Settings explains the unavailable login choice on unsupported systems", async () => {
   const calls = settings("general", { login_item: () => ({ name: "Ibis", enabled: false, problem: "unsupported" }) });
-  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on Login" });
+  const item = await screen.findByRole<HTMLInputElement>("switch", { name: "Start on login" });
   await waitFor(() => expect(document.getElementById(item.getAttribute("aria-describedby")!)?.textContent).toContain("cannot start"));
   expect(item.disabled).toBe(true);
   expect(item.checked).toBe(false);
@@ -75,7 +75,7 @@ test("Settings owns automatic checks, follows saved events, and Check now explic
   expect(item.checked).toBe(true);
   await act(async () => { await emit("update:automatic", false); });
   expect(item.checked).toBe(false);
-  fireEvent.click(screen.getByRole("button", { name: "Check Now" }));
+  fireEvent.click(screen.getByRole("button", { name: "Check for Updates" }));
   await waitFor(() => expect(calls.filter((c) => c === "check_for_updates")).toHaveLength(1));
 });
 

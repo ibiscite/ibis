@@ -140,10 +140,11 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
-/* The dot sits at the footer's edge with the text 12 px after it, as system
-   status bars place an indicator, and centred on the text's x-height: its
-   bottom rests on the baseline, then rises to half an ex. */
-.library-status { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: baseline; gap: var(--space-3); color: var(--text-secondary); }
+/* [C3] The dot centres on the tiles' column and the words start on the titles'
+   column, as every row above does; the dot is centred on the text's x-height:
+   its bottom rests on the baseline, then rises to half an ex. */
+.library-status { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: baseline; gap: calc((var(--tile) - var(--status-dot)) / 2 + var(--row-gap)); color: var(--text-secondary); }
+.library-status > .status-dot { margin-inline-start: calc((var(--tile) - var(--status-dot)) / 2); }
 .library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
 /* A long name is shortened before the state words; the age goes first of all. */
 .library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }

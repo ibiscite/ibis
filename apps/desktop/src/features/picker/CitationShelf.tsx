@@ -171,6 +171,14 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       const step = (event.key === "ArrowRight" ? 1 : -1) * (getComputedStyle(event.currentTarget).direction === "rtl" ? -1 : 1);
       segments[Math.min(segments.length - 1, Math.max(0, segments.indexOf(event.currentTarget as HTMLButtonElement) + step))]?.focus();
     }
+    // ↑ ↓ belong to the list, as in Search: go back there and move once, so the
+    // shelf never holds focus for a key it does not use.
+    else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.altKey && !event.metaKey && fallbackFocusRef?.current?.isConnected) {
+      event.preventDefault();
+      const search = fallbackFocusRef.current;
+      search.focus({ preventScroll: true });
+      search.dispatchEvent(new KeyboardEvent("keydown", { key: event.key, code: event.key, bubbles: true, cancelable: true }));
+    }
     else if ((event.key === "Backspace" || event.key === "Delete") && isSelected(reference)) {
       event.preventDefault(); remove(reference);
     }
@@ -210,7 +218,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       onChange={onChangeReference} onSubmit={onSubmit} onOpenSource={onOpenSource} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
-        tabIndex={focusable && shown !== undefined && !copied ? 0 : undefined}
+        tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         <span className="shelf-leading"><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>

@@ -7,9 +7,9 @@ settings-about = About Ibis
 
 general-login-label =
     { $platform ->
-        [macos] Open at Login
+        [macos] Open at login
         [windows] Start when you sign in
-       *[linux] Start on Login
+       *[linux] Start on login
     }
 general-login-description = Keeps the shortcut ready after a restart.
 general-login-place =
@@ -122,7 +122,7 @@ shortcuts-or = or
 
 about-automatic = Check for updates automatically
 about-automatic-description = Reads a small update file from GitHub a few times a day.
-about-check = Check Now
+about-check = Check for Updates
 about-check-label = Check for updates
 about-checking = Checking…
 about-check-failed = Ibis could not check for updates. Try again.

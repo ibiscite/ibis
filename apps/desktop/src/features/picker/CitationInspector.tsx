@@ -4,7 +4,7 @@ import type { FilePreview, ReferenceDetails } from "../../bindings";
 import { composing } from "../../composition";
 import type { FormattedCitation } from "../../format/outputs";
 import { render } from "../../format/markup";
-import { Icon, TypeIcon } from "../../icons";
+import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
 import { citationDetailsText, keyText, pickerText } from "../../messages";
 import { currentPlatform } from "../../platform";
@@ -44,7 +44,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {
     const { entry, output, closest } = notes;
-    return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} onClose={onClose}>
+    return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} readOnly onClose={onClose}>
       {entry && <><h3>{pickerText.entryOnlyShort}</h3><p>{entry}</p></>}
       {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
       {closest.length > 0 && <h3>{pickerText.closestMatches}</h3>}
@@ -59,28 +59,21 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   const choices = !details || details.value === "failed" || details.receipt === previewReceipt
     || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
     : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
-  const byline = reference && [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ");
-  return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails} heading={heading} closeLabel={keyText.close} onClose={onClose}
+  const byline = reference ? [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ") : undefined;
+  return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails}
+    heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={keyText.close} onClose={onClose}
     onKeyDown={(event) => {
       const target = event.target as HTMLElement;
       if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
       event.preventDefault(); onRemove(reference);
-    }}
-    document={<>
-      {reference && <div className="inspector-reference">
-        <span className="result-tile"><TypeIcon itemType={reference.item_type} /></span>
-        <div>
-          <h3><bdi dir="auto">{reference.title || reference.key}</bdi></h3>
-          {byline && <p><bdi dir="auto">{byline}</bdi></p>}
-        </div>
-      </div>}
-      {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
-      {problem}
-      {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
-    </>}>
+    }}>
     {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
       onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
       onFormChange={(form) => onChange(reference, { form })} onSubmit={onSubmit} />}
+    {/* What Enter will paste, in full, right under the fields that change it. */}
+    {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
+    {problem}
+    {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
     {reference && <hr />}
     {reference && source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
       <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}

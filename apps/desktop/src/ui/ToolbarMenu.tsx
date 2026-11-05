@@ -16,17 +16,21 @@ export type ToolbarMenuSection = { id: string; label?: string; note?: string; it
 export type MenuCloseReason = "action" | "dismiss" | "command";
 type Props = {
   buttonRef?: RefObject<HTMLButtonElement | null>; buttonShortcut?: string; disabled?: boolean; label: string; value: string; sections: ToolbarMenuSection[]; selectedKey: string;
-  /** One plain line above the choices, read with the menu. */
+  /** Whose a pick is, as one short line at the top ("For Word"). */
+  heading?: string;
+  /** The full reason, read with the menu; shown only when there is no heading. */
   note?: string;
   /** A pop-up that draws more than its value, such as the shelf's count; quiet inside a band that is itself a fill. */
   button?: { className: string; label: string; title?: string; content: ReactNode; quiet?: boolean };
-  placement?: "top end" | "bottom end";
+  /** A pop-up that fills a form row anchors under its own leading edge, at
+   * least as wide as itself, as NSPopUpButton does [C21]. */
+  placement?: "top end" | "bottom end" | "bottom start";
   isOpen?: boolean; onOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
   filterLabel?: string; onAction: (key: string) => void; returnFocusRef?: RefObject<HTMLElement | null>;
 };
 
 /** A reference-independent menu. React Aria owns selection, navigation and virtual focus. */
-export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value, note, sections, selectedKey, button: drawn, placement = "bottom end", filterLabel = label, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
+export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value, heading, note, sections, selectedKey, button: drawn, placement = "bottom end", filterLabel = label, onAction, returnFocusRef, isOpen, onOpenChange }: Props) {
   const [internalOpen, setOpen] = useState(false);
   const [skipExit, setSkipExit] = useState(false);
   const open = isOpen ?? internalOpen;
@@ -83,8 +87,11 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
       <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
-        {note && <p id={noteId} className="toolbar-menu-note">{note}</p>}
+      <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined}
+        // [C21] Never narrower than its button: React Aria measures the trigger.
+        style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 16px))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
+        {heading && <p className="menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}
+        {note && <p id={noteId} className={heading ? "visually-hidden" : "toolbar-menu-note"}>{note}</p>}
         {filtered ? <Autocomplete key={opening} filter={contains}><SearchField className="toolbar-menu-filter" aria-label={filterLabel} autoFocus><Input placeholder={filterLabel} aria-describedby={note ? noteId : undefined} /></SearchField>{menu}</Autocomplete> : menu}
       </Popover>
     </MenuTrigger>

@@ -38,7 +38,7 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
   await screen.findByText("No matching references");
-  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc · Default" });
+  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc" });
   expect(button.tagName).toBe("BUTTON");
   expect(button.type).toBe("button");
   expect(button.disabled).toBe(false);
@@ -53,7 +53,7 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   fireEvent.keyDown(choice, { key: "Enter" });
   fireEvent.keyUp(choice, { key: "Enter" });
   await waitFor(() => expect(saved).toEqual(["typst"]));
-  expect(await screen.findByRole("button", { name: "Copy as Typst · Default" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Copy as Typst" })).toBeTruthy();
 });
 
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {
