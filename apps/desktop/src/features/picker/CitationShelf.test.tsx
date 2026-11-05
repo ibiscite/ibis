@@ -66,6 +66,14 @@ test("↑ and ↓ on a segment go back to Search and move the list; the shelf it
   search.remove();
 });
 
+test("a segment is the reference's own words: brackets and separators are shared, for one reference too", () => {
+  const a = record("a", "Alpha");
+  render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }] } }));
+  const segment = screen.getByRole("button", { name: "Edit Alpha 2021" });
+  expect(segment.textContent).toBe("Alpha, 2021, p. 4");
+  expect([...document.querySelectorAll(".shelf-shared")].map((node) => node.textContent)).toEqual(["(", ")"]);
+});
+
 test("formatted segments preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   const text = "Alpha species; <script>literal</script>";

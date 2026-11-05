@@ -188,7 +188,10 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   };
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
   const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
-  const manySegments = !single && !copied && segments?.map((span, index) => {
+  // A segment is the reference's own words; the brackets and separators the output
+  // adds are shared and quieter, never part of a segment, for one reference too.
+  const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
+  const manySegments = (!single || spanned) && !copied && segments?.map((span, index) => {
     const reference = span.item === null ? undefined : references[span.item];
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
@@ -201,7 +204,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
     </ShelfSegment>;
   });
-  const singleSegment = single && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
+  const singleSegment = single && !spanned && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
     aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
     aria-describedby={text !== undefined ? citationId : undefined}
     aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
