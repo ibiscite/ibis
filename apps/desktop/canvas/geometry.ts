@@ -21,6 +21,13 @@ export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]',
 /** [C19] Rows of one form share both edges: every control's drawn fill. */
 export const forms = { form: ".citation-details", controls: ".citation-field .ui-popup-button, .citation-field input" } as const;
 
+/** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
+ * from the search bar's divider to the shelf. */
+export const panes = { pane: ".inspector", top: ".search-bar", bottom: ".shelf" } as const;
+
+/** Stacked parts never cover each other: each starts below the one before. */
+export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".peek-card section"] as const;
+
 /** [C12] A grid of choice cards: one height, and each glyph level with its title. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
@@ -65,7 +72,9 @@ export function geometry(root: ParentNode = document): string[] {
   const popover = root.querySelector(anchored.popover), trigger = root.querySelector(anchored.trigger);
   if (popover && trigger) {
     const menu = popover.getBoundingClientRect(), button = trigger.getBoundingClientRect();
-    if (Math.abs(lead(menu) - lead(button)) > tolerance) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
+    // A menu wider than the room left moves back only as far as the window's inset needs [D15].
+    const pushed = width - lead(menu, true) <= 8 + tolerance && lead(menu) < lead(button);
+    if (Math.abs(lead(menu) - lead(button)) > tolerance && !pushed) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
     if (menu.width + tolerance < button.width) failures.push(`[C21] ${name(popover)}: ${menu.width.toFixed(1)} wide, narrower than its button (${button.width.toFixed(1)})`);
   }
 
@@ -78,6 +87,30 @@ export function geometry(root: ParentNode = document): string[] {
     });
     for (const fill of fills.slice(1)) for (const edge of ["start", "end"] as const)
       if (Math.abs(fill[edge] - fills[0]![edge]) > tolerance) failures.push(`[C19] ${name(fill.node)}: ${edge} ${fill[edge].toFixed(1)}, the form's ${fills[0]![edge].toFixed(1)}`);
+  }
+
+  const pane = root.querySelector(panes.pane), top = root.querySelector(panes.top), bottom = root.querySelector(panes.bottom);
+  if (pane && top && visible(pane)) {
+    const rect = pane.getBoundingClientRect(), header = top.getBoundingClientRect().bottom;
+    if (Math.abs(rect.top - header) > tolerance) failures.push(`[C19] ${name(pane)}: divider starts ${rect.top.toFixed(1)}, the search bar ends ${header.toFixed(1)}`);
+    const floor = bottom && visible(bottom) ? bottom.getBoundingClientRect().top : null;
+    if (floor !== null && Math.abs(rect.bottom - floor) > tolerance) failures.push(`[C19] ${name(pane)}: divider ends ${rect.bottom.toFixed(1)}, the shelf starts ${floor.toFixed(1)}`);
+  }
+
+  // Nothing scrolls sideways: a sub-pixel overhang draws a whole scroll bar in Chromium.
+  for (const node of root.querySelectorAll<HTMLElement>("*")) {
+    const overflowX = getComputedStyle(node).overflowX;
+    if ((overflowX === "auto" || overflowX === "scroll") && visible(node) && node.scrollWidth > node.clientWidth && !node.closest(".page-strip, .reader-pages"))
+      failures.push(`[scroll] ${name(node)} scrolls sideways by ${node.scrollWidth - node.clientWidth}px`);
+  }
+
+  for (const stack of root.querySelectorAll(stacks.join(", "))) {
+    const parts = [...stack.children].filter((node) => visible(node) && getComputedStyle(node).position !== "absolute");
+    for (let i = 1; i < parts.length; i++) {
+      const above = parts[i - 1]!.getBoundingClientRect(), below = parts[i]!.getBoundingClientRect();
+      if (below.top < above.bottom - tolerance && below.left < above.right && below.right > above.left)
+        failures.push(`[stack] ${name(parts[i]!)} covers ${name(parts[i - 1]!)} by ${(above.bottom - below.top).toFixed(1)}`);
+    }
   }
 
   for (const grid of root.querySelectorAll(cards.grid)) {

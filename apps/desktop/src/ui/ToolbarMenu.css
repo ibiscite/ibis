@@ -11,6 +11,8 @@
 /* One quiet line: the example sizes the menu and is cut only at the window's
    edge, never to a column, and never breaks a key apart. */
 .toolbar-menu-sample { margin-inline-start: auto; padding-inline-start: var(--space-4); min-width: 0; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
+/* The label names the choice, so it never gives way to its example. */
+.toolbar-menu .menu-label { flex-shrink: 0; max-width: 100%; }
 /* A quiet detail after the label, such as a style's full title. */
 .toolbar-menu-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
 .menu-item:has(> .toolbar-menu-detail) > .menu-label { flex-grow: 0; }
@@ -42,3 +44,8 @@
    wrapping, never cut. */
 .toolbar-menu-popover[data-anchor="field"] .menu-item:has(> .toolbar-menu-sample:not(:empty)) { flex-wrap: wrap; row-gap: 0; }
 .toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
+/* In the search bar the format pop-up is quiet like the × and pin beside it: no
+   plate at rest, its chevrons say it opens; the plate shows on hover and while open. */
+.search-bar .ui-popup-button.ui-button[data-variant] { background: transparent; }
+@media (hover: hover) { .search-bar .ui-popup-button.ui-button[data-variant][data-hovered]:not([data-disabled]) { background: var(--fill-quiet-hover); } }
+.search-bar .ui-popup-button.ui-button[data-variant]:is([data-pressed], [aria-expanded="true"]) { background: var(--fill-control-hover); }

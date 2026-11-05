@@ -18,6 +18,8 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   // ⌘-click is rowClickAction's toggle; listed with the key that does the same.
   { region: "search", action: "add", keys: ["Shift+Enter", "CmdOrCtrl+Click"] },
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
+  // Quick Look's key: Space types a space in the search, so peeking is ⌘Y as in Finder by keyboard.
+  { region: "search", action: "peek", keys: ["CmdOrCtrl+Y"] },
   // A focused shelf segment: CitationShelf's segmentKeys.
   { region: "citation", action: "citationMove", keys: ["ArrowLeft", "ArrowRight"] },
   { region: "citation", action: "citationRemove", keys: ["Backspace", "Delete"] },

@@ -4,6 +4,8 @@ import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
 import { pickerText } from "../../messages";
 import { ResultList } from "./ResultList";
 import { EmptyState } from "./EmptyState";
+import { CommandList } from "./CommandList";
+import type { PickerCommandEntry } from "./commands";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { usePickerSession } from "./usePickerSession";
@@ -19,8 +21,10 @@ const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck, project,
+  resultArea, setQuery, peck, project, commands,
 }: {
+  /** ">" in the search: the commands, in place of the references. */
+  commands?: { list: readonly PickerCommandEntry[]; active: number; run: (command: PickerCommandEntry) => void } | null;
   /** The bibliography rows are marked against; null for formatted output. */
   project: ProjectStatus | null;
   setQuery: (value: string) => void;
@@ -67,6 +71,9 @@ export function PickerResults({
       } />
   ) : null);
 
+  if (commands) return <div className="results-area scroll-area" ref={resultArea}>
+    <CommandList commands={commands.list} active={commands.active} hoverAllowed={pointer.hoverAllowed} onRun={commands.run} />
+  </div>;
   return <div className="results-area scroll-area" ref={resultArea}>
     {library?.has_snapshot && results.length > 0 && !results.some((r) => r.recent) && library.state !== "loading" && showCitations && <div className="results-heading" aria-hidden="true">
       <span>{list ? pickerText.pastedList : results.some((r) => r.partial) ? pickerText.closestMatches : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>

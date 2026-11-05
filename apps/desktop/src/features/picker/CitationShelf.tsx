@@ -187,7 +187,10 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   };
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
   const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
-  const manySegments = !single && !copied && segments?.map((span, index) => {
+  // A segment is the reference's own words; the brackets and separators the output
+  // adds are shared and quieter, never part of a segment, for one reference too.
+  const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
+  const manySegments = (!single || spanned) && !copied && segments?.map((span, index) => {
     const reference = span.item === null ? undefined : references[span.item];
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
@@ -200,7 +203,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
     </ShelfSegment>;
   });
-  const singleSegment = single && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
+  const singleSegment = single && !spanned && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
     aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
     aria-describedby={text !== undefined ? citationId : undefined}
     aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
@@ -220,7 +223,15 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
         tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
-        <span className="shelf-leading"><Beak /></span>
+        {/* The beak is the citation's proxy, as a Mac window's title icon is its
+            document's: drag it into any app to drop exactly what Enter pastes. */}
+        <span className="shelf-leading" draggable={Boolean(text) && !copied || undefined} title={text && !copied ? pickerText.dragCitation : undefined}
+          onDragStart={(event) => {
+            if (!text) return event.preventDefault();
+            event.dataTransfer.effectAllowed = "copy";
+            event.dataTransfer.setData("text/plain", text);
+            if (!keys && visible?.html) event.dataTransfer.setData("text/html", visible.html);
+          }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">

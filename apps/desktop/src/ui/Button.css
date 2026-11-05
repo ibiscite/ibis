@@ -53,3 +53,15 @@
   .ui-button[data-variant], .settings-page .ui-button[data-variant] { min-width: var(--touch-target); min-height: var(--touch-target); }
   .ui-button[data-variant]::after, .ui-button[data-size="small"]::after, .settings-page .ui-button[data-variant]::after { inset: 0; }
 }
+
+/* Action: a launcher's main action, as Raycast's footer draws it. Its words in the
+   text colour at medium weight and the one accent on its key cap; no plate at rest,
+   so the eye stays on the results. Hover and press are the quiet fills. */
+.ui-button[data-variant="action"] { background: transparent; color: var(--text); font-weight: 500; border-color: transparent; }
+.ui-button[data-variant="action"] .key-caps kbd { background: var(--primary); color: var(--text-on-accent); }
+@media (hover: hover) { .ui-button[data-variant="action"][data-hovered]:not([data-disabled], [aria-disabled="true"]) { background: var(--fill-quiet-hover); } }
+.ui-button[data-variant="action"]:is([data-pressed], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
+@media (forced-colors: active) {
+  .ui-button[data-variant="action"]:not([data-disabled], [aria-disabled="true"]) { background: Canvas; color: CanvasText; border-color: CanvasText; }
+  .ui-button[data-variant="action"] .key-caps kbd { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+}

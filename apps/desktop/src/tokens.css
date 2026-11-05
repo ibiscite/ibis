@@ -39,6 +39,10 @@
      centres a mark of width W on the tile column is (--tile - W) / 2. The footer
      and its notices use the same two columns as the rows above them. */
   --title-start: calc(var(--tile) + var(--row-gap));
+  /* [C20] The reader: a page at Fit Width and its thumbnail. Paper is drawn as the
+     PDF draws it, white in either mode, with ink to match. */
+  --page-w: 34rem; --thumb-w: 4rem;
+  --paper: #ffffff; --paper-ink: #2b2b2b; --paper-ink-secondary: #6e6e73;
 
   /* Corners. The window's is the Mac's own (it matches the native mask [C15]);
      the rest scale with --radius, with floors for surfaces and text-sized marks. */

@@ -20,6 +20,7 @@ import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
 import { WritingProjectsDialog } from "../src/features/picker/WritingProjects";
+import { inventedSource, PageSources } from "../src/features/reader/source";
 import type { WritingProjectsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
@@ -28,7 +29,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "writing-projects-updates", "writing-projects-retained", "project-pending-updates", "project-retained-settings", "project-check-paused", "project-check-retained", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -52,8 +53,12 @@ const fixtures: Partial<Record<Scenario, {
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
   "empty-search": { query: "" },
+  commands: { query: ">" },
+  "page-in-search": { query: "invented 417" },
+  peek: { keys: [{ key: "y", code: "KeyY", metaKey: true }] },
   shelf: { keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
+  reader: { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button[aria-expanded="false"].inspector-action'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
   "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
@@ -95,7 +100,12 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   const receipts = new Map<string, string>();
   return {
     libraryStatus: async () => library,
-    search: async (query) => ({ revision: "1", results: query && !fixture ? shown : [] }),
+    // As the engine does: a trailing page number is read as the page ("invented 417").
+    search: async (query, _limit, _scope, interpret) => {
+      const page = interpret !== false ? /^(.*\S)\s+(?:pp?\.\s*)?(\d+(?:[-–]\d+)?)$/.exec(query) : null;
+      return { revision: "1", results: query && !fixture ? shown : [],
+        ...page ? { interpretation: { search: page[1]!, locator: { label: "page" as const, value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
+    },
     previewFileCitation: async (items, output) => {
       const style = isStyle(output);
       const ticket = `synthetic-ticket-${++sequence}`;
@@ -215,6 +225,10 @@ function Notice({ theme }: { theme: Theme }) {
   return <div ref={root} />;
 }
 
+/** The invented book, the same for every reference: the reader's shell needs no PDF (decision 0038). */
+const book = inventedSource();
+const invented = () => book;
+
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     const fixed = fixtures[scenario];
@@ -246,7 +260,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario.startsWith("writing-projects")) return <WritingProjectsBoard picker={picker} variant={scenario} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
-    : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
+    : <PageSources.Provider value={scenario === "reader" ? invented : null}><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></PageSources.Provider>;
 }
 
 const inventedProject = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib", revision: "1" };

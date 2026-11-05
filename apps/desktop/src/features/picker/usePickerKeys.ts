@@ -16,7 +16,7 @@ import type { usePointerSelection } from "../../pointerSelection";
  * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  quitAfterSaving, onEmptyEnter,
+  quitAfterSaving, onEmptyEnter, commandKeys,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -30,6 +30,8 @@ export function usePickerKeys({
   followKeyboard: { current: boolean };
   quitAfterSaving: () => Promise<void>;
   onEmptyEnter?: () => void;
+  /** ">" in the search: the command list answers ↑ ↓ and Enter instead of the references. */
+  commandKeys?: { current: ((event: KeyboardEvent) => boolean) | null };
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
   const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
@@ -58,6 +60,7 @@ export function usePickerKeys({
       e.preventDefault();
       return;
     }
+    if (commandKeys?.current?.(e)) return;
     if (e.key === "Enter" && !e.shiftKey) onEmptyEnter?.();
     if (e.key === "ArrowDown" && (results.length === 0 || !showCitations) && focusChoices()) {
       e.preventDefault();

@@ -76,6 +76,12 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       else if (scenario === "zotero-closed") expect(host.textContent).toContain("Open Zotero to read your library");
       else if (scenario === "unreadable") expect(host.textContent).toContain("Can’t read invented.bib");
       else if (scenario === "long-titles") expect(host.textContent).toContain("An invented reference whose title");
+      else if (scenario === "commands") {
+        // ">" lists the picker's commands, not the library; the footer runs the highlighted one.
+        expect(host.querySelector('[role="option"]')?.textContent).toContain("Change Format");
+        expect(host.textContent).not.toContain("Invented reference 0");
+        expect(host.querySelector("footer")?.textContent).toContain("Run Change Format");
+      }
       else {
         expect(host.textContent).toContain("Invented reference 0");
         if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();

@@ -10,7 +10,7 @@ beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
 const box = () => screen.getByLabelText("Search references");
 const type = async (value: string) => { await act(async () => { fireEvent.change(box(), { target: { value } }); }); };
-const footerAction = () => document.querySelector("footer .footer-action[data-variant='primary']");
+const footerAction = () => document.querySelector("footer .footer-action[data-variant='action']");
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((finish) => { resolve = finish; });

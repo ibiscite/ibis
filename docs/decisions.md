@@ -1118,8 +1118,10 @@ for citing from annotations. It is a read-only viewer for PDFs already in the
 person's citation manager (a Zotero attachment or a `.bib` entry's `file` field),
 to look at a source and choose a page. It does not replace Zotero: Ibis never
 imports, stores, manages, downloads, edits or annotates a PDF, and Open in Zotero
-stays. It opens in the shared inspector panel beside the list, and the picker
-widens only to hold the PDF (0027, 2026-11-02). It is one priority among many;
+stays. It opens in the shared inspector panel; while a PDF is open the list
+folds away and the window grows once, taller and wider, to hold a readable page
+(maintainer, 2026-11-04, decision 0038; this replaces "beside the list, widening
+only to hold the PDF" of 2026-11-02). It is one priority among many;
 design polish, shortcuts and configuration matter as much.
 
 **Engine: PDF.js** (`pdfjs-dist`, legacy build, pinned exactly, behind one
@@ -1307,7 +1309,7 @@ Spotlight and Raycast for the launcher, Preview and Skim for a sidebar of page
 thumbnails beside the pages, Finder and Pages for an inspector beside content,
 System Settings for its own window.
 
-- **Reading has its own shape.** Drawing the boards showed a portrait page has
+- **Reading has its own shape** (approved by the maintainer, 2026-11-04). Drawing the boards showed a portrait page has
   no room in the steady 480-point window and that list, thumbnails, pages and
   column side by side are too many regions. While a PDF is open the window grows
   once, taller and wider, and the list folds away; search, shelf, footer and the
@@ -1332,6 +1334,12 @@ System Settings for its own window.
   repeated title and its separate document block, menu example columns (now a
   second line under the label), the format menu's two-line note (now one
   heading), the separate Check for Updates row, and Page following scroll.
+- **Chrome only where it acts** (same day, from the canvas pictures): a resting
+  result row has no tile plate, the footer's main action is quiet text with the
+  footer's one accent on its ↵ cap (as Raycast's), the search bar's format pop-up
+  is quiet like its neighbours, Settings cards separate by fill alone, and More
+  no longer repeats the footer's library line. Each removes an element that
+  repeated what something nearby already said.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 

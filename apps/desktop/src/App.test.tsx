@@ -2722,7 +2722,8 @@ test("the footer names the source and count, the age only when it matters, and t
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   const group = await screen.findByRole("group", { name: /Lab group/ });
   expect(plain(group.getAttribute("aria-label"))).toMatch(/^Zotero · 1,204 references\. My Library, Lab group · checked 3 hours ago, /);
-  expect(plain(group.querySelector(".menu-detail-title")?.textContent)).toBe("Zotero · 1,204 references");
+  // The footer shows the library line right under More, so More never repeats it on screen.
+  expect(group.querySelector(".menu-detail-title")).toBeNull();
 
   // A change just arrived: the age shows, outside the live region.
   status = { ...status, references: 1205, updated_at: Date.now(), checked_at: Date.now() };
@@ -3442,7 +3443,6 @@ test.each([false, true])("retained stale freshness stays in accessible footer de
   expect(container.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
   expect(container.querySelector(".library-detail")?.textContent).toContain(reason);
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(screen.getByRole("menu").textContent).toContain(reason);
   expect(screen.getByRole("group", { name: new RegExp(zotero ? "Open Zotero, then reload" : "Choose it again or reconnect") })).toBeTruthy();
   await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));

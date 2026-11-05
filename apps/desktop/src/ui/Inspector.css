@@ -1,11 +1,16 @@
 /* [C19] A sidebar beside the list, as in Preview, inside one steady window.
    Where the two cannot share the width it takes the list's place instead. */
-.inspector { --inspector-pad: var(--row-pad); grid-area: panel; container: inspector / size; width: var(--inspector-width); min-width: 0; min-height: 0; margin-block: var(--inset); border-inline-start: var(--border-width) solid var(--separator); }
+.inspector { --inspector-pad: var(--row-pad); grid-area: panel; container: inspector / size; width: var(--inspector-width); min-width: 0; min-height: 0; border-inline-start: var(--border-width) solid var(--separator); }
+/* A pane divider runs the whole region it splits, as a Mac split view's does: it
+   meets the search bar's divider at the top and the shelf at the bottom. The
+   content keeps S from both inside it. */
 @container (max-width: 36rem) {
   .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
-.inspector-body { display: flex; flex-direction: column; height: 100%; overflow: auto; overscroll-behavior: contain; }
+.inspector-body { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: hidden auto; overscroll-behavior: contain; }
+/* The panel scrolls only up and down: a sub-pixel overhang (the quiet rows' hover
+   fill) must never draw a sideways scroll bar. */
 .inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: var(--inspector-pad); }
 /* One vertical step: every row is a 32 px target, one --space-1 apart, as the
    label and control rows (CitationDetails) are. */
@@ -15,8 +20,9 @@
 .inspector-document::before { content: ""; display: block; margin-block-end: var(--space-3); border-top: var(--border-width) solid var(--separator); }
 /* The full title, once: two lines, then an ellipsis; × stays level with its first line. */
 .inspector-heading { flex: none; display: flex; align-items: start; justify-content: space-between; gap: var(--space-2); min-height: var(--control-h); }
-.inspector-heading h2 { min-width: 0; margin: 0; padding-block: calc((var(--control-h) - var(--type-body-line)) / 2) 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
-.inspector-column > .inspector-byline { margin: calc((var(--type-body-line) - var(--control-h)) / 2) 0 var(--space-1); overflow: hidden; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); text-overflow: ellipsis; white-space: nowrap; }
+.inspector-titles { min-width: 0; padding-block: calc((var(--control-h) - var(--type-body-line)) / 2) var(--space-1); }
+.inspector-heading h2 { min-width: 0; margin: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; overflow-wrap: anywhere; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
+.inspector-byline { margin: var(--space-1) 0 0; overflow: hidden; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); text-overflow: ellipsis; white-space: nowrap; }
 .inspector-heading .ui-icon-button { flex: none; margin-inline-end: calc(-1 * var(--space-1)); }
 .inspector-column > p { margin: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
 .inspector-column > h3 { margin: 0; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); }
@@ -26,13 +32,20 @@
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-tile); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
 .inspector-keys { flex: none; color: var(--text-secondary); }
 .inspector-action[data-disabled] .inspector-keys { color: inherit; }
+/* Reading: the list folds away and the panel takes the whole middle row, so the
+   pages sit between the thumbnails and the column (decision 0038). */
+.inspector[data-reading] { grid-column: 1 / -1; width: auto; border-inline-start: 0; }
+/* The reader draws its own canvas edge to edge, between the dividers. */
+.inspector[data-reading] .inspector-document { padding: 0; }
+main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
-  .inspector-body.scroll-area { flex-direction: row-reverse; overflow: hidden; }
-  .inspector-column { flex: 0 0 var(--inspector-column); overflow: auto; }
+  .inspector-body.scroll-area { flex-direction: row-reverse; padding-block: 0; overflow: hidden; }
+  .inspector-column, .inspector-document { box-sizing: border-box; padding-block: var(--inset); }
+  .inspector-column { flex: 0 0 var(--inspector-column); overflow: hidden auto; }
   .inspector-column:only-child { flex: 1; }
-  .inspector-document { flex: 1; padding-block: 0; overflow: auto; }
+  .inspector-document { flex: 1; overflow: hidden auto; }
   .inspector-document::before { content: none; }
   .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
 }

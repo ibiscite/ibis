@@ -28,8 +28,8 @@ test("the keys Ibis handles but once left out are in the table, with their syste
   expect(keyLabel("CmdOrCtrl+Click", false)).toBe("Ctrl+click");
   // A click is no key, so assistive technology is not told it is one.
   expect(ariaKeys("CmdOrCtrl+Click", true)).toBe("");
-  // Peek (⌘Y) is not handled yet, so it is not listed.
-  expect(KEY_TABLE.flatMap((binding) => binding.keys)).not.toContain("CmdOrCtrl+Y");
+  // Peek is handled in the search, so it is listed with Quick Look's keyboard key.
+  expect(keysFor("peek")).toBe("CmdOrCtrl+Y");
 });
 
 test("key labels follow the platform", () => {

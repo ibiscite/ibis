@@ -1,4 +1,6 @@
 import { useEffect, useState, type Ref } from "react";
+import { Reader } from "../reader/Reader";
+import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import { composing } from "../../composition";
@@ -6,7 +8,7 @@ import type { FormattedCitation } from "../../format/outputs";
 import { render } from "../../format/markup";
 import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
-import { citationDetailsText, keyText, pickerText } from "../../messages";
+import { citationDetailsText, keyText, pickerText, readerText } from "../../messages";
 import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
@@ -32,6 +34,9 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
 }) {
   const [details, setDetails] = useState<{ receipt: FilePreview; output: string; value: ReferenceDetails | "failed" }>();
   const editing = panel.kind !== "warnings";
+  const pdf = usePageSource(editing ? reference : undefined);
+  // Reading belongs to this opening of these details: closing them ends it.
+  const [reading, setReading] = useState(false);
   useEffect(() => {
     if (!editing || !previewReceipt || index < 0) return;
     let live = true;
@@ -62,6 +67,9 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   const byline = reference ? [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ") : undefined;
   return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails}
     heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={keyText.close} onClose={onClose}
+    reading={reading && pdf !== null}
+    document={reading && pdf && reference && onChange ? <Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
+      onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "page-editor" } : null })} onClose={() => setReading(false)} /> : undefined}
     onKeyDown={(event) => {
       const target = event.target as HTMLElement;
       if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
@@ -75,6 +83,9 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     {problem}
     {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
     {reference && <hr />}
+    {reference && pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
+      <span>{reading ? readerText.hide : readerText.show}</span>
+    </Button>}
     {reference && source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
       <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
     </Button>}

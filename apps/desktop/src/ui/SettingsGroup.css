@@ -13,7 +13,8 @@
 /* Grouped content [D17]: the Mac's quaternary fill, so the window shows through. */
 .ui-settings-card {
   flex: none; min-width: 0; border-radius: var(--r-card); background: var(--surface-grouped);
-  border: var(--border-width) solid var(--separator); overflow: hidden;
+  /* One edge per shape: the fill separates the card, as System Settings does. */
+  border: var(--border-width) solid transparent; overflow: hidden;
 }
 .ui-settings-row {
   position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-4);

@@ -1,6 +1,31 @@
 import type { EntryCopy, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
+/** The reader (decision 0038). Page numbers are isolated so they never mirror. */
+export const readerText = {
+  show: "Show PDF",
+  hide: "Hide PDF",
+  cite: "Cite This Page",
+  pageInView: "Page in view",
+  thumbnails: "Pages",
+  pages: "Pages of the PDF",
+  region: (title: string) => `Pages of ${title}`,
+  indicator: (printed: string, index: number, count: number) => `p. ${isolate(printed)} · PDF page ${index} of ${count}`,
+  unknown: (index: number, count: number) => `PDF page ${index} of ${count} · no printed page`,
+  pdfPage: (index: number) => `PDF ${index + 1}`,
+  ask: (index: number) => `What number is printed on PDF page ${index}?`,
+  useNearby: "Use for Nearby Pages",
+};
+
+/** Peek (⌘Y): the highlighted reference's full details. */
+export const peekText = {
+  label: (title: string) => `Details of ${title}`,
+  container: "Published in",
+  year: "Year",
+  type: "Type",
+  key: "Citation key",
+};
+
 export const citationDetailsText = {
   page: "Page",
   none: "None",
@@ -374,6 +399,12 @@ export const pickerText = {
   changeCitation: (format: string) => `Change Citation · ${format}`,
   keepOpen: "Keep Window Open",
   keepOpenMenu: "Keep Window Open",
+  changeFormat: "Change Format…",
+  dragCitation: "Drag the citation into any app",
+  /** ">" in the search: the list shows commands, and Enter runs one. */
+  commands: "Commands",
+  noCommands: "No matching commands",
+  runCommand: (title: string) => `Run ${title.replace(/…$/, "")}`,
   moreTitle: (keys: string) => `More actions (${keys})`,
   chooseLibrary: "Choose Library…",
   useZotero: "Use Zotero",
@@ -430,6 +461,7 @@ export const keyText = {
     copy: "Paste or copy the citation",
     add: "Add another reference",
     move: "Move through results",
+    peek: "Peek at the highlighted reference",
     escape: "Step back or hide",
     format: "Change the format",
     more: "More actions",
