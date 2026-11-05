@@ -4,7 +4,9 @@ import type { Platform } from "./platform";
 export const citationDetailsText = {
   page: "Page",
   none: "None",
-  pageHint: "A page or range",
+  /** Page is optional; empty means no page, never the word "None". */
+  pagePlaceholder: "Optional",
+  pageHint: "A page, a range or several, as printed",
   form: "Show as",
   examplesUnavailable: "Examples are unavailable",
   forms: [
@@ -290,7 +292,8 @@ export const pickerText = {
   filterFormats: "Filter formats",
   /** The closed format control when the format belongs to the app: "APA · Word". */
   formatForApp: (format: string, app: string) => `${format} · ${app}`,
-  formatDefault: (format: string) => `${format} · Default`,
+  /** The default needs no suffix: an unmarked format is the default. */
+  formatDefault: (format: string) => format,
   formatThisPaste: (format: string) => `${format} · This paste`,
   /** Why the format applies and where a pick goes, at the top of the format menu. */
   formatRemembered: (app: string) => `Remembered for ${app}.`,
@@ -305,6 +308,9 @@ export const pickerText = {
   pickToRemember: "Pick a format to remember it for this app.",
   pickToSetDefault: "Pick a format to make it your default.",
   forApp: (app: string) => `For ${app}`,
+  /** The format menu's one-line heading: where a pick goes. */
+  pickHeadingDefault: "Default format",
+  pickHeadingThisPaste: "This paste only",
   pasteFromNowOn: (app: string) => `Paste into ${app} from Now On`,
   copyOnly: "Copy Only",
   copyOnlyHere: (app: string) => `Copy Only in ${app}`,
@@ -698,5 +704,5 @@ export const updateText = {
   title: "Updating Ibis",
   downloading: "Downloading",
   installing: "Checking and installing",
-  failed: "The update could not be installed. Use Check Now in Settings › About to try again later.",
+  failed: "The update could not be installed. Use Check for Updates in Settings › About to try again later.",
 };

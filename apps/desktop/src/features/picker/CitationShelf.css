@@ -54,18 +54,9 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--text-secondary); }
 
-/* The inspector's document: the reference, then what will be pasted. A panel
-   wide enough adds the row's tile and sets them on the title column. */
-.inspector-reference { display: flex; gap: var(--row-gap); }
-.inspector-reference .result-tile { display: none; }
-.inspector-reference > div { min-width: 0; }
-.inspector-reference h3 { margin: 0; font: var(--strong) var(--type-body-size) / var(--type-body-line) var(--font); overflow-wrap: break-word; }
-.inspector-reference p { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: break-word; }
-.inspector-citation { display: block; margin: var(--space-3) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: break-word; user-select: text; }
-@container inspector (min-width: 34rem) and (min-height: 11rem) {
-  .inspector-reference .result-tile { display: grid; }
-  .inspector-citation { margin-inline-start: calc(var(--tile) + var(--row-gap)); }
-}
+/* What will be pasted, in the column under the fields that change it: plain
+   text on the column's edge, no box, so nothing is framed twice. */
+.inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .inspector-citation[data-keys] { font-family: var(--mono); }
 .inspector-citation .csl-entry { display: inline; }
 .inspector-problem svg { width: var(--icon-small); height: var(--icon-small); margin-inline-end: var(--space-1); color: var(--status-error); vertical-align: text-bottom; }

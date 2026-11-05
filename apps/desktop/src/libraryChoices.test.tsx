@@ -156,8 +156,9 @@ test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only r
   await screen.findByText("Previously chosen reference");
   const search = screen.getByLabelText("Search references");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
-  const preview = await screen.findByRole("region", { name: "Preview" });
-  await waitFor(() => expect(preview.tabIndex).toBe(0));
+  await screen.findByRole("region", { name: "Preview" });
+  // The shelf is never a focus stop of its own while it has a segment: the segment is.
+  const preview = await screen.findByRole("button", { name: /^Edit / });
   const announcement = screen.getByRole("status", { name: "Citation selection" });
   expect(announcement.textContent).toBe("1 reference selected for citation");
   const target = destination === "chip" ? screen.getByRole("button", { name: "Remove old from the selection" })

@@ -6,9 +6,11 @@
 }
 /* Keep a useful minimum while filtering; longer labels may use the viewport. */
 .toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
+.toolbar-menu-heading { flex: none; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-menu-filter { flex: none; }
-/* One quiet line: a long example ends in an ellipsis, never breaks a key apart. */
-.toolbar-menu-sample { margin-inline-start: auto; min-width: 0; max-width: 50%; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
+/* One quiet line: the example sizes the menu and is cut only at the window's
+   edge, never to a column, and never breaks a key apart. */
+.toolbar-menu-sample { margin-inline-start: auto; padding-inline-start: var(--space-4); min-width: 0; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font); white-space: normal; overflow-wrap: break-word; }
 /* Quiet notes: for the menu, for a section, or under a label for why it is
    unavailable. None ever sets the menu's width. */
@@ -31,3 +33,8 @@
   :root[data-platform="macos"] .toolbar-menu-button { min-width: 2.75rem; min-height: 2.75rem; }
   :root[data-platform="macos"] .toolbar-menu-button::after { inset: 0; }
 }
+/* [C21] A form-row pop-up's menu keeps its button's width, as an inspector's
+   pop-ups do on the Mac, so its example sits on a second line, whole and
+   wrapping, never cut. */
+.toolbar-menu-popover[data-anchor="field"] .menu-item:has(> .toolbar-menu-sample:not(:empty)) { flex-wrap: wrap; row-gap: 0; }
+.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }

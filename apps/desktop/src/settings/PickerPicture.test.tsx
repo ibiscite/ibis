@@ -33,7 +33,9 @@ test("a strip shows two whole rows and its frame comes from them", () => {
   const { container } = render(<PickerPicture rowsOnly density="compact" />);
   expect(container.querySelector(".ui-picker-picture-content > div")!.shadowRoot!.querySelectorAll('[role="option"]')).toHaveLength(2);
   const strip = sources.choices.split("\n").filter((line) => line.startsWith(".ui-picker-picture[data-rows]")).join("\n");
-  expect(strip).toMatch(/\{ width: 100%; height: auto; \}/);
+  // Rows alone, on the card that holds them: no frame or surface of their own.
+  expect(strip).toMatch(/\{ width: 100%; height: auto; box-shadow: none; \}/);
+  expect(strip).toMatch(/background: transparent/);
   expect(strip).toMatch(/transform: none; zoom: var\(--preview-rows\)/);
   expect(strip).toMatch(/display: flow-root/);
 });

@@ -9,8 +9,8 @@ test("the bundled interface default is English, independent of browser language 
   expect(englishMessages.locale).toBe("en-US");
   expect(englishMessages.text("settings-general")).toBe("General");
   expect(englishMessages.text("general-login-label", { platform: "windows" })).toBe("Start when you sign in");
-  expect(englishMessages.text("general-login-label", { platform: "macos" })).toBe("Open at Login");
-  expect(englishMessages.text("general-login-label", { platform: "linux" })).toBe("Start on Login");
+  expect(englishMessages.text("general-login-label", { platform: "macos" })).toBe("Open at login");
+  expect(englishMessages.text("general-login-label", { platform: "linux" })).toBe("Start on login");
   expect(Object.isFrozen(englishMessages)).toBe(true);
 });
 
@@ -95,7 +95,7 @@ const panelEnglish = {
   "shortcuts-or": "or",
   "about-automatic": "Check for updates automatically",
   "about-automatic-description": "Reads a small update file from GitHub a few times a day.",
-  "about-check": "Check Now",
+  "about-check": "Check for Updates",
   "about-check-label": "Check for updates",
   "about-copied": "Copied",
   "about-copy-failed": "The version could not be copied.",

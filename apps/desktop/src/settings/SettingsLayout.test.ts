@@ -52,7 +52,10 @@ test("Settings fills the viewport, with bounded page and navigation scrollers be
   expect(page.getPropertyValue("align-content")).toBe("start");
   const scrollers = rules(shell + groups + navigation).filter((rule) => ["overflow", "overflow-y"].some((property) => /^(auto|scroll)$/.test(rule.style.getPropertyValue(property))));
   expect(scrollers.map((rule) => rule.selectorText)).toEqual([".settings-page", ".ui-side-navigation"]);
-  for (const selector of [".settings", ".settings-titlebar", ".settings-page", ".settings-page-title"]) {
+  // The page's title stays put inside the page's own scroller, as System Settings
+  // keeps its title, so it never slides behind the native title bar either.
+  expect(style(shell, ".settings-page-title").getPropertyValue("position")).toBe("sticky");
+  for (const selector of [".settings", ".settings-titlebar", ".settings-page"]) {
     const layout = style(shell, selector);
     expect(["sticky", "absolute", "fixed"]).not.toContain(layout.getPropertyValue("position"));
     for (const property of ["margin-top", "margin-bottom", "margin-block"]) expect(layout.getPropertyValue(property)).not.toMatch(/-|calc\(/);
