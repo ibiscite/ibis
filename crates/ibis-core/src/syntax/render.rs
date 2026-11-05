@@ -576,9 +576,9 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
             // the export still matches the file it came from.
             map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
-            for (key, value) in &self.0.record.csl {
+            for (key, value) in self.0.record.csl.entries() {
                 if key != "id" && key != "citation-key" {
-                    map.serialize_entry(key, value)?;
+                    map.serialize_entry(key, &value)?;
                 }
             }
             map.end()

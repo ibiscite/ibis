@@ -1,6 +1,6 @@
 //! Engine-owned library objects and immutable, fingerprinted snapshots.
 
-use std::{collections::BTreeMap, sync::Arc};
+use std::sync::Arc;
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Deserializer, Serialize, de};
@@ -128,7 +128,7 @@ pub struct Record {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub added_at: Option<String>,
     /// Normalised CSL data; all variables may affect a chosen style.
-    pub csl: BTreeMap<String, Value>,
+    pub csl: super::Csl,
     #[serde(default)]
     pub citation_keys: Vec<CitationKey>,
     #[serde(default)]
@@ -279,7 +279,7 @@ impl LibraryObject {
                 #[derive(Serialize)]
                 struct CiteRecord<'a> {
                     id: &'a ItemRef,
-                    csl: &'a BTreeMap<String, Value>,
+                    csl: &'a super::Csl,
                     citation_keys: &'a [CitationKey],
                     aliases: &'a [String],
                     #[serde(skip_serializing_if = "<[super::CitationWarningCode]>::is_empty")]
@@ -389,7 +389,7 @@ impl Snapshot {
             }
         }
         matches!(&self.objects[position].object, LibraryObject::Record(old)
-            if old == record && old.csl.values().zip(record.csl.values()).all(|(a, b)| same_encoding(a, b)))
+            if old == record && old.csl.json_values().zip(record.csl.json_values()).all(|(a, b)| same_encoding(a, b)))
         .then_some(position)
     }
 
@@ -398,7 +398,10 @@ impl Snapshot {
         // can return and drop it. Values assembled by sources do not have the
         // JSON reader's recursion limit.
         let safe_depth = objects.iter().all(|object| match object {
-            LibraryObject::Record(record) => record.csl.values().all(|value| validate_value_depth(value).is_ok()),
+            LibraryObject::Record(record) => record
+                .csl
+                .json_values()
+                .all(|value| validate_value_depth(value).is_ok()),
             _ => true,
         });
         if !safe_depth {
@@ -596,7 +599,7 @@ fn validate_value_depth(value: &Value) -> Result<(), ModelError> {
 fn drop_objects_iteratively(mut objects: Vec<LibraryObject>) {
     for object in &mut objects {
         if let LibraryObject::Record(record) = object {
-            for value in std::mem::take(&mut record.csl).into_values() {
+            for value in std::mem::take(&mut record.csl).into_json_values() {
                 drop_value_iteratively(value);
             }
         }
@@ -784,7 +787,11 @@ mod tests {
         Record {
             added_at: None,
             id: id("work"),
-            csl: BTreeMap::from([("type".into(), json!("book")), ("title".into(), json!("Invented work"))]),
+            csl: std::collections::BTreeMap::from([
+                ("type".into(), json!("book")),
+                ("title".into(), json!("Invented work")),
+            ])
+            .into(),
             citation_keys: vec![CitationKey {
                 value: "Example2026".into(),
                 source: CitationKeySource::Bibtex,

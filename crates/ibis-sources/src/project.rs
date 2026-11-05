@@ -499,6 +499,18 @@ fn compare_work(library: &Record, project: &Record) -> WorkMatch {
             .filter(|title| !title.is_empty())
     };
     let authors = |record: &Record| -> Option<Vec<String>> {
+        // Compact names are read as held; other lists as their JSON.
+        if let Some(names) = record.csl.names("author") {
+            return names
+                .iter()
+                .map(|name| {
+                    name.part("family")
+                        .or_else(|| name.part("literal"))
+                        .map(plain)
+                        .filter(|name| !name.is_empty())
+                })
+                .collect();
+        }
         let values = record.csl.get("author")?.as_array()?;
         if values.is_empty() {
             return None;

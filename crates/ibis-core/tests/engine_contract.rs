@@ -70,7 +70,6 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
     if std::env::var_os(CHILD).is_some() {
         std::thread::spawn(|| {
             use ibis_core::contract::*;
-            use std::collections::BTreeMap;
             for mode in [0, 2, 3] {
                 let mut value = serde_json::Value::Null;
                 for _ in 0..20_000 {
@@ -82,7 +81,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                         library: LibraryId::digest(b"synthetic-depth-fixture"),
                         key: if mode == 3 { "".into() } else { "work".into() },
                     },
-                    csl: BTreeMap::new(),
+                    csl: Default::default(),
                     citation_keys: vec![],
                     aliases: vec![],
                     warnings: vec![],
@@ -97,7 +96,7 @@ fn deep_snapshot_rejection_is_safe() -> Result<(), Box<dyn std::error::Error>> {
                             library: LibraryId::digest(b"synthetic-depth-fixture"),
                             key: "work".into(),
                         },
-                        csl: BTreeMap::new(),
+                        csl: Default::default(),
                         citation_keys: vec![],
                         aliases: vec![],
                         warnings: vec![],

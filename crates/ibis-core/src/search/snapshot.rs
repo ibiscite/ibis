@@ -107,22 +107,19 @@ impl SnapshotIndex {
                     .collect();
                 let year = crate::summary::issued_year(record.csl.get("issued"));
                 let text = |field: &str| record.csl.get(field).and_then(serde_json::Value::as_str).unwrap_or("");
+                // Every name variable, read without building JSON for compact lists.
                 let names: Vec<Name> = record
                     .csl
-                    .values()
-                    .filter_map(serde_json::Value::as_array)
-                    .flatten()
-                    .filter_map(|value| {
-                        let object = value.as_object()?;
-                        let field = |key: &str| object.get(key).and_then(serde_json::Value::as_str).map(str::to_owned);
-                        Some(Name {
-                            family: field("family"),
-                            given: field("given"),
-                            literal: field("literal"),
-                            dropping_particle: field("dropping-particle"),
-                            non_dropping_particle: field("non-dropping-particle"),
-                            suffix: field("suffix"),
-                        })
+                    .entries()
+                    .flat_map(|(_, value)| match value {
+                        CslRef::Names(names) => names.iter().map(CompactName::to_name).collect::<Vec<_>>(),
+                        CslRef::Json(value) => value
+                            .as_array()
+                            .into_iter()
+                            .flatten()
+                            .filter(|value| value.is_object())
+                            .map(Name::from_csl)
+                            .collect(),
                     })
                     .collect();
                 let title = strip_markup(text("title"));
