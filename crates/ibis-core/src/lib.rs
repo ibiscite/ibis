@@ -3,7 +3,6 @@
 pub mod citable;
 pub mod contract;
 pub mod destination;
-pub mod find;
 pub mod identifier;
 pub mod locator;
 pub mod model;

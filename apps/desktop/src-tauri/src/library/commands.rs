@@ -3,7 +3,6 @@
 use std::sync::{Arc, Mutex};
 
 use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
-use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 
@@ -13,7 +12,8 @@ use super::state::Library;
 use super::status::{LibraryProblem, LibraryStatus};
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
 use crate::project::ProjectBibliography;
-use crate::setup::{ZoteroPresence, zotero_presence};
+use crate::setup::ZoteroPresence;
+use ibis_engine::{Cancellation, discovery, health::InspectionPolicy};
 
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
@@ -106,7 +106,8 @@ pub(crate) struct ZoteroProfiles {
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
-        let running = zotero_presence(&mut LocalZotero::default()) != ZoteroPresence::Absent;
+        let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
+            != discovery::ZoteroPresence::Absent;
         super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
     })
     .await
@@ -137,9 +138,13 @@ fn zotero_answered(found: ZoteroPresence, problem: Option<LibraryProblem>) -> bo
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
-    let found = tauri::async_runtime::spawn_blocking(|| zotero_presence(&mut LocalZotero::default()))
-        .await
-        .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
+    let found = tauri::async_runtime::spawn_blocking(|| {
+        discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())
+    })
+    .await
+    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?
+    .map(ZoteroPresence::from)
+    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
     let problem = app
         .state::<Mutex<Library>>()
         .lock()

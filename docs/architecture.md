@@ -43,9 +43,19 @@ From the engine review of 2026-11-02. These need no further decision; each step 
 
 - **Reaching it:** `ibis ... --json` and `ibis serve --stdio` from any language; `ibis mcp` for agents; `ibis lsp` for editors (0.7); WebAssembly for websites and browser extensions. Python and npm packages, when someone asks, are thin clients around the `ibis` program. No C library, native language bindings or hosted API.
 - **Portable rules:** `ibis-core` stays free of native dependencies and builds for WebAssembly today; the key-output golden cases matched byte for byte there. `ibis-sources` gets a feature switch so its readers can follow without Zotero or SQLite.
-- **Fewer crates:** once the app stops calling `ibis-zotero-local` (#1260), it merges into `ibis-sources`. Settings and per-app choices move out of `ibis-core`, and `doctor` moves into the engine with #1538.
+- **Fewer crates:** once the app stops calling `ibis-zotero-local` (#1260), it merges into `ibis-sources`. Settings and per-app choices move out of `ibis-core`; health and `doctor` inspection now live in the engine.
 - **Extending:** data files first, then pipes, never native code or scripts loaded into the engine. Extensions carry their own tests.
 - **Stays:** citeproc-js in QuickJS, JSON-RPC with LSP framing, a fixed list of source kinds, one repository and one version number until 1.0.
+
+Health and setup discovery have one engine owner (#1300, PR 4). Health reads one
+published snapshot and its existing source metadata; clients supply selection
+facts and format the shared verdicts. Doctor's inspection is read-only: no
+watches, discovery, Zotero probes, database copies or recovery writes. Its first
+identity read never saves a key; temporary IDs stay stable for that process.
+Setup owns expiring native path handles, reserved before work starts; late
+completion cannot publish, and only names reach the webview. Native inspection
+shares source reads' two-second waits and eight-call limit. A failed choice keeps
+the searched source and reports its health separately from the rejected choice.
 
 ### Task contexts (planned)
 
@@ -536,7 +546,7 @@ file loaders, watcher, citation renderer and Zotero CSL-export mapping and scan
 have been deleted from `ibis-core`. BibTeX parsing and file watching live in
 `ibis-sources`; Zotero reads use `ibis-zotero-local` and the canonical mapping in
 `ibis-sources`. Search uses contract snapshots and citations use the shared engine.
-Core retains the shared name/date helpers, settings, discovery, transport and
+Core retains the shared name/date helpers, settings, transport and
 group-list rules still used by clients. The native shortcut, panel, clipboard and
 updater modules, UI components, tokens and synthetic fixtures remain. Settings
 migrations and identity carry-over code are deleted (decision 0027).

@@ -132,16 +132,20 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
     let server = fixture::Server::new();
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::Group(7), ZoteroLibrary::User]).ok_or("choice")?;
-    let bridge =
-        FileLibrary::open_zotero_with(engine, &both, None, &Cancellation::default()).map_err(|e| e.to_string())?;
+    let bridge = std::sync::Arc::new(
+        FileLibrary::open_zotero_with(engine, &both, None, &Cancellation::default()).map_err(|e| e.to_string())?,
+    );
     let query = serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?;
     let found = bridge.search(&query, 10, None, &Cancellation::default())?;
     assert_eq!(found.results.len(), 2);
     let mut sources: Vec<_> = found.results.iter().map(|row| row.source.as_str()).collect();
     sources.sort_unstable();
     assert_eq!(sources, ["zotero:group:7", "zotero:user"]);
-    let mut status = crate::library::status::status(&crate::library::Library::default());
-    bridge.status(&mut status);
+    let status = crate::library::status::status(&crate::library::Library {
+        source: Some(crate::library::Source::Zotero(both.clone())),
+        file: Some(bridge.clone()),
+        ..Default::default()
+    });
     assert_eq!(status.source_counts.len(), 2);
     for row in &found.results {
         assert_eq!(status.source_counts.get(&row.source), Some(&1));

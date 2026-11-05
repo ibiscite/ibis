@@ -20,6 +20,11 @@ mod watch;
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
 const SETTLE: Duration = Duration::from_millis(250);
 
+/// Native discovery and health share file reads' eight-call limit and two-second wait.
+pub fn inspect_io<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    io::bounded(move || Ok(operation())).ok()
+}
+
 /// Allowlisted diagnostics: never expose paths, contents or operating system errors.
 /// Front ends add any context about their installed references.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
