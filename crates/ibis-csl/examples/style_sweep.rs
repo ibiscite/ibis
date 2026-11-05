@@ -19,7 +19,7 @@ fn library() -> Snapshot {
             LibraryObject::Record(Record {
                 added_at: None,
                 id: reference(index),
-                csl,
+                csl: csl.into(),
                 citation_keys: vec![],
                 aliases: vec![],
                 warnings: vec![],

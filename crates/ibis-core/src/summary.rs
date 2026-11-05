@@ -75,7 +75,10 @@ impl RecordSummary {
 }
 
 fn author(value: &Value) -> Option<Author> {
-    let name = Name::from_csl(value);
+    author_named(Name::from_csl(value))
+}
+
+fn author_named(name: Name) -> Option<Author> {
     let display = strip_markup(&name.display()).trim().to_owned();
     if display.is_empty() {
         return None;
@@ -155,7 +158,23 @@ pub fn capped(text: &str, limit: usize) -> String {
 impl crate::contract::Record {
     /// What every front end shows of this record.
     pub fn summary(&self) -> RecordSummary {
-        RecordSummary::of(|field| self.csl.get(field))
+        // Compact names are read as they are held, building no JSON.
+        let compact = self.csl.names("author");
+        let mut summary = RecordSummary::of(|field| {
+            if field == "author" && compact.is_some() {
+                None
+            } else {
+                self.csl.get(field)
+            }
+        });
+        if let Some(names) = compact {
+            summary.authors = names
+                .iter()
+                .map(|name| name.to_name())
+                .filter_map(author_named)
+                .collect();
+        }
+        summary
     }
 }
 

@@ -173,11 +173,14 @@ pub fn of_record(record: &crate::contract::Record) -> Vec<Identifier> {
             _ => None,
         })
         .collect::<Vec<_>>();
-    for (field, value) in &record.csl {
+    for (field, value) in record.csl.entries() {
+        let crate::contract::CslRef::Json(value) = value else {
+            continue;
+        };
         let Some(value) = value.as_str() else {
             continue;
         };
-        match field.as_str() {
+        match field {
             "DOI" => ids.extend(doi(value).map(Identifier::Doi)),
             "URL" => {
                 ids.extend(doi(value).map(Identifier::Doi));

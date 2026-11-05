@@ -3,18 +3,47 @@ use ibis_core::citable::public_url;
 use serde_json::Value;
 use std::collections::BTreeMap;
 
-pub(crate) fn remove_private_urls(csl: &mut BTreeMap<String, Value>) -> bool {
-    let mut removed = csl
-        .get("URL")
-        .and_then(Value::as_str)
-        .is_some_and(|url| !public_url(url));
-    if removed {
-        csl.remove("URL");
+/// The fields a URL check reads and changes: a source's working map, or a
+/// record's variables.
+pub(crate) trait UrlFields {
+    fn text(&self, field: &str) -> Option<&str>;
+    fn drop_field(&mut self, field: &str);
+    fn set_text(&mut self, field: &str, text: String);
+}
+
+impl UrlFields for BTreeMap<String, Value> {
+    fn text(&self, field: &str) -> Option<&str> {
+        self.get(field).and_then(Value::as_str)
     }
-    if let Some(note) = csl.get("note").and_then(Value::as_str) {
+    fn drop_field(&mut self, field: &str) {
+        self.remove(field);
+    }
+    fn set_text(&mut self, field: &str, text: String) {
+        self.insert(field.into(), Value::String(text));
+    }
+}
+
+impl UrlFields for ibis_core::contract::Csl {
+    fn text(&self, field: &str) -> Option<&str> {
+        self.get(field).and_then(Value::as_str)
+    }
+    fn drop_field(&mut self, field: &str) {
+        self.remove(field);
+    }
+    fn set_text(&mut self, field: &str, text: String) {
+        self.insert(field.into(), Value::String(text));
+    }
+}
+
+pub(crate) fn remove_private_urls(csl: &mut impl UrlFields) -> bool {
+    let mut removed = csl.text("URL").is_some_and(|url| !public_url(url));
+    if removed {
+        csl.drop_field("URL");
+    }
+    if let Some(note) = csl.text("note") {
         let (safe, note_removed) = without_private_urls(note);
         if note_removed {
-            csl.insert("note".into(), Value::String(safe));
+            csl.set_text("note", safe);
             removed = true;
         }
     }
