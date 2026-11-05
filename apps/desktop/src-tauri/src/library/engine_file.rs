@@ -163,12 +163,10 @@ impl FileLibrary {
         let results = picked
             .into_iter()
             .filter_map(|(object, cited)| {
-                let mut row = self.row(&snapshot, object)?;
-                row.source = sources
-                    .iter()
-                    .find(|info| info.id == object.object.id().library)
-                    .map(native_source)
-                    .unwrap_or_else(|| object.object.id().library.as_str().into());
+                let mut row = SearchResult::from_engine(object, vec![], false, &revision, self.sample)?;
+                if let Some(source) = sources.iter().find(|info| info.id == object.object.id().library) {
+                    row.source = native_source(source);
+                }
                 row.recent = Some(if cited { RecentGroup::Cited } else { RecentGroup::Added });
                 Some(row)
             })
@@ -182,22 +180,15 @@ impl FileLibrary {
     /// Rows for listed records in the open library, in the list's order. Each
     /// comes from the current snapshot; the list itself holds identities only.
     pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
-        const FAILED: &str = "The references could not be read. Try again.";
-        let snapshot = self.engine.snapshot().map_err(|_| FAILED)?;
+        let snapshot = self
+            .engine
+            .snapshot()
+            .map_err(|_| "The references could not be read. Try again.")?;
+        let revision = snapshot.fingerprints().full.as_str();
         Ok(ids
             .iter()
-            .filter_map(|id| self.row(&snapshot, snapshot.get(id)?))
+            .filter_map(|id| SearchResult::from_engine(snapshot.get(id)?, vec![], false, revision, self.sample))
             .collect())
-    }
-
-    fn row(&self, snapshot: &Snapshot, object: &ibis_core::contract::SnapshotObject) -> Option<SearchResult> {
-        let LibraryObject::Record(record) = &object.object else {
-            return None;
-        };
-        let revision = snapshot.fingerprints().full.as_str();
-        let mut row = SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, revision);
-        row.sample = self.sample;
-        Some(row)
     }
 
     fn session_item(&self, snapshot: &Snapshot, id: &ItemRef) -> Option<CitationItem> {
@@ -605,22 +596,13 @@ impl FileLibrary {
         let results: Vec<_> = reply
             .hits
             .into_iter()
-            .filter_map(|hit| match hit.item.object {
-                LibraryObject::Record(record) => {
-                    let mut result = SearchResult::from_engine(
-                        &record,
-                        hit.item.fingerprints.cite.as_str(),
-                        hit.matched,
-                        hit.partial,
-                        &revision,
-                    );
-                    if let Some(source) = sources.get(record.id.library.as_str()) {
-                        result.source.clone_from(source);
-                    }
-                    result.sample = self.sample;
-                    Some(result)
+            .filter_map(|hit| {
+                let mut result =
+                    SearchResult::from_engine(&hit.item, hit.matched, hit.partial, &revision, self.sample)?;
+                if let Some(source) = sources.get(hit.item.object.id().library.as_str()) {
+                    result.source.clone_from(source);
                 }
-                _ => None,
+                Some(result)
             })
             .collect();
         let unfiltered = results

@@ -1,40 +1,112 @@
 use super::*;
 
+type SaveBarrier = (PathBuf, std::sync::mpsc::SyncSender<()>, std::sync::mpsc::Receiver<()>);
+static SAVE_BARRIER: Mutex<Option<SaveBarrier>> = Mutex::new(None);
+pub(super) fn before_save(path: Option<&std::path::Path>) {
+    let mut barrier = SAVE_BARRIER.lock().unwrap_or_else(|e| panic!("{e:?}"));
+    if barrier
+        .as_ref()
+        .is_some_and(|(expected, _, _)| Some(expected.as_path()) == path)
+    {
+        let (_, entered, release) = barrier.take().unwrap_or_else(|| panic!("a save barrier"));
+        drop(barrier);
+        entered.send(()).unwrap_or_else(|e| panic!("{e:?}"));
+        release.recv().unwrap_or_else(|e| panic!("{e:?}"));
+    }
+}
+
+#[test]
+fn stalled_storage_does_not_hold_enter_and_forget_wins_after_restart() -> Result<(), Box<dyn std::error::Error>> {
+    use std::{sync::mpsc, time::Duration};
+    let (dir, history) = history();
+    let path = saved(&history);
+    let history = Arc::new(history);
+    let epoch = history.lock().epoch();
+    let (entered, waiting) = mpsc::sync_channel(1);
+    let (release, blocked) = mpsc::sync_channel(1);
+    *SAVE_BARRIER.lock().unwrap_or_else(|e| panic!("{e:?}")) = Some((path.clone(), entered, blocked));
+    let (returned, copied) = mpsc::sync_channel(1);
+    let worker = Arc::clone(&history);
+    let old = Arc::clone(&epoch);
+    let copy = std::thread::spawn(move || {
+        // This is called only after the clipboard has accepted the citation.
+        worker.record(&old, Some("invented.writer"), &[item("a")]);
+        returned
+            .send("copied; ready for delivery")
+            .unwrap_or_else(|e| panic!("{e:?}"));
+    });
+    waiting.recv_timeout(Duration::from_secs(3))?;
+    let delivered = copied.recv_timeout(Duration::from_secs(3));
+    let forgetting = delivered.as_ref().ok().map(|_| {
+        assert_eq!(history.lock().ids(Some("invented.writer")), [item("a")]);
+        history.record(&epoch, Some("invented.writer"), &[item("newer")]);
+        assert_eq!(history.lock().ids(Some("invented.writer")), [item("newer"), item("a")]);
+        let history = Arc::clone(&history);
+        std::thread::spawn(move || history.forget())
+    });
+    // Observe the visible clear while the old disk write is still stalled.
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while delivered.is_ok() && history.lock().has_history() && std::time::Instant::now() < deadline {
+        std::thread::yield_now();
+    }
+    let cleared_while_stalled = delivered.is_ok() && !history.lock().has_history();
+    if delivered.is_ok() {
+        history.record(&epoch, Some("invented.writer"), &[item("delayed")]);
+    }
+    // Always release the worker, including on the old blocking implementation.
+    release.send(())?;
+    copy.join().unwrap_or_else(|e| panic!("{e:?}"));
+    assert_eq!(delivered?, "copied; ready for delivery", "Enter must not wait for disk");
+    forgetting
+        .ok_or("Forget started")?
+        .join()
+        .unwrap_or_else(|e| panic!("{e:?}"))?;
+    assert!(
+        cleared_while_stalled,
+        "Forget removes visible history without waiting for disk"
+    );
+    history.flush()?;
+    assert!(!List::open(path, true).has_history(), "Forget survives reopening");
+    drop(dir);
+    Ok(())
+}
+
 fn item(key: &str) -> ItemRef {
     ItemRef {
         library: ibis_core::contract::LibraryId::new("invented").unwrap_or_else(|error| panic!("{error}")),
         key: key.into(),
     }
 }
-fn history() -> (tempfile::TempDir, List) {
+fn history() -> (tempfile::TempDir, SessionReferences) {
     let dir = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let history = List::open(dir.path().join("recents.json"), true);
+    let history = SessionReferences::default();
+    *history.lock() = List::open(dir.path().join("recents.json"), true);
     (dir, history)
 }
-fn saved(history: &List) -> PathBuf {
-    history.path.clone().unwrap_or_else(|| panic!("a persistent store"))
+fn saved(history: &SessionReferences) -> PathBuf {
+    history
+        .lock()
+        .path
+        .clone()
+        .unwrap_or_else(|| panic!("a persistent store"))
 }
 #[test]
 fn app_isolation_restart_and_memory_only_session() {
-    let (_dir, mut history) = history();
-    let epoch = history.epoch();
-    history
-        .record(&epoch, Some("invented.writer"), &[item("a"), item("b")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&epoch, Some("invented.editor"), &[item("b")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&epoch, None, &[item("unknown")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&epoch, Some("invented.writer"), &[item("b"), item("b")])
-        .unwrap_or_else(|error| panic!("{error}"));
+    let (_dir, history) = history();
+    let epoch = history.lock().epoch();
+    history.record(&epoch, Some("invented.writer"), &[item("a"), item("b")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    history.record(&epoch, Some("invented.editor"), &[item("b")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    history.record(&epoch, None, &[item("unknown")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    history.record(&epoch, Some("invented.writer"), &[item("b"), item("b")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
     let reopened = List::open(saved(&history), true);
     assert_eq!(reopened.ids(Some("invented.writer")), [item("b"), item("a")]);
     assert_eq!(reopened.ids(Some("invented.editor")), [item("b")]);
     assert!(reopened.ids(None).is_empty());
-    assert!(SessionReferences::default().items().is_empty());
+    assert!(SessionReferences::default().lock().items.is_empty());
     let json: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(saved(&history)).unwrap_or_else(|error| panic!("{error}")))
             .unwrap_or_else(|error| panic!("{error}"));
@@ -48,53 +120,47 @@ fn app_isolation_restart_and_memory_only_session() {
 }
 #[test]
 fn forget_and_disable_retire_delayed_writes_without_replaying_on_enable() {
-    let (_dir, mut history) = history();
-    let old = history.epoch();
-    history
-        .record(&old, Some("invented.writer"), &[item("a")])
-        .unwrap_or_else(|error| panic!("{error}"));
+    let (_dir, history) = history();
+    let old = history.lock().epoch();
+    history.record(&old, Some("invented.writer"), &[item("a")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
     history.forget().unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&old, Some("invented.writer"), &[item("delayed")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    assert!(!history.has_history());
-    let old = history.epoch();
+    history.record(&old, Some("invented.writer"), &[item("delayed")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    assert!(!history.lock().has_history());
+    let old = history.lock().epoch();
     history.set_enabled(false).unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&history.epoch(), Some("invented.writer"), &[item("while-off")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    assert!(!history.has_history());
+    let current = history.lock().epoch();
+    history.record(&current, Some("invented.writer"), &[item("while-off")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    assert!(!history.lock().has_history());
     history.set_enabled(true).unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&old, Some("invented.writer"), &[item("delayed")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    assert!(!history.has_history());
-    history
-        .record(&history.epoch(), Some("invented.writer"), &[item("fresh")])
-        .unwrap_or_else(|error| panic!("{error}"));
-    assert_eq!(history.ids(Some("invented.writer")), [item("fresh")]);
-    let off = List::open(saved(&history), false);
-    assert!(!off.has_history());
+    history.record(&old, Some("invented.writer"), &[item("delayed")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    assert!(!history.lock().has_history());
+    let current = history.lock().epoch();
+    history.record(&current, Some("invented.writer"), &[item("fresh")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
+    assert_eq!(history.lock().ids(Some("invented.writer")), [item("fresh")]);
+    history.set_enabled(false).unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(!history.lock().has_history());
     assert!(!List::open(saved(&history), true).has_history());
 }
 #[test]
 fn storage_failure_keeps_memory_and_failed_forget_is_retryable() {
-    let (dir, mut history) = history();
+    let (dir, history) = history();
     std::fs::create_dir(saved(&history)).unwrap_or_else(|error| panic!("{error}"));
-    assert!(
-        history
-            .record(&history.epoch(), Some("invented.writer"), &[item("a")])
-            .is_err()
-    );
-    assert_eq!(history.ids(Some("invented.writer")), [item("a")]);
-    let old = history.epoch();
+    let epoch = history.lock().epoch();
+    history.record(&epoch, Some("invented.writer"), &[item("a")]);
+    assert!(history.flush().is_err());
+    assert_eq!(history.lock().ids(Some("invented.writer")), [item("a")]);
+    let old = history.lock().epoch();
     assert!(history.forget().is_err());
-    assert!(!history.has_history());
+    assert!(!history.lock().has_history());
     std::fs::remove_dir(saved(&history)).unwrap_or_else(|error| panic!("{error}"));
     history.forget().unwrap_or_else(|error| panic!("{error}"));
-    history
-        .record(&old, Some("invented.writer"), &[item("delayed")])
-        .unwrap_or_else(|error| panic!("{error}"));
+    history.record(&old, Some("invented.writer"), &[item("delayed")]);
+    history.flush().unwrap_or_else(|error| panic!("{error}"));
     assert!(!List::open(dir.path().join("recents.json"), true).has_history());
 }
 #[test]
@@ -135,7 +201,7 @@ fn parser_refuses_unknown_fields_controls_duplicates_and_oversized_input() {
 }
 #[test]
 fn bounded_history_round_trips_at_the_largest_allowed_identity() {
-    let (_dir, mut history) = history();
+    let (_dir, history) = history();
     for app in 0..=20 {
         let ids: Vec<_> = (0..35)
             .map(|i| ItemRef {
@@ -143,19 +209,19 @@ fn bounded_history_round_trips_at_the_largest_allowed_identity() {
                 key: format!("{i:03}{}", "x".repeat(509)),
             })
             .collect();
-        history
-            .record(&history.epoch(), Some(&format!("invented.{app}")), &ids)
-            .unwrap_or_else(|error| panic!("{error}"));
+        let current = history.lock().epoch();
+        history.record(&current, Some(&format!("invented.{app}")), &ids);
+        history.flush().unwrap_or_else(|error| panic!("{error}"));
     }
-    assert!(history.ids(Some("invented.0")).is_empty());
-    assert_eq!(history.ids(Some("invented.20")).len(), 30);
+    assert!(history.lock().ids(Some("invented.0")).is_empty());
+    assert_eq!(history.lock().ids(Some("invented.20")).len(), 30);
     assert!(
         std::fs::metadata(saved(&history))
             .unwrap_or_else(|error| panic!("{error}"))
             .len()
             <= MAX_BYTES as u64
     );
-    assert_eq!(List::open(saved(&history), true).entries, history.entries);
+    assert_eq!(List::open(saved(&history), true).entries, history.lock().entries);
 }
 #[test]
 fn undo_reset_keeps_newer_citations_even_when_the_restored_list_is_full() {

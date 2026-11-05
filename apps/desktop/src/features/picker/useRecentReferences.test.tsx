@@ -1,7 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { useRecentReferences } from "./useRecentReferences";
-import type { recentReferences } from "../../api";
+import type { onPreferencesChanged, recentReferences } from "../../api";
 
 const empty = { revision: "1", results: [] };
 const reply: Awaited<ReturnType<typeof recentReferences>> = [empty, false, false];
@@ -11,6 +11,45 @@ const deferred = <T,>() => {
   const promise = new Promise<T>((a, b) => { resolve = a; reject = b; });
   return { promise, resolve, reject };
 };
+
+test.each(["startup", "Forget", "disable"])("%s removes private legacy history without importing it", async (clear) => {
+  const key = "ibis-citation-history";
+  localStorage.setItem(key, "invented private citation history");
+  let changed!: Parameters<typeof onPreferencesChanged>[0];
+  const subscribe: typeof onPreferencesChanged = async (handler) => { changed = handler; return () => {}; };
+  const native = vi.fn<typeof recentReferences>().mockResolvedValue(reply);
+  const { result, unmount } = renderHook(() => useRecentReferences(native, null, 0, subscribe));
+  if (clear !== "startup") {
+    localStorage.setItem(key, "another obsolete private history");
+    if (clear === "Forget") {
+      native.mockResolvedValueOnce([empty, true, false]);
+      await act(async () => { await result.current.load!(); });
+      await act(async () => { result.current.forget!(); });
+    } else act(() => { changed({ recent_citations: false }); });
+  }
+  expect(localStorage.getItem(key)).toBeNull();
+  unmount();
+  localStorage.removeItem(key);
+});
+
+test("a failed legacy deletion stays visible after loading and native Forget until a successful retry", async () => {
+  const key = "ibis-citation-history";
+  localStorage.setItem(key, "invented private citation history");
+  const remove = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("synthetic storage refusal"); });
+  const native = vi.fn<typeof recentReferences>().mockResolvedValue(reply);
+  const { result, unmount } = renderHook(() => useRecentReferences(native, null, 0));
+  await act(async () => { await result.current.load!(); });
+  expect(result.current.forgetFailed).toBe(true);
+  await act(async () => { result.current.forget!(); });
+  expect(result.current.forgetFailed).toBe(true);
+  expect(localStorage.getItem(key)).not.toBeNull();
+  remove.mockRestore();
+  await act(async () => { result.current.forget!(); });
+  expect(result.current.forgetFailed).toBe(false);
+  expect(result.current.forget).toBeNull();
+  expect(localStorage.getItem(key)).toBeNull();
+  unmount();
+});
 
 test("a failed native clear stays offered when disabled and a successful retry removes it", async () => {
   let fail = true;

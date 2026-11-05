@@ -149,21 +149,24 @@ pub(crate) enum RecentGroup {
 
 impl SearchResult {
     pub(super) fn from_engine(
-        record: &ibis_core::contract::Record,
-        cite: &str,
+        object: &ibis_core::contract::SnapshotObject,
         matched: Vec<MatchField>,
         partial: bool,
         revision: &str,
-    ) -> Self {
+        sample: bool,
+    ) -> Option<Self> {
+        let ibis_core::contract::LibraryObject::Record(record) = &object.object else {
+            return None;
+        };
         let summary = record.summary();
-        Self {
+        Some(Self {
             recent: None,
             project: None,
-            sample: false,
+            sample,
             revision: revision.into(),
             id: serde_json::json!(&record.id),
             source: record.id.library.as_str().to_owned(),
-            cite: cite.into(),
+            cite: object.fingerprints.cite.as_str().into(),
             key: record.citation_key().ok().flatten().unwrap_or_default().into(),
             title: summary.title.clone().unwrap_or_default(),
             first_author: summary
@@ -183,7 +186,7 @@ impl SearchResult {
             partial,
             container: summary.container,
             item_type: summary.item_type.unwrap_or_default(),
-        }
+        })
     }
 }
 

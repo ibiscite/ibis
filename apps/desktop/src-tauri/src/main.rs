@@ -386,7 +386,10 @@ fn main() {
         Ok(app) => app.run(|app, event| {
             match &event {
                 tauri::RunEvent::MainEventsCleared => sizing::settled(app),
-                tauri::RunEvent::ExitRequested { .. } => sizing::flush(app, true),
+                tauri::RunEvent::ExitRequested { .. } => {
+                    sizing::flush(app, true);
+                    let _ = app.state::<session_references::SessionReferences>().flush();
+                }
                 _ => {}
             }
             // macOS: a repeated OS open request brings back the hidden picker.

@@ -4,7 +4,7 @@ use ibis_core::contract::{ItemRef, LibraryObject, Snapshot, SnapshotObject};
 use std::{
     io::{self, Read},
     path::PathBuf,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, mpsc},
 };
 
 const MAX_UNDO: usize = 20;
@@ -19,7 +19,7 @@ pub enum Undo {
 #[derive(Debug, Default)]
 pub struct List {
     path: Option<PathBuf>,
-    entries: Vec<(String, Vec<ItemRef>)>,
+    entries: Arc<Vec<(String, Vec<ItemRef>)>>,
     enabled: bool,
     pub forget_failed: bool,
     epoch: Arc<()>,
@@ -32,10 +32,72 @@ pub struct List {
 }
 
 impl List {
-    fn changed(&mut self) {
-        self.revision = self.revision.wrapping_add(1);
+    pub fn open(path: PathBuf, enabled: bool) -> Self {
+        let entries = (|| {
+            if !enabled || !path.is_file() {
+                return None;
+            }
+            let mut reader = std::fs::File::open(&path).ok()?.take(MAX_BYTES as u64 + 1);
+            let entries: Vec<(String, Vec<ItemRef>)> = serde_json::from_reader(io::BufReader::new(&mut reader)).ok()?;
+            if reader.limit() == 0 {
+                return None;
+            }
+            (entries.len() <= 20
+                && entries.iter().enumerate().all(|(i, (app, items))| {
+                    valid(app)
+                        && entries[..i].iter().all(|(other, _)| other != app)
+                        && items.len() <= 30
+                        && items
+                            .iter()
+                            .enumerate()
+                            .all(|(i, item)| valid(&item.key) && !items[..i].contains(item))
+                }))
+            .then_some(entries)
+        })()
+        .unwrap_or_default();
+        Self {
+            path: Some(path),
+            entries: Arc::new(entries),
+            enabled,
+            forget_failed: !enabled,
+            ..Self::default()
+        }
     }
-
+    pub fn epoch(&self) -> Arc<()> {
+        Arc::clone(&self.epoch)
+    }
+    pub fn has_history(&self) -> bool {
+        !self.entries.is_empty()
+    }
+    pub fn ids(&self, app: Option<&str>) -> &[ItemRef] {
+        self.entries
+            .iter()
+            .find(|(id, _)| Some(id.as_str()) == app)
+            .map_or(&[], |(_, items)| items)
+    }
+    fn forget(&mut self) {
+        self.epoch = Arc::new(());
+        self.entries = Arc::default();
+        self.forget_failed = true;
+    }
+    fn record(&mut self, epoch: &Arc<()>, app: Option<&str>, items: &[ItemRef]) {
+        let Some(app) = app.filter(|app| valid(app) && self.enabled && Arc::ptr_eq(epoch, &self.epoch)) else {
+            return;
+        };
+        let mut recent = Vec::new();
+        for item in items.iter().chain(self.ids(Some(app))) {
+            if valid(&item.key) && !recent.contains(item) && recent.len() < 30 {
+                recent.push(item.clone());
+            }
+        }
+        if recent.is_empty() {
+            return;
+        }
+        let entries = Arc::make_mut(&mut self.entries);
+        entries.retain(|(id, _)| id != app);
+        entries.insert(0, (app.into(), recent));
+        entries.truncate(20);
+    }
     pub fn add(&mut self, cited: impl IntoIterator<Item = ItemRef>) {
         for item in cited {
             if !self.items.contains(&item) {
@@ -44,7 +106,7 @@ impl List {
                 } else {
                     self.items.push(item);
                 }
-                self.changed();
+                self.revision = self.revision.wrapping_add(1);
             }
         }
     }
@@ -60,7 +122,7 @@ impl List {
         if let Some(at) = self.items.iter().position(|existing| existing == item) {
             let item = self.items.remove(at);
             self.push_undo(Undo::Removed { item, at });
-            self.changed();
+            self.revision = self.revision.wrapping_add(1);
         }
     }
 
@@ -69,7 +131,7 @@ impl List {
             let items = std::mem::take(&mut self.items);
             let overflowed = std::mem::take(&mut self.overflowed);
             self.push_undo(Undo::Reset { items, overflowed });
-            self.changed();
+            self.revision = self.revision.wrapping_add(1);
         }
     }
 
@@ -97,25 +159,65 @@ impl List {
         self.overflowed |= overflowed;
         self.items = restored;
         self.add(newer);
-        self.changed();
+        self.revision = self.revision.wrapping_add(1);
     }
 }
 
-#[derive(Default)]
-pub struct SessionReferences(Mutex<List>);
-
+pub struct SessionReferences {
+    list: Arc<Mutex<List>>,
+    writer: mpsc::SyncSender<Option<mpsc::SyncSender<io::Result<()>>>>,
+}
+impl Default for SessionReferences {
+    fn default() -> Self {
+        let list = Arc::new(Mutex::new(List::default()));
+        let (writer, work) = mpsc::sync_channel::<Option<mpsc::SyncSender<io::Result<()>>>>(1);
+        let state = Arc::clone(&list);
+        std::thread::spawn(move || {
+            while let Ok(reply) = work.recv() {
+                let (path, observed) = {
+                    let current = state.lock().unwrap_or_else(|e| e.into_inner());
+                    (current.path.clone(), Arc::clone(&current.entries))
+                };
+                let mut entries = (*observed).clone();
+                let saved = save(path, &mut entries);
+                let mut current = state.lock().unwrap_or_else(|e| e.into_inner());
+                if Arc::ptr_eq(&observed, &current.entries) {
+                    current.forget_failed &= saved.is_err();
+                    current.entries = Arc::new(entries);
+                }
+                drop(current);
+                if let Some(reply) = reply {
+                    let _ = reply.send(saved);
+                }
+            }
+        });
+        Self { list, writer }
+    }
+}
 impl SessionReferences {
     pub fn lock(&self) -> std::sync::MutexGuard<'_, List> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        self.list.lock().unwrap_or_else(|e| e.into_inner())
     }
-
-    /// Record a citation that reached the clipboard.
-    pub fn cited(&self, items: Vec<ItemRef>) {
-        self.lock().add(items);
-    }
-
     pub fn items(&self) -> Vec<ItemRef> {
         self.lock().items.clone()
+    }
+    pub fn record(&self, epoch: &Arc<()>, app: Option<&str>, items: &[ItemRef]) {
+        self.lock().record(epoch, app, items);
+        let _ = self.writer.try_send(None);
+    }
+    /// Wait for the serialized writer without holding the memory/clipboard lock.
+    pub fn flush(&self) -> io::Result<()> {
+        let (reply, done) = mpsc::sync_channel(1);
+        self.writer.send(Some(reply)).map_err(io::Error::other)?;
+        done.recv().map_err(io::Error::other)?
+    }
+    pub fn forget(&self) -> io::Result<()> {
+        self.lock().forget();
+        self.flush()
+    }
+    pub fn set_enabled(&self, enabled: bool) -> io::Result<()> {
+        self.lock().enabled = enabled;
+        if enabled { Ok(()) } else { self.forget() }
     }
 }
 
@@ -123,120 +225,40 @@ const MAX_BYTES: usize = 256 * 1024;
 fn valid(value: &str) -> bool {
     !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
-impl List {
-    pub fn open(path: PathBuf, enabled: bool) -> Self {
-        let entries = (|| {
-            if !path.is_file() {
-                return None;
-            }
-            let mut reader = std::fs::File::open(&path).ok()?.take(MAX_BYTES as u64 + 1);
-            let entries: Vec<(String, Vec<ItemRef>)> = serde_json::from_reader(io::BufReader::new(&mut reader)).ok()?;
-            if reader.limit() == 0 {
-                return None;
-            }
-            (entries.len() <= 20
-                && entries.iter().enumerate().all(|(i, (app, items))| {
-                    valid(app)
-                        && entries[..i].iter().all(|(other, _)| other != app)
-                        && items.len() <= 30
-                        && items
-                            .iter()
-                            .enumerate()
-                            .all(|(i, item)| valid(&item.key) && !items[..i].contains(item))
-                }))
-            .then_some(entries)
-        })()
-        .unwrap_or_default();
-        let mut history = Self {
-            path: Some(path),
-            entries,
-            enabled,
-            ..Self::default()
-        };
-        if !enabled {
-            let _ = history.forget();
-        }
-        history
+
+fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>) -> io::Result<()> {
+    #[cfg(test)]
+    tests::before_save(path.as_deref());
+    let mut text = serde_json::to_string(entries)?;
+    while text.len() > MAX_BYTES {
+        entries.pop();
+        text = serde_json::to_string(entries)?;
     }
-    pub fn epoch(&self) -> Arc<()> {
-        Arc::clone(&self.epoch)
-    }
-    pub fn has_history(&self) -> bool {
-        !self.entries.is_empty()
-    }
-    pub fn ids(&self, app: Option<&str>) -> &[ItemRef] {
-        self.entries
-            .iter()
-            .find(|(id, _)| Some(id.as_str()) == app)
-            .map_or(&[], |(_, items)| items)
-    }
-    pub fn set_enabled(&mut self, enabled: bool) -> io::Result<()> {
-        self.enabled = enabled;
-        if enabled { Ok(()) } else { self.forget() }
-    }
-    pub fn forget(&mut self) -> io::Result<()> {
-        self.epoch = Arc::new(());
-        self.entries.clear();
-        self.save().inspect_err(|_| self.forget_failed = true)
-    }
-    pub fn record(&mut self, epoch: &Arc<()>, app: Option<&str>, items: &[ItemRef]) -> io::Result<()> {
-        let Some(app) = app.filter(|app| valid(app)) else {
-            return Ok(());
-        };
-        if !self.enabled || !Arc::ptr_eq(epoch, &self.epoch) {
-            return Ok(());
-        }
-        let mut recent = Vec::new();
-        for item in items.iter().chain(self.ids(Some(app))) {
-            if valid(&item.key) && !recent.contains(item) && recent.len() < 30 {
-                recent.push(item.clone());
-            }
-        }
-        if recent.is_empty() {
-            return Ok(());
-        }
-        self.entries.retain(|(id, _)| id != app);
-        self.entries.insert(0, (app.into(), recent));
-        self.entries.truncate(20);
-        self.save()
-    }
-    fn save(&mut self) -> io::Result<()> {
-        let mut text = serde_json::to_string(&self.entries)?;
-        while text.len() > MAX_BYTES {
-            self.entries.pop();
-            text = serde_json::to_string(&self.entries)?;
-        }
-        let saved = self
-            .path
-            .as_ref()
-            .map_or(Ok(()), |path| ibis_core::settings::backup::save(path, &text, true));
-        self.forget_failed &= saved.is_err();
-        saved
-    }
+    path.as_ref()
+        .map_or(Ok(()), |path| ibis_core::settings::backup::save(path, &text, true))
 }
 
 /// Resolve current records, then source-added records, without repeating rows.
 pub fn resolve<'a>(snapshot: &'a Snapshot, ids: &[ItemRef], include_added: bool) -> Vec<(&'a SnapshotObject, bool)> {
-    let mut picked: Vec<(&SnapshotObject, bool)> = Vec::new();
-    for id in ids {
-        if let Some(object) = snapshot.get(id)
-            && matches!(object.object, LibraryObject::Record(_))
-            && !picked.iter().any(|(object, _)| object.object.id() == id)
-            && picked.len() < 3
-        {
-            picked.push((object, true));
-        }
-    }
+    let mut picked: Vec<_> = ids
+        .iter()
+        .filter_map(|id| snapshot.get(id))
+        .filter(|object| matches!(object.object, LibraryObject::Record(_)))
+        .take(3)
+        .map(|object| (object, true))
+        .collect();
     if include_added {
-        let mut added = Vec::new();
-        for object in snapshot.objects() {
-            if let LibraryObject::Record(record) = &object.object
-                && !picked.iter().any(|(picked, _)| picked.object.id() == &record.id)
-                && let Some(date) = record.added_at.as_deref().and_then(ibis_core::contract::added_date)
-            {
-                added.push((date, object.as_ref()));
-            }
-        }
+        let mut added: Vec<_> = snapshot
+            .objects()
+            .iter()
+            .filter_map(|object| {
+                let LibraryObject::Record(record) = &object.object else {
+                    return None;
+                };
+                let date = record.added_at.as_deref().and_then(ibis_core::contract::added_date)?;
+                (!picked.iter().any(|(picked, _)| picked.object.id() == &record.id)).then_some((date, object.as_ref()))
+            })
+            .collect();
         added.sort_by(|(a, ar), (b, br)| b.cmp(a).then_with(|| ar.object.id().cmp(br.object.id())));
         picked.extend(added.into_iter().take(3).map(|(_, object)| (object, false)));
     }

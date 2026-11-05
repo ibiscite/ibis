@@ -187,27 +187,29 @@ impl<'de> serde::Deserialize<'de> for RecentIdentity {
 pub(crate) async fn recent_references(
     forget: bool,
     app: AppHandle,
-    session: State<'_, crate::session_references::SessionReferences>,
     library: State<'_, Mutex<Library>>,
     project: State<'_, ProjectBibliography>,
+    editor: State<'_, crate::editor_endpoint::Pending>,
 ) -> Result<(SearchReply, bool, bool), String> {
     let captured = crate::paste::last_app(&app).map(|(id, _, _)| id.normalized());
-    let (ids, has_history, forget_failed) = {
-        let mut history = session.lock();
-        if forget {
-            history
-                .forget()
-                .map_err(|_| "Recent citations could not be forgotten. Try again.")?;
-        }
-        (
-            history.ids(captured.as_deref()).to_vec(),
-            history.has_history(),
-            history.forget_failed,
-        )
-    };
+    let captured = editor.app(captured);
     let file = library.lock().map_err(|_| "The library is unavailable.")?.file.clone();
     let project = project.current();
     tauri::async_runtime::spawn_blocking(move || {
+        let session = app.state::<crate::session_references::SessionReferences>();
+        if forget {
+            session
+                .forget()
+                .map_err(|_| "Recent citations could not be forgotten. Try again.")?;
+        }
+        let (ids, has_history, forget_failed) = {
+            let history = session.lock();
+            (
+                history.ids(captured.as_deref()).to_vec(),
+                history.has_history(),
+                history.forget_failed,
+            )
+        };
         let reply = match file {
             Some(file) => file
                 .recents(&ids, has_history)

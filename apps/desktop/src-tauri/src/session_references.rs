@@ -255,6 +255,9 @@ pub(crate) async fn export_session_bibliography(
 pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std::path::Path, enabled: bool) {
     use tauri::Listener;
     *app.state::<SessionReferences>().lock() = List::open(settings_path.with_file_name("recents.json"), enabled);
+    if !enabled {
+        let _ = app.state::<SessionReferences>().flush();
+    }
     if let Some(window) = app.get_webview_window("main") {
         let app = app.clone();
         let settings_path = settings_path.to_owned();
@@ -263,7 +266,7 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
                 .ok()
                 .and_then(|value| value.get("recent_citations").and_then(serde_json::Value::as_bool))
             {
-                let mut history = app.state::<SessionReferences>().inner().lock();
+                let history = app.state::<SessionReferences>();
                 let loaded = ibis_core::settings::load(&settings_path);
                 let saved = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
                 if !on && saved {

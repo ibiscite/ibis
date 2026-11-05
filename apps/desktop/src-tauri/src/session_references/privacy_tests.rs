@@ -20,9 +20,8 @@ fn native_disable_retires_delayed_recording_and_uncertain_settings_cannot_enable
         key: "a".into(),
     };
     let epoch = history.lock().epoch();
-    history
-        .lock()
-        .record(&epoch, Some("invented.writer"), std::slice::from_ref(&id))?;
+    history.record(&epoch, Some("invented.writer"), std::slice::from_ref(&id));
+    history.flush()?;
     let recent_path = dir.path().join("recents.json");
     std::fs::remove_file(&recent_path)?;
     std::fs::create_dir(&recent_path)?;
@@ -32,35 +31,31 @@ fn native_disable_retires_delayed_recording_and_uncertain_settings_cannot_enable
     assert!(!history.lock().has_history());
     assert!(history.lock().forget_failed);
     std::fs::remove_dir(&recent_path)?;
-    history.lock().forget()?;
+    history.forget()?;
     // A forged enable event and an uncertain actual store cannot override off.
     std::fs::write(&path, "invalid invented settings")?;
     std::fs::remove_file(path.with_extension("json.bak"))?;
     window.emit("preferences:changed", serde_json::json!({"recent_citations":true}))?;
     let current = history.lock().epoch();
-    history
-        .lock()
-        .record(&current, Some("invented.writer"), std::slice::from_ref(&id))?;
+    history.record(&current, Some("invented.writer"), std::slice::from_ref(&id));
+    history.flush()?;
     assert!(!history.lock().has_history());
     std::fs::remove_file(&path)?;
     settings.recent_citations = Some(true);
     ibis_core::settings::save(&path, &settings)?;
     window.emit("preferences:changed", serde_json::json!({"recent_citations":true}))?;
-    history
-        .lock()
-        .record(&epoch, Some("invented.writer"), std::slice::from_ref(&id))?;
+    history.record(&epoch, Some("invented.writer"), std::slice::from_ref(&id));
+    history.flush()?;
     assert!(!history.lock().has_history());
     // A delayed off notification must forget, but cannot override a newer saved on.
     let old = history.lock().epoch();
     window.emit("preferences:changed", serde_json::json!({"recent_citations":false}))?;
-    history
-        .lock()
-        .record(&old, Some("invented.writer"), std::slice::from_ref(&id))?;
+    history.record(&old, Some("invented.writer"), std::slice::from_ref(&id));
+    history.flush()?;
     assert!(!history.lock().has_history());
     let fresh = history.lock().epoch();
-    history
-        .lock()
-        .record(&fresh, Some("invented.writer"), std::slice::from_ref(&id))?;
+    history.record(&fresh, Some("invented.writer"), std::slice::from_ref(&id));
+    history.flush()?;
     assert_eq!(history.lock().ids(Some("invented.writer")), [id]);
     Ok(())
 }

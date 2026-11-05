@@ -288,7 +288,7 @@ pub(crate) fn copy_file_citation(
     editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
-    let captured = crate::paste::last_app(&app);
+    let captured = editor.app(crate::paste::last_app(&app));
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
     let epoch = session.lock().epoch();
     if editor.current().is_none() {
@@ -302,7 +302,7 @@ pub(crate) fn copy_file_citation(
     let captured = captured.map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
         if !file.sample {
-            let _ = session.lock().record(&epoch, captured.as_deref(), &copied.cited);
+            session.record(&epoch, captured.as_deref(), &copied.cited);
         }
     };
     // Serialize clipboard writes through recording; privacy invalidation has its own lock.
@@ -340,7 +340,7 @@ pub(crate) fn copy_file_citation(
                 },
             )
             .map_err(CommandError::from)?;
-            session.cited(copied.cited.clone());
+            session.lock().add(copied.cited.clone());
             record(&copied);
         }
         return Ok(copied);
@@ -446,7 +446,7 @@ pub(crate) fn commit_copy(
         // Independent warnings still keep the picker open. Evidence-policy
         // notices preserve the intended delivery and are repeated in its receipt.
         copied.warnings.extend(warnings);
-        context.session.cited(copied.cited.clone());
+        context.session.lock().add(copied.cited.clone());
         Ok(copied)
     })
 }

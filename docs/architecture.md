@@ -78,8 +78,8 @@ remain task-local, and existing tasks use the established material-update rules.
 Search scope and bibliography verification remain separate responsibilities.
 
 **Recents:** one engine owner persists bounded app-scoped identities; session references, undo and last-citation text stay in memory.
-Only successful clipboard writes record. Forget/off retire pending recording; old completions cannot restore text or identities.
-Unknown apps and samples never persist. At 256 KiB, discard the oldest app; failed storage keeps memory usable. No history import (#1300).
+Only successful clipboard writes record in memory immediately; one serialized worker persists, and Quit flushes. Forget/off retire pending recording; old completions cannot restore text or identities.
+Unknown apps, editor requests and samples never persist. At 256 KiB, discard the oldest app; failed storage keeps memory usable. Delete obsolete webview history on startup and privacy clears, reporting failure; never import it (#1300).
 
 ## Data model (ibis-core)
 
