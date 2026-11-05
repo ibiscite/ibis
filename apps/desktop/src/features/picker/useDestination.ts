@@ -1,8 +1,8 @@
 // The app's remembered format → the app table's suggestion → the default.
 import { useCallback, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
-import type { AppOutput, AppPaste, CopyFormat, PickerDestination } from "../../api";
-import { styleOf, type Choice } from "./choice";
+import type { AppPaste, PickerDestination } from "../../api";
+import { listedOutput, type OutputId } from "../../format/outputs";
 type CopyToken = { opening: number; choice: number; delivery: number };
 
 import type { Operation } from "./Notices";
@@ -12,18 +12,10 @@ type DestinationApi = Partial<Pick<typeof nativeApi, "pickerDestination" | "reme
 export type FormatSource = "remembered" | "suggested" | "default" | "held";
 /** Where a format pick goes: this app, the default, or only the next paste. */
 export type FormatPick = "app" | "default" | "paste";
-export function choiceOf(output: AppOutput | null): Choice | null {
-  return output ? output.key ?? `style:${output.style}` : null;
-}
-export function outputOf(choice: Choice): AppOutput {
-  const style = styleOf(choice);
-  return style ? { style } : { key: choice as CopyFormat };
-}
 
-export function useDestination({ pickerDestination, rememberAppOutput, editWritingProject }: DestinationApi, { fallback, fallbackReady = true, chooseDefault, report, onProjectContext }: {
-  fallback: Choice;
-  fallbackReady?: boolean;
-  chooseDefault: (choice: Choice) => void;
+export function useDestination({ pickerDestination, rememberAppOutput, editWritingProject }: DestinationApi, { fallback, chooseDefault, report, onProjectContext }: {
+  fallback: OutputId;
+  chooseDefault: (choice: OutputId) => void;
   report: (operation: Operation, failed?: boolean) => void;
   onProjectContext?: (context: { output: CopyToken; version: string | null; clearReplacement: boolean }) => void;
 }) {
@@ -31,7 +23,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const [editProblem, setEditProblem] = useState<string | null>(null);
   // Beats the app's format until saved or copied: a pick being saved, a pick
   // that could not be saved, or the output a permission return prepared.
-  const [held, setHeld] = useState<Choice | null>(null);
+  const [held, setHeld] = useState<OutputId | null>(null);
   const [ready, setReady] = useState(!pickerDestination);
   const [saving, setSaving] = useState(false);
   const [readProblem, setReadProblem] = useState<string | null>(null);
@@ -46,7 +38,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const choices = useRef(0);
   const delivery = useRef(0);
   const lastPolicy = useRef<string | undefined>(undefined);
-  const preparedFormat = useRef<Choice>(fallback);
+  const preparedFormat = useRef<OutputId>(fallback);
   const saves = useRef(Promise.resolve());
   const observer = useRef(onProjectContext);
   observer.current = onProjectContext;
@@ -126,12 +118,12 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     read(false);
   }, [read, notifyContext]);
   const app = rememberAppOutput ? destination?.app ?? null : null;
-  const remembered = choiceOf(destination?.remembered ?? null);
-  const appOutput = destination?.automatic;
-  const suggested = appOutput && "style" in appOutput && fallbackReady
-    ? `style:${styleOf(fallback) ?? "apa"}` as Choice : choiceOf(appOutput ?? null);
+  // Ids the engine no longer lists are as good as none.
+  const remembered = listedOutput(destination?.remembered);
+  // Rust works out the app table's suggestion, a formatted app's style included.
+  const suggested = listedOutput(destination?.automatic);
   const writingProject = destination?.writing_project ?? null;
-  const projectFormat = choiceOf(writingProject?.output ?? null);
+  const projectFormat = listedOutput(writingProject?.output);
   const baseFormat = projectFormat ?? remembered ?? suggested ?? fallback;
   const format = held ?? baseFormat;
   preparedFormat.current = format;
@@ -148,10 +140,10 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     saves.current = pending;
     void pending.finally(() => { if (saves.current === pending) setSaving(false); });
   };
-  const remember = (choice: Choice) => {
+  const remember = (choice: OutputId) => {
     const id = destination?.app_id;
     if (!rememberAppOutput || !id) return;
-    const output = outputOf(choice);
+    const output = choice;
     save(() => rememberAppOutput(id, output, null, destination?.app_identity ?? null), () => {
       setDestination((old) => old && { ...old, remembered: output });
       if (destination?.unreadable) read(false);
@@ -185,10 +177,10 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   } : undefined;
   // An app that could not be read may still be a real one, so a pick cannot change the default.
   const pick: FormatPick = app ? "app" : !pickerDestination || destination ? "default" : "paste";
-  const choose = (choice: Choice) => {
+  const choose = (choice: OutputId) => {
     if (writingProject && destination?.writing_context && editProject) {
       const context = destination.writing_context;
-      void editProject(context, { kind: "output", id: writingProject.id, revision: writingProject.revision, output: outputOf(choice) })
+      void editProject(context, { kind: "output", id: writingProject.id, revision: writingProject.revision, output: choice })
         .then(() => report("appChoice", false), () => report("appChoice"));
       return;
     }
@@ -199,7 +191,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     else if (pick === "default") { chooseDefault(choice); setHeld(null); }
   };
   /** This citation's format, and only this one: held, never saved, consumed by the copy. */
-  const chooseOnce = (choice: Choice) => {
+  const chooseOnce = (choice: OutputId) => {
     choices.current += 1;
     setHeld(choice);
   };
@@ -211,7 +203,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     // Persisting delivery does not resume the Enter that opened the chooser.
     // Read the native policy back before showing an intended paste in the footer.
     // Answering an open first-paste question accepts the format it showed, so it is not asked again.
-    const output = asked && !writingProject && held === null && destination?.output_question && !remembered ? outputOf(format) : null;
+    const output = asked && !writingProject && held === null && destination?.output_question && !remembered ? format : null;
     save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false);
   };
   const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current, delivery: delivery.current });

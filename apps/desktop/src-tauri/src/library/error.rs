@@ -23,22 +23,20 @@ pub(crate) enum LoadError {
 }
 
 impl LoadError {
-    /// Whether this failure says the references already loaded are still
-    /// searched, whatever library they came from: a file that cannot be read
-    /// right now, or Zotero. A file that can never be read (not a regular
-    /// file, too large) or a failure of Ibis itself does not say so.
-    pub(super) fn keeps_references(self) -> bool {
-        matches!(
-            self,
-            LoadError::Source(
-                SourceError::Unavailable
-                    | SourceError::Unreadable
-                    | SourceError::Incomplete
-                    | SourceError::LoadLimit
-                    | SourceError::Changing
-            ) | LoadError::Zotero(_)
-                | LoadError::EngineZotero(_)
-        )
+    /// Convert native failure evidence for the engine's retention classification.
+    pub(super) fn source_error(self) -> Option<SourceError> {
+        match self {
+            Self::Source(error) => Some(error),
+            Self::Zotero(_) | Self::EngineZotero(_) => Some(SourceError::Unavailable),
+            _ => None,
+        }
+    }
+    pub(super) fn with_snapshot_context(self, has_references: bool, zotero: bool) -> String {
+        if ibis_engine::health::retains(self.source_error(), has_references, zotero) {
+            format!("{self}; keeping the last loaded references")
+        } else {
+            self.to_string()
+        }
     }
 }
 
@@ -159,6 +157,18 @@ mod tests {
     use super::*;
 
     #[test]
+    fn native_failures_supply_the_existing_retention_evidence() {
+        assert!(ibis_engine::health::retains(
+            LoadError::Zotero(ZoteroError::GroupNotFound).source_error(),
+            true,
+            false
+        ));
+        for error in [LoadError::NotLocal, LoadError::Stopped] {
+            assert!(!ibis_engine::health::retains(error.source_error(), true, false));
+        }
+    }
+
+    #[test]
     fn only_cancellation_escapes_the_engine_fault_text() {
         use ibis_core::contract::{EngineError, ErrorCode};
         assert_eq!(
@@ -197,29 +207,5 @@ mod tests {
             json("the clipboard could not be written".into()),
             serde_json::json!({"code": "failed", "message": "the clipboard could not be written"})
         );
-    }
-
-    #[test]
-    fn retention_follows_the_kind_of_failure_not_its_wording() {
-        for kept in [
-            SourceError::Unavailable,
-            SourceError::Unreadable,
-            SourceError::Incomplete,
-            SourceError::LoadLimit,
-            SourceError::Changing,
-        ] {
-            assert!(LoadError::from(kept).keeps_references(), "{kept}");
-        }
-        for not_kept in [
-            SourceError::NotRegular,
-            SourceError::TooLarge,
-            SourceError::WatchUnavailable,
-        ] {
-            assert!(!LoadError::from(not_kept).keeps_references(), "{not_kept}");
-        }
-        assert!(LoadError::from(ZoteroError::GroupNotFound).keeps_references());
-        for own in [LoadError::NotLocal, LoadError::Stopped] {
-            assert!(!own.keeps_references(), "{own}");
-        }
     }
 }

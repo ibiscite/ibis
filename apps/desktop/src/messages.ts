@@ -1,4 +1,4 @@
-import type { EntryCopy, KeyFormat, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
+import type { EntryCopy, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
 import type { Platform } from "./platform";
 
 /** The reader (decision 0038). Page numbers are isolated so they never mirror. */
@@ -52,7 +52,6 @@ export const operationFailures = {
   project: "The project bibliography could not be changed. Try again.",
   rowContext: "The reference menu could not open. Use Enter to copy or Shift+Enter to add.",
   status: "Ibis could not check your library. Choose the file again.",
-  format: "Ibis could not read your saved copy format. Check Copy as before copying.",
   shortcut: "Ibis could not check the shortcut. Open Ibis from the menu bar or tray.",
   choose: "The file chooser did not open. Try again.",
   dropRefused: "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.",
@@ -628,28 +627,6 @@ const matchFieldNames: Record<string, string> = {
   identifier: "an ISBN, PubMed ID or arXiv ID",
 };
 
-// One word for the closed format control; the list shows the full label.
-export const copyFormatNames: Record<KeyFormat, string> = {
-  pandoc: "Pandoc",
-  autocite: "\\autocite",
-  parencite: "\\parencite",
-  textcite: "\\textcite",
-  cite: "\\cite",
-  typst: "Typst",
-  keys: "Keys",
-};
-
-// Record requires a label for every Rust citation syntax.
-export const copyFormatLabels: Record<KeyFormat, string> = {
-  pandoc: "Pandoc / Markdown  [@key]",
-  autocite: "BibLaTeX  \\autocite{key}",
-  parencite: "BibLaTeX  \\parencite{key}",
-  textcite: "BibLaTeX  \\textcite{key}",
-  cite: "LaTeX  \\cite{key}",
-  typst: "Typst  @key",
-  keys: "Keys only",
-};
-
 /** Words that tell similar result rows apart (#492). */
 export const rowText = {
   /** Follows the first author's name in Compact rows when there are more. */
@@ -719,17 +696,6 @@ export const copiedNoticeText = {
   pluginNote: "If this document uses a reference manager’s plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.",
   source: "Ibis",
   noticeFailed: "The Copied notice could not be shown.",
-};
-
-// The format menu: each key format's name and what it pastes.
-export const copyFormatMenu: Record<KeyFormat, { label: string; sample: string }> = {
-  pandoc: { label: "Pandoc key", sample: "[@key]" },
-  autocite: { label: "\\autocite", sample: "\\autocite{key}" },
-  parencite: { label: "\\parencite", sample: "\\parencite{key}" },
-  textcite: { label: "\\textcite", sample: "\\textcite{key}" },
-  cite: { label: "\\cite", sample: "\\cite{key}" },
-  typst: { label: "Typst key", sample: "@key" },
-  keys: { label: "Keys only", sample: "key" },
 };
 
 export const updateText = {

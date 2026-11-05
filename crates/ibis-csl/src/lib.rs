@@ -90,6 +90,11 @@ pub fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
     input::style_forms(id)
 }
 
+/// Whether the style `id` writes reference entries, never in-text citations.
+pub fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
+    input::style_writes_entries(id)
+}
+
 #[derive(Clone)]
 pub struct Formatter {
     service: Arc<service::Service>,

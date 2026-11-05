@@ -1,4 +1,5 @@
 //! Typed engine methods shared by the command line and desktop (ADR 0028).
+pub mod discovery;
 mod method;
 pub use method::Method;
 
@@ -28,3 +29,5 @@ pub use ibis_core::search::without_filters;
 pub mod wire;
 
 pub mod server;
+
+pub mod recents;

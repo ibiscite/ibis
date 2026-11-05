@@ -1,13 +1,12 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
+use super::CommandError;
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
-use super::{CommandError, LibraryStatus};
 use ibis_core::{
-    cite::KeyFormat,
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
         ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
     },
-    settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
+    settings::{ZoteroLibraries, ZoteroLibrary},
 };
 use ibis_engine::{
     Cancellation, Engine, Method, PreparedCitation,
@@ -29,7 +28,7 @@ pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     /// Completed initial read identity; Reload carries its own immutable observation.
     source_path: Option<PathBuf>,
-    sample: bool,
+    pub(crate) sample: bool,
     prepared: Mutex<Option<(String, Arc<PreparedCitation>, OutputSpec)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
@@ -142,11 +141,6 @@ pub(super) fn zotero_profiles() -> Result<Vec<String>, ibis_core::contract::Engi
     Ok(names)
 }
 
-/// Whether a Zotero library is on this computer; reads none.
-pub(crate) fn zotero_installed() -> bool {
-    Engine::new().is_ok_and(|engine| engine_list(&engine, "zotero-profiles", "zotero_installed").unwrap_or(false))
-}
-
 impl FileLibrary {
     pub(crate) fn recents(&self, ids: &[ItemRef], include_added: bool) -> Result<SearchReply, String> {
         use super::search::RecentGroup;
@@ -155,85 +149,40 @@ impl FileLibrary {
             .snapshot()
             .map_err(|_| "Recent references are unavailable.")?;
         let revision = snapshot.fingerprints().full.as_str().to_owned();
-        let sources: HashMap<_, _> = self
+        let sources = self
             .engine
             .libraries()
             .map_err(|_| "Recent references are unavailable.")?
-            .libraries
-            .iter()
-            .map(|info| (info.id.clone(), native_source(info)))
-            .collect();
-        let mut picked: Vec<(&ItemRef, RecentGroup)> = ids
-            .iter()
-            .filter(|id| {
-                snapshot
-                    .get(id)
-                    .is_some_and(|item| matches!(item.object, LibraryObject::Record(_)))
-            })
-            .take(3)
-            .map(|id| (id, RecentGroup::Cited))
-            .collect();
-        if include_added {
-            let mut added: Vec<_> = snapshot
-                .objects()
-                .iter()
-                .filter_map(|item| match &item.object {
-                    LibraryObject::Record(record) => record
-                        .added_at
-                        .as_deref()
-                        .and_then(ibis_core::contract::added_date)
-                        .map(|date| (date, &record.id)),
-                    _ => None,
-                })
-                .filter(|(_, id)| !picked.iter().any(|(existing, _)| *existing == *id))
-                .collect();
-            added.sort_by(|(a, aid), (b, bid)| b.cmp(a).then_with(|| aid.cmp(bid)));
-            picked.extend(added.into_iter().take(3).map(|(_, id)| (id, RecentGroup::Added)));
-        }
+            .libraries;
+        let picked = ibis_engine::recents::resolve(&snapshot, ids, include_added);
         let results = picked
             .into_iter()
-            .filter_map(|(id, group)| {
-                let object = snapshot.get(id)?;
-                let LibraryObject::Record(record) = &object.object else {
-                    return None;
-                };
-                let mut row =
-                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
-                row.source = sources
-                    .get(&record.id.library)
-                    .cloned()
-                    .unwrap_or_else(|| record.id.library.as_str().into());
-                row.sample = self.sample;
-                row.recent = Some(group);
+            .filter_map(|(object, cited)| {
+                let mut row = SearchResult::from_engine(object, vec![], false, &revision, self.sample)?;
+                if let Some(source) = sources.iter().find(|info| info.id == object.object.id().library) {
+                    row.source = native_source(source);
+                }
+                row.recent = Some(if cited { RecentGroup::Cited } else { RecentGroup::Added });
                 Some(row)
             })
             .collect();
         Ok(SearchReply {
             revision,
             results,
-            interpretation: None,
-            list: None,
-            unfiltered: None,
+            ..SearchReply::default()
         })
     }
     /// Rows for listed records in the open library, in the list's order. Each
     /// comes from the current snapshot; the list itself holds identities only.
     pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
-        const FAILED: &str = "The references could not be read. Try again.";
-        let snapshot = self.engine.snapshot().map_err(|_| FAILED)?;
-        let revision = snapshot.fingerprints().full.as_str().to_owned();
+        let snapshot = self
+            .engine
+            .snapshot()
+            .map_err(|_| "The references could not be read. Try again.")?;
+        let revision = snapshot.fingerprints().full.as_str();
         Ok(ids
             .iter()
-            .filter_map(|id| {
-                let object = snapshot.get(id)?;
-                let LibraryObject::Record(record) = &object.object else {
-                    return None;
-                };
-                let mut row =
-                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
-                row.sample = self.sample;
-                Some(row)
-            })
+            .filter_map(|id| SearchResult::from_engine(snapshot.get(id)?, vec![], false, revision, self.sample))
             .collect())
     }
 
@@ -252,19 +201,13 @@ impl FileLibrary {
         })
     }
 
-    fn bibliography_of(
-        &self,
-        items: Vec<CitationItem>,
-        style: CitationStyle,
-    ) -> Result<(PreparedCitation, bool), CommandError> {
+    fn bibliography_of(&self, items: Vec<CitationItem>, style: &str) -> Result<(PreparedCitation, bool), CommandError> {
         let count = items.len();
         let request = CitationRequest {
             items,
             form: CitationForm::BibliographyOnly,
             keep_order: false,
-            output: OutputSpec::Csl {
-                style: style_id(style).into(),
-            },
+            output: OutputSpec::Csl { style: style.into() },
             input_language: None,
             output_locale: None,
         };
@@ -281,7 +224,7 @@ impl FileLibrary {
     fn prepare_session_bibliography(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
     ) -> Result<Option<(PreparedCitation, Vec<String>)>, CommandError> {
         let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
         let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
@@ -322,7 +265,7 @@ impl FileLibrary {
     pub(crate) fn session_bibliography(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
     ) -> Result<Option<SessionBibliography>, CommandError> {
         Ok(self
             .prepare_session_bibliography(ids, style)?
@@ -348,7 +291,7 @@ impl FileLibrary {
     pub(crate) fn commit_session_bibliography<T>(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
         hash: &str,
         use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
     ) -> Result<T, CommandError> {
@@ -557,35 +500,6 @@ impl FileLibrary {
             .map(|s| s.fingerprints().full.as_str().to_owned())
             .unwrap_or_default()
     }
-    pub(super) fn status(&self, status: &mut LibraryStatus) {
-        let Ok(snapshot) = self.engine.snapshot() else { return };
-        status.revision = snapshot.fingerprints().full.as_str().to_owned();
-        let mut references = HashMap::<_, usize>::new();
-        for item in snapshot.objects() {
-            if let LibraryObject::Record(record) = &item.object {
-                *references.entry(&record.id.library).or_default() += 1;
-            }
-        }
-        status.references = references.values().sum();
-        if let Ok(info) = self.engine.libraries() {
-            status.warnings = info.libraries.iter().map(|i| i.warnings_total).sum();
-            status.source_counts = info
-                .libraries
-                .iter()
-                .map(|i| (native_source(i), references.get(&i.id).copied().unwrap_or_default()))
-                .collect();
-            if info.libraries.iter().any(|i| i.refresh_error.is_some()) {
-                status.stale = true;
-                if status.error.is_none() {
-                    status.error =
-                        Some("The library could not be refreshed; keeping the last loaded references.".into());
-                }
-            }
-            if status.note.is_none() && info.libraries.iter().any(|i| i.watch_warning.is_some()) {
-                status.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
-            }
-        }
-    }
     pub(crate) fn search(
         &self,
         query: &SearchQuery,
@@ -596,10 +510,7 @@ impl FileLibrary {
         if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
-                results: vec![],
-                interpretation: None,
-                list: None,
-                unfiltered: None,
+                ..SearchReply::default()
             });
         }
         // The existing native boundary names Zotero sources for the picker;
@@ -642,10 +553,7 @@ impl FileLibrary {
             Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
                 return Ok(SearchReply {
                     revision: self.revision(),
-                    results: vec![],
-                    interpretation: None,
-                    list: None,
-                    unfiltered: None,
+                    ..SearchReply::default()
                 });
             }
             Err(_) => return Err("The library could not be searched.".to_string()),
@@ -654,22 +562,13 @@ impl FileLibrary {
         let results: Vec<_> = reply
             .hits
             .into_iter()
-            .filter_map(|hit| match hit.item.object {
-                LibraryObject::Record(record) => {
-                    let mut result = SearchResult::from_engine(
-                        &record,
-                        hit.item.fingerprints.cite.as_str(),
-                        hit.matched,
-                        hit.partial,
-                        &revision,
-                    );
-                    if let Some(source) = sources.get(record.id.library.as_str()) {
-                        result.source.clone_from(source);
-                    }
-                    result.sample = self.sample;
-                    Some(result)
+            .filter_map(|hit| {
+                let mut result =
+                    SearchResult::from_engine(&hit.item, hit.matched, hit.partial, &revision, self.sample)?;
+                if let Some(source) = sources.get(hit.item.object.id().library.as_str()) {
+                    result.source.clone_from(source);
                 }
-                _ => None,
+                Some(result)
             })
             .collect();
         let unfiltered = results
@@ -795,10 +694,9 @@ impl FileLibrary {
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
-        format: KeyFormat,
-        style: Option<CitationStyle>,
+        output: &str,
     ) -> Result<FilePreview, CommandError> {
-        self.preview_for(reservation, items, format, style, None)
+        self.preview_for(reservation, items, crate::output::spec(output), None)
     }
 
     /// As [`Self::preview`], with a waiting editor's output in place of the
@@ -807,58 +705,15 @@ impl FileLibrary {
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
-        format: KeyFormat,
-        style: Option<CitationStyle>,
+        output: &OutputSpec,
         editor: Option<&crate::editor_endpoint::EditorRequest>,
     ) -> Result<FilePreview, CommandError> {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
         let cancel = self.preview_cancellation(reservation)?;
-        // Narrative is the textcite member of the BibLaTeX output family.
-        // Mixed command clusters remain outside the picker's small editor.
-        let original_format = format;
-        let format = if items.len() == 1
-            && items[0].form == Some(ReferenceForm::Narrative)
-            && matches!(format, KeyFormat::Autocite | KeyFormat::Parencite)
-        {
-            KeyFormat::Textcite
-        } else {
-            format
-        };
-        let output = if let Some(style) = style {
-            OutputSpec::Csl {
-                style: style_id(style).into(),
-            }
-        } else {
-            let (syntax, command) = match format {
-                KeyFormat::Pandoc => (KeySyntax::Pandoc, None),
-                KeyFormat::Autocite => (KeySyntax::Biblatex, Some("autocite")),
-                KeyFormat::Parencite => (KeySyntax::Biblatex, Some("parencite")),
-                KeyFormat::Textcite => (KeySyntax::Biblatex, Some("textcite")),
-                KeyFormat::Cite => (KeySyntax::Latex, Some("cite")),
-                KeyFormat::Typst => (KeySyntax::Typst, None),
-                KeyFormat::Keys => (KeySyntax::Keys, None),
-            };
-            OutputSpec::Key {
-                syntax,
-                command: command.map(str::to_owned),
-            }
-        };
+        // The engine writes each form in the output's own way, a narrative
+        // BibLaTeX citation as \textcite included; the picker only asks.
         let mut original_output = output.clone();
-        if let OutputSpec::Key {
-            syntax: KeySyntax::Biblatex,
-            command,
-        } = &mut original_output
-        {
-            *command = Some(
-                match original_format {
-                    KeyFormat::Autocite => "autocite",
-                    KeyFormat::Parencite => "parencite",
-                    _ => "textcite",
-                }
-                .into(),
-            );
-        }
         let items: Vec<_> = items
             .into_iter()
             .enumerate()
@@ -905,13 +760,9 @@ impl FileLibrary {
             .collect::<Result<_, CommandError>>()?;
         let mut request = CitationRequest {
             items,
-            output,
-            form: if style == Some(CitationStyle::Ieee) {
-                CitationForm::BibliographyOnly
-            } else {
-                CitationForm::Normal
-            },
-            keep_order: style.is_none(),
+            keep_order: matches!(output, OutputSpec::Key { .. }),
+            output: output.clone(),
+            form: CitationForm::Normal,
             input_language: None,
             output_locale: None,
         };
@@ -1043,7 +894,8 @@ impl FileLibrary {
             )
         };
         let cancel = self.preview_cancellation(reservation)?;
-        let entry = matches!(&original_output, OutputSpec::Csl { style } if style == "ieee");
+        // A numbered style writes reference entries, which have no name forms.
+        let entry = citation.result().notices.contains(&Notice::ReferenceEntry);
         let bare_keys = matches!(
             &original_output,
             OutputSpec::Key {
@@ -1197,7 +1049,7 @@ fn file_reload_error(error: ibis_core::contract::EngineError) -> super::LoadErro
     }
 }
 
-fn native_source(info: &ibis_engine::LibraryInfo) -> String {
+pub(super) fn native_source(info: &ibis_engine::LibraryInfo) -> String {
     match info.zotero {
         Some(EngineZoteroLibrary::Personal) => "zotero:user".into(),
         Some(EngineZoteroLibrary::Group(id)) => format!("zotero:group:{id}"),
@@ -1232,16 +1084,6 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
             .unwrap_or("a reference without a key")
             .to_owned(),
     )
-}
-
-pub(crate) fn style_id(style: CitationStyle) -> &'static str {
-    match style {
-        CitationStyle::Apa => "apa",
-        CitationStyle::ChicagoAuthorDate => "chicago-author-date",
-        CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
-        CitationStyle::Ieee => "ieee",
-        CitationStyle::ModernLanguageAssociation => "modern-language-association",
-    }
 }
 
 fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {

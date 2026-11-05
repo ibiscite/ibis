@@ -3,7 +3,6 @@
 use std::sync::{Arc, Mutex};
 
 use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
-use ibis_zotero_local::LocalZotero;
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 
@@ -13,7 +12,8 @@ use super::state::Library;
 use super::status::{LibraryProblem, LibraryStatus};
 use super::tasks::{choose_library_file, current_status, reload_library_file, start_open, use_zotero_library};
 use crate::project::ProjectBibliography;
-use crate::setup::{ZoteroPresence, zotero_presence};
+use crate::setup::ZoteroPresence;
+use ibis_engine::{Cancellation, discovery, health::InspectionPolicy};
 
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
@@ -106,7 +106,8 @@ pub(crate) struct ZoteroProfiles {
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
-        let running = zotero_presence(&mut LocalZotero::default()) != ZoteroPresence::Absent;
+        let running = discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())?
+            != discovery::ZoteroPresence::Absent;
         super::engine_file::zotero_profiles().map(|names| ZoteroProfiles { names, chosen, running })
     })
     .await
@@ -137,9 +138,13 @@ fn zotero_answered(found: ZoteroPresence, problem: Option<LibraryProblem>) -> bo
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
-    let found = tauri::async_runtime::spawn_blocking(|| zotero_presence(&mut LocalZotero::default()))
-        .await
-        .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
+    let found = tauri::async_runtime::spawn_blocking(|| {
+        discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())
+    })
+    .await
+    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?
+    .map(ZoteroPresence::from)
+    .map_err(|_| "checking Zotero stopped unexpectedly".to_string())?;
     let problem = app
         .state::<Mutex<Library>>()
         .lock()
@@ -166,8 +171,7 @@ pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
     current_status(&app)
 }
 
-/// Resolve opaque history IDs against the current snapshot, with source-added
-/// dates for the second group. Never searches document text or reads new sources.
+/// A possibly retired identity arriving from a desktop action.
 #[derive(specta::Type)]
 pub(crate) struct RecentIdentity(
     #[specta(type = specta_typescript::Unknown)] pub(crate) Option<ibis_core::contract::ItemRef>,
@@ -182,28 +186,42 @@ impl<'de> serde::Deserialize<'de> for RecentIdentity {
     }
 }
 
+/// Current destination's recents; Forget retires in-flight recording.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn recent_references(
-    ids: Vec<RecentIdentity>,
-    include_added: bool,
+    forget: bool,
+    app: AppHandle,
     library: State<'_, Mutex<Library>>,
     project: State<'_, ProjectBibliography>,
-) -> Result<SearchReply, String> {
-    if ids.len() > 30 {
-        return Err("Too many recent references.".into());
-    }
-    let ids: Vec<_> = ids.into_iter().filter_map(|id| id.0).collect();
-    let file = library
-        .lock()
-        .map_err(|_| "The library is unavailable.")?
-        .file
-        .clone()
-        .ok_or("No library is open.")?;
+    editor: State<'_, crate::editor_endpoint::Pending>,
+) -> Result<(SearchReply, bool, bool), String> {
+    let captured = crate::paste::last_app(&app).map(|(id, _, _)| id.normalized());
+    let captured = editor.app(captured);
+    let file = library.lock().map_err(|_| "The library is unavailable.")?.file.clone();
     let project = project.current();
     tauri::async_runtime::spawn_blocking(move || {
-        file.recents(&ids, include_added)
-            .map(|reply| file.mark_project(reply, project.as_ref()))
+        let session = app.state::<crate::session_references::SessionReferences>();
+        if forget {
+            session
+                .forget()
+                .map_err(|_| "Recent citations could not be forgotten. Try again.")?;
+        }
+        let (ids, has_history, forget_failed) = {
+            let history = session.lock();
+            (
+                history.ids(captured.as_deref()).to_vec(),
+                history.has_history(),
+                history.forget_failed,
+            )
+        };
+        let reply = match file {
+            Some(file) => file
+                .recents(&ids, has_history)
+                .map(|reply| file.mark_project(reply, project.as_ref()))?,
+            None => SearchReply::default(),
+        };
+        Ok((reply, has_history, forget_failed))
     })
     .await
     .map_err(|_| "Recent references are unavailable.".to_owned())?
@@ -245,10 +263,7 @@ pub(crate) async fn search(
     let Some(cancel) = requests.start(page, request) else {
         return Ok(SearchReply {
             revision: file.revision(),
-            results: Vec::new(),
-            interpretation: None,
-            list: None,
-            unfiltered: None,
+            ..SearchReply::default()
         });
     };
     let project = project.current();

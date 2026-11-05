@@ -6,8 +6,7 @@ import { IconButton } from "../../ui/IconButton";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
 import { useLayer } from "../../ui/layers";
-import { outputName, type Choice } from "./choice";
-import { choiceOf, outputOf } from "./useDestination";
+import { listedOutput, outputName, type OutputId } from "../../format/outputs";
 import { WritingProjectTaskStatus } from "./ProjectContextStatus";
 import "../../ui/Overlay.css";
 import "../../ui/KeysSheet.css";
@@ -30,7 +29,7 @@ const failure = (error: unknown, fallback: string) => typeof error === "string" 
 /** An explicit project switch for the captured app. Native code saves the
  * project, its format and its bibliography together; the sheet never guesses
  * from a document or displays a native path. */
-export function WritingProjectsDialog({ api, format, onClose }: { api: WritingProjectsApi; format: Choice; onClose: () => void }) {
+export function WritingProjectsDialog({ api, format, onClose }: { api: WritingProjectsApi; format: OutputId; onClose: () => void }) {
   const { writingProjects, editWritingProject, onProjectChanged } = api;
   const dialog = useRef<HTMLDivElement>(null);
   const title = useId(), about = useId();
@@ -125,11 +124,11 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
     void action().then(read, (error) => { if (alive.current) setProblem(failure(error, text.bibliographyNotSaved)); });
   };
   const selected = view?.active;
-  const selectedFormat = selected ? choiceOf(selected.output) : null;
+  const selectedFormat = selected ? listedOutput(selected.output) : null;
   const editingDisabled = busy || Boolean(selected?.saved_problem);
   const saveName = () => {
     if (!form || form.kind === "remove" || !form.name.trim() || editingDisabled || conflict?.project === null) return;
-    edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: outputOf(format) }
+    edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: format }
       : { kind: "rename", id: form.id, revision: conflict?.id === form.id ? conflict.project?.revision ?? form.revision : form.revision, name: form.name.trim() });
   };
   return <div className="keys-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) close(); }}>
@@ -155,7 +154,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
           {view.projects.length === 0 && !selected?.saved_problem && <p>{text.empty}</p>}
           <ul className="writing-projects-list" aria-label={text.title}>
             {view.projects.map((project) => {
-              const choice = choiceOf(project.output);
+              const choice = listedOutput(project.output);
               return <li key={project.id}>
                 <Button label={project.name} aria-label={text.use(project.name)} aria-pressed={project.id === view.selected}
                   data-selected={project.id === view.selected || undefined}
@@ -173,7 +172,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
             <p dir="auto">{selected.bibliography ? text.bibliography(selected.bibliography) : text.noBibliography}</p>
             {selected.pending && !selected.retained && <section className="writing-projects-updates" aria-label={text.savedUpdates}>
               <h4>{text.savedUpdates}</h4>
-              <p>{text.format(choiceOf(selected.pending.output) ? outputName(choiceOf(selected.pending.output)!) : text.unsupported)}</p>
+              <p>{text.format(listedOutput(selected.pending.output) ? outputName(listedOutput(selected.pending.output)!) : text.unsupported)}</p>
               <p dir="auto">{selected.pending.bibliography ? text.bibliography(selected.pending.bibliography) : text.noBibliography}</p>
             </section>}
             <div className="writing-projects-actions">
@@ -191,7 +190,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
           <h3>{text.conflictTitle}</h3>
           {conflict.project ? <>
             <p dir="auto">{conflict.project.name}</p>
-            <p>{text.format(choiceOf(conflict.project.output) ? outputName(choiceOf(conflict.project.output)!) : text.unsupported)}</p>
+            <p>{text.format(listedOutput(conflict.project.output) ? outputName(listedOutput(conflict.project.output)!) : text.unsupported)}</p>
             <p dir="auto">{conflict.project.bibliography ? text.bibliography(conflict.project.bibliography) : text.noBibliography}</p>
             <p>{text.conflictReview}</p>
           </> : <p>{text.conflictDeleted}</p>}

@@ -2,7 +2,7 @@
 #[path = "../../../../../../crates/ibis-engine/tests/support/zotero.rs"]
 mod fixture;
 use super::{FileLibrary, FileSelection};
-use ibis_core::{cite::KeyFormat, contract::CitationResult, settings::CitationStyle};
+use ibis_core::contract::CitationResult;
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;
 use std::{
@@ -41,10 +41,7 @@ fn selection(bridge: &FileLibrary) -> Result<FileSelection, Box<dyn std::error::
 fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn std::error::Error>> {
     let server = fixture::Server::new();
     let bridge = opened(&server)?;
-    for (style, option, value) in [
-        (None, "--format", "pandoc"),
-        (Some(CitationStyle::Apa), "--style", "apa"),
-    ] {
+    for (style, option, value) in [(None, "--format", "pandoc"), (Some("apa"), "--style", "apa")] {
         let cli = Engine::with_zotero_port(server.port).map_err(|_| "synthetic CLI")?;
         let (mut output, mut errors) = (vec![], vec![]);
         assert_eq!(
@@ -67,8 +64,7 @@ fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn
             .preview(
                 bridge.reserve_preview(),
                 vec![selection(&bridge)?],
-                KeyFormat::Pandoc,
-                style,
+                style.unwrap_or("pandoc"),
             )
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
@@ -93,12 +89,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
     let server = fixture::Server::new();
     let bridge = Arc::new(opened(&server)?);
     let preview = bridge
-        .preview(
-            bridge.reserve_preview(),
-            vec![selection(&bridge)?],
-            KeyFormat::Pandoc,
-            None,
-        )
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
         .map_err(|e| e.to_string())?;
     server.instance.store(2, Ordering::SeqCst);
     server.pause.store(true, Ordering::SeqCst);
@@ -122,12 +113,7 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
             .is_err()
     );
     let current = bridge
-        .preview(
-            bridge.reserve_preview(),
-            vec![selection(&bridge)?],
-            KeyFormat::Pandoc,
-            None,
-        )
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
         .map_err(|e| e.to_string())?;
     let mut copied = String::new();
     bridge
@@ -146,16 +132,20 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
     let server = fixture::Server::new();
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::Group(7), ZoteroLibrary::User]).ok_or("choice")?;
-    let bridge =
-        FileLibrary::open_zotero_with(engine, &both, None, &Cancellation::default()).map_err(|e| e.to_string())?;
+    let bridge = std::sync::Arc::new(
+        FileLibrary::open_zotero_with(engine, &both, None, &Cancellation::default()).map_err(|e| e.to_string())?,
+    );
     let query = serde_json::from_value(json!({"text":"atlas","interpret_locators":false}))?;
     let found = bridge.search(&query, 10, None, &Cancellation::default())?;
     assert_eq!(found.results.len(), 2);
     let mut sources: Vec<_> = found.results.iter().map(|row| row.source.as_str()).collect();
     sources.sort_unstable();
     assert_eq!(sources, ["zotero:group:7", "zotero:user"]);
-    let mut status = crate::library::status::status(&crate::library::Library::default());
-    bridge.status(&mut status);
+    let status = crate::library::status::status(&crate::library::Library {
+        source: Some(crate::library::Source::Zotero(both.clone())),
+        file: Some(bridge.clone()),
+        ..Default::default()
+    });
     assert_eq!(status.source_counts.len(), 2);
     for row in &found.results {
         assert_eq!(status.source_counts.get(&row.source), Some(&1));
@@ -176,8 +166,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                         page_input: None,
                         form: None,
                     }],
-                    KeyFormat::Pandoc,
-                    None
+                    "pandoc"
                 ),
             Err(crate::library::CommandError::SharedCitationKey { key }) if key == "Synthetic2026"
         ));
@@ -208,12 +197,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
     );
     assert!(
         bridge
-            .preview(
-                bridge.reserve_preview(),
-                vec![selection(&bridge)?],
-                KeyFormat::Pandoc,
-                None
-            )
+            .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
             .is_ok()
     );
     let missing = bridge.refresh_zotero(&ZoteroLibrary::Group(99).into(), None, true, &Cancellation::default());

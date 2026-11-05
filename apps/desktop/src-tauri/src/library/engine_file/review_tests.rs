@@ -93,7 +93,7 @@ fn a_cancelled_preview_says_so_instead_of_failing() -> Result<(), Box<dyn std::e
     let reservation = file.reserve_preview_with(cancel.clone());
     cancel.cancel();
     let error = file
-        .preview(reservation, Vec::new(), KeyFormat::Pandoc, Some(CitationStyle::Ieee))
+        .preview(reservation, Vec::new(), "ieee")
         .err()
         .ok_or("cancelled preview ran")?;
     assert_eq!(error, CommandError::Cancelled);
@@ -118,8 +118,7 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
                 locator: None,
                 page_input: Some("pp.".into()),
             }],
-            KeyFormat::Pandoc,
-            Some(CitationStyle::Apa),
+            "apa",
         )
         .err()
         .ok_or("obsolete preview ran")?;
@@ -182,19 +181,13 @@ fn an_older_blocking_worker_finishing_last_cannot_retire_the_newer_preview() -> 
             file.preview(
                 older,
                 vec![serde_json::from_value(selected.clone()).unwrap_or_else(|e| panic!("{e}"))],
-                KeyFormat::Pandoc,
-                Some(CitationStyle::Apa),
+                "apa",
             )
         });
         started.wait();
         let newer = file.reserve_preview();
         let ready = file
-            .preview(
-                newer,
-                vec![serde_json::from_value(selected.clone())?],
-                KeyFormat::Pandoc,
-                None,
-            )
+            .preview(newer, vec![serde_json::from_value(selected.clone())?], "pandoc")
             .map_err(|_| "newer preview")?;
         release.wait();
         assert!(
@@ -358,12 +351,7 @@ fn same_author_year_notice_survives_native_preview_and_copy() -> Result<(), Box<
         .collect::<Result<Vec<FileSelection>, _>>()?;
     assert_eq!(selected.len(), 2);
     let preview = file
-        .preview(
-            file.reserve_preview(),
-            selected,
-            KeyFormat::Pandoc,
-            Some(CitationStyle::Apa),
-        )
+        .preview(file.reserve_preview(), selected, "apa")
         .map_err(|e| e.to_string())?;
     assert_eq!(
         preview.warnings,
@@ -404,8 +392,7 @@ fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<d
     let error = match file.preview(
         file.reserve_preview(),
         vec![serde_json::from_value(selected.clone())?],
-        KeyFormat::Pandoc,
-        None,
+        "pandoc",
     ) {
         Err(error) => error,
         Ok(_) => return Err("conflicting keys produced a preview receipt".into()),
@@ -427,13 +414,8 @@ fn conflicting_keys_explain_refusal_without_a_copy_receipt() -> Result<(), Box<d
     assert_eq!(writes.get(), 0);
     // Conflicting keys do not prevent a formatted citation of this record.
     assert!(
-        file.preview(
-            file.reserve_preview(),
-            vec![serde_json::from_value(selected)?],
-            KeyFormat::Pandoc,
-            Some(CitationStyle::Apa)
-        )
-        .is_ok()
+        file.preview(file.reserve_preview(), vec![serde_json::from_value(selected)?], "apa")
+            .is_ok()
     );
     Ok(())
 }
@@ -452,13 +434,12 @@ fn a_key_another_record_also_has_is_named_and_not_copied() -> Result<(), Box<dyn
     let snapshot = file.engine.snapshot().map_err(|_| "snapshot")?;
     let record = &snapshot.objects()[0];
     let selected = json!({"id":record.object.id(),"cite":record.fingerprints.cite,"locator":null});
-    for format in [KeyFormat::Pandoc, KeyFormat::Cite, KeyFormat::Keys] {
+    for format in ["pandoc", "cite", "keys"] {
         let error = file
             .preview(
                 file.reserve_preview(),
                 vec![serde_json::from_value(selected.clone())?],
                 format,
-                None,
             )
             .err()
             .ok_or("a shared key produced a preview receipt")?;
@@ -502,8 +483,7 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
                 page_input: None,
                 form: None,
             }],
-            KeyFormat::Pandoc,
-            Some(CitationStyle::Apa),
+            "apa",
         )
         .map_err(|_| "preview")?;
     assert_eq!(
@@ -544,7 +524,7 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
         &Cancellation::default(),
     )?;
     let row = reply.results.first().ok_or("row")?;
-    for (format, command) in [(KeyFormat::Autocite, "autocite"), (KeyFormat::Parencite, "parencite")] {
+    for (format, command) in [("autocite", "autocite"), ("parencite", "parencite")] {
         let preview = file
             .preview(
                 file.reserve_preview(),
@@ -556,7 +536,6 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
                     form: Some(ReferenceForm::Narrative),
                 }],
                 format,
-                None,
             )
             .map_err(|_| "preview")?;
         assert_eq!(preview.text, "\\textcite{Synthetic2021}");
@@ -595,11 +574,7 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
         &Cancellation::default(),
     )?;
     let row = reply.results.first().ok_or("row")?;
-    for (format, style) in [
-        (KeyFormat::Textcite, None),
-        (KeyFormat::Keys, None),
-        (KeyFormat::Pandoc, Some(CitationStyle::Ieee)),
-    ] {
+    for format in ["textcite", "keys", "ieee"] {
         let preview = file
             .preview(
                 file.reserve_preview(),
@@ -611,13 +586,12 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
                     form: None,
                 }],
                 format,
-                style,
             )
             .map_err(|_| "preview")?;
         let details = file
             .details(&preview.ticket, &preview.content_hash, 0)
             .map_err(|_| "details")?;
-        if format == KeyFormat::Textcite {
+        if format == "textcite" {
             assert_eq!(details.current_form, Some(ReferenceForm::Narrative));
             assert!(
                 details.forms[0]

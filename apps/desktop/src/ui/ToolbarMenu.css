@@ -13,6 +13,10 @@
 .toolbar-menu-sample { margin-inline-start: auto; padding-inline-start: var(--space-4); min-width: 0; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
 /* The label names the choice, so it never gives way to its example. */
 .toolbar-menu .menu-label { flex-shrink: 0; max-width: 100%; }
+/* A quiet detail after the label, such as a style's full title. */
+.toolbar-menu-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
+.menu-item:has(> .toolbar-menu-detail) > .menu-label { flex-grow: 0; }
+.menu-item[data-focused] .toolbar-menu-detail { color: inherit; }
 .toolbar-menu-sample[data-prose] { font-family: var(--font); white-space: normal; overflow-wrap: break-word; }
 /* Quiet notes: for the menu, for a section, or under a label for why it is
    unavailable. None ever sets the menu's width. */

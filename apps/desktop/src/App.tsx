@@ -8,7 +8,8 @@ import { PeekCard } from "./ui/PeekCard";
 import { peekText, pickerText, rowText } from "./messages";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
-import { choiceKey, styleOf } from "./features/picker/choice";
+import { choiceKey } from "./features/picker/choice";
+import { styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
@@ -60,7 +61,7 @@ import { useInterfaceMessages } from "./i18n";
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
 export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "copyFormat" | "pickerPreferences" | "setPickerPreferences" |
+  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "setPickerPreferences" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
   Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
@@ -93,7 +94,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { density, quitAfterSaving: quitPreferences } = preferences;
   const deliveryTarget = useDeliveryTarget(api);
   const destination = useDestination(deliveryTarget.api, {
-    fallback: preferences.format, fallbackReady: preferences.available, chooseDefault: preferences.chooseFormat, report,
+    fallback: preferences.format, chooseDefault: preferences.chooseFormat, report,
     onProjectContext: (context) => send({ type: "project-observed", ...context }),
   });
   const { format } = destination;
@@ -107,8 +108,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
-  const recents = useRecentReferences(api.recentReferences, destination.appId, state.recentCopy, state.session, preferences.recentCitations, api.onPreferencesChanged, () => send({ type: "forget-last" }));
-  useEffect(() => { if (recents.forgetFailed) report("recentHistory"); }, [recents.forgetFailed, report]);
+  const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
     search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
@@ -264,7 +264,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
             const activeProject = destination.writingProject!;
             void perform("project", () => destination.editProject!(destination.writingContext!, { kind: "apply", id: activeProject.id, revision: activeProject.pending!.revision }));
           } : undefined} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={failures}
+        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />

@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
-import type { KeyFormat, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { keyText } from "../messages";
 import { currentPlatform } from "../platform";
@@ -126,7 +126,7 @@ function deferred<T>() {
 function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial<PickerPreferences> = {}) {
   const state = {
     permission: { pastes: true, needed: true, granted: false, list: "Device Control and Data Access", ...permission },
-    preferences: { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, ...preferences } as PickerPreferences,
+    preferences: { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, ...preferences } as PickerPreferences,
     saved: [] as PickerPreferences[],
     patches: [] as Partial<PickerPreferences>[],
     opened: 0,
@@ -145,11 +145,11 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     preferenceEvents: [] as ((revision: number) => void)[],
     automatic: [] as ((on: boolean) => void)[],
   };
-  const commit = async (next: Partial<PickerPreferences>, key: KeyFormat | null = null) => {
+  const commit = async (next: Partial<PickerPreferences>) => {
     state.patches.push(next);
-    state.preferences = { ...state.preferences, ...next, ...(key ? { copy_format: key } : {}) };
+    state.preferences = { ...state.preferences, ...next };
     state.saved.push({ ...state.preferences });
-    return { preferences: state.preferences, copy_format: state.preferences.copy_format ?? "pandoc" };
+    return { preferences: state.preferences };
   };
   const api: SettingsApi = {
     pickerPreferences: async () => state.preferences,
@@ -194,7 +194,7 @@ test("localized General keeps pending choices, refuses failed saves, and reopens
   const { api, state, commit } = fakeApi({ granted: true });
   const pseudo = createInterfaceMessages(english, true);
   const label = pseudo.text("look-larger-text");
-  const save = deferred<{ preferences: PickerPreferences; copy_format: "pandoc" }>();
+  const save = deferred<{ preferences: PickerPreferences }>();
   vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(save.promise).mockImplementation(commit);
   const view = () => <InterfaceMessagesProvider messages={pseudo}><SettingsApp api={api} initialPage="look" /></InterfaceMessagesProvider>;
   const mounted = render(view());
@@ -744,11 +744,11 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(7); });
-  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "compact" } : { larger_text: true }, null, outcome === "failure" ? 1 : 2);
+  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "compact" } : { larger_text: true }, outcome === "failure" ? 1 : 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
-  expect(save).toHaveBeenLastCalledWith({ larger_text: true }, null, 2);
+  expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
   expect(closed).toHaveBeenCalledOnce();
 });
 
@@ -834,13 +834,13 @@ test("the sidebar switches pages, a page request from the app moves it, and the 
 });
 
 test("a Settings field patch keeps an output chosen in the other window", async () => {
-  const { api, state } = fakeApi({ granted: true }, { citation_style: "apa" });
+  const { api, state } = fakeApi({ granted: true }, { output: "apa" });
   render(<SettingsApp api={api} initialPage="look" />);
   const larger = await screen.findByRole("radio", { name: "Larger" });
-  state.preferences = { ...state.preferences, citation_style: "ieee" };
+  state.preferences = { ...state.preferences, output: "ieee" };
   fireEvent.click(larger);
   await waitFor(() => expect(state.patches).toEqual([{ larger_text: true }]));
-  expect(state.preferences).toMatchObject({ citation_style: "ieee", larger_text: true });
+  expect(state.preferences).toMatchObject({ output: "ieee", larger_text: true });
 });
 
 test("the latest focus read wins even when no local edit occurred", async () => {
@@ -1191,7 +1191,7 @@ test("a failed queued edit restores the preceding acknowledged save when rereadi
   const { api, state, commit } = fakeApi({ granted: true });
   const pending = deferred<void>();
   vi.spyOn(api, "setPickerPreferences")
-    .mockImplementationOnce(async (patch, key) => { await pending.promise; return commit(patch, key); })
+    .mockImplementationOnce(async (patch) => { await pending.promise; return commit(patch); })
     .mockRejectedValueOnce("settings-read-only");
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radio", { name: "Compact" });
@@ -1209,9 +1209,9 @@ test("a self-notification before reply preserves the saved row choice when the n
   const { api, state, commit } = fakeApi({ granted: true });
   const first = deferred<void>();
   vi.spyOn(api, "setPickerPreferences")
-    .mockImplementationOnce(async (patch, key, revision) => {
+    .mockImplementationOnce(async (patch, revision) => {
       await first.promise;
-      const saved = await commit(patch, key);
+      const saved = await commit(patch);
       // Native emits its normal revision-tagged event before returning the save.
       for (const changed of state.preferenceEvents) changed(revision);
       return saved;
@@ -1265,8 +1265,8 @@ test("a picker notification before a queued save fails stays uncertain until the
   const { api, state, commit } = fakeApi({ granted: true }, { accent: "system" });
   const reply = deferred<void>();
   const write = vi.spyOn(api, "setPickerPreferences")
-    .mockImplementationOnce(async (patch, key, revision) => {
-      const saved = await commit(patch, key);
+    .mockImplementationOnce(async (patch, revision) => {
+      const saved = await commit(patch);
       for (const changed of state.preferenceEvents) changed(revision);
       await reply.promise;
       return saved;
@@ -1310,8 +1310,8 @@ test("a picker change survives a Settings save reply delayed beyond the close ti
   const { api, state, commit } = fakeApi({ granted: true });
   const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();
   let older!: Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>;
-  vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (patch, key) => {
-    older = await commit(patch, key);
+  vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (patch) => {
+    older = await commit(patch);
     return pending.promise;
   });
   const mounted = render(<SettingsApp api={api} initialPage="look" />);
@@ -1404,7 +1404,7 @@ test("Look picture radios have keyboard selection, inert real components and no 
 });
 
 
-test("the Ibis default-format menu saves key or style, restores refusals, and reopens on General", async () => {
+test("the Ibis default-format menu saves one output by its name, restores refusals, and reopens on General", async () => {
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
   const choose = async (name: string) => {
@@ -1414,19 +1414,19 @@ test("the Ibis default-format menu saves key or style, restores refusals, and re
     await act(async () => state.closes.at(-1)!());
   };
   await choose("Typst");
-  expect(state.preferences).toMatchObject({ copy_format: "typst", citation_style: null });
-  await choose("APA (7th edition)");
-  expect(state.preferences.citation_style).toBe("apa");
+  expect(state.preferences).toMatchObject({ output: "typst" });
+  await choose("APA");
+  expect(state.preferences.output).toBe("apa");
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
   await choose("LaTeX \\cite");
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Default format APA (7th edition)" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Default format APA" })).toBeTruthy();
   expect(document.querySelector("select")).toBeNull();
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   fireEvent.click(screen.getByRole("option", { name: "Citations" }));
-  expect(await screen.findByRole("button", { name: "Default format APA (7th edition)" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Default format APA" })).toBeTruthy();
 });
 
 

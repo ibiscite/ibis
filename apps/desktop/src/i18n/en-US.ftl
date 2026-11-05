@@ -201,18 +201,6 @@ citations-editor-copied = Copied
 citations-editor-port-in-use = Another program is using the endpoint’s port, so it is off.
 citations-editor-bad-setting = The saved endpoint can’t be used. Switch it off and on to make a new address.
 citations-editor-not-saved = The endpoint could not be changed. Try again.
-citations-format-pandoc = Pandoc / Quarto
-citations-format-autocite = BibLaTeX \autocite
-citations-format-parencite = BibLaTeX \parencite
-citations-format-textcite = BibLaTeX \textcite
-citations-format-cite = LaTeX \cite
-citations-format-typst = Typst
-citations-format-keys = Citation keys
-citations-format-apa = APA (7th edition)
-citations-format-chicago-author-date = Chicago (author-date)
-citations-format-harvard-cite-them-right = Harvard (Cite Them Right)
-citations-format-ieee = IEEE reference entry
-citations-format-modern-language-association = MLA (9th edition)
 
 settings-shortcut-restored = Default shortcut restored
 
@@ -296,8 +284,6 @@ backup-note-library = The backup’s bibliography is not on this computer. It is
 backup-note-shortcut = The backup has no opening shortcut for this system, so this computer’s stays.
 backup-note-repairs = The settings file on this computer is damaged or missing. Restoring writes it again, and keeps any damaged file beside it.
 backup-setting-library = Library
-backup-setting-copy-format = Key format
-backup-setting-citation-style = Citation style
 backup-setting-larger-text = Larger text
 backup-setting-shortcut = Opening shortcut on { $system }
 backup-value-default = Default

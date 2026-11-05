@@ -1,28 +1,8 @@
 // What the picker copies and which references it acts on. Pure; no React.
-import type { CopyFormat, Locator, SearchResult, ZoteroLibrary } from "../../api";
+import type { Locator, SearchResult, ZoteroLibrary } from "../../api";
 import type { ReferenceForm } from "../../bindings";
-import { copyFormatMenu, copyFormatNames, keyText } from "../../messages";
-import { copiesEntry, STYLE_NAMES, type StyleId } from "../../format/styles";
-
-/** A citation-key syntax, or a citation style written as `style:<id>`. */
-export type Choice = CopyFormat | `style:${StyleId}`;
-
-export function styleOf(choice: Choice): StyleId | null {
-  return choice.startsWith("style:") ? (choice.slice("style:".length) as StyleId) : null;
-}
-
-/** The one word the closed format control shows. */
-export function choiceName(choice: Choice): string {
-  const style = styleOf(choice);
-  return style ? STYLE_NAMES[style] : copyFormatNames[choice as CopyFormat];
-}
-
-/** Name the material that lands, without promising a document-aware style. */
-export function outputName(choice: Choice): string {
-  const style = styleOf(choice);
-  if (!style) return copyFormatMenu[choice as CopyFormat].label;
-  return `${STYLE_NAMES[style]} · ${copiesEntry(style) ? "reference entry" : style === "chicago-author-date" ? "author-date text" : "text"}`;
-}
+import { keyText } from "../../messages";
+import { outputName, writesEntries, type OutputId } from "../../format/outputs";
 
 /** A prepared reference freezes its search locator independently of later queries. */
 export type CitationReference = SearchResult & {
@@ -45,10 +25,9 @@ export function sameLibrary(a: ZoteroLibrary, b: ZoteroLibrary) {
   return a === b || (typeof a === "object" && typeof b === "object" && a.group === b.group);
 }
 
-/** What Enter copies in `choice`; numeric styles copy reference entries (#1129). */
-export function copyLabel(choice: Choice, count: number): string {
-  const name = choiceName(choice);
-  const style = styleOf(choice);
-  if (style && copiesEntry(style)) return keyText.copyEntries(count, name);
+/** What Enter copies in `output`; numbered styles copy reference entries (#1129). */
+export function copyLabel(output: OutputId, count: number): string {
+  const name = outputName(output);
+  if (writesEntries(output)) return keyText.copyEntries(count, name);
   return count > 1 ? keyText.copySeveralAs(count, name) : keyText.copyAs(name);
 }

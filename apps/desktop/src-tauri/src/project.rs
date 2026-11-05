@@ -74,7 +74,7 @@ struct Slot {
     reading: bool,
     context: Option<String>,
     prepared: Option<(u64, String, (u32, u32))>,
-    output: Option<crate::destination::AppOutput>,
+    output: Option<crate::output::OutputRef>,
     worker_running: bool,
     pending_read: Option<Ticket>,
 }
@@ -135,7 +135,7 @@ impl ProjectBibliography {
     pub(crate) fn capture(
         &self,
         expected: Option<(u32, u32)>,
-        output: Option<crate::destination::AppOutput>,
+        output: Option<crate::output::OutputRef>,
     ) -> Result<((u32, u32), Option<Current>), crate::library::CommandError> {
         let slot = self.lock();
         let version = (slot.generation, slot.revision);
@@ -147,7 +147,9 @@ impl ProjectBibliography {
             .context
             .as_ref()
             .is_some_and(|context| context.starts_with("unavailable:"))
-            && !(matches!(output, crate::destination::AppOutput::Key(_)) && slot.path.is_some() && slot.read.is_none())
+            && !(matches!(output.spec(), ibis_core::contract::OutputSpec::Key { .. })
+                && slot.path.is_some()
+                && slot.read.is_none())
             && expected == Some(version)
             && slot.output.is_none_or(|current| current == output);
         if !valid {
@@ -369,7 +371,7 @@ pub(crate) fn activate_context(
     app: &AppHandle,
     context: String,
     path: Option<PathBuf>,
-    output: Option<crate::destination::AppOutput>,
+    output: Option<crate::output::OutputRef>,
 ) {
     let project = app.state::<ProjectBibliography>();
     let ticket = {
@@ -634,18 +636,19 @@ mod tests {
 
     #[test]
     fn context_validation_freezes_the_output_and_version_together() {
-        use crate::destination::AppOutput;
-        use ibis_core::cite::KeyFormat;
         let slot = ProjectBibliography::default();
-        slot.lock().output = Some(AppOutput::Key(KeyFormat::Cite));
+        slot.lock().output = Some(crate::output::stored(Some("cite")));
         let (a, _) = slot
-            .capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Cite)))
+            .capture(Some(slot.version()), Some(crate::output::stored(Some("cite"))))
             .unwrap();
         slot.choose(None);
-        slot.lock().output = Some(AppOutput::Key(KeyFormat::Typst));
-        assert!(slot.capture(Some(a), Some(AppOutput::Key(KeyFormat::Cite))).is_err());
+        slot.lock().output = Some(crate::output::stored(Some("typst")));
         assert!(
-            slot.capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Cite)))
+            slot.capture(Some(a), Some(crate::output::stored(Some("cite"))))
+                .is_err()
+        );
+        assert!(
+            slot.capture(Some(slot.version()), Some(crate::output::stored(Some("cite"))))
                 .is_err()
         );
         assert!(slot.bind_preview(1, "old-format", a).is_err());
@@ -654,7 +657,7 @@ mod tests {
                 .is_err()
         );
         assert!(
-            slot.capture(Some(slot.version()), Some(AppOutput::Key(KeyFormat::Typst)))
+            slot.capture(Some(slot.version()), Some(crate::output::stored(Some("typst"))))
                 .is_ok()
         );
     }
@@ -673,20 +676,15 @@ mod tests {
         let (_dir, path) = written("paper.bib", A);
         let slot = ProjectBibliography::default();
         let ticket = slot.choose(Some(path)).unwrap();
-        let output = Some(crate::destination::AppOutput::Key(ibis_core::cite::KeyFormat::Pandoc));
+        let output = Some(crate::output::stored(Some("pandoc")));
         assert!(
             slot.capture(None, output).is_err(),
             "an unowned request cannot prepare a citation"
         );
         assert!(slot.capture(Some(slot.version()), output).is_err());
         assert!(
-            slot.capture(
-                Some(slot.version()),
-                Some(crate::destination::AppOutput::Style(
-                    ibis_core::settings::CitationStyle::Apa
-                ))
-            )
-            .is_ok(),
+            slot.capture(Some(slot.version()), Some(crate::output::stored(Some("apa"))))
+                .is_ok(),
             "formatted text does not check bibliography keys"
         );
         assert!(
@@ -753,14 +751,7 @@ mod tests {
                     .collect()
             })
             .unwrap_or_default();
-        let preview = file
-            .preview(
-                file.reserve_preview(),
-                selections,
-                ibis_core::cite::KeyFormat::Pandoc,
-                None,
-            )
-            .unwrap();
+        let preview = file.preview(file.reserve_preview(), selections, "pandoc").unwrap();
         let mut warnings = file
             .prepared_project_warnings(&preview.ticket, &preview.content_hash, Some(&current))
             .unwrap();
@@ -778,8 +769,6 @@ mod tests {
     #[test]
     fn copying_reports_what_the_preview_warned_about_for_key_outputs_only() {
         use crate::library::engine_file::FileLibrary;
-        use ibis_core::cite::KeyFormat;
-        use ibis_core::settings::CitationStyle;
         use ibis_engine::Cancellation;
         let (_library_dir, library) = written(
             "refs.bib",
@@ -798,13 +787,13 @@ mod tests {
             .search(&query, 10, None, &Cancellation::default())
             .unwrap_or_else(|error| panic!("{error}"));
         let rows = serde_json::to_value(&reply).unwrap_or_else(|error| panic!("{error}"));
-        let copied = |style: Option<CitationStyle>| {
+        let copied = |style: Option<&str>| {
             let selection = serde_json::from_value(serde_json::json!({
                 "id": rows["results"][0]["id"], "cite": rows["results"][0]["cite"], "locator": null
             }))
             .unwrap_or_else(|error| panic!("{error}"));
             let preview = file
-                .preview(file.reserve_preview(), vec![selection], KeyFormat::Pandoc, style)
+                .preview(file.reserve_preview(), vec![selection], style.unwrap_or("pandoc"))
                 .unwrap_or_else(|_| panic!("a preview"));
             let mut copied = file
                 .copy(&preview.ticket, &preview.content_hash, |_| Ok(()))
@@ -816,7 +805,7 @@ mod tests {
             copied.warnings
         };
         assert_eq!(copied(None), ["gone2026 is missing from thesis.bib."]);
-        assert_eq!(copied(Some(CitationStyle::Apa)), Vec::<String>::new());
+        assert_eq!(copied(Some("apa")), Vec::<String>::new());
     }
 
     /// One picker copy on the mock app, as `copy_file_citation` makes it with
@@ -886,8 +875,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
             let preview = tauri::async_runtime::block_on(crate::copy::preview_file_citation(
                 vec![selection],
-                ibis_core::cite::KeyFormat::Pandoc,
-                None,
+                "pandoc".into(),
                 String::new(),
                 crate::library::PreviewIntent {
                     page: 1,

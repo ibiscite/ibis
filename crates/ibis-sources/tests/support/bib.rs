@@ -2,8 +2,6 @@
 //! file loader and read the CSL meaning of the records it publishes.
 #![allow(dead_code)]
 
-use std::collections::BTreeMap;
-
 use ibis_core::contract::{LibraryObject, Record};
 pub use ibis_core::model::strip_markup;
 use ibis_sources::{LoadedLibrary, SourceWarning, WarningCode};
@@ -53,7 +51,7 @@ pub fn record<'a>(loaded: &'a LoadedLibrary, key: &str) -> &'a Record {
     find(loaded, key).unwrap_or_else(|| panic!("`{key}` not loaded; warnings: {:?}", loaded.warnings))
 }
 
-pub fn csl<'a>(loaded: &'a LoadedLibrary, key: &str) -> &'a BTreeMap<String, Value> {
+pub fn csl<'a>(loaded: &'a LoadedLibrary, key: &str) -> &'a ibis_core::contract::Csl {
     &record(loaded, key).csl
 }
 

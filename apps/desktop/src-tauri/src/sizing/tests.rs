@@ -152,7 +152,6 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
                 accent: Some(Accent::Ibis),
                 ..Default::default()
             },
-            None,
             preference_revision(app.state::<SettingsFile>()).unwrap_or_else(|error| panic!("{error}")),
             app.state::<SettingsFile>(),
             app.handle().clone(),
@@ -163,7 +162,6 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
                 larger_text: Some(true),
                 ..Default::default()
             },
-            None,
             preference_revision(app.state::<SettingsFile>()).unwrap_or_else(|error| panic!("{error}")),
             app.state::<SettingsFile>(),
             app.handle().clone(),
@@ -220,7 +218,6 @@ fn sizing_preferences_unissued_revision_cannot_change_the_frame_or_settings() {
                 larger_text: Some(true),
                 ..Default::default()
             },
-            None,
             revision,
             app.state::<SettingsFile>(),
             app.handle().clone(),
@@ -236,7 +233,6 @@ fn sizing_preferences_unissued_revision_cannot_change_the_frame_or_settings() {
             larger_text: Some(true),
             ..Default::default()
         },
-        None,
         issued,
         app.state::<SettingsFile>(),
         app.handle().clone(),

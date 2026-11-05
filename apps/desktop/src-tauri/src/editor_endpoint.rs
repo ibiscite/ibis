@@ -45,7 +45,8 @@ pub(crate) struct EditorRequest {
     pub(crate) output: OutputSpec,
     pub(crate) form: CitationForm,
     pub(crate) clipboard: bool,
-    pub(crate) label: &'static str,
+    /// The output's one name from the engine's list; a style outside it is its id.
+    pub(crate) label: String,
 }
 
 /// One request at a time. An answer counts only for the request it names.
@@ -56,6 +57,10 @@ pub(crate) struct Pending {
 }
 
 impl Pending {
+    /// Editor requests have no captured application destination.
+    pub(crate) fn app<T>(&self, captured: Option<T>) -> Option<T> {
+        self.current().is_none().then_some(captured).flatten()
+    }
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<(EditorRequest, SyncSender<Option<String>>)>> {
         self.active.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -70,18 +75,15 @@ impl Pending {
         retire();
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let (send, receive) = mpsc::sync_channel(1);
-        // Numeric styles write whole entries, as the picker does; keys are keys.
-        let form = if pick.output == cayw::CaywOutput::Style && style == "ieee" && pick.form == CitationForm::Normal {
-            CitationForm::BibliographyOnly
-        } else {
-            pick.form
-        };
+        // A numbered style writes whole entries by itself, as in the picker.
+        let output = pick.spec(style);
+        let label = ibis_engine::outputs::named(&output).map_or_else(|| style.to_owned(), |entry| entry.name.clone());
         let request = EditorRequest {
             id,
-            output: pick.spec(style),
-            form,
+            output,
+            form: pick.form,
             clipboard: pick.clipboard,
-            label: pick.label,
+            label,
         };
         *active = Some((request, send));
         Some((id, receive))
@@ -298,10 +300,8 @@ impl Host for AppHost {
             .is_ok_and(|library| library.file.is_some() && !library.opening)
     }
     fn style(&self) -> String {
-        let chosen = settings::load(&self.0.state::<SettingsFile>().path)
-            .settings
-            .citation_style;
-        crate::library::engine_file::style_id(chosen.unwrap_or(settings::CitationStyle::Apa)).to_owned()
+        let saved = settings::load(&self.0.state::<SettingsFile>().path).settings.output;
+        crate::output::default_style(crate::output::stored(saved.as_deref())).to_owned()
     }
     fn changed(&self) {
         report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);
@@ -498,7 +498,7 @@ pub(crate) struct EditorWaiting {
 pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
     pending.current().map(|request| EditorWaiting {
         request: request.id as u32,
-        format: request.label.to_owned(),
+        format: request.label,
     })
 }
 
@@ -623,7 +623,8 @@ mod tests {
         let fake = Fake::default();
         *fake.then.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(|pending: &Pending| {
             let request = pending.current().unwrap_or_else(|| panic!("a request"));
-            assert_eq!(request.label, "Pandoc");
+            // Better BibTeX's default Pandoc, by its one name in the engine's list.
+            assert_eq!(request.label, "Pandoc without brackets");
             assert!(pending.answer(request.id, "@taylor2026", || ()));
         }));
         let (_listening, port, host) = server(fake);
@@ -749,20 +750,79 @@ mod tests {
     }
 
     #[test]
-    fn a_formatted_request_takes_the_persons_style_and_a_numeric_one_its_entry() {
+    fn a_formatted_request_takes_the_persons_style_and_its_one_name() {
         let pending = Pending::default();
         let pick = CaywPick {
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Formatted citation",
         };
         pending
             .begin(&pick, "ieee", || {})
             .unwrap_or_else(|| panic!("a request"));
         let request = pending.current().unwrap_or_else(|| panic!("a request"));
         assert_eq!(request.output, OutputSpec::Csl { style: "ieee".into() });
-        assert_eq!(request.form, CitationForm::BibliographyOnly);
+        // The engine writes a numbered style's entry itself; the request keeps its form.
+        assert_eq!(request.form, CitationForm::Normal);
+        assert_eq!(request.label, "IEEE");
+    }
+
+    #[test]
+    fn editor_picker_never_shows_the_foreground_apps_recent_citations() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let history = ibis_engine::recents::SessionReferences::default();
+        *history.lock() = ibis_engine::recents::List::open(dir.path().join("recents.json"), true);
+        let id = ibis_core::contract::ItemRef {
+            library: ibis_core::contract::LibraryId::new("invented")?,
+            key: "a".into(),
+        };
+        let epoch = history.lock().epoch();
+        history.record(&epoch, Some("invented.writer"), &[id]);
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: false,
+        };
+        let (_id, _answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        let destination = pending.app(Some("invented.writer"));
+        assert!(
+            history.lock().ids(destination).is_empty(),
+            "the editor must not display another app's citations"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn editor_clipboard_copy_does_not_appear_in_the_foreground_apps_history() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let history = ibis_engine::recents::SessionReferences::default();
+        *history.lock() = ibis_engine::recents::List::open(dir.path().join("recents.json"), true);
+        let id = ibis_core::contract::ItemRef {
+            library: ibis_core::contract::LibraryId::new("invented")?,
+            key: "editor-citation".into(),
+        };
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: true,
+        };
+        let (request, answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        // Recording uses the destination captured before answering clears Pending.
+        let destination = pending.app(Some("invented.writer"));
+        assert!(pending.answer(request, "Invented citation", || {}));
+        assert_eq!(answer.recv()?, Some("Invented citation".into()));
+        let epoch = history.lock().epoch();
+        history.record(&epoch, destination, &[id]);
+        history.flush()?;
+        assert!(
+            history.lock().ids(Some("invented.writer")).is_empty(),
+            "returning to the foreground app must not show this editor copy"
+        );
+        assert!(!ibis_engine::recents::List::open(dir.path().join("recents.json"), true).has_history());
+        Ok(())
     }
 
     #[test]
@@ -775,7 +835,6 @@ mod tests {
             }),
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Pandoc",
         };
         pending
             .begin(&pick, "ieee", || {})
@@ -793,7 +852,6 @@ mod tests {
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Formatted citation",
         };
         let mut retired = 0;
         let (id, _answer) = pending

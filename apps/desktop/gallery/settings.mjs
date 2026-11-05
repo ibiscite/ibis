@@ -11,7 +11,7 @@ for (const theme of ["light", "dark"]) for (const panel of ["general", "look", "
         Object.defineProperty(navigator, "platform", { value: "MacIntel" });
         // Persist across a real reload to exercise close/reopen without native I/O.
         const read = (key, fallback) => JSON.parse(sessionStorage.getItem(key) || "null") ?? fallback;
-        let preferences = read("preferences", { citation_style: null, density: "comfortable", larger_text: larger, paste: true, appearance: "system", accent: "system" });
+        let preferences = read("preferences", { density: "comfortable", larger_text: larger, paste: true, appearance: "system", accent: "system" });
         let shortcut = read("shortcut", { shortcut: "Alt+J", registered: true, error: null });
         let callbackId = 0, revision = 0, shortcutAttempts = 0;
         window.__TAURI_INTERNALS__ = {
@@ -24,7 +24,7 @@ for (const theme of ["light", "dark"]) for (const panel of ["general", "look", "
             if (command === "set_picker_preferences") {
               preferences = { ...preferences, ...args.preferences };
               sessionStorage.setItem("preferences", JSON.stringify(preferences));
-              return { preferences, copy_format: "pandoc" };
+              return { preferences };
             }
             if (command === "login_item") return { name: "Synthetic App", enabled: false, problem: "refused" };
             if (command === "paste_permission") return { pastes: true, needed: true, granted, list: "Synthetic List" };

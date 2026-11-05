@@ -49,7 +49,7 @@ test("switching projects with equal citation text needs a fresh preview and igno
   const previewFileCitation = vi.fn<Preview>(() => new Promise((resolve) => pending.push(resolve)));
   const initial = options({ previewFileCitation, projectContext: [1, 0] });
   const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
-  const firstSignal = previewFileCitation.mock.calls[0]?.[4];
+  const firstSignal = previewFileCitation.mock.calls[0]?.[3];
   rerender({ ...initial, projectContext: [2, 0] });
   expect(firstSignal?.aborted).toBe(true);
   expect(result.current.shown).toBeNull();
@@ -57,7 +57,7 @@ test("switching projects with equal citation text needs a fresh preview and igno
   expect(result.current.shown).toBeNull();
   await act(async () => pending[1]?.(preview("new project")));
   expect(result.current.shown).toMatchObject({ text: "new project" });
-  expect(previewFileCitation.mock.calls[1]?.[5]).toEqual([2, 0]);
+  expect(previewFileCitation.mock.calls[1]?.[4]).toEqual([2, 0]);
 });
 
 test("an empty reconciliation cannot retire a settled ticket when no other preview ran", async () => {
@@ -79,7 +79,7 @@ test("reopening replaces unfinished preview work but preserves a settled canonic
   const initial = options({ previewFileCitation, sessionId: 0 });
   const { result, rerender, unmount } = renderHook(useCitationOutput, { initialProps: initial });
   rerender({ ...initial, sessionId: 1 });
-  expect(previewFileCitation.mock.calls[0]?.[4]?.aborted).toBe(true);
+  expect(previewFileCitation.mock.calls[0]?.[3]?.aborted).toBe(true);
   await act(async () => { pending[1]!(preview("new session citation")); });
   const prepared = result.current.shown;
   await act(async () => { pending[0]!(preview("old session citation")); });
@@ -110,7 +110,7 @@ test("returning from B to A waits for a fresh ticket instead of reusing A's reti
 
 test("replacing, clearing and unmounting a selection aborts obsolete engine previews", () => {
   const signals: AbortSignal[] = [];
-  const previewFileCitation = vi.fn<Preview>((_items, _format, _style, _revision, signal) => {
+  const previewFileCitation = vi.fn<Preview>((_items, _output, _revision, signal) => {
     if (signal) signals.push(signal);
     return new Promise(() => {});
   });
@@ -140,18 +140,18 @@ test.each([
   const refreshSnapshot = vi.fn();
   const initial = options({ chosen: [chosen], previewFileCitation, refreshSnapshot });
   const { result, rerender, unmount } = renderHook(useCitationOutput, { initialProps: initial });
-  const oldSignal = previewFileCitation.mock.calls[0]?.[4];
+  const oldSignal = previewFileCitation.mock.calls[0]?.[3];
   expect(oldSignal).toBeInstanceOf(AbortSignal);
   expect(oldSignal?.aborted).toBe(false);
 
   rerender({ ...initial, chosen: [{ ...chosen, ...details }] });
   expect(oldSignal?.aborted).toBe(true);
   expect(result.current.shown).toBeNull();
-  const signal = previewFileCitation.mock.calls[1]?.[4];
+  const signal = previewFileCitation.mock.calls[1]?.[3];
   expect(signal).toBeInstanceOf(AbortSignal);
   expect(signal?.aborted).toBe(false);
   expect(previewFileCitation).toHaveBeenLastCalledWith(
-    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", null, "1", signal, undefined,
+    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", "1", signal, undefined,
   );
 
   await act(async () => { pending[1]?.(preview("edited citation")); });
@@ -168,7 +168,7 @@ test("the same page text in the editor retires its canonical receipt and uses th
   const canonical: CitationReference = { ...reference(), locator: { label: "page", value: "S.12" } };
   const initial = options({ chosen: [canonical], previewFileCitation });
   const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
-  const oldSignal = previewFileCitation.mock.calls[0]?.[4];
+  const oldSignal = previewFileCitation.mock.calls[0]?.[3];
   expect(previewFileCitation.mock.calls[0]?.[0]).toEqual([
     { id: canonical.id, cite: canonical.cite, locator: { label: "page", value: "S.12" } },
   ]);
@@ -183,7 +183,7 @@ test("the same page text in the editor retires its canonical receipt and uses th
   ]);
   // Applying the captured locator again must restore canonical interpretation.
   rerender(initial);
-  expect(previewFileCitation.mock.calls[1]?.[4]?.aborted).toBe(true);
+  expect(previewFileCitation.mock.calls[1]?.[3]?.aborted).toBe(true);
   await act(async () => { pending[2]?.(preview("canonical S.12")); });
   await act(async () => { pending[1]?.(preview("editor page 12")); });
   expect(result.current.shown).toMatchObject({ text: "canonical S.12" });

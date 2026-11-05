@@ -2,6 +2,8 @@
 //! Existing readers and front ends migrate in their own rebuild issues.
 
 pub mod citation;
+mod csl;
+pub use csl::{CompactName, Csl, CslRef};
 pub mod envelope;
 pub mod model;
 

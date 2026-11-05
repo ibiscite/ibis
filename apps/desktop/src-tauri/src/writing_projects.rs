@@ -12,7 +12,7 @@ use ibis_core::settings::{self, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::destination::AppOutput;
+use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
 const CHANGED: &str = "The writing project changed. Open the project menu again.";
@@ -26,7 +26,8 @@ pub(crate) struct Runtime(Mutex<Tasks>);
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
 pub(crate) struct WritingProjectUpdate {
     pub(crate) name: String,
-    pub(crate) output: Option<AppOutput>,
+    #[specta(type = Option<String>)]
+    pub(crate) output: Option<OutputRef>,
     pub(crate) bibliography: Option<String>,
     pub(crate) revision: String,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
@@ -39,7 +40,8 @@ pub(crate) struct WritingProjectView {
     pub(crate) id: String,
     pub(crate) name: String,
     /// A CLI project can name outputs not yet available in the picker.
-    pub(crate) output: Option<AppOutput>,
+    #[specta(type = Option<String>)]
+    pub(crate) output: Option<OutputRef>,
     pub(crate) bibliography: Option<String>,
     pub(crate) revision: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -69,7 +71,8 @@ pub(crate) struct WritingProjectsView {
 pub(crate) enum WritingProjectEdit {
     Create {
         name: String,
-        output: AppOutput,
+        #[specta(type = String)]
+        output: OutputRef,
     },
     Rename {
         id: String,
@@ -86,7 +89,8 @@ pub(crate) enum WritingProjectEdit {
     Output {
         id: String,
         revision: String,
-        output: AppOutput,
+        #[specta(type = String)]
+        output: OutputRef,
     },
     Apply {
         id: String,
@@ -201,7 +205,7 @@ fn saved_view(project: &WritingProject) -> WritingProjectView {
     WritingProjectView {
         id: project.id.clone(),
         name: project.name.clone(),
-        output: AppOutput::from_project_spec(&project.output).ok(),
+        output: crate::output::of_project(&project.output).ok(),
         bibliography: project.bibliography.as_deref().map(ibis_engine::project_name),
         revision: project.revision(),
         pending: None,
@@ -213,7 +217,7 @@ fn saved_view(project: &WritingProject) -> WritingProjectView {
 fn update_view(project: &WritingProject, applied: Option<&WritingProject>) -> WritingProjectUpdate {
     WritingProjectUpdate {
         name: project.name.clone(),
-        output: AppOutput::from_project_spec(&project.output).ok(),
+        output: crate::output::of_project(&project.output).ok(),
         bibliography: project.bibliography.as_deref().map(ibis_engine::project_name),
         revision: project.revision(),
         bibliography_changed: applied.is_some_and(|applied| applied.bibliography != project.bibliography),
@@ -272,7 +276,7 @@ impl Task {
         Ok(Some(ActiveProject {
             id: project.id.clone(),
             name: project.name.clone(),
-            output: AppOutput::from_project_spec(&project.output)?,
+            output: crate::output::of_project(&project.output)?,
             bibliography: project.bibliography.clone(),
             revision: project.revision(),
             context_key: format!("task:{}:{}", target.binding.as_deref().unwrap_or("session"), self.epoch),
@@ -360,7 +364,7 @@ fn view_for(settings: &Settings, target: &Target, session: Option<&str>) -> Writ
 pub(crate) struct ActiveProject {
     pub(crate) id: String,
     pub(crate) name: String,
-    pub(crate) output: AppOutput,
+    pub(crate) output: OutputRef,
     pub(crate) bibliography: Option<PathBuf>,
     pub(crate) revision: String,
     pub(crate) context_key: String,
@@ -394,7 +398,7 @@ fn active_for(settings: &Settings, target: &Target, session: Option<&str>) -> Re
     Ok(Some(ActiveProject {
         id: project.id.clone(),
         name: project.name.clone(),
-        output: AppOutput::from_project_spec(&project.output)?,
+        output: crate::output::of_project(&project.output)?,
         bibliography: project.bibliography.clone(),
         revision: revision.clone(),
         context_key: format!(
@@ -413,7 +417,7 @@ fn checked<'a>(settings: &'a Settings, id: &str, revision: &str) -> Result<&'a W
     if project.revision() != revision {
         return Err(ChangeError::Conflict(format!(
             "The writing project changed elsewhere. Saved choices: {} · {}. Apply Updates before saving your changes.",
-            output_label(AppOutput::from_project_spec(&project.output).ok()),
+            output_label(crate::output::of_project(&project.output).ok()),
             project
                 .bibliography
                 .as_deref()
@@ -437,13 +441,13 @@ fn edit(
     let mut session = session.map(str::to_owned);
     match action {
         WritingProjectEdit::Create { name, output } => {
-            let project = projects::create(settings, name.clone(), output.project_spec(), None)?;
+            let project = projects::create(settings, name.clone(), output.spec().clone(), None)?;
             select(settings, target, &mut session, Some(project.id));
         }
         WritingProjectEdit::Select { id } => {
             if let Some(id) = id {
                 let project = projects::find(settings, id)?;
-                AppOutput::from_project_spec(&project.output).map_err(|_| ChangeError::Unsupported)?;
+                crate::output::of_project(&project.output).map_err(|_| ChangeError::Unsupported)?;
             }
             select(settings, target, &mut session, id.clone());
         }
@@ -460,34 +464,20 @@ fn edit(
         }
         WritingProjectEdit::Output { id, revision, output } => {
             let bibliography = checked(settings, id, revision)?.bibliography.clone();
-            projects::update(settings, id, output.project_spec(), bibliography)?;
+            projects::update(settings, id, output.spec().clone(), bibliography)?;
         }
         WritingProjectEdit::Apply { id, revision } => {
             let project = checked(settings, id, revision)?;
-            AppOutput::from_project_spec(&project.output).map_err(|_| ChangeError::Unsupported)?;
+            crate::output::of_project(&project.output).map_err(|_| ChangeError::Unsupported)?;
         }
     }
     Ok(session)
 }
 
-fn output_label(output: Option<AppOutput>) -> &'static str {
-    use ibis_core::cite::KeyFormat;
-    use ibis_core::settings::CitationStyle;
-    match output {
-        Some(AppOutput::Key(KeyFormat::Pandoc)) => "Pandoc keys",
-        Some(AppOutput::Key(KeyFormat::Autocite)) => "BibLaTeX autocite",
-        Some(AppOutput::Key(KeyFormat::Parencite)) => "BibLaTeX parencite",
-        Some(AppOutput::Key(KeyFormat::Textcite)) => "BibLaTeX textcite",
-        Some(AppOutput::Key(KeyFormat::Cite)) => "LaTeX keys",
-        Some(AppOutput::Key(KeyFormat::Typst)) => "Typst keys",
-        Some(AppOutput::Key(KeyFormat::Keys)) => "citation keys",
-        Some(AppOutput::Style(CitationStyle::Apa)) => "APA",
-        Some(AppOutput::Style(CitationStyle::ChicagoAuthorDate)) => "Chicago",
-        Some(AppOutput::Style(CitationStyle::HarvardCiteThemRight)) => "Harvard",
-        Some(AppOutput::Style(CitationStyle::Ieee)) => "IEEE",
-        Some(AppOutput::Style(CitationStyle::ModernLanguageAssociation)) => "MLA",
-        None => "an output available in the command line",
-    }
+fn output_label(output: Option<OutputRef>) -> &'static str {
+    output.map_or("an output available in the command line", |output| {
+        output.info().name.as_str()
+    })
 }
 
 fn select(settings: &mut Settings, target: &Target, session: &mut Option<String>, id: Option<String>) {
@@ -912,10 +902,9 @@ pub(crate) fn set_bibliography(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::cite::KeyFormat;
 
-    fn output() -> AppOutput {
-        AppOutput::Key(KeyFormat::Pandoc)
+    fn output() -> OutputRef {
+        crate::output::stored(Some("pandoc"))
     }
     fn invented(name: &str) -> PathBuf {
         std::env::temp_dir().join("ibis-invented-projects").join(name)
@@ -952,7 +941,7 @@ mod tests {
         projects::update(
             &mut settings,
             &first,
-            output().project_spec(),
+            output().spec().clone(),
             Some(invented("thesis.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -967,7 +956,7 @@ mod tests {
             &WritingProjectEdit::Output {
                 id: second.clone(),
                 revision: second_revision,
-                output: AppOutput::Style(ibis_core::settings::CitationStyle::Apa),
+                output: crate::output::stored(Some("apa")),
             },
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -977,7 +966,7 @@ mod tests {
                 .unwrap_or_else(|error| panic!("{error}"))
                 .unwrap_or_else(|| panic!("an active project"))
                 .output,
-            AppOutput::Style(ibis_core::settings::CitationStyle::Apa)
+            crate::output::stored(Some("apa"))
         );
         edit(
             &mut settings,
@@ -1105,7 +1094,7 @@ mod tests {
             WritingProjectEdit::Output {
                 id: id.clone(),
                 revision,
-                output: AppOutput::Key(KeyFormat::Cite),
+                output: crate::output::stored(Some("cite")),
             },
         ] {
             assert!(edit(&mut settings, &target, None, &action).is_err());
@@ -1165,7 +1154,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            output().project_spec(),
+            output().spec().clone(),
             Some(invented("private-folder/refs.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1183,7 +1172,7 @@ mod tests {
         let target = known("example.editor", 1);
         let (settings, ()) = settings::transaction(&path, |settings| {
             let id = create(settings, &target, "Thesis");
-            projects::update(settings, &id, output().project_spec(), Some(invented("thesis.bib")))?;
+            projects::update(settings, &id, output().spec().clone(), Some(invented("thesis.bib")))?;
             Ok::<_, ChangeError>(())
         })
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1220,16 +1209,15 @@ mod tests {
 
     #[test]
     fn unsupported_output_is_visible_in_the_manager_and_refused_before_selecting() {
-        use ibis_core::contract::citation::{KeySyntax, OutputSpec};
+        use ibis_core::contract::citation::OutputSpec;
         let mut settings = Settings::default();
         let target = known("example.editor", 1);
         let existing = create(&mut settings, &target, "Thesis");
         let other = projects::create(
             &mut settings,
             "Other workflow".into(),
-            OutputSpec::Key {
-                syntax: KeySyntax::OrgCite,
-                command: None,
+            OutputSpec::Csl {
+                style: "invented-custom-style".into(),
             },
             None,
         )
@@ -1309,29 +1297,9 @@ mod tests {
 
     #[test]
     fn every_picker_output_round_trips_through_the_shared_project_contract() {
-        use ibis_core::settings::CitationStyle;
-        let formats = [
-            KeyFormat::Pandoc,
-            KeyFormat::Autocite,
-            KeyFormat::Parencite,
-            KeyFormat::Textcite,
-            KeyFormat::Cite,
-            KeyFormat::Typst,
-            KeyFormat::Keys,
-        ];
-        let styles = [
-            CitationStyle::Apa,
-            CitationStyle::ChicagoAuthorDate,
-            CitationStyle::HarvardCiteThemRight,
-            CitationStyle::Ieee,
-            CitationStyle::ModernLanguageAssociation,
-        ];
-        for output in formats
-            .into_iter()
-            .map(AppOutput::Key)
-            .chain(styles.into_iter().map(AppOutput::Style))
-        {
-            assert_eq!(AppOutput::from_project_spec(&output.project_spec()), Ok(output));
+        for listed in ibis_engine::outputs::outputs() {
+            let output = crate::output::stored(Some(&listed.id));
+            assert_eq!(crate::output::of_project(&output.spec().clone()), Ok(output));
         }
     }
 
@@ -1349,12 +1317,8 @@ mod tests {
                 syntax: KeySyntax::Biblatex,
                 command: Some("invented-command".into()),
             },
-            OutputSpec::Key {
-                syntax: KeySyntax::OrgCite,
-                command: None,
-            },
         ] {
-            assert!(AppOutput::from_project_spec(&output).is_err());
+            assert!(crate::output::of_project(&output).is_err());
         }
     }
 
@@ -1409,7 +1373,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            AppOutput::Style(ibis_core::settings::CitationStyle::Apa).project_spec(),
+            crate::output::stored(Some("apa")).spec().clone(),
             Some(invented("revised.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1434,10 +1398,7 @@ mod tests {
             .unwrap_or_else(|error| panic!("{error}"));
         assert_ne!(task.epoch, epoch);
         let view = task.view().unwrap_or_else(|| panic!("task settings"));
-        assert_eq!(
-            view.output,
-            Some(AppOutput::Style(ibis_core::settings::CitationStyle::Apa))
-        );
+        assert_eq!(view.output, Some(crate::output::stored(Some("apa"))));
         assert_eq!(view.bibliography.as_deref(), Some("revised.bib"));
         assert!(view.pending.is_none());
     }
@@ -1469,7 +1430,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            AppOutput::Key(KeyFormat::Cite).project_spec(),
+            crate::output::stored(Some("cite")).spec().clone(),
             Some(invented("paper.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1492,7 +1453,7 @@ mod tests {
         projects::update(
             &mut settings,
             &first,
-            output().project_spec(),
+            output().spec().clone(),
             Some(invented("thesis.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1652,7 +1613,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            AppOutput::Style(ibis_core::settings::CitationStyle::Apa).project_spec(),
+            crate::output::stored(Some("apa")).spec().clone(),
             Some(invented("revised.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1662,7 +1623,7 @@ mod tests {
         let action = WritingProjectEdit::Output {
             id,
             revision,
-            output: AppOutput::Key(KeyFormat::Cite),
+            output: crate::output::stored(Some("cite")),
         };
         let effective = effective_action(&settings, task, &action);
         let error = edit(&mut settings, &target, None, &effective)
@@ -1694,7 +1655,7 @@ mod tests {
                 .as_ref()
                 .unwrap_or_else(|| panic!("a project"))
                 .revision(),
-            output: AppOutput::Key(KeyFormat::Cite),
+            output: crate::output::stored(Some("cite")),
         };
         projects::rename(&mut settings, &id, "Final thesis".into()).unwrap_or_else(|error| panic!("{error}"));
         let task = runtime
@@ -1714,7 +1675,7 @@ mod tests {
         assert_ne!(task.epoch, before.epoch);
         assert_eq!(
             task.view().unwrap_or_else(|| panic!("task settings")).output,
-            Some(AppOutput::Key(KeyFormat::Cite))
+            Some(crate::output::stored(Some("cite")))
         );
         assert_eq!(
             task.view().unwrap_or_else(|| panic!("task settings")).name,
@@ -1778,7 +1739,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            output().project_spec(),
+            output().spec().clone(),
             Some(invented("first-private-folder/refs.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));
@@ -1789,7 +1750,7 @@ mod tests {
         projects::update(
             &mut settings,
             &id,
-            output().project_spec(),
+            output().spec().clone(),
             Some(invented("second-private-folder/refs.bib")),
         )
         .unwrap_or_else(|error| panic!("{error}"));

@@ -6,7 +6,8 @@ import type { usePointerSelection } from "../../pointerSelection";
 import type { usePickerSession } from "./usePickerSession";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { useOperations } from "./useOperations";
-import { choiceKey, idKey, type CitationReference, type Choice } from "./choice";
+import { choiceKey, idKey, type CitationReference } from "./choice";
+import type { OutputId } from "../../format/outputs";
 
 export function useCitationRows({
   api, pickerSession, searchState, chosenKey, chosen, showCitations, format, snapshotRevision, focusHome,
@@ -18,7 +19,7 @@ export function useCitationRows({
   chosenKey: string;
   chosen: CitationReference[];
   showCitations: boolean;
-  format: Choice;
+  format: OutputId;
   snapshotRevision: string | undefined;
   focusHome: () => void;
   pointer: ReturnType<typeof usePointerSelection>;

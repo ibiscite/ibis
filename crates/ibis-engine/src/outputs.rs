@@ -37,8 +37,12 @@ pub struct OutputInfo {
     pub forms: Vec<CitationForm>,
     /// It writes each reference's whole record, notes included, not a
     /// citation; agents are not offered it.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub exports_records: bool,
+    /// It writes reference entries, never in-text citations: a numbered
+    /// style cannot number one citation alone.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub entries: bool,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -94,7 +98,7 @@ const STYLE_EXAMPLES: [(&str, &str); 13] = [
     ),
 ];
 
-static OUTPUTS: LazyLock<Result<Vec<OutputInfo>, EngineError>> = LazyLock::new(|| {
+static OUTPUTS: LazyLock<Vec<OutputInfo>> = LazyLock::new(|| {
     let keys = CAPABILITIES.iter().map(|caps| OutputInfo {
         id: caps.id.to_owned(),
         name: caps.name.to_owned(),
@@ -103,11 +107,13 @@ static OUTPUTS: LazyLock<Result<Vec<OutputInfo>, EngineError>> = LazyLock::new(|
         output: caps.output(),
         forms: caps.citable_forms(),
         exports_records: caps.exports_records,
+        entries: false,
     });
-    let unavailable = |_| EngineError::new(ErrorCode::Internal);
-    let styles = ibis_csl::curated().map_err(unavailable)?.iter().map(|style| {
+    // A style the bundle cannot describe is left out rather than listed
+    // with forms it may not have; the key outputs never depend on it.
+    let styles = ibis_csl::curated().into_iter().flatten().filter_map(|style| {
         let id = style.id();
-        Ok(OutputInfo {
+        Some(OutputInfo {
             id: id.to_owned(),
             name: style.name().to_owned(),
             // A title that is the name again ("IEEE") adds nothing.
@@ -117,39 +123,40 @@ static OUTPUTS: LazyLock<Result<Vec<OutputInfo>, EngineError>> = LazyLock::new(|
                 .find(|(listed, _)| *listed == id)
                 .map(|(_, example)| (*example).to_owned()),
             output: OutputSpec::Csl { style: id.to_owned() },
-            forms: ibis_csl::style_forms(id).map_err(unavailable)?,
+            forms: ibis_csl::style_forms(id).ok()?,
             exports_records: false,
+            entries: ibis_csl::style_writes_entries(id).ok()?,
         })
     });
-    keys.map(Ok).chain(styles).collect()
+    keys.chain(styles).collect()
 });
 
 /// Every output, the key outputs first.
-pub fn outputs() -> Result<&'static [OutputInfo], EngineError> {
-    OUTPUTS.as_deref().map_err(|error| *error)
+pub fn outputs() -> &'static [OutputInfo] {
+    &OUTPUTS
 }
 
 /// The list as the `outputs` method returns it.
-pub fn list() -> Result<OutputsResult, EngineError> {
-    Ok(OutputsResult {
-        outputs: outputs()?.to_vec(),
+pub fn list() -> OutputsResult {
+    OutputsResult {
+        outputs: outputs().to_vec(),
         default: DEFAULT.to_owned(),
         default_style: DEFAULT_STYLE.to_owned(),
-    })
+    }
 }
 
 /// The output with this id.
 pub fn find(id: &str) -> Option<&'static OutputInfo> {
-    outputs().ok()?.iter().find(|output| output.id == id)
+    outputs().iter().find(|output| output.id == id)
 }
 
 /// The output a stored id names, or the default when it names none: an id
 /// from another version of Ibis, or typed by hand, fails closed.
-pub fn or_default(id: Option<&str>) -> Result<&'static OutputInfo, EngineError> {
-    match id.and_then(find) {
-        Some(output) => Ok(output),
-        None => find(DEFAULT).ok_or_else(|| EngineError::new(ErrorCode::Internal)),
-    }
+pub fn or_default(id: Option<&str>) -> &'static OutputInfo {
+    id.and_then(find)
+        .or_else(|| find(DEFAULT))
+        // The key outputs come first and always hold the default.
+        .unwrap_or(&outputs()[0])
 }
 
 /// The entry that writes `output`, so a front end can say its name. A style
@@ -157,7 +164,7 @@ pub fn or_default(id: Option<&str>) -> Result<&'static OutputInfo, EngineError> 
 pub fn named(output: &OutputSpec) -> Option<&'static OutputInfo> {
     let output = resolve(output).ok()?;
     let caps = ibis_core::syntax::capabilities(&output).ok();
-    outputs().ok()?.iter().find(|entry| match caps {
+    outputs().iter().find(|entry| match caps {
         Some(caps) => entry.id == caps.id,
         None => entry.output == output,
     })

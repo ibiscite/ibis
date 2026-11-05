@@ -1,15 +1,15 @@
 // The picker's saved formatting and view preferences.
 import { useCallback, useEffect, useState } from "react";
 import type * as nativeApi from "../../api";
-import type { CopyFormat, Density, PickerPreferences } from "../../api";
+import type { Density, PickerPreferences } from "../../api";
+import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../format/outputs";
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
-import { styleOf, type Choice } from "./choice";
 import type { Operation } from "./Notices";
 
-type PreferencesApi = Pick<typeof nativeApi, "copyFormat" | "pickerPreferences" | "setPickerPreferences" | "quit">;
+type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "setPickerPreferences" | "quit">;
 
 export function usePickerPreferences(
-  { copyFormat, pickerPreferences, setPickerPreferences, quit }: PreferencesApi,
+  { pickerPreferences, setPickerPreferences, quit }: PreferencesApi,
   { styles, report, perform, presentation }: {
     /** Immutable picker visibility identity; old feedback never enters a new presentation. */
     presentation: number;
@@ -24,19 +24,12 @@ export function usePickerPreferences(
   const [recentCitations, setRecentCitations] = useState<boolean | null>(null);
   const [ready, setReady] = useState(false);
   const [available, setAvailable] = useState(false);
-  const [format, setFormat] = useState<Choice>("pandoc");
+  const [format, setFormat] = useState<OutputId>(defaultOutput);
   const [density, setDensity] = useState<Density>("comfortable");
   const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
-    read: async () => {
-      const [key, saved] = await Promise.allSettled([copyFormat(), pickerPreferences()]);
-      return {
-        preferences: saved.status === "fulfilled" ? saved.value : null,
-        copy_format: key.status === "fulfilled" ? key.value : undefined,
-        formatFailed: key.status === "rejected",
-      };
-    },
+    read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),
     write: setPickerPreferences,
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
@@ -53,11 +46,10 @@ export function usePickerPreferences(
     } else if (event.type === "saved") {
       setAvailable(true);
       applyView(event.value.preferences);
-      setFormat(event.value.preferences.citation_style ? `style:${event.value.preferences.citation_style}` : event.value.copy_format);
+      setFormat(listedOutput(event.value.preferences.output) ?? defaultOutput);
     } else if (event.type === "read") {
-      const { preferences: saved, copy_format: key, formatFailed } = event.value;
+      const { preferences: saved } = event.value;
       setReady(true);
-      if (formatFailed) report("format");
       setAvailable(saved !== null);
       if (saved) applyView(saved);
       else {
@@ -65,20 +57,20 @@ export function usePickerPreferences(
         setRecentCitations(null);
         report("preferences");
       }
-      if (event.pendingStyle) return;
-      if (saved?.citation_style && styles) setFormat(`style:${saved.citation_style}`);
-      else if (key) setFormat(key);
+      if (event.pendingOutput) return;
+      // A style waits for the formatter; until then the default is what copies.
+      const savedOutput = listedOutput(saved?.output);
+      if (savedOutput && (styles || !isStyle(savedOutput))) setFormat(savedOutput);
     }
   }), [queue, styles, report, perform, applyView]);
-  const savePreferences = (change: Partial<PickerPreferences>, keyFormat: CopyFormat | null = null) => queue.change(change, keyFormat);
+  const savePreferences = (change: Partial<PickerPreferences>) => queue.change(change);
   const quitAfterSaving = async () => {
     await queue.finishSaving();
     await quit();
   };
-  const chooseFormat = (choice: Choice) => {
-    setFormat(choice);
-    const chosenStyle = styleOf(choice);
-    savePreferences({ citation_style: chosenStyle }, chosenStyle ? null : choice as CopyFormat);
+  const chooseFormat = (output: OutputId) => {
+    setFormat(output);
+    savePreferences({ output });
   };
   const changeDensity = (next: Density) => {
     if (next === density) return;
@@ -98,7 +90,7 @@ export function usePickerPreferences(
       delete document.documentElement.dataset.textSize;
     };
   }, [density, largerText]);
-  /** Reads the saved key format and preferences. The picker calls this from its
+  /** Reads the saved preferences. The picker calls this from its
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
 

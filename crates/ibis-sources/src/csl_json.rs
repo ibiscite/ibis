@@ -160,7 +160,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         result.records.push(Record {
             added_at,
             id: item,
-            csl,
+            csl: csl.into(),
             citation_keys: explicit
                 .map(|value| CitationKey {
                     value,

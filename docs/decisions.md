@@ -70,93 +70,24 @@ in [architecture](architecture.md#task-contexts-planned); visible behavior is
 in [design](design.md#source-checks-and-passage-reuse-planned). Follow-up belongs
 to #1697, #1260 and #1538, with the work order on #1300 unchanged.
 
-2026-11-04 (maintainer, planning only): unreadable project bibliographies use
-the evidence available for the selected key and work, rather than a blanket
-refusal or blanket warning:
+2026-11-05 (maintainer): an unreadable or uncertain project bibliography is a
+warning, not a gate. The citation stays available and says the file couldn't
+be checked; only a key known to name a different work is refused. The
+2026-11-04 policy of last-good bibliography copies and one-off unverified
+actions is withdrawn.
 
-- A retained, complete and coherent copy of the same selected bibliography
-  may support the match, including for a newly selected reference. Normal
-  Enter, copy and paste remain available with a clear last-checked warning
-  and time; the result never claims a current successful check.
-- Without usable evidence for the match, pause normal insertion, preserve
-  the selection and preview, and offer Retry or locating the bibliography.
-  A deliberate one-off unchecked copy or paste is available, honestly named
-  and reported as unverified. It does not bypass a known wrong-work conflict
-  or any source-identity refusal, and agents never choose it silently.
-- A newer successful read supersedes older evidence, including conflicts;
-  an older matching copy cannot hide a later detected conflict. A changed
-  project or bibliography cannot inherit the previous selection's check.
-  Absence in a retained copy is not claimed as absence in the current file.
-- Strict freshness explicitly requires a successful current check. Retry
-  recovery never triggers a delayed insertion; the person acts afresh.
+2026-11-05 (maintainer): a writing project is a `.bib` file and its format,
+nothing more. The 2026-11-04 rules for sharing project edits across apps and
+agents (Apply Updates, retained settings after a deletion, conflicting saves)
+and for optional project search defaults are withdrawn: no one has met those
+cases yet, and each added words and controls to the picker. They return only
+when people need them. Separate task contexts, the refusal of conflicting
+project keys and the last-good source snapshot above still apply.
 
-Visible behavior is specified in design.md's Source checks section. These
-rules supersede the unresolved bibliography question in the initial review.
-
-2026-11-04 (maintainer, planning only): saved project edits become available
-to every client, while ongoing tasks adopt citation-affecting changes
-deliberately:
-
-- An edit intended for the current task applies after saving, regenerates
-  and revalidates the preview, and cancels queued insertion. Saving or applying
-  settings never releases an earlier Enter.
-- A material edit from elsewhere leaves the task's project choices in place
-  and offers one persistent, nonmodal Apply Updates action. The current
-  format and bibliography stay visible. Completing one citation or hiding
-  the picker does not automatically end a writing task; an agent keeps one
-  context across its whole job. A deliberately started new task uses the
-  latest saved definition. Cosmetic renames update the label directly.
-- Applying an update keeps selected references, pages, prefixes and suffixes
-  where valid, then prepares a fresh preview and requires a fresh insertion
-  action. The already bound sources and bibliography still refresh normally;
-  pinning project choices never overrides new conflict evidence. Changing
-  which bibliography is selected is a context edit, not a content refresh.
-- Deleting a saved project elsewhere leaves the ongoing task's settings
-  available, clearly labelled as retained settings, rather than silently
-  selecting another project or defaults. Explicit source disconnection or
-  revocation stops affected work; it is not deletion of a reusable preset.
-- Failed or conflicting saves leave current task choices intact. Show what
-  another writer changed before overwriting the shared definition.
-
-The UX is in [Shared project edits](design.md#shared-project-edits-planned),
-under #1697 and #1260. Retaining task choices is not a promise to archive old
-records or styles.
-
-2026-11-04 (maintainer, planned under #1260): writing projects may optionally
-save an explicit default search scope, naming libraries or collections for new
-tasks. A project without one starts with all connected libraries. Temporary
-task filters stay local and never silently replace the saved project default.
-Existing tasks retain their applied scope under the shared-edit rules above.
-This is a later extension to decision 0031's connected-library search default;
-it does not make collection membership evidence of the document's bibliography.
-See [Project search defaults](design.md#project-search-defaults-planned).
-
-2026-11-04 (maintainer, planning only): historical reproducibility has three
-distinct actions, with no silent substitution between them:
-
-- **Copy Saved Text** recovers the text and rich-text representations actually
-  retained, clearly dated. It is a historical artifact, not current verification.
-  Exact retained text and markup do not promise identical layout in every app.
-- **Recreate the Earlier Citation** uses the old reference data, request and
-  necessary formatting inputs when available. Missing records, style/locale
-  assets or compatible rendering behavior get an honest explanation; current
-  rendering is offered as a separate new result, never called exact replay.
-- **Create Current Citation** uses current coherent reference information and
-  the task's applicable formatting choices with normal validation. Plain text
-  already pasted is left alone; a changed prepared citation needs fresh review.
-  An ongoing generation job uses consistent formatting rules and explains an
-  inability to resume with them before continuing.
-
-A receipt identifies the references, options, source checks and formatting
-versions used; it is not a backup of material that was never saved. Reusing a
-historical key in today's project still requires current key-to-work validation
-and never bypasses a known conflict. Durable preservation is a deliberate
-project export containing the relevant references, requests, rendered outputs
-and formatting inputs, not a silent archive of libraries, documents or
-attachments. Existing recents and Change Last Citation do not imply permanent
-historical storage. UX: [Historical citations](design.md#historical-citations-planned).
-Follow-up: #1538 receipts and #667/#1386 document exports and locks; no
-implementation or work-order change is authorized by this planning record.
+2026-11-05 (maintainer): the 2026-11-04 plan for historical citations (Copy
+Saved Text, Recreate the Earlier Citation, Create Current Citation) is
+withdrawn until people ask for it. Receipts (#1538) and exporting what a
+document cites (0.6) remain.
 
 ## 0004 Desktop shell (with 0012)
 
@@ -813,7 +744,7 @@ is the commit event; diagnostic old/new-key copies, previews, CLI stdout and MCP
 formatting do not count. Batch history writes occur outside the source/clipboard
 barrier and preserve successful copy order rather than disk-completion order.
 Stable and Nightly stay isolated.
-This permission does not change MCP's exclusion of notes, annotations and private links.
+This permission does not give agents notes, annotations or private links (see decision 0033).
 
 2026-11-02 (#1561): the settings file works on another computer. A bibliography
 inside the home folder is written as `~/…` with `/` between names, and read back
@@ -852,9 +783,12 @@ Selection grants no paste permission. Explicit editor and command-line requests
 keep their own output and do not change the GUI selection. Project switches
 replace format and bibliography together and retire pending copy authority;
 failed saves keep the previous context whole. Search continues across connected
-libraries by default; optional project search defaults are planned under
-decision 0028. The checked bibliography remains one read-only file, not proof about
+libraries; a project saves no search scope (2026-11-05, decision 0028). The checked bibliography remains one read-only file, not proof about
 the actual document. Implementation and acceptance scenarios: #1697.
+
+2026-11-05 (maintainer): a project is only a `.bib` file and its format, picked
+from the format menu. There is no Apply Updates step: the next citation uses the
+project as saved.
 
 2026-11-02 (maintainer): with no writing project selected, Ibis remembers a
 format per app, and the person changes it in the format menu. One default in
@@ -1111,6 +1045,12 @@ Terms and Directory Policy and submitting the Ibis plugin with its two disclosed
 policy holds (external command and name similarity). Submitted for review, with
 scheduled checks and manual publication. Temporary client installations and
 marketplaces used for validation are removed after testing.
+
+2026-11-05 (maintainer): agents may read Zotero highlights, notes and annotation
+comments through `ibis` and `ibis mcp` only after the person turns this on for a
+library in the app. It is off by default, can be turned off at any time and
+never includes private links. Without it, agents get references and citations
+only. This replaces the earlier exclusion of notes and annotations from MCP.
 
 ## 0034 Outside input is data; only the maintainer's own work auto-merges
 

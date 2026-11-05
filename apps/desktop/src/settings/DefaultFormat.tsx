@@ -1,27 +1,27 @@
 import { useRef } from "react";
-import type { CitationStyle, KeyFormat, PickerPreferences } from "../bindings";
+import type { PickerPreferences } from "../bindings";
+import { defaultOutput, keyOutputs, listedOutput, outputName, styleOutputs } from "../format/outputs";
 import { useInterfaceMessages } from "../i18n";
 import { ToolbarMenu } from "../ui/ToolbarMenu";
 
-/** The same Ibis popup, checks, filtering and keyboard behaviour as the picker. */
+/** The same Ibis popup, checks, filtering and keyboard behaviour as the picker,
+ * listing the engine's outputs by their one name. */
 export function DefaultFormat({ preferences, change }: {
   preferences: PickerPreferences;
-  change: (patch: Partial<PickerPreferences>, key?: KeyFormat | null) => void;
+  change: (patch: Partial<PickerPreferences>) => void;
 }) {
   const { text } = useInterfaceMessages();
   const button = useRef<HTMLButtonElement>(null);
   const sections = [
-    { id: "default-key-formats", label: text("citations-key-formats"), items: (["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys"] as const)
-      .map((id) => ({ id, label: text(`citations-format-${id}`) })) },
-    { id: "default-citation-styles", label: text("citations-style-formats"), items: (["apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"] as const)
-      .map((style) => ({ id: `style:${style}`, label: text(`citations-format-${style}`) })) },
+    { id: "default-key-formats", label: text("citations-key-formats"), items: keyOutputs.map((output) => ({ id: output.id, label: output.name })) },
+    { id: "default-citation-styles", label: text("citations-style-formats"), items: styleOutputs
+      .map((output) => ({ id: output.id, label: output.name, detail: output.description ?? undefined })) },
   ];
-  const value = preferences.citation_style ? `style:${preferences.citation_style}` : preferences.copy_format ?? "pandoc";
+  const value = listedOutput(preferences.output) ?? defaultOutput;
   return <ToolbarMenu buttonRef={button} returnFocusRef={button} label={text("citations-default")}
-    value={sections.flatMap((section) => section.items).find((item) => item.id === value)!.label}
-    selectedKey={value} sections={sections} filterLabel={text("citations-filter-formats")}
+    value={outputName(value)} selectedKey={value} sections={sections} filterLabel={text("citations-filter-formats")}
     onAction={(choice) => {
-      if (choice.startsWith("style:")) change({ citation_style: choice.slice(6) as CitationStyle });
-      else change({ citation_style: null }, choice as KeyFormat);
+      const output = listedOutput(choice);
+      if (output) change({ output });
     }} />;
 }

@@ -189,12 +189,11 @@ fn held_after_open(name: &str, text: String) -> usize {
     change.bytes_allocated.saturating_sub(change.bytes_deallocated)
 }
 
-// Measured at 86.3 MiB (.bib) and 87.8 MiB (CSL-JSON) for #1536, the same in
-// debug and release; the limits leave about a tenth for ordinary changes. Most
-// of what remains is one `serde_json::Map` per name, each a whole B-tree node of
-// eleven slots (about 650 bytes); a typed name list would remove it.
-const BIBTEX_LIMIT: usize = 94 * MIB;
-const CSL_JSON_LIMIT: usize = 96 * MIB;
+// Measured at 44.0 MiB (.bib) and 44.9 MiB (CSL-JSON) once names were held as
+// compact typed names (#1675), down from 86.3 and 87.8 MiB; the same in debug
+// and release. The limits leave about a tenth for ordinary changes.
+const BIBTEX_LIMIT: usize = 48 * MIB;
+const CSL_JSON_LIMIT: usize = 49 * MIB;
 
 #[test]
 fn ten_thousand_realistic_records_fit_the_memory_budget() {

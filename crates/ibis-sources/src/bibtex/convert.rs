@@ -348,7 +348,7 @@ pub(crate) fn convert(
             library: source.clone(),
             key: format!("record:{}", entry.key),
         },
-        csl,
+        csl: csl.into(),
         citation_keys: vec![CitationKey {
             value: entry.key.clone(),
             source: CitationKeySource::Bibtex,

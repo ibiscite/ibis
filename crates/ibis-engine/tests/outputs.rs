@@ -64,7 +64,7 @@ fn preset(id: &str) -> OutputSpec {
 
 #[test]
 fn every_output_has_one_id_and_one_name() {
-    let list = outputs::outputs().unwrap();
+    let list = outputs::outputs();
     let ids: BTreeSet<_> = list.iter().map(|output| output.id.as_str()).collect();
     let names: BTreeSet<_> = list.iter().map(|output| output.name.as_str()).collect();
     assert_eq!(ids.len(), list.len(), "ids are unique");
@@ -94,7 +94,7 @@ fn every_output_has_one_id_and_one_name() {
             }));
     }
     // The defaults are listed, and the default style is a style.
-    let listed = outputs::list().unwrap();
+    let listed = outputs::list();
     assert!(outputs::find(&listed.default).is_some());
     assert!(matches!(
         outputs::find(&listed.default_style).unwrap().output,
@@ -106,13 +106,20 @@ fn every_output_has_one_id_and_one_name() {
 fn each_example_is_what_the_engine_writes() {
     let (engine, id) = engine();
     let mut wrong = vec![];
-    for output in outputs::outputs().unwrap() {
+    for output in outputs::outputs() {
         let result = engine
             .cite(
                 &request(&[(id.clone(), None)], CitationForm::Normal, preset(&output.id)),
                 &Cancellation::default(),
             )
             .unwrap();
+        // Only a numbered style writes reference entries, and says so.
+        assert_eq!(
+            result.notices.contains(&Notice::ReferenceEntry),
+            output.entries,
+            "{}",
+            output.id
+        );
         match &output.example {
             Some(example) if *example != result.text => wrong.push((output.id.as_str(), result.text.clone())),
             Some(_) => {}
@@ -134,7 +141,7 @@ fn each_example_is_what_the_engine_writes() {
 fn listed_forms_are_exactly_the_forms_the_engine_writes() {
     let (engine, id) = engine();
     let mut wrong = vec![];
-    for output in outputs::outputs().unwrap() {
+    for output in outputs::outputs() {
         for form in CitationForm::ALL {
             // A form is listed when it can be written for one reference: with a
             // page, MLA's narrative form has something to write after the name;
@@ -215,11 +222,11 @@ fn an_unknown_id_is_refused_and_a_stored_one_fails_closed() {
             "{name:?}"
         );
         // A settings file naming an id this Ibis does not have uses the default.
-        assert_eq!(outputs::or_default(Some(name)).unwrap().id, outputs::DEFAULT);
+        assert_eq!(outputs::or_default(Some(name)).id, outputs::DEFAULT);
     }
-    assert_eq!(outputs::or_default(None).unwrap().id, outputs::DEFAULT);
-    assert_eq!(outputs::or_default(Some("typst")).unwrap().id, "typst");
-    assert_eq!(outputs::or_default(Some("ieee")).unwrap().id, "ieee");
+    assert_eq!(outputs::or_default(None).id, outputs::DEFAULT);
+    assert_eq!(outputs::or_default(Some("typst")).id, "typst");
+    assert_eq!(outputs::or_default(Some("ieee")).id, "ieee");
 }
 
 #[test]
@@ -229,7 +236,7 @@ fn the_list_is_an_engine_method_with_a_schema() {
         .dispatch(Method::Outputs, &json!({}), &Cancellation::default())
         .unwrap()
         .data;
-    assert_eq!(listed, serde_json::to_value(outputs::list().unwrap()).unwrap());
+    assert_eq!(listed, serde_json::to_value(outputs::list()).unwrap());
     assert_eq!(listed["default"], "pandoc");
     assert_eq!(listed["outputs"][0]["id"], "pandoc");
     assert_eq!(listed["outputs"][0]["name"], "Pandoc");
@@ -248,7 +255,7 @@ fn the_list_is_an_engine_method_with_a_schema() {
 #[test]
 fn each_output_is_named_by_its_one_name() {
     let mut names = BTreeSet::new();
-    for output in outputs::outputs().unwrap() {
+    for output in outputs::outputs() {
         // Short enough for the closed format control ("APA · Word"), and never twice.
         assert!(
             !output.name.is_empty() && output.name.chars().count() <= 24,

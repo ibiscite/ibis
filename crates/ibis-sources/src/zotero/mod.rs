@@ -261,7 +261,7 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
                 library,
                 key: item.key.clone(),
             },
-            csl,
+            csl: csl.into(),
             citation_keys,
             aliases,
             identifiers,

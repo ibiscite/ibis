@@ -1,7 +1,7 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { usePickerPreferences } from "./usePickerPreferences";
-import type { CopyFormat, PickerPreferences } from "../../api";
+import type { PickerPreferences } from "../../api";
 import { commands } from "../../bindings";
 
 beforeEach(() => {
@@ -9,7 +9,7 @@ beforeEach(() => {
   vi.spyOn(commands, "preferenceRevision").mockImplementation(async () => ++revision);
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
-const preferences: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true };
+const preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -22,77 +22,75 @@ test("an older Settings notification read cannot restore the wrong global output
   const second = deferred<PickerPreferences>();
   const reads = [first.promise, second.promise];
   const { result } = renderHook(() => usePickerPreferences({
-    copyFormat: async () => "cite", pickerPreferences: () => reads.shift()!,
-    setPickerPreferences: vi.fn(async () => ({ preferences, copy_format: "cite" as const })), quit: vi.fn(async () => undefined),
+    pickerPreferences: () => reads.shift()!,
+    setPickerPreferences: vi.fn(async () => ({ preferences })), quit: vi.fn(async () => undefined),
   }, context));
   act(() => result.current.loadPreferences(() => true));
   act(() => result.current.loadPreferences(() => true));
-  await act(async () => { second.resolve(preferences); });
+  await act(async () => { second.resolve({ ...preferences, output: "cite" }); });
   expect(result.current.format).toBe("cite");
-  await act(async () => { first.resolve({ ...preferences, citation_style: "apa" }); });
+  await act(async () => { first.resolve({ ...preferences, output: "apa" }); });
   expect(result.current.format).toBe("cite");
 });
 
 test("a global key choice during a stale Settings read wins and sends only its field patch", async () => {
   const old = deferred<PickerPreferences>();
-  const save = deferred<{ preferences: PickerPreferences; copy_format: "cite" }>();
+  const save = deferred<{ preferences: PickerPreferences }>();
   const setPickerPreferences = vi.fn(() => save.promise);
   let reading = false;
   const { result } = renderHook(() => usePickerPreferences({
-    copyFormat: async () => "pandoc", pickerPreferences: async () => reading ? old.promise : { ...preferences, citation_style: "apa" },
+    pickerPreferences: async () => reading ? old.promise : { ...preferences, output: "apa" },
     setPickerPreferences, quit: async () => undefined,
   }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   reading = true;
   act(() => result.current.loadPreferences(() => true));
   act(() => result.current.chooseFormat("cite"));
-  await act(async () => { save.resolve({ preferences, copy_format: "cite" }); });
-  await act(async () => { old.resolve({ ...preferences, citation_style: "apa" }); });
+  await act(async () => { save.resolve({ preferences: { ...preferences, output: "cite" } }); });
+  await act(async () => { old.resolve({ ...preferences, output: "apa" }); });
   expect(result.current.format).toBe("cite");
-  expect(setPickerPreferences).toHaveBeenCalledWith({ citation_style: null }, "cite", 1);
+  expect(setPickerPreferences).toHaveBeenCalledWith({ output: "cite" }, 1);
 });
 
 test("a queued view save never replays an output acknowledged before it reaches the native lock", async () => {
-  const output = deferred<{ preferences: PickerPreferences; copy_format: "cite" }>();
+  const output = deferred<{ preferences: PickerPreferences }>();
   const setPickerPreferences = vi.fn()
     .mockImplementationOnce(() => output.promise)
     .mockImplementationOnce(async (patch: Partial<PickerPreferences>) => ({
       // The other window changed the global style after the first write.
-      preferences: { ...preferences, citation_style: "ieee", ...patch }, copy_format: "cite",
+      preferences: { ...preferences, output: "ieee", ...patch },
     }));
-  const { result } = renderHook(() => usePickerPreferences({ copyFormat: async () => "pandoc",
-    pickerPreferences: async () => ({ ...preferences, citation_style: "apa" }), setPickerPreferences, quit: async () => undefined }, context));
+  const { result } = renderHook(() => usePickerPreferences({
+    pickerPreferences: async () => ({ ...preferences, output: "apa" }), setPickerPreferences, quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   act(() => result.current.chooseFormat("cite"));
   act(() => result.current.toggleLargerText());
-  await act(async () => { output.resolve({ preferences, copy_format: "cite" }); });
-  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, null, 2]);
-  expect(result.current.format).toBe("style:ieee");
+  await act(async () => { output.resolve({ preferences: { ...preferences, output: "cite" } }); });
+  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, 2]);
+  expect(result.current.format).toBe("ieee");
 });
 
 test("a failed later equal-valued output intent remains retryable after older writes acknowledge", async () => {
   const first = deferred<void>();
-  let state = { ...preferences, citation_style: "apa" } as PickerPreferences;
-  let key: CopyFormat = "pandoc";
+  let state = { ...preferences, output: "apa" } as PickerPreferences;
   let writes = 0;
-  const setPickerPreferences = vi.fn(async (patch: Partial<PickerPreferences>, format: CopyFormat | null) => {
+  const setPickerPreferences = vi.fn(async (patch: Partial<PickerPreferences>) => {
     const request = ++writes;
     if (request === 1) await first.promise;
     if (request === 3) throw new Error("synthetic third-save failure");
     state = { ...state, ...patch };
-    key = format ?? key;
-    return { preferences: state, copy_format: key };
+    return { preferences: state };
   });
-  const { result } = renderHook(() => usePickerPreferences({ copyFormat: async () => "pandoc", pickerPreferences: async () => state,
+  const { result } = renderHook(() => usePickerPreferences({ pickerPreferences: async () => state,
     setPickerPreferences, quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   act(() => result.current.chooseFormat("cite"));
-  act(() => result.current.chooseFormat("style:ieee"));
+  act(() => result.current.chooseFormat("ieee"));
   act(() => result.current.chooseFormat("typst"));
   await act(async () => { first.resolve(); });
   expect(writes).toBe(3);
-  expect(state.citation_style).toBe("ieee");
+  expect(state.output).toBe("ieee");
   await act(async () => { result.current.toggleLargerText(); });
-  expect(state.citation_style).toBe(null);
+  expect(state.output).toBe("typst");
   expect(result.current.format).toBe("typst");
 });

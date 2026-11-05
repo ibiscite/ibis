@@ -18,11 +18,7 @@ const CHECK_LENGTH: usize = 8;
 
 /// A record's fields as formatting sees them.
 pub(super) fn citable(record: &Record) -> Map<String, Value> {
-    let mut csl = record
-        .csl
-        .iter()
-        .map(|(field, value)| (field.clone(), value.clone()))
-        .collect();
+    let mut csl = record.csl.to_map();
     citable_fields(&mut csl);
     csl
 }

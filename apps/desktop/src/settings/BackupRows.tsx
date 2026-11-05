@@ -3,6 +3,7 @@ import type { BackupProblem, BackupSystem, RestoreChange, RestoreNote, RestorePr
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { listedOutput, outputName } from "../format/outputs";
 
 export type BackupApi = {
   backUpSettings: () => Promise<string | null>;
@@ -19,7 +20,7 @@ const PROBLEMS: Record<BackupProblem, MessageId> = {
 };
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 const SETTINGS: Record<string, MessageId> = {
-  library: "backup-setting-library", copy_format: "backup-setting-copy-format", citation_style: "backup-setting-citation-style",
+  library: "backup-setting-library", output: "citations-default",
   density: "general-rows", larger_text: "backup-setting-larger-text",
   paste: "general-paste-label", menu_bar: "general-menu-bar-label", recent_citations: "citations-recent",
   small_surprises: "general-small-surprises-label", appearance: "look-appearance", accent: "look-accent",
@@ -30,7 +31,6 @@ const VALUES: Record<string, Record<string, MessageId>> = {
   appearance: { system: "look-system", light: "look-light", dark: "look-dark" },
   accent: { ibis: "look-accent-ibis" },
 };
-const FORMATS = new Set(["pandoc", "autocite", "parencite", "textcite", "cite", "typst", "keys", "apa", "chicago-author-date", "harvard-cite-them-right", "ieee", "modern-language-association"]);
 
 /** Something to write: a changed setting, or a damaged settings file to replace. */
 const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");
@@ -66,7 +66,8 @@ export function BackupRows({ api }: { api: BackupApi }) {
   const value = (setting: string, written: string | null) => {
     if (written === null) return text("backup-value-default");
     if (written === "on" || written === "off") return text(written === "on" ? "backup-value-on" : "backup-value-off");
-    if ((setting === "copy_format" || setting === "citation_style") && FORMATS.has(written)) return text(`citations-format-${written}` as MessageId);
+    const output = setting === "output" ? listedOutput(written) : null;
+    if (output) return outputName(output);
     const known = VALUES[setting]?.[written];
     if (known) return text(known);
     if (setting === "library") {

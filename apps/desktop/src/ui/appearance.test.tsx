@@ -7,7 +7,7 @@ import * as nativeApi from "../api";
 import type { PickerPreferences, PickerSave } from "../bindings";
 
 afterEach(resetApp);
-const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "dark", accent: "ibis" };
+const saved: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "dark", accent: "ibis" };
 
 test("an open picker applies saved appearance and accent, then a Settings change, using its existing reads", async () => {
   let preferences = saved;
@@ -61,7 +61,7 @@ test("a Settings notification invalidates a queued old save even when its newer 
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("ibis"));
   await chooseRows("compact");
   await act(async () => { await emit("preferences:changed", {}); });
-  await act(async () => resolve({ preferences: { ...saved, accent: "ibis" }, copy_format: "pandoc" }));
+  await act(async () => resolve({ preferences: { ...saved, accent: "ibis" } }));
   await waitFor(() => expect(reads).toBe(2));
   expect(document.documentElement.dataset.accent).toBe("ibis");
 });

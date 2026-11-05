@@ -17,6 +17,8 @@ use std::{
     },
 };
 
+#[path = "health.rs"]
+pub mod health;
 mod sources;
 pub use sources::PreparedFileReload;
 
@@ -642,7 +644,7 @@ impl Engine {
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
                 let OutputsRequest {} = parameters(params)?;
-                value(crate::outputs::list()?)?
+                value(crate::outputs::list())?
             }
             Method::Schema => {
                 let request: SchemaRequest = parameters(params)?;
