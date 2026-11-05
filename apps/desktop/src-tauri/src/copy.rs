@@ -288,15 +288,26 @@ pub(crate) fn copy_file_citation(
     editor: State<'_, crate::editor_endpoint::Pending>,
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
+    let captured = crate::paste::last_app(&app);
+    let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
+    let epoch = session.lock().epoch();
     if editor.current().is_none() {
         // Another client may have edited this definition while the picker was
         // open. Observe completed edits before granting a clipboard commit.
-        let captured = crate::paste::last_app(&app);
         crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
     let file = open_file(&library)?;
+    let captured = captured.map(|(id, _, _)| id.normalized());
+    let record = |copied: &Copied| {
+        if !file.sample {
+            let _ = session.lock().record(&epoch, captured.as_deref(), &copied.cited);
+        }
+    };
+    // Serialize clipboard writes through recording; privacy invalidation has its own lock.
+    static RECORDING: Mutex<()> = Mutex::new(());
+    let _recording = RECORDING.lock().map_err(|_| CommandError::SnapshotChanged)?;
     // A waiting editor gets the citation in place of the clipboard. It is
     // handed over under the same commit barrier, and nothing is pasted.
     if let Some(request) = editor.current() {
@@ -329,11 +340,12 @@ pub(crate) fn copy_file_citation(
                 },
             )
             .map_err(CommandError::from)?;
+            session.cited(copied.cited.clone());
+            record(&copied);
         }
         return Ok(copied);
     }
-    let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
-    commit_copy(
+    let copied = commit_copy(
         &file,
         &ticket,
         &content_hash,
@@ -352,7 +364,9 @@ pub(crate) fn copy_file_citation(
             let delivery = clipboard::write(&app, content, replaces.as_deref())?;
             Ok(delivery)
         },
-    )
+    )?;
+    record(&copied);
+    Ok(copied)
 }
 
 /// The open library's engine. The lock is held only to take it; the engine's

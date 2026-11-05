@@ -1,57 +1,43 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
-import type { SessionState } from "./session";
-import { readHistory, recentIds, rememberCitation } from "./recentHistory";
 
-const storageKey = "ibis-citation-history";
-const storage = { getItem: (key: string) => window.localStorage.getItem(key), setItem: (key: string, value: string) => window.localStorage.setItem(key, value) };
-/** `enabled` is the saved Recent citations choice, null until read. Only a
- * known "on" records; a known "off" forgets, so turning it back on starts empty.
- * Every saved "off" forgets as it arrives, even when a quick "on" follows it
- * before the picker reads the settings again. */
-export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, copy: SessionState["recentCopy"], opening: number, enabled: boolean | null = true,
+/** The engine records native writes. The webview only requests current rows. */
+export function useRecentReferences(recentReferences: typeof nativeApi.recentReferences | undefined, app: string | null, opening: number,
   onPreferencesChanged?: typeof nativeApi.onPreferencesChanged, onForget?: () => void) {
   const forgetting = useRef(onForget);
   forgetting.current = onForget;
-  const [history, setHistory] = useState(() => readHistory(storage));
-  const latest = useRef(history);
-  latest.current = history;
-  const recording = useRef(enabled);
-  recording.current = enabled;
-  // The newest saved choice a change event carried. Events arrive in save
-  // order, so an "off" holds until a newer saved "on" replaces it, even while
-  // the re-read that follows is still on its way or fails.
-  const announced = useRef<boolean | null>(null);
-  const [forgetFailed, setForgetFailed] = useState(false);
-  const [forgotten, setForgotten] = useState(0);
-  // Only a new receipt records. Turning the switch on, or Forget, never
-  // replays the receipt that was current before.
-  useEffect(() => {
-    if (copy?.ids.length && recording.current === true && announced.current !== false) setHistory((old) => rememberCitation(old, copy.app, copy.ids, storage));
-  }, [copy]);
-  // A receipt doesn't replace rows under a kept-open picker. Read the newest
-  // identities on the next empty search/opening; forgetting refreshes now.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: opening and forgotten refresh the empty search while latest supplies its immutable request input.
-  const load = useCallback(() => recentReferences!(recentIds(latest.current, app), latest.current.length > 0), [recentReferences, app, opening, forgotten]);
-  const forget = useCallback(() => {
-    setHistory([]);
-    latest.current = [];
+  const epoch = useRef(0);
+  const clearing = useRef<Promise<void> | null>(null);
+  const [{ hasHistory, forgetFailed, revision }, setState] = useState({ hasHistory: false, forgetFailed: false, revision: 0 });
+  const retire = useCallback(() => {
+    epoch.current++;
     forgetting.current?.();
-    setForgotten((value) => value + 1);
-    try { storage.setItem(storageKey, "[]"); setForgetFailed(false); return true; } catch { setForgetFailed(true); return false; }
+    setState((old) => ({ ...old, hasHistory: false, revision: old.revision + 1 }));
   }, []);
-  useEffect(() => {
-    if (enabled === false) forget();
-  }, [enabled, forget]);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: destination and opening refresh native history.
+  const load = useCallback(async () => {
+    const current = epoch.current;
+    await clearing.current;
+    const [reply, hasHistory, failed] = await recentReferences!(false);
+    if (current !== epoch.current) return { ...reply, results: [] };
+    setState((old) => ({ ...old, hasHistory, forgetFailed: failed }));
+    return reply;
+  }, [recentReferences, app, opening, revision]);
+  const forget = useCallback(() => {
+    retire();
+    const current = epoch.current;
+    if (!recentReferences) return true;
+    clearing.current = recentReferences(true).then(() => {
+      if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: false }));
+    }).catch(() => { if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: true })); });
+    return true;
+  }, [recentReferences, retire]);
   useEffect(() => {
     if (!onPreferencesChanged) return;
     const stop = onPreferencesChanged((change) => {
-      if (typeof change?.recent_citations !== "boolean") return;
-      announced.current = change.recent_citations;
-      if (!change.recent_citations) forget();
+      if (change?.recent_citations === false) retire();
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
-  }, [onPreferencesChanged, forget]);
-  // A failed clear stays offered, even with Recent citations turned off.
-  return { load: recentReferences ? load : undefined, forget: forgetFailed || enabled !== false && history.length ? forget : null, forgetFailed };
+  }, [onPreferencesChanged, retire]);
+  return { load: recentReferences ? load : undefined, forget: forgetFailed || hasHistory ? forget : null, forgetFailed };
 }

@@ -249,7 +249,7 @@ impl From<ibis_core::locator::TrailingLocator> for LocatorQuery {
 }
 
 /// A search keeps its snapshot identity even when no references match.
-#[derive(Serialize, specta::Type)]
+#[derive(Default, Serialize, specta::Type)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,
     pub(super) results: Vec<SearchResult>,

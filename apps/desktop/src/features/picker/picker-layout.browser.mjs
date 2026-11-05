@@ -40,7 +40,7 @@ try {
       const callbacks = new Map(), listeners = new Map();
       let undoTicket = null, refuseUndo = true, activityTicket = 0, previewNumber = 0;
       const prepared = new Map();
-      if (shelfDetails === "recents") localStorage.setItem("ibis-citation-history", JSON.stringify([{ app: "invented.writer", items: [{ library: "invented.bib", key: "synthetic0" }] }]));
+      let recentHistory = shelfDetails === "recents";
       const row = (i, recent) => ({ revision: "1", id: { library: "invented.bib", key: `synthetic${i}` }, cite: `synthetic-cite-${i}`, source: "invented.bib", key: `synthetic${i}`, title: shelfDetails === "failed" ? `Invented reference ${i}. ${"A synthetic long title. ".repeat(30)}`.trim() : `Invented reference ${i}`, authors: "Aster", first_author: "Aster", author_count: 1, year: "2026", container: null, item_type: "article-journal", partial: shelfDetails === "warnings" && i === 0, matched: ["title"], ...(recent ? { recent } : {}) });
       if (shelfDetails === "rtl") document.addEventListener("DOMContentLoaded", () => { document.documentElement.dir = "rtl"; });
       window.fixtureWindowReset = () => {
@@ -85,7 +85,10 @@ try {
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");
-          if (command === "recent_references") return { revision: "1", results: shelfDetails === "recents" && args.ids.length ? Array.from({ length: args.includeAdded ? 6 : 3 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] };
+          if (command === "recent_references") {
+            if (args.forget) recentHistory = false;
+            return [{ revision: "1", results: recentHistory ? Array.from({ length: 6 }, (_, i) => row(i, i < 3 ? "cited" : "added")) : [] }, recentHistory, false];
+          }
           if (command === "search") return { revision: "1", results: args.query.text && args.query.text !== "no-match" ? Array.from({ length: 14 }, (_, i) => row(i)) : [],
             ...(args.query.interpret_locators && / p12$/.test(args.query.text) ? { interpretation: { search: "invented", locator: { label: "page", value: "12" }, typed: "p12" } } : {}) };
           if (command === "preview_file_citation" && args.intent.cancel) throw { code: "cancelled" };
@@ -226,7 +229,8 @@ try {
       await page.getByRole("button", { name: "More", exact: true }).click();
       await moreMenu.getByRole("menuitem", { name: "Forget Recent Citations", exact: true }).click();
       await moreMenu.waitFor({ state: "detached" });
-      assert.equal(await page.evaluate(() => localStorage.getItem("ibis-citation-history")), "[]", "recents are forgettable without Settings");
+      await page.getByRole("heading", { name: "Cited here recently" }).waitFor({ state: "detached" });
+      assert.equal(await page.evaluate(() => localStorage.getItem("ibis-citation-history")), null, "recents never use webview storage");
       assert.deepEqual(resizes, [], "recents never request native sizing");
       assert.deepEqual(errors, [], "no page errors");
       await page.close(); profiles += 1; continue;

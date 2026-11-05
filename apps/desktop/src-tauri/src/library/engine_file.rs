@@ -28,7 +28,7 @@ pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     /// Completed initial read identity; Reload carries its own immutable observation.
     source_path: Option<PathBuf>,
-    sample: bool,
+    pub(crate) sample: bool,
     prepared: Mutex<Option<(String, Arc<PreparedCitation>, OutputSpec)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
@@ -154,65 +154,29 @@ impl FileLibrary {
             .snapshot()
             .map_err(|_| "Recent references are unavailable.")?;
         let revision = snapshot.fingerprints().full.as_str().to_owned();
-        let sources: HashMap<_, _> = self
+        let sources = self
             .engine
             .libraries()
             .map_err(|_| "Recent references are unavailable.")?
-            .libraries
-            .iter()
-            .map(|info| (info.id.clone(), native_source(info)))
-            .collect();
-        let mut picked: Vec<(&ItemRef, RecentGroup)> = ids
-            .iter()
-            .filter(|id| {
-                snapshot
-                    .get(id)
-                    .is_some_and(|item| matches!(item.object, LibraryObject::Record(_)))
-            })
-            .take(3)
-            .map(|id| (id, RecentGroup::Cited))
-            .collect();
-        if include_added {
-            let mut added: Vec<_> = snapshot
-                .objects()
-                .iter()
-                .filter_map(|item| match &item.object {
-                    LibraryObject::Record(record) => record
-                        .added_at
-                        .as_deref()
-                        .and_then(ibis_core::contract::added_date)
-                        .map(|date| (date, &record.id)),
-                    _ => None,
-                })
-                .filter(|(_, id)| !picked.iter().any(|(existing, _)| *existing == *id))
-                .collect();
-            added.sort_by(|(a, aid), (b, bid)| b.cmp(a).then_with(|| aid.cmp(bid)));
-            picked.extend(added.into_iter().take(3).map(|(_, id)| (id, RecentGroup::Added)));
-        }
+            .libraries;
+        let picked = ibis_engine::recents::resolve(&snapshot, ids, include_added);
         let results = picked
             .into_iter()
-            .filter_map(|(id, group)| {
-                let object = snapshot.get(id)?;
-                let LibraryObject::Record(record) = &object.object else {
-                    return None;
-                };
-                let mut row =
-                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
+            .filter_map(|(object, cited)| {
+                let mut row = self.row(&snapshot, object)?;
                 row.source = sources
-                    .get(&record.id.library)
-                    .cloned()
-                    .unwrap_or_else(|| record.id.library.as_str().into());
-                row.sample = self.sample;
-                row.recent = Some(group);
+                    .iter()
+                    .find(|info| info.id == object.object.id().library)
+                    .map(native_source)
+                    .unwrap_or_else(|| object.object.id().library.as_str().into());
+                row.recent = Some(if cited { RecentGroup::Cited } else { RecentGroup::Added });
                 Some(row)
             })
             .collect();
         Ok(SearchReply {
             revision,
             results,
-            interpretation: None,
-            list: None,
-            unfiltered: None,
+            ..SearchReply::default()
         })
     }
     /// Rows for listed records in the open library, in the list's order. Each
@@ -220,20 +184,20 @@ impl FileLibrary {
     pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
         const FAILED: &str = "The references could not be read. Try again.";
         let snapshot = self.engine.snapshot().map_err(|_| FAILED)?;
-        let revision = snapshot.fingerprints().full.as_str().to_owned();
         Ok(ids
             .iter()
-            .filter_map(|id| {
-                let object = snapshot.get(id)?;
-                let LibraryObject::Record(record) = &object.object else {
-                    return None;
-                };
-                let mut row =
-                    SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, &revision);
-                row.sample = self.sample;
-                Some(row)
-            })
+            .filter_map(|id| self.row(&snapshot, snapshot.get(id)?))
             .collect())
+    }
+
+    fn row(&self, snapshot: &Snapshot, object: &ibis_core::contract::SnapshotObject) -> Option<SearchResult> {
+        let LibraryObject::Record(record) = &object.object else {
+            return None;
+        };
+        let revision = snapshot.fingerprints().full.as_str();
+        let mut row = SearchResult::from_engine(record, object.fingerprints.cite.as_str(), vec![], false, revision);
+        row.sample = self.sample;
+        Some(row)
     }
 
     fn session_item(&self, snapshot: &Snapshot, id: &ItemRef) -> Option<CitationItem> {
@@ -589,10 +553,7 @@ impl FileLibrary {
         if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
-                results: vec![],
-                interpretation: None,
-                list: None,
-                unfiltered: None,
+                ..SearchReply::default()
             });
         }
         // The existing native boundary names Zotero sources for the picker;
@@ -635,10 +596,7 @@ impl FileLibrary {
             Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => {
                 return Ok(SearchReply {
                     revision: self.revision(),
-                    results: vec![],
-                    interpretation: None,
-                    list: None,
-                    unfiltered: None,
+                    ..SearchReply::default()
                 });
             }
             Err(_) => return Err("The library could not be searched.".to_string()),

@@ -7,8 +7,6 @@
 
 use std::sync::Mutex;
 
-use ibis_core::contract::ItemRef;
-use ibis_engine::MAX_CITATION_ITEMS;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
@@ -19,108 +17,8 @@ use crate::library::{CommandError, Library, SearchResult};
 use crate::picker::ChooserOpen;
 
 const FAILED: &str = "The references could not be read. Try again.";
-const MAX_UNDO: usize = 20;
-
-/// The way back from one edit. Each restores only what that edit took away, so
-/// a citation copied since then stays on the list.
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum Undo {
-    Removed { item: ItemRef, at: usize },
-    Reset { items: Vec<ItemRef>, overflowed: bool },
-}
-
-#[derive(Debug, Default)]
-struct List {
-    /// In the order first cited; each record once.
-    items: Vec<ItemRef>,
-    undo: Vec<Undo>,
-    /// References left off because the list reached the citation limit.
-    overflowed: bool,
-    revision: u32,
-}
-
-impl List {
-    fn changed(&mut self) {
-        self.revision = self.revision.wrapping_add(1);
-    }
-
-    fn add(&mut self, cited: impl IntoIterator<Item = ItemRef>) {
-        for item in cited {
-            if self.items.contains(&item) {
-                continue;
-            }
-            if self.items.len() >= MAX_CITATION_ITEMS {
-                self.overflowed = true;
-                continue;
-            }
-            self.items.push(item);
-            self.changed();
-        }
-    }
-
-    fn push_undo(&mut self, undo: Undo) {
-        if self.undo.len() >= MAX_UNDO {
-            self.undo.remove(0);
-        }
-        self.undo.push(undo);
-    }
-
-    fn remove(&mut self, item: &ItemRef) {
-        if let Some(at) = self.items.iter().position(|existing| existing == item) {
-            let item = self.items.remove(at);
-            self.push_undo(Undo::Removed { item, at });
-            self.changed();
-        }
-    }
-
-    fn reset(&mut self) {
-        if self.items.is_empty() {
-            return;
-        }
-        let items = std::mem::take(&mut self.items);
-        let overflowed = std::mem::take(&mut self.overflowed);
-        self.push_undo(Undo::Reset { items, overflowed });
-        self.changed();
-    }
-
-    fn undo(&mut self) {
-        match self.undo.pop() {
-            Some(Undo::Removed { item, at }) if !self.items.contains(&item) => {
-                if self.items.len() >= MAX_CITATION_ITEMS {
-                    self.overflowed = true;
-                    return;
-                }
-                self.items.insert(at.min(self.items.len()), item);
-                self.changed();
-            }
-            Some(Undo::Reset { items, overflowed }) => {
-                let newer = std::mem::replace(&mut self.items, items);
-                self.overflowed |= overflowed;
-                self.add(newer);
-                self.changed();
-            }
-            _ => {}
-        }
-    }
-}
-
-#[derive(Default)]
-pub(crate) struct SessionReferences(Mutex<List>);
-
-impl SessionReferences {
-    fn lock(&self) -> std::sync::MutexGuard<'_, List> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    /// Record a citation that reached the clipboard.
-    pub(crate) fn cited(&self, items: Vec<ItemRef>) {
-        self.lock().add(items);
-    }
-
-    pub(crate) fn items(&self) -> Vec<ItemRef> {
-        self.lock().items.clone()
-    }
-}
+pub(crate) use ibis_engine::recents::SessionReferences;
+use ibis_engine::recents::{List, Undo};
 
 /// The edit Undo would reverse, for its label. Only the removed row is named.
 #[derive(Serialize, specta::Type)]
@@ -156,10 +54,10 @@ fn open_file(library: &Mutex<Library>) -> Option<std::sync::Arc<FileLibrary>> {
 }
 
 fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, String> {
-    let rows = match file {
-        Some(file) => file.session_rows(&list.items)?,
-        None => vec![],
-    };
+    let rows = file
+        .map(|file| file.session_rows(&list.items))
+        .transpose()?
+        .unwrap_or_default();
     let undo = list.undo.last().map(|undo| match undo {
         Undo::Removed { item, .. } => UndoView::Removed {
             reference: file
@@ -199,11 +97,10 @@ pub(crate) fn edit_session_references(
     let mut list = session.lock();
     match edit {
         // An identity from before the library changed names nothing listed.
-        SessionEdit::Remove { id } => {
-            if let Some(id) = id.0 {
-                list.remove(&id);
-            }
-        }
+        SessionEdit::Remove {
+            id: RecentIdentity(Some(id)),
+        } => list.remove(&id),
+        SessionEdit::Remove { .. } => {}
         SessionEdit::Reset => list.reset(),
         SessionEdit::Undo => list.undo(),
     }
@@ -354,114 +251,34 @@ pub(crate) async fn export_session_bibliography(
     Ok(Some(shown))
 }
 
+/// Apply every saved privacy change, including delayed off notifications.
+pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std::path::Path, enabled: bool) {
+    use tauri::Listener;
+    *app.state::<SessionReferences>().lock() = List::open(settings_path.with_file_name("recents.json"), enabled);
+    if let Some(window) = app.get_webview_window("main") {
+        let app = app.clone();
+        let settings_path = settings_path.to_owned();
+        window.listen("preferences:changed", move |event| {
+            if let Some(on) = serde_json::from_str::<serde_json::Value>(event.payload())
+                .ok()
+                .and_then(|value| value.get("recent_citations").and_then(serde_json::Value::as_bool))
+            {
+                let mut history = app.state::<SessionReferences>().inner().lock();
+                let loaded = ibis_core::settings::load(&settings_path);
+                let saved = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
+                if !on && saved {
+                    let _ = history.forget();
+                }
+                let _ = history.set_enabled(saved);
+            }
+        });
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::contract::{ClipboardContent, LibraryId};
-
-    fn item(key: &str) -> ItemRef {
-        ItemRef {
-            library: LibraryId::digest(b"/invented/refs.bib"),
-            key: key.into(),
-        }
-    }
-    fn keys(list: &List) -> Vec<&str> {
-        list.items.iter().map(|item| item.key.as_str()).collect()
-    }
-
-    #[test]
-    fn a_record_is_listed_once_in_the_order_first_cited() {
-        let mut list = List::default();
-        list.add([item("a"), item("b")]);
-        list.add([item("b"), item("c"), item("a")]);
-        assert_eq!(keys(&list), ["a", "b", "c"]);
-    }
-
-    #[test]
-    fn removing_can_be_undone_in_place_step_by_step() {
-        let mut list = List::default();
-        list.add([item("a"), item("b"), item("c")]);
-        list.remove(&item("b"));
-        list.remove(&item("a"));
-        assert_eq!(keys(&list), ["c"]);
-        list.undo();
-        assert_eq!(keys(&list), ["a", "c"]);
-        list.undo();
-        assert_eq!(keys(&list), ["a", "b", "c"]);
-        let revision = list.revision;
-        list.undo();
-        assert_eq!(
-            (keys(&list), list.revision),
-            (vec!["a", "b", "c"], revision),
-            "nothing left to undo"
-        );
-    }
-
-    #[test]
-    fn a_citation_copied_after_an_edit_survives_its_undo() {
-        let mut list = List::default();
-        list.add([item("a"), item("b")]);
-        list.reset();
-        assert!(list.items.is_empty());
-        list.add([item("c"), item("a")]);
-        list.undo();
-        assert_eq!(keys(&list), ["a", "b", "c"]);
-
-        let mut list = List::default();
-        list.add([item("a")]);
-        list.remove(&item("a"));
-        list.add([item("a")]);
-        list.undo();
-        assert_eq!(keys(&list), ["a"], "never listed twice");
-    }
-
-    #[test]
-    fn resetting_an_empty_list_leaves_nothing_to_undo() {
-        let mut list = List::default();
-        list.reset();
-        assert!(list.undo.is_empty());
-    }
-
-    #[test]
-    fn the_list_says_when_it_could_not_keep_a_citation() {
-        let mut list = List::default();
-        list.add((0..MAX_CITATION_ITEMS).map(|index| item(&format!("k{index}"))));
-        assert!(!list.overflowed);
-        list.add([item("one-more")]);
-        assert!(list.overflowed);
-        assert_eq!(list.items.len(), MAX_CITATION_ITEMS);
-        list.reset();
-        assert!(!list.overflowed);
-    }
-
-    #[test]
-    fn undoing_never_passes_the_limit_and_keeps_the_full_notice() {
-        let mut list = List::default();
-        list.add((0..MAX_CITATION_ITEMS).map(|index| item(&format!("k{index}"))));
-        list.remove(&item("k0"));
-        list.add([item("newcomer")]);
-        list.undo();
-        assert_eq!(list.items.len(), MAX_CITATION_ITEMS);
-        assert!(list.overflowed, "k0 could not come back, and the list says so");
-
-        let mut list = List::default();
-        list.add((0..MAX_CITATION_ITEMS).map(|index| item(&format!("k{index}"))));
-        list.add([item("one-more")]);
-        list.reset();
-        list.undo();
-        assert!(list.overflowed, "the notice returns with the list");
-    }
-
-    #[test]
-    fn undo_is_bounded() {
-        let mut list = List::default();
-        for index in 0..=MAX_UNDO {
-            let key = format!("k{index}");
-            list.add([item(&key)]);
-            list.remove(&item(&key));
-        }
-        assert_eq!(list.undo.len(), MAX_UNDO);
-    }
+    use ibis_core::contract::ClipboardContent;
 
     #[test]
     fn an_export_gives_each_kind_of_file_or_refuses_one_it_cannot_write() {
@@ -627,3 +444,6 @@ mod bibliography_tests {
         assert!(bibliography.text.contains("Synthetic signals"), "{}", bibliography.text);
     }
 }
+
+#[cfg(test)]
+mod privacy_tests;
