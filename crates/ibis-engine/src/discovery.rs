@@ -110,7 +110,15 @@ impl Request {
         if policy != InspectionPolicy::Setup {
             return Err(ErrorCode::BadInput.into());
         }
-        let zotero = find_zotero(policy, true, &self.cancel)?;
+        // A slow or failed Zotero probe still lets the folder search run, as
+        // before; only cancellation stops discovery.
+        let zotero = match find_zotero(policy, true, &self.cancel) {
+            Ok(presence) => presence,
+            Err(_) => {
+                self.cancel.check()?;
+                ZoteroPresence::Absent
+            }
+        };
         let found = bounded(&self.cancel, move |token| search(&roots, 20_000, &token));
         self.cancel.check()?;
         let (files, cut_short) = found.ok_or(EngineError::new(ErrorCode::SourceUnavailable))?;
