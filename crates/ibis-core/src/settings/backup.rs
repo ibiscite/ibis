@@ -61,8 +61,33 @@ pub struct Backup {
     pub settings: Settings,
 }
 
+/// Why a backup or restore did not happen; the Settings window words it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "kebab-case")]
+pub enum BackupProblem {
+    NotDownloaded,
+    Unreadable,
+    NotABackup,
+    SettingsFile,
+    Newer,
+    Invalid,
+    /// This computer's settings are damaged, from a newer Ibis or unreadable.
+    SettingsUnusable,
+    /// The settings changed, or another backup was chosen, after the preview.
+    Changed,
+    NotSaved,
+}
+
 #[derive(Debug, Error)]
 pub enum BackupError {
+    #[error("there are no settings on this computer yet")]
+    MissingSettings,
+    /// This computer's settings, distinct from untrusted backup contents.
+    #[error(transparent)]
+    Current(SettingsError),
+    #[error("the backup could not be saved: {0}")]
+    NotSaved(#[source] io::Error),
     /// A cloud placeholder: reading it would wait for a download.
     #[error("the backup is not downloaded to this computer yet")]
     NotDownloaded,
@@ -296,7 +321,7 @@ fn system_name(system: System) -> String {
 /// One setting a restore changes. Values are as the settings file writes them,
 /// and `None` means unset (the default). The opening shortcut is one setting
 /// per system: `shortcut.macos`, `shortcut.windows` and `shortcut.linux`.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub struct Change {
     pub setting: String,
     pub from: Option<Value>,
@@ -304,7 +329,9 @@ pub struct Change {
 }
 
 /// Something the person should know before restoring.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[serde(rename_all = "kebab-case")]
 pub enum Note {
     /// The backup's bibliography file is not on this computer. It is restored
     /// anyway and found again once the file is there.

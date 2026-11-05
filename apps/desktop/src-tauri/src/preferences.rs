@@ -11,39 +11,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::library::Library;
 use crate::output::OutputRef;
 
-/// Settings errors can contain user-entered values or OS details. Only these
-/// fixed descriptions reach diagnostics or messages about failed saves.
-pub(crate) fn settings_problem(problem: &settings::SettingsError) -> &'static str {
-    match problem {
-        settings::SettingsError::Unreadable(_) => "settings.json could not be read",
-        settings::SettingsError::Invalid(_) => "settings.json is not valid",
-        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
-            "settings.json has an invalid Zotero library entry"
-        }
-        settings::SettingsError::NewerVersion(_) => "settings.json was written by a newer version of Ibis",
-        settings::SettingsError::Backup(error) => match error.as_ref() {
-            settings::SettingsError::NewerVersion(_) => "settings.json.bak was written by a newer version of Ibis",
-            settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
-                "settings.json.bak is not valid"
-            }
-            _ => "settings.json.bak could not be read",
-        },
-    }
-}
-
-/// Interface and failed-save text may include a typed position, never raw
-/// serde or operating-system details. Diagnostics keep the fixed description.
-fn settings_message(problem: &settings::SettingsError) -> String {
-    match problem {
-        settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
-            problem.to_string().replacen("the settings file", "settings.json", 1)
-        }
-        settings::SettingsError::Backup(error) => {
-            settings_message(error).replacen("settings.json", "settings.json.bak", 1)
-        }
-        _ => settings_problem(problem).to_string(),
-    }
-}
+pub(crate) use ibis_engine::settings_backup::{settings_message, settings_problem};
 
 /// This notice is for the interface only: its settings path must not be logged.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
@@ -69,12 +37,7 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
             ));
         }
         let recovery = if loaded.from_backup { "the backup" } else { "defaults" };
-        let recoverable = match problem {
-            settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => true,
-            settings::SettingsError::Unreadable(error) => error.kind() == std::io::ErrorKind::InvalidData,
-            settings::SettingsError::NewerVersion(_) | settings::SettingsError::Backup(_) => false,
-        };
-        let saving = if loaded.from_backup && recoverable {
+        let saving = if loaded.from_backup && settings::backup::needs_repair(loaded) {
             "The next save will keep the damaged file as settings.json.invalid-N and restore settings from the backup."
         } else {
             "Changes are not being saved while this problem remains."
@@ -361,19 +324,10 @@ fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
 
 fn read_preference_settings(path: &Path) -> Result<settings::Settings, String> {
     let loaded = settings::load(path);
-    if let Some(problem) = &loaded.problem {
-        let recoverable = loaded.from_backup
-            && match problem {
-                settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => true,
-                settings::SettingsError::Unreadable(error) => matches!(
-                    error.kind(),
-                    std::io::ErrorKind::InvalidData | std::io::ErrorKind::NotFound
-                ),
-                _ => false,
-            };
-        if !recoverable {
-            return Err(settings_message(problem));
-        }
+    if let Some(problem) = &loaded.problem
+        && !loaded.recovering()
+    {
+        return Err(settings_message(problem));
     }
     look_from_settings(&loaded.settings)?;
     Ok(loaded.settings)

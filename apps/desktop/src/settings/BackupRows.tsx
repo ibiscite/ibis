@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackupProblem, BackupSystem, RestoreChange, RestoreNote, RestorePreview } from "../bindings";
+import type { BackupProblem, System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";

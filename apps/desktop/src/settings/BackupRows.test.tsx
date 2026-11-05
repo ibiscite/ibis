@@ -136,3 +136,20 @@ test("a damaged settings file can be repaired from a backup with the same settin
   await act(async () => undefined);
   expect(api.restoreSettingsBackup).toHaveBeenCalledWith(6);
 });
+
+test("a choice from the closed window cannot replace the reopened window's preview", async () => {
+  const late = deferred<RestorePreview | null>();
+  const api = fakeApi({ chooseSettingsBackup: vi.fn().mockReturnValueOnce(late.promise).mockResolvedValueOnce(preview(12)) });
+  const first = render(<BackupRows api={api} />);
+  fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
+  first.unmount();
+  render(<BackupRows api={api} />);
+  fireEvent.click(screen.getByRole("button", { name: "Restore…" }));
+  await act(async () => undefined);
+  await act(async () => { late.resolve(preview(11)); });
+  expect(api.cancelSettingsRestore).toHaveBeenCalledWith(11);
+  expect(api.cancelSettingsRestore).not.toHaveBeenCalledWith(12);
+  fireEvent.click(screen.getByRole("button", { name: "Restore and Restart" }));
+  await act(async () => undefined);
+  expect(api.restoreSettingsBackup).toHaveBeenCalledWith(12);
+});
