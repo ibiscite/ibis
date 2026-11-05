@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
-import { STYLE_NAMES, type StyleId } from "../../format/styles";
+import { outputName, type OutputId } from "../../format/outputs";
 import { sessionText } from "../../messages";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
@@ -23,7 +23,7 @@ const said = (error: unknown, fallback: string) => {
 
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
-export function SessionReferencesDialog({ api, style, onClose }: { api: Api; style: StyleId; onClose: () => void }) {
+export function SessionReferencesDialog({ api, style, onClose }: { api: Api; style: OutputId; onClose: () => void }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
   const dialog = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<SessionReferencesView | null>(null);
@@ -78,7 +78,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const undo = view?.undo;
   const undoLabel = !undo ? null : undo.kind === "reset" ? sessionText.undoReset
     : sessionText.undoRemove(undo.reference ? tileName(undo.reference) : null);
-  const name = STYLE_NAMES[style];
+  const name = outputName(style);
   return <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
     <div ref={dialog} role="dialog" aria-modal="true" tabIndex={-1} aria-labelledby="session-title" aria-describedby="session-about"
       className="keys-dialog session-dialog ui-overlay ui-sheet"

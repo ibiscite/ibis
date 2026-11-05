@@ -2,12 +2,11 @@
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
 use super::{CommandError, LibraryStatus};
 use ibis_core::{
-    cite::KeyFormat,
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
         ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
     },
-    settings::{CitationStyle, ZoteroLibraries, ZoteroLibrary},
+    settings::{ZoteroLibraries, ZoteroLibrary},
 };
 use ibis_engine::{
     Cancellation, Engine, Method, PreparedCitation,
@@ -252,19 +251,13 @@ impl FileLibrary {
         })
     }
 
-    fn bibliography_of(
-        &self,
-        items: Vec<CitationItem>,
-        style: CitationStyle,
-    ) -> Result<(PreparedCitation, bool), CommandError> {
+    fn bibliography_of(&self, items: Vec<CitationItem>, style: &str) -> Result<(PreparedCitation, bool), CommandError> {
         let count = items.len();
         let request = CitationRequest {
             items,
             form: CitationForm::BibliographyOnly,
             keep_order: false,
-            output: OutputSpec::Csl {
-                style: style_id(style).into(),
-            },
+            output: OutputSpec::Csl { style: style.into() },
             input_language: None,
             output_locale: None,
         };
@@ -281,7 +274,7 @@ impl FileLibrary {
     fn prepare_session_bibliography(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
     ) -> Result<Option<(PreparedCitation, Vec<String>)>, CommandError> {
         let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
         let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
@@ -322,7 +315,7 @@ impl FileLibrary {
     pub(crate) fn session_bibliography(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
     ) -> Result<Option<SessionBibliography>, CommandError> {
         Ok(self
             .prepare_session_bibliography(ids, style)?
@@ -348,7 +341,7 @@ impl FileLibrary {
     pub(crate) fn commit_session_bibliography<T>(
         &self,
         ids: &[ItemRef],
-        style: CitationStyle,
+        style: &str,
         hash: &str,
         use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
     ) -> Result<T, CommandError> {
@@ -795,10 +788,9 @@ impl FileLibrary {
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
-        format: KeyFormat,
-        style: Option<CitationStyle>,
+        output: &str,
     ) -> Result<FilePreview, CommandError> {
-        self.preview_for(reservation, items, format, style, None)
+        self.preview_for(reservation, items, crate::output::spec(output), None)
     }
 
     /// As [`Self::preview`], with a waiting editor's output in place of the
@@ -807,58 +799,15 @@ impl FileLibrary {
         &self,
         reservation: u64,
         items: Vec<FileSelection>,
-        format: KeyFormat,
-        style: Option<CitationStyle>,
+        output: &OutputSpec,
         editor: Option<&crate::editor_endpoint::EditorRequest>,
     ) -> Result<FilePreview, CommandError> {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
         let cancel = self.preview_cancellation(reservation)?;
-        // Narrative is the textcite member of the BibLaTeX output family.
-        // Mixed command clusters remain outside the picker's small editor.
-        let original_format = format;
-        let format = if items.len() == 1
-            && items[0].form == Some(ReferenceForm::Narrative)
-            && matches!(format, KeyFormat::Autocite | KeyFormat::Parencite)
-        {
-            KeyFormat::Textcite
-        } else {
-            format
-        };
-        let output = if let Some(style) = style {
-            OutputSpec::Csl {
-                style: style_id(style).into(),
-            }
-        } else {
-            let (syntax, command) = match format {
-                KeyFormat::Pandoc => (KeySyntax::Pandoc, None),
-                KeyFormat::Autocite => (KeySyntax::Biblatex, Some("autocite")),
-                KeyFormat::Parencite => (KeySyntax::Biblatex, Some("parencite")),
-                KeyFormat::Textcite => (KeySyntax::Biblatex, Some("textcite")),
-                KeyFormat::Cite => (KeySyntax::Latex, Some("cite")),
-                KeyFormat::Typst => (KeySyntax::Typst, None),
-                KeyFormat::Keys => (KeySyntax::Keys, None),
-            };
-            OutputSpec::Key {
-                syntax,
-                command: command.map(str::to_owned),
-            }
-        };
+        // The engine writes each form in the output's own way, a narrative
+        // BibLaTeX citation as \textcite included; the picker only asks.
         let mut original_output = output.clone();
-        if let OutputSpec::Key {
-            syntax: KeySyntax::Biblatex,
-            command,
-        } = &mut original_output
-        {
-            *command = Some(
-                match original_format {
-                    KeyFormat::Autocite => "autocite",
-                    KeyFormat::Parencite => "parencite",
-                    _ => "textcite",
-                }
-                .into(),
-            );
-        }
         let items: Vec<_> = items
             .into_iter()
             .enumerate()
@@ -905,13 +854,9 @@ impl FileLibrary {
             .collect::<Result<_, CommandError>>()?;
         let mut request = CitationRequest {
             items,
-            output,
-            form: if style == Some(CitationStyle::Ieee) {
-                CitationForm::BibliographyOnly
-            } else {
-                CitationForm::Normal
-            },
-            keep_order: style.is_none(),
+            keep_order: matches!(output, OutputSpec::Key { .. }),
+            output: output.clone(),
+            form: CitationForm::Normal,
             input_language: None,
             output_locale: None,
         };
@@ -1043,7 +988,8 @@ impl FileLibrary {
             )
         };
         let cancel = self.preview_cancellation(reservation)?;
-        let entry = matches!(&original_output, OutputSpec::Csl { style } if style == "ieee");
+        // A numbered style writes reference entries, which have no name forms.
+        let entry = citation.result().notices.contains(&Notice::ReferenceEntry);
         let bare_keys = matches!(
             &original_output,
             OutputSpec::Key {
@@ -1232,16 +1178,6 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
             .unwrap_or("a reference without a key")
             .to_owned(),
     )
-}
-
-pub(crate) fn style_id(style: CitationStyle) -> &'static str {
-    match style {
-        CitationStyle::Apa => "apa",
-        CitationStyle::ChicagoAuthorDate => "chicago-author-date",
-        CitationStyle::HarvardCiteThemRight => "harvard-cite-them-right",
-        CitationStyle::Ieee => "ieee",
-        CitationStyle::ModernLanguageAssociation => "modern-language-association",
-    }
 }
 
 fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {

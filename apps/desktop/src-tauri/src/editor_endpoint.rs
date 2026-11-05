@@ -45,7 +45,8 @@ pub(crate) struct EditorRequest {
     pub(crate) output: OutputSpec,
     pub(crate) form: CitationForm,
     pub(crate) clipboard: bool,
-    pub(crate) label: &'static str,
+    /// The output's one name from the engine's list; a style outside it is its id.
+    pub(crate) label: String,
 }
 
 /// One request at a time. An answer counts only for the request it names.
@@ -70,18 +71,15 @@ impl Pending {
         retire();
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let (send, receive) = mpsc::sync_channel(1);
-        // Numeric styles write whole entries, as the picker does; keys are keys.
-        let form = if pick.output == cayw::CaywOutput::Style && style == "ieee" && pick.form == CitationForm::Normal {
-            CitationForm::BibliographyOnly
-        } else {
-            pick.form
-        };
+        // A numbered style writes whole entries by itself, as in the picker.
+        let output = pick.spec(style);
+        let label = ibis_engine::outputs::named(&output).map_or_else(|| style.to_owned(), |entry| entry.name.clone());
         let request = EditorRequest {
             id,
-            output: pick.spec(style),
-            form,
+            output,
+            form: pick.form,
             clipboard: pick.clipboard,
-            label: pick.label,
+            label,
         };
         *active = Some((request, send));
         Some((id, receive))
@@ -298,10 +296,8 @@ impl Host for AppHost {
             .is_ok_and(|library| library.file.is_some() && !library.opening)
     }
     fn style(&self) -> String {
-        let chosen = settings::load(&self.0.state::<SettingsFile>().path)
-            .settings
-            .citation_style;
-        crate::library::engine_file::style_id(chosen.unwrap_or(settings::CitationStyle::Apa)).to_owned()
+        let saved = settings::load(&self.0.state::<SettingsFile>().path).settings.output;
+        crate::output::default_style(crate::output::stored(saved.as_deref())).to_owned()
     }
     fn changed(&self) {
         report(self.0.emit("editor:request", ()), NativeIssue::LibraryEvent);
@@ -498,7 +494,7 @@ pub(crate) struct EditorWaiting {
 pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
     pending.current().map(|request| EditorWaiting {
         request: request.id as u32,
-        format: request.label.to_owned(),
+        format: request.label,
     })
 }
 
@@ -623,7 +619,8 @@ mod tests {
         let fake = Fake::default();
         *fake.then.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(|pending: &Pending| {
             let request = pending.current().unwrap_or_else(|| panic!("a request"));
-            assert_eq!(request.label, "Pandoc");
+            // Better BibTeX's default Pandoc, by its one name in the engine's list.
+            assert_eq!(request.label, "Pandoc without brackets");
             assert!(pending.answer(request.id, "@taylor2026", || ()));
         }));
         let (_listening, port, host) = server(fake);
@@ -749,20 +746,21 @@ mod tests {
     }
 
     #[test]
-    fn a_formatted_request_takes_the_persons_style_and_a_numeric_one_its_entry() {
+    fn a_formatted_request_takes_the_persons_style_and_its_one_name() {
         let pending = Pending::default();
         let pick = CaywPick {
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Formatted citation",
         };
         pending
             .begin(&pick, "ieee", || {})
             .unwrap_or_else(|| panic!("a request"));
         let request = pending.current().unwrap_or_else(|| panic!("a request"));
         assert_eq!(request.output, OutputSpec::Csl { style: "ieee".into() });
-        assert_eq!(request.form, CitationForm::BibliographyOnly);
+        // The engine writes a numbered style's entry itself; the request keeps its form.
+        assert_eq!(request.form, CitationForm::Normal);
+        assert_eq!(request.label, "IEEE");
     }
 
     #[test]
@@ -775,7 +773,6 @@ mod tests {
             }),
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Pandoc",
         };
         pending
             .begin(&pick, "ieee", || {})
@@ -793,7 +790,6 @@ mod tests {
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
-            label: "Formatted citation",
         };
         let mut retired = 0;
         let (id, _answer) = pending

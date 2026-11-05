@@ -1,18 +1,13 @@
-import { commands, type KeyFormat, type PickerPreferences, type PickerSave } from "./bindings";
+import { commands, type PickerPreferences, type PickerSave } from "./bindings";
 
 type Patch = Partial<PickerPreferences>;
 type Intent = { order: number; revision: Promise<number> };
 type Revisions = Partial<Record<keyof PickerPreferences, Intent>>;
-type KeyChoice = { value: KeyFormat; saved: boolean; intent: Intent };
 
-/** The picker can still read its key format when preferences are unreadable. */
-export type PreferenceRead = {
-  preferences: PickerPreferences | null;
-  copy_format?: KeyFormat;
-  formatFailed?: boolean;
-};
+/** Null when the preferences cannot be read: nothing is replaced with defaults. */
+export type PreferenceRead = { preferences: PickerPreferences | null };
 type Event =
-  | { type: "read"; value: PreferenceRead; pendingStyle: boolean }
+  | { type: "read"; value: PreferenceRead; pendingOutput: boolean }
   | { type: "saved"; value: PickerSave }
   | { type: "invalidated" }
   | { type: "saving"; promise: Promise<void> }
@@ -26,7 +21,6 @@ export class PreferencePatchQueue {
   private durable: PickerPreferences | null = null;
   private patch: Patch = {};
   private revisions: Revisions = {};
-  private key: KeyChoice | null = null;
   private revision = 0;
   private reads = 0;
   private notifications = 0;
@@ -40,7 +34,7 @@ export class PreferencePatchQueue {
     private api: {
       read: () => Promise<PreferenceRead>;
       revision?: () => Promise<number>;
-      write: (patch: Patch, key: KeyFormat | null, revision: number) => Promise<PickerSave>;
+      write: (patch: Patch, revision: number) => Promise<PickerSave>;
     },
     private policy: {
       /** Picker notifications read after its writes; Settings focus reads skip busy state. */
@@ -71,18 +65,17 @@ export class PreferencePatchQueue {
     return operation;
   }
 
-  change(change: Patch, key: KeyFormat | null = null): void {
+  change(change: Patch): void {
     const revision = ++this.revision;
     const reading = this.reads;
     const notification = this.notifications;
     const fields = Object.keys(change) as (keyof PickerPreferences)[];
     // Dispatch issuance in the input handler, before waiting for any local
     // save or read. A reply arriving late cannot change this action's identity.
-    if (fields.length || key !== null) {
+    if (fields.length) {
       const issued = (this.api.revision ?? commands.preferenceRevision)();
       void issued.catch(() => undefined);
       const intent = { order: revision, revision: issued };
-      if (key !== null) this.key = { value: key, saved: false, intent };
       for (const field of fields) this.revisions[field] = intent;
     }
     this.patch = { ...this.patch, ...change };
@@ -91,25 +84,23 @@ export class PreferencePatchQueue {
     const queued = { ...this.patch };
     const revisions = { ...this.revisions };
     const deliberate = new Set(Object.keys(change));
-    const chosenKey = this.key;
     const save = this.enqueue(async () => {
-      const groups = new Map<Intent, { patch: Patch; key: KeyFormat | null }>();
+      const groups = new Map<Intent, Patch>();
       const group = (intent: Intent) => {
-        if (!groups.has(intent)) groups.set(intent, { patch: {}, key: null });
+        if (!groups.has(intent)) groups.set(intent, {});
         return groups.get(intent)!;
       };
       for (const field of Object.keys(queued) as (keyof PickerPreferences)[]) {
         const intent = revisions[field];
         if (intent && (deliberate.has(field) || this.revisions[field] === intent)) {
-          Object.assign(group(intent).patch, { [field]: queued[field] });
+          Object.assign(group(intent), { [field]: queued[field] });
         }
       }
-      if (chosenKey && !chosenKey.saved) group(chosenKey.intent).key = chosenKey.value;
       let saved: PickerSave | undefined;
-      for (const [intent, { patch, key }] of [...groups].sort(([a], [b]) => a.order - b.order)) {
+      for (const [intent, patch] of [...groups].sort(([a], [b]) => a.order - b.order)) {
         const issued = await intent.revision.catch((error: unknown) => {
           // An issuance failure has no ticket to retry; later choices remain usable.
-          this.retire(intent, patch, chosenKey);
+          this.retire(intent, patch);
           throw error;
         });
         const own = { completed: false, notified: false };
@@ -119,14 +110,14 @@ export class PreferencePatchQueue {
         const foreign = this.foreignNotifications;
         let completed = false;
         try {
-          saved = await this.api.write(patch, key, issued);
+          saved = await this.api.write(patch, issued);
           completed = true;
           if (foreign === this.foreignNotifications) this.durable = saved.preferences;
         } finally {
           own.completed = true;
           if ((!completed || own.notified) && this.ownNotifications.get(issued) === own) this.ownNotifications.delete(issued);
         }
-        this.retire(intent, patch, chosenKey);
+        this.retire(intent, patch);
       }
       if (saved && revision === this.revision && notification === this.notifications && (!this.policy.readAfterWrites || reading === this.reads)) {
         this.emit({ type: "saved", value: saved });
@@ -144,11 +135,10 @@ export class PreferencePatchQueue {
     this.emit({ type: "saving", promise: save });
   }
 
-  private retire(intent: Intent, patch: Patch, key: KeyChoice | null) {
+  private retire(intent: Intent, patch: Patch) {
     for (const field of Object.keys(patch) as (keyof PickerPreferences)[]) {
       if (this.revisions[field] === intent) { delete this.patch[field]; delete this.revisions[field]; }
     }
-    if (key?.intent === intent) { key.saved = true; if (this.key === key) this.key = null; }
   }
 
   load(active: () => boolean = () => true): Promise<void> {
@@ -193,9 +183,8 @@ export class PreferencePatchQueue {
       if (restore) {
         this.patch = {};
         this.revisions = {};
-        this.key = null;
       }
-      const pendingStyle = this.patch.citation_style !== undefined;
+      const pendingOutput = this.patch.output !== undefined;
       if (value.preferences) {
         this.loaded = true;
         this.durable = value.preferences;
@@ -203,7 +192,7 @@ export class PreferencePatchQueue {
         // durable state, even if a failed recovery left retry fields pending.
         if (this.policy.readAfterWrites) value = { ...value, preferences: { ...value.preferences, ...this.patch } };
       }
-      this.emit({ type: "read", value, pendingStyle });
+      this.emit({ type: "read", value, pendingOutput });
       if (value.preferences && this.policy.readAfterWrites && Object.keys(this.patch).length) this.change({});
     }).catch(() => {
       if (current()) this.emit({ type: "error", source: "read" });

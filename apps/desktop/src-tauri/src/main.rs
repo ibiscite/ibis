@@ -23,6 +23,7 @@ mod menu_bar;
 mod native_corners;
 mod native_feel;
 mod notice;
+mod output;
 #[cfg(target_os = "macos")]
 mod panel;
 #[cfg(any(target_os = "macos", test))]

@@ -6,7 +6,7 @@ import { composing } from "../../composition";
 import { pickerText } from "../../messages";
 import { ariaKeys, keysFor } from "../../keys";
 import { currentPlatform } from "../../platform";
-import type { Choice } from "./choice";
+import type { OutputId } from "../../format/outputs";
 import { FormatMenu } from "./FormatMenu";
 import type { MenuCloseReason } from "../../ui/ToolbarMenu";
 import type { AppPaste } from "../../api";
@@ -27,7 +27,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   expanded: boolean;
   /** The id of the highlighted row, when there is one. */
   activeDescendant: string | undefined;
-  format: Choice;
+  format: OutputId;
   formatButtonRef?: React.RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, when Ibis knows it. */
   app?: string | null;
@@ -42,7 +42,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
   showFormat: boolean;
   /** Whether formatted citation styles can be used now. */
   styles: boolean;
-  onFormatChange: (choice: Choice) => void;
+  onFormatChange: (choice: OutputId) => void;
   /** Double-clicking the bar's empty area returns Ibis to its place. */
   onResetPosition?: () => void;
 }) {

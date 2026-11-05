@@ -134,7 +134,7 @@ test("a failed read keeps its last good copy, labelled", async () => {
 test("a formatted output shows no mark, because a style has no key to check", async () => {
   backend({
     project_status: () => file(), search: () => [row("missing")],
-    picker_preferences: () => ({ citation_style: "apa", density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true }),
+    picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false, show_paste_preview: true, search_icon: "magnifier", paste: true, menu_bar: true }),
   });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "seas" } });

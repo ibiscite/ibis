@@ -33,7 +33,7 @@ TEXT = {value: "text-" + code for value, code in (
     ("ibis tab probe", "probe"), ("ibis tab probe alternate", "probe-alternate"))}
 CLICKS = {value: "click-" + code for value, code in (
     ("More", "more"), ("Library", "library"), ("Reload Library", "reload"), ("Quit Ibis", "quit"),
-    ("Copy as Pandoc key", "format"))}
+    ("Copy as Pandoc", "format"))}
 
 
 class BundleError(RuntimeError):

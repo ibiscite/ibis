@@ -5,7 +5,7 @@ import { App } from "./App";
 import { backend, chooseRows, resetApp, type Handler } from "./testing/app";
 import type { PickerPreferences } from "./api";
 
-const saved: PickerPreferences = { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true };
+const saved: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
 const observers: MutationObserver[] = [];
 afterEach(async () => { observers.splice(0).forEach((observer) => observer.disconnect()); await resetApp(); });
 const deferred = <T,>() => {

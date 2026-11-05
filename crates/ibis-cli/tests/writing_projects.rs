@@ -213,7 +213,7 @@ fn an_unchecked_cli_request_never_escapes_a_known_wrong_work_conflict() {
 #[test]
 fn project_formats_accept_the_same_registry_ids_as_ordinary_citations() {
     let home = Home::new();
-    for output in ibis_engine::outputs::outputs().unwrap() {
+    for output in ibis_engine::outputs::outputs() {
         let (code, made, errors) = home.run(&[
             "projects",
             "create",

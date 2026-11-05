@@ -1381,10 +1381,7 @@ def saved_typst(settings):
         raise AssertionError("Native preference JSON is malformed") from None
     assert (isinstance(value, dict) and type(value.get("schema_version")) is int
             and value["schema_version"] == 2), "Native preferences must use settings format 2"
-    if value.get("copy_format") != "typst":
-        return False
-    assert value.get("citation_style") is None, "Native key format retained a citation style"
-    return True
+    return value.get("output") == "typst"
 
 
 def quit_normally(native, app):
@@ -1487,14 +1484,14 @@ def _first_run_preferences_main(args):
         # With no match there is no footer copy action to invoke accidentally.
         type_query(native, snapshot, NO_MATCH, "ctrl+a")
         wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc key")
-        wait_for(lambda: bool(named(snapshot(), "Typst key")), "Copy as lists Typst key")
+        native.click("Copy as Pandoc")
+        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
-        # "\cite" names only that menu item; "Pandoc" is also the header's visible text.
-        wait_for(lambda: not named(snapshot(), "\\cite"), "Copy as filter leaves only Typst")
+        # "LaTeX \cite" names only that menu item; "Pandoc" is also the header's visible text.
+        wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "Copy as filter leaves only Typst")
         native.key("Down")
         native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
@@ -1805,7 +1802,7 @@ def smoke_main(args):
                 prior = {path: path.read_bytes() if path.exists() else None for path in paths}
                 external = json.loads(prior[settings]) if prior[settings] is not None else {"schema_version": 1}
                 external["shortcut"] = "Control+Alt+F12"
-                external.pop("copy_format", None)  # Copying must not recreate a removed preference.
+                external.pop("output", None)  # Copying must not recreate a removed preference.
                 settings.parent.mkdir(parents=True, exist_ok=True)
                 with recording("action", "settings-live-edit"):
                     settings.write_text(json.dumps(external), encoding="utf-8")
@@ -2612,21 +2609,19 @@ class ContractTests(unittest.TestCase):
         def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "com.ibiscite.ibis/settings.json"
-                value = '{"schema_version":2,"copy_format":"typst"}'
+                value = '{"schema_version":2,"output":"typst"}'
                 if failure == "wrong-format":
-                    value = '{"schema_version":2,"copy_format":"pandoc"}'
+                    value = '{"schema_version":2,"output":"pandoc"}'
                 elif failure == "duplicate":
-                    value = '{"schema_version":2,"copy_format":"pandoc","copy_format":"typst"}'
+                    value = '{"schema_version":2,"output":"pandoc","output":"typst"}'
                 elif failure == "malformed":
                     value = '{invalid'
                 elif failure == "wrong-schema":
-                    value = '{"schema_version":true,"copy_format":"typst"}'
-                elif failure == "retained-style":
-                    value = '{"schema_version":2,"copy_format":"typst","citation_style":"apa"}'
+                    value = '{"schema_version":true,"output":"typst"}'
                 elif failure == "non-json":
-                    value = '{"schema_version":2,"copy_format":"typst","invalid":NaN}'
+                    value = '{"schema_version":2,"output":"typst","invalid":NaN}'
                 elif failure == "oversized":
-                    value = json.dumps({"schema_version": 2, "copy_format": "typst", "padding": "x" * 65536})
+                    value = json.dumps({"schema_version": 2, "output": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
 
         def click(name):
@@ -2641,7 +2636,7 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc key":
+            elif name == "Copy as Pandoc":
                 self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
                 native.format_filter = ""
             else:
@@ -2674,16 +2669,16 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc key", "3 references"]
+                names += ["Copy as Pandoc", "3 references"]
                 if native.format_filter is not None:
-                    names += ["Typst key"]
+                    names += ["Typst"]
                 names += ["No matching references"] if native.query == NO_MATCH else [
                     "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
             result_focus = failure == "active-result-reopen" and native.reopened
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
                 {"name": name, "role": "button"} for name in names] + [
-                {"name": "\\cite", "role": "menu item"}] * (native.format_filter == "") + [
+                {"name": "LaTeX \\cite", "role": "menu item"}] * (native.format_filter == "") + [
                 {"name": "Search references", "role": "entry", "value": native.query, "focused": not result_focus and not menu_open},
                 {"name": "private result payload", "role": "list item", "focused": result_focus}]}
 
@@ -2756,7 +2751,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc key", "Typst")], [("Copy as Pandoc key", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
@@ -2855,7 +2850,7 @@ class ContractTests(unittest.TestCase):
             self.assertEqual(replay["result"], bundle["result"])
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
-        for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "retained-style", "non-json", "oversized",
+        for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "non-json", "oversized",
                         "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup"):
             with self.subTest(failure=failure):
                 result, report, _launches, _actions = self.preference_probe(failure)

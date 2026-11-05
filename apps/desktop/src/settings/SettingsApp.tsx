@@ -1,7 +1,7 @@
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
-import type { CheckResult, KeyFormat, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { CheckResult, LoginItem, LoginItemProblem, PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
@@ -168,7 +168,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
     revision: () => api.preferenceRevision(),
-    write: (patch, key, revision) => api.setPickerPreferences(patch, key, revision),
+    write: (patch, revision) => api.setPickerPreferences(patch, revision),
   }, { restoreOnFailure: true }), [api]);
   useEffect(() => queue.subscribe((event) => {
     if (!live.current) return;
@@ -297,15 +297,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setFocus(null);
   }, [focus, preferences, permission]);
 
-  const change = (next: Partial<PickerPreferences>, key: KeyFormat | null = null) => {
+  const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
     edits.current += 1;
-    cause.current = Object.hasOwn(next, "citation_style") || key !== null ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
+    cause.current = next.output !== undefined ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
       : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "recent-citations";
     setProblemRow(null);
-    dispatchPreference({ type: "change", value: { ...preferences, ...next, ...(key ? { copy_format: key } : {}) } });
-    queue.change(next, key);
+    dispatchPreference({ type: "change", value: { ...preferences, ...next } });
+    queue.change(next);
   };
   const changeShortcut = (next: string | null, restoring = false, ticket = shortcutUndoTicket.current): Promise<void> => {
     if (shortcutBusy.current || ticket !== shortcutUndoTicket.current) return Promise.resolve();

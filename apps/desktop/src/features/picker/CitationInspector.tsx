@@ -2,7 +2,7 @@ import { useEffect, useState, type Ref } from "react";
 import { citationDetails, isCancelled } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import { composing } from "../../composition";
-import type { FormattedCitation } from "../../format/styles";
+import type { FormattedCitation } from "../../format/outputs";
 import { render } from "../../format/markup";
 import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";

@@ -31,7 +31,7 @@ try {
       await page.addInitScript(({ text }) => {
         Object.defineProperty(navigator, "platform", { value: "MacIntel" });
         if (text === "200%") document.addEventListener("DOMContentLoaded", () => { document.documentElement.style.fontSize = "200%"; });
-        const preferences = { citation_style: null, density: "comfortable", larger_text: text === "larger", paste: false, menu_bar: true };
+        const preferences = { density: "comfortable", larger_text: text === "larger", paste: false, menu_bar: true };
         const none = { state: "none", revision: "1", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
         let library = none, callback = 0, discoveries = 0, presentation = 0;
         const callbacks = new Map(), listeners = new Map();
@@ -58,7 +58,6 @@ try {
             if (command === "picker_presentation") return presentation;
             if (command === "native_appearance") return "opaque";
             if (command === "picker_preferences") return preferences;
-            if (command === "copy_format") return "pandoc";
             if (command === "picker_destination") return { app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
             if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: null };
             if (command === "library_status") return library;

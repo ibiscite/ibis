@@ -76,12 +76,10 @@ export const commands = {
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
 	recentReferences: (ids: RecentIdentity[], includeAdded: boolean) => __TAURI_INVOKE<SearchReply_Serialize>("recent_references", { ids, includeAdded }),
-	previewFileCitation: (items: FileSelection[], format: KeyFormat, style: "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association" | null, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, format, style, expectedRevision, intent }),
+	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null, unverifiedProject: boolean | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces, unverifiedProject }),
-	/**  The format the picker starts with: the last one chosen, or Pandoc. */
-	copyFormat: () => __TAURI_INVOKE<KeyFormat>("copy_format"),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
 	/**
@@ -131,7 +129,7 @@ export const commands = {
 	 *  The list as a formatted bibliography, for the person to look at before
 	 *  copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: CitationStyle) => __TAURI_INVOKE<{
+	sessionBibliography: (style: string) => __TAURI_INVOKE<{
 	text: string,
 	html: string | null,
 	content_hash: string,
@@ -146,13 +144,13 @@ export const commands = {
 	 *  Copy what was shown. Prepared again from the list as it is now, and refused
 	 *  unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	copySessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
 	/**
 	 *  Save what was shown, as rich text, a web page or plain text. This is the one
 	 *  way the list leaves memory, and only because the person asked. `None` when
 	 *  the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: CitationStyle, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
+	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/**  The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences_Serialize>("picker_preferences"),
 	/**  Issue a save identity inline at IPC dispatch; unused identities block nothing. */
@@ -160,28 +158,14 @@ export const commands = {
 	/**  One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
 	/**  Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, copyFormat:
-/**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
-"pandoc" |
-/**  BibLaTeX `\autocite` / `\autocites`. */
-"autocite" |
-/**  BibLaTeX `\parencite` / `\parencites`. */
-"parencite" |
-/**  BibLaTeX `\textcite` / `\textcites`. */
-"textcite" |
-/**  Plain LaTeX / natbib-compatible `\cite`. */
-"cite" |
-/**  Typst `@key[p. 12]`. */
-"typst" |
-/**  Bare keys separated by commas. */
-"keys" | null, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, copyFormat, revision }),
+	setPickerPreferences: (preferences: PickerPreferencesPatch_Deserialize, revision: number) => __TAURI_INVOKE<PickerSave_Serialize>("set_picker_preferences", { preferences, revision }),
 	/**  The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination_Serialize>("picker_destination"),
 	/**
 	 *  Remember a format, a delivery choice or both for the captured app. Whichever
 	 *  is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
 	 */
-	rememberAppOutput: (appId: string, output: ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never } | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
+	rememberAppOutput: (appId: string, output: string | null, paste: "paste" | "copy-only" | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/**  Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/**  Start Ibis when the person logs in, or stop doing so. */
@@ -327,14 +311,18 @@ export const commands = {
 	dismissWindowPositionUndo: (revision: number) => __TAURI_INVOKE<void>("dismiss_window_position_undo", { revision }),
 };
 
+/* Constants */
+export const DEFAULT_OUTPUT = "pandoc" as const;
+
+export const DEFAULT_STYLE = "apa" as const;
+
+export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
+
 /* Types */
 /**  A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
-
-/**  One output the picker can copy: a key syntax or a citation style. */
-export type AppOutput = ({ key: KeyFormat }) & { style?: never } | ({ style: CitationStyle }) & { key?: never };
 
 /**  A deliberate delivery choice for one captured app, independent of its format. */
 export type AppPaste = "paste" | "copy-only";
@@ -373,9 +361,6 @@ export type CitationSpan_Serialize = {
 	text: string,
 	runs?: DisplayRun_Serialize[] | null,
 };
-
-/**  A bundled citation style the picker can format with (ADR 0020). */
-export type CitationStyle = "apa" | "chicago-author-date" | "harvard-cite-them-right" | "ieee" | "modern-language-association";
 
 /**
  *  A failed command as the interface receives it: the interface decides
@@ -568,23 +553,6 @@ export type FoundFile = {
 	/**  The name of the folder holding it, without the rest of its path. */
 	folder: string,
 };
-
-/**  Key-based output syntax. */
-export type KeyFormat =
-/**  Pandoc / Quarto / R Markdown / Obsidian: `[@key, p. 12]`. */
-"pandoc" |
-/**  BibLaTeX `\autocite` / `\autocites`. */
-"autocite" |
-/**  BibLaTeX `\parencite` / `\parencites`. */
-"parencite" |
-/**  BibLaTeX `\textcite` / `\textcites`. */
-"textcite" |
-/**  Plain LaTeX / natbib-compatible `\cite`. */
-"cite" |
-/**  Typst `@key[p. 12]`. */
-"typst" |
-/**  Bare keys separated by commas. */
-"keys";
 
 /**  A library failure grouped by what the person can do about it. */
 export type LibraryProblem =
@@ -790,10 +758,10 @@ export type PickerDestination_Deserialize = {
 	app_id: string | null,
 	/**  Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null,
-	/**  The app suggestion; `None` follows the saved default. */
-	automatic: AppOutput | null,
+	/**  The app suggestion, an engine output id; `None` follows the saved default. */
+	automatic: string | null,
 	/**  The output the person chose to always use for this app. */
-	remembered: AppOutput | null,
+	remembered: string | null,
 	/**  This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
@@ -819,10 +787,10 @@ export type PickerDestination_Serialize = {
 	app_id: string | null,
 	/**  Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null,
-	/**  The app suggestion; `None` follows the saved default. */
-	automatic: AppOutput | null,
+	/**  The app suggestion, an engine output id; `None` follows the saved default. */
+	automatic: string | null,
 	/**  The output the person chose to always use for this app. */
-	remembered: AppOutput | null,
+	remembered: string | null,
 	/**  This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean,
 	/**  The current paste policy permits an attempt; final delivery checks still apply. */
@@ -842,7 +810,7 @@ export type PickerDestination_Serialize = {
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts
- *  (ADR 0020). A new key format is saved with the same preference change.
+ *  (ADR 0020).
  */
 export type PickerPreferences = PickerPreferences_Serialize | PickerPreferences_Deserialize;
 
@@ -853,7 +821,8 @@ export type PickerPreferencesPatch = PickerPreferencesPatch_Serialize | PickerPr
 export type PickerPreferencesPatch_Deserialize = {
 	appearance?: Appearance | null,
 	accent?: Accent | null,
-	citation_style?: CitationStyle | null,
+	/**  Only an id the engine lists; any other refuses the whole change. */
+	output?: string | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
 	paste?: boolean | null,
@@ -866,7 +835,8 @@ export type PickerPreferencesPatch_Deserialize = {
 export type PickerPreferencesPatch_Serialize = {
 	appearance?: Appearance | null,
 	accent?: Accent | null,
-	citation_style?: CitationStyle | null,
+	/**  Only an id the engine lists; any other refuses the whole change. */
+	output?: string | null,
 	density?: Density | null,
 	larger_text?: boolean | null,
 	paste?: boolean | null,
@@ -877,14 +847,16 @@ export type PickerPreferencesPatch_Serialize = {
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts
- *  (ADR 0020). A new key format is saved with the same preference change.
+ *  (ADR 0020).
  */
 export type PickerPreferences_Deserialize = {
-	copy_format?: KeyFormat | null,
+	/**
+	 *  The default output: an id from the engine's list; an id it does not
+	 *  list was read as the engine's default.
+	 */
+	output: string,
 	appearance?: Appearance | null,
 	accent?: Accent | null,
-	/**  A style chosen in the format menu, or `null` to copy citation keys. */
-	citation_style: CitationStyle | null,
 	density: Density,
 	larger_text: boolean,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
@@ -898,14 +870,16 @@ export type PickerPreferences_Deserialize = {
 
 /**
  *  How the picker looks and what it formats with, remembered across restarts
- *  (ADR 0020). A new key format is saved with the same preference change.
+ *  (ADR 0020).
  */
 export type PickerPreferences_Serialize = {
-	copy_format?: KeyFormat | null,
+	/**
+	 *  The default output: an id from the engine's list; an id it does not
+	 *  list was read as the engine's default.
+	 */
+	output: string,
 	appearance?: Appearance | null,
 	accent?: Accent | null,
-	/**  A style chosen in the format menu, or `null` to copy citation keys. */
-	citation_style: CitationStyle | null,
 	density: Density,
 	larger_text: boolean,
 	/**  Enter pastes into the app the picker was opened from; on by default. */
@@ -923,13 +897,11 @@ export type PickerSave = PickerSave_Serialize | PickerSave_Deserialize;
 /**  The authoritative state after one locked patch and flush. */
 export type PickerSave_Deserialize = {
 	preferences: PickerPreferences_Deserialize,
-	copy_format: KeyFormat,
 };
 
 /**  The authoritative state after one locked patch and flush. */
 export type PickerSave_Serialize = {
 	preferences: PickerPreferences_Serialize,
-	copy_format: KeyFormat,
 };
 
 /**  The saved snapshot and the identity of the write that published it. */
@@ -1280,13 +1252,13 @@ export type UndoView_Serialize = { kind: "removed"; reference: SearchResult_Seri
 /**  Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
 
-export type WritingProjectEdit = { kind: "create"; name: string; output: AppOutput } | { kind: "rename"; id: string; revision: string; name: string } | { kind: "remove"; id: string; revision: string } | { kind: "select"; id: string | null } | { kind: "output"; id: string; revision: string; output: AppOutput } | { kind: "apply"; id: string; revision: string };
+export type WritingProjectEdit = { kind: "create"; name: string; output: string } | { kind: "rename"; id: string; revision: string; name: string } | { kind: "remove"; id: string; revision: string } | { kind: "select"; id: string | null } | { kind: "output"; id: string; revision: string; output: string } | { kind: "apply"; id: string; revision: string };
 
 export type WritingProjectUpdate = WritingProjectUpdate_Serialize | WritingProjectUpdate_Deserialize;
 
 export type WritingProjectUpdate_Deserialize = {
 	name: string,
-	output: AppOutput | null,
+	output: string | null,
 	bibliography: string | null,
 	revision: string,
 	bibliography_changed?: boolean,
@@ -1294,7 +1266,7 @@ export type WritingProjectUpdate_Deserialize = {
 
 export type WritingProjectUpdate_Serialize = {
 	name: string,
-	output: AppOutput | null,
+	output: string | null,
 	bibliography: string | null,
 	revision: string,
 	bibliography_changed?: boolean,
@@ -1306,7 +1278,7 @@ export type WritingProjectView_Deserialize = {
 	id: string,
 	name: string,
 	/**  A CLI project can name outputs not yet available in the picker. */
-	output: AppOutput | null,
+	output: string | null,
 	bibliography: string | null,
 	revision: string,
 	pending?: WritingProjectUpdate_Deserialize | null,
@@ -1318,7 +1290,7 @@ export type WritingProjectView_Serialize = {
 	id: string,
 	name: string,
 	/**  A CLI project can name outputs not yet available in the picker. */
-	output: AppOutput | null,
+	output: string | null,
 	bibliography: string | null,
 	revision: string,
 	pending?: WritingProjectUpdate_Serialize | null,

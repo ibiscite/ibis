@@ -39,7 +39,7 @@ test.each(["compact", "comfortable"])("%s requests and renders the same recent g
   seed();
   const requests: unknown[] = [];
   backend({ picker_destination: destination,
-    picker_preferences: () => ({ citation_style: null, density, larger_text: false }),
+    picker_preferences: () => ({ density, larger_text: false }),
     recent_references: (args) => { requests.push(args.includeAdded); return [{ ...a, recent: "cited" }, { ...b, recent: "added" }]; },
   });
   render(<App />);
@@ -86,7 +86,7 @@ test("Recent citations off forgets the history, records nothing and hides Forget
   seed();
   let on = false;
   backend({ picker_destination: destination,
-    picker_preferences: () => ({ citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: on }),
+    picker_preferences: () => ({ density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: on }),
     recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
     search: () => [b],
   });
@@ -153,7 +153,7 @@ test("a copy finished before the re-read after a saved off is not recorded", asy
   let reads = 0;
   backend({ picker_destination: destination,
     // The re-read after the change event still reports the old "on".
-    picker_preferences: () => { reads++; return { citation_style: null, density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: true }; },
+    picker_preferences: () => { reads++; return { density: "comfortable", larger_text: false, paste: true, menu_bar: true, recent_citations: true }; },
     recent_references: (args) => Array.isArray(args.ids) && args.ids.length ? [{ ...a, recent: "cited" }] : [],
     search: () => [b],
   });

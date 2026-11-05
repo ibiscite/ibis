@@ -1,8 +1,7 @@
 import type { WritingProjectView } from "../../api";
 import { projectCheckText, writingProjectText as text } from "../../messages";
 import { Button } from "../../ui/Button";
-import { outputName } from "./choice";
-import { choiceOf } from "./useDestination";
+import { listedOutput, outputName } from "../../format/outputs";
 import "./ProjectContextStatus.css";
 
 /** The task's established choices stay visible while newer saved choices wait.
@@ -11,7 +10,7 @@ export function WritingProjectTaskStatus({ project, onApply, disabled = false }:
   project: WritingProjectView | null; onApply?: () => void; disabled?: boolean;
 }) {
   if (!project || !project.pending && !project.retained && !project.saved_problem) return null;
-  const choice = choiceOf(project.output);
+  const choice = listedOutput(project.output);
   const using = text.using(choice ? outputName(choice) : text.unsupported, project.bibliography);
   return <div className="notices project-context-status" role="status">
     <p className="project-context-message" dir="auto">{project.saved_problem ?? (project.retained ? text.retained(project.name) : text.changedElsewhere(project.name))} {project.pending?.bibliography_changed && `${text.bibliographyChanged} `}{using}</p>

@@ -2,9 +2,10 @@
 import type { Copied, Locator, SearchResult } from "../../api";
 import type { Delivered } from "../../bindings";
 import { afterCopy, noticeTitle, readDelivered } from "../../copyFeedback";
-import type { FormattedCitation } from "../../format/styles";
+import type { FormattedCitation } from "../../format/outputs";
 import { copiedNoticeText, pickerText } from "../../messages";
-import { choiceKey, idKey, type Choice, type CitationReference } from "./choice";
+import { choiceKey, idKey, type CitationReference } from "./choice";
+import type { OutputId } from "../../format/outputs";
 import { closestMatchWarnings } from "./rows";
 
 export type OutputToken = { opening: number; choice: number; delivery: number };
@@ -15,19 +16,19 @@ export type SessionView = {
   /** Native activation and checked-read identity; retires old flights, while
    * a fresh Enter may still wait for the new checked preview. */
   projectVersion?: string | null;
-  queryKey: string; format: Choice; snapshotRevision: string | undefined; defaultChoice: string;
+  queryKey: string; format: OutputId; snapshotRevision: string | undefined; defaultChoice: string;
   chosen: CitationReference[]; shown: Prepared | "failed" | "stale" | null;
   searchPending: boolean; ready: boolean; saving: boolean; shouldAsk: boolean; output: OutputToken;
   /** Recent Citations is on: only then is an app's last citation kept to change. */
   remembersLast: boolean;
 };
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
-  format: Choice | null; output: OutputToken; question?: "open" | "answered"; unverified?: boolean };
-type Flight = { id: number; session: number; presentation: number; choice: string; format: Choice; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
+  format: OutputId | null; output: OutputToken; question?: "open" | "answered"; unverified?: boolean };
+type Flight = { id: number; session: number; presentation: number; choice: string; format: OutputId; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
   references: unknown[]; shelf: CitationReference[]; replaces: string | null; appId: string | null; writingProjectId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
-export type LastCitation = { text: string; references: CitationReference[]; format: Choice; project?: string };
+export type LastCitation = { text: string; references: CitationReference[]; format: OutputId; project?: string };
 export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
 export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
 export type SessionState = {
@@ -61,7 +62,7 @@ export type SessionEvent =
   | { type: "remove-reference"; reference: CitationReference }
   | { type: "reference"; reference: CitationReference; change: Pick<CitationReference, "locator" | "form">; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken; unverified?: boolean }
-  | { type: "question"; format?: Choice; output?: OutputToken; answer: "answered" | "cancel" }
+  | { type: "question"; format?: OutputId; output?: OutputToken; answer: "answered" | "cancel" }
   | { type: "hidden"; now: number }
   | { type: "preparing"; now: number; selection?: string | null }
   | { type: "shown"; now: number; presentation: number }

@@ -2,8 +2,7 @@ import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FilePreview } from "../../bindings";
-import type { FormattedCitation, StyleId } from "../../format/styles";
-import { copiesEntry, STYLE_NAMES } from "../../format/styles";
+import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { render, renderRuns } from "../../format/markup";
 import { citationDetailsText, pickerText } from "../../messages";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
@@ -55,7 +54,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
   referenceLibrary?: (r: SearchResult) => string | null;
-  style: StyleId | null;
+  style: OutputId | null;
   keys: boolean;
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
   outputWarnings: readonly string[];
@@ -106,7 +105,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   const partialWarnings = copied ? [...copied.closestMatches ?? []] : closestMatchWarnings(references);
   const currentWarnings = copied ? copied.warnings.slice(0, copied.warnings.length - partialWarnings.length) : outputWarnings;
   const warnings = [...currentWarnings, ...partialWarnings];
-  const entryNotice = style && copiesEntry(style) ? pickerText.entryOnly(STYLE_NAMES[style]) : null;
+  const entryNotice = style && writesEntries(style) ? pickerText.entryOnly(outputName(style)) : null;
   const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice && pickerText.entryOnlyShort,
     partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });
@@ -116,7 +115,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   const toggle = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => { if (panel?.kind === kind) close(); else open(kind, origin, reference); };
   const remove = (reference: CitationReference) => { close(); onRemove(reference); };
   const isSelected = (reference: CitationReference) => records.some((r) => idKey(r.id) === idKey(reference.id));
-  const fullProblem = problem ?? (style ? pickerText.previewStyleError(STYLE_NAMES[style]) : pickerText.previewError);
+  const fullProblem = problem ?? (style ? pickerText.previewStyleError(outputName(style)) : pickerText.previewError);
   const ready = shown && typeof shown === "object" ? shown : null;
   const referenceIds = JSON.stringify(references.map((reference) => idKey(reference.id)));
   const retained = useRef<{ presentation: typeof presentation; ids: string; value: FormattedCitation } | null>(null);

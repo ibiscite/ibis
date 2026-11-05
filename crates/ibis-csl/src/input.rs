@@ -207,6 +207,12 @@ pub(crate) fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
         .collect())
 }
 
+/// Whether this style's citations are reference entries: a numbered style
+/// cannot number one citation without the document.
+pub(crate) fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
+    Ok(catalog::resolve(id)?.traits.numeric)
+}
+
 pub(crate) fn prepare(
     snapshot: &Snapshot,
     request: &CitationRequest,

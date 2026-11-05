@@ -2,7 +2,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type KeyFormat, type PastePermission, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "../bindings";
+import { commands, type PastePermission, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
@@ -10,7 +10,7 @@ export const settingsApi = {
   delightView: commands.delightView,
   pickerPreferences: commands.pickerPreferences,
   preferenceRevision: commands.preferenceRevision,
-  setPickerPreferences: (preferences: Partial<PickerPreferences>, copyFormat: KeyFormat | null, revision: number) => commands.setPickerPreferences(preferences, copyFormat, revision),
+  setPickerPreferences: (preferences: Partial<PickerPreferences>, revision: number) => commands.setPickerPreferences(preferences, revision),
   windowSize: commands.windowSize,
   setWindowSize: commands.setWindowSize,
   loginItem: commands.loginItem,

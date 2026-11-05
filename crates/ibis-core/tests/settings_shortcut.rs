@@ -1,5 +1,4 @@
 //! Defaults stay unset when another choice is saved.
-use ibis_core::cite::KeyFormat;
 use ibis_core::settings;
 
 #[test]
@@ -21,7 +20,7 @@ fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {
         let loaded = settings::load(&path);
         assert!(loaded.problem.is_none());
         assert_eq!(loaded.settings.shortcut.here(), shortcut);
-        settings::update(&path, |current| current.copy_format = Some(KeyFormat::Typst))
+        settings::update(&path, |current| current.output = Some("typst".into()))
             .unwrap_or_else(|error| panic!("{error}"));
         let saved: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));

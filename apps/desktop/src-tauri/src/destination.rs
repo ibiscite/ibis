@@ -13,15 +13,15 @@ use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ibis_core::cite::KeyFormat;
-use ibis_core::contract::citation::{KeySyntax, OutputSpec};
+use ibis_core::contract::citation::OutputSpec;
 use ibis_core::destination::{
     AppId, AppPaste, CopyReason, OutputQuestion, PasteSafety, has_citation_plugins, lookup, output_for,
 };
-use ibis_core::settings::{self, CitationStyle};
+use ibis_core::settings;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
+use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
 /// Apps remembered; the least recently chosen goes first.
@@ -29,62 +29,6 @@ const MAX_APPS: usize = 200;
 /// A file this large was not written by Ibis.
 const MAX_BYTES: u64 = 256 * 1024;
 const VERSION: u32 = 1;
-
-/// One output the picker can copy: a key syntax or a citation style.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
-#[serde(rename_all = "kebab-case", deny_unknown_fields)]
-pub(crate) enum AppOutput {
-    Key(KeyFormat),
-    Style(CitationStyle),
-}
-
-impl AppOutput {
-    pub(crate) fn project_spec(&self) -> OutputSpec {
-        match self {
-            Self::Style(style) => OutputSpec::Csl {
-                style: crate::library::engine_file::style_id(*style).into(),
-            },
-            Self::Key(format) => {
-                let (syntax, command) = match format {
-                    KeyFormat::Pandoc => (KeySyntax::Pandoc, None),
-                    KeyFormat::Autocite => (KeySyntax::Biblatex, Some("autocite")),
-                    KeyFormat::Parencite => (KeySyntax::Biblatex, Some("parencite")),
-                    KeyFormat::Textcite => (KeySyntax::Biblatex, Some("textcite")),
-                    KeyFormat::Cite => (KeySyntax::Latex, Some("cite")),
-                    KeyFormat::Typst => (KeySyntax::Typst, None),
-                    KeyFormat::Keys => (KeySyntax::Keys, None),
-                };
-                OutputSpec::Key {
-                    syntax,
-                    command: command.map(str::to_owned),
-                }
-            }
-        }
-    }
-
-    /// A project from the CLI can use an output this picker cannot yet show.
-    /// Refuse that choice, rather than substituting a plausible wrong format.
-    pub(crate) fn from_project_spec(output: &OutputSpec) -> Result<Self, String> {
-        let choices = [
-            Self::Key(KeyFormat::Pandoc),
-            Self::Key(KeyFormat::Autocite),
-            Self::Key(KeyFormat::Parencite),
-            Self::Key(KeyFormat::Textcite),
-            Self::Key(KeyFormat::Cite),
-            Self::Key(KeyFormat::Typst),
-            Self::Key(KeyFormat::Keys),
-            Self::Style(CitationStyle::Apa),
-            Self::Style(CitationStyle::ChicagoAuthorDate),
-            Self::Style(CitationStyle::HarvardCiteThemRight),
-            Self::Style(CitationStyle::Ieee),
-            Self::Style(CitationStyle::ModernLanguageAssociation),
-        ];
-        choices.into_iter().find(|choice| {
-            let canonical = choice.project_spec();
-            &canonical == output || matches!((&canonical, output), (OutputSpec::Key { syntax: a, command: Some(command) }, OutputSpec::Key { syntax: b, command: None }) if a == b && matches!(command.as_str(), "autocite" | "cite"))
-        }).ok_or_else(|| "This project's output is available in the command line. Choose a supported output there before using it in the picker.".into())
-    }
-}
 
 /// What the picker needs to know about the app it was opened from.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
@@ -95,10 +39,12 @@ pub(crate) struct PickerDestination {
     pub(crate) app_id: Option<String>,
     /// Opaque app-location fingerprint; no path crosses IPC.
     pub(crate) app_identity: Option<String>,
-    /// The app suggestion; `None` follows the saved default.
-    pub(crate) automatic: Option<AppOutput>,
+    /// The app suggestion, an engine output id; `None` follows the saved default.
+    #[specta(type = Option<String>)]
+    pub(crate) automatic: Option<OutputRef>,
     /// The output the person chose to always use for this app.
-    pub(crate) remembered: Option<AppOutput>,
+    #[specta(type = Option<String>)]
+    pub(crate) remembered: Option<OutputRef>,
     /// This app needs a delivery choice after an unreadable per-app file; formats use defaults.
     pub(crate) unreadable: bool,
     /// The current paste policy permits an attempt; final delivery checks still apply.
@@ -120,31 +66,29 @@ pub(crate) struct PickerDestination {
 }
 
 /// The output an app's documents use, from the destination table through
-/// `output_for`. Formatted apps get the
-/// default style, APA when the person has none; apps the table gives no
+/// `output_for`, as the engine names it. Formatted apps get the default
+/// output's style, else the engine's default style; apps the table gives no
 /// output follow the person's default (`None`).
-pub(crate) fn automatic(app: &AppId, default_style: Option<CitationStyle>) -> Option<AppOutput> {
+pub(crate) fn automatic(app: &AppId, default: OutputRef) -> Option<OutputRef> {
     lookup(app)?.output?;
-    let style = default_style.unwrap_or(CitationStyle::Apa);
-    let id = serde_json::to_value(style).ok()?.as_str()?.to_owned();
-    match output_for(Some(app), &OutputSpec::Csl { style: id.clone() }, &id) {
-        OutputSpec::Csl { .. } => Some(AppOutput::Style(style)),
-        OutputSpec::Key { syntax, .. } => match syntax {
-            KeySyntax::Pandoc => Some(AppOutput::Key(KeyFormat::Pandoc)),
-            KeySyntax::Biblatex => Some(AppOutput::Key(KeyFormat::Autocite)),
-            KeySyntax::Latex | KeySyntax::Natbib => Some(AppOutput::Key(KeyFormat::Cite)),
-            KeySyntax::Typst => Some(AppOutput::Key(KeyFormat::Typst)),
-            _ => None,
+    let style = crate::output::default_style(default);
+    let output = output_for(
+        Some(app),
+        &OutputSpec::Csl {
+            style: style.to_owned(),
         },
-        OutputSpec::Preset { .. } => None,
-    }
+        style,
+    );
+    ibis_engine::outputs::named(&output).and_then(|entry| crate::output::listed(&entry.id))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct Remembered {
     app: AppId,
-    output: Option<AppOutput>,
+    /// An engine output id; one this Ibis does not list reads as no choice.
+    #[serde(default, deserialize_with = "crate::output::lenient")]
+    output: Option<OutputRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     paste: Option<AppPaste>,
     /// Only unlisted apps approved for Paste need a location binding.
@@ -195,7 +139,7 @@ impl AppMemory {
     }
 
     /// The remembered output for `app`, and whether the file was unreadable.
-    pub(crate) fn get(&self, app: &AppId) -> (Option<AppOutput>, bool) {
+    pub(crate) fn get(&self, app: &AppId) -> (Option<OutputRef>, bool) {
         let app = normalized(app);
         self.state.lock().map_or((None, true), |state| {
             let output = state
@@ -237,12 +181,12 @@ impl AppMemory {
 
     /// Remember `output` for `app`.
     #[cfg(test)]
-    pub(crate) fn set(&self, app: &AppId, output: Option<AppOutput>) -> io::Result<()> {
+    pub(crate) fn set(&self, app: &AppId, output: Option<OutputRef>) -> io::Result<()> {
         self.set_choice(app, output, None)
     }
 
     #[cfg(test)]
-    pub(crate) fn set_choice(&self, app: &AppId, output: Option<AppOutput>, paste: Option<AppPaste>) -> io::Result<()> {
+    pub(crate) fn set_choice(&self, app: &AppId, output: Option<OutputRef>, paste: Option<AppPaste>) -> io::Result<()> {
         self.set_bound_choice(app, output, paste, test_identity(app))
     }
 
@@ -250,7 +194,7 @@ impl AppMemory {
     fn set_bound_choice(
         &self,
         app: &AppId,
-        output: Option<AppOutput>,
+        output: Option<OutputRef>,
         paste: Option<AppPaste>,
         identity: Option<String>,
     ) -> io::Result<()> {
@@ -461,7 +405,7 @@ pub(crate) fn picker_destination(
     };
     let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
-    let style = settings.citation_style;
+    let default = crate::output::stored(settings.output.as_deref());
     let (remembered, _) = memory.get(&id);
     let policy = memory.paste_for(&id, app_identity.as_deref());
     let can_choose_paste = crate::paste::may_choose_paste(&app, settings.paste.unwrap_or(true));
@@ -474,7 +418,7 @@ pub(crate) fn picker_destination(
         app: Some(name),
         app_id: Some(id.normalized()),
         app_identity,
-        automatic: automatic(&id, style),
+        automatic: automatic(&id, default),
         remembered,
         unreadable,
         can_paste,
@@ -496,10 +440,14 @@ pub(crate) fn remember_app_output(
     app: AppHandle,
     memory: State<'_, AppMemory>,
     app_id: String,
-    output: Option<AppOutput>,
+    output: Option<String>,
     paste: Option<AppPaste>,
     identity: Option<String>,
 ) -> Result<(), String> {
+    // Only an id the engine lists is remembered; anything else changes nothing.
+    let output = output
+        .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
+        .transpose()?;
     crate::paste::change_destination(&app, paste.is_some(), |captured| {
         let captured = captured.ok_or("no app to remember a choice for")?;
         let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
@@ -513,7 +461,7 @@ pub(crate) fn remember_app_output(
 }
 
 #[cfg(test)]
-fn remember_for(memory: &AppMemory, id: &AppId, expected: &str, output: Option<AppOutput>) -> Result<(), String> {
+fn remember_for(memory: &AppMemory, id: &AppId, expected: &str, output: Option<OutputRef>) -> Result<(), String> {
     remember_choice_for(memory, id, expected, output, None)
 }
 
@@ -522,7 +470,7 @@ fn remember_choice_for(
     memory: &AppMemory,
     id: &AppId,
     expected: &str,
-    output: Option<AppOutput>,
+    output: Option<OutputRef>,
     paste: Option<AppPaste>,
 ) -> Result<(), String> {
     if id.normalized() != expected {
@@ -584,11 +532,17 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let memory = memory_in(&directory);
         assert!(memory.take_plugin_note(&word()));
-        memory.set(&word(), Some(AppOutput::Style(CitationStyle::Apa)))?;
+        memory.set(
+            &word(),
+            Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed"))),
+        )?;
         memory.set_choice(&word(), None, Some(AppPaste::CopyOnly))?;
         assert!(!memory.take_plugin_note(&word()), "a choice keeps the note shown");
         let reopened = memory_in(&directory);
-        assert_eq!(reopened.get(&word()).0, Some(AppOutput::Style(CitationStyle::Apa)));
+        assert_eq!(
+            reopened.get(&word()).0,
+            Some(crate::output::listed("apa").unwrap_or_else(|| panic!("listed")))
+        );
         assert!(!reopened.take_plugin_note(&word()));
         Ok(())
     }
@@ -676,7 +630,12 @@ mod tests {
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         assert_eq!(reopened.paste_for(&app, None), Ok(None));
         // A format save from the replacement program cannot carry the old approval forward.
-        reopened.set_bound_choice(&app, Some(AppOutput::Key(KeyFormat::Pandoc)), None, other.clone())?;
+        reopened.set_bound_choice(
+            &app,
+            Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))),
+            None,
+            other.clone(),
+        )?;
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         let json = fs::read_to_string(path)?;
         assert!(!json.contains("/invented/"), "only an identity digest is saved");
@@ -693,7 +652,10 @@ mod tests {
         fs::write(&path, "damaged invented preferences")?;
         let memory = AppMemory::open(path.clone());
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-        memory.set(&other, Some(AppOutput::Key(KeyFormat::Pandoc)))?;
+        memory.set(
+            &other,
+            Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))),
+        )?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         let reopened = AppMemory::open(path.clone());
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
@@ -711,7 +673,7 @@ mod tests {
         let directory = tempfile::tempdir()?;
         let path = directory.path().join("apps.json");
         let app = mac("org.example.Writer");
-        let format = Some(AppOutput::Key(KeyFormat::Pandoc));
+        let format = Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed")));
         for paste in [AppPaste::Paste, AppPaste::CopyOnly] {
             let memory = AppMemory::open(path.clone());
             memory.set_choice(&app, format, Some(paste))?;
@@ -719,13 +681,16 @@ mod tests {
             assert_eq!(reopened.get(&mac("ORG.EXAMPLE.WRITER")), (format, false));
             assert_eq!(reopened.paste(&mac("ORG.EXAMPLE.WRITER")), Ok(Some(paste)));
             // A later format pick preserves delivery; a format alone never grants it.
-            reopened.set(&app, Some(AppOutput::Key(KeyFormat::Cite)))?;
+            reopened.set(
+                &app,
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))),
+            )?;
             assert_eq!(reopened.paste(&app), Ok(Some(paste)));
             // A delivery answer keeps the format the person chose.
             reopened.set_choice(&app, None, Some(paste))?;
             assert_eq!(
                 AppMemory::open(path.clone()).get(&app).0,
-                Some(AppOutput::Key(KeyFormat::Cite))
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed")))
             );
             reopened.set(&app, format)?;
         }
@@ -742,7 +707,7 @@ mod tests {
         let path = directory.path().join("apps.json");
         let memory = AppMemory::open(path.clone());
         let app = mac("org.example.Writer");
-        let format = Some(AppOutput::Key(KeyFormat::Pandoc));
+        let format = Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed")));
         memory.set_choice(&app, format, Some(AppPaste::CopyOnly))?;
         assert!(memory.set(&app, None).is_err());
         let reopened = AppMemory::open(path);
@@ -792,22 +757,44 @@ mod tests {
 
     #[test]
     fn each_kind_of_app_gets_its_output_and_unknown_apps_follow_the_default() {
-        let style = |style| Some(AppOutput::Style(style));
-        let key = |format| Some(AppOutput::Key(format));
-        assert_eq!(automatic(&mac("com.microsoft.Word"), None), style(CitationStyle::Apa));
+        let id = |app: &AppId, default: &str| automatic(app, crate::output::stored(Some(default))).map(OutputRef::id);
+        // A formatted app takes the default when it is a style, else the engine's style.
+        assert_eq!(id(&mac("com.microsoft.Word"), "pandoc"), Some("apa"));
+        assert_eq!(id(&mac("com.microsoft.Word"), "ieee"), Some("ieee"));
         assert_eq!(
-            automatic(&mac("com.microsoft.Word"), Some(CitationStyle::Ieee)),
-            style(CitationStyle::Ieee)
+            id(&mac("com.microsoft.Word"), "typst"),
+            Some(ibis_engine::outputs::DEFAULT_STYLE)
         );
-        assert_eq!(automatic(&mac("md.obsidian"), None), key(KeyFormat::Pandoc));
-        assert_eq!(automatic(&mac("texshop"), None), key(KeyFormat::Autocite));
+        assert_eq!(id(&mac("md.obsidian"), "ieee"), Some("pandoc"));
+        assert_eq!(id(&mac("texshop"), "pandoc"), Some("autocite"));
         let windows = AppId {
             system: System::Windows,
             id: r"C:\Program Files\TeXstudio\texstudio.exe".into(),
         };
-        assert_eq!(automatic(&windows, None), key(KeyFormat::Autocite));
-        assert_eq!(automatic(&mac("com.apple.Terminal"), None), None);
-        assert_eq!(automatic(&mac("org.example.unknown"), None), None);
+        assert_eq!(id(&windows, "pandoc"), Some("autocite"));
+        assert_eq!(id(&mac("com.apple.Terminal"), "pandoc"), None);
+        assert_eq!(id(&mac("org.example.unknown"), "pandoc"), None);
+    }
+
+    #[test]
+    fn an_output_this_ibis_does_not_list_reads_as_no_choice_and_keeps_delivery() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = memory_path(&directory.path().join("settings.json"));
+        let word = mac("com.microsoft.Word");
+        for output in [
+            serde_json::json!("a-later-output"),
+            serde_json::json!({"key": "pandoc"}),
+            serde_json::json!(7),
+        ] {
+            let file = serde_json::json!({"version": 1, "apps": [
+                {"app": {"system": "macos", "id": "com.microsoft.word"}, "output": output, "paste": "copy-only"},
+            ]});
+            fs::write(&path, file.to_string()).unwrap_or_else(|e| panic!("{e}"));
+            let memory = AppMemory::open(path.clone());
+            // The file stays readable: the delivery choice is kept, the format fails closed.
+            assert_eq!(memory.get(&word), (None, false), "{output}");
+            assert_eq!(memory.paste(&word), Ok(Some(AppPaste::CopyOnly)), "{output}");
+        }
     }
 
     #[test]
@@ -816,14 +803,14 @@ mod tests {
         let path = memory_path(&directory.path().join("settings.json"));
         let memory = AppMemory::open(path.clone());
         assert_eq!(memory.get(&mac("com.microsoft.Word")), (None, false));
-        let apa = AppOutput::Style(CitationStyle::Apa);
+        let apa = crate::output::listed("apa").unwrap_or_else(|| panic!("listed"));
         memory
             .set(&mac("com.microsoft.Word"), Some(apa))
             .unwrap_or_else(|e| panic!("{e}"));
         let reopened = AppMemory::open(path.clone());
         // IDs compare as the platform does: bundle IDs without case.
         assert_eq!(reopened.get(&mac("com.microsoft.word")), (Some(apa), false));
-        let typst = AppOutput::Key(KeyFormat::Typst);
+        let typst = crate::output::listed("typst").unwrap_or_else(|| panic!("listed"));
         reopened
             .set(&mac("com.microsoft.word"), Some(typst))
             .unwrap_or_else(|e| panic!("{e}"));
@@ -842,7 +829,7 @@ mod tests {
             memory
                 .set(
                     &mac(&format!("org.example.app{n}")),
-                    Some(AppOutput::Key(KeyFormat::Pandoc)),
+                    Some(crate::output::listed("pandoc").unwrap_or_else(|| panic!("listed"))),
                 )
                 .unwrap_or_else(|e| panic!("{e}"));
         }
@@ -858,7 +845,7 @@ mod tests {
         assert_eq!(file["apps"].as_array().map(Vec::len), Some(MAX_APPS));
         assert_eq!(
             file["apps"][0],
-            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app1" }, "output": { "key": "pandoc" } })
+            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app1" }, "output": "pandoc" })
         );
     }
 
@@ -880,18 +867,18 @@ mod tests {
             let memory = AppMemory::open(path.clone());
             assert_eq!(memory.get(&mac("com.microsoft.Word")), (None, true));
             memory
-                .set(&mac("com.microsoft.Word"), Some(AppOutput::Key(KeyFormat::Cite)))
+                .set(&mac("com.microsoft.Word"), Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))))
                 .unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(
                 AppMemory::open(path.clone()).get(&mac("com.microsoft.Word")),
-                (Some(AppOutput::Key(KeyFormat::Cite)), true)
+                (Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))), true)
             );
         }
     }
     #[test]
     fn ambiguous_browser_and_editor_ids_have_no_inferred_document_syntax() {
         for id in ["com.google.Chrome", "com.apple.Safari", "com.microsoft.VSCode"] {
-            assert_eq!(automatic(&mac(id), None), None);
+            assert_eq!(automatic(&mac(id), crate::output::stored(None)), None);
         }
         for id in ["chrome.exe", "msedge.exe", "code.exe"] {
             assert_eq!(
@@ -900,7 +887,7 @@ mod tests {
                         system: System::Windows,
                         id: id.into()
                     },
-                    None
+                    crate::output::stored(None)
                 ),
                 None
             );
@@ -916,7 +903,7 @@ mod tests {
                 &memory,
                 &mac("example.editor"),
                 "example.browser",
-                Some(AppOutput::Key(KeyFormat::Cite))
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed")))
             )
             .is_err()
         );
@@ -928,7 +915,7 @@ mod tests {
         let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
         let path = directory.path().join("apps.json");
         let memory = AppMemory::open(path.clone());
-        let cite = AppOutput::Key(KeyFormat::Cite);
+        let cite = crate::output::listed("cite").unwrap_or_else(|| panic!("listed"));
         memory
             .set(&mac("example.browser"), Some(cite))
             .unwrap_or_else(|e| panic!("{e}"));
@@ -941,7 +928,10 @@ mod tests {
         fs::create_dir(&path).unwrap_or_else(|e| panic!("{e}"));
         assert!(
             memory
-                .set(&mac("example.browser"), Some(AppOutput::Key(KeyFormat::Typst)))
+                .set(
+                    &mac("example.browser"),
+                    Some(crate::output::listed("typst").unwrap_or_else(|| panic!("listed")))
+                )
                 .is_err()
         );
         assert_eq!(memory.get(&mac("example.browser")), (Some(cite), false));
@@ -956,7 +946,10 @@ mod tests {
         fs::write(&occupied, "synthetic existing data").unwrap_or_else(|e| panic!("{e}"));
         std::os::unix::fs::symlink(&occupied, path.with_extension("json.tmp-1")).unwrap_or_else(|e| panic!("{e}"));
         AppMemory::open(path)
-            .set(&mac("example.browser"), Some(AppOutput::Key(KeyFormat::Cite)))
+            .set(
+                &mac("example.browser"),
+                Some(crate::output::listed("cite").unwrap_or_else(|| panic!("listed"))),
+            )
             .unwrap_or_else(|e| panic!("{e}"));
         assert_eq!(
             fs::read_to_string(occupied).unwrap_or_default(),

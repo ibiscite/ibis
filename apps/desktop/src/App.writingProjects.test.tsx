@@ -14,9 +14,9 @@ const pending = <T,>() => {
   return { promise, resolve };
 };
 const writingDestination = (name: string, format: "cite" | "typst", context: [number, number]): PickerDestination => ({
-  app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: { key: "pandoc" },
+  app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: "pandoc",
   unreadable: false, can_paste: false, output_question: "editor", paste: null, paste_question: false, can_choose_paste: false,
-  writing_project: { id: name, name, output: { key: format }, revision: "r1", bibliography: "refs.bib" },
+  writing_project: { id: name, name, output: format, revision: "r1", bibliography: "refs.bib" },
   writing_context: `opening-${context[0]}`, context_version: context,
 });
 
@@ -30,9 +30,9 @@ test("Enter pressed during reopening waits for the newly captured project and co
     search: () => [result("a", "Synthetic source")],
     picker_destination: () => ++reads === 1 ? first : reads === 2 ? reopening.promise : settled.promise,
     preview_file_citation: (request) => {
-      if (request.format === "typst" && request.intent.context?.[0] === 2) { newPreviewStarted = true; return preview.promise; }
-      if (request.format === "cite" && request.intent.context?.[0] === 1) initialPreviewStarted = true;
-      return receipt(`${request.format}:${JSON.stringify(request.intent.context)}`);
+      if (request.output === "typst" && request.intent.context?.[0] === 2) { newPreviewStarted = true; return preview.promise; }
+      if (request.output === "cite" && request.intent.context?.[0] === 1) initialPreviewStarted = true;
+      return receipt(`${request.output}:${JSON.stringify(request.intent.context)}`);
     },
     copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
   });
@@ -85,12 +85,12 @@ test("a bibliography read finishing for the same project refreshes a waiting Ent
 });
 
 test("leaving a writing project restores the app's output and copies a fresh preview", async () => {
-  const project = { id: "synthetic-project", name: "Field Guide", revision: "r1", output: { key: "cite" } as const, bibliography: null };
+  const project = { id: "synthetic-project", name: "Field Guide", revision: "r1", output: "cite", bibliography: null };
   let generation = 1;
   let selected: string | null = project.id;
   const view = (): WritingProjectsView => ({ projects: [project], selected, context: `opening-${generation}`, session_only: false });
   const destination = (): PickerDestination => ({ app: "Example Editor", app_id: "example.editor", app_identity: null,
-    automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: "editor",
+    automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: "editor",
     paste: null, paste_question: false, can_choose_paste: false, writing_project: selected ? project : null,
     writing_context: `opening-${generation}`, context_version: [generation, 0] });
   const copied: string[] = [];
@@ -104,7 +104,7 @@ test("leaving a writing project restores the app's output and copies a fresh pre
       await emit("project:changed", [generation, 0]);
       return view();
     },
-    preview_file_citation: (request) => receipt(`${request.format}:${JSON.stringify(request.intent.context)}`),
+    preview_file_citation: (request) => receipt(`${request.output}:${JSON.stringify(request.intent.context)}`),
     copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
   });
   render(<App />);
@@ -150,7 +150,7 @@ test("a fresh Enter after selecting a project waits for its delayed destination 
       await emit("project:changed", [2, 0]);
       return next;
     },
-    preview_file_citation: (request) => receipt(`${request.format}:${JSON.stringify(request.intent.context)}`),
+    preview_file_citation: (request) => receipt(`${request.output}:${JSON.stringify(request.intent.context)}`),
     copy_file_citation: (args) => { const text = prepared(args).preview.text; copied.push(text); return { text, warnings: [] }; },
   });
   render(<App />);
@@ -293,7 +293,7 @@ test("a bibliography event retires an old copy proof before its delayed destinat
 
 test("Apply Updates keeps task choices until save and cancels a queued insertion before preparing the new choices", async () => {
   const current = writingDestination("Project A", "cite", [1, 0]);
-  const latest = { name: "Project A", output: { key: "typst" as const }, bibliography: "updated.bib", revision: "r2" };
+  const latest = { name: "Project A", output: "typst", bibliography: "updated.bib", revision: "r2" };
   const project = { ...current.writing_project!, pending: latest };
   let applied = false;
   const save = pending<WritingProjectsView>(), earlier = pending<FilePreview>(), refreshed = pending<FilePreview>();

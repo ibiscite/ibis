@@ -1,6 +1,6 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { usePointerSelection } from "../../pointerSelection";
-import type { Choice } from "./choice";
+import type { OutputId } from "../../format/outputs";
 import type { useCitationOutput } from "./useCitationOutput";
 
 export function useResultScroll({ input, active, selectAll, pointer, selectedSize, citationProblem, formatted, format, searchFocused }: {
@@ -12,7 +12,7 @@ export function useResultScroll({ input, active, selectAll, pointer, selectedSiz
   selectedSize: number;
   citationProblem: string | null;
   formatted: ReturnType<typeof useCitationOutput>["formatted"];
-  format: Choice;
+  format: OutputId;
   searchFocused: boolean;
 }) {
   // Selected once it is in the box, so typing replaces it.

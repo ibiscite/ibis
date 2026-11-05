@@ -6,8 +6,8 @@ import { WritingProjectsDialog, type WritingProjectsApi } from "./WritingProject
 
 afterEach(cleanup);
 
-const thesis = { id: "thesis", name: "Thesis", output: { key: "autocite" as const }, bibliography: "thesis.bib", revision: "1" };
-const notes = { id: "notes", name: "Notes", output: { key: "pandoc" as const }, bibliography: null, revision: "1" };
+const thesis = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib", revision: "1" };
+const notes = { id: "notes", name: "Notes", output: "pandoc", bibliography: null, revision: "1" };
 const view = (selected: string | null = "thesis"): WritingProjectsView => ({ projects: [thesis, notes], selected, active: [thesis, notes].find((project) => project.id === selected) ?? null, context: "opening-a", session_only: false });
 function api(overrides: Partial<WritingProjectsApi> = {}): WritingProjectsApi {
   return { writingProjects: async () => view(), editWritingProject: async () => view(), ...overrides };
@@ -62,7 +62,7 @@ test("creating a project uses the current format and refuses an empty name", asy
   expect(screen.getByRole<HTMLButtonElement>("button", { name: "Create Project" }).disabled).toBe(true);
   fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "  Notes  " } });
   fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
-  await waitFor(() => expect(edit).toHaveBeenCalledWith("opening-a", { kind: "create", name: "Notes", output: { key: "pandoc" } }));
+  await waitFor(() => expect(edit).toHaveBeenCalledWith("opening-a", { kind: "create", name: "Notes", output: "pandoc" }));
   await screen.findByText("No bibliography selected.");
 });
 
@@ -103,7 +103,7 @@ test("hiding the picker closes the sheet and a late save cannot close its replac
 });
 
 test("external settings stay pending until Apply Updates saves and the active settings remain visible", async () => {
-  const latest = { ...thesis, output: { key: "pandoc" as const }, bibliography: "paper.bib", revision: "2" };
+  const latest = { ...thesis, output: "pandoc", bibliography: "paper.bib", revision: "2" };
   const current = { ...view(), projects: [latest, notes], active: { ...thesis, pending: latest, retained: false } };
   let finish!: (next: WritingProjectsView) => void;
   const edit = vi.fn(() => new Promise<WritingProjectsView>((resolve) => { finish = resolve; }));
@@ -129,7 +129,7 @@ test("a project deleted elsewhere retains its task settings and is labelled with
 });
 
 test("a conflicting rename shows the other writer's settings and preserves the name before an explicit retry", async () => {
-  const latest = { ...thesis, name: "Shared Thesis", output: { key: "pandoc" as const }, bibliography: "new.bib", revision: "2" };
+  const latest = { ...thesis, name: "Shared Thesis", output: "pandoc", bibliography: "new.bib", revision: "2" };
   let conflicted = false;
   const edit = vi.fn(async (_context, change) => {
     if (!conflicted) { conflicted = true; throw "The writing project changed elsewhere. Review the saved settings before saving again."; }

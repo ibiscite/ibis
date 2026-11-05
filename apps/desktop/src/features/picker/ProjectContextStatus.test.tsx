@@ -4,8 +4,8 @@ import { ProjectCheckStatus, WritingProjectTaskStatus } from "./ProjectContextSt
 
 afterEach(cleanup);
 
-const active = { id: "thesis", name: "Thesis", output: { key: "autocite" as const }, bibliography: "thesis.bib", revision: "1",
-  pending: { name: "Thesis", output: { key: "pandoc" as const }, bibliography: "paper.bib", revision: "2" } };
+const active = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib", revision: "1",
+  pending: { name: "Thesis", output: "pandoc", bibliography: "paper.bib", revision: "2" } };
 
 test("pending updates are a persistent nonmodal action beside the task's current choices", () => {
   const apply = vi.fn();

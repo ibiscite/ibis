@@ -50,7 +50,7 @@ try {
         if (!ids.length) throw Error("Synthetic reset listener unavailable");
         for (const id of ids) callbacks.get(id)?.({ event, id, payload: { revision: 7, undo: 7 } });
       };
-      const preferences = { citation_style: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : null, density: "comfortable", larger_text: larger, paste: false, menu_bar: true };
+      const preferences = { output: shelfDetails === "warnings" ? "ieee" : shelfDetails === "forms" ? "apa" : "pandoc", density: "comfortable", larger_text: larger, paste: false, menu_bar: true };
       const library = { state: "loaded", revision: "1", has_snapshot: true, zotero: false, name: "invented.bib", snapshot_name: "invented.bib", references: 14, warnings: 0, error: null, problem: null, note: null, settings_notice: startupNotice ? "Synthetic startup settings notice." : null };
       if (viewState === "first-run") Object.assign(library, { state: "none", has_snapshot: false, name: null, snapshot_name: null, references: 0 });
       if (viewState === "empty-library") library.references = 0;
@@ -80,8 +80,7 @@ try {
           if (command === "picker_presentation") return 0;
           if (command === "native_appearance") return "opaque";
           if (command === "picker_preferences") return preferences;
-          if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences), copy_format: "pandoc" };
-          if (command === "copy_format") return "pandoc";
+          if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences) };
           if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;

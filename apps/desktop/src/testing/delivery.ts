@@ -19,7 +19,7 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { AppOutput, AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, type PreviewRequest } from "./app";
 
@@ -58,7 +58,7 @@ type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "htm
 type DeliveryRequest = { text: string; delivery: number | null };
 type Capture = { window: number | null; surface: number | null; reason: string | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { replaces: string | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
-type AppChoice = { output: AppOutput | null; paste: AppPaste | null };
+type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
@@ -68,7 +68,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   let holdCopyReplies = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
   const notice = new Work<NoticeMessage, void, Delivered>();
-  const appSaves = new Work<{ appId: string; output: AppOutput | null; paste: AppPaste | null }>();
+  const appSaves = new Work<{ appId: string; output: string | null; paste: AppPaste | null }>();
   const appChoices = new Map<string, AppChoice>();
   let holdAppSaves = false;
   const clipboard = { text: "", html: null as string | null, owner: null as "ibis" | "external" | null, sequence: 0 };
@@ -144,13 +144,13 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       captured ??= capture();
       const choice = appChoices.get(target.appId);
       const paste = target.refusal ? null : choice?.paste ?? null;
-      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: { key: "pandoc" }, remembered: choice?.output ?? null, unreadable: false,
+      return { app: document.app, app_id: target.appId, app_identity: target.appId, automatic: "pandoc", remembered: choice?.output ?? null, unreadable: false,
         can_paste: !target.refusal && (target.verified || paste === "paste") && paste !== "copy-only" && captured.reason === null && (!captured.selection || shows(captured.selection)),
         output_question: null, paste, can_choose_paste: !target.refusal && captured.reason === null, paste_question: !target.refusal && !target.verified && paste === null && captured.reason === null };
     },
     remember_app_output: ({ appId, output, paste }) => {
       if (appId !== target.appId || paste === "paste" && target.refusal) throw new Error("The app cannot receive that choice");
-      const args = { appId, output, paste } as { appId: string; output: AppOutput | null; paste: AppPaste | null };
+      const args = { appId, output, paste } as { appId: string; output: string | null; paste: AppPaste | null };
       const saving = appSaves.enqueue(args, () => {
         const saved = appChoices.get(args.appId);
         appChoices.set(args.appId, { output: args.output ?? saved?.output ?? null, paste: args.paste ?? saved?.paste ?? null });

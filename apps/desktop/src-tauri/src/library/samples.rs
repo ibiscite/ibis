@@ -4,8 +4,6 @@ use super::load::{Loaded, load_source};
 use super::state::{begin_open, install_loaded, leave_samples};
 use super::status::status;
 use super::*;
-use ibis_core::cite::KeyFormat;
-use ibis_core::settings::CitationStyle;
 use ibis_engine::Cancellation;
 use serde_json::json;
 use std::path::PathBuf;
@@ -23,15 +21,10 @@ fn loaded(source: Source) -> Library {
 }
 
 fn preview(file: &engine_file::FileLibrary, term: &str) -> engine_file::FilePreview {
-    preview_output(file, term, KeyFormat::Pandoc, Some(CitationStyle::Apa))
+    preview_output(file, term, "apa")
 }
 
-fn preview_output(
-    file: &engine_file::FileLibrary,
-    term: &str,
-    format: KeyFormat,
-    style: Option<CitationStyle>,
-) -> engine_file::FilePreview {
+fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> engine_file::FilePreview {
     let query =
         serde_json::from_value(json!({"text":term,"interpret_locators":false})).unwrap_or_else(|e| panic!("{e}"));
     let found = file
@@ -48,8 +41,7 @@ fn preview_output(
             page_input: None,
             form: None,
         }],
-        format,
-        style,
+        output,
     )
     .unwrap_or_else(|_| panic!("preview"))
 }
@@ -134,13 +126,13 @@ fn bundled_samples_load_through_csl_json_and_copy_marked_apa() {
 fn every_sample_style_and_key_output_keeps_its_marker_on_the_clipboard() {
     let file = loaded(source()).file.unwrap_or_else(|| panic!("engine"));
     for style in [
-        CitationStyle::Apa,
-        CitationStyle::ChicagoAuthorDate,
-        CitationStyle::HarvardCiteThemRight,
-        CitationStyle::Ieee,
-        CitationStyle::ModernLanguageAssociation,
+        "apa",
+        "chicago-author-date",
+        "harvard-cite-them-right",
+        "ieee",
+        "modern-language-association",
     ] {
-        let receipt = preview_output(&file, "lantern", KeyFormat::Pandoc, Some(style));
+        let receipt = preview_output(&file, "lantern", style);
         assert!(receipt.text.ends_with(" [Sample]"), "{style:?}");
         file.copy(&receipt.ticket, &receipt.content_hash, |content| {
             assert_eq!(content.text, receipt.text);
@@ -153,15 +145,15 @@ fn every_sample_style_and_key_output_keeps_its_marker_on_the_clipboard() {
         .unwrap_or_else(|_| panic!("copy {style:?}"));
     }
     for (format, expected) in [
-        (KeyFormat::Pandoc, "[@vale2024lanterns] [Sample]"),
-        (KeyFormat::Autocite, "\\autocite{vale2024lanterns} [Sample]"),
-        (KeyFormat::Parencite, "\\parencite{vale2024lanterns} [Sample]"),
-        (KeyFormat::Textcite, "\\textcite{vale2024lanterns} [Sample]"),
-        (KeyFormat::Cite, "\\cite{vale2024lanterns} [Sample]"),
-        (KeyFormat::Typst, "@vale2024lanterns [Sample]"),
-        (KeyFormat::Keys, "vale2024lanterns [Sample]"),
+        ("pandoc", "[@vale2024lanterns] [Sample]"),
+        ("autocite", "\\autocite{vale2024lanterns} [Sample]"),
+        ("parencite", "\\parencite{vale2024lanterns} [Sample]"),
+        ("textcite", "\\textcite{vale2024lanterns} [Sample]"),
+        ("cite", "\\cite{vale2024lanterns} [Sample]"),
+        ("typst", "@vale2024lanterns [Sample]"),
+        ("keys", "vale2024lanterns [Sample]"),
     ] {
-        let receipt = preview_output(&file, "lantern", format, None);
+        let receipt = preview_output(&file, "lantern", format);
         assert_eq!(receipt.text, expected, "{format:?}");
         file.copy(&receipt.ticket, &receipt.content_hash, |content| {
             assert_eq!(content.text, expected);

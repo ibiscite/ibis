@@ -7,6 +7,7 @@ import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
 import { useAppearance } from "../src/ui/appearance";
 import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
+import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
@@ -95,7 +96,8 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   return {
     libraryStatus: async () => library,
     search: async (query) => ({ revision: "1", results: query && !fixture ? shown : [] }),
-    previewFileCitation: async (items, _format, style) => {
+    previewFileCitation: async (items, output) => {
+      const style = isStyle(output);
       const ticket = `synthetic-ticket-${++sequence}`;
       const spans = items.flatMap((item, index) => [
         ...(index ? [{ item: null, text: "; " }] : []),
@@ -113,7 +115,6 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
       if (text === undefined) throw new Error("Unknown synthetic preview");
       return { text, warnings: [] };
     },
-    copyFormat: async () => (await settings.pickerPreferences()).copy_format ?? "pandoc",
     pickerDestination: projectContext ? async () => ({ app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
       writing_project: project, writing_context: "invented-opening", context_version: [1, 0] }) : undefined,
@@ -248,11 +249,11 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
     : <><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></>;
 }
 
-const inventedProject = { id: "thesis", name: "Thesis", output: { key: "autocite" as const }, bibliography: "thesis.bib", revision: "1" };
-const updatedProject = { name: "Thesis", output: { key: "pandoc" as const }, bibliography: "paper.bib", revision: "2", bibliography_changed: true };
+const inventedProject = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib", revision: "1" };
+const updatedProject = { name: "Thesis", output: "pandoc", bibliography: "paper.bib", revision: "2", bibliography_changed: true };
 const writingProjects: WritingProjectsView = { context: "invented-opening", session_only: false, selected: "thesis", active: inventedProject, projects: [
   inventedProject,
-  { id: "notes", name: "Field Notes", output: { key: "pandoc" }, bibliography: null, revision: "1" },
+  { id: "notes", name: "Field Notes", output: "pandoc", bibliography: null, revision: "1" },
 ] };
 
 /** The real project sheet over the real picker, with invented local choices. */
@@ -292,7 +293,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
-  void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, null, 0);
+  void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, 0);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);

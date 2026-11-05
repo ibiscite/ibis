@@ -98,7 +98,7 @@ test.each([
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: { key: "typst" }, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: PreviewRequest[] = [];
@@ -117,7 +117,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   });
   await copy();
   await act(async () => { await emit("picker:hidden"); });
-  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: { key: "cite" } };
+  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
   delayReturn = true;
   granted = true;
   await act(async () => { await emit("picker:shown"); });
@@ -125,13 +125,13 @@ test("a preferences event superseding the permission return keeps the prepared o
   await act(async () => { await emit("preferences:changed"); });
   expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
   await act(async () => { finishReturn({ ...destination, app: "Stale Editor", app_id: "example.stale" }); });
-  expect(screen.getByRole("button", { name: "Copy as Typst key · This paste" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Copy as Typst · This paste" })).toBeTruthy();
   expect(copies).toHaveLength(1);
   await copy();
   expect(copies).toHaveLength(2);
   expectSameCitation(copies[0]!, copies[1]!);
-  expect(copies[1]).toMatchObject({ format: "typst" });
-  expect(screen.getByRole("button", { name: "Copy as \\cite · Example Writer" })).toBeTruthy();
+  expect(copies[1]).toMatchObject({ output: "typst" });
+  expect(screen.getByRole("button", { name: "Copy as LaTeX \\cite · Example Writer" })).toBeTruthy();
   expect(calls).not.toContain("remember_app_output");
   expect(calls).not.toContain("set_picker_preferences");
 });
