@@ -32,11 +32,10 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   const forget = useCallback(() => {
     retire();
     const current = epoch.current;
-    if (!recentReferences) return true;
+    if (!recentReferences) return;
     clearing.current = recentReferences(true).then(() => {
       if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: false }));
     }).catch(() => { if (current === epoch.current) setState((old) => ({ ...old, forgetFailed: true })); });
-    return true;
   }, [recentReferences, retire]);
   useEffect(() => {
     if (!onPreferencesChanged) return;

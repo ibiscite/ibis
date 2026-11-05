@@ -388,7 +388,8 @@ fn main() {
                 tauri::RunEvent::MainEventsCleared => sizing::settled(app),
                 tauri::RunEvent::ExitRequested { .. } => {
                     sizing::flush(app, true);
-                    let _ = app.state::<session_references::SessionReferences>().flush();
+                    let recents = app.state::<session_references::SessionReferences>();
+                    let _ = recents.flush_timeout(std::time::Duration::from_secs(1));
                 }
                 _ => {}
             }

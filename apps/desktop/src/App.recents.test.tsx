@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
@@ -8,6 +8,34 @@ afterEach(resetApp);
 const writer = "invented.writer";
 const destination = () => ({ app: "Invented Writer", app_id: writer, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null });
 const a = result("a", "Recent A"), b = result("b", "Recent B"), c = result("c", "New C");
+
+test("a failed Forget retry keeps the privacy warning visible until legacy history is deleted", async () => {
+  const key = "ibis-citation-history";
+  const warning = "Recent citations could not be forgotten. Try again.";
+  localStorage.setItem(key, "invented private citation history");
+  const remove = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => { throw new Error("synthetic storage refusal"); });
+  let clears = 0;
+  backend({ recent_references: (args) => {
+    if (args.forget) clears++;
+    return [{ revision: "1", results: [] }, false, false];
+  } });
+  try {
+    render(<App />);
+    expect((await screen.findByRole("alert")).textContent).toBe(warning);
+    await chooseFromMore("Forget Recent Citations");
+    await waitFor(() => expect(clears).toBe(1));
+    expect(localStorage.getItem(key)).toBe("invented private citation history");
+    expect(screen.getByRole("alert").textContent).toBe(warning);
+    remove.mockRestore();
+    await chooseFromMore("Forget Recent Citations");
+    await waitFor(() => expect(clears).toBe(2));
+    await waitFor(() => expect(screen.queryByText(warning)).toBeNull());
+    expect(localStorage.getItem(key)).toBeNull();
+  } finally {
+    remove.mockRestore();
+    localStorage.removeItem(key);
+  }
+});
 
 test("recents are ordinary rows in one keyboard list; choosing one resolves it afresh without an old page", async () => {
   const copies: unknown[] = [];

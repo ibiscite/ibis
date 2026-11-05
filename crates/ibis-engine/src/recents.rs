@@ -211,6 +211,11 @@ impl SessionReferences {
         self.writer.send(Some(reply)).map_err(io::Error::other)?;
         done.recv().map_err(io::Error::other)?
     }
+    pub fn flush_timeout(&self, timeout: std::time::Duration) -> io::Result<()> {
+        let (reply, done) = mpsc::sync_channel(1);
+        self.writer.try_send(Some(reply)).map_err(io::Error::other)?;
+        done.recv_timeout(timeout).map_err(io::Error::other)?
+    }
     pub fn forget(&self) -> io::Result<()> {
         self.lock().forget();
         self.flush()

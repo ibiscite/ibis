@@ -1,5 +1,53 @@
 use super::*;
 
+fn quit_with_stalled_storage(queue_full: bool) -> Result<(), Box<dyn std::error::Error>> {
+    use std::time::Duration;
+    // Keep the writer alive but unable to consume work or acknowledge a save.
+    let (writer, work) = mpsc::sync_channel(1);
+    let history = SessionReferences {
+        list: Arc::default(),
+        writer,
+    };
+    if queue_full {
+        history.writer.send(None)?;
+    }
+    let (returned, done) = mpsc::sync_channel(1);
+    let quitting = std::thread::spawn(move || {
+        returned
+            .send(history.flush_timeout(Duration::from_millis(20)))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+    });
+    let pending = if queue_full {
+        None
+    } else {
+        work.recv_timeout(Duration::from_secs(3))?
+    };
+    let quit = done.recv_timeout(Duration::from_secs(3));
+    // Release the old implementation before asserting, so a regression cannot hang the test.
+    drop(pending);
+    drop(work);
+    quitting.join().unwrap_or_else(|e| panic!("{e:?}"));
+    assert!(
+        quit.is_ok(),
+        "Quit must continue while recent history storage remains stalled"
+    );
+    assert!(
+        quit?.is_err(),
+        "a timed-out Quit does not claim that recents were saved"
+    );
+    Ok(())
+}
+
+#[test]
+fn quit_continues_with_a_full_persistence_queue() -> Result<(), Box<dyn std::error::Error>> {
+    quit_with_stalled_storage(true)
+}
+
+#[test]
+fn quit_continues_without_a_persistence_acknowledgement() -> Result<(), Box<dyn std::error::Error>> {
+    quit_with_stalled_storage(false)
+}
+
 type SaveBarrier = (PathBuf, std::sync::mpsc::SyncSender<()>, std::sync::mpsc::Receiver<()>);
 static SAVE_BARRIER: Mutex<Option<SaveBarrier>> = Mutex::new(None);
 pub(super) fn before_save(path: Option<&std::path::Path>) {
