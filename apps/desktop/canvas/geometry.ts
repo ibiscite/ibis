@@ -25,6 +25,9 @@ export const forms = { form: ".citation-details", controls: ".citation-field .ui
  * from the search bar's divider to the shelf. */
 export const panes = { pane: ".inspector", top: ".search-bar", bottom: ".shelf" } as const;
 
+/** Stacked parts never cover each other: each starts below the one before. */
+export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".peek-card section"] as const;
+
 /** [C12] A grid of choice cards: one height, and each glyph level with its title. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
@@ -90,6 +93,15 @@ export function geometry(root: ParentNode = document): string[] {
     if (Math.abs(rect.top - header) > tolerance) failures.push(`[C19] ${name(pane)}: divider starts ${rect.top.toFixed(1)}, the search bar ends ${header.toFixed(1)}`);
     const floor = bottom && visible(bottom) ? bottom.getBoundingClientRect().top : null;
     if (floor !== null && Math.abs(rect.bottom - floor) > tolerance) failures.push(`[C19] ${name(pane)}: divider ends ${rect.bottom.toFixed(1)}, the shelf starts ${floor.toFixed(1)}`);
+  }
+
+  for (const stack of root.querySelectorAll(stacks.join(", "))) {
+    const parts = [...stack.children].filter((node) => visible(node) && getComputedStyle(node).position !== "absolute");
+    for (let i = 1; i < parts.length; i++) {
+      const above = parts[i - 1]!.getBoundingClientRect(), below = parts[i]!.getBoundingClientRect();
+      if (below.top < above.bottom - tolerance && below.left < above.right && below.right > above.left)
+        failures.push(`[stack] ${name(parts[i]!)} covers ${name(parts[i - 1]!)} by ${(above.bottom - below.top).toFixed(1)}`);
+    }
   }
 
   for (const grid of root.querySelectorAll(cards.grid)) {

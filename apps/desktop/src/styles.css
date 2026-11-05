@@ -122,6 +122,9 @@ main > footer { grid-area: footer; }
 .result-container { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-separator { flex: none; white-space: pre; }
 .result-authors, .result-container { unicode-bidi: isolate; }
+/* A narrow list (details open beside it, larger text) keeps the authors whole and
+   leaves the journal to Peek and the details: it gives way first, never the names. */
+@container (max-width: 30rem) { .result-separator, .result-container { display: none; } }
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The selected (active) row is a full accent fill with its paired text on

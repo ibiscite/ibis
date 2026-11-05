@@ -27,8 +27,9 @@ export function Inspector({ ref, id, label, heading, byline, closeLabel, documen
   return <section ref={ref} id={id} className="inspector" data-reading={reading || undefined} aria-label={label} onKeyDown={onKeyDown}>
     <div ref={body} className="inspector-body scroll-area">
       <div ref={column} className="inspector-column" tabIndex={readOnly ? 0 : undefined}>
-        <header className="inspector-heading"><h2><bdi dir="auto">{heading}</bdi></h2><IconButton aria-label={closeLabel} onPress={onClose} /></header>
-        {byline && <p className="inspector-byline"><bdi dir="auto">{byline}</bdi></p>}
+        {/* Title and byline are one block beside ×, so a two-line title pushes the byline down instead of covering it. */}
+        <header className="inspector-heading"><div className="inspector-titles"><h2><bdi dir="auto">{heading}</bdi></h2>
+          {byline && <p className="inspector-byline"><bdi dir="auto">{byline}</bdi></p>}</div><IconButton aria-label={closeLabel} onPress={onClose} /></header>
         {children}
       </div>
       {page && <div className="inspector-document">{page}</div>}
