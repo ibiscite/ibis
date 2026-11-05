@@ -1,7 +1,7 @@
 # Source workflows: first versions and research
 
 Planning research, 2026-10-30; not implemented or a compatibility claim. This
-refines four of the [five approved directions](../ROADMAP.md#saved-passages-and-project-checks),
+refines four of the [approved directions in 0.4 to 0.6](../ROADMAP.md#05-find-the-passage),
 following #1521. The interaction contract remains in
 [design.md](design.md#source-checks-and-passage-reuse-planned); the behavioral
 bounds below keep that work small. New presentation/keyboard proposals are marked
