@@ -1,18 +1,22 @@
-/* [C20] Thumbnails, then the pages, under one toolbar line. The paper is drawn
-   as the PDF draws it, white in dark mode as in Preview; only the surround
-   follows the theme. */
-.reader { display: grid; grid-template-columns: max-content minmax(0, 1fr); grid-template-rows: auto auto minmax(0, 1fr); gap: 0 var(--space-2); block-size: 100%; min-block-size: 0; }
-.reader-toolbar { grid-column: 2; display: flex; align-items: center; gap: var(--space-3); min-block-size: var(--control-h); padding-block-end: var(--space-1); }
-.reader-indicator { flex: 1; min-inline-size: 0; overflow: hidden; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
-.reader-ask { grid-column: 2; display: flex; align-items: end; gap: var(--space-2); padding-block-end: var(--space-2); }
-.reader-ask-field { display: flex; flex-direction: column; gap: var(--space-1); flex: 1; font-size: var(--type-body-size); }
-.reader-ask-field input { block-size: var(--action-h); max-inline-size: 8rem; padding-inline: var(--space-2); border: 0; border-radius: var(--r-control); background: var(--surface-field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
-.reader-strip { grid-column: 1; grid-row: 1 / -1; display: flex; min-block-size: 0; }
-.reader-pages { grid-column: 2; display: flex; flex-direction: column; align-items: center; gap: var(--inset); min-block-size: 0; overflow-y: auto; padding: var(--inset); border-radius: var(--r-row); background: var(--surface-grouped); outline-offset: var(--ring-offset); }
+/* [C20] As Preview: a thumbnail sidebar with its own full-height divider, the
+   pages on one canvas edge to edge between the dividers, and the page in view in
+   a small floating bar over them. The paper is drawn as the PDF draws it, white
+   in dark mode as in Preview; only the surround follows the theme. */
+.reader { display: grid; grid-template-columns: max-content minmax(0, 1fr); block-size: 100%; min-block-size: 0; }
+.reader-strip { display: flex; min-block-size: 0; border-inline-end: var(--border-width) solid var(--separator); }
+.reader-view { position: relative; display: flex; min-inline-size: 0; min-block-size: 0; }
+.reader-pages { flex: 1; display: flex; flex-direction: column; align-items: center; gap: var(--inset); min-block-size: 0; overflow: hidden auto; padding: var(--inset) var(--inset) calc(var(--control-h) + 3 * var(--inset)); background: var(--surface-grouped); outline-offset: var(--ring-offset); }
 .reader-sheet { inline-size: min(100%, var(--page-w)); aspect-ratio: 1 / 1.3; flex: none; overflow: hidden; background: var(--paper); box-shadow: 0 0 0 var(--border-width) var(--separator); }
 .reader-paper { block-size: 100%; }
+/* The floating bar: the overlay material, centred under the pages, never covering
+   the thumbnails or the column. */
+.reader-hud { position: absolute; inset-block-end: var(--inset); left: 50%; translate: -50% 0; display: flex; align-items: center; gap: var(--space-3); max-inline-size: calc(100% - 2 * var(--inset)); box-sizing: border-box; padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3); border-radius: var(--r-menu); background: var(--surface-overlay); box-shadow: var(--shadow-overlay); }
+.reader-indicator { min-inline-size: 0; overflow: hidden; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); font-variant-numeric: tabular-nums; text-overflow: ellipsis; white-space: nowrap; }
+.reader-ask { display: flex; align-items: center; gap: var(--space-2); }
+.reader-ask-field { display: flex; align-items: center; gap: var(--space-2); font-size: var(--type-body-size); }
+.reader-ask-field input { block-size: var(--control-small-h); inline-size: 5rem; padding-inline: var(--space-2); border: 0; border-radius: var(--r-control); background: var(--surface-field); color: var(--text); font: inherit; font-variant-numeric: tabular-nums; }
 @media (prefers-contrast: more) { .reader-sheet { box-shadow: 0 0 0 var(--border-width) var(--stroke-field); } }
-@media (forced-colors: active) { .reader-sheet { background: Canvas; color: CanvasText; } }
+@media (forced-colors: active) { .reader-sheet { background: Canvas; color: CanvasText; } .reader-hud { border: var(--border-width) solid CanvasText; } }
 /* The invented book: real text, so the thumbnails and screen readers have words. */
 .invented-page { box-sizing: border-box; block-size: 100%; padding: 8% 10%; color: var(--paper-ink); font: 0.8125rem / 1.55 var(--font-reading, ui-serif, Georgia, serif); }
 .invented-page h4 { margin: 0 0 0.75em; font-size: 1.05em; }

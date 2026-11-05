@@ -6,6 +6,7 @@ export const readerText = {
   show: "Show PDF",
   hide: "Hide PDF",
   cite: "Cite This Page",
+  pageInView: "Page in view",
   thumbnails: "Pages",
   pages: "Pages of the PDF",
   region: (title: string) => `Pages of ${title}`,

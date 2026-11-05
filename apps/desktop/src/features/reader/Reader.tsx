@@ -71,29 +71,36 @@ export function Reader({ source, title, page, onPageChange, onClose }: {
     else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
   };
   const label = labels[current];
+  const ask = unnumbered !== null && <form className="reader-ask" onSubmit={(event) => {
+    event.preventDefault();
+    const next = confirmOffset(labels, unnumbered, printed);
+    if (next[unnumbered] === null) return;
+    setLabels(next); setUnnumbered(null); setPrinted("");
+    onPageChange(formatPages(next, new Set([...parsed, unnumbered])));
+  }}>
+    <TextField className="reader-ask-field" value={printed} onChange={setPrinted} autoFocus>
+      <Label>{readerText.ask(unnumbered + 1)}</Label>
+      <Input inputMode="numeric" />
+    </TextField>
+    <Button size="small" type="submit">{readerText.useNearby}</Button>
+  </form>;
+  // As Preview: thumbnails in a sidebar, the pages on one canvas edge to edge, and
+  // the page you are on in a small floating bar over them, with the one action
+  // that acts on it. No toolbar row takes height from the page.
   return <section className="reader" aria-label={readerText.region(title)} onKeyDown={keys}>
-    <div className="reader-toolbar">
-      <span className="reader-indicator" aria-live="polite">{label ? readerText.indicator(label, current + 1, labels.length) : readerText.unknown(current + 1, labels.length)}</span>
-      <Button size="small" onPress={() => cite(false)}>{readerText.cite}</Button>
-    </div>
-    {unnumbered !== null && <form className="reader-ask" onSubmit={(event) => {
-      event.preventDefault();
-      const next = confirmOffset(labels, unnumbered, printed);
-      if (next[unnumbered] === null) return;
-      setLabels(next); setUnnumbered(null); setPrinted("");
-      onPageChange(formatPages(next, new Set([...parsed, unnumbered])));
-    }}>
-      <TextField className="reader-ask-field" value={printed} onChange={setPrinted} autoFocus>
-        <Label>{readerText.ask(unnumbered + 1)}</Label>
-        <Input inputMode="numeric" />
-      </TextField>
-      <Button size="small" type="submit">{readerText.useNearby}</Button>
-    </form>}
     <div className="reader-strip"><PageStrip label={readerText.thumbnails} labels={labels} selected={selected} current={current} unlabelled={readerText.pdfPage} onChange={choose} draw={source.draw} /></div>
-    <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={readerText.pages}>
-      {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? readerText.indicator(printed, index + 1, labels.length) : readerText.unknown(index + 1, labels.length)}>
-        <div className="reader-paper" />
-      </div>)}
+    <div className="reader-view">
+      <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={readerText.pages}>
+        {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? readerText.indicator(printed, index + 1, labels.length) : readerText.unknown(index + 1, labels.length)}>
+          <div className="reader-paper" />
+        </div>)}
+      </div>
+      <div className="reader-hud ui-overlay" role="group" aria-label={readerText.pageInView}>
+        {ask || <>
+          <span className="reader-indicator" aria-live="polite">{label ? readerText.indicator(label, current + 1, labels.length) : readerText.unknown(current + 1, labels.length)}</span>
+          <Button size="small" onPress={() => cite(false)}>{readerText.cite}</Button>
+        </>}
+      </div>
     </div>
   </section>;
 }

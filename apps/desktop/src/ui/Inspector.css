@@ -34,7 +34,9 @@
 .inspector-action[data-disabled] .inspector-keys { color: inherit; }
 /* Reading: the list folds away and the panel takes the whole middle row, so the
    pages sit between the thumbnails and the column (decision 0038). */
-.inspector[data-reading] { grid-column: 1 / -1; width: auto; }
+.inspector[data-reading] { grid-column: 1 / -1; width: auto; border-inline-start: 0; }
+/* The reader draws its own canvas edge to edge, between the dividers. */
+.inspector[data-reading] .inspector-document { padding: 0; }
 main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
