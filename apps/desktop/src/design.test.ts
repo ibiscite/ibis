@@ -210,7 +210,7 @@ test("menus, buttons and choice rows use title case, as the Mac does", () => {
     "Add to Citation", "Close Menu", "Copy Only"]) expect(messages).toContain(`"${label}"`);
   for (const label of ["Clear search", "Keep window open", "Keyboard shortcuts", "Remove from citation", "Reload library", "Choose library…",
     "Find them on this computer", "Try sample references", "Try again", "Use another library", "Add to citation", "Close menu", "Copy only"]) expect(messages).not.toContain(`"${label}"`);
-  expect(ftl).toMatch(/^about-check = Check Now$/m);
+  expect(ftl).toMatch(/^about-check = Check for Updates$/m);
 });
 
 /** Every message a person reads, as `[where, text]`: string literals in messages.ts, values in en-US.ftl. */
@@ -285,4 +285,9 @@ test("the Ibis red parameters are the brand's scarlet", () => {
   const brand = JSON.parse(readFileSync(new FileURL("../../../brand/settings.json", import.meta.url), "utf8")) as { colors?: Record<string, string> } & Record<string, unknown>;
   const scarlet = JSON.stringify(brand).match(/"scarlet":\s*"(#[0-9A-Fa-f]{6})"/)![1]!, dark = JSON.stringify(brand).match(/"scarlet_dark":\s*"(#[0-9A-Fa-f]{6})"/)![1]!;
   expect([param("--ibis"), param("--ibis-dark")]).toEqual([scarlet.toLowerCase(), dark.toLowerCase()]);
+});
+
+test("people read the ellipsis character, never three full stops", () => {
+  const dots = userStrings().filter(([, text]) => text.includes("..."));
+  expect(dots.map(([where, text]) => `${where}: ${text}`)).toEqual([]);
 });

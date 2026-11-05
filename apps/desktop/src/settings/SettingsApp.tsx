@@ -7,6 +7,7 @@ import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { NoticeSlot } from "../ui/NoticeSlot";
+import { useScrollEdges } from "../ui/ScrollArea";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
 import { AboutDelight, AboutLine } from "../ui/Delights";
@@ -49,6 +50,9 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design.md, "Settings"). Every change applies at once. */
+/** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
+const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".settings-page-title")?.offsetHeight ?? 0;
+
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
   const { text } = useInterfaceMessages();
   const platform = currentPlatform();
@@ -56,6 +60,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [page, setPage] = useState<Page>(start.page);
   const [focus, setFocus] = useState<"top" | "paste" | null>(start.focus ?? "top");
   const pageRef = useRef<HTMLElement>(null);
+  useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
   const [login, setLogin] = useState<LoginItem | null>(null);
@@ -287,7 +292,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       // never the document containing the sidebar and native title bar.
       if (!preferences || !permission) return;
       const paste = document.getElementById("paste");
-      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top : 0;
+      scroller.scrollTop = paste ? scroller.scrollTop + paste.getBoundingClientRect().top - scroller.getBoundingClientRect().top - underTitle(scroller) : 0;
     } else scroller.scrollTop = 0;
     setFocus(null);
   }, [focus, preferences, permission]);
@@ -348,7 +353,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useEffect(() => {
     if (!highlighted || !preferences || !pageRef.current) return;
     const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr");
-    if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top;
+    if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top - underTitle(pageRef.current);
   }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
   const readWindowSize = useCallback((request: number) => api.windowSize().then((size) => {
@@ -480,9 +485,14 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
               <p className="ui-about-mission">{text("about-mission")}</p>
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
+              {/* Under the version, as Mac apps place it; its outcome replaces the line under it. */}
+              {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
+                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
+                <p className="ui-about-check-result" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+              </div>}
             </div>
             <Group id="about-updates" title={text("about-updates")}>
-              {/* One control per row [D17]: the switch, then Check Now with its outcome. */}
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
@@ -493,11 +503,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />}
               </Row>
-              {(updates !== null || readProblems.has("automatic")) && <Row id="check-updates" label={text("about-check-label")} description={checkSaid ? text(checkSaid) : undefined} highlighted={highlighted === "check-updates"}>
-                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <span className="visually-hidden" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</span>
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
-              </Row>}
             </Group>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>
               {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}

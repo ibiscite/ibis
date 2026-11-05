@@ -3,7 +3,8 @@ pub(super) use ibis_core::model::is_hidden;
 use ibis_core::{
     contract::*,
     destination::{CopyReason, Decision, Destination},
-    model::{Name, strip_markup},
+    model::strip_markup,
+    summary::RecordSummary,
     syntax::MAX_CITATION_ITEMS,
 };
 use ibis_engine::{
@@ -241,21 +242,22 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
 
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
-    let csl = record.get("csl")?;
-    let authors = authors(csl, Some(3));
+    let summary = record_summary(record.get("csl")?);
     Some(format!(
         "{}\t{}\t{}\t{}",
         field(citation_key(record)?),
-        if authors.is_empty() {
+        if summary.authors.is_empty() {
             "—".into()
         } else {
-            field(&authors)
+            field(&authors(&summary, Some(3)))
         },
-        field(&year(csl).unwrap_or_else(|| "n.d.".into())),
-        field(&strip_markup(
-            csl.get("title").and_then(Value::as_str).unwrap_or("[untitled]")
-        ))
+        field(summary.year.as_deref().unwrap_or("n.d.")),
+        field(summary.title.as_deref().unwrap_or("[untitled]"))
     ))
+}
+
+fn record_summary(csl: &Value) -> RecordSummary {
+    RecordSummary::of(|name| csl.get(name))
 }
 
 fn citation_key(record: &Value) -> Option<&str> {
@@ -278,36 +280,19 @@ fn citation_key(record: &Value) -> Option<&str> {
     )
 }
 
-/// The authors' names, at most `limit` of them and then "et al.".
-fn authors(csl: &Value, limit: Option<usize>) -> String {
-    csl.get("author")
-        .and_then(Value::as_array)
-        .map_or_else(String::new, |names| {
-            let limit = limit.unwrap_or(names.len());
-            let mut authors = names
-                .iter()
-                .take(limit)
-                .map(|name| Name::from_csl(name).display())
-                .filter(|name| !name.is_empty())
-                .collect::<Vec<_>>();
-            if names.len() > limit {
-                authors.push("et al.".into());
-            }
-            authors.join(", ")
-        })
-}
-
-fn year(csl: &Value) -> Option<String> {
-    let issued = csl.get("issued");
-    issued
-        .and_then(|date| date.pointer("/date-parts/0/0"))
-        .map(|year| year.as_str().map_or_else(|| year.to_string(), str::to_owned))
-        .or_else(|| {
-            issued
-                .and_then(|date| date.get("literal"))
-                .and_then(Value::as_str)
-                .map(str::to_owned)
-        })
+/// The authors' reading names, the first `limit` then "et al.".
+fn authors(summary: &RecordSummary, limit: Option<usize>) -> String {
+    let limit = limit.unwrap_or(summary.authors.len());
+    let mut names: Vec<_> = summary
+        .authors
+        .iter()
+        .take(limit)
+        .map(|author| author.name.as_str())
+        .collect();
+    if summary.authors.len() > limit && names.last() != Some(&"et al.") {
+        names.push("et al.");
+    }
+    names.join(", ")
 }
 
 /// One reference for reading. Anything that is not a reference stays as JSON.
@@ -315,15 +300,16 @@ fn reference(data: &Value) -> Option<String> {
     let record = data.pointer("/object/data")?;
     let csl = record.get("csl")?;
     let text = |name: &str| csl.get(name).and_then(Value::as_str).map(strip_markup);
-    let authors = Some(authors(csl, None)).filter(|authors| !authors.is_empty());
+    let summary = record_summary(csl);
+    let authors = Some(authors(&summary, None)).filter(|authors| !authors.is_empty());
     let number = |name: &str| {
         csl.get(name)
             .map(|value| value.as_str().map_or_else(|| value.to_string(), str::to_owned))
     };
     let rows = [
-        ("Title", text("title")),
+        ("Title", summary.title.clone()),
         ("Authors", authors),
-        ("Year", year(csl)),
+        ("Year", summary.year.clone()),
         ("Published in", text("container-title")),
         ("Publisher", text("publisher")),
         ("Volume", number("volume")),

@@ -133,8 +133,6 @@ Failed Reloads record source health under the same guard, so queued notification
 cannot clear the failure or advance the last successful check.
 Concurrent failed reads retain their errors for unrelated libraries; a fresh repair
 clears its own error. Zotero's read guard must still match at acceptance.
-Obsolete-cache cleanup validates locality and resolves the local directory before
-its first filesystem probe, including when the configured cache path is a symlink.
 
 ### File availability and notification recovery (#1532, items 2, 3 and 7)
 
@@ -185,11 +183,10 @@ mount, Windows provider states and iCloud provider states separately.
 The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
 at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
 readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable
-when loaded. Startup removes recognized obsolete cache files only from the
-verified private directory under its exclusive lease; controls and unknown files
-stay. Fresh Reload and watches still share unchanged parsed records. Zotero's
-coherent-read barrier remains; future storage/memory work (#1298, #1251) needs
-separate evidence.
+when loaded. The obsolete-cache cleanup was removed on 2026-11-04; early testers
+may retain unused old cache files. Fresh Reload and watches still share unchanged
+parsed records. Zotero's coherent-read barrier remains; future storage/memory
+work (#1298, #1251) needs separate evidence.
 
 ## Citations (ibis-core, ibis-csl)
 
@@ -457,6 +454,7 @@ still needs further work.
 
 - **Shell:** Tauri 2 with the system web view; React with React Aria Components for every control (decision 0021); tokens in `tokens.css`; shared components in `src/ui/`. The app links the engine in-process and calls the same method functions; the web view never touches the clipboard, files or the network.
 - **State:** the citation session uses one pure reducer read through `useSyncExternalStore` and a headless controller with session and operation identities; search/preview I/O, destination choices and preferences remain in their adapters; no state library.
+- **One record summary** (#1675): `ibis_core::summary::RecordSummary` reads a record's title, authors (reading name and surname), year or date text, container and type once; the picker's rows, the command line, MCP and the search index's year all use it. Front ends word what is missing ("No date", "n.d.", "[untitled]") but never read the CSL themselves.
 - **Output per app:** the destination table classifies known browser and code-editor app IDs as needing an output question, without inferring document syntax. The native destination reply carries this category alongside app ID/name, outputs and the separate app paste choice. The first copy with no remembered browser/editor output holds its citation in the picker and opens the existing chooser; a format pick or dismissal resumes it once when its preview is ready. An unrecognised app with a proven target asks for paste approval or Copy only in that same chooser; either answer cancels the held action and requires fresh Enter. Format alone never approves paste. The native copy proof freezes delivery approval before clipboard I/O; policy changes revoke outstanding epochs, and the picker cannot join flights across delivery generations. Unlisted-app approval includes an app-location fingerprint, never a raw path. Unreadable-store recovery persists through format saves and restarts; only each app's explicit delivery choice resolves it. All target, permission, lifecycle and one-use guards still apply. Search/citation changes, hide/reopen and menu commands cancel the held action. Choices use the existing bounded, atomic `apps.json`; no new file, polling or document inspection. Linux captures no app, so the default applies there. Classification and remembered choices add bounded lookups per destination/copy and no hidden activity.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
 - **Layers, focus and commands:** each window has one layer stack and one key listener ([`ui/layers.ts`](../apps/desktop/src/ui/layers.ts)), on `window` in the capture phase, so no control can swallow a key and focus resting nowhere loses none. Esc closes the nearest layer, in one fixed order: sheet, menu, panel (the citation inspector), chooser, search text, window. A surface registers with `useLayer(kind, open, close)` and never handles Escape or stops other keys for the picker's sake. Closing returns focus to what opened the layer; if that is gone or hidden, the window's home takes it (Search, or More on the welcome, which hides Search). A key pressed with focus lost goes home first. A close is immediate: a closing modal refuses focus, so nothing waits for its exit. The picker owns its keys and commands in one place (`usePickerKeys`): a key and its menu item call the same `run(command)`. Toggles leave layers as they are; any other command clears the sheet and menus first; the inspector is a live panel, not an overlay, so it stays; a layer's own key closes it. A command that hands the screen to another window has one effect, in native code on every system and build (`picker::yield_to_window`), for the presentation that asked. Every way into Settings ends in `settings_window::present`, which closes the picker even when pinned, because a floating picker would cover it; the pin stays for its next opening. An opened source hides an unpinned picker and leaves a pinned one beside it. The picker's own file dialog keeps it, as a parent.

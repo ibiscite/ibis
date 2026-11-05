@@ -6,7 +6,8 @@ use super::MAX_LIST;
 use crate::request::ItemSelector;
 use ibis_core::citable::{citable_fields, is_variable};
 use ibis_core::contract::{ItemRef, LibraryId, Record};
-use ibis_core::model::{Name, is_hidden, strip_markup};
+use ibis_core::model::{is_hidden, strip_markup};
+use ibis_core::summary::RecordSummary;
 use serde_json::{Map, Value};
 use std::fmt::Write;
 
@@ -31,30 +32,23 @@ const SUMMARIZED: [&str; 5] = ["type", "title", "author", "container-title", "DO
 
 /// What an agent needs to recognise and cite a record. Fields the record lacks are left out.
 pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String, Value> {
-    let field = |name: &str| csl.get(name).map(shorten);
-    let authors: Vec<Value> = csl
-        .get("author")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
+    let summary = RecordSummary::of(|name| csl.get(name));
+    let text = |text: Option<&String>| text.map(|text| Value::String(clean(text)));
+    let authors: Vec<Value> = summary
+        .authors
+        .iter()
         .take(MAX_LIST)
-        .map(|name| Value::String(clean(&Name::from_csl(name).display())))
+        .map(|author| Value::String(clean(&author.name)))
         .collect();
-    let issued = csl.get("issued");
-    let year = issued
-        .and_then(|issued| issued.pointer("/date-parts/0/0"))
-        .or_else(|| issued.and_then(|issued| issued.get("raw")))
-        .or_else(|| issued.and_then(|issued| issued.get("literal")))
-        .map(shorten);
     let mut data = Map::new();
     data.insert("ref".into(), Value::String(reference));
     let found = [
-        ("type", field("type")),
-        ("title", field("title")),
+        ("type", text(summary.item_type.as_ref())),
+        ("title", text(summary.title.as_ref())),
         ("authors", (!authors.is_empty()).then_some(Value::Array(authors))),
-        ("year", year),
-        ("container", field("container-title")),
-        ("doi", field("DOI")),
+        ("year", text(summary.year.as_ref())),
+        ("container", text(summary.container.as_ref())),
+        ("doi", csl.get("DOI").map(shorten)),
     ];
     for (name, value) in found {
         if let Some(value) = value.filter(|value| !value.is_null()) {

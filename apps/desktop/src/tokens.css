@@ -35,6 +35,10 @@
   /* The search glyph sits on the tile column and the query on the title column. */
   --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
   --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
+  /* [C3] From a row's content edge: where its title starts, and the inset that
+     centres a mark of width W on the tile column is (--tile - W) / 2. The footer
+     and its notices use the same two columns as the rows above them. */
+  --title-start: calc(var(--tile) + var(--row-gap));
 
   /* Corners. The window's is the Mac's own (it matches the native mask [C15]);
      the rest scale with --radius, with floors for surfaces and text-sized marks. */

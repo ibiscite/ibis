@@ -12,12 +12,13 @@ import "./Menu.css";
 import "./Overlay.css";
 
 /** Align to the rendered trailing edge even when the browser locale differs. */
-export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end") {
+export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end" | "bottom start") {
   const [rtl, setRtl] = useState(false);
   useLayoutEffect(() => {
     if (open && trigger.current) setRtl(getComputedStyle(trigger.current).direction === "rtl");
   }, [open, trigger]);
-  return `${placement === "top end" ? "top" : "bottom"} ${rtl ? "left" : "right"}` as const;
+  const end = placement.endsWith("end") !== rtl;
+  return `${placement.startsWith("top") ? "top" : "bottom"} ${end ? "right" : "left"}` as const;
 }
 
 /** Keep React Aria's placement boundary inside the viewport and below the

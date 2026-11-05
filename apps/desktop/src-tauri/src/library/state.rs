@@ -361,68 +361,11 @@ mod tests {
 
     #[test]
     #[allow(clippy::unwrap_used)]
-    fn startup_parses_fresh_and_can_cite_immediately_even_with_obsolete_cache_files() {
+    fn startup_parses_fresh_and_can_cite_immediately() {
         use tauri::Manager;
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("invented.bib");
-        let cache = dir.path().join("source-generations");
-        #[cfg(unix)]
-        {
-            use std::io::Write;
-            use std::os::unix::fs::{DirBuilderExt, OpenOptionsExt};
-            std::fs::DirBuilder::new().mode(0o700).create(&cache).unwrap();
-            for (name, bytes) in [
-                (".owner", "Ibis prepared source storage\n"),
-                (".lease", ""),
-                ("generation-invented", "stale saved references"),
-                (
-                    "manifest-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json",
-                    "untrusted old manifest",
-                ),
-            ] {
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(cache.join(name))
-                    .unwrap()
-                    .write_all(bytes.as_bytes())
-                    .unwrap();
-            }
-        }
-        // This is the startup cleanup; source loading never reads the old files.
-        ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()).unwrap();
-        assert!(!cache.join("generation-invented").exists());
-        assert!(
-            !cache
-                .join("manifest-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json")
-                .exists()
-        );
         for key in ["first", "reopened"] {
-            #[cfg(unix)]
-            let busy = (key == "reopened").then(|| {
-                use std::io::Write;
-                use std::os::unix::fs::OpenOptionsExt;
-                let lease = std::fs::OpenOptions::new()
-                    .read(true)
-                    .write(true)
-                    .open(cache.join(".lease"))
-                    .unwrap();
-                lease.try_lock().unwrap();
-                std::fs::OpenOptions::new()
-                    .write(true)
-                    .create_new(true)
-                    .mode(0o600)
-                    .open(cache.join("generation-invented"))
-                    .unwrap()
-                    .write_all(b"stale saved references")
-                    .unwrap();
-                assert_eq!(
-                    ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()),
-                    Err(ibis_zotero_local::closed::PrivateStorageError::Busy)
-                );
-                lease
-            });
             std::fs::write(&path, format!("@book{{{key},title={{Synthetic stars}}}}")).unwrap();
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(Library::default()))
@@ -487,12 +430,6 @@ mod tests {
                 })
                 .unwrap();
             assert_eq!(written, expected);
-            #[cfg(unix)]
-            if let Some(lease) = busy {
-                lease.unlock().unwrap();
-                ibis_zotero_local::closed::remove_obsolete_file_cache(dir.path()).unwrap();
-                assert!(!cache.join("generation-invented").exists());
-            }
         }
     }
 

@@ -23,7 +23,7 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
     revision: "sample", partial: false,
     id: { source: "sample", key: "vale2021" }, key: "vale2021", title: text("look-sample-title"),
     authors: text("look-sample-authors"), first_author: text("look-sample-authors"), author_count: 2,
-    container: text("look-sample-journal"), year: 2021, item_type: "article-journal", matched: [],
+    container: text("look-sample-journal"), year: "2021", item_type: "article-journal", matched: [],
   };
   const html = renderToStaticMarkup(<>
     {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
@@ -37,12 +37,13 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
   const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
   return <span className="ui-picker-picture" style={shape} data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
-    <Snapshot html={html} density={density} scheme={scheme} />
+    <Snapshot html={html} density={density} scheme={scheme} bare={rowsOnly} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;
 }
 
-function Snapshot({ html, density, scheme, dark = false }: { html: string; density: Density; scheme?: "light" | "dark"; dark?: boolean }) {
+/** `bare`: rows alone, drawn straight on the card that holds them, never on a window surface of their own. */
+function Snapshot({ html, density, scheme, dark = false, bare = false }: { html: string; density: Density; scheme?: "light" | "dark"; dark?: boolean; bare?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!host.current) return;
@@ -53,7 +54,7 @@ function Snapshot({ html, density, scheme, dark = false }: { html: string; densi
   }, [html]);
   return <span className="ui-picker-picture-mask" data-dark={dark || undefined} style={{ colorScheme: scheme }}>
     <span className="ui-picker-picture-content">
-      <div ref={host} style={{ colorScheme: scheme }} data-platform="macos" data-density={density} inert />
+      <div ref={host} style={{ colorScheme: scheme, ...bare && { background: "transparent" } }} data-platform="macos" data-density={density} inert />
     </span>
   </span>;
 }

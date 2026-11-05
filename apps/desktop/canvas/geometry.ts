@@ -1,0 +1,95 @@
+// The layout rules of docs/design.md as data, checked on whatever screen is
+// mounted. One table, read by the Mac's WebKit gallery (gallery/webkit.swift)
+// and the Chromium canvas renderer (gallery/canvas.mjs), so a rule written
+// once is held on every screen, in light, dark, larger text and right to left.
+// Each rule names its tag; a violation says the tag, the part and the distance.
+
+/** [C3] Parts whose mark centres on the tile column, and parts whose words
+ * start on the title column, measured from the window's leading edge. Choice
+ * screens centre their own group and the inspector is its own column, so
+ * neither is held to the window's columns. */
+export const columns = {
+  marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
+  words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
+  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
+} as const;
+
+/** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
+ * edge and is never narrower than it. */
+export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]', trigger: '.citation-field .ui-popup-button[aria-expanded="true"]' } as const;
+
+/** [C19] Rows of one form share both edges: every control's drawn fill. */
+export const forms = { form: ".citation-details", controls: ".citation-field .ui-popup-button, .citation-field input" } as const;
+
+/** [C12] A grid of choice cards: one height, and each glyph level with its title. */
+export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
+
+const tolerance = 1;
+
+/** Every rule broken on the mounted screen, as "[tag] part: detail". Empty when all hold. */
+export function geometry(root: ParentNode = document): string[] {
+  const failures: string[] = [];
+  const rtl = getComputedStyle(document.documentElement).direction === "rtl";
+  const width = document.documentElement.clientWidth;
+  // Distance from the window's leading edge, in either direction.
+  const lead = (rect: DOMRect, end = false) => rtl ? width - (end ? rect.left : rect.right) : end ? rect.right : rect.left;
+  const visible = (node: Element) => { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== "hidden"; };
+  const name = (node: Element) => `${node.tagName.toLowerCase()}.${[...node.classList].join(".")}`;
+
+  // The columns come from the tokens, never from another part that could be wrong too.
+  const main = root.querySelector("main");
+  if (main) {
+    const probe = document.createElement("span");
+    probe.style.cssText = "position:absolute;inset-block-start:0;inset-inline-start:calc(var(--inset) + var(--row-pad));inline-size:var(--tile);block-size:1px;visibility:hidden";
+    main.append(probe);
+    const tile = probe.getBoundingClientRect();
+    const title = probe.cloneNode() as HTMLElement;
+    title.style.insetInlineStart = "calc(var(--inset) + var(--row-pad) + var(--title-start))";
+    main.append(title);
+    const tileCentre = lead(tile) + tile.width / 2, titleStart = lead(title.getBoundingClientRect());
+    probe.remove(); title.remove();
+    const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
+    for (const node of held(columns.marks.join(", "))) {
+      const rect = node.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
+      if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(node)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+    }
+    for (const node of held(columns.words.join(", "))) {
+      const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
+      // A field's words start inside its padding and border.
+      const inset = node.matches("input") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
+      const start = lead(rect) + inset;
+      if (Math.abs(start - titleStart) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, title column ${titleStart.toFixed(1)}`);
+    }
+  }
+
+  const popover = root.querySelector(anchored.popover), trigger = root.querySelector(anchored.trigger);
+  if (popover && trigger) {
+    const menu = popover.getBoundingClientRect(), button = trigger.getBoundingClientRect();
+    if (Math.abs(lead(menu) - lead(button)) > tolerance) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
+    if (menu.width + tolerance < button.width) failures.push(`[C21] ${name(popover)}: ${menu.width.toFixed(1)} wide, narrower than its button (${button.width.toFixed(1)})`);
+  }
+
+  for (const form of root.querySelectorAll(forms.form)) {
+    const fills = [...form.querySelectorAll(forms.controls)].filter(visible).map((node) => {
+      const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
+      // A field's clear border is target, not fill (CitationDetails.css).
+      const border = node.matches("input") ? parseFloat(style.borderLeftWidth) : 0;
+      return { node, start: lead(rect) + border, end: lead(rect, true) - border };
+    });
+    for (const fill of fills.slice(1)) for (const edge of ["start", "end"] as const)
+      if (Math.abs(fill[edge] - fills[0]![edge]) > tolerance) failures.push(`[C19] ${name(fill.node)}: ${edge} ${fill[edge].toFixed(1)}, the form's ${fills[0]![edge].toFixed(1)}`);
+  }
+
+  for (const grid of root.querySelectorAll(cards.grid)) {
+    const shapes = [...grid.querySelectorAll(cards.card)].map((card) => {
+      const box = card.getBoundingClientRect(), glyph = card.querySelector(cards.glyph)?.getBoundingClientRect(), title = card.querySelector(cards.title)?.getBoundingClientRect();
+      return { card, height: box.height, glyph: glyph && title ? (glyph.top + glyph.height / 2) - (title.top + title.height / 2) : 0, top: glyph ? glyph.top - box.top : 0 };
+    });
+    for (const shape of shapes.slice(1)) {
+      if (Math.abs(shape.height - shapes[0]!.height) > tolerance) failures.push(`[C12] ${name(shape.card)}: ${shape.height.toFixed(1)} tall, the first card ${shapes[0]!.height.toFixed(1)}`);
+      if (Math.abs(shape.top - shapes[0]!.top) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.top.toFixed(1)} from the top, the first card ${shapes[0]!.top.toFixed(1)}`);
+    }
+    for (const shape of shapes) if (Math.abs(shape.glyph) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.glyph.toFixed(1)} off its title's line`);
+  }
+  return failures;
+}

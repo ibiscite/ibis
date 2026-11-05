@@ -136,7 +136,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{setupText.sampleLabel}</bdi>{" · "}</>}{r.title}</strong>
-          {compact && r.first_author && <span className="result-first-author" dir="auto">{r.first_author}{r.author_count > 1 && <> {etAl}</>}</span>}
+          {compact && r.first_author && <span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span>}
           <span className="result-year">{r.year ?? pickerText.noDate}</span>
         </span>
         <span className="result-meta">

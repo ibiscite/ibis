@@ -10,7 +10,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
-function record(key: string, first_author = "García", year: number | null = 2021): SearchResult {
+function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
   return { revision: "1", id: { source: "invented.bib", native_key: key }, key, title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
@@ -49,6 +49,23 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
   expect(within(beta.closest(".shelf-segment")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
 });
 
+test("↑ and ↓ on a segment go back to Search and move the list; the shelf itself is never a focus stop", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta");
+  const search = document.createElement("input");
+  const moves: string[] = [];
+  search.addEventListener("keydown", (event) => moves.push(event.key));
+  document.body.append(search);
+  const shown = { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }, { item: null, text: ")" }] };
+  render(shelf({ selected: chosen([a, b]), shown, focusable: true, fallbackFocusRef: { current: search } }));
+  expect(document.querySelector(".shelf-output")?.hasAttribute("tabindex")).toBe(false);
+  const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" });
+  act(() => alpha.focus());
+  fireEvent.keyDown(alpha, { key: "ArrowDown" });
+  expect(document.activeElement).toBe(search);
+  expect(moves).toEqual(["ArrowDown"]);
+  search.remove();
+});
+
 test("formatted segments preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   const text = "Alpha species; <script>literal</script>";
@@ -64,7 +81,7 @@ test("formatted segments preserve engine emphasis and keep source strings inert"
 });
 
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
-  expect(referenceLabels([record("a"), record("b", "Okafor", 2019), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
+  expect(referenceLabels([record("a"), record("b", "Okafor", "2019"), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
 });
 
@@ -100,8 +117,9 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   expect(document.querySelector(".shelf-chips")).toBeNull();
   if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else press(segment, key);
   const inspector = details("Citation details for Invented title a");
-  expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("García 2021");
-  expect(within(inspector).getByRole("heading", { level: 3 }).textContent).toBe("Invented title a");
+  // The full title, said once: no second heading repeats it below.
+  expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("Invented title a");
+  expect(within(inspector).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   expect(document.activeElement).toBe(within(inspector).getByRole("textbox", { name: "Page" }));
   expect(within(inspector).getByRole("button", { name: /^Show as Name in brackets/ })).toBeTruthy();
   expect(within(inspector).getByRole("button", { name: /Remove from Citation/ })).toBeTruthy();
@@ -284,7 +302,7 @@ test.each([1, 2])("many references at the minimum frame and %s× text retain exa
   expect(document.querySelector(".shelf")!.contains(menu)).toBe(false);
   expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(50);
   fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Author49 2021" }));
-  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Author49 2021");
+  expect(screen.getByRole("heading", { level: 2 }).textContent).toBe("Invented title synthetic49");
   expect(document.activeElement).toBe(await screen.findByRole("textbox", { name: "Page" }));
   document.documentElement.style.fontSize = "";
 });

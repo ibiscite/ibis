@@ -167,7 +167,7 @@ test.each(["copy", "hide", "delivery"])("a fresh Enter after picking the same fo
   });
   await act(async () => { render(<App />); });
   await enter();
-  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc key · Default" })); });
+  await act(async () => { fireEvent.click(screen.getByRole("button", { name: "Copy as Pandoc key" })); });
   await act(async () => { fireEvent.click(screen.getByRole("menuitemradio", { name: "Pandoc key" })); });
   await act(async () => { await vi.advanceTimersByTimeAsync(300); });
   await enter();
