@@ -75,7 +75,8 @@ export const commands = {
 	 *  omitted/null searches all, an empty list searches none. It never reloads sources.
 	 */
 	search: (query: SearchQuery, limit: number, page: number, request: number, scope: string[] | null) => __TAURI_INVOKE<SearchReply_Serialize>("search", { query, limit, page, request, scope }),
-	recentReferences: (ids: RecentIdentity[], includeAdded: boolean) => __TAURI_INVOKE<SearchReply_Serialize>("recent_references", { ids, includeAdded }),
+	/**  Current destination's recents; Forget retires in-flight recording. */
+	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply_Serialize, boolean, boolean]>("recent_references", { forget }),
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
@@ -974,10 +975,7 @@ export type ReceiptSummary = {
 
 export type RecentGroup = "cited" | "added";
 
-/**
- *  Resolve opaque history IDs against the current snapshot, with source-added
- *  dates for the second group. Never searches document text or reads new sources.
- */
+/**  A possibly retired identity arriving from a desktop action. */
 export type RecentIdentity = unknown;
 
 export type ReferenceDetails = {

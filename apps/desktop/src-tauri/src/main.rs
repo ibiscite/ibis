@@ -283,6 +283,8 @@ fn main() {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
+            let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
+            session_references::manage(app.handle(), &settings_path, remember);
             app.state::<sizing::Sizing>().load(&loaded.settings);
             if !sizing::start(app.handle()) {
                 return Err("the picker settings worker could not start".into());
@@ -384,7 +386,11 @@ fn main() {
         Ok(app) => app.run(|app, event| {
             match &event {
                 tauri::RunEvent::MainEventsCleared => sizing::settled(app),
-                tauri::RunEvent::ExitRequested { .. } => sizing::flush(app, true),
+                tauri::RunEvent::ExitRequested { .. } => {
+                    sizing::flush(app, true);
+                    let recents = app.state::<session_references::SessionReferences>();
+                    let _ = recents.flush_timeout(std::time::Duration::from_secs(1));
+                }
                 _ => {}
             }
             // macOS: a repeated OS open request brings back the hidden picker.

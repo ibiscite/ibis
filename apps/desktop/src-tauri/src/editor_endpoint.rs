@@ -57,6 +57,10 @@ pub(crate) struct Pending {
 }
 
 impl Pending {
+    /// Editor requests have no captured application destination.
+    pub(crate) fn app<T>(&self, captured: Option<T>) -> Option<T> {
+        self.current().is_none().then_some(captured).flatten()
+    }
     fn lock(&self) -> std::sync::MutexGuard<'_, Option<(EditorRequest, SyncSender<Option<String>>)>> {
         self.active.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
     }
@@ -761,6 +765,64 @@ mod tests {
         // The engine writes a numbered style's entry itself; the request keeps its form.
         assert_eq!(request.form, CitationForm::Normal);
         assert_eq!(request.label, "IEEE");
+    }
+
+    #[test]
+    fn editor_picker_never_shows_the_foreground_apps_recent_citations() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let history = ibis_engine::recents::SessionReferences::default();
+        *history.lock() = ibis_engine::recents::List::open(dir.path().join("recents.json"), true);
+        let id = ibis_core::contract::ItemRef {
+            library: ibis_core::contract::LibraryId::new("invented")?,
+            key: "a".into(),
+        };
+        let epoch = history.lock().epoch();
+        history.record(&epoch, Some("invented.writer"), &[id]);
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: false,
+        };
+        let (_id, _answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        let destination = pending.app(Some("invented.writer"));
+        assert!(
+            history.lock().ids(destination).is_empty(),
+            "the editor must not display another app's citations"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn editor_clipboard_copy_does_not_appear_in_the_foreground_apps_history() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let dir = tempfile::tempdir()?;
+        let history = ibis_engine::recents::SessionReferences::default();
+        *history.lock() = ibis_engine::recents::List::open(dir.path().join("recents.json"), true);
+        let id = ibis_core::contract::ItemRef {
+            library: ibis_core::contract::LibraryId::new("invented")?,
+            key: "editor-citation".into(),
+        };
+        let pending = Pending::default();
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: true,
+        };
+        let (request, answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        // Recording uses the destination captured before answering clears Pending.
+        let destination = pending.app(Some("invented.writer"));
+        assert!(pending.answer(request, "Invented citation", || {}));
+        assert_eq!(answer.recv()?, Some("Invented citation".into()));
+        let epoch = history.lock().epoch();
+        history.record(&epoch, destination, &[id]);
+        history.flush()?;
+        assert!(
+            history.lock().ids(Some("invented.writer")).is_empty(),
+            "returning to the foreground app must not show this editor copy"
+        );
+        assert!(!ibis_engine::recents::List::open(dir.path().join("recents.json"), true).has_history());
+        Ok(())
     }
 
     #[test]

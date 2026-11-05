@@ -29,3 +29,5 @@ pub use ibis_core::search::without_filters;
 pub mod wire;
 
 pub mod server;
+
+pub mod recents;

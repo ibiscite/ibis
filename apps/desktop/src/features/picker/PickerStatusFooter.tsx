@@ -51,7 +51,7 @@ export function PickerStatusFooter({
   const { libraryMenuOpen, openLibrary, closeLibrary, input, menuOpen, openMore, closeMore, moreButton, pinned, focusHome, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
   const { density, changeDensity } = preferences;
-  const { failures, report } = operations;
+  const { failures } = operations;
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
   const libraryDetail = menuOpen ? libraryMessages.detail(library, Date.now(), (status) => zoteroLibraryNames(status, groupName)) : null;
@@ -92,7 +92,7 @@ export function PickerStatusFooter({
             destination.choosePaste("copy-only");
           } } : null,
           sessionReferences: api.sessionReferences ? menus.openSession : null,
-          forgetRecent: recents.forget ? () => { report("recentHistory", !recents.forget!()); focusHome(); } : null,
+          forgetRecent: recents.forget ? () => { recents.forget!(); focusHome(); } : null,
           quit: () => run("quit"),
         }} />
     } />;

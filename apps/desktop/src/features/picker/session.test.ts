@@ -794,6 +794,41 @@ test("Forget clears the memory and an open change with it", () => {
   expect(s.state.changing).toBeNull();
 });
 
+test.each(["Forget", "disable then re-enable"])("%s never lets a delayed copy restore Change Last Citation", (action) => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  if (action === "Forget") s.send({ type: "forget-last" });
+  else {
+    s.send(s.view({ appId: "example.writer", remembersLast: false, chosen: [...s.state.selected.values()] }));
+    s.send(s.view({ appId: "example.writer", remembersLast: true, chosen: [...s.state.selected.values()] }));
+  }
+  s.complete(1, { pinned: true });
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBeNull();
+  expect([...s.state.selected.values()]).toEqual([]);
+  // A citation activated after Forget is still available to change normally.
+  s.send({ type: "toggle", result: b });
+  copyOnce(s, 2, "fresh citation");
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBe("fresh citation");
+  expect([...s.state.selected.values()]).toMatchObject([{ id: b.id }]);
+});
+
+test("fresh Enter after Forget cannot join a retired copy or lose its newer citation", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a });
+  s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  s.send({ type: "forget-last" });
+  expect(s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) })).toMatchObject([{ type: "copy", id: 2 }]);
+  s.complete(2, { pinned: true, outcome: { text: "newer citation", warnings: [] } });
+  s.complete(1, { pinned: true });
+  s.send({ type: "change-last" });
+  expect(s.state.changing).toBe("newer citation");
+});
+
 test("removing the last reference ends the change", () => {
   const s = withLast();
   s.send(s.view({ appId: "example.writer" }));
