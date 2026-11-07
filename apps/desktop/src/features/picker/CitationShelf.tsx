@@ -38,11 +38,13 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ deliverable = true, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
   copyProblem?: string | null;
+  /** Enter would deliver the shown citation now; until then nothing drags. */
+  deliverable?: boolean;
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -136,7 +138,7 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   const text = visible?.text;
   // Dragging delivers what Enter would: only the current prepared citation,
   // never one held while the next is made, and never a refused one (0028).
-  const dragged = !copied && ready && !ready.project_refusal ? ready : null;
+  const dragged = deliverable && !copied && ready && !ready.project_refusal ? ready : null;
   const single = references.length === 1 ? references[0] : undefined;
   // The panel says these in words, so nothing in the shelf comes and goes while typing.
   const detailsOpen = panel !== null && panel.kind !== "warnings";

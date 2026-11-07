@@ -698,6 +698,41 @@ test.each([
   expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 4]");
 });
 
+test("however many changes were only copied, the citation still in the document can be changed", async () => {
+  const harness = await pastedOnce();
+  for (const page of [3, 4, 5, 6]) {
+    await act(async () => { await harness.reopen(); });
+    await changeLast();
+    await act(async () => { harness.preview.pending.at(-1)!.complete({ text: `[@a, p. ${page}]` }); });
+    await enter();
+    await act(async () => { harness.copy.pending.at(-1)!.complete(); });
+    await act(async () => { harness.delivery.pending.at(-1)!.complete(); });
+    await act(async () => { harness.notice.pending.at(-1)!.complete(); });
+    expect(harness.document.text).toBe("Draft: [@a] ends.");
+  }
+  harness.document.selection = [7, 11];
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 7]" }); });
+  await enter();
+  await act(async () => { harness.copy.pending.at(-1)!.complete(); });
+  await act(async () => { harness.delivery.pending.at(-1)!.complete(); });
+  await act(async () => { harness.notice.pending.at(-1)!.complete(); });
+  expect(harness.document.text).toBe("Draft: [@a, p. 7] ends.");
+});
+
+test("the beak drags nothing while Enter would wait for a newer search", async () => {
+  const harness = await open();
+  await choose(harness, "first");
+  const beak = () => document.querySelector<HTMLElement>(".shelf-leading")!;
+  expect(beak().getAttribute("draggable")).toBe("true");
+  await type("second");
+  expect(beak().getAttribute("draggable")).toBeNull();
+  const data = new Map<string, string>();
+  fireEvent.dragStart(beak(), { dataTransfer: { setData: (type: string, value: string) => data.set(type, value), effectAllowed: "" } });
+  expect([...data.keys()]).toEqual([]);
+});
+
 test("after a change that was only copied, anything else selected still only copies", async () => {
   const harness = await pastedOnce();
   await act(async () => { await harness.reopen(); });

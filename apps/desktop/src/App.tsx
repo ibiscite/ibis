@@ -271,7 +271,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} />
+        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector}
+        deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerStatusFooter
         copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}

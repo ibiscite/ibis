@@ -3861,7 +3861,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: [] }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

@@ -335,7 +335,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const last = f.appId === null ? undefined : s.lastCitations.get(f.appId);
       if (last && f.replaces !== null && f.id === s.lastSuccessfulCopy && event.delivered?.outcome === "copied"
         && event.delivered.reason === "citation-not-selected") {
-        const earlier = f.replaces.filter((text) => text !== last.text).slice(0, 3);
+        // Kept until a change is pasted: any of them may still be in the document.
+        const earlier = f.replaces.filter((text) => text !== last.text);
         s = { ...s, lastCitations: new Map(s.lastCitations).set(f.appId!, { ...last, earlier }) };
       }
       const permissionRefused = event.delivered?.outcome === "copied"
