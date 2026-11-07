@@ -135,12 +135,13 @@ fn empty_citation_cannot_be_copied() {
     }
 }
 
+/// Run by `node scripts/gen.mjs`, which places it in `fixtures/`.
 #[test]
-#[ignore = "writes the checked-in schema"]
+#[ignore = "writes the generated schema for scripts/gen.mjs"]
 fn write_schema_snapshot() -> Result<(), Box<dyn std::error::Error>> {
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/engine-contract.schema.json");
+    let directory = std::env::var_os("IBIS_GEN_DIR").ok_or("set IBIS_GEN_DIR")?;
     std::fs::write(
-        path,
+        Path::new(&directory).join("engine-contract.schema.json"),
         serde_json::to_string_pretty(&ibis_core::contract::schema())? + "\n",
     )?;
     Ok(())

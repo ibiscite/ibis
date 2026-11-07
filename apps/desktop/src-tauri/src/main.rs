@@ -186,7 +186,7 @@ fn main() {
         .manage(picker::FullScreenGuard::default())
         .manage(Mutex::new(ShortcutStatus::default()))
         .manage(updater::Updates::default())
-        .invoke_handler(bindings::commands().invoke_handler())
+        .invoke_handler(bindings::handler())
         .on_webview_event(|webview, event| {
             if webview.label() != "main" {
                 return;

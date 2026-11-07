@@ -24,33 +24,33 @@ const EDITOR: &str = "This editor request chooses its own output. Finish it befo
 #[derive(Default)]
 pub(crate) struct Runtime(Mutex<Option<String>>);
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct WritingProjectView {
     pub(crate) id: String,
     pub(crate) name: String,
     /// A CLI project can name outputs not yet available in the picker.
-    #[specta(type = Option<String>)]
+    #[schemars(with = "Option<String>")]
     pub(crate) output: Option<OutputRef>,
     pub(crate) bibliography: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct WritingProjectsView {
     pub(crate) projects: Vec<WritingProjectView>,
     pub(crate) selected: Option<String>,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) active: Option<WritingProjectView>,
     pub(crate) session_only: bool,
     /// Owns one picker opening and captured destination; never a path or title.
     pub(crate) context: String,
 }
 
-#[derive(Debug, Clone, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub(crate) enum WritingProjectEdit {
     Create {
         name: String,
-        #[specta(type = String)]
+        #[schemars(with = "String")]
         output: OutputRef,
     },
     Rename {
@@ -65,7 +65,7 @@ pub(crate) enum WritingProjectEdit {
     },
     Output {
         id: String,
-        #[specta(type = String)]
+        #[schemars(with = "String")]
         output: OutputRef,
     },
 }
@@ -374,7 +374,7 @@ fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, String> {
     let target = current_target(&app);
     let runtime = app.state::<Runtime>();
@@ -390,7 +390,7 @@ pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, St
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn edit_writing_project(
     app: AppHandle,
     context: String,

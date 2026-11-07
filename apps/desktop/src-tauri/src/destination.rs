@@ -31,7 +31,7 @@ const MAX_BYTES: u64 = 256 * 1024;
 const VERSION: u32 = 1;
 
 /// What the picker needs to know about the app it was opened from.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct PickerDestination {
     /// The app's own name; `None` when no app was captured.
     pub(crate) app: Option<String>,
@@ -40,10 +40,10 @@ pub(crate) struct PickerDestination {
     /// Opaque app-location fingerprint; no path crosses IPC.
     pub(crate) app_identity: Option<String>,
     /// The app suggestion, an engine output id; `None` follows the saved default.
-    #[specta(type = Option<String>)]
+    #[schemars(with = "Option<String>")]
     pub(crate) automatic: Option<OutputRef>,
     /// The output the person chose to always use for this app.
-    #[specta(type = Option<String>)]
+    #[schemars(with = "Option<String>")]
     pub(crate) remembered: Option<OutputRef>,
     /// This app needs a delivery choice after an unreadable per-app file; formats use defaults.
     pub(crate) unreadable: bool,
@@ -57,11 +57,11 @@ pub(crate) struct PickerDestination {
     pub(crate) paste_question: bool,
     /// A proven ordinary target can accept an explicit delivery choice, including recovery.
     pub(crate) can_choose_paste: bool,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) writing_project: Option<crate::writing_projects::WritingProjectView>,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) context_version: Option<(u32, u32)>,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) writing_context: Option<String>,
 }
 
@@ -368,7 +368,7 @@ pub(crate) fn memory_path(settings: &Path) -> PathBuf {
 
 /// The app the picker was opened from, its output and what Ibis remembers for it.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn picker_destination(
     app: AppHandle,
     memory: State<'_, AppMemory>,
@@ -435,7 +435,7 @@ pub(crate) fn picker_destination(
 /// Remember a format, a delivery choice or both for the captured app. Whichever
 /// is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn remember_app_output(
     app: AppHandle,
     memory: State<'_, AppMemory>,

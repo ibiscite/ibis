@@ -11,6 +11,8 @@ use std::{
 mod app_libraries;
 mod completions;
 mod doctor;
+#[cfg(test)]
+mod generated;
 mod human;
 mod settings_backup;
 mod toggle;

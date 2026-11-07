@@ -12,7 +12,7 @@ const documentation = (path) => !path.split("/").includes("vendor") && (
   (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md" || path === "apps/desktop/src/ui/README.md"))
   || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
 );
-// Generated bindings are also a native contract, checked by Rust tests.
+// Generated bindings are also a native contract, checked by `node scripts/gen.mjs --check`.
 const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
   /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || path === "apps/desktop/index.html"
 );

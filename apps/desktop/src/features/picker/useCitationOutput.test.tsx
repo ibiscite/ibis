@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import type { FilePreview_Serialize as FilePreview } from "../../bindings";
+import type { FilePreview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import type { CitationReference } from "./choice";
 import { pickerText } from "../../messages";

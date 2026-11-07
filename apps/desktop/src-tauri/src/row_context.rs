@@ -7,7 +7,7 @@ use tauri::{AppHandle, Manager, WebviewWindow};
 
 use crate::picker::ChooserOpen;
 
-#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum RowAction {
     Copy,
@@ -45,7 +45,7 @@ pub(crate) fn selected(app: &AppHandle, event: MenuEvent) {
 
 /// Show only native Copy and Add/Remove actions. Cancellation returns no action.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn row_context(window: WebviewWindow, added: bool) -> Result<Option<RowAction>, String> {
     const FAILURE: &str = "the reference menu is not available";
     if window.label() != "main" {

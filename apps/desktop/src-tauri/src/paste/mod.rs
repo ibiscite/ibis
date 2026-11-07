@@ -454,7 +454,7 @@ pub(crate) fn may_choose_paste(app: &AppHandle, enabled: bool) -> bool {
 }
 
 /// What happened to a copied citation, for the notice to word.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case")]
 pub(crate) enum Delivered {
     Pasted {

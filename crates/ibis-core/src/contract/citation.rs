@@ -8,7 +8,6 @@ use super::model::{Fingerprint, ItemRef};
 /// CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.
 /// https://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum LocatorTerm {
     Act,
@@ -85,7 +84,6 @@ pub struct Locator {
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum Script {
     #[default]
@@ -96,7 +94,6 @@ pub enum Script {
 
 /// Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(deny_unknown_fields)]
 pub struct TextRun {
     pub text: String,
@@ -358,7 +355,6 @@ impl Notice {
 /// Output-only passive presentation. The smaller request TextRun contract stays
 /// independent of the additional styles a citation processor may produce.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(deny_unknown_fields)]
 pub struct DisplayRun {
     pub text: String,

@@ -29,7 +29,7 @@ use crate::diagnostics::{NativeIssue, checked, report};
 pub(crate) const AT_LOGIN_ARG: &str = "--at-login";
 
 /// Why the choice is not what the person asked for.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LoginItemProblem {
     /// This system offers no way to do it (macOS before 13).
@@ -43,7 +43,7 @@ pub(crate) enum LoginItemProblem {
 }
 
 /// Whether Ibis starts when the person logs in, as the system reports it.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct LoginItem {
     /// The app's name, such as "Ibis" or "Ibis Nightly", for the interface.
     pub(crate) name: String,
@@ -367,7 +367,7 @@ pub(crate) fn set(app: &AppHandle, on: bool) -> LoginItem {
 
 /// Whether Ibis starts when the person logs in, read from the system now.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn login_item(app: AppHandle) -> LoginItem {
     // Registry, file and ServiceManagement calls block; keep them off the
     // async workers.
@@ -379,7 +379,7 @@ pub(crate) async fn login_item(app: AppHandle) -> LoginItem {
 
 /// Start Ibis when the person logs in, or stop doing so.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn set_login_item(app: AppHandle, enabled: bool) -> LoginItem {
     let fallback = unsupported(&app);
     tauri::async_runtime::spawn_blocking(move || set(&app, enabled))

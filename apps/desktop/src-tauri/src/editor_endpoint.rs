@@ -324,7 +324,7 @@ impl Host for AppHost {
 }
 
 /// Why the endpoint could not listen.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum EndpointProblem {
     /// Another program has the port.
@@ -336,7 +336,7 @@ pub(crate) enum EndpointProblem {
 
 /// What Settings shows. The address holds the token: anyone who has it can open
 /// the picker, so it stays on this computer and in this window.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct EndpointStatus {
     pub(crate) on: bool,
     pub(crate) url: Option<String>,
@@ -422,7 +422,7 @@ fn status(app: &AppHandle) -> EndpointStatus {
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
     status(&app)
 }
@@ -430,7 +430,7 @@ pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
 /// Switch the endpoint. Off closes the port and forgets the address, so the next
 /// time it is on, an old copy of that address no longer works.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
     let state = app.state::<Endpoint>();
     let closing = {
@@ -478,7 +478,7 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
 
 /// Put the address on the clipboard for pasting into an editor's settings.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
     let url = status(&app).url.ok_or("The editor endpoint is off.")?;
     crate::copy::write_plain(&app, &url)
@@ -486,7 +486,7 @@ pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
 
 /// A waiting editor, for the picker to name. Each request has its own number,
 /// so two in the same format are still two.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct EditorWaiting {
     pub(crate) request: u32,
     pub(crate) format: String,
@@ -494,7 +494,7 @@ pub(crate) struct EditorWaiting {
 
 /// `None` when no editor is waiting.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
     pending.current().map(|request| EditorWaiting {
         request: request.id as u32,

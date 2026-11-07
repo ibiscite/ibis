@@ -27,13 +27,13 @@ enum Target {
 
 const FAILED: &str = "The source could not be opened. Try again.";
 
-#[derive(Deserialize, specta::Type)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
-pub(crate) struct SourceItem(#[specta(type = specta_typescript::Unknown)] ItemRef);
+pub(crate) struct SourceItem(ItemRef);
 
 /// Open the searched source or launch Zotero for a reported Zotero problem.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn open_library_source(
     item: Option<SourceItem>,
@@ -69,20 +69,20 @@ pub(crate) async fn open_library_source(
     Ok(())
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum SourceKind {
     Zotero,
     File,
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct SystemIcon {
     mime: String,
     bytes: Vec<u8>,
 }
 
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SourcePresentation {
     kind: SourceKind,
     name: String,
@@ -93,7 +93,7 @@ pub(crate) struct SourcePresentation {
 
 /// Resolve the selected source and its system icon, never exposing its path.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn library_source(
     app: AppHandle,
     item: Option<SourceItem>,

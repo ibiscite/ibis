@@ -152,14 +152,14 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
         assert_eq!(scoped.results.len(), 1);
         assert_eq!(scoped.results[0].id, row.id);
         assert_eq!(scoped.results[0].source, row.source);
-        assert_ne!(row.id["library"].as_str(), Some(row.source.as_str()));
+        assert_ne!(row.id.library.as_str(), row.source.as_str());
         // Search narrowing must never bypass collisions in the loaded context.
         assert!(matches!(
             bridge
                 .preview(
                     bridge.reserve_preview(),
                     vec![FileSelection {
-                        id: serde_json::from_value(row.id.clone())?,
+                        id: row.id.clone(),
                         cite: serde_json::from_value(json!(row.cite))?,
                         locator: None,
                         page_input: None,

@@ -105,7 +105,7 @@ fn schedule(app: &AppHandle) {
 
 /// Initial command runs asynchronously; native mutations stay on the main thread.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn native_appearance(app: AppHandle) -> String {
     let (send, mut receive) = tauri::async_runtime::channel(1);
     let handle = app.clone();

@@ -671,7 +671,7 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
                     "{}: {text}",
                     case.name
                 );
-                let rows: Vec<Value> = picker.results.iter().map(|row| row.id.clone()).collect();
+                let rows: Vec<Value> = picker.results.iter().map(|row| serde_json::json!(row.id)).collect();
                 assert_eq!(rows, hits, "{}: {text}", case.name);
             }
         }

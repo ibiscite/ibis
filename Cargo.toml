@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local", "crates/ibis-sources", "crates/ibis-csl", "crates/ibis-engine", "apps/desktop/src-tauri", "fuzz"]
+members = ["crates/ibis-core", "crates/ibis-cli", "crates/ibis-zotero-local", "crates/ibis-sources", "crates/ibis-csl", "crates/ibis-engine", "apps/desktop/src-tauri", "apps/desktop/src-tauri/macros", "fuzz"]
 # The desktop app needs system WebView libraries to build; plain `cargo test`
 # covers the core and command line tool. CI builds the app separately.
 # Fuzzing is opt-in too; its corpus test runs with `cargo test -p ibis-fuzz`.

@@ -12,12 +12,12 @@ Rules:
 - **One quirk per record** where possible, with a comment saying what it exercises.
 - **Snapshots are the expected result.** `crates/ibis-sources/tests/fixtures.rs` loads each file and compares against `crates/ibis-sources/tests/snapshots/`. Review snapshot changes like code.
 
-After reviewing an intentional engine contract change, regenerate the CLI
-method schemas from the public command and check both output modes:
+After reviewing an intentional engine contract change, regenerate the schemas
+(`cli-schema.json`, `engine-contract.schema.json`, `mcp-tools.json`) with every
+other derived file; CI runs `--check`:
 
 ```sh
-cargo run -p ibis --locked -- schema --json | python3 -m json.tool > fixtures/cli-schema.json
-cargo test -p ibis --locked schema_matches_the_published_contract
+node scripts/gen.mjs
 ```
 
 | Folder | Contents |

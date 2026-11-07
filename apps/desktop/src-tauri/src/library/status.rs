@@ -11,7 +11,7 @@ use super::source::Source;
 use super::state::Library;
 
 /// Sent to the interface with the `library:changed` event.
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct LibraryStatus {
     pub(crate) state: LibraryState,
     pub(crate) revision: String,
@@ -50,7 +50,7 @@ pub(crate) struct LibraryStatus {
     /// `zotero` (the requested source) after a failed switch.
     pub(crate) snapshot_zotero: bool,
     /// The searchable snapshot contains only bundled invented references.
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) sample: bool,
     /// An update of the searched library failed and its earlier references
     /// are still searched; not set when a switch to another library failed.
@@ -64,7 +64,7 @@ pub(crate) struct LibraryStatus {
 }
 
 /// A library failure grouped by what the person can do about it.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum LibraryProblem {
     /// The file is not there: moved, renamed or on a disconnected drive.
@@ -103,7 +103,7 @@ impl From<LoadError> for LibraryProblem {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum LibraryState {
     None,
@@ -418,7 +418,6 @@ mod tests {
             "note",
             "settings_notice",
             "snapshot_zotero",
-            "sample",
             "stale",
             "updated_at",
             "checked_at",
@@ -433,7 +432,7 @@ mod tests {
         );
         assert_eq!(payload["note"], "the choice could not be saved");
         assert_eq!(payload["problem"], "missing");
-        assert_eq!(payload["sample"], false);
+        assert!(payload.get("sample").is_none(), "only the bundled samples say so");
     }
 
     #[test]

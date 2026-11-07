@@ -35,7 +35,7 @@ fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> 
     file.preview(
         file.reserve_preview(),
         vec![FileSelection {
-            id: serde_json::from_value(row.id.clone()).unwrap_or_else(|e| panic!("{e}")),
+            id: row.id.clone(),
             cite: serde_json::from_value(json!(row.cite)).unwrap_or_else(|e| panic!("{e}")),
             locator: None,
             page_input: None,

@@ -9,7 +9,7 @@ use ibis_engine::Cancellation;
 use serde::{Deserialize, Serialize};
 
 /// The state of one emitted key in the project bibliography, for the row.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ProjectKeyState {
     In,
@@ -19,7 +19,7 @@ pub(crate) enum ProjectKeyState {
     MayNameAnother,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct ProjectMark {
     pub(crate) generation: u32,
     pub(crate) state: ProjectKeyState,
@@ -74,14 +74,13 @@ impl SearchRequests {
 #[derive(Default)]
 pub(crate) struct PreviewRequests(SearchRequests);
 
-#[derive(Deserialize, specta::Type)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PreviewIntent {
     pub(crate) page: u32,
     pub(crate) request: u32,
     pub(crate) cancel: bool,
     #[serde(default)]
-    #[specta(optional)]
     pub(crate) context: Option<(u32, u32)>,
 }
 
@@ -98,26 +97,21 @@ impl PreviewRequests {
     }
 }
 
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SearchResult {
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(super) recent: Option<RecentGroup>,
     /// This row's key against the project bibliography of that generation.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(super) project: Option<ProjectMark>,
     /// This row comes from the bundled invented library, including while a replacement search is pending.
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(super) sample: bool,
     /// Revision captured with the index used for this result.
     pub(super) revision: String,
     /// Identity of the record; selection and copying use this, not the key.
-    #[specta(type = specta_typescript::Unknown)]
-    pub(super) id: serde_json::Value,
-    #[specta(optional)]
+    pub(super) id: ibis_core::contract::ItemRef,
     pub(super) cite: String,
-    #[specta(optional)]
     pub(super) source: String,
     pub(super) key: String,
     title: String,
@@ -140,7 +134,7 @@ pub(crate) struct SearchResult {
     item_type: String,
 }
 
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum RecentGroup {
     Cited,
@@ -164,7 +158,7 @@ impl SearchResult {
             project: None,
             sample,
             revision: revision.into(),
-            id: serde_json::json!(&record.id),
+            id: record.id.clone(),
             source: record.id.library.as_str().to_owned(),
             cite: object.fingerprints.cite.as_str().into(),
             key: record.citation_key().ok().flatten().unwrap_or_default().into(),
@@ -191,7 +185,7 @@ impl SearchResult {
 }
 
 /// Query text and the explicit choice to read a trailing locator.
-#[derive(Deserialize, specta::Type)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct SearchQuery {
     pub(super) text: String,
@@ -199,13 +193,13 @@ pub(crate) struct SearchQuery {
 }
 
 /// Missing explicit citation keys in a recognized pasted list.
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct PastedList {
     pub(super) missing: Vec<String>,
 }
 
 /// Picker wire names over the engine's canonical locator vocabulary.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct Locator {
     pub(crate) label: LocatorTerm,
@@ -232,7 +226,7 @@ impl From<Locator> for ibis_core::contract::Locator {
 }
 
 /// The engine's interpretation, shown so the person can search as typed.
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct LocatorQuery {
     /// What remains to search for.
     pub(crate) search: String,
@@ -252,19 +246,16 @@ impl From<ibis_core::locator::TrailingLocator> for LocatorQuery {
 }
 
 /// A search keeps its snapshot identity even when no references match.
-#[derive(Default, Serialize, specta::Type)]
+#[derive(Default, Serialize, schemars::JsonSchema)]
 pub(crate) struct SearchReply {
     pub(super) revision: String,
     pub(super) results: Vec<SearchResult>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(super) interpretation: Option<LocatorQuery>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(super) list: Option<PastedList>,
     /// Nothing matched and the search has filters: the search without them.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(super) unfiltered: Option<String>,
 }
 

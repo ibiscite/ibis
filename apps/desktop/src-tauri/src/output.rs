@@ -86,8 +86,10 @@ pub(crate) fn lenient<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Opti
     Ok(value.as_str().and_then(listed))
 }
 
-/// One output as the web view shows it, from the engine's list at build time.
-#[derive(Debug, Clone, Serialize, specta::Type)]
+/// One output as the web view shows it, from the engine's list, written into
+/// `bindings.ts` by `node scripts/gen.mjs`.
+#[cfg(test)]
+#[derive(Debug, Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct OutputChoice {
     id: String,
     /// The one name, in the header, footer, menus and Settings.
@@ -102,6 +104,7 @@ pub(crate) struct OutputChoice {
 }
 
 /// Every output the picker offers, in the engine's order.
+#[cfg(test)]
 pub(crate) fn choices() -> Vec<OutputChoice> {
     outputs::outputs()
         .iter()

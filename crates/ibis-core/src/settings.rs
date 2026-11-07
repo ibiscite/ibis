@@ -219,8 +219,7 @@ pub fn resolve_path(written: &str, home: Option<&Path>) -> PathBuf {
 }
 
 /// Which Zotero library to read.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum ZoteroLibrary {
     /// The personal library ("My Library").
@@ -247,8 +246,7 @@ impl std::fmt::Debug for EditorEndpoint {
 }
 
 /// How much each result row shows (ADR 0020).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Density {
     Compact,

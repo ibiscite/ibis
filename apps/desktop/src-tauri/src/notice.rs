@@ -141,14 +141,13 @@ fn deliver_receipt(receipt: Option<u64>, deliver: impl FnOnce() -> Delivered) ->
 
 /// What the notice says: whether the citation was pasted or only copied, and
 /// one line of it.
-#[derive(Clone, Debug, PartialEq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Serialize, schemars::JsonSchema)]
 pub(crate) struct NoticeMessage {
     delivered: Delivered,
     text: String,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     more: Option<usize>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     milestone: Option<u32>,
     /// The first paste into this word processor: insert with its plugin if the
     /// document uses one.
@@ -165,7 +164,7 @@ impl NoticeMessage {
 /// The notice being shown, for a notice page that has just loaded and missed
 /// the event that announced it.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> {
     notice.text.lock().ok().and_then(|text| text.clone())
 }
@@ -178,7 +177,7 @@ pub(crate) fn copied_notice(notice: State<'_, Notice>) -> Option<NoticeMessage> 
 /// citation is on the clipboard either way.
 /// Returns the delivery outcome so a permission detour keeps the prepared shelf.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn show_copied_notice(
     app: AppHandle,
     text: String,

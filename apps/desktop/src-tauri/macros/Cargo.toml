@@ -1,0 +1,20 @@
+[package]
+name = "ibis-desktop-macros"
+description = "Records each desktop command's argument and result types for the generated bindings"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+proc-macro = true
+
+[dependencies]
+proc-macro2 = "1.0.107"
+quote = "1.0.47"
+syn = { version = "2.0.119", features = ["full"] }
+
+[lints]
+workspace = true

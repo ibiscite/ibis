@@ -179,14 +179,14 @@ pub(crate) struct SearchRequest(pub(crate) Mutex<Option<String>>);
 
 /// The picker collects text from Search with Ibis once.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn take_search_request(request: tauri::State<'_, SearchRequest>) -> Option<String> {
     request.0.lock().ok().and_then(|mut waiting| waiting.take())
 }
 
 /// A citation segment took its place: the trackpad's alignment tick.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn alignment_tick() {
     #[cfg(target_os = "macos")]
     crate::menu_bar::tick();

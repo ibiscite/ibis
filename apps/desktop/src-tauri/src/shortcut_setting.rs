@@ -17,7 +17,7 @@ use crate::preferences::SettingsFile;
 pub(crate) struct Changing(tauri::async_runtime::Mutex<()>);
 
 /// Command identifiers shared with KEY_TABLE and the refusal's translated name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum PickerCommand {
     Format,
@@ -46,7 +46,7 @@ impl std::fmt::Display for PickerCommand {
 }
 
 /// Why a shortcut change failed. Only NotSaved changes the working shortcut.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ShortcutRefusal {
     /// Not a key combination Ibis can register.
@@ -242,7 +242,7 @@ fn printable_key(key: Code) -> bool {
 /// Open Ibis with `shortcut` from now on (`None`: the default), and remember it.
 /// Every window and the menu bar item show the change at once.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn set_shortcut(
     app: AppHandle,
     settings_file: State<'_, SettingsFile>,
