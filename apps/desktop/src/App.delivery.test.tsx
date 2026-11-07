@@ -764,13 +764,10 @@ test("the shortcut alone never reopens the last citation", async () => {
   expect(harness.calls.filter((call) => call === "copy_file_citation")).toHaveLength(1);
 });
 
-test("More and the keys sheet offer no Change Last Citation until this app has one", async () => {
+test("More offers no Change Last Citation until this app has one", async () => {
   await open();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
   expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
-  await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: /Keyboard Shortcuts/ })); });
-  const sheet = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
-  expect(sheet.textContent).not.toContain("Edit the citation you just pasted");
 });
 
 test("the last citation is never written anywhere", async () => {

@@ -2631,7 +2631,9 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   await waitFor(() => expect(copied).toEqual(selections([{ library: "refs.bib", key: "a" }])));
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   await chooseFromMore("Keyboard Shortcuts");
-  expect(await screen.findByRole("dialog", { name: "Keyboard Shortcuts" })).toBeTruthy();
+  const sheet = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+  // No citation was pasted into this app yet, so there is none to change: as More, the sheet omits it.
+  expect(sheet.textContent).not.toContain("Edit the citation you just pasted");
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });
