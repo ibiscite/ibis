@@ -2,12 +2,14 @@ import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
 import english from "../../../../locales/en-US.ftl?raw";
+import { PICKER_IDS, PICKER_VARIABLES } from "./picker";
 import { SETTINGS_IDS } from "./settings";
 
 /** Interface default only: never inferred from citation settings or navigator. */
 export const INTERFACE_LOCALE = "en-US";
 const IDS = [
   ...SETTINGS_IDS,
+  ...PICKER_IDS,
   "choice-use-file", "choice-back", "choice-use-zotero", "choice-zotero-help", "choice-library-file", "choice-library-file-help", "choice-drop-file", "shelf-references",
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
@@ -81,11 +83,15 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
     if (errors.length) throw new Error("Invalid interface message");
     return value;
   };
+  // Only the variables the interface passes; a message naming another fails here.
+  const synthetic = Object.fromEntries(
+    [...PICKER_VARIABLES, "list", "keys", "action", "reference", "command", "file", "setting", "from", "to", "system"].map((name) => [name, "Synthetic"]),
+  );
   // Exercise all platform branches before publishing the immutable owner.
   // Errors remain fixed text and cannot disclose variables or source content.
   try {
     for (const platform of ["macos", "windows", "linux"]) {
-      for (const id of IDS) text(id, { platform, name: "Ibis", list: "Synthetic List", version: "0.0.0", percent: 100, count: 1, keys: "Synthetic Keys", action: "Synthetic Action", reference: "Synthetic Reference", command: "Synthetic Command", file: "Invented.json", setting: "Synthetic Setting", from: "A", to: "B", system: "Synthetic System", id: 1 });
+      for (const id of IDS) text(id, { ...synthetic, platform, name: "Ibis", version: "0.0.0", percent: 100, count: 1, id: 1 });
     }
   } catch { throw invalid(); }
   return Object.freeze({ locale: INTERFACE_LOCALE, text });

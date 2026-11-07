@@ -127,6 +127,8 @@ test("canvas output has only relative resource URLs and no network transport", (
     "http://www.w3.org/2000/svg", "http://www.w3.org/1998/Math/MathML",
     "http://www.w3.org/1999/xlink", "http://www.w3.org/XML/1998/namespace",
     "https://react.dev/errors/",
+    // The command line's words in the shared catalogue; the app never opens it.
+    "https://github.com/ibiscite/ibis/issues",
   ]);
   const urls = (script + stylesheet).match(/(?:[a-z][a-z\d+.-]*:\/\/|["'\x60]\/\/)[^\s"'\x60<>\\)]+/gi) ?? [];
   expect(urls.filter((url) => !inert.has(url))).toEqual([]);

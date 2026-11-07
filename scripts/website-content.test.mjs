@@ -38,11 +38,11 @@ test("keys lead the example and roadmap highlights omit version numbers", async 
 
 test("website, first-run help and screenshot instructions teach the same practice task", async () => {
   const html = await content(await readFile(new URL("../website/index.html", import.meta.url), "utf8"));
-  const messages = await readFile(new URL("../apps/desktop/src/messages.ts", import.meta.url), "utf8");
+  const messages = await readFile(new URL("../locales/en-US.ftl", import.meta.url), "utf8");
   const design = await readFile(new URL("../docs/design/choice-screens.md", import.meta.url), "utf8");
   const help = await readFile(new URL("../website/README.md", import.meta.url), "utf8");
   const task = "Search for “lantern”, choose the lantern gardens reference, then press Enter.";
-  assert.equal(messages.match(/sampleSearchHelp: "([^"]+)"/)[1], task);
+  assert.equal(messages.match(/^setup-sample-search-help = (.+)$/m)[1], task);
   assert.deepEqual([...html.matchAll(/data-practice-task>([^<]+)<\/p>/g)].map(match => match[1]), [task]);
   assert.ok(design.includes(task));
   assert.ok(help.includes(task));

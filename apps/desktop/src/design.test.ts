@@ -204,7 +204,8 @@ test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
 });
 
 test("menus, buttons and choice rows use title case, as the Mac does", () => {
-  const messages = read("messages.ts"), ftl = read("../../../locales/en-US.ftl");
+  const ftl = read("../../../locales/en-US.ftl");
+  const messages = [...ftl.matchAll(/^[a-z][\w-]* = (.+)$/gm)].map(([, text]) => `"${text}"`).join("\n");
   for (const label of ["Clear Search", "Keep Window Open", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library",
     "Find Them on This Computer", "Try Sample References", "Try Again", "Use Another Library", "Use Your Own Library", "Look Again", "Choose a Found Library",
     "Add to Citation", "Close Menu", "Copy Only"]) expect(messages).toContain(`"${label}"`);

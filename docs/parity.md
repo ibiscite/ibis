@@ -57,7 +57,7 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 | Edit the citation text by hand | excluded | — | Breaks "what you see is what's pasted"; use prefix, suffix and forms |
 | Ibid, subsequent and disambiguation across a document | excluded | — | Needs the whole document; Ibis reports a notice instead (`format.rs::bibliography_reports_document_year_suffixes_withheld`) |
 | Footnote or endnote placement | excluded | — | The word processor decides |
-| Insert or edit a bibliography | done as "References used this session": copied, not inserted, because Ibis cannot see the document | #356 | `session_references.rs::the_bibliography_is_formatted_as_rich_and_plain_text_together`, `sessionReferences.test.tsx` |
+| Insert or edit a bibliography | done as "Cited since Ibis opened": copied, not inserted, because Ibis cannot see the document | #356 | `session_references.rs::the_bibliography_is_formatted_as_rich_and_plain_text_together`, `sessionReferences.test.tsx` |
 | Item edited in Zotero shows up on the next citation | done | — | `crates/ibis-sources/tests/source_watch.rs` |
 
 ## Better BibTeX Cite as You Write

@@ -209,7 +209,7 @@ test("More says what is wrong with the file, and offers the choice when none is 
   status = null;
   await act(() => emit("project:changed"));
   await waitFor(() => expect(shownRow()).not.toContain("thesis.bib"));
-  await chooseFromMore("Check Against a Project Bibliography…");
+  await chooseFromMore("Check Against a .bib File…");
 });
 
 test("More names the failed read and why", async () => {
@@ -223,7 +223,7 @@ test("a choice that could not be saved says so", async () => {
   picker("in", () => file());
   await waitFor(() => expect(shownRow()).toContain("In thesis.bib"));
   await act(() => emit("project:not-saved"));
-  expect(await screen.findByText("The project bibliography could not be changed. Try again.")).toBeTruthy();
+  expect(await screen.findByText("The .bib file to check against could not be changed. Try again.")).toBeTruthy();
 });
 
 test("Enter while the project bibliography is still reading copies once the read ends, without a failure", async () => {

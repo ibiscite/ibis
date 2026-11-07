@@ -87,7 +87,7 @@ test("a refused project name keeps the form and the native correction", async ()
 
 test("an unidentified app explains that project selection is session only", async () => {
   render(<WritingProjectsDialog api={api({ writingProjects: async () => ({ ...view(), session_only: true }) })} format="autocite" onClose={vi.fn()} />);
-  await screen.findByText("Ibis can’t identify the app, so this project applies to this session only.");
+  await screen.findByText("Ibis can’t identify the app, so this project applies only until Ibis quits.");
 });
 
 test("hiding the picker closes the sheet and a late save cannot close its replacement", async () => {

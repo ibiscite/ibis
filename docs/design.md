@@ -110,7 +110,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | [Settings](design/settings.md) |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "References used this session", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
+| Bibliography, "Cited since Ibis opened", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
 | A source's PDF, choosing the page there (#1252) | [Reader](design/inspector-and-reader.md#reader-planned-1252): the window widens once, the one planned exception to [C10]; thumbnails and pages sit between the list and the column, and a page is cited by choosing it ([M1]) |
 
