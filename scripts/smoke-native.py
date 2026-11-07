@@ -1570,6 +1570,8 @@ JOURNEY_DOCUMENT = "As shown in invented journey, sleep matters.\n"
 # TextEdit is a formatted app (APA by default), a terminal gets the default key.
 JOURNEY_PASTED = "As shown in (Example, 2026), sleep matters.\n"
 JOURNEY_COPIED = "[@journey2026]"
+JOURNEY_PASTED_CITATION = "(Example, 2026)"  # The plain text of TextEdit's formatted copy.
+COPIED_HINT = "Copied. Press \u2318V to paste."
 JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
 PASTED_NOTICE = "Pasted into TextEdit"
 TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
@@ -1772,29 +1774,43 @@ def _journey_main(args):
         read = lambda: native.helper("document", editor)
         wait_for(lambda: read().get("text") == JOURNEY_DOCUMENT, "TextEdit shows the invented document")
         start = JOURNEY_DOCUMENT.index(JOURNEY_QUERY)
-        with recording("action", "select-placeholder"):
-            native.helper("select", editor, start, len(JOURNEY_QUERY))
-        assert read().get("selection") == [start, len(JOURNEY_QUERY)], "TextEdit did not select the placeholder"
-
-        native.key(args.shortcut)
-        wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
-        wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found")
-        passed("the shortcut opens the picker from TextEdit and searches the selection")
-        native.key("Return")
-        seen = {"shown": False, "words": set()}
-        def pasted():
-            if app.poll() is None:
-                native.observe_notice(seen)
-            return read().get("text") == JOURNEY_PASTED and seen["shown"]
-        try:
-            wait_for(pasted, "the citation replaces the selection in TextEdit", timeout=15)
-        except AssertionError:
-            text = read().get("text", "")
-            report["paste_failure"] = {"document_unchanged": text == JOURNEY_DOCUMENT,
-                                       "citation_in_document": "(Example, 2026)" in text,
-                                       "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
-            raise AssertionError("TextEdit did not end up with exactly the chosen citation; notice: "
-                                 + ("; ".join(sorted(seen["words"])) or "not read")) from None
+        report["paste_attempts"] = 0
+        while True:
+            # Ibis copies instead when its last check before pasting cannot
+            # finish in time, as on a busy runner. That safe copy, with the
+            # document untouched and exactly the citation copied, earns one retry.
+            report["paste_attempts"] += 1
+            with recording("action", "select-placeholder"):
+                native.helper("select", editor, start, len(JOURNEY_QUERY))
+            assert read().get("selection") == [start, len(JOURNEY_QUERY)], "TextEdit did not select the placeholder"
+            native.key(args.shortcut)
+            wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
+            wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found")
+            if report["paste_attempts"] == 1:
+                passed("the shortcut opens the picker from TextEdit and searches the selection")
+            prime_clipboard(native)
+            native.key("Return")
+            seen = {"shown": False, "words": set()}
+            def pasted():
+                if app.poll() is None:
+                    native.observe_notice(seen)
+                return read().get("text") == JOURNEY_PASTED and seen["shown"]
+            try:
+                wait_for(pasted, "the citation replaces the selection in TextEdit", timeout=15)
+                break
+            except AssertionError:
+                text = read().get("text", "")
+                report["paste_failure"] = {"document_unchanged": text == JOURNEY_DOCUMENT,
+                                           "citation_in_document": "(Example, 2026)" in text,
+                                           "copied_exactly": native.clipboard() == JOURNEY_PASTED_CITATION,
+                                           "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
+                safe_copy = (report["paste_failure"]["document_unchanged"] and report["paste_failure"]["copied_exactly"]
+                             and seen["words"] <= {COPIED_HINT})
+                if not safe_copy or report["paste_attempts"] == 2:
+                    raise AssertionError("TextEdit did not end up with exactly the chosen citation; notice: "
+                                         + ("; ".join(sorted(seen["words"])) or "not read")) from None
+                wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
+                wait_for(lambda: native.front()["bundle"] == "com.apple.TextEdit", "TextEdit in front again")
         wrong = seen["words"] - {PASTED_NOTICE}
         assert not wrong, "The notice did not say it pasted: " + "; ".join(sorted(wrong))
         report["pasted_notice_read"] = PASTED_NOTICE in seen["words"]
