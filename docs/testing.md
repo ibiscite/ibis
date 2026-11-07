@@ -68,7 +68,8 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   runs `smoke-native.py --journey`: Ibis starts with invented references, the
   shortcut opens it from TextEdit with the selected words as the search,
   Enter pastes, and TextEdit's text, read through Accessibility, must be
-  exactly the expected sentence, once. Then a Terminal collector must get no
+  exactly the expected sentence, once; a safe copy instead (document untouched,
+  exactly the citation copied) gets one retry. Then a Terminal collector must get no
   keystrokes and the clipboard exactly the key, with the notice on screen.
   The notice's words are checked only when Accessibility exposes them (an
   inactive Ibis often hides that window from it); Linux checks them exactly.
