@@ -14,3 +14,8 @@
 .library-status-controls .library-status { min-width: 0; }
 .library-status-controls .library-inline-action { flex: none; }
 .library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-body-size); }
+/* In the footer's grid (PickerFooter.css): quiet notes span a row of their own,
+   and the action's label truncates on one line instead of pushing More aside. */
+.library-bar > :is(.ui-quiet-status, .library-action-error) { grid-column: 1 / -1; }
+.library-bar .ui-button.footer-action { min-width: 0; }
+.library-bar .ui-button.footer-action > .key-hint { flex-wrap: nowrap; min-width: 0; }

@@ -1,0 +1,50 @@
+/* The picker's search bar: the window's drag region, the large frameless search field
+   and the controls beside it. Welcome has no search yet, so the bar can be hidden. */
+main > .search-bar { grid-area: search; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
+.search-bar[hidden] { display: none; }
+/* A glyph is centred over the tile column and the query starts where row titles
+   start (docs/design/foundations.md, "Two columns"). The Ibis mark is the logo, so
+   it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
+.search-bar > svg { width: var(--icon); flex-shrink: 0; margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); color: var(--text-secondary); pointer-events: none; }
+.search-bar > svg.search-mark { width: 1.5rem; height: 1.5rem; color: var(--scarlet);
+  margin-inline: calc(var(--lead) - calc((1.5rem - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((1.5rem - var(--icon)) / 2));
+}
+/* Reserve readable query space before wrapping controls, at every text size. */
+.search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
+.query-input { position: relative; display: flex; flex: 1; min-width: 0; }
+/* The search box never shows a ring: it always has focus, and the caret is the
+   cue. Contrast and forced colours restore it below. */
+#search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; border-radius: var(--r-row); padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
+:root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
+#search::placeholder { color: var(--text-placeholder); }
+#search:focus-visible { outline: none; box-shadow: none; }
+#search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
+.search-clear.ui-button { --ring-offset: calc(-1 * var(--ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }
+/* Controls fill the field's height, so their gap to the window's top and side is
+   one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
+.search-bar .pin-button { flex: none; margin-inline-start: auto; }
+.search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-row); }
+.search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-row); }
+.search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; font: var(--type-label-size) / var(--type-label-line) var(--font); }
+.search-page-token > .ui-button { min-width: 0; max-width: 100%; border-radius: var(--r-full); background: var(--chip); }
+.search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (pointer: coarse) {
+  :root, :root[data-platform] { --field-h: var(--touch-target); }
+  .search-field { --search-clear-size: var(--touch-target); }
+}
+@media (prefers-contrast: more) {
+  :root[data-platform] #search { border-color: var(--separator); }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--ring-width) solid var(--ring); outline-offset: 2px; }
+}
+@media (forced-colors: active) {
+  .search-bar:focus-within { outline: var(--ring-width) solid var(--selected); outline-offset: -3px; }
+  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--ring-width) solid CanvasText; outline-offset: 2px; }
+}
+/* Keep an editable search row when enlarged text leaves no room for controls; the
+   480x360 frame at 200% text (15em wide) keeps the controls but gives up vertical gaps. */
+@media (max-width: 460px) { .search-field { flex-basis: calc(100% - var(--lead) - var(--icon) - var(--lead-gap)); } }
+@media (max-height: 400px) { @container (max-width: 20em) {
+  .search-bar { padding-block: 0; row-gap: 0; }
+  .search-bar .toolbar-menu-control { min-width: 0; max-width: calc(100% - var(--field-h) - var(--space-1)); }
+} }

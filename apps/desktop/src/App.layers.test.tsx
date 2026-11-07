@@ -288,7 +288,7 @@ test.each(commands)("%s does the same by key and from More", async (name, role, 
     if (native) await waitFor(() => expect(calls).toContain(native));
     const seen = {
       native: native ? calls.filter((call) => call === native).length : 0,
-      menu: screen.queryAllByRole("menu", { name: /^More/ }).length, sheet: document.querySelectorAll(".keys-dialog").length,
+      menu: screen.queryAllByRole("menu", { name: /^More/ }).length, sheet: document.querySelectorAll(".ui-sheet").length,
     };
     view.unmount();
     await resetApp();
@@ -349,11 +349,11 @@ test("a command clears every layer in its way, and the keys for an open layer cl
   press("k", { ctrlKey: true });
   await screen.findByRole("menu", { name: /^More/ });
   press("/", { ctrlKey: true });
-  await waitFor(() => expect(document.querySelector(".keys-dialog")).not.toBeNull());
+  await waitFor(() => expect(document.querySelector(".ui-sheet")).not.toBeNull());
   expect(screen.queryByRole("menu")).toBeNull();
   press("k", { ctrlKey: true });
   await screen.findByRole("menu", { name: /^More/ });
-  expect(document.querySelector(".keys-dialog")).toBeNull();
+  expect(document.querySelector(".ui-sheet")).toBeNull();
   press("k", { ctrlKey: true });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));

@@ -180,58 +180,50 @@ function restyles(): string[] {
 }
 const owner = (entry: string) => [...partClasses.get(entry.slice(entry.lastIndexOf(" › .") + 4))!].join(", ");
 
-// RATCHET: restyles in files that open pull requests own, so they are not edited
-// here. It may only shrink: the test fails when an entry no longer restyles a
-// part, so whoever fixes one deletes its line. Never add to it; move the look into
-// the part's ui/ stylesheet, as a variant if a context needs one.
-const owned = ["src/styles.css", "src/features/picker/"];
-const ratchet = [
-  // styles.css: header controls take the field's height and the window's nested radius.
-  "src/styles.css › .search-bar .ui-popup-button.ui-button[data-variant] › .ui-popup-button",
-  "src/styles.css › .search-bar .ui-popup-button.ui-button[data-variant] › .ui-button",
-  "src/styles.css › .search-bar .pin-button.ui-button[data-variant] › .ui-button",
-  "src/styles.css › .search-clear.ui-button › .ui-button",
-  "src/styles.css › .search-page-token > .ui-button › .ui-button",
-  "src/styles.css › .search-bar .toolbar-menu-control › .toolbar-menu-control",
-  // styles.css: result-row text the choice cards and options share.
-  "src/styles.css › .result-meta › .result-meta",
-  "src/styles.css › .result-title › .result-title",
-  "src/styles.css › [data-active] .result-meta › .result-meta",
-  "src/styles.css › :root[data-density=\"compact\"] .result-meta › .result-meta",
-  "src/styles.css › :root[data-density=\"compact\"] .result-title › .result-title",
-  // styles.css: the keys sheet, which ui/KeysSheet.css should own whole.
-  "src/styles.css › .keys-backdrop › .keys-backdrop",
-  "src/styles.css › .keys-dialog › .keys-dialog",
-  "src/styles.css › .keys-heading › .keys-heading",
-  "src/styles.css › .keys-heading h2 › .keys-heading",
-  "src/styles.css › .keys-heading button › .keys-heading",
-  "src/styles.css › .keys-scroll › .keys-scroll",
-  "src/styles.css › .keys-scroll table › .keys-scroll",
-  "src/styles.css › .keys-scroll th › .keys-scroll",
-  "src/styles.css › .keys-scroll td › .keys-scroll",
-  "src/styles.css › .keys-scroll th[scope=\"rowgroup\"] › .keys-scroll",
-  "src/styles.css › .keys-scroll kbd › .keys-scroll",
-  // features/picker/PickerFooter.css: the footer grid places and truncates its parts by their own classes.
-  "src/features/picker/PickerFooter.css › .library-bar > :is(.ui-quiet-status, .library-action-error) › .ui-quiet-status",
-  "src/features/picker/PickerFooter.css › .library-bar .ui-button.footer-action › .ui-button",
-  "src/features/picker/PickerFooter.css › .library-bar .ui-button.footer-action > .key-hint › .key-hint",
-];
-
 test("screen stylesheets never restyle a part", () => {
-  const listed = new Set(ratchet);
-  const added = restyles().filter((entry) => !listed.has(entry));
-  expect(added.map((entry) => `${entry} (ui/${owner(entry)})`),
+  expect(restyles().map((entry) => `${entry} (ui/${owner(entry)})`),
     "These selectors outside ui/ restyle a shared part. Move the look into the part's own stylesheet, "
     + "as a variant if this context needs one, and let the screen only place the part").toEqual([]);
 });
 
-test("the restyle ratchet only shrinks", () => {
-  const found = new Set(restyles());
-  expect(ratchet.filter((entry) => !found.has(entry)),
-    "These no longer restyle a part: delete them from the ratchet in ui/ownership.test.ts").toEqual([]);
-  expect(ratchet.filter((entry) => !owned.some((prefix) => entry.startsWith(prefix))),
-    "The ratchet holds only files other pull requests own; fix these instead").toEqual([]);
-  expect(new Set(ratchet).size).toBe(ratchet.length);
+/** A screen's own look: spacing, colour or a corner it declares instead of
+ * taking from a part. A screen may still lay parts out: display, grid, flex,
+ * position, size, overflow, order and visibility. */
+const look = /^(padding|margin|gap|row-gap|column-gap|color|background|outline|box-shadow|fill|stroke|caret-color|accent-color|text-decoration-color|border)(-[a-z-]+)?$/;
+const neutral = /^(0|0px|auto|none|inherit|initial|unset|transparent|currentcolor)( (0|0px|auto))?$/i;
+function ownLook(css: string): string[] {
+  return [...css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([a-z][a-z-]*)\s*:\s*([^;{}]+)(?=[;}])/g)]
+    .filter(([, property, value]) => look.test(property!) && !neutral.test(value!.trim())).map(([declaration]) => declaration.replace(/\s+/g, " "));
+}
+const screens = list("src/", /\.css$/).filter((name) => !isPart(name) && !values.has(name));
+
+// RATCHET: how many declarations of their own look these screens still carry,
+// until consolidation step 7 moves each into a part as it touches the screen.
+// A count may only fall: lower it when you move a look into ui/, never raise it.
+const carried: Record<string, number> = {
+  "src/LibrarySetup.css": 1,
+  "src/features/picker/CitationShelf.css": 41,
+  "src/features/picker/EmptyState.css": 18,
+  "src/features/picker/ProjectContextStatus.css": 2,
+  "src/features/reader/Reader.css": 29,
+  "src/notice.css": 3,
+  "src/settings/Settings.css": 43,
+  "src/styles.css": 27,
+};
+
+test("screens take their spacing, colours and corners from parts, never their own", () => {
+  const counts: Record<string, number> = Object.fromEntries(screens.map((name) => [name, ownLook(read(name)).length] as const).filter(([, count]) => count));
+  expect(Object.entries(counts).filter(([name, count]) => count > (carried[name] ?? 0)).map(([name]) => `${name}: ${ownLook(read(name)).join("; ")}`),
+    "These screens bring their own spacing, colour or radius. Draw them with a part from ui/, or add the look to the part "
+    + "(as a variant if this context needs one), and let the screen only lay parts out").toEqual([]);
+  expect(Object.entries(carried).filter(([name, count]) => (counts[name] ?? 0) < count).map(([name]) => `${name}: ${counts[name] ?? 0}`),
+    "These screens carry less of their own look now: lower their counts in ui/ownership.test.ts").toEqual([]);
+});
+
+test("the look guard fails a screen that pads, paints or rounds itself, and passes one that only lays parts out", () => {
+  expect(ownLook(".my-screen { padding: var(--space-2); color: var(--text-secondary); border-radius: var(--r-row); }")).toHaveLength(3);
+  expect(ownLook(".my-screen { margin-block: var(--inset); } .my-row:hover { background: var(--fill-control); border-top: var(--border-width) solid var(--separator); }")).toHaveLength(3);
+  expect(ownLook(".my-screen { display: grid; grid-template-columns: 1fr auto; min-width: 0; margin: 0; padding: 0; background: transparent; color: inherit; }")).toEqual([]);
 });
 
 test("the guard reads the element a selector styles", () => {

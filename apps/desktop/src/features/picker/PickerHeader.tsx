@@ -2,7 +2,7 @@ import type React from "react";
 import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
 import { IconButton } from "../../ui/IconButton";
-import { composing } from "../../composition";
+import { SearchBar, SearchField } from "../../ui/SearchBar";
 import { pickerText } from "../../messages";
 import { ariaKeys, keysFor } from "../../keys";
 import { currentPlatform } from "../../platform";
@@ -12,8 +12,7 @@ import type { MenuCloseReason } from "../../ui/ToolbarMenu";
 import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
-/** The search bar: the search box and the copy format. It is also
- * the window's drag region; the editable box itself is not. */
+/** The search bar: the search box and the copy format. */
 export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, pinned, onTogglePin, writingProject, onWritingProjects }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
@@ -53,54 +52,45 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <header className="search-bar" hidden={hidden} data-tauri-drag-region title={pickerText.dragSearchBar}
+    <SearchBar hidden={hidden} title={pickerText.dragSearchBar}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
       <IbisMark className="search-mark" size="search" />
-      <label className="visually-hidden" htmlFor="search">
-        {pickerText.searchLabel}
-      </label>
-      <div className="search-field" title=""
-        onKeyDownCapture={(e) => { if (composing(e)) e.stopPropagation(); }}
-        onKeyUpCapture={(e) => { if (composing(e)) e.stopPropagation(); }}>
-        <div className="query-input">
-        <input
-          id="search"
-          type="search"
-          placeholder={pickerText.searchPlaceholder}
-          role="combobox"
-          aria-autocomplete="list"
-          aria-expanded={expanded}
-          aria-controls="results"
-          aria-activedescendant={activeDescendant}
-          ref={inputRef}
-          autoFocus
-          value={query}
-          onChange={(e) => onQueryChange(e.target.value)}
-          onPaste={(e) => {
-            const text = e.clipboardData.getData("text/plain");
-            if (!/[\r\n\t]/.test(text)) return;
-            // Search inputs strip line breaks but retain tabs. Keep whitespace
-            // inside citation arguments; punctuation would change their keys.
-            e.preventDefault();
-            const field = e.currentTarget;
-            const start = field.selectionStart ?? query.length;
-            const end = field.selectionEnd ?? start;
-            const pasted = text.replace(/[\r\n]+/g, "\t");
-            const next = query.slice(0, start) + pasted + query.slice(end);
-            onQueryChange(next);
-            requestAnimationFrame(() => {
-              if (field.value === next) field.setSelectionRange(start + pasted.length, start + pasted.length);
-            });
-          }}
-        />
-        {query !== "" && <IconButton size="large" className="search-clear" aria-label={pickerText.clearSearch}
-          onPress={() => { onQueryChange(""); inputRef.current?.focus(); }} />}
-        </div>
-        {pageToken}
-      </div>
+      <SearchField
+        id="search"
+        label={pickerText.searchLabel}
+        clearLabel={pickerText.clearSearch}
+        onClear={() => { onQueryChange(""); inputRef.current?.focus(); }}
+        trailing={pageToken}
+        placeholder={pickerText.searchPlaceholder}
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={expanded}
+        aria-controls="results"
+        aria-activedescendant={activeDescendant}
+        ref={inputRef}
+        autoFocus
+        value={query}
+        onChange={(e) => onQueryChange(e.target.value)}
+        onPaste={(e) => {
+          const text = e.clipboardData.getData("text/plain");
+          if (!/[\r\n\t]/.test(text)) return;
+          // Search inputs strip line breaks but retain tabs. Keep whitespace
+          // inside citation arguments; punctuation would change their keys.
+          e.preventDefault();
+          const field = e.currentTarget;
+          const start = field.selectionStart ?? query.length;
+          const end = field.selectionEnd ?? start;
+          const pasted = text.replace(/[\r\n]+/g, "\t");
+          const next = query.slice(0, start) + pasted + query.slice(end);
+          onQueryChange(next);
+          requestAnimationFrame(() => {
+            if (field.value === next) field.setSelectionRange(start + pasted.length, start + pasted.length);
+          });
+        }}
+      />
       {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} />}
       <IconButton icon="pin" size="large" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}/>
-    </header>
+    </SearchBar>
   );
 }

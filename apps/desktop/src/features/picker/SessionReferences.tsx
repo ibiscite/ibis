@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { sessionText } from "../../messages";
 import { Button } from "../../ui/Button";
-import { IconButton } from "../../ui/IconButton";
-import { useLayer } from "../../ui/layers";
+import { Sheet, SheetList, SheetRow } from "../../ui/Sheet";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
-import "../../ui/Overlay.css";
-import "../../ui/KeysSheet.css";
-import "./SessionReferences.css";
 
 type Api = Required<Pick<PickerApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
@@ -25,23 +21,12 @@ const said = (error: unknown, fallback: string) => {
     code owns the list; each answer counts only if it is still the newest asked. */
 export function SessionReferencesDialog({ api, style, onClose }: { api: Api; style: OutputId; onClose: () => void }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
-  const dialog = useRef<HTMLDivElement>(null);
   const [view, setView] = useState<SessionReferencesView | null>(null);
   const [bibliography, setBibliography] = useState<SessionBibliography | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const listing = useRef(0);
   const formatting = useRef(0);
-  useEffect(() => { dialog.current?.focus(); }, []);
-  // Esc, a hide and any command that clears the way close it, like every sheet.
-  useLayer("sheet", true, () => onClose());
-  // A removed row takes its focused button with it. The sheet keeps the keyboard,
-  // or the next key would act on the picker behind it.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: each new answer can remove the focused control.
-  useLayoutEffect(() => {
-    const focused = document.activeElement;
-    if (!dialog.current?.contains(focused) || (focused as HTMLButtonElement).disabled) dialog.current?.focus();
-  }, [view, bibliography]);
 
   const show = useCallback((next: SessionReferencesView) => {
     setView(next);
@@ -79,57 +64,40 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const undoLabel = !undo ? null : undo.kind === "reset" ? sessionText.undoReset
     : sessionText.undoRemove(undo.reference ? tileName(undo.reference) : null);
   const name = outputName(style);
-  return <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-    <div ref={dialog} role="dialog" aria-modal="true" tabIndex={-1} aria-labelledby="session-title" aria-describedby="session-about"
-      className="keys-dialog session-dialog ui-overlay ui-sheet"
-      onKeyDown={(e) => {
-        if (e.key === "Tab") {
-          const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button:not([disabled]), [tabindex='0']") ?? [])];
-          const at = focusable.indexOf(document.activeElement as HTMLElement);
-          e.preventDefault();
-          focusable[at < 0 ? e.shiftKey ? focusable.length - 1 : 0 : (at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
-        }
-      }}>
-      <div className="keys-heading">
-        <h2 id="session-title">{sessionText.title}</h2>
-        <IconButton aria-label={sessionText.close} title={sessionText.close} aria-keyshortcuts="Escape" onPress={onClose} />
-      </div>
-      <div className="session-body scroll-area" tabIndex={0} role="group" aria-labelledby="session-title">
-        <p id="session-about" className="session-note">{sessionText.about}</p>
-        {view && view.rows.length === 0 && view.absent === 0 && <p>{sessionText.empty}</p>}
-        {view && view.rows.length > 0 && <ul className="session-list" aria-label={sessionText.title}>
-          {view.rows.map((row) => <li key={idKey(row.id)}>
-            <span className="session-reference">
-              <span className="session-title" dir="auto">{row.title}</span>
-              <span className="session-note" dir="auto">{[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}</span>
-            </span>
-            <Button size="small" label={sessionText.remove} aria-label={sessionText.removeNamed(tileName(row))} onPress={() => edit({ kind: "remove", id: row.id })} />
-          </li>)}
-        </ul>}
-        {view && view.absent > 0 && <p role="status">{sessionText.absent(view.absent)}</p>}
-        {view?.overflowed && <p role="status">{sessionText.full}</p>}
-        {bibliography && <>
-          <h3 className="session-heading">{sessionText.bibliographyIn(name)}</h3>
-          <p className="session-bibliography" dir="auto">{bibliography.text}</p>
-          {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
-          {bibliography.left_out.length > 0 && <p role="status">{sessionText.leftOut(bibliography.left_out)}</p>}
-        </>}
-        {problem && <p role="alert">{problem}</p>}
-        {status && <p role="status">{status}</p>}
-      </div>
-      <div className="session-actions">
-        {undoLabel && <Button label={undoLabel} onPress={() => edit({ kind: "undo" })} />}
-        {view && view.rows.length + view.absent > 0 && <Button label={sessionText.reset} onPress={() => edit({ kind: "reset" })} />}
-        <span className="session-spacer" />
-        <Button label={sessionText.save} isDisabled={!hash} onPress={() => deliver(async () => {
-          const saved = await exportSessionBibliography(style, hash!);
-          return saved === null ? null : sessionText.saved(saved);
-        }, sessionText.notSaved)} />
-        <Button variant="primary" label={sessionText.copy} isDisabled={!hash} onPress={() => deliver(async () => {
-          await copySessionBibliography(style, hash!);
-          return sessionText.copied;
-        }, sessionText.notCopied)} />
-      </div>
-    </div>
-  </div>;
+  return <Sheet title={sessionText.title} closeLabel={sessionText.close} description={sessionText.about} onClose={onClose}
+    leadingActions={<>
+      {undoLabel && <Button label={undoLabel} onPress={() => edit({ kind: "undo" })} />}
+      {view && view.rows.length + view.absent > 0 && <Button label={sessionText.reset} onPress={() => edit({ kind: "reset" })} />}
+    </>}
+    actions={<>
+      <Button label={sessionText.save} isDisabled={!hash} onPress={() => deliver(async () => {
+        const saved = await exportSessionBibliography(style, hash!);
+        return saved === null ? null : sessionText.saved(saved);
+      }, sessionText.notSaved)} />
+      <Button variant="primary" label={sessionText.copy} isDisabled={!hash} onPress={() => deliver(async () => {
+        await copySessionBibliography(style, hash!);
+        return sessionText.copied;
+      }, sessionText.notCopied)} />
+    </>}>
+    {view && view.rows.length === 0 && view.absent === 0 && <p>{sessionText.empty}</p>}
+    {view && view.rows.length > 0 && <SheetList label={sessionText.title}>
+      {view.rows.map((row) => <SheetRow key={idKey(row.id)}>
+        <span>
+          <span dir="auto">{row.title}</span>
+          <span className="ui-sheet-note" dir="auto">{[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}</span>
+        </span>
+        <Button size="small" label={sessionText.remove} aria-label={sessionText.removeNamed(tileName(row))} onPress={() => edit({ kind: "remove", id: row.id })} />
+      </SheetRow>)}
+    </SheetList>}
+    {view && view.absent > 0 && <p role="status">{sessionText.absent(view.absent)}</p>}
+    {view?.overflowed && <p role="status">{sessionText.full}</p>}
+    {bibliography && <>
+      <h3>{sessionText.bibliographyIn(name)}</h3>
+      <p className="ui-sheet-output" dir="auto">{bibliography.text}</p>
+      {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
+      {bibliography.left_out.length > 0 && <p role="status">{sessionText.leftOut(bibliography.left_out)}</p>}
+    </>}
+    {problem && <p role="alert">{problem}</p>}
+    {status && <p role="status">{status}</p>}
+  </Sheet>;
 }
