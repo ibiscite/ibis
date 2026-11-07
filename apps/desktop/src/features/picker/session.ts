@@ -9,6 +9,7 @@ import type { OutputId } from "../../format/outputs";
 import { closestMatchWarnings } from "./rows";
 import { initialSearch, reduceSearch, type SearchEffect, type SearchEvent, type SearchState } from "./search";
 import { initialPreview, reducePreview, type PreviewEffect, type PreviewEvent, type PreviewState } from "./preview";
+import { deriveView, searchQuery, type PickerInputs } from "./view";
 import { initialDestination, projectVersion, reduceDestination, sameOutput, type DestinationEffect, type DestinationEvent, type DestinationState, type OutputToken } from "./destination";
 
 export type { OutputToken };
@@ -45,7 +46,11 @@ export type SessionState = {
   lastCitations: ReadonlyMap<string, LastCitation>;
   /** The shelf is changing this citation, by any text it may have in the document: Enter may replace only that, selected. */
   changing: readonly string[] | null;
-  session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
+  session: number; presentation: number | null; visibility: number; interaction: number; context: number;
+  /** What Enter acts on, worked out after every event; null until the outside inputs are known. */
+  view: SessionView | null;
+  /** Preferences and the library's lifecycle, as the session last heard them. */
+  inputs: PickerInputs | null;
   presentationSubscribed: boolean; readingPresentation: boolean; retryPresentation: boolean;
   hiddenAt: number | null; selectAll: number; permissionDetour: boolean;
   /** Whether the picker window is on screen: the one answer every part reads.
@@ -68,7 +73,7 @@ export type SessionEvent =
   | SearchEvent
   | PreviewEvent
   | DestinationEvent
-  | { type: "view"; session: number; interaction: number; view: SessionView }
+  | { type: "picker-inputs"; inputs: PickerInputs }
   | { type: "query"; value: string }
   /** The native answer to "is the picker shown?", read when the picker starts. */
   | { type: "visibility-read"; visible: boolean; events: number }
@@ -87,8 +92,8 @@ export type SessionEvent =
   | { type: "initialize" }
   | { type: "presentation"; visibility: number; presentation: number | null }
   | { type: "hiding" }
-  | (Completion & { type: "copied"; outcome: Copied; output: OutputToken; pinned: boolean })
-  | (Completion & { type: "copy-failed"; output: OutputToken; message: string; stale: boolean })
+  | (Completion & { type: "copied"; outcome: Copied; pinned: boolean })
+  | (Completion & { type: "copy-failed"; message: string; stale: boolean })
   | (Completion & { type: "hid" | "hide-failed" | "hide-refused" })
   | (Completion & { type: "delivered"; delivered: Delivered | null });
 export type SessionEffect =
@@ -98,14 +103,14 @@ export type SessionEffect =
   | { type: "hide-status"; failed: boolean }
   | { type: "consume"; output: OutputToken }
   | { type: "read-presentation"; visibility: number }
-  | { type: "refresh" | "ask-format" }
+  | { type: "refresh" }
   | SearchEffect
   | PreviewEffect
   | DestinationEffect;
 
 export function initialSession(query = "", copied: Copied | null = null): SessionState {
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
-    opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
+    opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, view: null, inputs: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
     hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
@@ -147,14 +152,17 @@ function readPresentation(s: SessionState, retry = false): [SessionState, Sessio
 // and interaction must still match before they can release a waiting Enter.
 function advance(s: SessionState): [SessionState, SessionEffect[]] {
   const p = s.pendingCopy, v = s.view;
-  if (!p || !v || s.viewInteraction !== s.interaction) return [s, []];
+  // A command query never copies.
+  if (!p || !v || searchQuery(s) !== s.query) return [s, []];
   // A flight must never freeze an invented presentation identity. Keep Enter
   // pending until initialization or a native show supplies its actual owner.
   const presentation = s.presentation;
   if (presentation === null) return [s, []];
   const key = choiceKey(v.chosen);
+  // While the format question is open, a new format or token is its answer arriving.
+  const answering = p.question === "open";
   if (p.selection !== s.selected || p.queryKey !== sessionQueryKey(s) ||
-    p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output)) return [{ ...s, pendingCopy: null }, []];
+    !answering && (p.format !== null && p.format !== v.format || !sameOutput(p.output, v.output))) return [{ ...s, pendingCopy: null }, []];
   // A destination read can refresh recents and temporarily retire the current
   // rows. Keep the captured choice until the reply can confirm or reject it.
   if (p.choice !== null && p.choice !== key) return v.searchPending ? [s, []] : [{ ...s, pendingCopy: null }, []];
@@ -164,7 +172,7 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
     return advance({ ...s, pendingCopy: { ...p, choice: key } });
   }
   if (!v.ready || v.saving) return [s, []];
-  if (!p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, [{ type: "ask-format" }]];
+  if (!p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
   if (p.question === "open" || v.shown === null) return [s, []];
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
@@ -184,13 +192,37 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
 function observeProject(s: SessionState, clearReplacement: boolean): [SessionState, SessionEffect[]] {
   const view = s.view, version = projectVersion(s.destination), output = s.destination.output;
   const changed = view && ((view.projectVersion ?? null) !== version || !sameOutput(view.output, output));
-  return advance({ ...s, context: s.context + (changed ? 1 : 0),
+  return [{ ...s, context: s.context + (changed ? 1 : 0),
     changing: clearReplacement ? null : s.changing,
-    shelfCopied: changed ? null : s.shelfCopied, copyNotice: changed ? null : s.copyNotice,
-    view: view ? { ...view, projectVersion: version, output, ready: false } : null });
+    shelfCopied: changed ? null : s.shelfCopied, copyNotice: changed ? null : s.copyNotice }, []];
 }
 
+/** A changed view retires what was made for the old one, then Enter may go on. */
+function applyView(s: SessionState): [SessionState, SessionEffect[]] {
+  const v = deriveView(s), old = s.view;
+  if (!v) return [s, []];
+  const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
+    key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
+  if (same) return advance(s);
+  const projectChanged = old && (old.writingProjectId ?? null) !== (v.writingProjectId ?? null);
+  const contextChanged = old && (projectChanged || old.projectVersion !== v.projectVersion || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
+  const newOutput = old && (projectChanged || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
+  const abandonReplacement = projectChanged || old && v.writingProjectId && (old.format !== v.format || old.output.choice !== v.output.choice);
+  if (!v.remembersLast && (s.lastCitations.size || s.changing || s.flights.some((f) => f.appId))) s = reduceEvent(s, { type: "forget-last" })[0];
+  return advance({ ...s, view: v, context: s.context + (contextChanged ? 1 : 0),
+    changing: abandonReplacement ? null : s.changing,
+    shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
+}
+
+/** One event, then the view it leaves. */
 export function reduceSession(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
+  const [next, effects] = reduceEvent(s, event);
+  if (next === s) return [next, effects];
+  const [viewed, more] = applyView(next);
+  return [viewed, [...effects, ...more]];
+}
+
+function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
   switch (event.type) {
     case "preview-inputs": case "previewed": case "preview-failed": {
       const step = reducePreview(s.preview, event, s.session, s.opened);
@@ -200,7 +232,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const step = reduceSearch(s.search, event, s.session);
       if (!step) return [s, []];
       const next = { ...s, search: step.search };
-      return [step.firstRow ? reduceSession(next, { type: "highlight", index: 0 })[0] : next, step.effects];
+      return [step.firstRow ? reduceEvent(next, { type: "highlight", index: 0 })[0] : next, step.effects];
     }
     case "destination-reader": case "read-destination": case "destination-read": case "destination-read-failed": case "project-changed":
     case "choose-format": case "choose-once": case "choose-paste": case "destination-saved": case "destination-save-failed":
@@ -212,20 +244,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const [observed, effects] = observeProject(next, step.observed.clearReplacement);
       return [observed, [...step.effects, ...effects]];
     }
-    case "view": {
-      if (event.session !== s.session || event.interaction !== s.interaction || event.view.queryKey !== sessionQueryKey(s)) return [s, []];
-      const v = event.view, old = s.view;
-      const projectChanged = old && (old.writingProjectId ?? null) !== (v.writingProjectId ?? null);
-      const contextChanged = old && (projectChanged || old.projectVersion !== v.projectVersion || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
-      const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
-        key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
-      const newOutput = old && (projectChanged || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
-      const abandonReplacement = projectChanged || old && v.writingProjectId && (old.format !== v.format || old.output.choice !== v.output.choice);
-      if (!v.remembersLast && (s.lastCitations.size || s.changing || s.flights.some((f) => f.appId))) s = reduceSession(s, { type: "forget-last" })[0];
-      return advance(same && s.viewInteraction === s.interaction ? s : { ...s, view: v, viewInteraction: s.interaction, context: s.context + (contextChanged ? 1 : 0),
-        changing: abandonReplacement ? null : s.changing,
-        shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
-    }
+    case "picker-inputs": return [{ ...s, inputs: event.inputs }, []];
     case "query": return [changed(s, { query: event.value, interpretLocators: true, fromDocument: false }), []];
     // A shown or hidden event since the read started is newer than its answer.
     case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible } : s, []];
@@ -243,11 +262,11 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
     case "dismiss": return [s.copied && (!event.copied || event.copied === s.copied) ? { ...s, copied: null, shelfCopied: null, copyNotice: null } : s, []];
     case "highlight": {
-      if (event.index === s.active) return event.cancel ? reduceSession(s, { type: "cancel" }) : [s, []];
+      if (event.index === s.active) return event.cancel ? reduceEvent(s, { type: "cancel" }) : [s, []];
       return [{ ...s, active: event.index, shelfCopied: null, copyNotice: null, interaction: s.interaction + 1, context: s.context + (s.selected.size === 0 ? 1 : 0), pendingCopy: event.cancel ? null : s.pendingCopy }, []];
     }
     case "toggle": {
-      if (!event.result) return reduceSession(s, { type: "cancel" });
+      if (!event.result) return reduceEvent(s, { type: "cancel" });
       const selected = new Map(s.selected), key = idKey(event.result.id);
       const previous = selected.get(key), order = [...selected.keys()], index = order.indexOf(key);
       let removed = s.removed;
@@ -262,7 +281,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "remove-reference": {
       if (s.selected.get(idKey(event.reference.id)) !== event.reference) return [s, []];
-      return reduceSession(s, { type: "toggle", result: event.reference });
+      return reduceEvent(s, { type: "toggle", result: event.reference });
     }
     case "expire-removal": return [s.removed === event.removal ? { ...s, removed: null } : s, []];
     case "undo-reference": {
@@ -277,7 +296,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "reference": {
       const key = idKey(event.reference.id), previous = s.selected.get(key);
-      if (event.selectedOnly ? previous !== event.reference : previous ? previous !== event.reference : s.selected.size > 0) return reduceSession(s, { type: "cancel" });
+      if (event.selectedOnly ? previous !== event.reference : previous ? previous !== event.reference : s.selected.size > 0) return reduceEvent(s, { type: "cancel" });
       const selected = new Map(s.selected);
       if (selected.size === 0) for (const reference of event.initialSelection ?? []) selected.set(idKey(reference.id), reference);
       selected.set(key, { ...event.reference, ...event.change });
@@ -287,13 +306,13 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (s.hiddenAt !== null || !s.view) return [s, []];
       const output = event.output ?? s.view.output;
       const next = { ...s, pendingCopy: { choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
-        format: s.view.ready && s.viewInteraction === s.interaction && sameOutput(s.view.output, output) ? s.view.format : null, output } };
+        format: s.view.ready && sameOutput(s.view.output, output) ? s.view.format : null, output } };
       return s.presentation === null ? readPresentation(next, true) : advance(next);
     }
     case "question": {
       const p = s.pendingCopy;
-      if (p?.question !== "open" || event.answer === "cancel") return reduceSession(s, { type: "cancel" });
-      return [{ ...s, viewInteraction: -1, pendingCopy: { ...p, question: event.answer, format: event.format === undefined ? p.format : event.format, output: event.output ?? p.output } }, []];
+      if (p?.question !== "open" || event.answer === "cancel") return reduceEvent(s, { type: "cancel" });
+      return [{ ...s, pendingCopy: { ...p, question: event.answer, format: event.format === undefined ? p.format : event.format, output: event.output ?? p.output } }, []];
     }
     case "initialize": return readPresentation({ ...s, presentationSubscribed: true }, s.pendingCopy !== null);
     case "presentation": {
@@ -325,19 +344,21 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "shown": {
       s = returning(s, event.now);
-      return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null,
+      return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null,
         shown: true, visibilityEvents: s.visibilityEvents + 1 }, []];
     }
-    case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
+    case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }
   const f = s.flights.find((flight) => flight.id === event.id && flight.session === event.session);
   if (!f) return [s, []];
+  // The destination's token now: a newer format, paste choice or opening owns the feedback.
+  const live = s.destination.output;
   const complete = (state: SessionState): [SessionState, SessionEffect[]] => {
     if (!ownsInteraction(state, f)) return [finish(state, f), []];
     return [finish(changed(state, { selected: new Map(), removed: null, shelfCopied: state.shelfCopied, copyNotice: state.copyNotice, permissionDetour: false, changing: null }), f), [{ type: "consume", output: f.owner.output }]];
   };
   switch (event.type) {
-    case "copy-failed": return f.phase !== "copy" ? [s, []] : [finish(ownsCompletion(s, f, event.output) ? { ...s, copyError: event.message } : s, f), event.stale ? [{ type: "refresh" }] : []];
+    case "copy-failed": return f.phase !== "copy" ? [s, []] : [finish(ownsCompletion(s, f, live) ? { ...s, copyError: event.message } : s, f), event.stale ? [{ type: "refresh" }] : []];
     case "copied": {
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
@@ -349,14 +370,14 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       // Delivery can be revoked after the native write but before its response.
       // Confirm that write in place, without hiding or forwarding its old proof.
       // A newer citation, operation or opening still owns its own feedback.
-      if (!s.pendingCopy && ownsClipboard(s, f) && s.visibility === f.owner.visibility && f.owner.output.opening === event.output.opening
-        && f.owner.output.choice === event.output.choice && f.delivery !== event.output.delivery) {
+      if (!s.pendingCopy && ownsClipboard(s, f) && s.visibility === f.owner.visibility && f.owner.output.opening === live.opening
+        && f.owner.output.choice === live.choice && f.delivery !== live.delivery) {
         const copied = { text: outcome.text, warnings: outcome.warnings };
         return [finish(changed(s, { selected: new Map(), removed: null, permissionDetour: false, changing: null,
           copied, shelfCopied: sameVisibleOutput ? { ...copied, closestMatches: f.warnings } : null,
-          copyNotice: sameVisibleOutput ? null : copied }), f), [{ type: "consume", output: event.output }]];
+          copyNotice: sameVisibleOutput ? null : copied }), f), [{ type: "consume", output: live }]];
       }
-      if (!ownsCompletion(s, f, event.output)) return [finish(s, f), !s.pendingCopy && s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, event.output) ? [{ type: "consume", output: f.owner.output }] : []];
+      if (!ownsCompletion(s, f, live)) return [finish(s, f), !s.pendingCopy && s.activeCopy === f.id && f.owner.session === s.session && sameOutput(f.owner.output, live) ? [{ type: "consume", output: f.owner.output }] : []];
       s = { ...s, copied: outcome, shelfCopied: sameVisibleOutput ? { ...outcome, closestMatches: f.warnings } : null,
         copyNotice: sameVisibleOutput ? null : outcome, flights: s.flights.map((flight) => flight === f ? { ...f, phase: "hide", outcome } : flight) };
       return afterCopy(outcome, event.pinned) === "hide-and-notify" ? [{ ...s, permissionDetour: false }, [{ type: "hide", id: f.id, session: f.session, presentation: f.presentation }]] : complete(s);

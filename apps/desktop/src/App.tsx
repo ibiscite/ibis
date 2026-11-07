@@ -8,7 +8,6 @@ import { PeekCard } from "./ui/PeekCard";
 import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
-import { choiceKey } from "./features/picker/choice";
 import { styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { PickerScroll } from "./features/picker/PickerScroll";
@@ -109,7 +108,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
-    session, state, search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    session, state, search: api.search, emptySearch: recents.load, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
     library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
@@ -138,18 +137,15 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
-  const highlightedChoice = choiceKey(results.slice(active, active + 1)
-    .map((r) => ({ ...r, locator: interpretation?.locator })));
-  const defaultChoice = list && ready ? choiceKey(results) : highlightedChoice;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
-    view: {
-      queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
-      // The citation stays in view through a reload, but Enter waits for its end.
-      searchPending, ready: preferences.ready && library?.state !== "reloading",
-      remembersLast: preferences.recentCitations === true,
-    },
   });
+  // What the session hears from preferences and the library's lifecycle.
+  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  useLayoutEffect(() => {
+    send({ type: "picker-inputs", inputs: { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
+      statusFailed, showCitations, version: checkVersion } });
+  }, [send, preferences.format, remembersLast, preferences.ready, library, settledLibrary, statusFailed, showCitations, checkVersion]);
   useLibrarySetup(library, setFailures, send, focusHome);
   const { clearNotice } = project;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.

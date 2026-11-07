@@ -5,7 +5,7 @@ import { useLayoutEffect, useRef } from "react";
 import type * as nativeApi from "../../api";
 import type { AppPaste } from "../../api";
 import { listedOutput, type OutputId } from "../../format/outputs";
-import { destinationFormat, projectVersion, sameOutput, type OutputToken, type ProjectEdit } from "./destination";
+import { asksPaste, destinationFormat, projectVersion, sameOutput, shouldAsk, type OutputToken, type ProjectEdit } from "./destination";
 import type { Operation } from "./Notices";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
@@ -24,7 +24,7 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   const { pickerDestination, rememberAppOutput, editWritingProject } = api;
   useLayoutEffect(() => {
     session.connect({ pickerDestination, rememberAppOutput, editWritingProject, report, chooseDefault });
-    session.dispatch({ type: "destination-reader", present: Boolean(pickerDestination) });
+    session.dispatch({ type: "destination-reader", present: Boolean(pickerDestination), remembers: Boolean(rememberAppOutput) });
   });
   const d = state.destination;
   const { destination, held, saves } = d;
@@ -78,10 +78,10 @@ export function useDestination(session: ReturnType<typeof createSessionControlle
   // A pick being saved already reads as remembered; only one that stayed held says so.
   const source: FormatSource = held !== null && held !== baseFormat ? saving ? "remembered" : "held"
     : writingProject || remembered ? "remembered" : app && suggested ? "suggested" : "default";
-  const askPaste = Boolean(rememberAppOutput && destination?.app_id && destination.paste_question);
+  const remembering = { ...d, remembers: Boolean(rememberAppOutput) };
+  const askPaste = asksPaste(remembering);
   const pasteChoices = Boolean(rememberAppOutput && destination?.can_choose_paste);
-  const shouldAsk = askPaste || Boolean(!writingProject && rememberAppOutput && destination?.app_id && destination.output_question && !remembered && held === null);
-  return { appId: destination?.app_id ?? null, app, format, ready, saving, source, pick, shouldAsk, read, choose,
+  return { appId: destination?.app_id ?? null, app, format, ready, saving, source, pick, shouldAsk: shouldAsk(remembering), read, choose,
     writingProject, writingContext: destination?.writing_context ?? null, readProblem: d.editProblem ?? d.readProblem, contextVersion: destination?.context_version ?? null, projectChanged, editProject,
     projectVersion: () => projectVersion(current()),
     chooseOnce, copyToken, isCurrentCopy, canPaste, askPaste, pasteChoices, choosePaste, quitAfterSaving };

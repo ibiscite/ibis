@@ -8,7 +8,7 @@ import type { LibraryStatus } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { say } from "../../i18n";
 import { choiceKey, type CitationReference } from "./choice";
-import type { PreviewInputs } from "./preview";
+import { ownedPreview, previewKey, type PreviewInputs } from "./preview";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 
@@ -33,7 +33,7 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
   const retryKey = JSON.stringify([output, library?.revision, chosenKey, projectContext]);
-  const key = `${output}\u0002${libraryVersion}\u0002${chosenKey}\u0002${JSON.stringify(projectContext)}`;
+  const key = previewKey(output, libraryVersion, chosenKey, projectContext);
   const inputs: PreviewInputs = {
     key, retryKey, contextReady,
     ask: chosen.length === 0 || !chosenRevision ? null : {
@@ -51,21 +51,16 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   // The key covers the choice, its locators, forms, revision, the output and the
   // project context; the opening and the context's answer complete the request.
   // biome-ignore lint/correctness/useExhaustiveDependencies: those three are the only triggers.
-  useEffect(() => { session.dispatch({ type: "preview-inputs", inputs }); }, [key, state.session, contextReady]);
+  useLayoutEffect(() => { session.dispatch({ type: "preview-inputs", inputs }); }, [key, state.session, contextReady]);
 
-  const { result, request, started } = state.preview;
-  // A failure says nothing about the next try: choosing the citation again or
-  // reopening prepares it afresh, and an earlier opening's failure is never shown.
-  const failed = result?.value === "failed";
-  const reusable = !failed && result?.key === key && (started === null || started.request === result.request);
   // The session hears of a new key after this render: until then its answer for
   // the earlier key is not this choice's.
-  const ownsResult = result?.key === key && ((result.request === request && !(failed && (result.session !== state.session || result.opened !== state.opened))) || reusable);
+  const result = ownedPreview(state.preview, key, state.session, state.opened);
   // What Enter would copy now; null while it is being formatted.
-  const shown = ownsResult ? result.value : null;
+  const shown = result ? result.value : null;
   // Why the preview failed, when the person can fix it.
   const previewProblem = shown === "failed" ? result?.problem ?? (style ? say("picker-preview-style-error", { style: outputName(style) }) : say("picker-preview-error")) : undefined;
-  const previewReceipt = ownsResult ? result?.preview : undefined;
+  const previewReceipt = result?.preview;
   const displayedOutput = chosen.length > 0 ? shown : undefined;
-  return { formatted: ownsResult ? result : null, previewReceipt, chosenKey, shown, previewProblem, displayedOutput };
+  return { formatted: result, previewReceipt, chosenKey, shown, previewProblem, displayedOutput };
 }

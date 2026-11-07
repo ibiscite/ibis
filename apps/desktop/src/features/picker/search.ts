@@ -16,6 +16,8 @@ export type SearchInputs = {
   /** Changes whenever a library opens, so the current query is searched again. */
   version: number;
   recent: unknown;
+  /** The app an empty query's recent citations are for. */
+  app: string | null;
 };
 
 export type SearchState = {
@@ -49,7 +51,7 @@ export type SearchEffect =
 export const ANNOUNCE_AFTER = 300;
 
 export const sameInputs = (a: SearchInputs | null | undefined, b: SearchInputs) =>
-  Boolean(a) && a!.queryKey === b.queryKey && a!.library === b.library && a!.version === b.version && a!.recent === b.recent;
+  Boolean(a) && a!.queryKey === b.queryKey && a!.library === b.library && a!.version === b.version && a!.recent === b.recent && a!.app === b.app;
 
 /** Typing before a library opens is normal: nothing is searched and nothing fails. */
 const searchable = (library: LibraryStatus | null | undefined) =>

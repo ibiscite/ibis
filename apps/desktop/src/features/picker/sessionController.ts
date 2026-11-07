@@ -7,12 +7,12 @@ import type { OutputId } from "../../format/outputs";
 import type { ProjectEdit } from "./destination";
 import type { Operation } from "./Notices";
 import type { PreviewFailure } from "./preview";
-import { initialSession, reduceSession, type OutputToken, type SessionEffect, type SessionEvent } from "./session";
+import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
 
 export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation" | "search" | "previewFileCitation">
   & Partial<Pick<typeof nativeApi, "showCopiedNotice" | "pickerDestination" | "rememberAppOutput" | "editWritingProject">> & {
-  output: () => OutputToken; pinned: () => boolean;
-  refresh: () => void; askFormat: () => void; reportHide: (failed: boolean) => void;
+  pinned: () => boolean;
+  refresh: () => void; reportHide: (failed: boolean) => void;
   report: (operation: Operation, failed: boolean) => void;
   /** Saves the default format, for a pick with no app to remember it for. */
   chooseDefault: (output: OutputId) => void;
@@ -50,10 +50,10 @@ export function createSessionController(initial = initialSession()) {
       case "copy": {
         try {
           const outcome = await ports.copyFileCitation(effect.ticket, effect.hash, effect.replaces);
-          dispatch({ type: "copied", id: effect.id, session: effect.session, outcome, output: ports.output(), pinned: ports.pinned() });
+          dispatch({ type: "copied", id: effect.id, session: effect.session, outcome, pinned: ports.pinned() });
         } catch (error) {
           const stale = nativeApi.isSnapshotChanged(error), shared = nativeApi.sharedCitationKey(error);
-          dispatch({ type: "copy-failed", id: effect.id, session: effect.session, output: ports.output(), stale,
+          dispatch({ type: "copy-failed", id: effect.id, session: effect.session, stale,
             message: stale ? say("picker-snapshot-changed") : shared ? say("picker-shared-key", { key: shared }) : say("picker-copy-error") });
         }
         break;
@@ -96,7 +96,6 @@ export function createSessionController(initial = initialSession()) {
       }
       case "hide-status": ports.reportHide(effect.failed); break;
       case "refresh": ports.refresh(); break;
-      case "ask-format": ports.askFormat(); break;
       case "search": {
         const { seq } = effect;
         try {
