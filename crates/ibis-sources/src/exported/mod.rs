@@ -69,7 +69,9 @@ pub(crate) fn doi(text: &str) -> Option<String> {
 /// The ISBNs or ISSNs a cell gives, as written, and whether it held anything
 /// else; text such as `(Print)` beside a valid one is not a loss.
 pub(crate) fn serials(kind: Serial, values: &[&str]) -> (Option<String>, bool) {
+    // First-seen order, each once; the set keeps a long list linear.
     let mut found: Vec<&str> = vec![];
+    let mut seen = HashSet::new();
     let mut lost = false;
     for value in values {
         let mut valid = vec![];
@@ -82,11 +84,7 @@ pub(crate) fn serials(kind: Serial, values: &[&str]) -> (Option<String>, bool) {
             }
         }
         lost |= valid.is_empty();
-        for serial in valid {
-            if !found.contains(&serial) {
-                found.push(serial);
-            }
-        }
+        found.extend(valid.into_iter().filter(|serial| seen.insert(*serial)));
     }
     ((!found.is_empty()).then(|| found.join(", ")), lost)
 }
