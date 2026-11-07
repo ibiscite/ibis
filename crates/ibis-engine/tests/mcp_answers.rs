@@ -285,7 +285,7 @@ fn each_refusal_says_what_to_change() {
         (
             "cite",
             json!({"items":[{"ref":"fen2023clouds"}],"format":"pandoc","form":"bibliography-only"}),
-            "Item 1: this output cannot write it",
+            "This output cannot write Item 1 in this form",
         ),
         ("styles", json!({"style":"apa"}), "'style'"),
     ] {

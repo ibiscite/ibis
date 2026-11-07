@@ -31,8 +31,8 @@ fn item_warnings_reach_both_native_preview_and_copy_feedback() -> Result<(), Box
     assert_eq!(citation.result().warnings.len(), 2);
     let text = citation.result().text.clone();
     let expected = [
-        "Reference 1: A source field could not be fully converted. Check the library entry.",
-        "Reference 1: APA expects sentence case for this title. Stored capitalization was preserved; check it in your document.",
+        "A field of protected2020 could not be fully converted. Check it in your library.",
+        "APA expects sentence case for the title of protected2020. Its capitalization was kept as stored, so check it in your document.",
     ];
     let file = FileLibrary::from_engine(engine);
     let preview = file
@@ -358,7 +358,9 @@ fn same_author_year_notice_survives_native_preview_and_copy() -> Result<(), Box<
         .map_err(|e| e.to_string())?;
     assert_eq!(
         preview.warnings,
-        ["Year suffixes require the whole document; Ibis leaves them out."]
+        [
+            "Two of these works share author and year. Add the year letters (such as 2026a and 2026b) in your document, because they depend on its whole reference list."
+        ]
     );
     let copied = file
         .copy(&preview.ticket, &preview.content_hash, |content| {

@@ -334,7 +334,7 @@ fn a_key_in_two_libraries_formats_by_reference_and_its_lookup_says_ambiguous() {
     assert_eq!(lookup["error"]["code"], "bad-input");
     assert_eq!(lookup["error"]["reason"], "ambiguous-key");
     let text = tool(&engine, "show", json!({"ref":"Doe2026"})).unwrap_err();
-    assert!(text.contains("Several references have this key"), "{text}");
+    assert!(text.contains("Several references use this citation key"), "{text}");
 }
 
 #[test]

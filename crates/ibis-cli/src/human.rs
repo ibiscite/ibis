@@ -7,6 +7,7 @@ use ibis_core::{
     summary::RecordSummary,
     syntax::MAX_CITATION_ITEMS,
 };
+use ibis_engine::catalogue::{self, Audience};
 use ibis_engine::{
     DispatchResult, Doubt, EntryRefusal, EntryResult, KeyCheck, Method, ProjectKey, ProjectProblem, ProjectResult,
 };
@@ -399,10 +400,12 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     let mut lines = Vec::new();
     for warning in warnings {
         let label = citing.label(warning.item);
-        lines.push(match warning.code {
-            CitationWarningCode::SourceField => format!("warning: a source field for {label} could not be fully converted; check the library entry."),
-            CitationWarningCode::SentenceCaseExpected => format!("note: APA expects sentence case for the title of {label}; stored capitalization was preserved, so check it in your document."),
-        });
+        let kind = match warning.code {
+            CitationWarningCode::SourceField => "warning",
+            CitationWarningCode::SentenceCaseExpected => "note",
+        };
+        let said = catalogue::sentence("warning", warning.code, Audience::Cli, &[("reference", &label)]);
+        lines.push(format!("{kind}: {said}"));
     }
     let refused: Vec<_> = outcomes
         .into_iter()
@@ -418,9 +421,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
             .iter()
             .all(|(_, error)| *error == CitationError::UnsupportedForm)
     {
-        lines.push(format!(
-            "{output} cannot print these keys together as asked; cite them one at a time to see which one fails."
-        ));
+        lines.push(cli("cli-together-refused", &[("output", &output)]));
     } else {
         for (item, error) in refused {
             let flags = citing
@@ -431,35 +432,23 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         }
     }
     for loss in losses {
-        let what = match loss.field {
-            LossField::Locator => "the locator",
-            LossField::Prefix => "the prefix",
-            LossField::Suffix => "the suffix",
-            LossField::AuthorSuppression => "an omitted author",
-            LossField::RichText => "text formatting",
-            LossField::Order => "the order of the keys",
-        };
+        let what = cli(&catalogue::id("loss", loss.field), &[]);
         let target = loss
             .item
             .map(|item| format!(" for {}", citing.label(item)))
             .unwrap_or_default();
-        lines.push(match loss.reason {
-            LossReason::Unsupported => format!("{output} cannot show {what}{target}, so it was left out."),
-            LossReason::Flattened => format!("{output} printed {what}{target} as plain text."),
-        });
+        let id = match loss.reason {
+            LossReason::Unsupported => "cli-loss-left-out",
+            LossReason::Flattened => "cli-loss-flattened",
+        };
+        lines.push(cli(id, &[("output", &output), ("what", &what), ("target", &target)]));
     }
     // Notices describe printed text; a refused citation printed none.
     for notice in notices.into_iter().filter(|_| printed) {
-        lines.push(
-            match notice {
-                Notice::NeedsDocumentContext => "note: this style numbers citations or places notes across the whole document, which Ibis does not see; check the result in your document.",
-                Notice::ReferenceEntry => "note: printed the full reference entry.",
-                Notice::FullFirstNote => "note: printed the full form a first note uses; later notes to the same work are usually shorter.",
-                Notice::YearSuffixWithheld => "note: two of these works share author and year; add the year letters (such as 2026a and 2026b) in your document, because they depend on its whole reference list.",
-                Notice::InputLanguageUnsupported => "note: locator words in this language are not recognised; give the locator in English, such as \"p. 12\".",
-            }
-            .into(),
-        );
+        lines.push(format!(
+            "note: {}",
+            catalogue::sentence("notice", notice, Audience::Cli, &[])
+        ));
     }
     // A person reading English output needs no note; any other language is a choice to see.
     if let Some(language) = data
@@ -504,44 +493,26 @@ fn destination_note(destination: &Destination) -> String {
 }
 
 fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, flags: &str) -> String {
+    let form = catalogue::id("form", form);
+    let form = form.strip_prefix("form-").unwrap_or_default();
+    let limit = MAX_CITATION_ITEMS.to_string();
+    let args = [
+        ("reference", label),
+        ("output", output),
+        ("form", form),
+        ("options", flags),
+        ("limit", &limit),
+    ];
     match error {
-        CitationError::UnsupportedForm => {
-            let form = serde_json::to_value(form)
-                .ok()
-                .and_then(|form| form.as_str().map(str::to_owned))
-                .unwrap_or_default();
-            if form != "normal" {
-                format!("cannot cite {label} in {output} with --form {form}; try --form normal.")
-            } else if !flags.is_empty() {
-                let it = if flags.contains(" and ") { "them" } else { "it" };
-                format!("cannot cite {label} with {flags} in {output}; try without {it}.")
-            } else {
-                format!("{output} cannot print {label} correctly here; try another style, or cite it separately.")
-            }
-        }
-        CitationError::InvalidLocator => format!("the locator for {label} is empty or has control characters."),
-        CitationError::MissingItem | CitationError::ChangedItem => {
-            format!("{label} changed or was removed while citing; try again.")
-        }
-        CitationError::MissingKey => format!("{label} has no citation key; cite it with --style instead."),
-        CitationError::AmbiguousKey => {
-            format!("several references share the citation key of {label}; give each one its own key in your library.")
-        }
-        CitationError::ConflictingKey => {
-            format!("{label} has conflicting citation keys in its library; keep one.")
-        }
-        CitationError::InvalidKey => format!("the citation key of {label} has characters {output} cannot write."),
-        CitationError::UnsupportedOutput => format!("there is no style {output}; list the styles with: ibis styles"),
-        CitationError::InvalidLocale => "there is no such locale; list them with: ibis styles --locales".into(),
-        CitationError::NotCitable => format!("{label} is not a reference (for example, a note) and cannot be cited."),
-        CitationError::FormatterUnavailable => "the citation formatter could not start; try again.".into(),
-        CitationError::AnnotationMismatch => format!("the annotation given for {label} belongs to another reference."),
-        CitationError::InvalidRichText => format!("the prefix or suffix for {label} has text Ibis cannot write."),
-        CitationError::TooManyItems => format!("one citation can hold at most {} references.", MAX_CITATION_ITEMS),
-        CitationError::OutputTooLarge => "the citation is too large to print.".into(),
-        CitationError::EmptySelection => "there is nothing to cite.".into(),
-        CitationError::Cancelled => "the citation was cancelled.".into(),
+        CitationError::UnsupportedForm if form != "normal" => cli("cli-form-refused", &args),
+        CitationError::UnsupportedForm if !flags.is_empty() => cli("cli-options-refused", &args),
+        error => catalogue::sentence("refusal", error, Audience::Cli, &args),
     }
+}
+
+/// One of the command line's own sentences from the catalogue.
+fn cli(id: &str, args: &[(&str, &str)]) -> String {
+    catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
 }
 
 /// Fixed words for output that could not be written; the OS message is not repeated.
@@ -554,19 +525,8 @@ pub(super) fn write_failure(error: &std::io::Error) -> &'static str {
 }
 
 /// The fallback sentence for each contract error code.
-pub(super) fn code_sentence(code: ErrorCode) -> &'static str {
-    match code {
-        ErrorCode::Usage => "the command is not valid; see: ibis --help",
-        ErrorCode::BadInput => "the input is not valid; see: ibis --help",
-        ErrorCode::NotFound => "nothing matched.",
-        ErrorCode::SourceUnavailable => "a library could not be read right now; try again.",
-        ErrorCode::ResourceLimit => "the request or its result is too large; ask for less.",
-        ErrorCode::NewerFormat => "a newer version of Ibis wrote this data; update Ibis.",
-        ErrorCode::Internal => {
-            "something went wrong inside Ibis; please report it at https://github.com/ibiscite/ibis/issues"
-        }
-        ErrorCode::Cancelled => "cancelled.",
-    }
+pub(super) fn code_sentence(code: ErrorCode) -> String {
+    catalogue::code(code, Audience::Cli)
 }
 
 pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
@@ -578,22 +538,25 @@ pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
 }
 
 /// Why a library file did not open, without naming it.
-pub(super) fn file_reason(path: &Path, code: ErrorCode) -> &'static str {
+pub(super) fn file_reason(path: &Path, code: ErrorCode) -> String {
     // The bounded read has already failed; looking again is bounded too, so a
     // stalled disk or a path just replaced by a pipe cannot hold the command.
     // Without an answer in time, the read's own reason stands.
     let probed = path.to_owned();
     let found = crate::bounded(move || path_reason(&probed)).flatten();
-    found.unwrap_or(match code {
-        ErrorCode::BadInput => {
-            "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents."
-        }
-        ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.",
-        ErrorCode::ResourceLimit => {
-            "it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files."
-        }
-        code => code_sentence(code),
-    })
+    found.map_or_else(
+        || match code {
+            ErrorCode::BadInput => {
+                "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents.".into()
+            }
+            ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.".into(),
+            ErrorCode::ResourceLimit => {
+                "it is larger than Ibis reads, or too many files are open at once; split the library or open fewer files.".into()
+            }
+            code => code_sentence(code),
+        },
+        str::to_owned,
+    )
 }
 
 /// What the path itself shows: missing, a folder, or a file this program may not read.
@@ -618,13 +581,13 @@ pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String 
     let reason = match (error.code, error.reason) {
         (_, Some(reason)) => reason_sentence(reason),
         (ErrorCode::SourceUnavailable, None) => {
-            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
+            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file.".into()
         }
         (ErrorCode::BadInput, None) => {
-            "its data could not be understood; open Zotero once so it can repair its database."
+            "its data could not be understood; open Zotero once so it can repair its database.".into()
         }
-        (ErrorCode::NewerFormat, None) => "a newer version of Zotero wrote it; update Ibis.",
-        (ErrorCode::ResourceLimit, None) => "it is larger than Ibis reads at once.",
+        (ErrorCode::NewerFormat, None) => "a newer version of Zotero wrote it; update Ibis.".into(),
+        (ErrorCode::ResourceLimit, None) => "it is larger than Ibis reads at once.".into(),
         (code, None) => code_sentence(code),
     };
     if error.reason == Some(ErrorReason::ZoteroProfileNeeded) && !profiles.is_empty() {
@@ -665,42 +628,11 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
         }
         (ErrorCode::BadInput, _) if key.is_empty() => "a citation key cannot be empty.".into(),
         (ErrorCode::BadInput, _) if key.len() > 64 * 1024 => format!("the citation key '{shown}…' is too long."),
-        (code, reason) => reason.map_or_else(|| code_sentence(code), reason_sentence).into(),
+        (code, reason) => reason.map_or_else(|| code_sentence(code), reason_sentence),
     }
 }
 
 /// The sentence for each reason an engine error gives.
-pub(super) fn reason_sentence(reason: ErrorReason) -> &'static str {
-    match reason {
-        ErrorReason::UnknownStyle => "there is no style with that name; list the styles with: ibis styles",
-        ErrorReason::UnknownOutput => "there is no output with that id; list them with: ibis outputs",
-        ErrorReason::UnknownLocale => "there is no such locale; list them with: ibis styles --locales",
-        ErrorReason::DuplicateKey => {
-            "the citation key is used by more than one entry, so Ibis skips them all; give each entry its own key."
-        }
-        ErrorReason::AmbiguousKey => {
-            "several references use this citation key; give each one its own key in your library."
-        }
-        ErrorReason::MissingKey => "this reference has no citation key; give it one in your library, or use --style.",
-        ErrorReason::AppMissing => "the Ibis app was not found; install it, or give its location with --app <path>.",
-        ErrorReason::NotIbis => {
-            "the program given as the Ibis app is not Ibis; give the Ibis app's location with --app <path>."
-        }
-        ErrorReason::NoAnswer => "the Ibis app started but did not answer; open Ibis once by hand, then try again.",
-        ErrorReason::ZoteroSharingOff => {
-            "Zotero is not sharing its library; in Zotero open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero."
-        }
-        ErrorReason::ZoteroProfileNeeded => {
-            "Zotero is closed and Ibis needs to know which profile to read; open Zotero, or name one with --zotero-profile NAME."
-        }
-        ErrorReason::ZoteroNeedsOpening => {
-            "Zotero's library cannot be read while it is closed; open Zotero, then try again."
-        }
-        ErrorReason::ZoteroNotFound => {
-            "no local Zotero library was found or it could not be read; check that Zotero is installed and has been opened once, or use --file."
-        }
-        ErrorReason::ZoteroNoSpace => {
-            "there is not enough free space to read Zotero while it is closed; free some space, or open Zotero."
-        }
-    }
+pub(super) fn reason_sentence(reason: ErrorReason) -> String {
+    catalogue::sentence("reason", reason, Audience::Cli, &[])
 }

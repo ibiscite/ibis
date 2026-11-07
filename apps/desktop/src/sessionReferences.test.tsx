@@ -14,7 +14,7 @@ const formatted = (text: string, left_out: string[] = []): SessionBibliography =
 
 async function open() {
   render(<App />);
-  await chooseFromMore("References Used This Session…");
+  await chooseFromMore("Cited Since Ibis Opened…");
   return screen.findByRole("dialog");
 }
 
@@ -25,7 +25,7 @@ test("it is named for what Ibis knows and shows what Copy writes", async () => {
     copy_session_bibliography: (args) => { sent.push(args); return null; },
   });
   const dialog = await open();
-  expect(within(dialog).getByRole("heading", { name: "References used this session" })).toBeTruthy();
+  expect(within(dialog).getByRole("heading", { name: "Cited since Ibis opened" })).toBeTruthy();
   expect(dialog.textContent).toContain("Ibis can’t see your document");
   expect(dialog.textContent).not.toMatch(/your bibliography|document's bibliography/i);
   await within(dialog).findByText("Morgan, A. Taylor, A.");
@@ -115,9 +115,9 @@ test("a saved file is named, and a cancelled dialog says nothing", async () => {
   await within(dialog).findByText("text");
   fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
   await waitFor(() => expect(plain(dialog.textContent)).not.toContain("Saved"));
-  answer = "References used this session.rtf";
+  answer = "Cited since Ibis opened.rtf";
   fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
-  await waitFor(() => expect(plain(dialog.textContent)).toContain("Saved References used this session.rtf."));
+  await waitFor(() => expect(plain(dialog.textContent)).toContain("Saved Cited since Ibis opened.rtf."));
 });
 
 test("references from a library that is not open are counted, not hidden", async () => {
@@ -170,7 +170,7 @@ test("hiding the picker closes the sheet, and opening it again reads the list af
   await act(() => emit("picker:hidden"));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await act(() => emit("picker:shown", 1));
-  await chooseFromMore("References Used This Session…");
+  await chooseFromMore("Cited Since Ibis Opened…");
   await within(await screen.findByRole("dialog")).findByText("text");
   expect(reads).toBe(2);
 });
@@ -194,7 +194,7 @@ test("a read that fails says so, and closing and reopening reads the list again"
   fireEvent.keyDown(dialog, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   fail = false;
-  await chooseFromMore("References Used This Session…");
+  await chooseFromMore("Cited Since Ibis Opened…");
   await within(await screen.findByRole("dialog")).findByText("text");
   expect(reads).toBe(2);
 });

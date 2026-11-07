@@ -347,7 +347,7 @@ fn bad_calls_are_tool_errors_without_library_text() {
     assert_eq!(missing["isError"], true);
     assert_eq!(
         missing["content"][0]["text"],
-        "error: not-found. No reference matched; use a ref that search returned."
+        "error: not-found. Nothing matched. Use a ref that search returned."
     );
     let both = tool(
         &engine,

@@ -1,4 +1,4 @@
-//! "References used this session": what Ibis copied since it started or since
+//! "Cited since Ibis opened": what Ibis copied since it started or since
 //! a reset. Ibis cannot see a document, so this is never called its bibliography.
 //!
 //! The list holds record identities and nothing else, in memory. It is written
@@ -164,7 +164,7 @@ fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<
         "rtf" => content.rtf.map(str::to_owned),
         "html" | "htm" => content.html.map(|html| {
             format!(
-                "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>References used this session</title></head><body>{html}</body></html>\n"
+                "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>References cited since Ibis opened</title></head><body>{html}</body></html>\n"
             )
         }),
         "txt" => Some(format!("{}\n", content.text.trim_end())),
@@ -202,8 +202,8 @@ pub(crate) async fn export_session_bibliography(
         .dialog()
         .file()
         .set_parent(&window)
-        .set_title("Save References Used This Session")
-        .set_file_name("References used this session.rtf")
+        .set_title("Save References Cited Since Ibis Opened")
+        .set_file_name("Cited since Ibis opened.rtf")
         .add_filter("Rich Text", &["rtf"])
         .add_filter("Web page", &["html"])
         .add_filter("Plain text", &["txt"]);
@@ -298,7 +298,7 @@ mod tests {
         let page = export_text("html", &content).unwrap_or_default();
         assert!(page.contains("<p>Taylor</p>") && page.contains("charset=\"utf-8\""));
         assert!(
-            page.contains("References used this session"),
+            page.contains("References cited since Ibis opened"),
             "never titled as a document's bibliography"
         );
         assert_eq!(export_text("pdf", &content), None);
@@ -431,7 +431,7 @@ mod bibliography_tests {
             bibliography
                 .warnings
                 .iter()
-                .any(|warning| warning.starts_with("taylor2026: ")),
+                .any(|warning| warning.contains("the title of taylor2026")),
             "{:?}",
             bibliography.warnings
         );

@@ -5,7 +5,8 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   clearScreen: false,
-  server: { port: 5173, strictPort: true },
+  // The one message catalogue lives at the repository root (locales/).
+  server: { port: 5173, strictPort: true, fs: { allow: ["../.."] } },
   build: {
     manifest: true,
     target: "es2022",

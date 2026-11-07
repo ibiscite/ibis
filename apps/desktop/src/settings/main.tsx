@@ -4,7 +4,7 @@ import { setPlatform } from "../nativeAppearance";
 import { settingsApi } from "./api";
 import { SettingsApp } from "./SettingsApp";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
-import english from "../i18n/en-US.ftl?raw";
+import english from "../../../../locales/en-US.ftl?raw";
 import "../tokens.css";
 import "../ui/Foundation.css";
 

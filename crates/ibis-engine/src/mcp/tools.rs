@@ -3,12 +3,13 @@
 //! To add a tool, add an entry. Failures are tool errors the agent can read:
 //! a fixed error code, then what to change, with nothing from the library.
 use super::view;
+use crate::catalogue::Audience;
 use crate::outputs;
 use crate::request::{SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::contract::{
-    CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ErrorReason,
-    ItemOutcome, LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
+    CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ItemOutcome,
+    LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
 };
 use ibis_core::destination::{System, destination};
 use serde_json::{Map, Value, json};
@@ -118,46 +119,10 @@ impl Refusal {
 
 impl From<EngineError> for Refusal {
     fn from(EngineError { code, reason }: EngineError) -> Self {
-        Self::new(code, reason.map_or_else(|| code_hint(code), reason_hint))
-    }
-}
-
-/// Fixed advice for each error code, so an agent knows what to change without library text.
-fn code_hint(code: ErrorCode) -> &'static str {
-    match code {
-        ErrorCode::Usage | ErrorCode::BadInput => {
-            "The arguments do not fit this tool's input schema; check the names, types, limits and combinations it allows."
-        }
-        ErrorCode::NotFound => "No reference matched; use a ref that search returned.",
-        ErrorCode::SourceUnavailable => "The library could not be read right now; try again shortly.",
-        ErrorCode::ResourceLimit => "The request or its answer is too large; ask for fewer results.",
-        ErrorCode::NewerFormat => "The library was written by a newer program; update Ibis.",
-        ErrorCode::Internal => "Ibis could not finish this request; try again.",
-        ErrorCode::Cancelled => "The request was cancelled.",
-    }
-}
-
-/// Fixed advice for a reason the code alone cannot give.
-fn reason_hint(reason: ErrorReason) -> &'static str {
-    match reason {
-        ErrorReason::UnknownStyle => "No style has that id; the styles tool lists them.",
-        ErrorReason::UnknownOutput => "No output has that id; use a format from this tool's input schema.",
-        ErrorReason::UnknownLocale => "That locale is not available; the styles tool lists the locales.",
-        ErrorReason::DuplicateKey => {
-            "The library repeats this citation key, so Ibis skips every entry under it until each has its own key."
-        }
-        ErrorReason::AmbiguousKey => "Several references have this key; use the ref search returned.",
-        ErrorReason::MissingKey => "This reference has no citation key; use a style, or ask the user to give it one.",
-        ErrorReason::AppMissing | ErrorReason::NotIbis | ErrorReason::NoAnswer => code_hint(ErrorCode::Internal),
-        ErrorReason::ZoteroSharingOff => {
-            "Zotero is running but not sharing; turn on Allow other applications in Zotero's Advanced settings."
-        }
-        ErrorReason::ZoteroProfileNeeded => {
-            "Zotero is closed and which profile to read is not settled; ask the user to open Zotero, or to choose a profile in Ibis or pass --zotero-profile to ibis mcp."
-        }
-        ErrorReason::ZoteroNeedsOpening => "Zotero's library cannot be read while it is closed; open Zotero.",
-        ErrorReason::ZoteroNotFound => "No local Zotero library was found on this computer.",
-        ErrorReason::ZoteroNoSpace => "There is not enough free space to read Zotero while it is closed.",
+        Self::new(
+            code,
+            crate::catalogue::error(&EngineError { code, reason }, Audience::Agent),
+        )
     }
 }
 
@@ -676,7 +641,16 @@ fn refusal(result: &CitationResult) -> Refusal {
         .outcomes
         .iter()
         .filter_map(|outcome| match outcome {
-            ItemOutcome::Refused { item, error } => Some(format!("Item {}: {}", item + 1, refusal_hint(*error))),
+            ItemOutcome::Refused { item, error } => {
+                let reference = format!("Item {}", item + 1);
+                let limit = ibis_core::syntax::MAX_CITATION_ITEMS.to_string();
+                let args = [
+                    ("reference", reference.as_str()),
+                    ("output", "This output"),
+                    ("limit", &limit),
+                ];
+                Some(crate::catalogue::sentence("refusal", *error, Audience::Agent, &args))
+            }
             ItemOutcome::Rendered { .. } => None,
         })
         .collect();
@@ -698,30 +672,6 @@ fn refusal(result: &CitationResult) -> Refusal {
         ErrorCode::BadInput
     };
     Refusal::new(code, reasons.join(" "))
-}
-
-fn refusal_hint(error: CitationError) -> &'static str {
-    match error {
-        CitationError::UnsupportedForm => {
-            "this output cannot write it in this form or with these options; try form normal, or another format or style."
-        }
-        CitationError::MissingItem | CitationError::ChangedItem => "it changed or was removed; search again.",
-        CitationError::MissingKey => "it has no citation key, so a key syntax cannot name it; use a style.",
-        CitationError::AmbiguousKey | CitationError::ConflictingKey | CitationError::InvalidKey => {
-            "its citation key cannot be used; use a style, or ask the user to fix the key."
-        }
-        CitationError::InvalidLocator => "the locator is empty or has control characters.",
-        CitationError::InvalidRichText => "the prefix or suffix has text Ibis cannot write.",
-        CitationError::UnsupportedOutput => "no style has that id; the styles tool lists them.",
-        CitationError::NotCitable => "it is not a reference, so it cannot be cited.",
-        CitationError::TooManyItems | CitationError::OutputTooLarge | CitationError::EmptySelection => {
-            "the citation is too large or empty; cite fewer items."
-        }
-        CitationError::InvalidLocale
-        | CitationError::AnnotationMismatch
-        | CitationError::FormatterUnavailable
-        | CitationError::Cancelled => "Ibis could not format it; try again.",
-    }
 }
 
 fn styles_input() -> Value {
