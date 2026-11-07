@@ -241,7 +241,7 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                 assert_eq!(preview.html, expected.html);
                 assert_eq!(preview.content_hash, expected.content_hash.as_str());
                 // The one cited reference is named by its key.
-                let expected_warnings = citation_warnings(&expected, |_| Some("Example2026".into()));
+                let expected_warnings = citation_warnings(&expected, &[Some("Example2026".into())]);
                 assert_eq!(preview.warnings, expected_warnings, "{output} {form} {page}");
                 if !expected.losses.is_empty() {
                     assert!(preview.warnings.iter().any(|warning| warning.contains("Example2026")));

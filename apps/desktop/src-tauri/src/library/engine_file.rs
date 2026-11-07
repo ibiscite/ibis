@@ -1075,11 +1075,22 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
 
 /// What the citation could not say in full, each naming its reference by key or title.
 fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
-    citation_warnings(citation.result(), |item| citation.item_label(item))
+    let labels: Vec<_> = (0..citation.items().len())
+        .map(|item| citation.item_label(item))
+        .collect();
+    citation_warnings(citation.result(), &labels)
 }
-fn citation_warnings(result: &CitationResult, label: impl Fn(usize) -> Option<String>) -> Vec<String> {
+/// `labels` names each cited reference by key or title. Two references can
+/// share a key across libraries, so a shared name also says which one it is.
+fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<String> {
     use ibis_engine::catalogue::{self, Audience};
-    let name = |item: usize| label(item).unwrap_or_else(|| format!("Reference {}", item + 1));
+    let name = |item: usize| match labels.get(item).cloned().flatten() {
+        Some(label) if labels.iter().filter(|other| other.as_ref() == Some(&label)).count() > 1 => {
+            format!("{label} (reference {})", item + 1)
+        }
+        Some(label) => label,
+        None => format!("Reference {}", item + 1),
+    };
     let mut warnings = vec![];
     for warning in &result.warnings {
         let reference = name(warning.item);
@@ -1108,6 +1119,39 @@ fn citation_warnings(result: &CitationResult, label: impl Fn(usize) -> Option<St
         ));
     }
     warnings
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ibis_core::contract::{CitationWarning, CitationWarningCode, DisplayTree};
+
+    #[test]
+    fn a_key_two_references_share_still_says_which_one_a_warning_means() {
+        let result = CitationResult::new(
+            "(Doe, 2026a; Doe, 2026b)".into(),
+            None,
+            None,
+            DisplayTree::default(),
+            vec![ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }],
+            vec![],
+            vec![],
+        )
+        .with_warnings(vec![CitationWarning {
+            item: 1,
+            code: CitationWarningCode::SourceField,
+        }]);
+        let shared = [Some("Doe2026".to_owned()), Some("Doe2026".to_owned())];
+        assert_eq!(
+            citation_warnings(&result, &shared),
+            ["A field of Doe2026 (reference 2) could not be fully converted. Check it in your library."]
+        );
+        let distinct = [Some("Doe2026".to_owned()), Some("Roe2026".to_owned())];
+        assert_eq!(
+            citation_warnings(&result, &distinct),
+            ["A field of Roe2026 could not be fully converted. Check it in your library."]
+        );
+    }
 }
 
 #[cfg(test)]
