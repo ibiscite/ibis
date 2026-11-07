@@ -49,6 +49,14 @@ on Debian/Ubuntu, or run `APPIMAGE_EXTRACT_AND_RUN=1 ./Ibis-Linux.AppImage`.
 CI checks that the extracted AppImage starts and stays up; it does not run the
 full picker smoke test through that fallback.
 
+**AppImage stops with `Couldn't open libGLESv2.so.2`:** the AppImage uses
+your system's graphics libraries instead of carrying its own, because they must
+match your graphics drivers. Desktop installs usually have them; a minimal
+system may not. On Debian and Ubuntu, install them with
+`sudo apt install libgles2 libegl1`; other distributions ship them in their
+Mesa or libglvnd packages. The `.deb` needs no extra step: installing it
+brings in WebKitGTK and what WebKitGTK uses.
+
 **NixOS:** run the AppImage with `appimage-run` (`nix-shell -p appimage-run`,
 or set `programs.appimage.enable = true;` and `programs.appimage.binfmt = true;`
 in your configuration). The command line archive holds a static binary that
