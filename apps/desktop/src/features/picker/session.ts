@@ -9,8 +9,9 @@ import type { OutputId } from "../../format/outputs";
 import { closestMatchWarnings } from "./rows";
 import { initialSearch, reduceSearch, type SearchEffect, type SearchEvent, type SearchState } from "./search";
 import { initialPreview, reducePreview, type PreviewEffect, type PreviewEvent, type PreviewState } from "./preview";
+import { initialDestination, projectVersion, reduceDestination, sameOutput, type DestinationEffect, type DestinationEvent, type DestinationState, type OutputToken } from "./destination";
 
-export type OutputToken = { opening: number; choice: number; delivery: number };
+export type { OutputToken };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
 export type SessionView = {
   appId?: string | null;
@@ -56,6 +57,8 @@ export type SessionState = {
   search: SearchState;
   /** What Enter would paste for the chosen references. */
   preview: PreviewState;
+  /** Where the next citation goes and in which format. */
+  destination: DestinationState;
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
   shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
@@ -64,8 +67,8 @@ type Completion = { id: number; session: number };
 export type SessionEvent =
   | SearchEvent
   | PreviewEvent
+  | DestinationEvent
   | { type: "view"; session: number; interaction: number; view: SessionView }
-  | { type: "project-observed"; output: OutputToken; version: string | null; clearReplacement: boolean }
   | { type: "query"; value: string }
   /** The native answer to "is the picker shown?", read when the picker starts. */
   | { type: "visibility-read"; visible: boolean; events: number }
@@ -97,17 +100,17 @@ export type SessionEffect =
   | { type: "read-presentation"; visibility: number }
   | { type: "refresh" | "ask-format" }
   | SearchEffect
-  | PreviewEffect;
+  | PreviewEffect
+  | DestinationEffect;
 
 export function initialSession(query = "", copied: Copied | null = null): SessionState {
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
-const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 const ownsClipboard = (s: SessionState, f: Flight) => s.activeCopy === f.id && s.context === f.owner.context && s.session === f.owner.session;
 const ownsInteraction = (s: SessionState, f: Flight) => ownsClipboard(s, f) && s.view?.output.delivery === f.delivery;
 const ownsCompletion = (s: SessionState, f: Flight, output: OutputToken) => ownsInteraction(s, f) && s.visibility === f.owner.visibility && sameOutput(f.owner.output, output);
@@ -177,6 +180,16 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
     [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing }]];
 }
 
+/** The project context changed: what was copied or asked for under the old one is retired. */
+function observeProject(s: SessionState, clearReplacement: boolean): [SessionState, SessionEffect[]] {
+  const view = s.view, version = projectVersion(s.destination), output = s.destination.output;
+  const changed = view && ((view.projectVersion ?? null) !== version || !sameOutput(view.output, output));
+  return advance({ ...s, context: s.context + (changed ? 1 : 0),
+    changing: clearReplacement ? null : s.changing,
+    shelfCopied: changed ? null : s.shelfCopied, copyNotice: changed ? null : s.copyNotice,
+    view: view ? { ...view, projectVersion: version, output, ready: false } : null });
+}
+
 export function reduceSession(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
   switch (event.type) {
     case "preview-inputs": case "previewed": case "preview-failed": {
@@ -189,13 +202,15 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       const next = { ...s, search: step.search };
       return [step.firstRow ? reduceSession(next, { type: "highlight", index: 0 })[0] : next, step.effects];
     }
-    case "project-observed": {
-      const view = s.view;
-      const changed = view && ((view.projectVersion ?? null) !== event.version || !sameOutput(view.output, event.output));
-      return advance({ ...s, context: s.context + (changed ? 1 : 0),
-        changing: event.clearReplacement ? null : s.changing,
-        shelfCopied: changed ? null : s.shelfCopied, copyNotice: changed ? null : s.copyNotice,
-        view: view ? { ...view, projectVersion: event.version, output: event.output, ready: false } : null });
+    case "destination-reader": case "read-destination": case "destination-read": case "destination-read-failed": case "project-changed":
+    case "choose-format": case "choose-once": case "choose-paste": case "destination-saved": case "destination-save-failed":
+    case "destination-save-settled": case "project-edit": case "project-edit-failed": case "consume-held": {
+      const step = reduceDestination(s.destination, event);
+      if (!step) return [s, []];
+      const next = { ...s, destination: step.destination };
+      if (!step.observed) return [next, step.effects];
+      const [observed, effects] = observeProject(next, step.observed.clearReplacement);
+      return [observed, [...step.effects, ...effects]];
     }
     case "view": {
       if (event.session !== s.session || event.interaction !== s.interaction || event.view.queryKey !== sessionQueryKey(s)) return [s, []];
