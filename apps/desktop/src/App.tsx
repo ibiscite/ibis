@@ -58,6 +58,7 @@ import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
 import { rowWords } from "./features/picker/ResultList";
+import { PickerShown } from "./features/picker/pickerShown";
 
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
@@ -70,16 +71,17 @@ export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
 export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  // Visibility is unknown until the native read/event below. Stay idle if
-  // that read never returns, including when Ibis starts as a login item.
-  useLayoutEffect(() => {
-    document.documentElement.dataset.pickerHidden = "";
-    return () => { delete document.documentElement.dataset.pickerHidden; };
-  }, []);
   const api = usePickerAppearance(sourceApi);
   const pickerSession = usePickerSession(preview);
-  const { session, state, send, setQuery, setActive, cancelCopy, isCurrentSession } = pickerSession;
+  const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
+  // The page's one hidden mark, from the session: CSS pauses looping animations
+  // with it. Unknown counts as hidden, so nothing runs before the native read.
+  useLayoutEffect(() => {
+    if (state.shown) delete document.documentElement.dataset.pickerHidden;
+    else document.documentElement.dataset.pickerHidden = "";
+  }, [state.shown]);
+  useLayoutEffect(() => () => { delete document.documentElement.dataset.pickerHidden; }, []);
   const { text } = useInterfaceMessages();
   const emptyFeedback = useEmptyFeedback(`${state.visibility}:${state.interaction}`);
   const zoomFeedback = useZoomFeedback(state.presentation !== null);
@@ -112,8 +114,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
-    search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
-    libraryVersion: checkVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
+    session, state, search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
@@ -125,8 +127,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
+    session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
+    previewFileCitation: api.previewFileCitation, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
@@ -221,6 +223,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   };
 
   return (
+    <PickerShown value={state.shown}>
     <main
       data-selection={showCitations && selected.size > 0 || undefined}
       onFocus={(e) => setSearchFocused(e.target === input.current)}
@@ -293,5 +296,6 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           { label: say("peek-key"), value: peekRecord.key, mono: true },
         ]} />}
     </main>
+    </PickerShown>
   );
 }

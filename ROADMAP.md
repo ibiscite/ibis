@@ -8,6 +8,7 @@ Every feature in the releases below ships before 1.0. Versions before 1.0 are wo
 
 - **Simplest correct form.** Each feature ships as the smallest version that is right and saves real work. Rules for cases no one has met yet wait until someone does; a feature can still grow later. Functionality first, then strict polish of how Ibis looks and behaves.
 - **Consolidate before adding.** One way to do each thing, in one place. When something is replaced or withdrawn, its code, tests and docs go in the same change. A change that makes the code smaller and clearer is worth more than a new option. Until 1.0 nothing is kept for compatibility (decision 0027).
+- **Easy to change** (maintainer, 2026-11-07). Each thing is defined once, and everything else is derived from it: a type, a message, a colour or a space, a setting, a check. A change then touches as few files as possible, in the engine, the command line, the app and the design alike. Remove layers, wrappers, duplicate definitions and process steps that do not pay for themselves. When a change is hard to make, simplify the structure first, then make the change.
 - **Engine first, front ends thin.** Every capability lives once in the Rust engine; the app, `ibis`, `ibis serve` and `ibis mcp` only show it ([decision 0028](docs/decisions/0028-engine-first.md), [architecture](docs/architecture.md)). The engine holds facts and abilities; what a person chose (a format per app, a project) stays a thin layer.
 - **Only what Ibis can get right.** A plausible but wrong citation is worse than none. Where correctness needs the whole document (numbering, ibid., 2020a and 2020b), Ibis gives what is correct on its own and says why.
 - **Reveal as you go.** The picker finds and cites. Advanced tools appear once they apply (a linked `.bib`, a PDF, a passage) and stay out of the way otherwise ([design](docs/design.md)).
@@ -52,7 +53,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 
 ### 0.4 Build any citation
 
-- **Everything Zotero's citation dialog does:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
+- **Everything Zotero's citation dialog does** (built first in 0.4, maintainer, 2026-11-07)**:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
 - **Every key syntax Ibis can write correctly** (Typst, org-cite, MyST, AsciiDoc, ConTeXt and more); **any official CSL style and locale**; output presets; bibliography entries; references cited since Ibis opened as an editable bibliography.
 - **The project's bibliography:** link a `.bib` and results say "In thesis.bib" or "Missing from thesis.bib", with the missing entry to copy. The check is advice: an unreadable file is a warning, and only a key known to name a different work is refused.
 - **Optional writing projects** ([#1697](https://github.com/ibiscite/ibis/issues/1697)): a project is a `.bib` file and its format, nothing more, picked in the format menu and remembered per app ([decision 0031](docs/decisions/0031-what-ibis-remembers-per-app.md)).

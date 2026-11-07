@@ -355,17 +355,19 @@ test runs that script; no test matches workflow text with regular expressions
 (decision 0035). Rules only the structure can show, such as "CI result" running
 `always()` and needing every job, are read with a YAML parser
 (`scripts/test_workflow_policy.py`). Scripts the workflows run (`ci-*.sh`,
-`publish-*.sh`, `keep-previous-nightly.sh`, `update-test-decision.sh`) are
-workflow code: changing them needs the same review as the workflow.
+`publish-*.sh`, `sign-update-packages.sh`, `collect-packages.sh`,
+`install-and-start.sh`, `build-cli.sh`, `capture-picker.*`,
+`keep-previous-nightly.sh`, `update-test-decision.sh`) are workflow code:
+changing them needs the same review as the workflow.
 
 | What changed | What runs | Typical wait |
 |---|---|---|
-| Documentation | Script tests, dependency policy | 1 minute |
+| Documentation, and workflows other than `ci.yml` (actionlint checks them) | Script tests, dependency policy, workflow expressions | 1 minute |
 | Website | Those, plus type check, lint, interface tests and picker size | 4 minutes |
 | Node and shell scripts (not `ci-*` or `check.mjs`) | Those, plus the script tests on Windows (and macOS in the queue), without building the app | 5 minutes |
-| Interface | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
+| Interface, including the canvas, its gallery and the app's HTML pages | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
 | Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
-| Crates, fixtures, Python and CI scripts, workflows, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
+| Crates, fixtures, Python and CI scripts, `ci.yml`, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
 
 The crates' full tests run on macOS only in the merge queue and on main: from 2026-10-25 to 2026-11-02,
 in 200 failed runs, macOS failed alone twice, while Windows found real bugs in the

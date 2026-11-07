@@ -2,7 +2,7 @@ import { Component, createRef, useEffect, useRef, type ReactNode } from "react";
 
 import { useFileDrag } from "../../ui/useFileDrag";
 
-type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: object; contextNotice?: string | null; contextNoticeIdentity?: object };
+type Props = { onFileDrag?: (change: (active: boolean) => void) => Promise<() => void>; presentation?: number; drag?: ReturnType<typeof useFileDrag>; children: ReactNode; citationProblem?: string | null; citationProblemIdentity?: unknown; contextNotice?: string | null; contextNoticeIdentity?: unknown };
 type Place = { node: HTMLElement; owner: HTMLElement; top: number; noticeHeight: number };
 
 /** Preserve browsing place across notices and scroll-owner changes. The commit
@@ -48,7 +48,7 @@ class PickerScrollFrame extends Component<Props> {
     if (event.target === this.anchor?.owner) this.update();
   };
 
-  revealCitationProblem = (notice: string, identity?: object) => {
+  revealCitationProblem = (notice: string, identity?: unknown) => {
     if (this.props.citationProblem !== notice || this.props.citationProblemIdentity !== identity) return;
     const middle = this.middle.current;
     const problem = middle?.querySelector<HTMLElement>(":scope > .notices > .citation-problem");
@@ -59,7 +59,7 @@ class PickerScrollFrame extends Component<Props> {
     this.anchor = this.capture();
   };
 
-  revealContextNotice = (notice: string, identity?: object) => {
+  revealContextNotice = (notice: string, identity?: unknown) => {
     if (this.props.contextNotice !== notice || this.props.contextNoticeIdentity !== identity) return;
     const middle = this.middle.current;
     const context = middle?.querySelector<HTMLElement>(":scope > .project-context-status");

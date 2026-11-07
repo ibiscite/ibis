@@ -1071,6 +1071,7 @@ test("a physical default-position key still offers the logical default", async (
 
 
 test("seven pages and search find common words, reveal and briefly tint their cause", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
@@ -1079,7 +1080,7 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   fireEvent.click(await screen.findByRole("option", { name: "Appearance, Appearance" }));
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
-  await new Promise((resolve) => setTimeout(resolve, 2100));
+  await act(() => vi.advanceTimersByTimeAsync(2000));
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
 });
 

@@ -45,6 +45,15 @@ class CiResultTest(unittest.TestCase):
         needs = [needs] if isinstance(needs, str) else list(needs)
         self.assertEqual(sorted(needs), sorted(name for name in jobs if name != key))
 
+    def test_runs_no_local_workflow_or_action(self):
+        # ci-paths.mjs treats every other workflow as documentation, which holds
+        # only while pull request CI runs nothing but ci.yml.
+        local = []
+        for name, job in self.workflow["jobs"].items():
+            uses = [job.get("uses", "")] + [step.get("uses", "") for step in job.get("steps", [])]
+            local += [f"{name}: {use}" for use in uses if str(use).startswith("./")]
+        self.assertEqual(local, [])
+
 
 if __name__ == "__main__":
     unittest.main()

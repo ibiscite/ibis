@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
 import { libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
+import { PickerShown } from "./features/picker/pickerShown";
 import { ago, libraryMessages, recentUpdate } from "./libraryWords";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
@@ -37,24 +38,24 @@ test("the dot never stays green beside a reported problem, and a worse state sta
 test("native hide stops the age timer and reopen refreshes it without DOM visibility events", async () => {
   vi.useFakeTimers();
   vi.setSystemTime(now);
-  document.documentElement.dataset.pickerHidden = "";
-  const { container, unmount } = render(createElement(LibraryStatusLine, { library: zotero({ updated_at: now, checked_at: now }), groupName: String }));
+  const props = { library: zotero({ updated_at: now, checked_at: now }), groupName: String };
+  const line = (shown: boolean) => createElement(PickerShown, { value: shown }, createElement(LibraryStatusLine, props));
+  const { container, unmount, rerender } = render(line(false));
   try {
     expect(vi.getTimerCount()).toBe(0);
-    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    await act(async () => { rerender(line(true)); });
     expect(vi.getTimerCount()).toBe(1);
-    await act(async () => { document.documentElement.dataset.pickerHidden = ""; });
+    await act(async () => { rerender(line(false)); });
     expect(vi.getTimerCount()).toBe(0);
     act(() => { vi.advanceTimersByTime(3 * 60_000); });
     expect(container.textContent).toContain("updated just now");
-    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    await act(async () => { rerender(line(true)); });
     expect(container.textContent).toContain("updated 3 minutes ago");
     expect(vi.getTimerCount()).toBe(1);
     unmount();
     expect(vi.getTimerCount()).toBe(0);
   } finally {
     unmount();
-    delete document.documentElement.dataset.pickerHidden;
     vi.useRealTimers();
   }
 });
@@ -224,9 +225,9 @@ test("the footer age ticks by itself, skips hidden windows and catches up when s
 test("native hide removes the age timer; reopen catches up without repeating the live status", async () => {
   vi.useFakeTimers({ now });
   try {
-    const { container, unmount, rerender } = render(createElement(LibraryStatusLine, {
-      library: zotero({ state: "error", stale: true, error: kept, checked_at: now - 2 * 60_000 }), groupName: String,
-    }));
+    const stale = { library: zotero({ state: "error", stale: true, error: kept, checked_at: now - 2 * 60_000 }), groupName: String };
+    const line = (shown: boolean) => createElement(PickerShown, { value: shown }, createElement(LibraryStatusLine, stale));
+    const { container, unmount, rerender } = render(line(true));
     const live = screen.getByRole("status", { name: "Library status" });
     const changes: (string | null)[] = [];
     const observer = new MutationObserver(() => changes.push(live.textContent));
@@ -235,15 +236,15 @@ test("native hide removes the age timer; reopen catches up without repeating the
     await act(async () => { vi.advanceTimersByTime(30_000); });
     expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
     expect(changes).toHaveLength(0);
-    await act(async () => { document.documentElement.dataset.pickerHidden = ""; });
+    await act(async () => { rerender(line(false)); });
     expect(vi.getTimerCount()).toBe(0);
     await act(async () => { vi.advanceTimersByTime(180_000); });
     expect(container.querySelector(".library-age")?.textContent).toContain("3 min");
-    await act(async () => { delete document.documentElement.dataset.pickerHidden; });
+    await act(async () => { rerender(line(true)); });
     expect(container.querySelector(".library-age")?.textContent).toContain("6 min");
     expect(vi.getTimerCount()).toBe(1);
     expect(changes).toHaveLength(0);
-    await act(async () => { rerender(createElement(LibraryStatusLine, { library: zotero(), groupName: String })); });
+    await act(async () => { rerender(createElement(PickerShown, { value: true }, createElement(LibraryStatusLine, { library: zotero(), groupName: String }))); });
     expect(changes).toEqual(["Zotero · 1,204 references"]);
     expect(live.textContent).toBe("Zotero · 1,204 references");
     await act(async () => { vi.advanceTimersByTime(30_000); });
@@ -251,7 +252,7 @@ test("native hide removes the age timer; reopen catches up without repeating the
     observer.disconnect();
     unmount();
     expect(vi.getTimerCount()).toBe(0);
-  } finally { delete document.documentElement.dataset.pickerHidden; vi.useRealTimers(); }
+  } finally { vi.useRealTimers(); }
 });
 
 test("the non-empty Library button keeps one separate announcement, and its age never repeats it", async () => {

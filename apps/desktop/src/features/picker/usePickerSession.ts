@@ -10,6 +10,5 @@ export function usePickerSession(preview?: PickerPreview) {
   const setQuery = (value: string) => send({ type: "query", value });
   const setActive = (index: number) => send({ type: "highlight", index });
   const cancelCopy = () => send({ type: "cancel" });
-  const isCurrentSession = (id: number) => session.getSnapshot().session === id;
-  return { session, state, send, setQuery, setActive, cancelCopy, isCurrentSession };
+  return { session, state, send, setQuery, setActive, cancelCopy };
 }
