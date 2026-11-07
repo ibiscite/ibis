@@ -1,38 +1,26 @@
 import { useEffect } from "react";
-
-const pickerShown = () => document.visibilityState !== "hidden" && !document.documentElement.hasAttribute("data-picker-hidden");
+import { usePickerShown } from "./pickerShown";
 
 /** Ask again every `interval` while this screen is shown: nothing runs while
  * the picker is hidden, and one request finishes before the next is timed. */
 export function useWhileShown(ask: (() => Promise<unknown>) | undefined, interval: number) {
+  const shown = usePickerShown();
   useEffect(() => {
-    if (!ask) return;
+    if (!ask || !shown) return;
     let timer: number | undefined;
-    let asking = false;
     let stopped = false;
     const schedule = () => {
-      if (stopped || asking || timer !== undefined || !pickerShown()) return;
+      if (stopped) return;
       timer = window.setTimeout(() => {
-        timer = undefined;
-        if (!pickerShown()) return;
-        asking = true;
-        void ask().catch(() => {}).finally(() => { asking = false; schedule(); });
+        // Checked again when it fires; showing the window again restarts this.
+        if (document.visibilityState === "hidden") return;
+        void ask().catch(() => {}).finally(schedule);
       }, interval);
     };
-    const sync = () => {
-      if (pickerShown()) { schedule(); return; }
-      window.clearTimeout(timer);
-      timer = undefined;
-    };
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
-    document.addEventListener("visibilitychange", sync);
-    sync();
+    schedule();
     return () => {
       stopped = true;
       window.clearTimeout(timer);
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", sync);
     };
-  }, [ask, interval]);
+  }, [ask, interval, shown]);
 }

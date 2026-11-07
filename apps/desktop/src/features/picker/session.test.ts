@@ -827,3 +827,21 @@ test("an app with no ID never shares a last citation with another", () => {
   s.send({ type: "copied", id: 1, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: true });
   expect(s.state.lastCitations.size).toBe(0);
 });
+
+test("the picker counts as hidden until it is shown, and a visibility read never undoes a newer event", () => {
+  const send = (state: ReturnType<typeof initialSession>, event: SessionEvent) => reduceSession(state, event)[0];
+  let s = initialSession();
+  expect(s.shown).toBe(false);
+  // The start-up read answers "shown" when nothing happened meanwhile.
+  s = send(s, { type: "visibility-read", visible: true, events: s.visibilityEvents });
+  expect(s.shown).toBe(true);
+  // A read started before a hide answers too late: the hide stands.
+  const started = s.visibilityEvents;
+  s = send(s, { type: "hidden", now: 1 });
+  s = send(s, { type: "visibility-read", visible: true, events: started });
+  expect(s.shown).toBe(false);
+  s = send(s, { type: "shown", now: 2, presentation: 1 });
+  expect(s.shown).toBe(true);
+  s = send(s, { type: "visibility-read", visible: false, events: started });
+  expect(s.shown).toBe(true);
+});

@@ -8,7 +8,7 @@ const nativeIcon = { mime: "image/png", bytes: [137, 80, 78, 71] };
 
 test("with no snapshot, a Zotero library is named as Zotero before its source is read", () => {
   const library = { zotero: true, name: "Zotero", has_snapshot: false, snapshot_zotero: false, snapshot_name: "earlier.bib", revision: "1", source_generation: "1" } as never;
-  const { result } = renderHook(() => useSourceOpen({ librarySource: undefined } as never, library, 0, null, false, () => {}));
+  const { result } = renderHook(() => useSourceOpen({ librarySource: undefined } as never, library, 0, true, null, false, () => {}));
   expect(result.current.source).toMatchObject({ kind: "zotero", name: "Zotero" });
 });
 
@@ -45,7 +45,7 @@ test("failed icon I/O, delayed A after B and close/reopen keep the current visib
     .mockImplementationOnce(() => replies[2]!.promise).mockImplementationOnce(() => replies[3]!.promise);
   const library = { revision: "1", source_generation: "1", zotero: true, name: "Zotero" } as never;
   function Presentation({ visit, item }: { visit: number; item: string }) {
-    const { source } = useSourceOpen({ librarySource: read } as never, library, visit, item, false, () => {});
+    const { source } = useSourceOpen({ librarySource: read } as never, library, visit, true, item, false, () => {});
     return <SourceAction label="Open Zotero" icon={source.icon} open={() => {}} />;
   }
   const view = render(<Presentation visit={0} item="A" />);
@@ -95,7 +95,7 @@ test("a short name has no tooltip, and busy replaces the icon with a spinner", (
 
 function sourceOpen(open: () => Promise<unknown>) {
   const library = { revision: "1", name: "invented.bib" } as never;
-  return renderHook(() => useSourceOpen({ openLibrarySource: open, librarySource: undefined } as never, library, 0, null, false, () => {}));
+  return renderHook(() => useSourceOpen({ openLibrarySource: open, librarySource: undefined } as never, library, 0, true, null, false, () => {}));
 }
 
 test("a slow open is busy only after 400 ms, and a fast one never is", async () => {

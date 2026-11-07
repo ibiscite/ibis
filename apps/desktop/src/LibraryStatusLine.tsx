@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentProps, type ReactNode } from "react"
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
 import { isolate, say } from "./i18n";
 import { Menu, MenuDetail } from "./ui/Menu";
+import { usePickerShown } from "./features/picker/pickerShown";
 import "./ui/LibraryStatus.css";
 import { appLocale, libraryMessages } from "./libraryWords";
 
@@ -37,29 +38,22 @@ export function zoteroLibraryNames(status: LibraryStatus, groupName: (id: number
  * is open: every 30 seconds while visible, and at once when shown again. */
 function useMinuteTick() {
   const [, setTick] = useState(0);
+  const shown = usePickerShown();
   useEffect(() => {
-    const tick = () => setTick((n) => n + 1);
-    let timer: number | undefined;
-    const visible = () => document.visibilityState !== "hidden" && !document.documentElement.hasAttribute("data-picker-hidden");
-    const sync = () => {
-      if (timer !== undefined) window.clearInterval(timer);
-      timer = undefined;
-      if (!visible()) return;
-      tick();
-      timer = window.setInterval(() => { if (visible()) tick(); }, 30_000);
-    };
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
-    document.addEventListener("visibilitychange", sync);
-    window.addEventListener("focus", sync);
-    sync();
+    if (!shown) return;
+    // Checked again when it fires: the system can hide the window between events.
+    const tick = () => { if (document.visibilityState !== "hidden") setTick((n) => n + 1); };
+    tick();
+    const timer = window.setInterval(tick, 30_000);
+    // Shown again by the system or focused: catch up at once.
+    window.addEventListener("focus", tick);
+    document.addEventListener("visibilitychange", tick);
     return () => {
       window.clearInterval(timer);
-      observer.disconnect();
-      document.removeEventListener("visibilitychange", sync);
-      window.removeEventListener("focus", sync);
+      window.removeEventListener("focus", tick);
+      document.removeEventListener("visibilitychange", tick);
     };
-  }, []);
+  }, [shown]);
 }
 
 /**

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { testStates } from "../../test-fixtures";
 import type { LibraryStatus, ZoteroProfiles } from "../../api";
+import { PickerShown } from "./pickerShown";
 import { EmptyState, ZOTERO_CHECK_EVERY, type ZoteroRecovery } from "./EmptyState";
 import { LibrarySetup, type EmptyLibraryChoices } from "../../LibrarySetup";
 
@@ -28,30 +29,28 @@ test("Zotero sharing explains reading references separately from macOS paste per
 
 const waiting = (problem: "zotero_access_off" | "zotero_closed" | "zotero_profiles" | "zotero_missing") =>
   ({ ...loaded, state: "error" as const, has_snapshot: false, zotero: true, problem });
-const recovery = (library: LibraryStatus, zotero: ZoteroRecovery, setupNode = setup) => render(<EmptyState library={library} query="" narrowed={false}
-  onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setupNode} zotero={zotero} />);
+const empty = (library: LibraryStatus, zotero: ZoteroRecovery, setupNode = setup, shown = true) => <PickerShown value={shown}><EmptyState library={library} query="" narrowed={false}
+  onChooseLibrary={vi.fn()} onClearSearch={vi.fn()} onSearchAll={vi.fn()} onReload={vi.fn()} setup={setupNode} zotero={zotero} /></PickerShown>;
+const recovery = (library: LibraryStatus, zotero: ZoteroRecovery, setupNode = setup) => render(empty(library, zotero, setupNode));
 const ask = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
 
 describe("a screen waiting on Zotero", () => {
   beforeEach(() => { vi.useFakeTimers(); });
-  afterEach(() => {
-    document.documentElement.removeAttribute("data-picker-hidden");
-    vi.useRealTimers();
-  });
+  afterEach(() => { vi.useRealTimers(); });
 
   test.each(["zotero_access_off", "zotero_closed", "zotero_missing"] as const)("%s asks Zotero only while it is shown", async (problem) => {
     const checkSharing = vi.fn(async () => "access_off");
-    const { unmount } = recovery(waiting(problem), { checkSharing });
+    const { unmount, rerender } = recovery(waiting(problem), { checkSharing });
     expect(checkSharing).not.toHaveBeenCalled();
     await ask(ZOTERO_CHECK_EVERY);
     expect(checkSharing).toHaveBeenCalledTimes(1);
     await ask(ZOTERO_CHECK_EVERY);
     expect(checkSharing).toHaveBeenCalledTimes(2);
     // Hidden, nothing polls; shown again, it resumes.
-    await act(async () => { document.documentElement.setAttribute("data-picker-hidden", ""); await Promise.resolve(); });
+    await act(async () => { rerender(empty(waiting(problem), { checkSharing }, setup, false)); await Promise.resolve(); });
     await ask(ZOTERO_CHECK_EVERY * 5);
     expect(checkSharing).toHaveBeenCalledTimes(2);
-    await act(async () => { document.documentElement.removeAttribute("data-picker-hidden"); await Promise.resolve(); });
+    await act(async () => { rerender(empty(waiting(problem), { checkSharing })); await Promise.resolve(); });
     await ask(ZOTERO_CHECK_EVERY);
     expect(checkSharing).toHaveBeenCalledTimes(3);
     unmount();
