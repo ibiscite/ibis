@@ -54,48 +54,53 @@ impl LoadError {
     }
     pub(super) fn with_snapshot_context(self, has_references: bool, zotero: bool) -> String {
         if self.retains(has_references, zotero) {
-            format!("{self}; keeping the last loaded references")
+            words("app-library-kept", &[("error", &self.to_string())])
         } else {
             self.to_string()
         }
     }
 }
 
-impl fmt::Display for LoadError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+impl LoadError {
+    /// The catalogue message that says what went wrong.
+    fn words_id(self) -> &'static str {
+        match self {
             LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
-                (_, ErrorCode::SourceUnavailable) => {
-                    "the library file is unavailable; download any online-only file to this computer first"
-                }
-                (LoadError::File(_), ErrorCode::BadInput) => "the library file does not contain valid reference data",
-                (LoadError::File(_), ErrorCode::ResourceLimit) => "the library file is larger than 64 MiB",
-                (_, ErrorCode::BadInput) => "the library file contains an unfinished entry",
-                (_, ErrorCode::ResourceLimit) => "the library exceeded the load work limit",
-                _ => "the library file is not UTF-8 text; save it as UTF-8",
+                (_, ErrorCode::SourceUnavailable) => "app-library-file-unavailable",
+                (LoadError::File(_), ErrorCode::BadInput) => "app-library-file-invalid",
+                (LoadError::File(_), ErrorCode::ResourceLimit) => "app-library-file-too-large",
+                (_, ErrorCode::BadInput) => "app-library-file-unfinished",
+                (_, ErrorCode::ResourceLimit) => "app-library-work-limit",
+                _ => "app-library-file-not-utf8",
             },
             LoadError::Zotero(error) => match (error.reason, error.code) {
-                (Some(ErrorReason::ZoteroSharingOff), _) => {
-                    "Zotero is open but is not sharing your library with other applications"
-                }
-                (Some(ErrorReason::ZoteroProfileNeeded), _) => "choose which Zotero profile to read",
-                (Some(ErrorReason::ZoteroNeedsOpening), _) => "Zotero's library cannot be read while it is closed",
-                (Some(ErrorReason::ZoteroNotFound), _) => "no Zotero library was found on this computer",
-                (Some(ErrorReason::ZoteroNoSpace), _) => {
-                    "there is not enough free space to read Zotero while it is closed; free some space or open Zotero"
-                }
-                (_, ErrorCode::Cancelled) => "reading Zotero was cancelled",
-                (_, ErrorCode::ResourceLimit) => "reading Zotero exceeded its work limit",
-                (_, ErrorCode::NewerFormat) => "this Zotero database is newer than Ibis can read",
-                (_, ErrorCode::NotFound) => {
-                    "a chosen Zotero group library was not found; check that you are still a member"
-                }
-                _ => "Zotero could not be read just now; try again",
+                (Some(ErrorReason::ZoteroSharingOff), _) => "app-library-zotero-sharing-off",
+                (Some(ErrorReason::ZoteroProfileNeeded), _) => "app-library-zotero-profile-needed",
+                (Some(ErrorReason::ZoteroNeedsOpening), _) => "app-library-zotero-closed",
+                (Some(ErrorReason::ZoteroNotFound), _) => "app-library-zotero-not-found",
+                (Some(ErrorReason::ZoteroNoSpace), _) => "app-library-zotero-no-space",
+                (_, ErrorCode::Cancelled) => "app-library-zotero-cancelled",
+                (_, ErrorCode::ResourceLimit) => "app-library-zotero-work-limit",
+                (_, ErrorCode::NewerFormat) => "app-library-zotero-newer",
+                (_, ErrorCode::NotFound) => "app-library-zotero-group-not-found",
+                _ => "app-library-zotero-try-again",
             },
-            LoadError::NotLocal => "the chosen file is not on this computer",
-            LoadError::Stopped => "loading the library stopped unexpectedly",
-        })
+            LoadError::NotLocal => "app-library-not-local",
+            LoadError::Stopped => "app-library-stopped",
+        }
     }
+}
+
+impl fmt::Display for LoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&words(self.words_id(), &[]))
+    }
+}
+
+/// One of the app's own sentences from the catalogue. A missing message reads
+/// as its id, which the tests below make impossible.
+pub(crate) fn words(id: &str, args: &[(&str, &str)]) -> String {
+    ibis_engine::catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
 }
 
 /// A failed command as the interface receives it: the interface decides
@@ -122,9 +127,16 @@ impl From<ibis_core::contract::EngineError> for CommandError {
     fn from(error: ibis_core::contract::EngineError) -> Self {
         match error.code {
             ibis_core::contract::ErrorCode::Cancelled => Self::Cancelled,
-            _ => Self::Failed {
-                message: "The citation could not be prepared. Try again.".into(),
-            },
+            _ => Self::failed("app-command-not-prepared"),
+        }
+    }
+}
+
+impl CommandError {
+    /// A failure worded by this catalogue message.
+    pub(crate) fn failed(id: &str) -> Self {
+        Self::Failed {
+            message: words(id, &[]),
         }
     }
 }
@@ -145,15 +157,13 @@ impl From<&str> for CommandError {
 
 impl fmt::Display for CommandError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            CommandError::SnapshotChanged => f.write_str("library snapshot changed"),
-            CommandError::LibraryLoading => f.write_str("library is loading"),
-            CommandError::Cancelled => f.write_str("cancelled"),
-            CommandError::SharedCitationKey { key } => {
-                write!(f, "the citation key `{key}` belongs to more than one reference")
-            }
-            CommandError::Failed { message } => f.write_str(message),
-        }
+        f.write_str(&match self {
+            CommandError::SnapshotChanged => words("app-command-snapshot-changed", &[]),
+            CommandError::LibraryLoading => words("app-command-library-loading", &[]),
+            CommandError::Cancelled => words("app-command-cancelled", &[]),
+            CommandError::SharedCitationKey { key } => words("app-command-shared-citation-key", &[("key", key)]),
+            CommandError::Failed { message } => return f.write_str(message),
+        })
     }
 }
 
@@ -244,6 +254,91 @@ mod tests {
         assert_eq!(
             json("the clipboard could not be written".into()),
             serde_json::json!({"code": "failed", "message": "the clipboard could not be written"})
+        );
+    }
+
+    /// Every value a code can take, from its own schema.
+    fn every<T: schemars::JsonSchema + serde::de::DeserializeOwned>() -> Vec<T> {
+        let schema = serde_json::to_value(schemars::schema_for!(T)).unwrap_or_default();
+        let values = schema["enum"].as_array().cloned().or_else(|| {
+            schema["oneOf"]
+                .as_array()
+                .map(|variants| variants.iter().map(|variant| variant["const"].clone()).collect())
+        });
+        let values: Vec<T> = values
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|value| serde_json::from_value(value).ok())
+            .collect();
+        assert!(!values.is_empty(), "the schema lists its values");
+        values
+    }
+
+    #[test]
+    fn every_library_and_command_failure_has_catalogue_words_and_none_is_unused() {
+        use std::collections::BTreeSet;
+        let codes = every::<ErrorCode>();
+        let reasons = every::<ErrorReason>();
+        let mut loads = vec![LoadError::NotLocal, LoadError::Stopped];
+        for &code in &codes {
+            let error = EngineError::new(code);
+            loads.extend([
+                LoadError::File(error),
+                LoadError::FileRefresh(error),
+                LoadError::Zotero(error),
+            ]);
+            loads.extend(
+                reasons
+                    .iter()
+                    .map(|&reason| LoadError::Zotero(EngineError::because(code, reason))),
+            );
+        }
+        let mut used: BTreeSet<&str> = loads.iter().map(|error| error.words_id()).collect();
+        used.extend([
+            "app-library-kept",
+            "app-library-retained-not-updated",
+            "app-library-not-refreshed",
+            "app-library-retained-not-refreshed",
+            "app-library-state-unavailable",
+            "app-command-snapshot-changed",
+            "app-command-library-loading",
+            "app-command-cancelled",
+            "app-command-shared-citation-key",
+            "app-command-not-prepared",
+            "app-command-source-not-opened",
+        ]);
+        let catalogue: BTreeSet<&str> = ibis_engine::catalogue::SOURCE
+            .lines()
+            .filter_map(|line| line.split_once(" =").map(|(id, _)| id))
+            .filter(|id| id.starts_with("app-library-") || id.starts_with("app-command-"))
+            .collect();
+        assert_eq!(
+            catalogue, used,
+            "the catalogue's library and command words and the app's differ"
+        );
+        for id in used {
+            let text = ibis_engine::catalogue::text(id, None, &[]);
+            assert!(text.is_some_and(|text| !text.is_empty()), "{id} has a sentence");
+        }
+
+        let commands = [
+            CommandError::SnapshotChanged,
+            CommandError::LibraryLoading,
+            CommandError::Cancelled,
+            CommandError::SharedCitationKey { key: "same2026".into() },
+            CommandError::from(EngineError::new(ErrorCode::Internal)),
+            CommandError::failed("app-command-source-not-opened"),
+        ];
+        let shown = loads
+            .iter()
+            .flat_map(|error| [error.to_string(), error.with_snapshot_context(true, true)])
+            .chain(commands.iter().map(CommandError::to_string));
+        for text in shown {
+            assert!(!text.is_empty() && !text.contains("app-"), "{text:?} is worded");
+        }
+        assert_eq!(
+            CommandError::SharedCitationKey { key: "same2026".into() }.to_string(),
+            "the citation key `same2026` belongs to more than one reference"
         );
     }
 }

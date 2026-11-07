@@ -25,7 +25,10 @@ enum Target {
     File(PathBuf),
 }
 
-const FAILED: &str = "The source could not be opened. Try again.";
+/// Why a source could not be opened, whatever the cause.
+fn failed() -> CommandError {
+    CommandError::failed("app-command-source-not-opened")
+}
 
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(transparent)]
@@ -49,7 +52,7 @@ pub(crate) async fn open_library_source(
     // launch that ends later gives way for the opening that asked alone.
     let presentation = app.state::<PickerGeneration>().originating(presentation);
     let target = {
-        let library = library.lock().map_err(|_| CommandError::from(FAILED))?;
+        let library = library.lock().map_err(|_| failed())?;
         target(
             &library,
             item.as_ref().map(|item| &item.0),
@@ -60,7 +63,7 @@ pub(crate) async fn open_library_source(
     };
     tauri::async_runtime::spawn_blocking(move || launch(target, reveal))
         .await
-        .map_err(|_| CommandError::from(FAILED))??;
+        .map_err(|_| failed())??;
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || yield_to_window(&handle, presentation, Takeover::Beside)),
@@ -104,7 +107,7 @@ pub(crate) async fn library_source(
     library: State<'_, Mutex<Library>>,
 ) -> Result<SourcePresentation, CommandError> {
     let (target, status_path) = {
-        let library = library.lock().map_err(|_| CommandError::from(FAILED))?;
+        let library = library.lock().map_err(|_| failed())?;
         let target = target(
             &library,
             item.as_ref().map(|item| &item.0),
@@ -121,7 +124,7 @@ pub(crate) async fn library_source(
     let (kind, name, path) = match target {
         Target::File(path) => (
             SourceKind::File,
-            path.file_name().ok_or(FAILED)?.to_string_lossy().into_owned(),
+            path.file_name().ok_or_else(failed)?.to_string_lossy().into_owned(),
             Some(path),
         ),
         _ => (SourceKind::Zotero, "Zotero".into(), None),
@@ -164,10 +167,10 @@ fn target(
         return match library.source.as_ref().or(library.requested.as_ref()) {
             Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
             Some(Source::Zotero(_)) => Ok(Target::Zotero),
-            None => Err(FAILED.into()),
+            None => Err(failed()),
         };
     };
-    let file = library.file.as_ref().ok_or(FAILED)?;
+    let file = library.file.as_ref().ok_or_else(failed)?;
     let snapshot = file.engine.snapshot().map_err(|_| CommandError::SnapshotChanged)?;
     if snapshot.fingerprints().full.as_str() != expected
         || !snapshot
@@ -176,18 +179,18 @@ fn target(
     {
         return Err(CommandError::SnapshotChanged);
     }
-    let info = file.engine.libraries().map_err(|_| CommandError::from(FAILED))?;
+    let info = file.engine.libraries().map_err(|_| failed())?;
     let source = info
         .libraries
         .iter()
         .find(|info| info.id == item.library)
-        .ok_or(FAILED)?;
+        .ok_or_else(failed)?;
     if let Some(zotero) = source.zotero {
         return Ok(Target::ZoteroItem(zotero_uri(zotero, &item.key)?));
     }
     match library.source.as_ref() {
         Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
-        _ => Err(FAILED.into()),
+        _ => Err(failed()),
     }
 }
 
@@ -195,18 +198,18 @@ fn zotero_uri(library: ZoteroLibrary, key: &str) -> Result<String, CommandError>
     // Native Zotero keys are eight ASCII letters/digits, distinct from
     // citation keys. Refuse separators, query parameters and URI injection.
     if key.len() != 8 || !key.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
-        return Err(FAILED.into());
+        return Err(failed());
     }
     let library = match library {
         ZoteroLibrary::Personal => "library".into(),
         ZoteroLibrary::Group(id) if id > 0 => format!("groups/{id}"),
-        _ => return Err(FAILED.into()),
+        _ => return Err(failed()),
     };
     Ok(format!("zotero://select/{library}/items/{key}"))
 }
 
 fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
-    let path = path.canonicalize().map_err(|_| CommandError::from(FAILED))?;
+    let path = path.canonicalize().map_err(|_| failed())?;
     let supported = path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -216,7 +219,7 @@ fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
                 .any(|allowed| extension.eq_ignore_ascii_case(allowed))
         });
     if !path.is_file() || !supported {
-        return Err(FAILED.into());
+        return Err(failed());
     }
     Ok(path)
 }
@@ -246,7 +249,11 @@ fn command(target: Target, reveal: bool) -> Result<Command, CommandError> {
     let mut command = Command::new("xdg-open");
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let argument = if reveal && !argument.to_string_lossy().starts_with("zotero:") {
-        Path::new(&argument).parent().ok_or(FAILED)?.as_os_str().to_os_string()
+        Path::new(&argument)
+            .parent()
+            .ok_or_else(failed)?
+            .as_os_str()
+            .to_os_string()
     } else {
         argument
     };
@@ -269,34 +276,31 @@ fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
     // Storage objects keep filenames literal, including commas and spaces.
     // Launcher's boolean reports an absent handler; no URL-handler shell or
     // command-line parser can hide a failed open or reinterpret the path.
-    let failed = |_| CommandError::from(FAILED);
+    let fault = |_| failed();
     let opened = match target {
         Target::File(path) => {
             let canonical = source_file(&path)?;
             let path = dunce::simplified(&canonical);
-            let location = path.to_str().ok_or(FAILED)?;
+            let location = path.to_str().ok_or_else(failed)?;
             let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(location))
-                .map_err(failed)?
+                .map_err(fault)?
                 .join()
-                .map_err(failed)?;
+                .map_err(fault)?;
             if reveal {
-                let parent = path.parent().and_then(Path::to_str).ok_or(FAILED)?;
+                let parent = path.parent().and_then(Path::to_str).ok_or_else(failed)?;
                 let folder = StorageFolder::GetFolderFromPathAsync(&HSTRING::from(parent))
-                    .map_err(failed)?
+                    .map_err(fault)?
                     .join()
-                    .map_err(failed)?;
-                let options = FolderLauncherOptions::new().map_err(failed)?;
-                let item = file.cast::<IStorageItem>().map_err(failed)?;
-                options.ItemsToSelect().map_err(failed)?.Append(&item).map_err(failed)?;
+                    .map_err(fault)?;
+                let options = FolderLauncherOptions::new().map_err(fault)?;
+                let item = file.cast::<IStorageItem>().map_err(fault)?;
+                options.ItemsToSelect().map_err(fault)?.Append(&item).map_err(fault)?;
                 Launcher::LaunchFolderWithOptionsAsync(&folder, &options)
-                    .map_err(failed)?
+                    .map_err(fault)?
                     .join()
-                    .map_err(failed)?
+                    .map_err(fault)?
             } else {
-                Launcher::LaunchFileAsync(&file)
-                    .map_err(failed)?
-                    .join()
-                    .map_err(failed)?
+                Launcher::LaunchFileAsync(&file).map_err(fault)?.join().map_err(fault)?
             }
         }
         target => {
@@ -304,11 +308,11 @@ fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
                 Target::ZoteroItem(uri) => uri,
                 _ => "zotero://select/library".into(),
             };
-            let uri = Uri::CreateUri(&HSTRING::from(uri)).map_err(failed)?;
-            Launcher::LaunchUriAsync(&uri).map_err(failed)?.join().map_err(failed)?
+            let uri = Uri::CreateUri(&HSTRING::from(uri)).map_err(fault)?;
+            Launcher::LaunchUriAsync(&uri).map_err(fault)?.join().map_err(fault)?
         }
     };
-    if opened { Ok(()) } else { Err(FAILED.into()) }
+    if opened { Ok(()) } else { Err(failed()) }
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -321,7 +325,7 @@ fn run(command: &mut Command) -> Result<(), CommandError> {
     if command.status().is_ok_and(|status| status.success()) {
         Ok(())
     } else {
-        Err(FAILED.into())
+        Err(failed())
     }
 }
 
@@ -441,7 +445,7 @@ mod tests {
         ] {
             assert_eq!(
                 run(&mut command).err().map(|error| error.to_string()).as_deref(),
-                Some(FAILED)
+                Some("The source could not be opened. Try again.")
             );
         }
     }
