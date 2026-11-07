@@ -13,7 +13,7 @@ const prepared = (text: string): Prepared => ({ markup: [text], text, html: "", 
 const previewed = (request: number, text: string): SessionEvent => ({ type: "previewed", request, preview: filePreview(text), value: prepared(text) });
 const shown = { type: "shown", now: 1, presentation: 1 } as const;
 
-function run(events: SessionEvent[], start: SessionState = initialSession()) {
+function run(events: SessionEvent[], start: SessionState = { ...initialSession(), resting: false }) {
   let state = start;
   const effects: SessionEffect[] = [];
   for (const event of events) {

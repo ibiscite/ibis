@@ -1,4 +1,5 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import { initialSession } from "./session";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { FilePreview } from "../../bindings";
@@ -16,7 +17,8 @@ type Preview = NonNullable<Options["previewFileCitation"]>;
 
 /** The preview as the picker runs it: inside a session that may prepare and show a window again. */
 function useOutputInSession({ sessionId = 0, opened = sessionId, refreshSnapshot = () => {}, ...inputs }: Options) {
-  const [session] = useState(() => createSessionController());
+  // A picker on screen.
+  const [session] = useState(() => createSessionController({ ...initialSession(), resting: false }));
   session.connect({ refresh: refreshSnapshot });
   const seen = useRef({ sessionId, opened });
   useLayoutEffect(() => {

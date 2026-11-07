@@ -58,8 +58,13 @@ export type SessionState = {
   shown: boolean;
   /** Shown and hidden events so far: a visibility read started before one is older. */
   visibilityEvents: number;
-  /** Hidden, including a start behind the scenes: the session asks the engine nothing until the picker is prepared again. */
+  /** Hidden, or not yet known to be shown: the session asks the engine nothing
+   * until the picker is shown or read as visible. A prepared window is still
+   * hidden, and whatever it asked would belong to the opening before it. */
   resting: boolean;
+  /** The newest search and preview held back while resting, asked for when the
+   * same opening wakes; a new opening asks afresh instead. */
+  deferred: SessionEffect[];
   /** The search for the current query and its shown answer. */
   search: SearchState;
   /** What Enter would paste for the chosen references. */
@@ -116,7 +121,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, view: null, inputs: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, resting: false, search: initialSearch, preview: initialPreview, destination: initialDestination,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, resting: true, deferred: [], search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
@@ -225,9 +230,25 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
   const [next, effects] = reduceEvent(s, event);
   if (next === s && event.type !== "committed") return [next, effects];
   const [viewed, more] = applyView(next, copies);
-  // A hidden picker asks the engine nothing: showing it again asks afresh.
-  const asked = !viewed.resting ? [...effects, ...more] : [...effects, ...more].filter((effect) => effect.type !== "search" && effect.type !== "preview");
-  return [viewed, asked];
+  return rest(s, viewed, [...effects, ...more]);
+}
+
+const engineWork = (effect: SessionEffect) => effect.type === "search" || effect.type === "preview";
+/** A resting picker asks the engine nothing. It keeps the newest search and
+ * preview, and asks for them when the same opening wakes. */
+function rest(before: SessionState, s: SessionState, effects: SessionEffect[]): [SessionState, SessionEffect[]] {
+  if (s.resting) {
+    // A stopped preview, or a newer request, replaces what was held back.
+    const stopped = effects.some((effect) => effect.type === "stop-preview");
+    if (!stopped && !effects.some(engineWork)) return [s, effects];
+    const held = s.deferred.filter((effect) => !effects.some((next) => next.type === effect.type) && !(stopped && effect.type === "preview"));
+    const deferred = [...held, ...effects.filter(engineWork)];
+    return [{ ...s, deferred }, effects.filter((effect) => !engineWork(effect))];
+  }
+  if (!before.resting || s.deferred.length === 0) return [s, effects];
+  // A new opening's hooks ask again for it; the same opening wakes with what it held back.
+  const woken = s.session === before.session ? s.deferred.filter((effect) => !effects.some((next) => next.type === effect.type)) : [];
+  return [{ ...s, deferred: [] }, [...woken, ...effects]];
 }
 
 function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
@@ -346,7 +367,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         shown: false, resting: true, visibilityEvents: s.visibilityEvents + 1, preview: { ...s.preview, started: null } }, s.preview.started ? [{ type: "stop-preview" }] : []];
     }
     case "preparing": {
-      s = { ...returning(s, event.now), hiddenAt: null, resting: false, opened: s.opened + 1 };
+      s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1 };
       if (!event.selection) return [s, []];
       // The paste would replace this text, so it always shows, even after a
       // permission detour; the shelf stays.
