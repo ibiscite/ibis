@@ -151,7 +151,8 @@ trait Host: Send + Sync + 'static {
     fn changed(&self);
     /// Retire the picker's prepared receipt. Called under the request lock.
     fn retire(&self);
-    fn present(&self);
+    /// Show the picker for request `id`, unless it has ended by then.
+    fn present(&self, id: u64);
 }
 
 fn read_head(stream: &mut TcpStream) -> Result<Vec<u8>, cayw::Refusal> {
@@ -231,7 +232,10 @@ fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, s
                 }
             }
             host.changed();
-            host.present();
+            // Switched off, given up or answered already: nothing to show.
+            if host.pending().current().is_some_and(|request| request.id == id) {
+                host.present(id);
+            }
             let text = answer.recv_timeout(ANSWER_DEADLINE).ok().flatten();
             host.pending().cancel(id, || host.retire());
             host.changed();
@@ -330,8 +334,15 @@ impl Host for AppHost {
             file.invalidate_preview();
         }
     }
-    fn present(&self) {
-        crate::picker::reveal_picker(&self.0);
+    fn present(&self, id: u64) {
+        // Checked again on the main thread, where switching off runs, so a
+        // request it ended first cannot open the picker after.
+        let app = self.0.clone();
+        let _ = self.0.run_on_main_thread(move || {
+            if app.state::<Pending>().current().is_some_and(|request| request.id == id) {
+                crate::picker::reveal_picker(&app);
+            }
+        });
     }
 }
 
@@ -534,6 +545,8 @@ mod tests {
         then: StdMutex<Option<Then>>,
         /// Runs while the request reads the person's style, before it begins.
         reading_style: StdMutex<Option<Then>>,
+        /// Runs as a request begins or ends, before the picker is shown.
+        changing: StdMutex<Option<Then>>,
     }
 
     impl Host for Fake {
@@ -551,11 +564,14 @@ mod tests {
         }
         fn changed(&self) {
             self.changes.fetch_add(1, Ordering::SeqCst);
+            if let Some(then) = self.changing.lock().ok().and_then(|mut then| then.take()) {
+                then(&self.pending);
+            }
         }
         fn retire(&self) {
             self.retired.fetch_add(1, Ordering::SeqCst);
         }
-        fn present(&self) {
+        fn present(&self, _: u64) {
             self.presented.fetch_add(1, Ordering::SeqCst);
             if let Some(then) = self.then.lock().ok().and_then(|mut then| then.take()) {
                 then(&self.pending);
@@ -956,22 +972,25 @@ mod tests {
     }
 
     #[test]
-    fn switching_off_while_a_request_reads_the_style_opens_nothing() {
-        let (listening, port, host) = server(Fake::default());
-        let listening = StdMutex::new(Some(listening));
-        // Switched off as `set_editor_endpoint` does: close, then end any request.
-        *host
-            .reading_style
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(move |pending: &Pending| {
-            drop(listening.lock().ok().and_then(|mut listening| listening.take()));
-            pending.cancel_any(|| ());
-        }));
-        let mut stream = connect(port);
-        send(&mut stream, port, &cayw(""), "");
-        assert_eq!(answer(&mut stream), "");
-        assert_eq!(host.presented.load(Ordering::SeqCst), 0);
-        assert_eq!(host.pending.current(), None);
+    fn switching_off_while_a_request_starts_opens_nothing() {
+        for begun in [false, true] {
+            let (listening, port, host) = server(Fake::default());
+            let listening = StdMutex::new(Some(listening));
+            // Switched off as `set_editor_endpoint` does: close, then end any request.
+            let off: Then = Box::new(move |pending: &Pending| {
+                drop(listening.lock().ok().and_then(|mut listening| listening.take()));
+                pending.cancel_any(|| ());
+            });
+            // While it reads the person's style, or once it has begun.
+            let stage = if begun { &host.changing } else { &host.reading_style };
+            *stage.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(off);
+            let mut stream = connect(port);
+            send(&mut stream, port, &cayw(""), "");
+            let text = answer(&mut stream);
+            assert!(text.is_empty() || text.ends_with("\r\n\r\n"), "{text}");
+            assert_eq!(host.presented.load(Ordering::SeqCst), 0, "begun: {begun}");
+            assert_eq!(host.pending.current(), None);
+        }
     }
 
     #[test]

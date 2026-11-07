@@ -25,6 +25,23 @@ pub(crate) fn flavors<'a>(content: &ClipboardContent<'a>) -> Vec<(Flavor, &'a st
 
 const FAILED: &str = "The clipboard could not be written.";
 
+/// The system's count of clipboard writes by any app.
+#[cfg(target_os = "macos")]
+pub(crate) fn sequence() -> Option<i64> {
+    i64::try_from(objc2_app_kit::NSPasteboard::generalPasteboard().changeCount()).ok()
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn sequence() -> Option<i64> {
+    clipboard_win::seq_num().map(|sequence| i64::from(sequence.get()))
+}
+
+/// Linux keeps no such count; only Ibis's own writes are known.
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub(crate) fn sequence() -> Option<i64> {
+    None
+}
+
 #[cfg(target_os = "macos")]
 fn macos_html(fragment: &str) -> String {
     // AppKit's HTML importer otherwise guesses a legacy encoding for UTF-8.
@@ -223,6 +240,13 @@ fn write_copy_only(write: impl FnOnce() -> Result<(), String>) -> Result<Option<
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_copy_that_began_before_another_ibis_copy_sees_it_was_written() {
+        let began = crate::copy::clipboard_mark();
+        crate::copy::write_token().unwrap_or_else(|error| panic!("{error}"));
+        assert_ne!(crate::copy::clipboard_mark(), began);
+    }
 
     #[test]
     fn copy_only_writes_have_ordered_receipts_and_failed_io_has_none() {

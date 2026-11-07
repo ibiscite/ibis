@@ -146,19 +146,28 @@ pub(crate) async fn copy_session_bibliography(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<(), CommandError> {
-    // Formatting can take a while; a citation copied meanwhile is newer and stays.
-    let began = crate::copy::TURN.now();
+    // Formatting can take a while: anything copied meanwhile is newer and stays.
+    let began = crate::copy::clipboard_mark();
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
     let items = session.items();
-    tauri::async_runtime::spawn_blocking(move || {
+    let content = tauri::async_runtime::spawn_blocking(move || {
         file.commit_session_bibliography(&items, &style, &content_hash, |content| {
-            crate::copy::write_copy_only_after(&app, content, began)
-        })?
-        .ok_or(CommandError::Cancelled)
+            Ok(crate::copy::OwnedContent::of(content))
+        })
     })
     .await
-    .map_err(|_| CommandError::from(FAILED))?
+    .map_err(|_| CommandError::from(FAILED))??;
+    let (send, written) = std::sync::mpsc::sync_channel(1);
+    let main = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = send.send(crate::copy::write_copy_only_unless_written(&main, &content, began));
+    })
+    .map_err(|_| CommandError::from(FAILED))?;
+    tauri::async_runtime::spawn_blocking(move || written.recv())
+        .await
+        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::from(FAILED))?
 }
 
 /// The kinds of file a bibliography can be saved as, by its extension.
@@ -384,28 +393,6 @@ mod bibliography_tests {
         });
         assert!(matches!(refused, Err(CommandError::SnapshotChanged)));
         assert!(!wrote);
-    }
-
-    #[test]
-    fn a_bibliography_still_formatting_never_replaces_a_citation_copied_meanwhile() {
-        let (_dir, file, ids) = opened(LIBRARY);
-        let bibliography = shown(&file, &ids);
-        let turn = crate::copy::ClipboardTurn::default();
-        let began = turn.now();
-        let mut clipboard = vec![];
-        turn.next(|| clipboard.push("citation"));
-        let written = file.commit_session_bibliography(&ids, "apa", &bibliography.content_hash, |_| {
-            Ok(turn.after(began, || clipboard.push("bibliography")))
-        });
-        assert!(matches!(written, Ok(None)));
-        assert_eq!(clipboard, ["citation"]);
-        // With no copy in between, the bibliography is written.
-        let began = turn.now();
-        let written = file.commit_session_bibliography(&ids, "apa", &bibliography.content_hash, |_| {
-            Ok(turn.after(began, || clipboard.push("bibliography")))
-        });
-        assert!(matches!(written, Ok(Some(()))));
-        assert_eq!(clipboard, ["citation", "bibliography"]);
     }
 
     #[test]

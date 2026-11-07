@@ -118,11 +118,67 @@ mod shelf_summary_tests {
 /// Allocate under the platform's write lock, before clipboard I/O. Exhaustion
 /// refuses the write instead of wrapping or publishing an unidentified copy.
 pub(crate) fn write_token() -> Result<u32, String> {
-    static NEXT: Mutex<u32> = Mutex::new(0);
     let failed = || "The clipboard could not be written.".to_owned();
-    let mut token = NEXT.lock().map_err(|_| failed())?;
+    let mut token = WRITES.lock().map_err(|_| failed())?;
     *token = token.checked_add(1).ok_or_else(failed)?;
     Ok(*token)
+}
+
+/// Every Ibis clipboard write takes the next token.
+static WRITES: Mutex<u32> = Mutex::new(0);
+
+/// Where the clipboard stands: Ibis's own writes, and the system's count of
+/// writes by any app where it keeps one (macOS and Windows).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ClipboardMark {
+    ours: u32,
+    system: Option<i64>,
+}
+
+pub(crate) fn clipboard_mark() -> ClipboardMark {
+    ClipboardMark {
+        ours: *WRITES.lock().unwrap_or_else(|poisoned| poisoned.into_inner()),
+        system: clipboard::sequence(),
+    }
+}
+
+/// A copy's content, kept while it moves to the main thread to be written.
+pub(crate) struct OwnedContent {
+    text: String,
+    html: Option<String>,
+    rtf: Option<String>,
+}
+
+impl OwnedContent {
+    pub(crate) fn of(content: ibis_core::contract::ClipboardContent<'_>) -> Self {
+        Self {
+            text: content.text.to_owned(),
+            html: content.html.map(str::to_owned),
+            rtf: content.rtf.map(str::to_owned),
+        }
+    }
+
+    fn content(&self) -> ibis_core::contract::ClipboardContent<'_> {
+        ibis_core::contract::ClipboardContent {
+            text: &self.text,
+            html: self.html.as_deref(),
+            rtf: self.rtf.as_deref(),
+        }
+    }
+}
+
+/// On the main thread, where citations are written: copy `content` unless the
+/// clipboard was written since `began`, here or in another app. That copy is
+/// newer and stays; this one ends as cancelled.
+pub(crate) fn write_copy_only_unless_written(
+    app: &AppHandle,
+    content: &OwnedContent,
+    began: ClipboardMark,
+) -> Result<(), CommandError> {
+    if clipboard_mark() != began {
+        return Err(CommandError::Cancelled);
+    }
+    write_copy_only(app, content.content()).map_err(CommandError::from)
 }
 
 mod clipboard;
@@ -341,16 +397,14 @@ fn commit_shown(
             session: &session,
         },
         |content| {
-            TURN.next(|| {
-                #[cfg(target_os = "windows")]
-                let delivery = {
-                    let (token, sequence) = clipboard::write(&app, content)?;
-                    crate::paste::remember_copy(&app, attempt, sequence, token)
-                };
-                #[cfg(not(target_os = "windows"))]
-                let delivery = clipboard::write(&app, content, &replaces)?;
-                Ok(delivery)
-            })
+            #[cfg(target_os = "windows")]
+            let delivery = {
+                let (token, sequence) = clipboard::write(&app, content)?;
+                crate::paste::remember_copy(&app, attempt, sequence, token)
+            };
+            #[cfg(not(target_os = "windows"))]
+            let delivery = clipboard::write(&app, content, &replaces)?;
+            Ok(delivery)
         },
     )?;
     record(&copied);
@@ -407,59 +461,11 @@ pub(crate) fn commit_copy(
     })
 }
 
-/// Every copy writes the clipboard in its turn, under one lock taken last. A
-/// copy that formats first notes the turn as it starts and writes only if no
-/// copy has written since, so a slow bibliography cannot replace a newer citation.
-#[derive(Default)]
-pub(crate) struct ClipboardTurn(Mutex<u64>);
-
-impl ClipboardTurn {
-    fn lock(&self) -> std::sync::MutexGuard<'_, u64> {
-        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
-    }
-
-    pub(crate) fn now(&self) -> u64 {
-        *self.lock()
-    }
-
-    pub(crate) fn next<T>(&self, write: impl FnOnce() -> T) -> T {
-        let mut turn = self.lock();
-        *turn += 1;
-        write()
-    }
-
-    /// `None`, with nothing written, when another copy wrote after `since`.
-    pub(crate) fn after<T>(&self, since: u64, write: impl FnOnce() -> T) -> Option<T> {
-        let mut turn = self.lock();
-        if *turn != since {
-            return None;
-        }
-        *turn += 1;
-        Some(write())
-    }
-}
-
-pub(crate) static TURN: ClipboardTurn = ClipboardTurn(Mutex::new(0));
-
 /// Whole content with no delivery: it is copied, never pasted.
 pub(crate) fn write_copy_only(
     app: &AppHandle,
     content: ibis_core::contract::ClipboardContent<'_>,
 ) -> Result<(), String> {
-    TURN.next(|| publish_copy_only(app, content))
-}
-
-/// As `write_copy_only`, for a copy that began at turn `since`: `None` when a
-/// newer copy has written meanwhile, which this one must not replace.
-pub(crate) fn write_copy_only_after(
-    app: &AppHandle,
-    content: ibis_core::contract::ClipboardContent<'_>,
-    since: u64,
-) -> Result<Option<()>, String> {
-    TURN.after(since, || publish_copy_only(app, content)).transpose()
-}
-
-fn publish_copy_only(app: &AppHandle, content: ibis_core::contract::ClipboardContent<'_>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let written = clipboard::write(app, content);
     // Nothing is replaced: this is a new copy, not a change to the last citation.
