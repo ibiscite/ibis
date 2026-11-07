@@ -73,7 +73,7 @@ export type PickerPreview = { query?: string; copied?: Copied };
 export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const api = usePickerAppearance(sourceApi);
   const pickerSession = usePickerSession(preview);
-  const { session, state, send, setQuery, setActive, cancelCopy, isCurrentSession } = pickerSession;
+  const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
   // The page's one hidden mark, from the session: CSS pauses looping animations
   // with it. Unknown counts as hidden, so nothing runs before the native read.
@@ -127,8 +127,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
+    session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
+    previewFileCitation: api.previewFileCitation, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
