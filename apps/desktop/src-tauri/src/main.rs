@@ -9,6 +9,8 @@
 mod bindings;
 mod copy;
 mod delights;
+#[cfg(any(target_os = "linux", test))]
+mod desktop_theme;
 mod destination;
 mod diagnostics;
 mod editor_endpoint;
@@ -291,6 +293,8 @@ fn main() {
             }
             #[cfg(target_os = "macos")]
             panel::configure(app.handle())?;
+            #[cfg(target_os = "linux")]
+            desktop_theme::follow(app.handle());
             // Complete size and placement while the native window is hidden,
             // before either the panel readiness gate or a window show.
             if let Some(window) = checked(app.get_webview_window("main").ok_or(()), NativeIssue::Window) {

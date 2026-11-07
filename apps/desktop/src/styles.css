@@ -32,8 +32,8 @@ main > footer { grid-area: footer; }
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
 .notices p { margin: var(--space-3) 0; }
-.copy-notice { display: flow-root; padding-bottom: .5rem; }
-.dismiss { float: right; margin: .5rem 0 .5rem .5rem; }
+.copy-notice { display: flow-root; padding-bottom: var(--space-2); }
+.dismiss { float: right; margin: var(--space-2) 0 var(--space-2) var(--space-2); }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
@@ -44,7 +44,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* [C3] The dot centres on the tiles' column and the words start on the titles'
    column, as every row above does; the dot is centred on the text's x-height:
    its bottom rests on the baseline, then rises to half an ex. */
-.library-status { flex: 1; min-width: min(14rem, 100%); display: flex; align-items: baseline; gap: calc((var(--tile) - var(--status-dot)) / 2 + var(--row-gap)); color: var(--text-secondary); }
+.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: baseline; gap: calc((var(--tile) - var(--status-dot)) / 2 + var(--row-gap)); color: var(--text-secondary); }
 .library-status > .status-dot { margin-inline-start: calc((var(--tile) - var(--status-dot)) / 2); }
 .library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
 /* A long name is shortened before the state words; the age goes first of all. */
@@ -59,7 +59,7 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
    its 1 px .visually-hidden box or the page grows wider than the window. */
 .library-bar > p[role="status"] { width: 100%; margin: var(--space-1) 0; }
 /* The dot repeats what the words say, so colour is never the only signal. */
-.status-dot { translate: 0 calc(var(--status-dot) / 2 - .5ex); width: var(--status-dot); height: var(--status-dot); border-radius: 50%; flex-shrink: 0; background: var(--text-secondary); }
+.status-dot { translate: 0 calc(var(--status-dot) / 2 - .5ex); width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); flex-shrink: 0; background: var(--text-secondary); }
 .status-dot[data-health="done"] { background: var(--status-ok); }
 .status-dot[data-health="look"] { background: var(--status-warning); }
 .status-dot[data-health="stop"] { background: var(--status-error); }

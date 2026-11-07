@@ -3,7 +3,7 @@
 .ui-picture-choices { display: grid; grid-template-columns: repeat(var(--choice-columns), minmax(0, 1fr)); align-items: stretch; gap: var(--space-2); width: 100%; min-width: 0; }
 .ui-picture-choice {
   display: flex; flex-direction: column; align-items: center; gap: var(--space-2); padding: var(--space-1); min-width: 0; max-width: 100%; box-sizing: border-box;
-  border-radius: var(--r-floor); color: var(--text-secondary); background: transparent; outline: none;
+  border-radius: var(--r-small); color: var(--text-secondary); background: transparent; outline: none;
   font-size: var(--type-label-size); line-height: var(--type-label-line); text-align: center; overflow-wrap: anywhere;
 }
 .ui-picture-choice { justify-content: end; }
@@ -12,30 +12,16 @@
 .ui-picture-choice[data-selected] { color: var(--text); font-weight: var(--strong); }
 .ui-picture-choice[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 .ui-picture-choice[data-disabled] { color: var(--text-disabled); }
-.ui-picture-choices[data-strips] { grid-template-columns: minmax(0, 1fr); }
-.ui-picture-choices[data-strips] .ui-picture-choice { align-items: stretch; text-align: start; }
-.ui-picture-choice-label { display: flex; flex-wrap: wrap; gap: 6px; align-items: baseline; }
-.ui-picture-choices[data-strips] .ui-picture-choice-label { padding-inline: var(--row-spacing); }
-.ui-picture-choice-note { color: var(--text-secondary); font-weight: 400; }
-/* A preview is the real part, and its frame comes from what it shows. A window has a
-   set shape, so its picture is that shape scaled. Rows have no set height, so a strip
-   lays them out at its zoom and hugs them; WebKit keeps small text legible under zoom,
-   which is why the tiny window picture scales instead. */
-.ui-picker-picture { --preview: var(--preview-window); display: block; position: relative; overflow: hidden; pointer-events: none; min-width: 0; max-width: 100%; width: calc(var(--preview-window-w) * var(--preview)); height: calc(var(--preview-window-h) * var(--preview)); border-radius: var(--r-tile); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
+/* A preview is the real part: a window of its set shape, scaled. Every choice
+   on Appearance is this one picture, so the page reads as one kind of choice. */
+.ui-picker-picture { --preview: var(--preview-window); display: block; position: relative; overflow: hidden; pointer-events: none; min-width: 0; max-width: 100%; width: calc(var(--preview-window-w) * var(--preview)); height: calc(var(--preview-window-h) * var(--preview)); border-radius: var(--r-small); box-shadow: 0 0 0 var(--border-width) var(--separator); text-align: start; }
 .ui-picker-picture-mask { position: absolute; inset: 0; background: var(--surface); color: var(--text); }
 .ui-picker-picture-mask[data-dark] { clip-path: polygon(100% 0, 100% 100%, 0 100%); }
 .ui-picker-picture-content { position: absolute; inset-block-start: 0; inset-inline-start: 0; width: var(--preview-window-w); transform: scale(var(--preview)); transform-origin: top left; }
 :dir(rtl) .ui-picker-picture-content { transform-origin: top right; }
-/* A strip of rows already sits on a card: it is the rows alone, with no frame or
-   surface of its own, so a picture is never framed twice. The choice's ring is
-   its one edge, and only when chosen. */
-.ui-picker-picture[data-rows] { width: 100%; height: auto; box-shadow: none; }
-.ui-picker-picture[data-rows] .ui-picker-picture-mask { position: static; display: flow-root; background: transparent; }
-.ui-picker-picture[data-rows] .ui-picker-picture-content { position: static; display: block; width: auto; transform: none; zoom: var(--preview-rows); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-picture-choice { border: var(--border-width) solid CanvasText; }
   .ui-picture-choice[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
-  .ui-picture-choice[data-selected] .ui-picture-choice-note { color: inherit; }
   .ui-picture-choice[data-focus-visible] { outline-color: CanvasText; }
 }
 @media (pointer: coarse) {

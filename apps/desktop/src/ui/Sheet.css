@@ -3,27 +3,25 @@
    and every part keeps the same side inset, so nothing touches the sheet's edge. */
 .ui-sheet-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: var(--inset); background: var(--scrim); }
 .ui-sheet {
-  --sheet-pad: var(--space-4);
   box-sizing: border-box; display: flex; flex-direction: column; width: min(42rem, 100%); max-height: 100%; min-width: 0; min-height: 0;
-  color: var(--text); border-radius: var(--r-menu); box-shadow: var(--shadow-overlay);
+  border-radius: var(--r-large);
 }
 .ui-sheet:focus { outline: none; }
-.ui-sheet-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--sheet-pad) var(--space-2); }
+.ui-sheet-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); }
 .ui-sheet-heading h2 { margin: 0; font-size: inherit; font-weight: var(--strong); }
-.ui-sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--sheet-pad) var(--sheet-pad); }
-.ui-sheet-body:focus-visible { outline-offset: calc(-1 * var(--ring-width)); }
+.ui-sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--space-4) var(--space-4); }
+.ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
 .ui-sheet-body > :first-child { margin-block-start: 0; }
 .ui-sheet-body p { margin: var(--space-2) 0; }
-.ui-sheet-body :is(h3, h4) { margin: var(--space-3) 0 var(--space-1); font: inherit; font-weight: var(--strong); }
+.ui-sheet-body :is(h3, h4) { margin-block: var(--space-4) 0; }
 .ui-sheet-note { color: var(--text-secondary); }
-/* What will be copied or saved: kept as written and selectable. */
-.ui-sheet-output { white-space: pre-wrap; user-select: text; }
+/* What will be copied or saved: kept as written and selectable, on a card. */
+.ui-sheet-body .ui-sheet-output { margin: 0; padding: var(--space-3) var(--settings-row-pad); white-space: pre-wrap; user-select: text; }
 /* With actions under it, the body leaves the bottom inset to them. */
 .ui-sheet-body:not(:last-child) { padding-block-end: 0; }
-.ui-sheet-actions { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--sheet-pad) var(--sheet-pad); }
+.ui-sheet-actions { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
 .ui-sheet-spacer { flex: 1; }
 .ui-sheet-list { display: flex; flex-direction: column; margin: var(--space-3) 0; padding: 0; list-style: none; }
-.ui-sheet-row { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); padding-block: var(--space-1); }
 /* What the row is about takes the room; its buttons keep theirs. */
 .ui-sheet-row > :first-child:not(button) { display: flex; flex: 1; flex-direction: column; min-width: 0; }
 .ui-sheet-section { margin-block: var(--space-3); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }
@@ -31,6 +29,3 @@
 /* Reserves a line for a spinner or a problem, so nothing above it moves. */
 .ui-sheet-status { min-height: var(--control-small-h); margin-block-start: var(--space-2); }
 .ui-sheet-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
-@media (prefers-contrast: more), (forced-colors: active) {
-  .ui-sheet { border: var(--border-width) solid CanvasText; }
-}

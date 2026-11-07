@@ -8,7 +8,7 @@
   position: relative; /* Bound React Aria's hidden input to this choice. */
   min-height: var(--control-small-h); padding: 0 var(--space-3); display: inline-flex; align-items: center;
   min-width: 0; max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere;
-  border-radius: var(--r-seg); font: var(--type-body-size) / var(--type-body-line) var(--font);
+  border-radius: var(--r-small); font: var(--type-body-size) / var(--type-body-line) var(--font);
   color: var(--text); cursor: default; white-space: normal;
 }
 .ui-segment[data-hovered]:not([data-selected]) { background: var(--fill-quiet-hover); }
@@ -18,7 +18,7 @@
 .ui-segment-label { display: inline-flex; flex-direction: column; align-items: center; }
 .ui-segment-label::after { content: attr(data-label) / ""; height: 0; overflow: hidden; visibility: hidden; font-weight: var(--strong); pointer-events: none; user-select: none; }
 .ui-segment[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
-@media (pointer: coarse) { .ui-segment { min-height: 2.75rem; } }
+@media (pointer: coarse) { .ui-segment { min-height: var(--touch-target); } }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-segment[data-selected] { forced-color-adjust: none; background: Highlight; color: HighlightText; box-shadow: none; }
 }

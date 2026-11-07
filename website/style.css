@@ -10,7 +10,7 @@ body { margin: 0; background: var(--website-bg); color: var(--website-text); fon
 a { color: var(--scarlet); text-underline-offset: .2em; text-decoration-color: color-mix(in srgb, currentColor 40%, transparent); }
 a:hover { text-decoration-color: currentColor; text-decoration-thickness: var(--ring-width); }
 ::selection { background: color-mix(in srgb, var(--scarlet) 22%, transparent); color: var(--text); }
-:where(a, button, input, select):focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-width); border-radius: var(--r-tile); }
+:where(a, button, input, select):focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-width); border-radius: var(--r-small); }
 /* The ring sits outside so it never crosses text; inside only where a scroller or the page edge would clip it. */
 :where(.index, .rows, .picker) :focus-visible { outline-offset: calc(-1 * var(--ring-width)); }
 /* The sidebar is navigation: a press-and-drag there moves a link, it never starts a text selection across the page. */
@@ -50,7 +50,7 @@ code, .key { display: inline-block; color: var(--scarlet); background: var(--web
 a:hover .key, a.key:hover { box-shadow: inset 0 0 0 var(--border-width) currentColor; text-decoration: none; }
 a[aria-current="location"] .key { background: var(--scarlet); color: var(--website-bg); box-shadow: none; }
 p:not(.actions) code, p:not(.actions) .key, li code { display: inline; padding: .1em .35em; font-size: .85em; line-height: inherit; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-kbd { font: inherit; padding: 0 .3em; border-radius: var(--r-tile); background: var(--fill-control); box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
+kbd { font: inherit; padding: 0 .3em; border-radius: var(--r-small); background: var(--fill-control); box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .intro { padding-block: var(--space-8) var(--website-section-pad); }
 section { padding-block: var(--website-section-pad); }
 .text.after { margin: 0; }
@@ -91,7 +91,7 @@ section { padding-block: var(--website-section-pad); }
 .install li { padding-left: var(--space-1); margin-bottom: var(--space-2); }
 .rows { list-style: none; padding: 0; margin: var(--website-block-gap) 0; border-top: var(--border-width) solid var(--separator); }
 .rows li { border-bottom: var(--border-width) solid var(--separator); }
-.rows a { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-6); min-height: var(--touch-target); padding: var(--space-4) var(--space-2); border-radius: var(--r-tile); color: var(--text); text-decoration: none; }
+.rows a { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-6); min-height: var(--touch-target); padding: var(--space-4) var(--space-2); border-radius: var(--r-small); color: var(--text); text-decoration: none; }
 .rows a:hover { background: var(--fill-quiet-hover); }
 .rows a:hover strong { text-decoration: underline; }
 .rows strong { font-family: var(--font); }

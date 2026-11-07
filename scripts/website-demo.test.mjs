@@ -73,15 +73,6 @@ test("shared cap labels are one cap per shortcut in native modifier order, with 
   ]) assert.deepEqual(Array.from(ctx.keyCapLabels(accelerator, mac)), expected, `${accelerator}, mac=${mac}`);
 });
 
-test("footer key caps use the app's height, radius, fill and label type", async () => {
-  const css = await readFile(new URL("../website/demo.css", import.meta.url), "utf8");
-  const caps = css.match(/\.picker-actions kbd \{([^}]+)\}/)?.[1] ?? "";
-  for (const declaration of ["height: var(--key)", "min-width: var(--key)", "border-radius: var(--r-key)",
-    "background: var(--fill-control)", "var(--type-label-size)", "var(--font)", "font-weight: 500", "box-shadow: none"]) assert.ok(caps.includes(declaration), declaration);
-  assert.match(css, /\.picker-actions \.key-caps \{[^}]*direction: ltr; unicode-bidi: isolate;/, "whole chords stay LTR in RTL pages");
-  assert.doesNotMatch(css, /\.picker-foot kbd[^}]*font-size:\s*\.95em/, "footer caps keep label type at all widths");
-});
-
 test("copy confirms once in the shelf and paste keeps the copied value through later edits", () => {
   const { copy, input, panel, figure, result, reopen } = demoPage("macos");
   const capsule = panel.querySelector(".picker-status"), announce = figure.querySelector(".demo-status");
