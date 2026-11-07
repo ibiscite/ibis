@@ -102,6 +102,26 @@ case "focus":
     let element = focused as! AXUIElement
     out(["pid": Int(pid(of: element)), "role": string(element, kAXRoleAttribute),
          "label": string(element, kAXDescriptionAttribute), "value": string(element, kAXValueAttribute)])
+case "picker":
+    // A non-activating panel takes the keyboard without making Ibis the active
+    // app, so the system-wide focus can stay with the app behind it. Report
+    // Ibis's own focused element and which of its windows are on screen.
+    guard arguments.count == 2, let target = pid_t(arguments[1]) else { fail("usage") }
+    let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+        as? [[String: Any]] ?? []
+    let onscreen = listed.filter { ($0[kCGWindowOwnerPID as String] as? Int) == Int(target) }
+        .map { $0[kCGWindowName as String] as? String ?? "" }
+    let app = AXUIElementCreateApplication(target)
+    let focused = attribute(app, kAXFocusedUIElementAttribute).map { $0 as! AXUIElement }
+    let systemFocus = attribute(system, kAXFocusedUIElementAttribute).map { pid(of: $0 as! AXUIElement) } ?? 0
+    var role = "", label = "", value = ""
+    if let focused {
+        role = string(focused, kAXRoleAttribute)
+        label = string(focused, kAXDescriptionAttribute)
+        if label.isEmpty { label = string(focused, kAXTitleAttribute) }
+        value = string(focused, kAXValueAttribute)
+    }
+    out(["onscreen": onscreen, "role": role, "label": label, "value": value, "system_pid": Int(systemFocus)])
 case "strings":
     guard arguments.count == 2, let target = pid_t(arguments[1]) else { fail("usage") }
     out(strings(AXUIElementCreateApplication(target)))

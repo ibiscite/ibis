@@ -1595,6 +1595,7 @@ class MacOS:
         if not self.helper("trusted")["accessibility"]:
             raise Unavailable("Give this terminal Accessibility access in System Settings > Privacy & Security", "accessibility-driver")
         self.app = None  # The Ibis process, set by the journey.
+        self.last_picker = None
 
     def helper(self, *arguments):
         result = subprocess.run([str(self.helper_path), *map(str, arguments)], capture_output=True, text=True, timeout=20)
@@ -1618,14 +1619,19 @@ class MacOS:
         return self.helper("focus")
 
     def ibis_focused(self, value=None):
-        focus = self.focus()
-        return focus.get("pid") == self.app.pid and (value is None or focus.get("value") == value)
+        """The picker is on screen and its search field is Ibis's focused element.
+
+        The panel never activates Ibis, so this is Ibis's own focus, not the
+        system's; the journey's outcomes prove where the keys went."""
+        picker = self.helper("picker", self.app.pid)
+        self.last_picker = {"onscreen": "Ibis" in picker["onscreen"], "role": picker["role"],
+                            "search": picker["label"] == "Search references",
+                            "system_focus_is_ibis": picker["system_pid"] == self.app.pid,
+                            "value_matches": value is None or picker["value"] == value}
+        return (self.last_picker["onscreen"] and self.last_picker["search"] and self.last_picker["value_matches"])
 
     def ibis_strings(self):
         return self.helper("strings", self.app.pid)["strings"]
-
-    def ibis_windows(self):
-        return self.helper("strings", self.app.pid)["windows"]
 
     def clipboard(self, *, timeout=20):
         return subprocess.run(["pbpaste"], capture_output=True, text=True, check=True, timeout=timeout).stdout
@@ -1733,10 +1739,9 @@ def _journey_main(args):
             app = MacApp(args.app, library)
         native.app = app
         # Ibis shows its picker once it starts; wait for the library, then hide it.
-        wait_for(lambda: "Ibis" in native.ibis_windows() and native.ibis_focused(), "the first picker has the keyboard",
-                 timeout=60)
+        wait_for(native.ibis_focused, "the first picker has the keyboard", timeout=60)
         native.key("Escape")
-        wait_for(lambda: "Ibis" not in native.ibis_windows(), "Escape hides the first picker")
+        wait_for(lambda: "Ibis" not in native.helper("picker", app.pid)["onscreen"], "Escape hides the first picker")
         passed("the app starts and Escape hides its first picker")
 
         with recording("action", "open-document"):
@@ -1774,7 +1779,7 @@ def _journey_main(args):
                                        "pasted_notice_seen": seen["pasted"], "notices": sorted(seen["notices"])}
             raise AssertionError("TextEdit did not end up with exactly the chosen citation; notices: "
                                  + ("; ".join(sorted(seen["notices"])) or "none")) from None
-        wait_for(lambda: "Ibis notice" not in native.ibis_windows(), "the notice goes away", timeout=15)
+        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
         assert read().get("text") == JOURNEY_PASTED, "TextEdit changed again after the paste: pasted more than once"
         passed("Enter pastes exactly the chosen citation into TextEdit, once")
 
@@ -1807,7 +1812,7 @@ def _journey_main(args):
         except AssertionError:
             raise AssertionError("Terminal did not get a copy with its reason; notices: "
                                  + ("; ".join(sorted(notices)) or "none")) from None
-        wait_for(lambda: "Ibis notice" not in native.ibis_windows(), "the notice goes away", timeout=15)
+        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
         assert received.read_bytes() == b"", "Ibis typed or pasted into the terminal"
         passed("a terminal gets a copy, a visible reason and no keystrokes")
         report["status"], exit_code = "passed", 0
@@ -1818,6 +1823,9 @@ def _journey_main(args):
     except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
         failure(error)
         report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
+        if native:
+            report["last_picker"] = native.last_picker  # Booleans and a role name only.
+            report["app_running"] = bool(app) and app.poll() is None
     finally:
         def stop_collector():
             if collector:
