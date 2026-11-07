@@ -379,7 +379,7 @@ def collect_metadata(app, fixtures):
     version = re.search(r'^version = "([0-9.]+)"$', (root / "Cargo.toml").read_text(), re.MULTILINE)
     harness = b"".join((root / "scripts" / name).read_bytes() for name in
                        ("smoke-native.py", "native_evidence.py", "native_evidence.schema.json", "native_test_settings.py",
-                        "macos-journey.swift"))
+                        "macos-journey.swift", "windows-journey.ps1"))
     language = locale.setlocale(locale.LC_CTYPE)
     if not re.fullmatch(r"(?:C|POSIX|[a-z]{2,3}(?:_[A-Z]{2})?)(?:\.(?:UTF-8|utf8|ISO8859-1))?", language, re.ASCII):
         language = None

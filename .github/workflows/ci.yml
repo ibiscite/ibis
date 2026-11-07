@@ -315,6 +315,16 @@ jobs:
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
 
+      # The same journey into Notepad and a console. It runs before the Ctrl+V
+      # check below, which leaves its Notepad open; exit 2 means unavailable.
+      - name: Journey into Notepad (Windows)
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        run: |
+          status=0
+          python -B scripts/smoke-native.py --journey --app target/debug/ibis-desktop.exe --output screenshots/journey-Windows || status=$?
+          if [ "$status" = 2 ]; then echo "::warning::The Windows journey was unavailable on this runner."; exit 0; fi
+          exit "$status"
+
       - name: Paste into Notepad (Windows)
         if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
@@ -359,7 +369,7 @@ jobs:
 
       # Keep native smoke evidence even after a failure or timeout.
       - name: Keep screenshots and startup logs
-        if: always() && env.NATIVE == 'true' && runner.os != 'Windows'
+        if: always() && env.NATIVE == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picker-${{ github.sha }}-${{ runner.os }}
