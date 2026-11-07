@@ -433,6 +433,10 @@ slice independently useful. Later phases build on evidence and replay.
    independent readback. Schedule nightly when the Mac/access is available;
    expose gaps without requiring paid models, accounts or Office.
 
+## Computer-use release check
+
+Before each numbered release, a computer-use agent drives the newest nightly on the Mac, the Windows PC and Ubuntu, after the maintainer's own `hands-on-macos.sh` run. Sol writes the plan from the roadmap and `docs/design/`, at most 45 items ordered by risk, each with steps, the outcome a person sees and what counts as a failure. The agent uses only the sample references or the synthetic files that `hands-on-macos.sh` installs, switches away from any real library before a screenshot, restores every setting it changed, and reports each item as pass, fail, blocked or skipped with a screenshot per failure, plus anything else that looks wrong. Every failure becomes a regression test with its fix, or a line in the next milestone's issue; blocked items say what blocked them. The 0.3 run (2026-11-07) found Change Last Citation refusing a selected citation, copies without a reason, unreliable paste into TextEdit and a drag that skipped a refusal.
+
 ## What needs the maintainer
 
 - Register/configure the maintainer's Mac and Windows PC as self-hosted machines;
