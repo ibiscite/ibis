@@ -379,7 +379,7 @@ mod tests {
 
     /// Run by `node scripts/gen.mjs`, which writes `src/bindings.ts` from it.
     #[test]
-    #[ignore = "writes the desktop contract for scripts/gen.mjs"]
+    #[ignore = "writes the desktop contract for gen.mjs"]
     fn export_contract() {
         let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
         let text = serde_json::to_string_pretty(&super::contract()).unwrap_or_else(|e| panic!("{e}"));

@@ -64,7 +64,7 @@ fn spelling(arg: &Arg) -> String {
 }
 
 #[test]
-#[ignore = "writes the generated files for scripts/gen.mjs"]
+#[ignore = "writes the generated files for gen.mjs"]
 fn write_generated() {
     let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
     let directory = std::path::Path::new(&directory);

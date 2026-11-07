@@ -137,7 +137,7 @@ fn empty_citation_cannot_be_copied() {
 
 /// Run by `node scripts/gen.mjs`, which places it in `fixtures/`.
 #[test]
-#[ignore = "writes the generated schema for scripts/gen.mjs"]
+#[ignore = "writes the generated schema for gen.mjs"]
 fn write_schema_snapshot() -> Result<(), Box<dyn std::error::Error>> {
     let directory = std::env::var_os("IBIS_GEN_DIR").ok_or("set IBIS_GEN_DIR")?;
     std::fs::write(
