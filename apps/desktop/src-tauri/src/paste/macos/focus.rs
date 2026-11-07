@@ -181,13 +181,23 @@ fn read_selection<P: Provider>(
     limit: Duration,
     deadline: Instant,
 ) -> Result<(Selection, Option<SelectedText>), CopyReason> {
+    read_control_selection(provider, pid, limit, deadline).map(|(_, selection, text)| (selection, text))
+}
+
+/// As `read_selection`, with the control it was read from.
+fn read_control_selection<P: Provider>(
+    provider: &P,
+    pid: i32,
+    limit: Duration,
+    deadline: Instant,
+) -> Result<(P::Element, Selection, Option<SelectedText>), CopyReason> {
     let available = selection_budget(provider, limit, deadline);
     let focused = readable_control(provider, pid, limit, deadline)?;
     diagnostics::stage("ax.selection_range");
     let something_selected = match provider.selected_length(&focused, deadline) {
-        Reply::Value(0) => return Ok((Selection::Nothing, None)),
-        Reply::Value(length) if length > SHORT_SELECTION => return Ok((Selection::Ignored, None)),
-        Reply::TooLong => return Ok((Selection::Ignored, None)),
+        Reply::Value(0) => return Ok((focused, Selection::Nothing, None)),
+        Reply::Value(length) if length > SHORT_SELECTION => return Ok((focused, Selection::Ignored, None)),
+        Reply::TooLong => return Ok((focused, Selection::Ignored, None)),
         Reply::Failed => return Err(CopyReason::PasteUnavailable),
         Reply::Value(_) => true,
         Reply::NoValue | Reply::Unsupported => false,
@@ -205,7 +215,7 @@ fn read_selection<P: Provider>(
     };
     // A late success is still a timeout: the app may have moved on.
     available()?;
-    Ok(selected)
+    Ok((focused, selected.0, selected.1))
 }
 
 /// A changed citation replaces only the old one (#1245). Whatever cannot prove
@@ -215,7 +225,7 @@ fn old_citation_selected<P: Provider>(
     pid: i32,
     old: &OldCitation,
     deadline: Instant,
-) -> Result<(), CopyReason> {
+) -> Result<P::Element, CopyReason> {
     let available = selection_budget(provider, FINAL_SELECTION_LIMIT, deadline);
     let focused = match readable_control(provider, pid, FINAL_SELECTION_LIMIT, deadline) {
         Err(CopyReason::SecureField | CopyReason::PasteUnavailable) => return Err(CopyReason::CitationNotSelected),
@@ -229,7 +239,7 @@ fn old_citation_selected<P: Provider>(
     let selected = provider.selected_text(&focused, limit, deadline);
     available().map_err(|_| CopyReason::CitationNotSelected)?;
     match selected {
-        Reply::Value(text) if old.is(&text) => Ok(()),
+        Reply::Value(text) if old.is(&text) => Ok(focused),
         _ => Err(CopyReason::CitationNotSelected),
     }
 }
@@ -248,23 +258,35 @@ fn opening_selection<P: Provider>(
     read_selection(provider, pid, SELECTION_LIMIT, deadline).unwrap_or((Selection::Unread, None))
 }
 
-/// The final proof before posting. `Unknown` cannot answer, so it asks nothing.
+#[cfg(test)]
 fn check_selection<P: Provider>(
     provider: &P,
     pid: i32,
     expected: &Selection,
     deadline: Instant,
 ) -> Result<(), CopyReason> {
+    proved_control(provider, pid, expected, deadline).map(|_| ())
+}
+
+/// The final proof before posting, and the control it holds for: the last
+/// identity read refuses any other, so a selection proved in one field is
+/// never replaced in another. `Unknown` cannot answer, so it asks nothing.
+fn proved_control<P: Provider>(
+    provider: &P,
+    pid: i32,
+    expected: &Selection,
+    deadline: Instant,
+) -> Result<Option<P::Element>, CopyReason> {
     match expected {
-        Selection::Unknown => return Ok(()),
-        Selection::Citation(old) => return old_citation_selected(provider, pid, old, deadline),
+        Selection::Unknown => return Ok(None),
+        Selection::Citation(old) => return old_citation_selected(provider, pid, old, deadline).map(Some),
         Selection::Unread | Selection::Nothing | Selection::Ignored | Selection::Short(_) => {}
     }
-    let (found, _text) = read_selection(provider, pid, FINAL_SELECTION_LIMIT, deadline)?;
+    let (control, found, _text) = read_control_selection(provider, pid, FINAL_SELECTION_LIMIT, deadline)?;
     match (expected, found) {
-        (Selection::Unread, Selection::Nothing | Selection::Unknown) => Ok(()),
+        (Selection::Unread, Selection::Nothing | Selection::Unknown) => Ok(Some(control)),
         (_, Selection::Unknown) => Err(CopyReason::PasteUnavailable),
-        (expected, found) if *expected == found => Ok(()),
+        (expected, found) if *expected == found => Ok(Some(control)),
         _ => Err(CopyReason::SelectionNotShown),
     }
 }
@@ -272,7 +294,7 @@ fn check_selection<P: Provider>(
 fn capture_query<P: Provider>(provider: &P, pid: i32, eligible: bool) -> Result<Identity<P::Element>, CopyReason> {
     let started = provider.elapsed();
     let deadline = provider.now() + LIMIT;
-    let result = query(provider, pid, deadline, || Ok(()));
+    let result = query(provider, pid, deadline, None, || Ok(()));
     if !eligible || !matches!(result, Err(CopyReason::PasteUnavailable)) {
         return result;
     }
@@ -293,7 +315,7 @@ fn capture_query<P: Provider>(provider: &P, pid: i32, eligible: bool) -> Result<
     // Enabling AX never repairs partial evidence. Recreate the system element
     // and run every owner/relation/focus check under the ORIGINAL total budget.
     let budget = remaining()?;
-    query(provider, pid, deadline.min(provider.now() + budget), || Ok(()))
+    query(provider, pid, deadline.min(provider.now() + budget), None, || Ok(()))
 }
 
 /// The capture, or why it failed in the person’s words.
@@ -329,6 +351,7 @@ fn query<P: Provider>(
     provider: &P,
     pid: i32,
     deadline: Instant,
+    proved: Option<&P::Element>,
     before_final_read: impl FnOnce() -> Result<(), CopyReason>,
 ) -> Result<Identity<P::Element>, CopyReason> {
     let started = provider.elapsed();
@@ -447,6 +470,12 @@ fn query<P: Provider>(
         } else {
             CopyReason::PasteUnavailable
         });
+    }
+    // Focus moved after the selection was proved, to a control whose
+    // selection nobody checked: unproved, and asked again from the start.
+    if proved.is_some_and(|proved| *proved != focused) {
+        diagnostics::stage("ax.final_control");
+        return Err(CopyReason::PasteUnavailable);
     }
     available()?;
     Ok(Identity { window, surface })
@@ -587,7 +616,7 @@ mod tests {
         }
 
         fn query(&self) -> Result<u32, CopyReason> {
-            query(self, 42, self.now() + LIMIT, || Ok(())).map(|identity| identity.surface)
+            query(self, 42, self.now() + LIMIT, None, || Ok(())).map(|identity| identity.surface)
         }
     }
 
@@ -831,6 +860,20 @@ mod tests {
             ..Fake::selecting("smith 2020")
         };
         assert_eq!(fake.selection(), Err(CopyReason::PasteUnavailable));
+    }
+
+    #[test]
+    fn a_paste_never_replaces_a_selection_in_a_control_nobody_checked() {
+        let opened = Selection::of_text("smith 2020").0;
+        let fake = Fake::selecting("smith 2020");
+        let proved = proved_control(&fake, 42, &opened, fake.now() + FINAL_SELECTION_LIMIT);
+        assert_eq!(proved, Ok(Some(1000)));
+        let last_read = |fake: &Fake| query(fake, 42, fake.now() + LIMIT, Some(&1000), || Ok(())).map(|_| ());
+        // A page moves focus to another field in the same window just after the check.
+        fake.focused_element.set(2000);
+        assert_eq!(last_read(&fake), Err(CopyReason::PasteUnavailable));
+        fake.focused_element.set(1000);
+        assert_eq!(last_read(&fake), Ok(()));
     }
 
     #[test]

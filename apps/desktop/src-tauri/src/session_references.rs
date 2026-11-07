@@ -146,16 +146,28 @@ pub(crate) async fn copy_session_bibliography(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<(), CommandError> {
+    // Formatting can take a while: anything copied meanwhile is newer and stays.
+    let began = crate::copy::clipboard_mark();
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
     let items = session.items();
-    tauri::async_runtime::spawn_blocking(move || {
+    let content = tauri::async_runtime::spawn_blocking(move || {
         file.commit_session_bibliography(&items, &style, &content_hash, |content| {
-            crate::copy::write_copy_only(&app, content)
+            Ok(crate::copy::OwnedContent::of(content))
         })
     })
     .await
-    .map_err(|_| CommandError::from(FAILED))?
+    .map_err(|_| CommandError::from(FAILED))??;
+    let (send, written) = std::sync::mpsc::sync_channel(1);
+    let main = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = send.send(crate::copy::write_copy_only_unless_written(&main, &content, began));
+    })
+    .map_err(|_| CommandError::from(FAILED))?;
+    tauri::async_runtime::spawn_blocking(move || written.recv())
+        .await
+        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::from(FAILED))?
 }
 
 /// The kinds of file a bibliography can be saved as, by its extension.

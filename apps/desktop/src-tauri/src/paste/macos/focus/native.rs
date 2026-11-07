@@ -17,7 +17,7 @@ use tauri_nspanel::objc2::rc::Retained;
 use super::super::secure_input;
 use super::{
     Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SelectedText, Selection,
-    capture_reason, check_selection, claim_process, diagnostics, missing_identity_attribute, opening_selection, query,
+    capture_reason, claim_process, diagnostics, missing_identity_attribute, opening_selection, proved_control, query,
     range_length, refused_because, same_live_process, selection_error,
 };
 
@@ -372,6 +372,10 @@ struct Saved {
 
 thread_local! { static SAVED: RefCell<Saved> = RefCell::default(); }
 
+// The control the last selection check proved, for the identity read that
+// follows it in the same final check; any other read takes and drops it.
+thread_local! { static PROVED: RefCell<Option<Element>> = const { RefCell::new(None) }; }
+
 pub(super) fn trusted() -> bool {
     Native::default().trusted()
 }
@@ -441,7 +445,9 @@ pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Inst
         return Err(CopyReason::PasteUnavailable);
     }
     let deadline = deadline.min(Instant::now() + FINAL_SELECTION_LIMIT);
-    check_selection(&Native::default(), pid, expected, deadline)
+    let proved = proved_control(&Native::default(), pid, expected, deadline);
+    PROVED.with(|control| control.replace(proved.as_ref().ok().cloned().flatten()));
+    proved.map(|_| ())
 }
 
 pub(super) fn current(
@@ -451,6 +457,7 @@ pub(super) fn current(
     before_final_read: impl FnOnce() -> Result<(), CopyReason>,
     validate: impl FnOnce() -> Result<(), CopyReason>,
 ) -> Result<Option<u32>, CopyReason> {
+    let proved = PROVED.with(RefCell::take);
     if !NSThread::isMainThread_class() {
         return Err(CopyReason::PasteUnavailable);
     }
@@ -470,6 +477,7 @@ pub(super) fn current(
         &Native::default(),
         pid,
         deadline.min(Instant::now() + LIMIT),
+        proved.as_ref(),
         before_final_read,
     );
     validate()?;
