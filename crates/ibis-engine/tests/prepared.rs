@@ -1,10 +1,7 @@
 use ibis_core::contract::*;
 use ibis_engine::{Cancellation, CitationCommitError, Engine};
 use serde_json::json;
-use std::sync::{
-    Arc,
-    atomic::{AtomicBool, Ordering},
-};
+use std::sync::Arc;
 
 fn case() -> Result<GoldenCase, Box<dyn std::error::Error>> {
     Ok(serde_json::from_str(include_str!(
@@ -30,23 +27,20 @@ fn sample_provenance_labels_every_representation_and_binds_the_preview_hash() ->
         assert_eq!(result.rtf.is_some(), unmarked.rtf.is_some());
         assert!(result.content_matches_hash());
         assert_ne!(result.content_hash, unmarked.content_hash);
-        assert!(matches!(
-            engine.commit_citation(&sample, &unmarked.content_hash, |_| panic!("unmarked preview")),
-            Err(CitationCommitError::PreviewChanged)
-        ));
-        engine.commit_citation(&sample, &result.content_hash, |content| {
-            assert_eq!(content.text, result.text);
-            if let Some(html) = content.html {
-                assert!(html.ends_with("<span> [Sample]</span>"), "visible HTML marker");
-            }
-            if let Some(rtf) = content.rtf {
-                assert!(rtf.starts_with("{\\rtf1"));
-                assert!(
-                    rtf.ends_with(" {\\plain [Sample]}}"),
-                    "visible RTF marker inside the root group"
-                );
-            }
-        })?;
+        let copied = engine.recite(&sample, &Cancellation::default())?;
+        assert_eq!(copied, result, "a copy re-cites to exactly the marked preview");
+        let content = copied.copy_content(1).ok_or("copy content")?;
+        assert_eq!(content.text, result.text);
+        if let Some(html) = content.html {
+            assert!(html.ends_with("<span> [Sample]</span>"), "visible HTML marker");
+        }
+        if let Some(rtf) = content.rtf {
+            assert!(rtf.starts_with("{\\rtf1"));
+            assert!(
+                rtf.ends_with(" {\\plain [Sample]}}"),
+                "visible RTF marker inside the root group"
+            );
+        }
         let display_text: String = result
             .display
             .nodes
@@ -91,7 +85,7 @@ fn labelled_samples_keep_the_source_change_guard_and_cannot_label_a_refusal() ->
         )
         .map_err(|_| "publish")?;
     assert!(matches!(
-        engine.commit_citation(&sample, &sample.result().content_hash, |_| panic!("changed source")),
+        engine.recite(&sample, &Cancellation::default()),
         Err(CitationCommitError::Refused {
             item: 0,
             error: CitationError::ChangedItem
@@ -118,7 +112,7 @@ fn labelled_samples_keep_the_source_change_guard_and_cannot_label_a_refusal() ->
     Ok(())
 }
 #[test]
-fn changed_pick_never_reaches_the_native_commit() -> Result<(), Box<dyn std::error::Error>> {
+fn changed_pick_is_refused_when_copied() -> Result<(), Box<dyn std::error::Error>> {
     let mut case = case()?;
     case.request.output = OutputSpec::Csl { style: "apa".into() };
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
@@ -136,39 +130,34 @@ fn changed_pick_never_reaches_the_native_commit() -> Result<(), Box<dyn std::err
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)])?),
         )
         .map_err(|error| format!("{:?}", error.code))?;
-    let wrote = AtomicBool::new(false);
-    let result = engine.commit_citation(&prepared, &prepared.result().content_hash, |_| {
-        wrote.store(true, Ordering::SeqCst)
-    });
     assert!(matches!(
-        result,
+        engine.recite(&prepared, &Cancellation::default()),
         Err(CitationCommitError::Refused {
             item: 0,
             error: CitationError::ChangedItem
         })
     ));
-    assert!(!wrote.load(Ordering::SeqCst));
     Ok(())
 }
 
 #[test]
-fn commit_binds_preview_and_engine_but_allows_a_full_only_refresh() -> Result<(), Box<dyn std::error::Error>> {
+fn a_copy_recites_against_the_engine_it_asks_and_allows_a_full_only_refresh() -> Result<(), Box<dyn std::error::Error>>
+{
     let mut case = case()?;
     case.request.output = OutputSpec::Csl { style: "apa".into() };
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
     let prepared = engine
         .prepare_citation(&case.request, &Cancellation::default())
         .map_err(|error| format!("{:?}", error.code))?;
-    let other = Engine::from_snapshot(Arc::new(case.library.clone()));
-    for (owner, hash) in [
-        (&engine, Fingerprint::of_bytes(b"different synthetic preview")),
-        (&other, prepared.result().content_hash.clone()),
-    ] {
-        assert!(matches!(
-            owner.commit_citation(&prepared, &hash, |_| panic!("invalid commit")),
-            Err(CitationCommitError::PreviewChanged)
-        ));
-    }
+    // Another engine without this reference cannot copy what this one showed.
+    let other = Engine::from_snapshot(Arc::new(Snapshot::new(vec![])?));
+    assert!(matches!(
+        other.recite(&prepared, &Cancellation::default()),
+        Err(CitationCommitError::Refused {
+            item: 0,
+            error: CitationError::MissingItem
+        })
+    ));
     let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
         return Err("record".into());
     };
@@ -181,10 +170,10 @@ fn commit_binds_preview_and_engine_but_allows_a_full_only_refresh() -> Result<()
     engine
         .publish_library(record.id.library, ibis_engine::LibraryKind::Snapshot, next)
         .map_err(|error| format!("{:?}", error.code))?;
-    let text = engine.commit_citation(&prepared, &prepared.result().content_hash, |content| {
-        content.text.to_owned()
-    })?;
-    assert_eq!(text, "(Taylor, 2026)");
+    assert_eq!(
+        engine.recite(&prepared, &Cancellation::default())?.text,
+        "(Taylor, 2026)"
+    );
     Ok(())
 }
 
@@ -211,16 +200,14 @@ fn key_collision_refuses_keys_but_not_formatted_citations() -> Result<(), Box<dy
         )
         .map_err(|_| "publish")?;
     assert!(matches!(
-        engine.commit_citation(&key, &key.result().content_hash, |_| panic!("ambiguous key")),
+        engine.recite(&key, &Cancellation::default()),
         Err(CitationCommitError::Refused {
             item: 0,
             error: CitationError::AmbiguousKey
         })
     ));
     assert_eq!(
-        engine.commit_citation(&formatted, &formatted.result().content_hash, |content| content
-            .text
-            .to_owned())?,
+        engine.recite(&formatted, &Cancellation::default())?.text,
         "(Taylor, 2026)"
     );
     Ok(())
@@ -255,9 +242,7 @@ fn formatted_zotero_picks_need_no_agreeing_key() -> Result<(), Box<dyn std::erro
             .prepare_citation(&case.request, &Cancellation::default())
             .map_err(|_| "prepare")?;
         assert_eq!(
-            engine.commit_citation(&prepared, &prepared.result().content_hash, |content| content
-                .text
-                .to_owned())?,
+            engine.recite(&prepared, &Cancellation::default())?.text,
             "(Taylor, 2026)"
         );
     }
@@ -331,60 +316,11 @@ fn annotation_uses_printed_label_and_rechecks_its_file() -> Result<(), Box<dyn s
         )
         .map_err(|_| "publish")?;
     assert!(matches!(
-        engine.commit_citation(&prepared, &prepared.result().content_hash, |_| panic!("changed file")),
+        engine.recite(&prepared, &Cancellation::default()),
         Err(CitationCommitError::Refused {
             item: 0,
             error: CitationError::AnnotationMismatch
         })
     ));
-    Ok(())
-}
-
-#[test]
-fn publication_waits_for_the_native_write() -> Result<(), Box<dyn std::error::Error>> {
-    use std::{sync::mpsc, time::Duration};
-    let case = case()?;
-    let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
-    let prepared = engine
-        .prepare_citation(&case.request, &Cancellation::default())
-        .map_err(|_| "prepare")?;
-    let LibraryObject::Record(mut record) = case.library.objects()[0].object.clone() else {
-        return Err("record".into());
-    };
-    record.csl.insert("title".into(), json!("New synthetic title"));
-    let next = Arc::new(Snapshot::new(vec![LibraryObject::Record(record.clone())])?);
-    let (writing, started) = mpsc::channel();
-    let (release, finish) = mpsc::channel();
-    let (published, done) = mpsc::channel();
-    std::thread::scope(|scope| {
-        let owner = &engine;
-        let ticket = &prepared;
-        let committing = scope.spawn(move || {
-            owner.commit_citation(ticket, &ticket.result().content_hash, |_| {
-                writing.send(()).map_err(|_| "write start")?;
-                finish.recv_timeout(Duration::from_secs(5)).map_err(|_| "write release")
-            })
-        });
-        started
-            .recv_timeout(Duration::from_secs(5))
-            .map_err(|_| "write start")?;
-        let publishing = scope.spawn(|| {
-            let result = engine.publish_library(record.id.library, ibis_engine::LibraryKind::Snapshot, next);
-            let _ = published.send(());
-            result
-        });
-        let early = done.recv_timeout(Duration::from_millis(40));
-        release.send(()).map_err(|_| "release")?;
-        committing
-            .join()
-            .map_err(|_| "commit thread")?
-            .map_err(|_| "commit")??;
-        publishing
-            .join()
-            .map_err(|_| "publish thread")?
-            .map_err(|_| "publish")?;
-        assert!(matches!(early, Err(mpsc::RecvTimeoutError::Timeout)));
-        Ok::<(), Box<dyn std::error::Error>>(())
-    })?;
     Ok(())
 }

@@ -270,7 +270,7 @@ fn supervise_load<T: Send + 'static>(
     }
     if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= 4 {
         IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
-        return Err(ibis_core::source::SourceError::Unavailable.into());
+        return Err(LoadError::FILE_UNAVAILABLE);
     }
     let permit = Permit;
     let (send, result) = mpsc::sync_channel(1);
@@ -296,7 +296,7 @@ fn supervise_load<T: Send + 'static>(
         if remaining.is_zero() {
             drop(gate);
             cancel.cancel();
-            return Err(ibis_core::source::SourceError::Unavailable.into());
+            return Err(LoadError::FILE_UNAVAILABLE);
         }
         match result.try_recv() {
             Ok(result) => {

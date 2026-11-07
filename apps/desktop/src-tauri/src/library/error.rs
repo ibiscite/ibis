@@ -3,19 +3,20 @@
 
 use std::fmt;
 
-use ibis_core::source::SourceError;
-use ibis_core::zotero::api::ZoteroError;
+use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
 use serde::Serialize;
 
-/// Why a library could not be read or installed. Text is made only for the
-/// interface and the log, from fixed messages without paths or content.
+/// Why a library could not be read or installed: the engine's own error, kept
+/// with what was asked of it. Text is made only for the interface and the log,
+/// from fixed messages without paths or content.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum LoadError {
-    Source(SourceError),
-    /// The engine rejected the file's reference format.
-    InvalidData,
-    Zotero(ZoteroError),
-    EngineZotero(ibis_core::contract::EngineError),
+    /// Opening a library file failed.
+    File(EngineError),
+    /// Reading the open library file again failed.
+    FileRefresh(EngineError),
+    /// Reading Zotero failed.
+    Zotero(EngineError),
     /// The file dialog returned something that is not a local file.
     NotLocal,
     /// The background load ended without a result.
@@ -23,16 +24,36 @@ pub(crate) enum LoadError {
 }
 
 impl LoadError {
-    /// Convert native failure evidence for the engine's retention classification.
-    pub(super) fn source_error(self) -> Option<SourceError> {
-        match self {
-            Self::Source(error) => Some(error),
-            Self::Zotero(_) | Self::EngineZotero(_) => Some(SourceError::Unavailable),
-            _ => None,
+    /// A file could not be reached in time, or too many reads are still running.
+    pub(crate) const FILE_UNAVAILABLE: Self = Self::File(EngineError::new(ErrorCode::SourceUnavailable));
+
+    pub(super) fn file(error: EngineError) -> Self {
+        Self::stopped_or(error, Self::File)
+    }
+    pub(super) fn file_refresh(error: EngineError) -> Self {
+        Self::stopped_or(error, Self::FileRefresh)
+    }
+    fn stopped_or(error: EngineError, failed: fn(EngineError) -> Self) -> Self {
+        if error.code == ErrorCode::Cancelled {
+            Self::Stopped
+        } else {
+            failed(error)
         }
     }
+    /// Whether the references already loaded are still searched after this
+    /// failure. Zotero's references stay through any failure.
+    pub(super) fn retains(self, has_references: bool, zotero: bool) -> bool {
+        has_references
+            && (zotero
+                || match self {
+                    Self::File(error) => ibis_engine::health::retains(&error, false),
+                    Self::FileRefresh(error) => ibis_engine::health::retains(&error, true),
+                    Self::Zotero(_) => true,
+                    Self::NotLocal | Self::Stopped => false,
+                })
+    }
     pub(super) fn with_snapshot_context(self, has_references: bool, zotero: bool) -> String {
-        if ibis_engine::health::retains(self.source_error(), has_references, zotero) {
+        if self.retains(has_references, zotero) {
             format!("{self}; keeping the last loaded references")
         } else {
             self.to_string()
@@ -40,50 +61,40 @@ impl LoadError {
     }
 }
 
-impl From<SourceError> for LoadError {
-    fn from(error: SourceError) -> Self {
-        LoadError::Source(error)
-    }
-}
-
-impl From<ZoteroError> for LoadError {
-    fn from(error: ZoteroError) -> Self {
-        LoadError::Zotero(error)
-    }
-}
-
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            LoadError::Source(error) => error.fmt(f),
-            LoadError::InvalidData => f.write_str("the library file does not contain valid reference data"),
-            LoadError::Zotero(error) => error.fmt(f),
-            LoadError::EngineZotero(error) => {
-                use ibis_core::contract::{ErrorCode, ErrorReason};
-                f.write_str(match (error.reason, error.code) {
-                    (Some(ErrorReason::ZoteroSharingOff), _) => {
-                        "Zotero is open but is not sharing your library with other applications"
-                    }
-                    (Some(ErrorReason::ZoteroProfileNeeded), _) => "choose which Zotero profile to read",
-                    (Some(ErrorReason::ZoteroNeedsOpening), _) => {
-                        "Zotero's library cannot be read while it is closed"
-                    }
-                    (Some(ErrorReason::ZoteroNotFound), _) => "no Zotero library was found on this computer",
-                    (Some(ErrorReason::ZoteroNoSpace), _) => {
-                        "there is not enough free space to read Zotero while it is closed; free some space or open Zotero"
-                    }
-                    (_, ErrorCode::Cancelled) => "reading Zotero was cancelled",
-                    (_, ErrorCode::ResourceLimit) => "reading Zotero exceeded its work limit",
-                    (_, ErrorCode::NewerFormat) => "this Zotero database is newer than Ibis can read",
-                    (_, ErrorCode::NotFound) => {
-                        "a chosen Zotero group library was not found; check that you are still a member"
-                    }
-                    _ => "Zotero could not be read just now; try again",
-                })
-            }
-            LoadError::NotLocal => f.write_str("the chosen file is not on this computer"),
-            LoadError::Stopped => f.write_str("loading the library stopped unexpectedly"),
-        }
+        f.write_str(match self {
+            LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
+                (_, ErrorCode::SourceUnavailable) => {
+                    "the library file is unavailable; download any online-only file to this computer first"
+                }
+                (LoadError::File(_), ErrorCode::BadInput) => "the library file does not contain valid reference data",
+                (LoadError::File(_), ErrorCode::ResourceLimit) => "the library file is larger than 64 MiB",
+                (_, ErrorCode::BadInput) => "the library file contains an unfinished entry",
+                (_, ErrorCode::ResourceLimit) => "the library exceeded the load work limit",
+                _ => "the library file is not UTF-8 text; save it as UTF-8",
+            },
+            LoadError::Zotero(error) => match (error.reason, error.code) {
+                (Some(ErrorReason::ZoteroSharingOff), _) => {
+                    "Zotero is open but is not sharing your library with other applications"
+                }
+                (Some(ErrorReason::ZoteroProfileNeeded), _) => "choose which Zotero profile to read",
+                (Some(ErrorReason::ZoteroNeedsOpening), _) => "Zotero's library cannot be read while it is closed",
+                (Some(ErrorReason::ZoteroNotFound), _) => "no Zotero library was found on this computer",
+                (Some(ErrorReason::ZoteroNoSpace), _) => {
+                    "there is not enough free space to read Zotero while it is closed; free some space or open Zotero"
+                }
+                (_, ErrorCode::Cancelled) => "reading Zotero was cancelled",
+                (_, ErrorCode::ResourceLimit) => "reading Zotero exceeded its work limit",
+                (_, ErrorCode::NewerFormat) => "this Zotero database is newer than Ibis can read",
+                (_, ErrorCode::NotFound) => {
+                    "a chosen Zotero group library was not found; check that you are still a member"
+                }
+                _ => "Zotero could not be read just now; try again",
+            },
+            LoadError::NotLocal => "the chosen file is not on this computer",
+            LoadError::Stopped => "loading the library stopped unexpectedly",
+        })
     }
 }
 
@@ -146,10 +157,21 @@ impl fmt::Display for CommandError {
     }
 }
 
+/// Failures as the engine reports them, for tests.
+#[cfg(test)]
+pub(crate) const FILE_UNREADABLE: LoadError = LoadError::File(EngineError::new(ErrorCode::Internal));
+#[cfg(test)]
+pub(crate) const FILE_TOO_LARGE: LoadError = LoadError::File(EngineError::new(ErrorCode::ResourceLimit));
+#[cfg(test)]
+pub(crate) const REFRESH_INCOMPLETE: LoadError = LoadError::FileRefresh(EngineError::new(ErrorCode::BadInput));
+#[cfg(test)]
+pub(crate) const REFRESH_LIMIT: LoadError = LoadError::FileRefresh(EngineError::new(ErrorCode::ResourceLimit));
+
 /// Zotero is closed, for tests.
 #[cfg(test)]
-pub(super) const ZOTERO_OFFLINE: LoadError = LoadError::Zotero(ZoteroError::Transport(
-    ibis_core::zotero::api::TransportError::Unreachable,
+pub(super) const ZOTERO_OFFLINE: LoadError = LoadError::Zotero(EngineError::because(
+    ErrorCode::SourceUnavailable,
+    ErrorReason::ZoteroNeedsOpening,
 ));
 
 #[cfg(test)]
@@ -157,15 +179,31 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_failures_supply_the_existing_retention_evidence() {
-        assert!(ibis_engine::health::retains(
-            LoadError::Zotero(ZoteroError::GroupNotFound).source_error(),
-            true,
-            false
-        ));
-        for error in [LoadError::NotLocal, LoadError::Stopped] {
-            assert!(!ibis_engine::health::retains(error.source_error(), true, false));
+    fn a_failed_read_keeps_loaded_references_unless_it_is_no_library() {
+        let file = |code| LoadError::file(EngineError::new(code));
+        let refresh = |code| LoadError::file_refresh(EngineError::new(code));
+        for kept in [
+            file(ErrorCode::SourceUnavailable),
+            file(ErrorCode::Internal),
+            refresh(ErrorCode::BadInput),
+            refresh(ErrorCode::ResourceLimit),
+            refresh(ErrorCode::SourceUnavailable),
+            LoadError::Zotero(EngineError::new(ErrorCode::NotFound)),
+        ] {
+            assert!(kept.retains(true, false), "{kept}");
+            assert!(!kept.retains(false, true), "{kept}");
         }
+        for lost in [
+            file(ErrorCode::BadInput),
+            file(ErrorCode::ResourceLimit),
+            file(ErrorCode::Cancelled),
+            refresh(ErrorCode::Cancelled),
+            LoadError::NotLocal,
+        ] {
+            assert!(!lost.retains(true, false), "{lost}");
+            assert!(lost.retains(true, true), "Zotero keeps its references: {lost}");
+        }
+        assert_eq!(file(ErrorCode::Cancelled), LoadError::Stopped);
     }
 
     #[test]

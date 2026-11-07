@@ -24,10 +24,7 @@ const LAYERS: [(&str, &[&str]); 8] = [
     ("crates/ibis-sources", &["ibis-core", "ibis-zotero-local"]),
     ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
     ("crates/ibis-cli", &["ibis-core", "ibis-engine"]),
-    (
-        "apps/desktop/src-tauri",
-        &["ibis-core", "ibis-engine", "ibis-zotero-local"],
-    ),
+    ("apps/desktop/src-tauri", &["ibis-core", "ibis-engine"]),
     // The fuzzing harness ships nothing; it reads BibTeX as the engine does.
     ("fuzz", &["ibis-core", "ibis-sources"]),
 ];

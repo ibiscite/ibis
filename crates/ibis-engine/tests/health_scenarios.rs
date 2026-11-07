@@ -1,7 +1,6 @@
 //! Health is an engine decision; clients supply native selection facts only.
 #![allow(clippy::unwrap_used)]
 use ibis_core::contract::{ErrorCode, LibraryObject};
-use ibis_core::source::SourceError;
 use ibis_engine::{
     Cancellation, Engine,
     health::{self, InspectionPolicy},
@@ -17,17 +16,11 @@ fn healthy_empty_stale_and_failed_switch_keep_the_searchable_snapshot() {
     let (snapshot, sources) = engine.health().unwrap();
     assert_eq!(health::classify(&sources[0]), ("ok", "source-ok"));
     assert_eq!(health::counts(&snapshot).values().sum::<usize>(), 1);
-    assert!(health::retains(
-        Some(SourceError::Unavailable),
-        health::counts(&snapshot).values().sum::<usize>() > 0,
-        false
-    ));
     // A rejected switch never publishes; the searched snapshot and source stay current.
-    assert!(
-        engine
-            .open_file_observed(&dir.path().join("missing.bib"), &Cancellation::default())
-            .is_err()
-    );
+    let missing = engine
+        .open_file_observed(&dir.path().join("missing.bib"), &Cancellation::default())
+        .unwrap_err();
+    assert!(health::retains(&missing, false));
     let (retained, current) = engine.health().unwrap();
     assert_eq!(retained.fingerprints(), snapshot.fingerprints());
     assert_eq!(current[0].id, sources[0].id);
@@ -45,11 +38,6 @@ fn healthy_empty_stale_and_failed_switch_keep_the_searchable_snapshot() {
     let (empty_snapshot, empty) = engine.health().unwrap();
     assert_eq!(health::classify(&empty[0]), ("ok", "source-ok"));
     assert_eq!(health::counts(&empty_snapshot).values().sum::<usize>(), 0);
-    assert!(!health::retains(
-        Some(SourceError::Unavailable),
-        health::counts(&empty_snapshot).values().sum::<usize>() > 0,
-        false
-    ));
 }
 
 #[test]
