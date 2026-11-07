@@ -821,6 +821,16 @@ fn a_sleep_aware_clock_expires_delivery_when_the_active_clock_pauses() {
 }
 
 #[test]
+fn a_copy_older_than_its_limit_on_the_delivery_clock_never_pastes() {
+    // The fake clock stands in for a busy system: no real time passes.
+    let desk = Fake::new();
+    let proof = proof();
+    desk.clock.set(proof.written + LATE);
+    assert_eq!(deliver(&desk, Some(&proof), true), copied(Some("paste-expired")));
+    assert!(desk.posts.borrow().is_empty());
+}
+
+#[test]
 fn a_lifecycle_change_during_the_clipboard_write_cannot_mint_fresh_delivery() {
     let last = LastTarget::default();
     last.begin_presentation(Some(writer("com.microsoft.word")));

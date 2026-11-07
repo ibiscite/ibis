@@ -25,12 +25,13 @@ REPLAY_COMMAND = "python3 scripts/smoke-native.py --app BUILD --output REPLAY --
 KEYS = {value: "key-" + code for value, code in (
     ("Escape", "escape"), ("Return", "return"), ("Tab", "tab"), ("space", "space"),
     ("Down", "down"), ("ctrl+a", "select-all"), ("ctrl+k", "menu"),
-    ("ctrl+shift+y", "shortcut"))}
+    ("ctrl+shift+y", "shortcut"), ("shift+Insert", "paste"), ("super+a", "select-all"))}
 TEXT = {value: "text-" + code for value, code in (
     ("smoke000000", "query-0"), ("smoke000001", "query-1"), ("smoke000002", "query-2"),
     ("smoke000003", "query-3"), ("smoke099999", "query-last"), ("good2", "damaged"),
     ("zzqx no such reference", "no-match"), ("Typst", "typst"),
-    ("ibis tab probe", "probe"), ("ibis tab probe alternate", "probe-alternate"))}
+    ("ibis tab probe", "probe"), ("ibis tab probe alternate", "probe-alternate"),
+    ("invented journey", "journey"))}
 CLICKS = {value: "click-" + code for value, code in (
     ("More", "more"), ("Library", "library"), ("Reload Library", "reload"), ("Quit Ibis", "quit"),
     ("Copy as Pandoc", "format"))}
@@ -377,7 +378,8 @@ def collect_metadata(app, fixtures):
         artifact = None
     version = re.search(r'^version = "([0-9.]+)"$', (root / "Cargo.toml").read_text(), re.MULTILINE)
     harness = b"".join((root / "scripts" / name).read_bytes() for name in
-                       ("smoke-native.py", "native_evidence.py", "native_evidence.schema.json", "native_test_settings.py"))
+                       ("smoke-native.py", "native_evidence.py", "native_evidence.schema.json", "native_test_settings.py",
+                        "macos-journey.swift"))
     language = locale.setlocale(locale.LC_CTYPE)
     if not re.fullmatch(r"(?:C|POSIX|[a-z]{2,3}(?:_[A-Z]{2})?)(?:\.(?:UTF-8|utf8|ISO8859-1))?", language, re.ASCII):
         language = None
