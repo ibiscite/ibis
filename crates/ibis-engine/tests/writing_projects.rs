@@ -241,6 +241,19 @@ fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
         "[@vale2024]",
         "assessing a pause never destroys a native preview"
     );
+
+    // A complete read is enough: a different key written twice is only that key's warning.
+    let path = directory.path().join("refs.bib");
+    std::fs::write(
+        &path,
+        "@book{vale2024,title={Invented Atlas}}\n@book{twice,}\n@book{twice,}\n",
+    )
+    .unwrap();
+    let complete = ProjectRead::read(&path, None);
+    assert_eq!(
+        prepared.project_evidence(&complete, ProjectPolicy::Strict).state,
+        Assessment::Ready
+    );
 }
 
 fn prepared(engine: &Engine) -> ibis_engine::PreparedCitation {

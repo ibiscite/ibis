@@ -69,7 +69,7 @@ pub enum KeyCheck {
     In {
         line: usize,
     },
-    /// Only after a complete scan of a coherent read.
+    /// Only after a complete scan.
     Missing,
     CouldNotCheck,
     Repeated {
@@ -81,12 +81,11 @@ pub enum KeyCheck {
     },
 }
 
-/// One coherent read: the keys as written, and its records only for comparing.
+/// One read: the keys as written, and its records only for comparing.
 pub struct ProjectBibliography {
     keys: KeyScan,
     records: HashMap<String, Record>,
     digest: Fingerprint,
-    coherent: bool,
 }
 
 impl std::fmt::Debug for ProjectBibliography {
@@ -113,23 +112,15 @@ impl ProjectBibliography {
                 _ => None,
             })
             .collect();
-        let coherent = keys.complete() && !keys.has_repeated_keys();
         Ok(Self {
             keys,
             records,
             digest: digest(text),
-            coherent,
         })
     }
 
     pub fn complete(&self) -> bool {
         self.keys.complete()
-    }
-
-    /// A full scan is not necessarily usable identity evidence: repeated keys
-    /// have had their records removed by the loader, even with valid syntax.
-    fn coherent(&self) -> bool {
-        self.coherent
     }
 
     fn check(&self, key: &str, library: Option<&Record>) -> KeyCheck {
@@ -262,9 +253,10 @@ impl ProjectRead {
             .unwrap_or_else(|| "the project bibliography".into())
     }
 
-    /// Every entry was read and no key is written twice.
+    /// The newest read scanned every entry. A key written twice is still a
+    /// warning, for that key only.
     pub fn current_complete(&self) -> bool {
-        self.read.as_ref().is_some_and(|read| read.coherent())
+        self.read.as_ref().is_some_and(|read| read.complete())
     }
 
     /// The file's entry for `key` names a different work: both it and the

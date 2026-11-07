@@ -64,11 +64,6 @@ impl KeyScan {
     pub fn complete(&self) -> bool {
         !self.limited && self.damaged.is_empty()
     }
-    /// The loader drops these records before work identifiers can be compared.
-    pub fn has_repeated_keys(&self) -> bool {
-        self.occurrences.values().any(|occurrences| occurrences.len() > 1)
-            || self.spellings.values().any(|spellings| spellings.len() > 1)
-    }
     /// Note a line that could not be read. The first few are enough to find,
     /// so a hostile file cannot make this list its own cost. False when full.
     fn damage(&mut self, line: usize) -> bool {

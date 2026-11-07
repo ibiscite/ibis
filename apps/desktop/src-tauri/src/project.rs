@@ -408,6 +408,10 @@ pub(crate) fn project_status(slot: State<'_, ProjectBibliography>) -> Option<Pro
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn retry_project(app: AppHandle) {
+    // A project changed elsewhere, by the command line for one, is used as
+    // saved; a changed bibliography starts its own read here.
+    let captured = crate::paste::last_app(&app);
+    let _ = crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id));
     let ticket = app.state::<ProjectBibliography>().check_again();
     start_read(&app, ticket);
 }
