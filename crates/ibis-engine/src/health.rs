@@ -1,7 +1,7 @@
 //! Source health over the engine's published state; inspection is read-only.
 use super::{Engine, LibraryInfo};
 use crate::Cancellation;
-use ibis_core::{contract::*, settings, source::SourceError};
+use ibis_core::{contract::*, settings};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
@@ -22,16 +22,16 @@ pub fn classify(info: &LibraryInfo) -> (&'static str, &'static str) {
     }
 }
 
-pub fn retains(error: Option<SourceError>, references: bool, zotero: bool) -> bool {
-    use SourceError::*;
-    references
-        && (zotero
-            || matches!(
-                error,
-                Some(Unavailable | Unreadable | Incomplete | LoadLimit | Changing)
-            ))
+/// Whether a failed read leaves the references already read in use. Opening
+/// something that is no library, or is too large, replaces them; reading the
+/// same library again keeps them through any failure but a cancelled read.
+pub fn retains(error: &EngineError, refresh: bool) -> bool {
+    match error.code {
+        ErrorCode::Cancelled => false,
+        ErrorCode::BadInput | ErrorCode::ResourceLimit => refresh,
+        _ => true,
+    }
 }
-
 impl Engine {
     /// A coherent observation, using the published snapshot and source metadata.
     pub fn health(&self) -> Result<(Arc<Snapshot>, Vec<LibraryInfo>), EngineError> {
@@ -132,28 +132,22 @@ mod tests {
     use std::time::Duration;
     #[test]
     fn retention_follows_the_kind_of_failure_not_its_wording() {
-        for error in [
-            SourceError::Unavailable,
-            SourceError::Unreadable,
-            SourceError::Incomplete,
-            SourceError::LoadLimit,
-            SourceError::Changing,
+        let failed = |code| EngineError::new(code);
+        for code in [
+            ErrorCode::SourceUnavailable,
+            ErrorCode::Internal,
+            ErrorCode::NewerFormat,
         ] {
-            assert!(retains(Some(error), true, false));
-            assert!(!retains(Some(error), false, false));
+            assert!(retains(&failed(code), false), "{code:?}");
+            assert!(retains(&failed(code), true), "{code:?}");
         }
-        for error in [
-            SourceError::NotRegular,
-            SourceError::TooLarge,
-            SourceError::WatchUnavailable,
-        ] {
-            assert!(!retains(Some(error), true, false));
+        // Opening something that is no library, or too large, replaces the
+        // last references; reading the same library again keeps them.
+        for code in [ErrorCode::BadInput, ErrorCode::ResourceLimit] {
+            assert!(!retains(&failed(code), false), "{code:?}");
+            assert!(retains(&failed(code), true), "{code:?}");
         }
-        assert!(!retains(None, true, false));
-        assert!(
-            retains(None, true, true),
-            "any failure retains a populated Zotero snapshot"
-        );
+        assert!(!retains(&failed(ErrorCode::Cancelled), true));
     }
     #[test]
     fn a_stalled_filesystem_returns_no_result_and_late_work_is_retired() {

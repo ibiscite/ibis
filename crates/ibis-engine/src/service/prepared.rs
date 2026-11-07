@@ -1,16 +1,11 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
 use super::{
-    Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectRead, Shared,
-    error,
+    Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectRead, error,
 };
 use ibis_core::contract::*;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Weak},
-};
+use std::sync::Arc;
 
 pub struct PreparedCitation {
-    origin: Weak<Shared>,
     zotero_generation: Option<u64>,
     snapshot: Arc<Snapshot>,
     request: CitationRequest,
@@ -142,9 +137,6 @@ impl PreparedCitation {
         form: CitationForm,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
-        if !Weak::ptr_eq(&self.origin, &Arc::downgrade(&engine.shared)) {
-            return Err(error(ErrorCode::BadInput));
-        }
         let mut request = self.request.clone();
         request.output = original_output.clone();
         let pick = request.items.get_mut(item).ok_or_else(|| error(ErrorCode::BadInput))?;
@@ -239,68 +231,74 @@ impl Engine {
             return Err(error(ErrorCode::SourceUnavailable));
         }
         let snapshot = state.index.snapshot().clone();
-        // The receipt keeps the output the preset means, so copy-time checks know it.
-        let request = CitationRequest {
+        // The receipt keeps the output the preset means, and the exact objects
+        // it cites: citing it again refuses a changed reference even when its
+        // text would come out alike.
+        let mut request = CitationRequest {
             output: crate::outputs::resolve(&request.output)?,
             ..request.clone()
         };
+        for pick in &mut request.items {
+            let held = |id: &ItemRef| snapshot.get(id).map(|object| object.fingerprints.cite.clone());
+            pick.expected_cite = pick.expected_cite.take().or_else(|| held(&pick.item));
+            pick.expected_annotation_cite = pick
+                .expected_annotation_cite
+                .take()
+                .or_else(|| pick.annotation.as_ref().and_then(held));
+        }
         let result = self.cite_snapshot(&snapshot, &request, cancel)?;
         let prepared = PreparedCitation {
             zotero_generation: uses_zotero.then_some(state.zotero_generation),
-            origin: Arc::downgrade(&self.shared),
             snapshot,
             request,
             result,
             sample: false,
         };
+        // Formatting takes time, and a Zotero read can begin or finish during it.
         prepared
-            .validate_source(self.state()?.as_ref())
+            .check_zotero(self.state()?.as_ref())
             .map_err(|_| error(ErrorCode::SourceUnavailable))?;
         Ok(prepared)
     }
-    /// Caller holds its native source/intent guard; callback must not reenter the
-    /// engine. Validation/rendering never hold the publication barrier.
-    pub fn commit_citation<T>(
+
+    /// What a copy may write now, or why not: the stored request is cited again
+    /// against the current library and must give exactly the content that was
+    /// shown. A changed or removed reference, a key another record now shares
+    /// or a different Zotero shows up as a refusal or a different hash, so no
+    /// separate check can drift from what citing does. A publication after
+    /// this returns cannot change what was true when it was checked.
+    pub fn recite(
         &self,
         prepared: &PreparedCitation,
-        preview: &Fingerprint,
-        write: impl FnOnce(ClipboardContent<'_>) -> T,
-    ) -> Result<T, CitationCommitError> {
-        if !Weak::ptr_eq(&prepared.origin, &Arc::downgrade(&self.shared)) || preview != &prepared.result.content_hash {
+        cancel: &Cancellation,
+    ) -> Result<CitationResult, CitationCommitError> {
+        let items = prepared.request.items.len();
+        if prepared.result.copy_content(items).is_none() {
+            return Err(refusal(&prepared.result));
+        }
+        let fresh = self.prepare_citation(&prepared.request, cancel)?;
+        // Zotero may have become another library with the same contents.
+        if fresh.zotero_generation != prepared.zotero_generation {
             return Err(CitationCommitError::PreviewChanged);
         }
-        let Some(content) = prepared.result.copy_content(prepared.request.items.len()) else {
-            return Err(prepared
-                .result
-                .outcomes
-                .iter()
-                .find_map(|outcome| match outcome {
-                    ItemOutcome::Refused { item, error } => Some(CitationCommitError::Refused {
-                        item: *item,
-                        error: *error,
-                    }),
-                    _ => None,
-                })
-                .unwrap_or(CitationCommitError::PreviewChanged));
-        };
-        for _ in 0..3 {
-            let latest = self.state()?;
-            prepared.validate_source(&latest)?;
-            let latest = latest.index.snapshot();
-            prepared.validate(latest)?;
-            let state = self.shared.state.read().map_err(|_| error(ErrorCode::Internal))?;
-            if state.index.snapshot().fingerprints().cite != latest.fingerprints().cite {
-                continue;
-            }
-            prepared.validate_source(&state)?;
-            // Publication cannot replace cited data until the native write returns.
-            return Ok(write(content));
+        if fresh.result.copy_content(items).is_none() {
+            return Err(refusal(&fresh.result));
         }
-        Err(error(ErrorCode::ResourceLimit).into())
+        // An annotation's page means its file as it was shown.
+        for (item, pick) in prepared.request.items.iter().enumerate() {
+            if let Some(error) = annotation_error(&fresh.snapshot, pick, Some(&prepared.snapshot)) {
+                return Err(CitationCommitError::Refused { item, error });
+            }
+        }
+        let fresh = if prepared.sample { fresh.mark_sample()? } else { fresh };
+        if fresh.result.content_hash != prepared.result.content_hash {
+            return Err(CitationCommitError::PreviewChanged);
+        }
+        Ok(fresh.result)
     }
 }
 impl PreparedCitation {
-    fn validate_source(&self, state: &super::State) -> Result<(), CitationCommitError> {
+    fn check_zotero(&self, state: &super::State) -> Result<(), CitationCommitError> {
         if let Some(expected) = self.zotero_generation {
             if !state.zotero_ready {
                 return Err(error(ErrorCode::SourceUnavailable).into());
@@ -311,78 +309,22 @@ impl PreparedCitation {
         }
         Ok(())
     }
-    fn validate(&self, latest: &Snapshot) -> Result<(), CitationCommitError> {
-        if latest.fingerprints().cite == self.snapshot.fingerprints().cite {
-            return Ok(());
-        }
-        let mut bindings = Vec::new();
-        for (item, pick) in self.request.items.iter().enumerate() {
-            let refuse = |error| CitationCommitError::Refused { item, error };
-            let old = self
-                .snapshot
-                .get(&pick.item)
-                .ok_or_else(|| refuse(CitationError::MissingItem))?;
-            let now = latest
-                .get(&pick.item)
-                .ok_or_else(|| refuse(CitationError::MissingItem))?;
-            if old.fingerprints.cite != now.fingerprints.cite {
-                return Err(refuse(CitationError::ChangedItem));
-            }
-            if let Some(error) = annotation_error(latest, pick, Some(&self.snapshot)) {
-                return Err(refuse(error));
-            }
-            if matches!(self.request.output, OutputSpec::Key { .. }) {
-                let LibraryObject::Record(record) = &old.object else {
-                    return Err(refuse(CitationError::NotCitable));
-                };
-                let key = record
-                    .citation_key()
-                    .map_err(|_| refuse(CitationError::ConflictingKey))?
-                    .ok_or_else(|| refuse(CitationError::MissingKey))?;
-                bindings.push((item, key, &pick.item));
-            }
-        }
-        if bindings.is_empty() {
-            return Ok(());
-        }
-        // Only requested key bindings are indexed, across every loaded library.
-        enum Owner<'a> {
-            Missing,
-            Unique(&'a ItemRef),
-            Ambiguous,
-        }
-        let mut owners: HashMap<&str, Owner<'_>> = bindings.iter().map(|(_, key, _)| (*key, Owner::Missing)).collect();
-        for object in latest.objects() {
-            let LibraryObject::Record(record) = &object.object else {
-                continue;
-            };
-            for key in record
-                .citation_keys
-                .iter()
-                .map(|key| key.value.as_str())
-                .chain(record.aliases.iter().map(String::as_str))
-            {
-                let Some(owner) = owners.get_mut(key) else {
-                    continue;
-                };
-                match owner {
-                    Owner::Missing => *owner = Owner::Unique(&record.id),
-                    Owner::Unique(previous) if *previous != &record.id => *owner = Owner::Ambiguous,
-                    _ => {}
-                }
-            }
-        }
-        for (item, key, expected) in bindings {
-            if !matches!(owners.get(key),Some(Owner::Unique(owner)) if *owner==expected) {
-                return Err(CitationCommitError::Refused {
-                    item,
-                    error: CitationError::AmbiguousKey,
-                });
-            }
-        }
-        Ok(())
-    }
 }
+
+fn refusal(result: &CitationResult) -> CitationCommitError {
+    result
+        .outcomes
+        .iter()
+        .find_map(|outcome| match outcome {
+            ItemOutcome::Refused { item, error } => Some(CitationCommitError::Refused {
+                item: *item,
+                error: *error,
+            }),
+            _ => None,
+        })
+        .unwrap_or(CitationCommitError::PreviewChanged)
+}
+
 impl std::fmt::Debug for PreparedCitation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PreparedCitation").finish_non_exhaustive()

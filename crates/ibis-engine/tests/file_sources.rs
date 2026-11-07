@@ -102,12 +102,7 @@ fn one_record_reload_reuses_unchanged_records_with_a_pending_citation() {
     let refreshed = engine.snapshot().unwrap();
     assert!(std::sync::Arc::ptr_eq(&old.objects()[0], &refreshed.objects()[0]));
     assert!(!std::sync::Arc::ptr_eq(&old.objects()[1], &refreshed.objects()[1]));
-    let text = engine
-        .commit_citation(&prepared, &prepared.result().content_hash, |content| {
-            content.text.to_owned()
-        })
-        .unwrap();
-    assert_eq!(text, "[@a]");
+    assert_eq!(engine.recite(&prepared, &Cancellation::default()).unwrap().text, "[@a]");
 }
 #[test]
 fn damaged_refresh_keeps_last_good_data_and_exposes_fixed_status() {
