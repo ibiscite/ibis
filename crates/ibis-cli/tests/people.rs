@@ -250,3 +250,18 @@ fn a_spelling_match_says_so_and_an_exact_one_does_not() {
     let (_, stdout, _) = lab.run(&["search", "lanterns", "--file", &file]);
     assert!(!stdout.contains("spelling match"), "{stdout}");
 }
+
+#[test]
+fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
+    let lab = Lab::new("not-cut-short");
+    // Too many attachment links warn `work-limit`, yet the reference is read.
+    let files: Vec<_> = (0..300).map(|i| format!("f{i}.pdf")).collect();
+    let file = lab.file(
+        "refs.bib",
+        &format!("@misc{{kept, title={{T}}, file={{{}}}}}\n", files.join(";")),
+    );
+    let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
+    assert_eq!(code, 4, "{stderr}");
+    assert!(stderr.contains("no reference has the citation key"), "{stderr}");
+    assert!(!stderr.contains("too large"), "{stderr}");
+}

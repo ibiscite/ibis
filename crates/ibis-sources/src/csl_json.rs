@@ -194,6 +194,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         return Err(SourceError::InvalidData);
     }
     if limited {
+        result.cut_short = true;
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
