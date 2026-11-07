@@ -7,6 +7,7 @@ afterEach(() => vi.useRealTimers());
 const details = { fun: true, fact: null, revision: 1, status: null, peck: false, anniversary: true, build: "0.0.0+invented · invented-build · 2026-11-01" } as const;
 
 test("About reveals full build with Option and uses the same copy path, including failed I/O", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
   const write = vi.fn().mockResolvedValue(undefined);
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: write } });
   const api = { ...demoApi(), delightView: vi.fn().mockResolvedValue(details) };
@@ -21,7 +22,8 @@ test("About reveals full build with Option and uses the same copy path, includin
   fireEvent.keyUp(window, { key: "Alt" });
   expect(screen.queryByRole("button", { name: `Version ${details.build}` })).toBeNull();
   write.mockRejectedValueOnce(new Error("invented clipboard failure"));
-  await waitFor(() => expect(screen.getByRole("button", { name: "Version 0.2.1" })).toBeTruthy(), { timeout: 2500 });
+  await act(() => vi.advanceTimersByTimeAsync(1500));
+  expect(screen.getByRole("button", { name: "Version 0.2.1" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Version 0.2.1" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The version could not be copied.");
   expect(screen.getByRole("button", { name: /^Version/ })).toBeTruthy();
