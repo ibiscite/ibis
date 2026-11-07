@@ -1,22 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type Event } from "@tauri-apps/api/event";
 import { expect, it, vi } from "vitest";
-import { copyFileCitation, isSnapshotChanged, newerUpdate, onWindowSizeSaved, previewFileCitation, retryProject, search } from "./api";
+import { isSnapshotChanged, newerUpdate, onWindowSizeSaved, previewFileCitation, search } from "./api";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn().mockResolvedValue([]) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
-
-it("unverified insertion applies to one explicit copy and Retry is a separate read action", async () => {
-  vi.mocked(invoke).mockClear().mockResolvedValue({ text: "synthetic key", warnings: [] });
-  await copyFileCitation("first", "first-hash", null, true);
-  await copyFileCitation("second", "second-hash", null);
-  await retryProject();
-  expect(vi.mocked(invoke).mock.calls).toEqual([
-    ["copy_file_citation", { ticket: "first", contentHash: "first-hash", replaces: null, unverifiedProject: true }],
-    ["copy_file_citation", { ticket: "second", contentHash: "second-hash", replaces: null, unverifiedProject: false }],
-    ["retry_project"],
-  ]);
-});
 
 it("a delayed size-save result cannot restore an older failure or clear a newer one", async () => {
   let deliver: (event: Event<{ revision: number; saved: boolean }>) => void = () => {};

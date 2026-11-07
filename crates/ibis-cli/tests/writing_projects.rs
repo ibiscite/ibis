@@ -123,7 +123,7 @@ fn failed_or_busy_writes_never_report_an_unsaved_project() {
 }
 
 #[test]
-fn missing_project_bibliography_pauses_normal_citation_and_unchecked_is_request_local() {
+fn an_unreadable_project_bibliography_is_a_warning_unless_the_request_is_strict() {
     let home = Home::new();
     let bib = home.0.path().join("refs.bib");
     std::fs::write(&bib, "@book{vale2024,title={Invented Atlas}}\n").unwrap();
@@ -140,30 +140,28 @@ fn missing_project_bibliography_pauses_normal_citation_and_unchecked_is_request_
     let id = made["data"]["project"]["id"].as_str().unwrap();
     let (code, citation, _) = home.run(&["cite", "vale2024", "--project", id, "--file", bib.to_str().unwrap()]);
     assert_eq!(code, 1, "{citation}");
-    assert_eq!(citation["data"]["citation"]["text"], "");
-    assert_eq!(citation["data"]["assessment"]["state"], "paused");
+    assert_eq!(citation["data"]["citation"]["text"], "[@vale2024]");
+    assert_eq!(citation["data"]["assessment"]["state"], "ready");
     assert_eq!(
         citation["data"]["project"]["keys"][0]["check"]["status"],
         "could-not-check"
     );
-    let (code, unchecked, _) = home.run(&[
+    let (code, strict, _) = home.run(&[
         "cite",
         "vale2024",
         "--project",
         id,
-        "--unchecked-project",
+        "--strict-project",
         "--file",
         bib.to_str().unwrap(),
     ]);
-    assert_eq!(code, 1, "{unchecked}");
-    assert_eq!(unchecked["data"]["citation"]["text"], "[@vale2024]");
-    assert_eq!(unchecked["data"]["assessment"]["state"], "unverified");
-    let (_, normal_again, _) = home.run(&["cite", "vale2024", "--project", id, "--file", bib.to_str().unwrap()]);
-    assert_eq!(normal_again["data"]["assessment"]["state"], "paused");
+    assert_eq!(code, 1, "{strict}");
+    assert_eq!(strict["data"]["citation"]["text"], "");
+    assert_eq!(strict["data"]["assessment"]["state"], "paused");
 }
 
 #[test]
-fn an_unchecked_cli_request_never_escapes_a_known_wrong_work_conflict() {
+fn a_known_wrong_work_key_is_refused_with_or_without_strict() {
     let home = Home::new();
     let library = home.0.path().join("library.bib");
     let project = home.0.path().join("refs.bib");
@@ -183,31 +181,14 @@ fn an_unchecked_cli_request_never_escapes_a_known_wrong_work_conflict() {
         project.to_str().unwrap(),
     ]);
     let id = made["data"]["project"]["id"].as_str().unwrap();
-    for flag in ["--unchecked-project", "--strict-project"] {
-        let (code, refused, _) = home.run(&[
-            "cite",
-            "vale2024",
-            "--project",
-            id,
-            flag,
-            "--file",
-            library.to_str().unwrap(),
-        ]);
+    for flags in [&[][..], &["--strict-project"][..]] {
+        let mut args = vec!["cite", "vale2024", "--project", id, "--file", library.to_str().unwrap()];
+        args.extend_from_slice(flags);
+        let (code, refused, _) = home.run(&args);
         assert_eq!(code, 1, "{refused}");
         assert_eq!(refused["data"]["assessment"]["state"], "conflict");
         assert_eq!(refused["data"]["citation"]["text"], "");
     }
-    let (code, _, _) = home.run(&[
-        "cite",
-        "vale2024",
-        "--project",
-        id,
-        "--unchecked-project",
-        "--strict-project",
-        "--file",
-        library.to_str().unwrap(),
-    ]);
-    assert_eq!(code, 2);
 }
 
 #[test]

@@ -29,9 +29,7 @@ export function createSessionController(initial = initialSession()) {
       }
       case "copy": {
         try {
-          const outcome = await (effect.unverified
-            ? ports.copyFileCitation(effect.ticket, effect.hash, effect.replaces, true)
-            : ports.copyFileCitation(effect.ticket, effect.hash, effect.replaces));
+          const outcome = await ports.copyFileCitation(effect.ticket, effect.hash, effect.replaces);
           dispatch({ type: "copied", id: effect.id, session: effect.session, outcome, output: ports.output(), pinned: ports.pinned() });
         } catch (error) {
           const stale = nativeApi.isSnapshotChanged(error), shared = nativeApi.sharedCitationKey(error);

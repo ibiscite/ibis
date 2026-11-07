@@ -147,10 +147,6 @@ pub(crate) struct NoticeMessage {
     text: String,
     #[specta(optional)]
     more: Option<usize>,
-    #[specta(optional)]
-    project_warning: Option<String>,
-    #[specta(optional)]
-    project_checked_at_ms: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     #[specta(optional)]
     milestone: Option<u32>,
@@ -162,11 +158,7 @@ pub(crate) struct NoticeMessage {
 
 impl NoticeMessage {
     fn shown_for(&self) -> Duration {
-        if self.plugin_note || self.project_warning.is_some() {
-            NOTE_SHOWN_FOR
-        } else {
-            SHOWN_FOR
-        }
+        if self.plugin_note { NOTE_SHOWN_FOR } else { SHOWN_FOR }
     }
 }
 
@@ -238,11 +230,6 @@ pub(crate) async fn show_copied_notice(
                 .as_ref()
                 .map_or_else(|| self::summary(&text), |receipt| self::summary(&receipt.text)),
             more: summary.as_ref().map(|receipt| receipt.more),
-            project_warning: summary
-                .as_ref()
-                .and_then(|receipt| receipt.project_warning.as_deref())
-                .map(self::summary),
-            project_checked_at_ms: summary.and_then(|receipt| receipt.project_checked_at_ms),
             milestone,
             plugin_note: false,
         },

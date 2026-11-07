@@ -22,22 +22,22 @@ test("a project's format beats the app and a failed project save keeps both old 
   const settings = options();
   const rememberAppOutput = vi.fn(async () => null);
   const editWritingProject = vi.fn(async (): Promise<never> => { throw new Error("synthetic failure"); });
-  const project = { id: "thesis", name: "Thesis", revision: "r1", output: "cite", bibliography: "refs.bib" };
+  const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
   const target: PickerDestination = { ...browser, remembered: "typst", writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput, editWritingProject }, settings));
   await act(async () => result.current.read());
   expect(result.current.format).toBe("cite");
   expect(result.current.shouldAsk).toBe(false);
   await act(async () => result.current.choose("pandoc"));
-  expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "output", id: "thesis", revision: "r1", output: "pandoc" });
+  expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "output", id: "thesis", output: "pandoc" });
   expect(result.current.format).toBe("cite");
   expect(rememberAppOutput).not.toHaveBeenCalled();
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
 
-test("a conflicting format save names the other writer's saved choices while retaining the task", async () => {
-  const message = "The writing project changed elsewhere. Saved choices: Typst · updated.bib. Apply Updates before saving your changes.";
-  const project = { id: "thesis", name: "Thesis", revision: "r1", output: "cite", bibliography: "refs.bib" };
+test("a failed format save keeps the project's format and says why", async () => {
+  const message = "The writing project could not be saved. Try again.";
+  const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
   const target: PickerDestination = { ...browser, writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target,
     editWritingProject: async () => { throw message; } }, options()));
@@ -104,8 +104,8 @@ test("an activation event retires old intent before its read and a late older ev
 });
 
 test("a bibliography read started before selecting another project cannot settle that project's save or retire fresh intent", async () => {
-  const firstProject = { id: "project-a", name: "Project A", revision: "r1", output: "cite", bibliography: "a.bib" };
-  const secondProject = { id: "project-b", name: "Project B", revision: "r1", output: "typst", bibliography: "b.bib" };
+  const firstProject = { id: "project-a", name: "Project A", output: "cite", bibliography: "a.bib" };
+  const secondProject = { id: "project-b", name: "Project B", output: "typst", bibliography: "b.bib" };
   const first: PickerDestination = { ...browser, writing_project: firstProject, writing_context: "opening-a", context_version: [1, 0] };
   const second: PickerDestination = { ...browser, writing_project: secondProject, writing_context: "opening-b", context_version: [2, 0] };
   const oldRead = pending<PickerDestination>(), newRead = pending<PickerDestination>(), save = pending<WritingProjectsView>();

@@ -211,7 +211,7 @@ fn a_project_doi_conflict_never_returns_copyable_key_output() {
 }
 
 #[test]
-fn without_bibliography_evidence_normal_project_citation_has_no_copyable_output() {
+fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
     let project = writing_projects::create(
@@ -226,9 +226,20 @@ fn without_bibliography_evidence_normal_project_citation_has_no_copyable_output(
     let result = engine
         .cite_writing_project_keys(&project, &request, &Cancellation::default())
         .unwrap();
-    assert!(
-        result.citation.copy_content(1).is_none(),
-        "normal requests must pause without project evidence"
+    assert_eq!(result.citation.text, "[@vale2024]");
+    assert_eq!(result.assessment.unwrap().state, Assessment::Ready);
+    assert_eq!(result.project.unwrap().keys[0].check, KeyCheck::CouldNotCheck);
+
+    let prepared = prepared(&engine);
+    let unreadable = ProjectRead::read(&directory.path().join("unavailable.bib"), None);
+    assert_eq!(
+        prepared.project_evidence(&unreadable, ProjectPolicy::Strict).state,
+        Assessment::Paused
+    );
+    assert_eq!(
+        prepared.result().text,
+        "[@vale2024]",
+        "assessing a pause never destroys a native preview"
     );
 }
 
@@ -240,61 +251,7 @@ fn prepared(engine: &Engine) -> ibis_engine::PreparedCitation {
 }
 
 #[test]
-fn retained_matching_evidence_allows_normal_action_but_strict_freshness_pauses() {
-    let engine = engine();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    std::fs::write(
-        &path,
-        "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n",
-    )
-    .unwrap();
-    let current = ProjectRead::read(&path, None);
-    assert_eq!(
-        prepared.project_evidence(&current, ProjectPolicy::Strict).state,
-        Assessment::Ready
-    );
-    std::fs::remove_file(&path).unwrap();
-    let retained = ProjectRead::read(&path, Some(&current));
-    let normal = prepared.project_evidence(&retained, ProjectPolicy::Normal);
-    assert_eq!(normal.state, Assessment::Retained);
-    assert!(normal.can_copy());
-    assert!(normal.warning().unwrap().contains("last checked copy"));
-    assert_eq!(normal.last_checked_ms, current.last_checked_ms());
-    assert_eq!(
-        prepared.project_evidence(&retained, ProjectPolicy::Strict).state,
-        Assessment::Paused
-    );
-    assert_eq!(
-        prepared.result().text,
-        "[@vale2024]",
-        "assessing a pause never destroys a native preview"
-    );
-}
-
-#[test]
-fn key_presence_without_work_evidence_needs_an_explicit_unchecked_request() {
-    let engine = engine();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    std::fs::write(&path, "@book{vale2024,title={Invented Atlas}}\n").unwrap();
-    let current = ProjectRead::read(&path, None);
-    std::fs::remove_file(&path).unwrap();
-    let retained = ProjectRead::read(&path, Some(&current));
-    assert_eq!(
-        prepared.project_evidence(&retained, ProjectPolicy::Normal).state,
-        Assessment::Paused
-    );
-    let unchecked = prepared.project_evidence(&retained, ProjectPolicy::Unchecked);
-    assert_eq!(unchecked.state, Assessment::Unverified);
-    assert!(unchecked.can_copy());
-    assert!(unchecked.warning().unwrap().contains("unverified"));
-}
-
-#[test]
-fn every_policy_refuses_a_newer_incomplete_doi_conflict() {
+fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
     let engine = engine();
     let snapshot = engine.snapshot().unwrap();
     let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
@@ -311,225 +268,15 @@ fn every_policy_refuses_a_newer_incomplete_doi_conflict() {
     let prepared = prepared(&engine);
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
-    std::fs::write(&path, "@book{vale2024,title={Invented Atlas},doi={10.1000/intended}}\n").unwrap();
-    let good = ProjectRead::read(&path, None);
     std::fs::write(
         &path,
         "@book{vale2024,title={Invented Atlas},doi={10.1000/other}}\n@book{broken,title={Never closed\n",
     )
     .unwrap();
-    let conflicting = ProjectRead::read(&path, Some(&good));
-    for policy in [ProjectPolicy::Normal, ProjectPolicy::Unchecked, ProjectPolicy::Strict] {
+    let conflicting = ProjectRead::read(&path, None);
+    for policy in [ProjectPolicy::Normal, ProjectPolicy::Strict] {
         let assessment = prepared.project_evidence(&conflicting, policy);
         assert_eq!(assessment.state, Assessment::Conflict);
         assert!(!assessment.can_copy());
-    }
-}
-
-#[test]
-fn limited_conflict_history_cannot_be_bypassed_by_an_unchecked_action() {
-    let engine = engine();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n";
-    std::fs::write(&path, matched).unwrap();
-    let good = ProjectRead::read(&path, None);
-    let mut changed = (0..4100)
-        .map(|index| format!("@book{{other{index},doi={{10.1000/other{index}}}}}\n"))
-        .collect::<String>();
-    changed.push_str("@book{broken,title={Never closed\n");
-    std::fs::write(&path, changed).unwrap();
-    let limited = ProjectRead::read(&path, Some(&good));
-    assert!(limited.evidence_limited());
-    assert!(!prepared.project_evidence(&limited, ProjectPolicy::Unchecked).can_copy());
-    std::fs::write(&path, matched).unwrap();
-    let recovered = ProjectRead::read(&path, Some(&limited));
-    assert!(!recovered.evidence_limited());
-    assert_eq!(
-        prepared.project_evidence(&recovered, ProjectPolicy::Normal).state,
-        Assessment::Ready
-    );
-}
-
-#[test]
-fn duplicate_partial_work_identities_pause_every_policy_in_both_orders_and_after_failure() {
-    let engine = engine();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024},doi={10.1000/intended}}\n";
-    let other = matched.replace("10.1000/intended", "10.1000/other");
-    for (first, second) in [(matched, other.as_str()), (other.as_str(), matched)] {
-        std::fs::write(&path, matched).unwrap();
-        let good = ProjectRead::read(&path, None);
-        std::fs::write(&path, format!("{first}{second}@book{{broken,title={{Never closed\n")).unwrap();
-        let partial = ProjectRead::read(&path, Some(&good));
-        for policy in [ProjectPolicy::Normal, ProjectPolicy::Unchecked, ProjectPolicy::Strict] {
-            let assessment = prepared.project_evidence(&partial, policy);
-            assert_eq!(
-                assessment.state,
-                Assessment::Paused,
-                "deduplicated identities are uncertainty, not a proven selected-work mismatch"
-            );
-            assert!(!assessment.can_copy());
-        }
-        std::fs::remove_file(&path).unwrap();
-        let missing = ProjectRead::read(&path, Some(&partial));
-        assert!(!prepared.project_evidence(&missing, ProjectPolicy::Unchecked).can_copy());
-    }
-}
-
-#[test]
-fn a_large_observation_key_cannot_turn_budget_exhaustion_into_an_unchecked_escape() {
-    let engine = engine();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024}}\n";
-    std::fs::write(&path, matched).unwrap();
-    let good = ProjectRead::read(&path, None);
-    let key = "k".repeat(256 * 1024 + 1);
-    std::fs::write(
-        &path,
-        format!("@book{{{key},doi={{10.1000/other}}}}\n@book{{broken,title={{Never closed\n"),
-    )
-    .unwrap();
-    let limited = ProjectRead::read(&path, Some(&good));
-    assert!(!prepared.project_evidence(&limited, ProjectPolicy::Unchecked).can_copy());
-}
-
-#[test]
-fn an_unchecked_project_policy_never_changes_an_original_source_refusal() {
-    let engine = engine();
-    let item = engine.snapshot().unwrap().objects()[0].object.id().clone();
-    let directory = tempfile::tempdir().unwrap();
-    let project = writing_projects::create(
-        &mut Settings::default(),
-        "Atlas".into(),
-        OutputSpec::Preset { name: "pandoc".into() },
-        Some(directory.path().join("unavailable.bib")),
-    )
-    .unwrap();
-    let request: CitationRequest = serde_json::from_value(json!({"items":[{"item":item,"expected_cite":Fingerprint::of_bytes(b"obsolete record")}],"output":{"kind":"preset","name":"pandoc"}})).unwrap();
-    let result = engine
-        .cite_writing_project_with_policy(&project, &request, ProjectPolicy::Unchecked, &Cancellation::default())
-        .unwrap();
-    assert!(result.citation.copy_content(1).is_none());
-    assert!(matches!(
-        result.citation.outcomes[0],
-        ItemOutcome::Refused {
-            error: CitationError::ChangedItem,
-            ..
-        }
-    ));
-}
-
-#[test]
-fn a_complete_duplicate_file_never_releases_a_known_conflict_in_either_order() {
-    let engine = engine();
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
-        panic!("record");
-    };
-    record.csl.insert("DOI".into(), json!("10.1000/intended"));
-    engine
-        .publish_library(
-            record.id.library.clone(),
-            LibraryKind::Snapshot,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
-        )
-        .unwrap();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024},doi={10.1000/intended}}\n";
-    let other = matched.replace("10.1000/intended", "10.1000/other");
-    for (first, second) in [(matched, other.as_str()), (other.as_str(), matched)] {
-        std::fs::write(&path, matched).unwrap();
-        let good = ProjectRead::read(&path, None);
-        std::fs::write(&path, format!("{other}@book{{broken,title={{Never closed\n")).unwrap();
-        let known = ProjectRead::read(&path, Some(&good));
-        std::fs::write(&path, format!("{first}{second}")).unwrap();
-        let duplicates = ProjectRead::read(&path, Some(&known));
-        for policy in [ProjectPolicy::Normal, ProjectPolicy::Unchecked, ProjectPolicy::Strict] {
-            assert_eq!(
-                prepared.project_evidence(&duplicates, policy).state,
-                Assessment::Conflict
-            );
-        }
-        std::fs::remove_file(&path).unwrap();
-        let missing = ProjectRead::read(&path, Some(&duplicates));
-        assert!(!prepared.project_evidence(&missing, ProjectPolicy::Unchecked).can_copy());
-        std::fs::write(&path, matched).unwrap();
-        let repaired = ProjectRead::read(&path, Some(&missing));
-        assert_eq!(
-            prepared.project_evidence(&repaired, ProjectPolicy::Normal).state,
-            Assessment::Ready
-        );
-    }
-}
-
-#[test]
-fn complete_conflict_snapshots_and_new_duplicate_mappings_refuse_every_policy() {
-    let engine = engine();
-    let snapshot = engine.snapshot().unwrap();
-    let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
-        panic!("record");
-    };
-    record.csl.insert("DOI".into(), json!("10.1000/intended"));
-    engine
-        .publish_library(
-            record.id.library.clone(),
-            LibraryKind::Snapshot,
-            Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
-        )
-        .unwrap();
-    let prepared = prepared(&engine);
-    let directory = tempfile::tempdir().unwrap();
-    let path = directory.path().join("refs.bib");
-    let matched = "@book{vale2024,title={Invented Atlas},author={Vale, Ada},year={2024},doi={10.1000/intended}}\n";
-    let other = matched.replace("10.1000/intended", "10.1000/other");
-    for previous_conflict in [true, false] {
-        for (first, second) in [(matched, other.as_str()), (other.as_str(), matched)] {
-            let previous = if previous_conflict {
-                std::fs::write(&path, &other).unwrap();
-                let conflict = ProjectRead::read(&path, None);
-                assert_eq!(
-                    prepared.project_evidence(&conflict, ProjectPolicy::Normal).state,
-                    Assessment::Conflict
-                );
-                Some(conflict)
-            } else {
-                None
-            };
-            std::fs::write(&path, format!("{first}{second}")).unwrap();
-            let duplicates = ProjectRead::read(&path, previous.as_ref());
-            for policy in [ProjectPolicy::Normal, ProjectPolicy::Unchecked, ProjectPolicy::Strict] {
-                let assessment = prepared.project_evidence(&duplicates, policy);
-                assert!(!assessment.can_copy(), "duplicates cannot become a policy bypass");
-                let message = assessment.message.unwrap();
-                assert!(
-                    !message.contains("incomplete"),
-                    "a complete duplicated file needs a truthful identity-evidence message"
-                );
-            }
-            std::fs::remove_file(&path).unwrap();
-            let failed = ProjectRead::read(&path, Some(&duplicates));
-            assert!(!prepared.project_evidence(&failed, ProjectPolicy::Unchecked).can_copy());
-            std::fs::write(&path, format!("{first}{second}")).unwrap();
-            let same_duplicates = ProjectRead::read(&path, Some(&failed));
-            assert!(
-                !prepared
-                    .project_evidence(&same_duplicates, ProjectPolicy::Unchecked)
-                    .can_copy()
-            );
-            std::fs::write(&path, matched).unwrap();
-            let repaired = ProjectRead::read(&path, Some(&same_duplicates));
-            assert_eq!(
-                prepared.project_evidence(&repaired, ProjectPolicy::Normal).state,
-                Assessment::Ready
-            );
-        }
     }
 }
