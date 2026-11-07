@@ -279,7 +279,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem, clearShortcutUndo, checkNow]);
+  }, [api, queue, readProblem, clearShortcutUndo]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
