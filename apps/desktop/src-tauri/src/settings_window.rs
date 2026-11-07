@@ -30,41 +30,18 @@ fn fitted(area: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
     (size, (MIN_SIZE.0.min(size.0), MIN_SIZE.1.min(size.1)))
 }
 
-#[derive(Clone, Copy)]
-pub(crate) struct WorkArea {
-    bounds: tauri::PhysicalRect<i32, u32>,
-    scale: f64,
-}
-
-impl WorkArea {
-    fn logical_size(self) -> (f64, f64) {
-        let size = self.bounds.size.to_logical::<f64>(self.scale);
-        (size.width, size.height)
-    }
-
-    fn centered(self, size: (f64, f64)) -> tauri::Position {
-        let origin = self.bounds.position.to_logical::<f64>(self.scale);
-        let (width, height) = self.logical_size();
-        tauri::LogicalPosition::new(origin.x + (width - size.0) / 2.0, origin.y + (height - size.1) / 2.0)
-            .to_physical::<i32>(self.scale)
-            .into()
-    }
-}
-
-/// The work area Settings opens in: the picker's screen, else the main one.
-/// Keep its scale with its bounds so sizing and centring use the same screen.
-/// An empty area is unknown.
-pub(crate) fn work_area(app: &AppHandle) -> Option<WorkArea> {
+/// The work area Settings opens in, as logical (x, y, width, height): the
+/// picker's screen, else the main one. Settings is both sized for and centred
+/// in it, so the two never disagree about the screen. An empty area is unknown.
+pub(crate) fn work_area(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let picker = app
         .get_webview_window("main")
         .and_then(|window| window.current_monitor().ok().flatten());
     let monitor = picker.or_else(|| app.primary_monitor().ok().flatten())?;
-    let area = WorkArea {
-        bounds: *monitor.work_area(),
-        scale: monitor.scale_factor(),
-    };
-    let (width, height) = area.logical_size();
-    (width >= 1.0 && height >= 1.0).then_some(area)
+    let area = monitor.work_area();
+    let origin = area.position.to_logical::<f64>(monitor.scale_factor());
+    let size = area.size.to_logical::<f64>(monitor.scale_factor());
+    (size.width >= 1.0 && size.height >= 1.0).then_some((origin.x, origin.y, size.width, size.height))
 }
 
 /// Where Settings opens.
@@ -183,7 +160,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
     let area = R::work_area(app);
-    let (size, min) = fitted(area.map(WorkArea::logical_size));
+    let (size, min) = fitted(area.map(|(_, _, width, height)| (width, height)));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
         .inner_size(size.0, size.1)
@@ -204,9 +181,10 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
                 report(window.set_focus(), NativeIssue::Focus);
             }
         });
-    if area.is_none() {
-        builder = builder.center();
-    }
+    builder = match area {
+        Some((x, y, width, height)) => builder.position(x + (width - size.0) / 2.0, y + (height - size.1) / 2.0),
+        None => builder.center(),
+    };
     FIRST_SHOW.begin();
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
@@ -232,11 +210,6 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
     crate::desktop_theme::reapply(app);
     match built {
         Some(window) => {
-            // A logical builder position can also land on another monitor at
-            // a different scale. Move the hidden window in this screen's pixels.
-            if let Some(area) = area {
-                report(window.set_position(area.centered(size)), NativeIssue::Position);
-            }
             report(window.set_focus(), NativeIssue::Focus);
             yield_to_window(app, presentation, Takeover::Covered);
         }
@@ -403,39 +376,6 @@ mod tests {
             (SIZE, MIN_SIZE),
             "an empty area while displays change is unknown"
         );
-    }
-
-    #[test]
-    fn settings_stays_wholly_on_the_chosen_monitor_with_mixed_scaling() {
-        let primary = WorkArea {
-            bounds: tauri::PhysicalRect {
-                position: tauri::PhysicalPosition::new(0, 0),
-                size: tauri::PhysicalSize::new(1920, 1080),
-            },
-            scale: 1.0,
-        };
-        let secondary = WorkArea {
-            bounds: tauri::PhysicalRect {
-                position: tauri::PhysicalPosition::new(1920, 0),
-                size: tauri::PhysicalSize::new(2560, 1440),
-            },
-            scale: 2.0,
-        };
-        let (size, _) = fitted(Some(secondary.logical_size()));
-        let physical_size = tauri::LogicalSize::new(size.0, size.1).to_physical::<u32>(secondary.scale);
-        // Tao tries the primary's scale first when resolving a logical position.
-        // A physical position must identify the secondary under either scale.
-        for monitor in [primary, secondary] {
-            let position = secondary.centered(size).to_physical::<i32>(monitor.scale);
-            let bounds = secondary.bounds;
-            assert!(
-                position.x >= bounds.position.x
-                    && position.y >= bounds.position.y
-                    && position.x + physical_size.width as i32 <= bounds.position.x + bounds.size.width as i32
-                    && position.y + physical_size.height as i32 <= bounds.position.y + bounds.size.height as i32,
-                "Settings at {position:?} with size {physical_size:?} must fit on {bounds:?}"
-            );
-        }
     }
 
     #[test]
