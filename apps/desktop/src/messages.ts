@@ -665,8 +665,8 @@ const itemTypeWords: Record<string, string> = {
 export const copiedNoticeText = {
   title: "Copied",
   /** Every "copied, not pasted" sentence ends with its fix. Written with ⌘V;
-   * noticeTitle shows Ctrl+V on other systems. The words are docs/design.md's
-   * Notices table, which a test reads. */
+   * noticeTitle shows Ctrl+V on other systems. The words are the Notices
+   * table in docs/design/delivery.md, which a test reads. */
   hint: "Copied. Press ⌘V to paste.",
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
   /** Keyed by the destination's copy reason codes; any other reason says the hint. */

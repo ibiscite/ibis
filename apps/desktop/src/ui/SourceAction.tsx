@@ -34,7 +34,7 @@ export function shortenedLabel(label: string, limit = 44): string {
 }
 
 /** The footer source/fix action shares Copy's component; like every footer
- * control but Copy, it is quiet (docs/design.md, "Quiet bands"). */
+ * control but Copy, it is quiet (docs/design/picker.md, "Quiet bands"). */
 export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
   const shown = shortenedLabel(label);
   return <Button variant="quiet" size="small" label={shown} keys={keys} className="source-action library-inline-action"

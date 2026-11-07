@@ -1,5 +1,5 @@
 // One model of "which pages are cited" for the thumbnails, the Page field and
-// the shelf (docs/design.md, Reader; decision 0038). Pages are PDF positions;
+// the shelf (docs/design/inspector-and-reader.md, Reader; decision 0038). Pages are PDF positions;
 // what a person reads and cites is the printed label. Pure, so every view
 // that shows pages agrees and each rule is tested once.
 

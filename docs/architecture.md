@@ -1,6 +1,6 @@
 # Architecture
 
-This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 0028](decisions.md#0028-engine-first-replaces-0003-and-0005)). Code on `main` still follows the older design in places; anything rebuilt follows this document. Build order is in [ROADMAP.md](../ROADMAP.md).
+This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 0028](decisions/0028-engine-first.md)). Code on `main` still follows the older design in places; anything rebuilt follows this document. Build order is in [ROADMAP.md](../ROADMAP.md).
 
 ```
                 ┌─ ibis (command line): every capability, for people, scripts and AI agents
@@ -31,7 +31,7 @@ This is the target architecture for the rebuild agreed on 2026-10-26 ([decision 
 - **Escape every output** for its target: LaTeX, Pandoc, Typst, org, HTML, RTF.
 - **Keep private data private.** Paths never reach the webview; fixtures are synthetic; diagnostics use fixed codes, never raw text or payloads.
 - **Local endpoints** bind to `127.0.0.1`, require a token and reject browser `Origin` headers.
-- **Links** (`ibis://`) are untrusted input: they only fill in the picker and never copy, paste, change settings or read files ([decision 0030](decisions.md#0030-links-and-launchers)).
+- **Links** (`ibis://`) are untrusted input: they only fill in the picker and never copy, paste, change settings or read files ([decision 0030](decisions/0030-links-and-launchers.md)).
 - **Speed is a feature, shown by numbers.** Every speed or memory claim has a measurement that runs. Optimise the hot path the measurement finds, not a guessed one. Limits block at the size people have and stretch beyond it with the same numbers, so a miss teaches without blocking (decision 0032).
 - **Opinionated defaults, sharp knives on request.** The first run works with no setup and good choices already made. Anyone can change any choice, but nothing asks a person to configure what a good default can decide.
 - **Fewer moving parts.** Prefer one process, standard formats and code Ibis already ships over new services, dependencies and custom infrastructure. When a simpler option makes code unnecessary, delete the code.
@@ -59,7 +59,7 @@ the searched source and reports its health separately from the rejected choice.
 
 ### Task contexts (planned)
 
-Approved 2026-11-04 ([decision 0028](decisions.md#0028-engine-first-replaces-0003-and-0005)):
+Approved 2026-11-04 ([decision 0028](decisions/0028-engine-first.md)):
 saved project definitions and source updates can be reused across clients, but
 the selected project, source scope and output belong to each writing task.
 The picker switching from Thesis to Paper B cannot retarget an agent already
@@ -169,16 +169,6 @@ mounts, placeholders, blocked reads, stale ownership and registration refusal.
 Native evidence still requires Linux directory replacement, a two-client network
 mount, Windows provider states and iCloud provider states separately.
 
-### Saved .bib cache removal
-
-The saved `.bib` cache was removed on 2026-10-31: #1534's engine-only comparison
-at 10k records found similar first-result time (753 ms cached, 737 ms fresh), but citation
-readiness took 1,949 ms versus 731 ms. Files now parse fresh and become citable
-when loaded. The obsolete-cache cleanup was removed on 2026-11-04; early testers
-may retain unused old cache files. Fresh Reload and watches still share unchanged
-parsed records. Zotero's coherent-read barrier remains; future storage/memory
-work (#1298, #1251) needs separate evidence.
-
 ## Citations (ibis-core, ibis-csl)
 
 - **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
@@ -271,21 +261,12 @@ the formatter task, and exhaustion remains a typed resource-limit error.
 
 ### Cost of every style (#19)
 
-All 10,870 styles and 63 locales are one 3.04 MB file in the binary (62 MB
-unpacked), in 1 MiB zstd blocks. Changing style unpacks the style list (1.7 MB) and
-one block (at most 1.3 MB), then lets both go; formatting again in the same style
-unpacks nothing. A
-release `ibis` grows from 11.9 to 14.2 MB stripped, and the app by the same 2.3 MB.
-The bundle is read from disk only when used, so an idle or hidden app that formats
-nothing pays nothing. Measured on the same machine, alternating fresh processes
-(2026-11-02, release, under other load): a one-shot citation peaks at 29 MiB
-against 17 MiB, nearly all of it released when the style is unpacked; a long-lived
-process holds 37 to 43 MiB after its first citation against 28 MiB, and up to 75 MiB
-when cycling through styles on every request against 44 MiB. That is well inside
-the 200 MiB hidden limit. First citation (113 to 153 ms against 113 to 192 ms), warm
-citation in one style (p95 12 to 26 ms against 18 to 38 ms) and a change of style
-(p50 about 90 ms) match the five-style build within noise. Only the last style
-used stays unpacked.
+All official styles and locales are one file in the binary, in 1 MiB zstd blocks
+(decision 0007). Changing style unpacks the style list and one block, then lets
+both go; formatting again in the same style unpacks nothing, and only the last
+style used stays unpacked. The bundle is read from disk only when used, so an idle
+or hidden app that formats nothing pays nothing. Sizes, memory and timings are
+measured on the pull request that changes the bundle (#19's are on its pull request).
 
 `style_sweep` renders six invented records in every style, in every form. Author
 only, year only and narrative are offered only for the styles checked against
@@ -296,8 +277,8 @@ Zotero; other styles refuse them until their output for those forms is verified.
 The release limits are in decision 0032 (2026-10-31): they block at 10,000
 generated realistic records and a 50,000-record check reports on nightly. 100k is
 no longer a target. Pull request CI fails on search p95 > 20 ms and picker assets
-> 400 KiB gzipped. The rest of this section records the earlier 100k checks and
-measurements, which still run until #1536 moves them to the new sizes.
+> 400 KiB gzipped. The 100k checks below still run until #1536 moves them to the
+new sizes. Each run's numbers belong on its pull request, not here.
 
 The explicitly invoked `ibis-engine` test `refresh_budget` generates its own 21.05 MB
 BibTeX file (two authors, journal, date, pages, DOI, volume and issue per entry).
@@ -322,36 +303,6 @@ The Python standard-library runner builds first, then measures the test process
 alone with `getrusage` on macOS/Linux, excluding compiler memory. It also works
 when a sandbox denies `ps` and macOS `time -l`'s `sysctl` call.
 
-The first strict #1369 gate run on this arm64 Mac (2026-10-28, release) passed
-open at 2,685 ms and refresh at 2,476 ms, but failed search p95 at 25.94 ms.
-Temporary stage timers on its slow query (`synthetic signals 99999`) found
-these median milliseconds; normalization (~0.006 ms), final result cloning
-(~0.05 ms) and serialization (~0.1 ms) were not the bottleneck. Ranking already
-selected top-k rather than sorting every match:
-
-| Search stage | Before | After |
-|---|---:|---:|
-| Initial term matching | 5.69 | 5.89 |
-| Exact-key scan | 7.29 | 1.05 |
-| Typo/abstract/closest fallback work | 12.13 | 0.09 |
-
-ASCII keys now compare lowercase bytes; other keys retain Unicode folding.
-Each search reuses at most eight metadata term-score arrays and starts fallback
-intersections from the rarest cached term. Scope, year and already-found filters
-are still applied on every pass. The cache is discarded after the request and
-adds at most 1.6 MB at 100k, plus the existing scratch scan. Empty abstracts skip
-the redundant abstract pass. Ordering, scoring and closest-match semantics stay
-unchanged: eleven cases compare ordered keys, scores and match flags against
-digests captured from the original 100k scorer before these changes.
-
-Three alternating fresh-process pairs, built beforehand without timers, gave
-before p95 25.68–27.44 ms and after p95 7.49–7.56 ms. Each new run includes 250
-samples (750 total); the worst per-query p95 was 7.85 ms, a 12.15 ms / 61% margin
-below 20 ms. The slowest first call was 7.90 ms. Open was 2,657–2,776 ms and
-refresh 2,407–2,559 ms. OS file caches persist across processes.
-Before splitting enforcement, the combined gate also passed: search p95
-7.16 ms (worst query p95 7.25 ms), open 2,758 ms and refresh 2,464 ms.
-
 Enforcement is split by measured margin (maintainer, 2026-10-28):
 
 | Budget | Enforced in | Reason |
@@ -364,68 +315,13 @@ Preview's release checks cover pushes to `main`, tags and manual runs; the
 scheduled update-test-only run skips them. Failing open/refresh stops a numbered
 release and never holds a nightly back.
 Both engine cases use one test thread after compilation finishes; no retries,
-discarded warmups or best-of selection hide failures. One instrumented run
-immediately after compilation took 3,638 ms to open while search passed, which
-is why open/refresh timing no longer rejects a PR. The limits are unchanged.
-These local engine runs do not substitute for native release-machine measurements.
+discarded warmups or best-of selection hide failures. These local engine runs do
+not substitute for native release-machine measurements.
 
-Measured on this arm64 Mac on 2026-10-28, release build; the baseline is
-`28bfce26` (`origin/main` when work began), exported without git metadata and
-built in a separate worktree-local target directory. Both builds use the same
-measurement harness, input and copy cadence. Three alternating runs without
-profiling instrumentation gave these ranges; RSS is the highest peak of the
-three runs, rather than an average:
-
-| Metric | Before | After |
-|---|---:|---:|
-| First open | 3,164–6,874 ms | 2,705–7,293 ms |
-| One-record refresh | 3,521–7,101 ms | 2,511–5,343 ms |
-| Commit during refresh, p99 range / maximum | 16–127 / 6,691 µs | 16–155 / 6,455 µs |
-| Search p95 | 25–27 ms | 25–62 ms |
-| Maximum process peak RSS | 1,140.8 MiB | 749.5 MiB |
-
-All final runs were below the earlier 877 MiB main observation as well as their
-fresh baseline (final RSS range 607.9–749.5 MiB; baseline 1,035.9–1,140.8 MiB).
-The 400 MB memory budget remains unmet. Timing varied substantially with machine
-load, so these runs do not establish a latency improvement or certify the 3 s
-load/refresh budget. Typing and native summon still need the app probes.
-
-Temporary timers on the same release measurement identified CSL conversion as
-the largest source stage. The following are milliseconds for **open / refresh**,
-before and after removing intermediate text-normalization allocations from the
-resumed implementation. These two runs were consecutive, with both binaries
-built beforehand. Refresh also includes the unchanged 250 ms settling wait
-outside these stage totals:
-
-| Stage | Before normalization change | After normalization change |
-|---|---:|---:|
-| Read (both observations on refresh) | 4.5 / 11.4 | 4.6 / 13.6 |
-| Block scan | 45.6 / 44.8 | 43.8 / 43.2 |
-| Raw entry parse, including duplicate-key checks | 170.3 / 175.6 | 169.9 / 167.3 |
-| Macro/crossref resolution, including setup | 539.8 / 564.1 | 521.4 / 566.9 |
-| Upstream BibTeX field parse | 377.1 / 372.8 | 380.1 / 381.6 |
-| CSL conversion | 816.9 / 762.4 | 787.1 / 730.7 |
-| Record deduplication/reuse | 4.2 / 148.9 | 4.0 / 159.1 |
-| Snapshot validation, sorting and fingerprints | 411.5 / 82.1 | 416.4 / 81.5 |
-| Text normalization (included in CSL conversion) | 112.2 / 110.2 | 72.7 / 72.7 |
-
-The focused change removes a token vector and a joined string for every cleaned
-field/name, copying ordinary words directly into the final string. It sizes that
-string from normalized lengths so whitespace-heavy fields retain no discarded
-whitespace. Unicode whitespace and literal-placeholder decoding stay unchanged.
-The helper takes about 35% less time; total source/snapshot open stages fell
-from 2,370 to 2,327 ms in this pair. This is an allocation fix in the largest
-stage, with no parser rewrite or new cache. Profiled whole-process peak RSS was
-748.2 / 751.2 MiB before/after; both remain below main.
-
-Deduplication now compares normalized records against the prior validated model
-before collecting a candidate: refresh fingerprints only its one changed record.
-The extra comparisons avoid accumulating 99,999 duplicate CSL trees. The timers
-were removed after measurement.
-
-Main already shared fingerprinted objects after #1310. This change batches JSON
-writes to SHA-256 without changing their bytes, hashes identical cite/full views
-once, and computes aggregate fingerprints once per combined publication. A sole
+Refresh compares normalized records against the prior validated model before
+collecting a candidate, so it fingerprints only the records that changed.
+Fingerprinting batches JSON writes to SHA-256 without changing their bytes,
+hashes identical cite/full views once, and computes aggregate fingerprints once per combined publication. A sole
 library shares its entire object slice with the source. BibTeX refresh reuses old
 records while parsing; other objects are coalesced by full fingerprint before a
 watcher retains the next model. Its callback acknowledges the installed,
@@ -434,12 +330,9 @@ Only explicitly seeded watchers keep a model. This prevents a watcher from
 holding a second, pre-coalescing copy of the library. Index refresh reuses
 prepared keys, identifiers and normalized text. Assembly and index preparation precede the
 brief state swap, so they do not hold the citation commit's publication barrier.
-Raw literals reserve one part instead of four. Header deduplication tables are
-released before conversion, and CSL construction moves normalized strings into
-JSON values instead of serializing and copying them again. Macro/crossref and
-field-parser algorithms are unchanged. The remaining footprint includes the
-normalized library, index, source text and raw-entry working set; reaching 400 MB
-still needs further work.
+Header deduplication tables are released before conversion, and CSL construction
+moves normalized strings into JSON values instead of serializing and copying them
+again.
 
 ## Desktop app
 
@@ -452,7 +345,7 @@ still needs further work.
 - **Keys:** one command registry (id, default chord per system, user override) drives the keys sheet, footer, menus and docs. Conflicts are checked against Ibis's own keys, a reserved list per system and a real registration attempt. Escape, Tab, Enter and arrows cannot be rebound.
 - **Layers, focus and commands:** each window has one layer stack and one key listener ([`ui/layers.ts`](../apps/desktop/src/ui/layers.ts)), on `window` in the capture phase, so no control can swallow a key and focus resting nowhere loses none. Esc closes the nearest layer, in one fixed order: sheet, menu, panel (the citation inspector), chooser, search text, window. A surface registers with `useLayer(kind, open, close)` and never handles Escape or stops other keys for the picker's sake. Closing returns focus to what opened the layer; if that is gone or hidden, the window's home takes it (Search, or More on the welcome, which hides Search). A key pressed with focus lost goes home first. A close is immediate: a closing modal refuses focus, so nothing waits for its exit. The picker owns its keys and commands in one place (`usePickerKeys`): a key and its menu item call the same `run(command)`. Toggles leave layers as they are; any other command clears the sheet and menus first; the inspector is a live panel, not an overlay, so it stays; a layer's own key closes it. A command that hands the screen to another window has one effect, in native code on every system and build (`picker::yield_to_window`), for the presentation that asked. Every way into Settings ends in `settings_window::present`, which closes the picker even when pinned, because a floating picker would cover it; the pin stays for its next opening. An opened source hides an unpinned picker and leaves a pinned one beside it. The picker's own file dialog keeps it, as a parent.
 - **Pasting into the previous app:** a pure decision in the engine and thin per-system code. macOS captures the active app (bundle ID, process, name) and opaque document and top-level input-surface identities before the picker shows. Decision 0029 requires Accessibility access for identity-only AX reads, separately from PostEvent. The globally focused application/window and the focused element's containing document/PID must agree; AXTopLevelUIElement also identifies sheets/drawers, so they cannot borrow the document's proof. Both identities must match at delivery, including when another process has a nonactivating panel. Several windows of an app are supported without enumerating windows or reading titles, field roles, values or secure-field attributes. Each query has one 50 ms sleep-inclusive budget with per-message remaining timeouts; after refreshing authorization, clipboard and security checks, its three final document/surface/global-focus reads share at most 15 ms. Clock sampling admits brackets shorter than 500 µs, preserving interval intersection and bounding combined sampling skew below 1 ms apart from nanosecond rounding. Missing Accessibility uses `accessibility-required`; failed/unsupported reads or timeout use `paste-unavailable`. Retained AX references stay on the main thread; workers carry only immutable tokens. A repeated show while an Ibis native window is key preserves the external capture/bank, even while NSWorkspace still reports the external app active. The selection read adds up to 30 ms to opening, only for apps Ibis may paste into, and up to 60 ms to a paste (decision 0029). Bounded capture latency adds up to 50 ms to opening; native provider latency remains to be measured. When a permitted app leaves out document/surface attributes, Ibis automatically enables AXManualAccessibility once per live process, then repeats the full capture inside that same budget (decision 0029). The NSRunningApplication retained when eligibility was decided must still be the live instance for that PID before the write. Optional in-process diagnostics emit only fixed stages, numeric timing/errors, owner/equality booleans and whether capture attempted the activation write. A successful copy records the pasteboard change count, target, picker presentation and write time in a one-use proof. After the picker hides, bounded readiness checks wait up to 1,000 ms at 25 ms intervals for the original captured document window and surface, even if the app stayed active throughout; they never capture a replacement. Then the full final proof is repeated and one layout-aware ⌘V is posted only to that process. The final foreground, Secure Event Input, change-count and deadline checks run together with posting in one main-thread task. Secure Event Input is system-wide, may be enabled by another app, and does not identify the destination's field or detect every password control. An enabled flag copies with `secure-input`; unavailable checks copy with `paste-unavailable`; expired delivery uses `paste-expired`. Both notices offer ⌘V; neither claims the destination is a password field (decisions 0009, 0029). A replacement clipboard or changed picker also only copies. Paste reads no clipboard contents. Auto-paste needs both PostEvent and Accessibility; passive checks never prompt. Settings reports granted only when both are authorized and guides the person to the version-specific Accessibility list. Its explicit guide action repairs only missing grants, including Accessibility; passive checks never request either grant. Granting never revives a failed capture or retries delivery: return to the external document, summon Ibis again and activate the citation afresh. All ownership locks precede the final identity reads. After the last AX comparison, combined-session key-down and left/right/other mouse-down timings must show no input since delivery began; local lifecycle/time and deadline guards finish before posting. Mouse movement does not count. A programmatic tab or conversation change with no input is not detected. PID-directed posting cannot atomically bind to a foreign window: a small sequential focus/session/clipboard observation and focus-read-to-post gap remains (decision 0029). Terminals, remote desktops and VMs are also refused. Windows: the window in front is captured the same way (executable file name, process, integrity level), the picker shows above always-on-top windows, and the keyboard is handed back to that window. A one-use delivery ticket freezes the target, HWND and picker generation before copying, then records the final clipboard sequence after Ibis's own write. One atomic Ctrl+V `SendInput` goes in only while that window and process are in front, no key is held and that sequence is unchanged; apps with more rights than Ibis and UI Automation password fields copy instead. Password checks have a 250 ms caller deadline, no queue and at most one outstanding query per target process (four total); a stuck provider blocks only its own process. Display names are read off the UI thread with a bounded wait and executable-name fallback. Partial `SendInput` releases every key it left down, retries failed releases and retains them for recovery before any later paste. Linux copies and says why. Every refusal leaves a copied outcome. macOS keys PostEvent permission to the signing identity, so builds need a stable signing certificate.
-- **Reader (0.5; trust boundary in [decision 0036](decisions.md#0036-the-readers-trust-boundary)):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter, loaded lazily. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
+- **Reader (0.5; trust boundary in [decision 0036](decisions/0036-reader-trust-boundary.md)):** PDF.js (`pdfjs-dist`, legacy build) behind a small adapter, loaded lazily. File bytes arrive over IPC from a command that checks the item and never exposes paths; PDF scripting and eval are off; a plain page-text view backs up accessibility. Ibis keeps the physical page index, the printed page label and an annotation's own page label apart. The printed label comes from the PDF's page labels, a Zotero annotation on that page, or an offset the user confirms; a confirmed offset covers a page range (front matter, missing pages and supplements break a single offset), is tied to the file's content hash and is dropped when the file changes. The record's page range is only a hint.
 - **Accessibility:** combobox and listbox (not grid) for results, `TagGroup` for the shelf, one announcer, native announcements after the picker hides. Tested with axe in jsdom, Playwright WebKit snapshots, native accessibility trees and screen-reader runs per release.
 - **Paste permission detour:** delivery returns its typed outcome to the picker.
   A `no-permission` or `accessibility-required` result keeps the prepared shelf

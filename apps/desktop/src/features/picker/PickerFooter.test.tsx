@@ -70,7 +70,7 @@ test("the footer is status, Copy, More with no Shortcuts button at any width", (
   const more = screen.getByRole("button", { name: "More" });
   const copy = screen.getByRole("button", { name: "Copy 20 as Pandoc" });
   expect(copy.compareDocumentPosition(more) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  // The launcher action: quiet words, the accent on its ↵ cap (docs/design.md, Quiet bands).
+  // The launcher action: quiet words, the accent on its ↵ cap (docs/design/picker.md, Quiet bands).
   expect(copy.getAttribute("data-variant")).toBe("action");
   for (const width of [720, 440, 300, 900]) {
     resize(width);

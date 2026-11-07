@@ -8,17 +8,17 @@ Every feature in the releases below ships before 1.0. Versions before 1.0 are wo
 
 - **Simplest correct form.** Each feature ships as the smallest version that is right and saves real work. Rules for cases no one has met yet wait until someone does; a feature can still grow later. Functionality first, then strict polish of how Ibis looks and behaves.
 - **Consolidate before adding.** One way to do each thing, in one place. When something is replaced or withdrawn, its code, tests and docs go in the same change. A change that makes the code smaller and clearer is worth more than a new option. Until 1.0 nothing is kept for compatibility (decision 0027).
-- **Engine first, front ends thin.** Every capability lives once in the Rust engine; the app, `ibis`, `ibis serve` and `ibis mcp` only show it ([decision 0028](docs/decisions.md#0028-engine-first-replaces-0003-and-0005), [architecture](docs/architecture.md)). The engine holds facts and abilities; what a person chose (a format per app, a project) stays a thin layer.
+- **Engine first, front ends thin.** Every capability lives once in the Rust engine; the app, `ibis`, `ibis serve` and `ibis mcp` only show it ([decision 0028](docs/decisions/0028-engine-first.md), [architecture](docs/architecture.md)). The engine holds facts and abilities; what a person chose (a format per app, a project) stays a thin layer.
 - **Only what Ibis can get right.** A plausible but wrong citation is worse than none. Where correctness needs the whole document (numbering, ibid., 2020a and 2020b), Ibis gives what is correct on its own and says why.
 - **Reveal as you go.** The picker finds and cites. Advanced tools appear once they apply (a linked `.bib`, a PDF, a passage) and stay out of the way otherwise ([design](docs/design.md)).
-- **Offline by default** ([decision 0008](docs/decisions.md#0008-offline-by-default)), **read-only sources**, open standards (CSL, CSL-JSON, BibTeX) and widely used open source, each behind one Ibis module so it can be replaced.
+- **Offline by default** ([decision 0008](docs/decisions/0008-offline-by-default.md)), **read-only sources**, open standards (CSL, CSL-JSON, BibTeX) and widely used open source, each behind one Ibis module so it can be replaced.
 - Each release claims only what it has demonstrated, in the [compatibility guide](docs/compatibility.md). The maintainer shares builds and gathers feedback while agents keep building.
 
 ## Sources and writing apps
 
 - **Sources:** Zotero with or without Better BibTeX, `.bib` files, BibDesk, CSL-JSON, spreadsheets, and exports from other managers (RIS, EndNote XML). EndNote and Mendeley are reached only through their exports, which Ibis says can go stale. PDFs and notes outside a reference manager can be found, previewed and quoted; Ibis cites them only when it knows their details. Ibis never writes to a library or reads another app's private database or cloud account; the one exception is Zotero's own database, read from a private copy while Zotero is closed (decision 0006).
 - **Writing apps:** keys first. LaTeX and Overleaf, Markdown, Quarto and Typst get keys in their own syntax. Word, Google Docs and others get formatted citations, and keys reach them too: Zotero's free ODF/DOCX Scan turns keys in a `.docx` or `.odt` into live Zotero citations, and `ibis format` writes a finished copy for people without Zotero. The website and first run say this plainly, since Word users expect a plugin.
-- **Agents and scripts:** `ibis` does everything with `--json`, a JSON-RPC server and an MCP server ([decision 0033](docs/decisions.md#0033-the-engine-for-agents-and-tools)). Ibis's edge is citations that can be checked, from any source, offline. Agents reach highlights and notes only after the person turns that on for a library.
+- **Agents and scripts:** `ibis` does everything with `--json`, a JSON-RPC server and an MCP server ([decision 0033](docs/decisions/0033-engine-for-agents-and-tools.md)). Ibis's edge is citations that can be checked, from any source, offline. Agents reach highlights and notes only after the person turns that on for a library.
 
 ## Releases
 
@@ -47,14 +47,14 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Citations:** rich text on the clipboard, plain text and Markdown copies; recent citations per app; Change Last Citation; a page or range; narrative and author-omitted forms; selected text becomes the search; a peek at a reference's details; a dropped `.bib` or CSL-JSON file becomes a library.
 - **Updates** keep the macOS paste permission through a stable self-signed identity.
 - **For agents:** `ibis mcp` (MCP 2026-07-28, answering 2025 clients), an Agent Skill for Claude Code and Codex, `ibis` using the app's libraries by default, the app installing `ibis`, Homebrew and winget.
-- **Release gates** ([decision 0032](docs/decisions.md#0032-release-gates)): VoiceOver, NVDA and Chinese, Japanese and Korean input; text ready for translation; speed and resource limits that run as checks.
+- **Release gates** ([decision 0032](docs/decisions/0032-release-gates.md)): VoiceOver, NVDA and Chinese, Japanese and Korean input; text ready for translation; speed and resource limits that run as checks.
 
 ### 0.4 Build any citation
 
 - **Everything Zotero's citation dialog does:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
 - **Every key syntax Ibis can write correctly** (Typst, org-cite, MyST, AsciiDoc, ConTeXt and more); **any official CSL style and locale**; output presets; bibliography entries; references cited since Ibis opened as an editable bibliography.
 - **The project's bibliography:** link a `.bib` and results say "In thesis.bib" or "Missing from thesis.bib", with the missing entry to copy. The check is advice: an unreadable file is a warning, and only a key known to name a different work is refused.
-- **Optional writing projects** ([#1697](https://github.com/ibiscite/ibis/issues/1697)): a project is a `.bib` file and its format, nothing more, picked in the format menu and remembered per app ([decision 0031](docs/decisions.md#0031-what-ibis-remembers-per-app)).
+- **Optional writing projects** ([#1697](https://github.com/ibiscite/ibis/issues/1697)): a project is a `.bib` file and its format, nothing more, picked in the format menu and remembered per app ([decision 0031](docs/decisions/0031-what-ibis-remembers-per-app.md)).
 - **Overleaf on free plans:** one key downloads the project's bibliography and Ibis reads its `.bib` files, with no sign-in or network use; a browser extension only if Overleaf agrees in writing.
 - **More sources:** RIS files and a CSV template for spreadsheets; one setup line per reference manager in the compatibility guide.
 - **Live citations through keys:** Pandoc keys in Word or LibreOffice become live Zotero citations through Zotero's ODF/DOCX Scan, Google Docs through Zotero's switch-word-processor step; Ibis documents and tests the flow, checks its keys match Zotero's, and writes ODF Scan markers. Trials of real footnotes and Zotero's own Word field ship only if they work.
@@ -68,7 +68,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Search** that forgives Chinese, Japanese and Korean names and romanised readings; collections, tags, saved searches and filters; "Selected in Zotero"; suggestions before typing.
 - **Passages** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)): Zotero highlights, notes and comments searchable from the picker, each with its reference and page ("PDF page 8 · cite p. 417"), the printed page taken from the PDF, the annotation or an offset the person confirms, never assumed. Notes and comments stay distinct from quotations.
 - **Quotes and briefs** ([#1385](https://github.com/ibiscite/ibis/issues/1385), [#1517](https://github.com/ibiscite/ibis/issues/1517)): a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown; chosen passages exported as one Markdown brief.
-- **A read-only PDF preview** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions.md#0036-the-readers-trust-boundary)) for PDFs already in Zotero or a `.bib` `file` field, so checking a page never needs Zotero; Ibis never imports, edits or annotates them. EPUB and web snapshots follow.
+- **A read-only PDF preview** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions/0036-reader-trust-boundary.md)) for PDFs already in Zotero or a `.bib` `file` field, so checking a page never needs Zotero; Ibis never imports, edits or annotates them. EPUB and web snapshots follow.
 - **Files outside a reference manager:** a folder of PDFs or of Markdown notes can be searched, previewed and quoted.
 - **Agents and passages:** opt-in per library, off by default; private links never reach them.
 - **Is this in my library?** for a pasted identifier or reference list; results say whether a reference has a PDF or a saved web page.

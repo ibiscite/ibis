@@ -3,7 +3,7 @@ import { currentPlatform, type Platform } from "../platform";
 import "./KeyCaps.css";
 import { useKeyPulse } from "./Delights";
 
-/** One cap per shortcut on every system (docs/design.md, Footer), written as
+/** One cap per shortcut on every system (docs/design/picker.md, Footer), written as
  * that system's menus write it: ⌘K on macOS, Ctrl+K on Windows and Linux. */
 export function KeyCaps({ accelerator, platform = currentPlatform(), hidden, echo = false }: {
   accelerator: string; platform?: Platform;

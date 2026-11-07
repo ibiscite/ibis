@@ -81,7 +81,7 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 });
 
 test("selected rows and menu highlights keep WebKit's selection pair on the native accent", () => {
-  // Selection is deeper than the accent and follows it (docs/design.md, Accent and selection).
+  // Selection is deeper than the accent and follows it (docs/design/foundations.md, Accent and selection).
   expect(css).toMatch(/@supports \(background: -apple-system-selected-content-background\) and \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected: -apple-system-selected-content-background;\s*--selected-text: -apple-system-alternate-selected-text;/);
   const bridge = css.indexOf("--selected: var(--accent); --selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);

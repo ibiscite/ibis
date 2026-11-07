@@ -39,7 +39,7 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   This can increase that app's CPU/memory use and expose its accessibility tree
   to the OS; Ibis still reads only identities and process ownership. Refused apps
   and Copy only never receive this write
-  ([decision 0029](docs/decisions.md#0029-native-calls)).
+  ([decision 0029](docs/decisions/0029-native-calls.md)).
 - **Selected text (macOS):** when you open Ibis in an app it may paste into, it
   reads the text you selected there through Accessibility, so short text can
   become the search and be replaced by the paste. It reads once when Ibis opens
@@ -97,12 +97,12 @@ the same as Ibis's settings.
 
 ## Network and diagnostics
 
-- **Telemetry:** none, ever ([decision 0008](docs/decisions.md#0008-offline-by-default)).
+- **Telemetry:** none, ever ([decision 0008](docs/decisions/0008-offline-by-default.md)).
   Ibis never sends your libraries, search queries, selected references,
   documents, clipboard contents or citation history off your computer.
 - **Web interface:** no file system, clipboard, shell or network plugin
   permissions. Library reads and clipboard writes go through Ibis's
-  window-scoped commands ([decision 0024](docs/decisions.md#0024-window-permissions)).
+  window-scoped commands ([decision 0024](docs/decisions/0024-window-permissions.md)).
   Its content security policy restricts `connect-src` to local IPC.
 - **Editor endpoint:** off until you switch it on in Settings › Citations. Then Ibis
   listens on `127.0.0.1:23124` only, for editors on your computer that know the
@@ -120,7 +120,7 @@ the same as Ibis's settings.
   Ibis requests a small GitHub update file a few times a day. **Check for
   Updates…** makes a check on request. GitHub sees your IP address and Ibis
   version, not library contents. Downloads require your agreement and a
-  signature matching the app's update key ([decision 0019](docs/decisions.md#0019-updates)).
+  signature matching the app's update key ([decision 0019](docs/decisions/0019-updates.md)).
 - **Windows runtime:** if WebView2 is missing, installation downloads Microsoft's
   bootstrapper and runtime. Its shared Evergreen runtime is maintained by
   Microsoft's update service, separately from Ibis's update consent.

@@ -1,6 +1,6 @@
 /* In-window menus (More, format, library scope): one frame and one row, with
    each platform's native menu metrics; radius and padding come from the
-   geometry chain in tokens.css (docs/design.md, Corners and Menus;
+   geometry chain in tokens.css (docs/design/foundations.md, Corners, and ui/README.md, Menus;
    ADR 0021 §5). These are the look-layer tokens for menus. */
 .menu-popover {
   --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 1.5rem;

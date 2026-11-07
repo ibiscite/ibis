@@ -1,6 +1,6 @@
 //! The output the picker starts with for the app it was opened from (#1202),
-//! and the per-app choices Ibis remembers ("What Ibis remembers per app" in
-//! docs/decisions.md).
+//! and the per-app choices Ibis remembers (decision 0031,
+//! docs/decisions/0031-what-ibis-remembers-per-app.md).
 //!
 //! `apps.json`, beside `settings.json`, holds at most [`MAX_APPS`] app IDs,
 //! each with its chosen output and optional paste/copy-only preference.

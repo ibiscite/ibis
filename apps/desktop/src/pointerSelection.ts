@@ -5,7 +5,7 @@ const STILL_AFTER_MS = 1000;
 
 /**
  * Moving the mouse only shows hover; a click selects [C5], so reaching across
- * rows for Copy never changes what is copied (docs/design.md, "Hover"). A row
+ * rows for Copy never changes what is copied (docs/design/picker.md, "Hover"). A row
  * sliding under a still pointer (typing, scrolling, the picker reopening) does
  * not even show hover. Browsers repeat a mouse move at the same position when
  * content moves under the pointer, so only a change of screen position soon

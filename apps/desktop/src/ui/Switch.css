@@ -1,4 +1,4 @@
-/* One switch (docs/design.md, "Per platform"): the accent when on, a
+/* One switch (docs/design/foundations.md, "Per platform"): the accent when on, a
    quiet fill when off, and a contrast-paired thumb on the accent with a soft shadow. */
 /* Anchor React Aria's hidden input to its label, so focus scrolls its pane. */
 .ui-switch { --switch-travel: calc(var(--switch-w) - var(--switch-thumb-w) - 2 * (var(--border-width) + 1px)); position: relative; display: inline-flex; flex: none; align-items: center; min-height: var(--control-h); cursor: default; }

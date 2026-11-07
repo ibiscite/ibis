@@ -199,7 +199,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     },
   });
   useWindowSizeStatus(api.onWindowSizeSaved, report);
-  // ">" in the search lists commands by name (docs/design.md, Command search).
+  // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,
     source: api.openLibrarySource && source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,

@@ -4,7 +4,7 @@
 //! It is a second, small window drawn by Ibis. It never takes focus, so the
 //! editor that focus was just returned to keeps it, and it is left out of the
 //! taskbar, the Dock and Alt+Tab. It is the same card near the top centre of
-//! the picker's display on every system (docs/design.md).
+//! the picker's display on every system (docs/design/delivery.md).
 
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};

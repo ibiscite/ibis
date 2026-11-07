@@ -28,7 +28,7 @@ set, missing secrets fail instead of silently falling back.
 Ibis's updater signatures are separate: the app accepts an update only when
 its signature matches the Ibis update key built into the app and authenticates
 the advertised version within the installed channel
-([decision 0019](decisions.md#0019-updates)). An updater signature does not establish
+([decision 0019](decisions/0019-updates.md)). An updater signature does not establish
 a Windows publisher or remove the first-install warning.
 
 ## Roles and review
@@ -41,7 +41,7 @@ does not authorize signing or publication.
 - **Contributors** propose changes through public pull requests and disclose
   AI assistance in commits and pull requests ([AGENTS.md](../AGENTS.md)).
 - **Reviewers** check the exact proposed commit. All required checks must pass,
-  changes in a risky area ([decision 0027](decisions.md#0027-process-until-10-with-0011-0015-and-0017)) need an
+  changes in a risky area ([decision 0027](decisions/0027-process-until-1-0.md)) need an
   independent review with every P1 and P2 finding fixed, and other changes need
   the author's recorded adversarial check
   ([contribution guide](../CONTRIBUTING.md#pull-requests)). Authorized agents may merge
