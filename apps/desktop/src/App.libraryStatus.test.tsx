@@ -11,7 +11,7 @@ const hour = 3_600_000;
 const library = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
   source_generation: "1", source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true,
   zotero_libraries: ["user"], name: "Zotero library", snapshot_name: "Zotero library",
-  references: 12, source_counts: { "zotero:user": 12 }, warnings: 0, reading: [], error: null, problem: null,
+  references: 12, source_counts: { "zotero:user": 12 }, warnings: 0, reading: [], live_updates_off: false, error: null, problem: null,
   note: null, settings_notice: null, stale: false, checked_at: Date.now() - 2 * hour, updated_at: null, ...overrides,
 });
 const stale = (overrides: Partial<LibraryStatus> = {}) => library({ state: "error", stale: true,
@@ -167,6 +167,26 @@ test.each([
   await act(async () => { await emit("library:changed", current); });
   fireEvent.change(box, { target: { value: "nothing again" } });
   await screen.findByText("No matching references");
+});
+
+test.each([
+  // F6: what reading skipped, by key and line, as `ibis libraries` says it.
+  ["a damaged file", { zotero: false, snapshot_zotero: false, zotero_libraries: [], name: "damaged.bib", snapshot_name: "damaged.bib", references: 3, warnings: 3, reading: [
+    { code: "duplicate-key", line: 3, key: "good1" }, { code: "duplicate-key", line: 9, key: "good1" }, { code: "syntax", line: 21, key: null }] },
+    "damaged.bib · 3 references · 3 entries skipped", "3 entries skipped: 2 use the key good1 (lines 3 and 9), 1 could not be read (line 21)."],
+  // F7: a source Ibis cannot watch is a problem in words, so never a green dot.
+  ["a file Ibis cannot watch", { zotero: false, snapshot_zotero: false, zotero_libraries: [], name: "thesis.bib", snapshot_name: "thesis.bib", live_updates_off: true },
+    "thesis.bib · 12 references", "Live updates are unavailable. Reload the library after editing it."],
+] satisfies [string, Partial<LibraryStatus>, string, string][])("%s: the dot, the hover text and the library menu agree", async (_, overrides, line, words) => {
+  backend({ library_status: () => library(overrides) });
+  render(<App />);
+  await waitFor(() => expect(status().textContent).toBe(line));
+  expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
+  const plain = (text: string | null | undefined) => (text ?? "").replace(/[\u2068\u2069]/g, "");
+  expect(plain(document.querySelector(".library-status")?.getAttribute("title"))).toContain(words);
+  fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
+  const menu = await screen.findByRole("menu", { name: "Library" });
+  expect(plain(menu.querySelector(".menu-detail")?.textContent)).toContain(words);
 });
 
 test("a stale snapshot has one footer problem and action, and a successful read clears it", async () => {

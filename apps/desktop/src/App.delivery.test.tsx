@@ -672,7 +672,11 @@ test("with nothing selected the changed citation is copied, the document is unto
   expectReceipt(harness, "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.", "[@a, p. 3]");
 });
 
-test("after a change that was only copied, selecting the old citation and changing again replaces it", async () => {
+test.each([
+  ["selecting the old citation", "Draft: [@a] ends.", [7, 11]],
+  // The notice said "Select it, then press ⌘V": the new one is in the document now.
+  ["pasting the copied change by hand, then selecting it", "Draft: [@a, p. 3] ends.", [7, 17]],
+] as const)("after a change that was only copied, %s and changing again replaces it", async (_, document, selection) => {
   const harness = await pastedOnce();
   await act(async () => { await harness.reopen(); });
   await changeLast();
@@ -681,17 +685,37 @@ test("after a change that was only copied, selecting the old citation and changi
   await finishCopy(harness);
   await finishDelivery(harness);
   expect(harness.document.text).toBe("Draft: [@a] ends.");
-  // The old citation is still the one in the document: select it and try again.
-  harness.document.selection = [7, 11];
+  harness.document.text = document;
+  harness.document.selection = [...selection];
   await act(async () => { await harness.reopen(); });
   await changeLast();
-  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 4]" }); });
   await enter();
   await act(async () => { harness.copy.pending.at(-1)!.complete(); });
   await act(async () => { harness.delivery.pending.at(-1)!.complete(); });
   await act(async () => { harness.notice.pending.at(-1)!.complete(); });
-  expect(harness.document.text).toBe("Draft: [@a, p. 3] ends.");
-  expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 3]");
+  expect(harness.document.text).toBe("Draft: [@a, p. 4] ends.");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 4]");
+});
+
+test("after a change that was only copied, anything else selected still only copies", async () => {
+  const harness = await pastedOnce();
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  harness.document.selection = [0, 5];
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 4]" }); });
+  await enter();
+  await act(async () => { harness.copy.pending.at(-1)!.complete(); });
+  await act(async () => { harness.delivery.pending.at(-1)!.complete(); });
+  await act(async () => { harness.notice.pending.at(-1)!.complete(); });
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+  expectReceipt(harness, "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.", "[@a, p. 4]");
 });
 
 test("the shortcut alone never reopens the last citation", async () => {

@@ -365,6 +365,7 @@ mod tests {
             source_counts: Default::default(),
             warnings,
             reading: Vec::new(),
+            live_updates_off: false,
             error: error.map(String::from),
             problem: None,
             error_reason: None,

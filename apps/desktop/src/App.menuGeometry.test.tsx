@@ -144,7 +144,7 @@ test("clearing a settings notice keeps the pointer's newer place even before its
     source_generation: "1", source_is_requested: true,
     state: "loaded", revision: "1", has_snapshot: true, zotero: false, zotero_libraries: [],
     name: "invented.bib", snapshot_name: "invented.bib", references: 14, source_counts: {},
-    warnings: 0, reading: [], error: null, problem: null, note: null, settings_notice: null,
+    warnings: 0, reading: [], live_updates_off: false, error: null, problem: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: null,
   };
   const found = Array.from({ length: 14 }, (_, i) => result(`synthetic${i}`, `Invented reference ${i}`));

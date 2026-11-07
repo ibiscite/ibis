@@ -57,13 +57,13 @@ class Work<Args, Input = void, Output = void> {
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
 type DeliveryRequest = { text: string; delivery: number | null };
 type Capture = { window: number | null; surface: number | null; reason: string | null; selection: string | null; unread: boolean };
-type Proof = DeliveryRequest & Capture & { replaces: string | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
+type Proof = DeliveryRequest & Capture & { replaces: string[] | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
 type AppChoice = { output: string | null; paste: AppPaste | null };
 
 export function deliveryHarness(text = "Draft: [citation].", selection: [number, number] = [7, 17]) {
   const search = new Work<SearchQuery, SearchReply, SearchReply>();
   const preview = new Work<PreviewRequest, PreviewContent, FilePreview>();
-  const copy = new Work<{ ticket: string; contentHash: string; replaces: string | null }, void, Copied>();
+  const copy = new Work<{ ticket: string; contentHash: string; replaces: string[] }, void, Copied>();
   const copyReplies = new Work<Copied, void, Copied>();
   let holdCopyReplies = false;
   const delivery = new Work<DeliveryRequest, void, Delivered>();
@@ -123,7 +123,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (target.focusedPid !== 42) return { outcome: "copied", reason: "target-changed" };
     if (clipboard.owner !== "ibis" || owned.sequence !== clipboard.sequence) return { outcome: "copied", reason: "clipboard-changed" };
     if (!target.available || owned.window !== target.window || owned.surface !== (target.surface ?? target.window)) return { outcome: "copied", reason: "target-changed" };
-    if (owned.replaces !== null && owned.replaces !== selectedText()) return { outcome: "copied", reason: "citation-not-selected" };
+    if (owned.replaces !== null && !owned.replaces.includes(selectedText())) return { outcome: "copied", reason: "citation-not-selected" };
     if (owned.replaces === null && owned.unread && selectedText() !== "") return { outcome: "copied", reason: "selection-not-shown" };
     if (owned.replaces === null && owned.selection !== null && (!shows(owned.selection) && owned.selection !== "" || owned.selection !== selectedText())) return { outcome: "copied", reason: "selection-not-shown" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
@@ -176,13 +176,14 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
       });
     },
     copy_file_citation: (args) => {
-      const request = { ...args, replaces: (args.replaces ?? null) as string | null };
+      const replaces = (args.replaces ?? []) as string[];
+      const request = { ...args, replaces };
       return copy.enqueue(request, () => {
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
-        proof = { ...(captured ?? capture()), replaces: request.replaces, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
+        proof = { ...(captured ?? capture()), replaces: replaces.length > 0 ? replaces : null, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },

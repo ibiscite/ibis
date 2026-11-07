@@ -491,6 +491,7 @@ export const libraryMessages = {
     return `The library could not be opened: ${isolate(name ?? "the chosen file")}. ${sentence} Choose it again or reconnect the drive.`;
   },
   emptyTitle: (name: string | null) => `No references in ${name ?? "this library"}`,
+  liveUpdatesOff: "Live updates are unavailable. Reload the library after editing it.",
   /** The footer words: the source, then its state. A ticking age is kept
    * out of this text, so the live region never repeats a clock. The source is
    * separate so the footer can isolate its direction and shorten it first. */

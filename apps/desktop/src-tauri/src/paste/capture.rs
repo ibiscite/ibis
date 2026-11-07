@@ -33,32 +33,47 @@ pub(crate) enum Selection {
     Citation(OldCitation),
 }
 
-/// What Enter must find selected to replace it. Only macOS reads it back.
+/// What Enter must find selected to replace it: the last citation, or the
+/// one copied to replace it when that change was only copied, since the
+/// person may have pasted it by hand. Only macOS reads it back.
 #[derive(Clone, PartialEq, Eq)]
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 pub(crate) struct OldCitation {
-    pub(crate) digest: Fingerprint,
-    /// UTF-16 units, so a much longer selection is never copied across.
+    pub(crate) digests: Vec<Fingerprint>,
+    /// The longest, in UTF-16 units, so a much longer selection is never copied across.
     pub(crate) units: usize,
 }
 
 #[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
 impl OldCitation {
+    #[cfg(test)]
     pub(crate) fn of(text: &str) -> Self {
-        let plain = plain(text);
+        Self::of_any(&[text.to_owned()])
+    }
+
+    pub(crate) fn of_any(texts: &[String]) -> Self {
+        let plain: Vec<String> = texts.iter().map(|text| plain(text)).collect();
         Self {
-            digest: Fingerprint::of_bytes(plain.as_bytes()),
-            units: plain.encode_utf16().count(),
+            digests: plain
+                .iter()
+                .map(|text| Fingerprint::of_bytes(text.as_bytes()))
+                .collect(),
+            units: plain
+                .iter()
+                .map(|text| text.encode_utf16().count())
+                .max()
+                .unwrap_or_default(),
         }
     }
 
-    /// Whether `selected` is this citation. Apps may turn spaces into
+    /// Whether `selected` is one of these citations. Apps may turn spaces into
     /// no-break spaces or wrap a line, and neither changes the citation.
     pub(crate) fn is(&self, selected: &str) -> bool {
-        Fingerprint::of_bytes(plain(selected).as_bytes()) == self.digest
+        self.digests
+            .contains(&Fingerprint::of_bytes(plain(selected).as_bytes()))
     }
 
-    /// The longest selection that could still be this citation once its
+    /// The longest selection that could still be one of them once its
     /// white space is folded. Only the macOS read uses it.
     #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
     pub(crate) fn limit(&self) -> usize {
@@ -326,6 +341,17 @@ mod tests {
         assert!(!old.is(""));
         assert_eq!(old.units, 20);
         assert!(!format!("{:?}", Selection::Citation(old)).contains("Smith"));
+    }
+
+    #[test]
+    fn a_change_only_copied_replaces_either_citation_and_nothing_else() {
+        // The person may have pasted the copied change by hand, or not.
+        let either = OldCitation::of_any(&["(Smith, 2020)".into(), "(Smith, 2020, p. 3)".into()]);
+        assert!(either.is("(Smith, 2020)"));
+        assert!(either.is("(Smith,\u{a0}2020, p. 3)"));
+        assert!(!either.is("(Smith, 2020) (Smith, 2020, p. 3)"));
+        assert!(!either.is("(Jones, 2021)"));
+        assert_eq!(either.limit(), 19 + 32);
     }
 
     #[test]

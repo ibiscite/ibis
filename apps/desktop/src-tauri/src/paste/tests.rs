@@ -872,7 +872,7 @@ fn a_superseded_claimed_worker_cannot_post_even_if_citation_and_counter_match() 
     last.begin_presentation(Some(writer("com.microsoft.word")));
     let copy = || {
         let token = last
-            .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+            .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
         last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
     };
@@ -1177,7 +1177,7 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
         state.captured = Some(writer("com.microsoft.word"));
     }
     let token = last
-        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
     assert_eq!(ticket.change_count, COUNT);
@@ -1185,7 +1185,7 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
     assert_eq!(ticket.captured, Some(writer("com.microsoft.word")));
     assert!(last.take_copy(TEXT, token).is_none());
     let token = last
-        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     assert!(last.take_copy("different citation", token).is_none());
     assert!(last.take_copy(TEXT, None).is_none());
@@ -1193,9 +1193,9 @@ fn only_our_write_supplies_a_snapshot_and_the_proof_is_consumed_once() {
     // A failed write or a concurrent replacement cannot reuse an old proof.
     for result in [Err("write failed".into()), Ok(None)] {
         let token = last
-            .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+            .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
             .unwrap_or_else(|e| panic!("{e}"));
-        let _ = last.write_copy(TEXT, None, |_| Ok(None), || result);
+        let _ = last.write_copy(TEXT, &[], |_| Ok(None), || result);
         assert!(last.take_copy(TEXT, token).is_none());
     }
 }
@@ -1214,7 +1214,7 @@ fn a_new_presentation_invalidates_delivery_even_when_it_keeps_the_same_target() 
     let last = LastTarget::default();
     last.begin_presentation(Some(writer("com.microsoft.word")));
     let token = last
-        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|e| panic!("{e}"));
     let ticket = last.take_copy(TEXT, token).unwrap_or_else(|| panic!("copy proof"));
     // Hide/blur can advance PickerGeneration repeatedly. This proof
@@ -1638,7 +1638,7 @@ fn a_changed_citation_overrides_what_the_opening_read() {
     let token = last
         .write_copy_observed(
             TEXT,
-            Some("(Smith, 2020)"),
+            &["(Smith, 2020)".to_owned()],
             stamp,
             |_| Ok(None),
             || Ok(Some(COUNT)),
@@ -1670,7 +1670,7 @@ fn a_new_bibliography_answer_revokes_even_a_detached_delivery_before_it_can_post
     let target = app.state::<super::LastTarget>();
     target.begin_presentation(Some(writer("com.microsoft.word")));
     let token = target
-        .write_copy(TEXT, None, |_| Ok(None), || Ok(Some(COUNT)))
+        .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
         .unwrap_or_else(|error| panic!("clipboard receipt: {error}"));
     let detached = target
         .take_copy(TEXT, token)

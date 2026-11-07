@@ -3,7 +3,7 @@ import type { LibraryStatus, SearchResult } from "./api";
 // Invented records shared by component tests. No IPC or real library data.
 function library(overrides: Partial<LibraryStatus> = {}): LibraryStatus {
   return { source_generation: "1", source_is_requested: true, revision: "synthetic", state: "loaded", name: "example.bib", snapshot_name: "example.bib", has_snapshot: true, zotero: false, zotero_libraries: [],
-    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-test": overrides.references ?? 24 } : {}, warnings: 0, reading: [], error: null, problem: null, note: null, settings_notice: null,
+    references: 24, source_counts: (overrides.references ?? 24) > 0 ? { "synthetic-test": overrides.references ?? 24 } : {}, warnings: 0, reading: [], live_updates_off: false, error: null, problem: null, note: null, settings_notice: null,
     snapshot_zotero: false, stale: false, updated_at: null, checked_at: hoursAgo(3), ...overrides };
 }
 

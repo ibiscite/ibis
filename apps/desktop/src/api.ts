@@ -63,8 +63,8 @@ export const {
   openSettings,
 } = commands;
 
-export function copyFileCitation(ticket: string, contentHash: string, replaces: string | null) {
-  return commands.copyFileCitation(ticket, contentHash, replaces);
+export function copyFileCitation(ticket: string, contentHash: string, replaces: readonly string[] | null) {
+  return commands.copyFileCitation(ticket, contentHash, [...replaces ?? []]);
 }
 
 /** Retry refreshes evidence only; the person chooses insertion afresh. */

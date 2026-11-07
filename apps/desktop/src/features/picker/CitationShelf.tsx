@@ -134,6 +134,9 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
   const retainedSegments = Boolean(previous && retained.current?.ids === referenceIds);
   const visible = ready ?? (retainedSegments ? previous : null);
   const text = visible?.text;
+  // Dragging delivers what Enter would: only the current prepared citation,
+  // never one held while the next is made, and never a refused one (0028).
+  const dragged = !copied && ready && !ready.project_refusal ? ready : null;
   const single = references.length === 1 ? references[0] : undefined;
   // The panel says these in words, so nothing in the shelf comes and goes while typing.
   const detailsOpen = panel !== null && panel.kind !== "warnings";
@@ -225,12 +228,12 @@ export function CitationShelf({ inspector, onSubmit, copyProblem, source, onOpen
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         {/* The beak is the citation's proxy, as a Mac window's title icon is its
             document's: drag it into any app to drop exactly what Enter pastes. */}
-        <span className="shelf-leading" draggable={Boolean(text) && !copied || undefined} title={text && !copied ? pickerText.dragCitation : undefined}
+        <span className="shelf-leading" draggable={Boolean(dragged?.text) || undefined} title={dragged?.text ? pickerText.dragCitation : undefined}
           onDragStart={(event) => {
-            if (!text) return event.preventDefault();
+            if (!dragged?.text) return event.preventDefault();
             event.dataTransfer.effectAllowed = "copy";
-            event.dataTransfer.setData("text/plain", text);
-            if (!keys && visible?.html) event.dataTransfer.setData("text/html", visible.html);
+            event.dataTransfer.setData("text/plain", dragged.text);
+            if (!keys && dragged.html) event.dataTransfer.setData("text/html", dragged.html);
           }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}

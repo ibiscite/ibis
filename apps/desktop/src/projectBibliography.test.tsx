@@ -27,7 +27,7 @@ test("an unreadable bibliography is a warning with Retry: Enter copies, says why
   expect(called).not.toContain("hide_picker");
 });
 
-test("a known wrong-work key is refused and never reaches native copy", async () => {
+test("a known wrong-work key is refused and never reaches native copy, by Enter or by dragging", async () => {
   const called = backend({ search: () => [result("a", "Invented work")],
     preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: "A key in thesis.bib identifies a different work." }),
   });
@@ -36,6 +36,12 @@ test("a known wrong-work key is refused and never reaches native copy", async ()
   expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(called).not.toContain("copy_file_citation");
+  // Dragging delivers what Enter pastes, so it delivers nothing here either.
+  const beak = document.querySelector<HTMLElement>(".shelf-leading")!;
+  expect(beak.getAttribute("draggable")).toBeNull();
+  const data = new Map<string, string>();
+  fireEvent.dragStart(beak, { dataTransfer: { setData: (type: string, value: string) => data.set(type, value), effectAllowed: "" } });
+  expect([...data.keys()]).toEqual([]);
 });
 
 test("Retry checks again and keeps the citation, but does not replay the refused Enter", async () => {

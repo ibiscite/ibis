@@ -80,7 +80,7 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
-	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string[]) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
 	/**
@@ -587,6 +587,8 @@ export type LibraryStatus = {
 	 *  can say which entries were skipped and where to look.
 	 */
 	reading: ReadingNotice[],
+	/**  A searched source cannot be watched, so edits show only after a reload. */
+	live_updates_off: boolean,
 	error: string | null,
 	/**  What kind of failure `error` is, so the picker can offer the fix. */
 	problem: LibraryProblem | null,

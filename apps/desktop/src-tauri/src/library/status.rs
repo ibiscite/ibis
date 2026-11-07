@@ -35,6 +35,8 @@ pub(crate) struct LibraryStatus {
     /// What reading found, at most the engine's detail limit, so the footer
     /// can say which entries were skipped and where to look.
     pub(crate) reading: Vec<ReadingNotice>,
+    /// A searched source cannot be watched, so edits show only after a reload.
+    pub(crate) live_updates_off: bool,
     pub(crate) error: Option<String>,
     /// What kind of failure `error` is, so the picker can offer the fix.
     pub(crate) problem: Option<LibraryProblem>,
@@ -199,6 +201,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
                 })
             })
             .collect(),
+        live_updates_off: sources.iter().any(|info| info.watch_warning.is_some()),
         error: library
             .error
             .map(|error| error.with_snapshot_context(references > 0, zotero)),
@@ -230,9 +233,6 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             result.error.get_or_insert_with(|| {
                 "The library could not be refreshed; keeping the last loaded references.".into()
             });
-        }
-        if result.note.is_none() && info.watch_warning.is_some() {
-            result.note = Some("Live updates are unavailable. Reload the library after editing it.".into());
         }
     }
     if result.stale && library.error.is_some() && !source_is_requested {
@@ -447,6 +447,8 @@ mod tests {
             "references",
             "source_counts",
             "warnings",
+            "reading",
+            "live_updates_off",
             "error",
             "problem",
             "note",

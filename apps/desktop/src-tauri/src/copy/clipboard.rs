@@ -38,7 +38,7 @@ fn macos_html(fragment: &str) -> String {
 pub(crate) fn write(
     app: &tauri::AppHandle,
     content: ClipboardContent<'_>,
-    replaces: Option<&str>,
+    replaces: &[String],
 ) -> Result<Option<u32>, String> {
     use tauri::Manager;
     app.state::<crate::paste::LastTarget>().write_copy(
@@ -195,7 +195,7 @@ impl WindowsWrite {
 pub(crate) fn write(
     app: &tauri::AppHandle,
     content: ClipboardContent<'_>,
-    _replaces: Option<&str>,
+    _replaces: &[String],
 ) -> Result<Option<u32>, String> {
     use tauri_plugin_clipboard_manager::ClipboardExt;
     let html = flavors(&content)

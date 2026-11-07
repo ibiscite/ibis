@@ -613,7 +613,7 @@ mod tests {
     fn copies_without_native_paste_proofs_keep_write_order_with_delayed_claims() {
         let last = crate::paste::LastTarget::default();
         let copy = || {
-            last.write_copy("[@invented]", None, |_| Ok(None), || Ok(None))
+            last.write_copy("[@invented]", &[], |_| Ok(None), || Ok(None))
                 .unwrap_or_else(|e| panic!("{e}"))
         };
         let a = copy();

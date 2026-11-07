@@ -271,7 +271,7 @@ impl LastTarget {
     pub(crate) fn write_copy(
         &self,
         text: &str,
-        replaces: Option<&str>,
+        replaces: &[String],
         paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
@@ -300,7 +300,7 @@ impl LastTarget {
     ) -> Result<Option<u32>, String> {
         self.write_copy_observed(
             text,
-            None,
+            &[],
             stamp,
             paste_for,
             write,
@@ -313,7 +313,7 @@ impl LastTarget {
     fn write_copy_observed(
         &self,
         text: &str,
-        replaces: Option<&str>,
+        replaces: &[String],
         stamp: SafetyStamp,
         paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
@@ -324,8 +324,8 @@ impl LastTarget {
         last.owner = None;
         let captured = last.captured.clone().map(|mut captured| {
             captured.paste = paste_for(&captured);
-            if let Some(old) = replaces {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of(old));
+            if !replaces.is_empty() {
+                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
             }
             #[cfg(target_os = "macos")]
             if captured.focus_failure.is_none()
@@ -543,7 +543,7 @@ impl<W> CopyEvidence for DeliveryTicket<W> {
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn begin_copy(app: &AppHandle, replaces: Option<&str>) -> CopyAttempt<windows::Window> {
+pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<windows::Window> {
     let stamp = SafetyStamp::now();
     let written = Instant::now();
     let generation = app.state::<crate::picker::PickerGeneration>().current();
@@ -562,8 +562,8 @@ pub(crate) fn begin_copy(app: &AppHandle, replaces: Option<&str>) -> CopyAttempt
     let target = target.map(|mut target| {
         if let Some(captured) = &mut target.captured {
             captured.paste = app.state::<crate::destination::AppMemory>().for_capture(captured);
-            if let Some(old) = replaces {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of(old));
+            if !replaces.is_empty() {
+                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
             }
         }
         target
