@@ -1,0 +1,8 @@
+type,title,author,issued
+book,A good invented row,"Doe, Jane",2026
+book,A row with one cell too many,"Doe, Jane",2026,extra
+,A row without a type,"Doe, Jane",2026
+novel,A type CSL does not have,"Doe, Jane",2026
+
+book,A second good invented row,"Roe, Rafael",2020
+book,"A quote the row never closes,2020

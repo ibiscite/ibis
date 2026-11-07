@@ -23,6 +23,7 @@ node scripts/gen.mjs
 | Folder | Contents |
 | --- | --- |
 | `bibtex/` | `.bib` files: real-world quirks, damaged files, empty file |
+| `ris/`, `csv/` | RIS exports and the CSV template: a good file, damaged records with known lines, an empty file, a header missing `title` |
 | `updates/` | A synthetic package with unversioned, Stable and Nightly signatures from CLI 2.12.3, a forged trusted comment, and an unrelated public key; throwaway private keys were discarded |
 | `zotero/` | Synthetic Zotero local-API item envelopes (`key`, `links`, `data`, `csljson`); database snapshots for Zotero 7–10, including trashed parents and children, are still planned |
 

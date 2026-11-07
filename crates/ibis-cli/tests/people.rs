@@ -105,7 +105,8 @@ fn a_blank_search_asks_for_words() {
 #[test]
 fn a_file_with_no_entries_is_not_called_a_failed_search() {
     let lab = Lab::new("text");
-    let file = lab.file("notes.txt", "Shopping list\nno references here\n");
+    // A `.txt` must be RIS (#1531); a `.bib` with no entries is only empty.
+    let file = lab.file("notes.bib", "Shopping list\nno references here\n");
     let (code, stdout, _) = lab.run(&["search", "shopping", "--file", &file]);
     assert_eq!(code, 0);
     assert!(stdout.contains("holds any references"), "{stdout}");
