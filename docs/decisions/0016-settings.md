@@ -2,9 +2,11 @@
 
 `settings.json` in the platform configuration folder for `com.ibiscite.ibis`
 (Nightly: `com.ibiscite.ibis.nightly`). Saves are atomic and flushed, keeping
-the previous file as `settings.json.bak`. Until 1.0 there are no migrations:
-settings Ibis cannot read are kept as a copy, Ibis starts from defaults and
-says so, and it never silently overwrites a file it could not read. Existing
+the previous file as `settings.json.bak`. Until 1.0 there are no migrations
+and no compatibility: a choice an earlier version saved in another shape may
+start fresh with no notice, and an upgrade may change course entirely
+(maintainer, 2026-11-07). A file Ibis cannot parse at all is still kept as a
+copy rather than overwritten. Existing
 migration code is deleted, not extended, when its area is rebuilt. From 1.0 a
 format change needs an upgrade path.
 
