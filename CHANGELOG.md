@@ -1,5 +1,98 @@
 # Changelog
 
+## [0.3.0](https://github.com/ibiscite/ibis/compare/v0.2.7...v0.3.0) (2026-11-07)
+
+
+### Features
+
+* bundle every official CSL style and locale ([#1651](https://github.com/ibiscite/ibis/issues/1651)) ([27d7da9](https://github.com/ibiscite/ibis/commit/27d7da9373018367221860e776ecdf92d4c81594))
+* check citation keys against a project bibliography ([#1645](https://github.com/ibiscite/ibis/issues/1645)) ([7800618](https://github.com/ibiscite/ibis/commit/780061823d369f9429dd827e916407df7a509c5a))
+* **cli:** greet a person who runs ibis alone ([#1650](https://github.com/ibiscite/ibis/issues/1650)) ([7f03c7b](https://github.com/ibiscite/ibis/commit/7f03c7bad826c0129c796adac2146d86133b64cd))
+* **cli:** make ibis doctor speak plainly and end with a verdict ([#1652](https://github.com/ibiscite/ibis/issues/1652)) ([f052c7e](https://github.com/ibiscite/ibis/commit/f052c7e9bbdf97b577d0b8f5edb45a96d5c94151))
+* **cli:** pick the output for the app you name ([#1634](https://github.com/ibiscite/ibis/issues/1634)) ([570a358](https://github.com/ibiscite/ibis/commit/570a358558339f566a86786ed81070408764ae5c))
+* **design:** one window that unfolds, with measured layout rules ([#1711](https://github.com/ibiscite/ibis/issues/1711)) ([af78767](https://github.com/ibiscite/ibis/commit/af78767b0e0ed58998a923628fd8e53b2a854776))
+* **desktop:** a one-time plugin note and clearer file drops ([#1654](https://github.com/ibiscite/ibis/issues/1654)) ([537e706](https://github.com/ibiscite/ibis/commit/537e7060672cef444d99c1fa703015572f91e3ea))
+* **desktop:** change the last citation, replacing it only when selected ([#1664](https://github.com/ibiscite/ibis/issues/1664)) ([ddfb0ea](https://github.com/ibiscite/ibis/commit/ddfb0ea75529b25fff2b33a4d53aac48a196aeec))
+* **desktop:** copy the references used this session as a bibliography ([#1646](https://github.com/ibiscite/ibis/issues/1646)) ([4e0e3b1](https://github.com/ibiscite/ibis/commit/4e0e3b1d4403530a1aba22515de07d0b9133ab7e))
+* **desktop:** edit a reference in a panel beside the list ([#1636](https://github.com/ibiscite/ibis/issues/1636)) ([10d35e7](https://github.com/ibiscite/ibis/commit/10d35e72832c7dfb445cb38c9a1dcfa4763ca60e))
+* **desktop:** empty results name what is in the way, with one fix ([#1658](https://github.com/ibiscite/ibis/issues/1658)) ([169f7a2](https://github.com/ibiscite/ibis/commit/169f7a23ab04154709d445f5c27e9a6cee0c7dd3))
+* **desktop:** every format has the engine's one name and id ([#1708](https://github.com/ibiscite/ibis/issues/1708)) ([5f2ff5a](https://github.com/ibiscite/ibis/commit/5f2ff5a8ed90a6684effce2be63883d06e8ed052))
+* **desktop:** one bird, one notice slot, and a simpler Look page ([#1653](https://github.com/ibiscite/ibis/issues/1653)) ([c6a7de7](https://github.com/ibiscite/ibis/commit/c6a7de7db3633e5b1fea5140c3e474a774d4bf3b))
+* **desktop:** remember one format per app ([#1641](https://github.com/ibiscite/ibis/issues/1641)) ([45b56fa](https://github.com/ibiscite/ibis/commit/45b56fad13afe4b9fe3a8447fac4993b4a132745))
+* **desktop:** selected text becomes the search; the paste replaces it ([#1638](https://github.com/ibiscite/ibis/issues/1638)) ([de13d76](https://github.com/ibiscite/ibis/commit/de13d76a9ff32e331dcde5c25cf8bd16e239c2ec))
+* **engine:** one list of outputs for the command line and agents ([#1687](https://github.com/ibiscite/ibis/issues/1687)) ([c76d40c](https://github.com/ibiscite/ibis/commit/c76d40c067084df3cb827d77dcd61492c841a30a))
+* **engine:** opaque library ids; CSL ids are never citation keys ([#1644](https://github.com/ibiscite/ibis/issues/1644)) ([5ba0071](https://github.com/ibiscite/ibis/commit/5ba0071c91fa636a348dcae536e0a48756e11852))
+* finish Zotero setup by itself and give library health one source ([#1643](https://github.com/ibiscite/ibis/issues/1643)) ([549a05d](https://github.com/ibiscite/ibis/commit/549a05d2ef745f30f44c0bb0ed19781666c3c3a9))
+* let editors cite through a Cite as You Write endpoint ([#1661](https://github.com/ibiscite/ibis/issues/1661)) ([bf5ff7a](https://github.com/ibiscite/ibis/commit/bf5ff7ab3cdb5fce984ceca726137b29e4e48044))
+* one message catalogue for the command line, agents and the app ([#1741](https://github.com/ibiscite/ibis/issues/1741)) ([9246083](https://github.com/ibiscite/ibis/commit/924608339ff4782a8eb29572cddb107e44fa4d8d))
+* one record summary for the picker, the command line and agents ([#1710](https://github.com/ibiscite/ibis/issues/1710)) ([9261445](https://github.com/ibiscite/ibis/commit/926144510127f38e63f5b67757eab4a3f97a411e))
+* **picker:** quieter chrome, commands, Peek, drag and reader shell ([#1713](https://github.com/ibiscite/ibis/issues/1713)) ([a3a6e01](https://github.com/ibiscite/ibis/commit/a3a6e013320c4c91e7ce84524c93a1832526dcc0))
+* remember writing projects across the picker and CLI ([#1702](https://github.com/ibiscite/ibis/issues/1702)) ([ae58460](https://github.com/ibiscite/ibis/commit/ae584601d406305a437ef8d87b18066f8497d0fc))
+* take your Ibis setup to another computer ([#1632](https://github.com/ibiscite/ibis/issues/1632)) ([d3f69cd](https://github.com/ibiscite/ibis/commit/d3f69cd7952b6f9f84b81e3ab647813634c1c8a2))
+* write ConTeXt citations and check each syntax in its own tool ([#1656](https://github.com/ibiscite/ibis/issues/1656)) ([1933492](https://github.com/ibiscite/ibis/commit/1933492e3638cc1060da3a65568bfc527c0bf1a1))
+
+
+### Bug Fixes
+
+* a paste stays in the checked field; no stale work wins a race ([#1743](https://github.com/ibiscite/ibis/issues/1743)) ([2941651](https://github.com/ibiscite/ibis/commit/2941651da51f6e803f4bd06737fa3042d9532247))
+* **agents:** make every MCP answer true and every error useful ([#1655](https://github.com/ibiscite/ibis/issues/1655)) ([73f84ac](https://github.com/ibiscite/ibis/commit/73f84ac47cc5d92047b53a9d95d0616803f3991c))
+* **cli:** make each message true and each next step work ([#1657](https://github.com/ibiscite/ibis/issues/1657)) ([db7398c](https://github.com/ibiscite/ibis/commit/db7398c7e41e0b1ee95d4b113f65f4830d1a425f))
+* **cli:** say why a request failed, and name repeated keys ([#1631](https://github.com/ibiscite/ibis/issues/1631)) ([f89b8dc](https://github.com/ibiscite/ibis/commit/f89b8dcc476af2b8dd0ea89ac298b95467c96563))
+* **design:** notices end with their fix; keys and words follow one rule ([#1684](https://github.com/ibiscite/ibis/issues/1684)) ([602bea5](https://github.com/ibiscite/ibis/commit/602bea5cc1a0b4727c927a3b0affe61b55bf0c3e))
+* **design:** shared parts style themselves; pictures show every state ([#1681](https://github.com/ibiscite/ibis/issues/1681)) ([6a9f160](https://github.com/ibiscite/ibis/commit/6a9f160130d6f240465fedb5b8592b44b2411712))
+* **desktop:** a cancelled preview stays silent and More stays put ([#1659](https://github.com/ibiscite/ibis/issues/1659)) ([80f14c0](https://github.com/ibiscite/ibis/commit/80f14c0688d9bd300ed20a772a0f335b26bf3a45))
+* **desktop:** a refused preview says so; scoped search says no matches ([#1709](https://github.com/ibiscite/ibis/issues/1709)) ([35e575f](https://github.com/ibiscite/ibis/commit/35e575f6d632e37ee19e97aea767afcd4400b15f))
+* **desktop:** fix appearance, reloads and recovery at the source ([#1629](https://github.com/ibiscite/ibis/issues/1629)) ([4622ebd](https://github.com/ibiscite/ibis/commit/4622ebd3feb860f93e1f92f84cd417c2c9d963f6))
+* **desktop:** follow the Mac's accent correctly in light and dark ([#1626](https://github.com/ibiscite/ibis/issues/1626)) ([3b652b9](https://github.com/ibiscite/ibis/commit/3b652b9ce7de4b086e5f3aaeda5996c72961c25e))
+* **desktop:** give the picker one owner for keys, focus and windows ([#1642](https://github.com/ibiscite/ibis/issues/1642)) ([d66a5d2](https://github.com/ibiscite/ibis/commit/d66a5d2b064f48a8f8df84fb13fceaca7cd2bbb7))
+* **desktop:** nest the search bar's controls in the window corner ([#1640](https://github.com/ibiscite/ibis/issues/1640)) ([1042cbc](https://github.com/ibiscite/ibis/commit/1042cbc8dca560017472edfe6a58cd628e976238))
+* **desktop:** pass no replaced citation when copying a bibliography ([#1683](https://github.com/ibiscite/ibis/issues/1683)) ([fc3f68b](https://github.com/ibiscite/ibis/commit/fc3f68b612dc14ea15c34ed8996cb435e5ccc7d5))
+* **desktop:** reach search filters through the engine ([#1662](https://github.com/ibiscite/ibis/issues/1662)) ([ee086e5](https://github.com/ibiscite/ibis/commit/ee086e5b9a7a16e89790aef52f51520d81de796b))
+* **dev:** sign off and verify landing commits before publishing ([#1700](https://github.com/ibiscite/ibis/issues/1700)) ([4d3f486](https://github.com/ibiscite/ibis/commit/4d3f48629cdce249679380d96fd4d593e272a9bd)), closes [#1699](https://github.com/ibiscite/ibis/issues/1699)
+* enable auto-merge through the GitHub CLI ([#1695](https://github.com/ibiscite/ibis/issues/1695)) ([545bc2b](https://github.com/ibiscite/ibis/commit/545bc2b28fc4c7d0d62447fd2cc87b0647fbd2e4))
+* every copy says why, Change Last retries, drags match Enter ([#1734](https://github.com/ibiscite/ibis/issues/1734)) ([91e1ad0](https://github.com/ibiscite/ibis/commit/91e1ad054fbf93cd471dcc3581217bb8d43c652e))
+* name nightly builds and list each release change once ([#1624](https://github.com/ibiscite/ibis/issues/1624)) ([70f283c](https://github.com/ibiscite/ibis/commit/70f283ce461a637e0dcef1867ee2a720cdc5cf9f)), closes [#1619](https://github.com/ibiscite/ibis/issues/1619) [#566](https://github.com/ibiscite/ibis/issues/566)
+* **search:** keep title words after a bare less-than sign ([#1648](https://github.com/ibiscite/ibis/issues/1648)) ([e20bf8f](https://github.com/ibiscite/ibis/commit/e20bf8f9be9e22d7ad47be754525683439cc78d8))
+* **sources:** compile on the declared minimum Rust again ([#1633](https://github.com/ibiscite/ibis/issues/1633)) ([f6272fe](https://github.com/ibiscite/ibis/commit/f6272fef2c4758ce821f14e860ab6965262d60c6))
+* **sources:** reload a library exactly as it loads ([#1682](https://github.com/ibiscite/ibis/issues/1682)) ([d80431c](https://github.com/ibiscite/ibis/commit/d80431c050f73b5d0760416cd77e7dfbe9424300))
+* step 4 audit: people's words, MCP size bound, full first note ([#1742](https://github.com/ibiscite/ibis/issues/1742)) ([cc3fceb](https://github.com/ibiscite/ibis/commit/cc3fcebd9e6caa4a7235e88a3a10a899b752c018))
+* **test:** define the bare less-than test once ([#1665](https://github.com/ibiscite/ibis/issues/1665)) ([4c066fa](https://github.com/ibiscite/ibis/commit/4c066faa01571a0295b163d06e91c5ae70a1c403))
+* **test:** give each offline-observer case its own stub binary ([#1672](https://github.com/ibiscite/ibis/issues/1672)) ([25eb95c](https://github.com/ibiscite/ibis/commit/25eb95cfa4e8f020f79fcb26a6158e481902bf49))
+* **test:** restore the complete macOS hands-on profile ([#1698](https://github.com/ibiscite/ibis/issues/1698)) ([c4a0562](https://github.com/ibiscite/ibis/commit/c4a0562e51cec14d98ec80fd974085bbf940f116)), closes [#1696](https://github.com/ibiscite/ibis/issues/1696)
+* **test:** use LibraryId::digest in the style tests ([#1671](https://github.com/ibiscite/ibis/issues/1671)) ([ff4b7aa](https://github.com/ibiscite/ibis/commit/ff4b7aa8c39fea5ec2d721cccf4169174ca19bb8))
+* **update:** check the kept shortcut in this system's entry ([#1707](https://github.com/ibiscite/ibis/issues/1707)) ([9aa94ac](https://github.com/ibiscite/ibis/commit/9aa94ac7bf8930f98486d657daee3bbe22d55fd0))
+
+
+### Performance
+
+* **core:** hold names as compact typed names, halving library memory ([#1715](https://github.com/ibiscite/ibis/issues/1715)) ([6b27629](https://github.com/ibiscite/ibis/commit/6b2762960c9aefd8c3f6158368f52bfc1f233fcf))
+* **sources:** stop copying a library while it opens ([#1685](https://github.com/ibiscite/ibis/issues/1685)) ([25bd2c8](https://github.com/ibiscite/ibis/commit/25bd2c8460f154fa5602b2f72357f8942b20f415))
+
+
+### Documentation
+
+* a computer-use check before each numbered release ([#1733](https://github.com/ibiscite/ibis/issues/1733)) ([3b7894e](https://github.com/ibiscite/ibis/commit/3b7894e1a66a36d5b472412bd734e78a5d3c159f))
+* before 1.0, settings from an earlier version may start fresh ([#1737](https://github.com/ibiscite/ibis/issues/1737)) ([b2b0e7e](https://github.com/ibiscite/ibis/commit/b2b0e7e80a525b1b5242fa075a9dbc0ba430fa90))
+* decide the reader's trust boundary and design its panel ([#1674](https://github.com/ibiscite/ibis/issues/1674)) ([42ad973](https://github.com/ibiscite/ibis/commit/42ad973b435d161de2da38044152a2a8d3664034))
+* define citation reproducibility expectations ([#1706](https://github.com/ibiscite/ibis/issues/1706)) ([20f612a](https://github.com/ibiscite/ibis/commit/20f612a8bc282ef6900c5941225fc46254fba029))
+* define optional project search defaults ([#1705](https://github.com/ibiscite/ibis/issues/1705)) ([417716d](https://github.com/ibiscite/ibis/commit/417716d65c78682ff6e29633db3a9c87fa42586d))
+* define shared project edit behavior ([#1704](https://github.com/ibiscite/ibis/issues/1704)) ([31dde26](https://github.com/ibiscite/ibis/commit/31dde260bc4b52d8f3573a29df1d8c106b0ac0ff))
+* define unreadable bibliography behavior ([#1703](https://github.com/ibiscite/ibis/issues/1703)) ([ef60ded](https://github.com/ibiscite/ibis/commit/ef60ded704efc31420bf0c6e616f86de187dc70a))
+* make the project clear to strangers and safe in public ([#1639](https://github.com/ibiscite/ibis/issues/1639)) ([dc3a269](https://github.com/ibiscite/ibis/commit/dc3a2693fd30720ef549730fbacc23117667d718))
+* move installing ibis from the app and Markdown copies to 0.4 ([#1732](https://github.com/ibiscite/ibis/issues/1732)) ([d4ef837](https://github.com/ibiscite/ibis/commit/d4ef83745aadf3e8f08db13707f2944dfe4772ab))
+* one file per decision and design pages per part ([#1722](https://github.com/ibiscite/ibis/issues/1722)) ([934169b](https://github.com/ibiscite/ibis/commit/934169b0ccf445528d114ad78c61afec1716b00f))
+* one invented example and one privacy line in README and CLI ([#1635](https://github.com/ibiscite/ibis/issues/1635)) ([d8cc05d](https://github.com/ibiscite/ibis/commit/d8cc05d7f6d75feadadf26825247c9a19462f78b))
+* one owner per picker session, one contract and one catalogue ([#1673](https://github.com/ibiscite/ibis/issues/1673)) ([cbd4997](https://github.com/ibiscite/ibis/commit/cbd4997d36c072e81e6a99992008c85d2426b782))
+* plain words, shared interface parts and session ownership ([#1720](https://github.com/ibiscite/ibis/issues/1720)) ([20455a4](https://github.com/ibiscite/ibis/commit/20455a4eb89fc361ea8ea20447d3c3be3de97051))
+* record citation context and refresh decisions ([#1701](https://github.com/ibiscite/ibis/issues/1701)) ([30f1ae0](https://github.com/ibiscite/ibis/commit/30f1ae01dd6c62995d37e445222bf426367e686f))
+* record extension decisions and the merge queue ([#1721](https://github.com/ibiscite/ibis/issues/1721)) ([1a5df68](https://github.com/ibiscite/ibis/commit/1a5df68f3b63255a89059b25c22d1dea7a1b0350))
+* record the engine as the soul of Ibis ([#1647](https://github.com/ibiscite/ibis/issues/1647)) ([1ea6d54](https://github.com/ibiscite/ibis/commit/1ea6d54b34c9f283628844e9a832edfd3be4c68b))
+* record the writing-companion direction and a consolidation stage ([#1719](https://github.com/ibiscite/ibis/issues/1719)) ([6d9db41](https://github.com/ibiscite/ibis/commit/6d9db4158d5afbc3d6d0ed72a05948d1a93443c5))
+* say there is no merge queue and how merges stay safe without one ([#1679](https://github.com/ibiscite/ibis/issues/1679)) ([bfd370f](https://github.com/ibiscite/ibis/commit/bfd370f0abc683bbcb603831f43748c0caf52c80))
+* ship 0.3 once consolidation steps 1 to 3 land ([#1726](https://github.com/ibiscite/ibis/issues/1726)) ([91ed051](https://github.com/ibiscite/ibis/commit/91ed0512c2df97761369f2936e977d7a065dbfd5))
+* Sol reviews each big milestone before it merges ([#1723](https://github.com/ibiscite/ibis/issues/1723)) ([9857b31](https://github.com/ibiscite/ibis/commit/9857b31c818a785e94a6cd632fa2a5c630da707d))
+* **website:** show what is new in Nightly and keep plans honest ([#1688](https://github.com/ibiscite/ibis/issues/1688)) ([7d02f7f](https://github.com/ibiscite/ibis/commit/7d02f7f3d0ac5b4de522b8d124ebb8bf9813a4e5))
+
 ## [0.2.7](https://github.com/ibiscite/ibis/compare/v0.2.6...v0.2.7) (2026-11-02)
 
 
