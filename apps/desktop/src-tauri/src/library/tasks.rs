@@ -32,7 +32,14 @@ pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStat
 
 pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
     if let Some(library) = app.try_state::<Mutex<Library>>() {
-        update_notices(&library, |_| true, |library| settings_file.refresh_notice(library));
+        let earlier = app
+            .try_state::<crate::destination::AppMemory>()
+            .is_some_and(|memory| memory.says_earlier_formats());
+        update_notices(
+            &library,
+            |_| true,
+            |library| settings_file.refresh_notice(library, earlier),
+        );
         if let Ok(library) = library.lock() {
             publish(app, status(&library));
         }
@@ -552,7 +559,10 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                             show_note = true;
                         } else {
                             library.choice_save_warning = None;
-                            app.state::<SettingsFile>().refresh_notice(library);
+                            let earlier = app
+                                .try_state::<crate::destination::AppMemory>()
+                                .is_some_and(|memory| memory.says_earlier_formats());
+                            app.state::<SettingsFile>().refresh_notice(library, earlier);
                         }
                     },
                 );

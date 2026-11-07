@@ -319,7 +319,8 @@ fn main() {
                 application_message(preferences::settings_problem(problem));
             }
             if let Ok(mut library) = app.state::<Mutex<Library>>().lock() {
-                library.settings_notice = preferences::settings_notice(&settings_path, &loaded);
+                let earlier = app.state::<destination::AppMemory>().says_earlier_formats();
+                library.settings_notice = preferences::settings_notice(&settings_path, &loaded, earlier);
             }
             #[cfg(target_os = "macos")]
             picker::follow_layout(app.handle());

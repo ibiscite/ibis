@@ -13,8 +13,29 @@ use crate::output::OutputRef;
 
 pub(crate) use ibis_engine::settings_backup::{settings_message, settings_problem};
 
+/// Said once after an upgrade from 0.2, whose format choices this Ibis cannot
+/// read: the old files are kept (decision 0016) and the defaults apply.
+const EARLIER_FORMATS: &str =
+    "Format choices from an earlier Ibis could not be read, so Ibis uses its defaults. Choose them again.";
+
 /// This notice is for the interface only: its settings path must not be logged.
-pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
+/// `earlier_formats`: the per-app file kept earlier format choices this run.
+pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded, earlier_formats: bool) -> Option<String> {
+    // 0.2 kept its default format in keys this Ibis keeps in the file but does not read.
+    let earlier = earlier_formats
+        || loaded.problem.is_none()
+            && loaded.settings.output.is_none()
+            && ["copy_format", "citation_style"]
+                .iter()
+                .any(|key| loaded.settings.unknown.contains_key(*key));
+    match (recovery_notice(path, loaded), earlier) {
+        (notice, false) => notice,
+        (None, true) => Some(EARLIER_FORMATS.into()),
+        (Some(notice), true) => Some(format!("{EARLIER_FORMATS} {notice}")),
+    }
+}
+
+fn recovery_notice(path: &Path, loaded: &settings::Loaded) -> Option<String> {
     let Some(problem) = loaded.problem.as_ref() else {
         // A sync service's copy is named, never merged (#1561). The scan is an
         // optional warning: a stalled synced folder only skips it, after at
@@ -120,8 +141,8 @@ impl SettingsFile {
 
     /// Refresh under the library lock so a reload cannot carry forward a stale
     /// recovery warning.
-    pub(crate) fn refresh_notice(&self, library: &mut Library) {
-        library.settings_notice = settings_notice(&self.path, &settings::load(&self.path));
+    pub(crate) fn refresh_notice(&self, library: &mut Library, earlier_formats: bool) {
+        library.settings_notice = settings_notice(&self.path, &settings::load(&self.path), earlier_formats);
     }
 }
 
@@ -1109,7 +1130,7 @@ mod tests {
             if has_backup {
                 std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             }
-            let startup_notice = settings_notice(&path, &settings::load(&path));
+            let startup_notice = settings_notice(&path, &settings::load(&path), false);
             let mut library = crate::library::Library::default();
             library.settings_notice = startup_notice.clone();
             let app = tauri::test::mock_builder()
@@ -1184,7 +1205,8 @@ mod tests {
         std::os::unix::fs::symlink(&target, &file.path).unwrap_or_else(|e| panic!("{e}"));
         std::fs::write(file.path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&file.path);
-        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
+        let notice =
+            settings_notice(&file.path, &loaded, false).unwrap_or_else(|| panic!("expected a recovery notice"));
         assert!(notice.contains("settings.json could not be read; using the backup"));
         assert!(notice.contains("Changes are not being saved while this problem remains."));
         assert!(!notice.contains("The next save"));
@@ -1224,7 +1246,7 @@ mod tests {
             let backup = file.path.with_extension("json.bak");
             std::fs::write(&backup, contents).unwrap_or_else(|e| panic!("{e}"));
             let loaded = settings::load(&file.path);
-            let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a warning"));
+            let notice = settings_notice(&file.path, &loaded, false).unwrap_or_else(|| panic!("expected a warning"));
             assert!(notice.starts_with(expected), "{notice}");
             assert!(notice.contains("using defaults"));
             assert!(notice.contains("Changes are not being saved"));
@@ -1249,7 +1271,8 @@ mod tests {
         let backup = br#"{"output":"typst","future_choice":[true,null]}"#;
         std::fs::write(file.path.with_extension("json.bak"), backup).unwrap_or_else(|e| panic!("{e}"));
         let loaded = settings::load(&file.path);
-        let notice = settings_notice(&file.path, &loaded).unwrap_or_else(|| panic!("expected a recovery notice"));
+        let notice =
+            settings_notice(&file.path, &loaded, false).unwrap_or_else(|| panic!("expected a recovery notice"));
         assert!(notice.contains("settings.json is missing; using the backup"));
         assert!(notice.contains("The next save will restore settings.json and keep the backup unchanged."));
         assert!(!notice.contains("not being saved"));
@@ -1260,7 +1283,7 @@ mod tests {
         assert_eq!(saved, loaded.settings);
         let restarted = settings::load(&file.path);
         assert_eq!(restarted.settings, saved);
-        assert!(settings_notice(&file.path, &restarted).is_none());
+        assert!(settings_notice(&file.path, &restarted, false).is_none());
         assert_eq!(
             std::fs::read(file.path.with_extension("json.bak")).unwrap_or_default(),
             backup
@@ -1277,10 +1300,31 @@ mod tests {
             primary_read: settings::PrimaryRead::Unreadable,
             from_backup: false,
         };
-        let notice = settings_notice(Path::new("synthetic/settings.json"), &loaded)
+        let notice = settings_notice(Path::new("synthetic/settings.json"), &loaded, false)
             .unwrap_or_else(|| panic!("expected a settings recovery notice"));
         assert!(notice.contains("could not be read"));
         assert!(!notice.contains("synthetic-private-detail"));
+    }
+
+    #[test]
+    fn a_0_2_default_format_is_said_until_a_default_is_chosen() {
+        let mut settings = settings::Settings::default();
+        settings
+            .unknown
+            .insert("citation_style".into(), serde_json::json!("ieee"));
+        let loaded = |settings: settings::Settings| settings::Loaded {
+            settings,
+            problem: None,
+            primary_read: settings::PrimaryRead::Present,
+            from_backup: false,
+        };
+        let path = Path::new("synthetic/settings.json");
+        assert_eq!(
+            settings_notice(path, &loaded(settings.clone()), false).as_deref(),
+            Some(EARLIER_FORMATS)
+        );
+        settings.output = Some("apa".into());
+        assert_eq!(settings_notice(path, &loaded(settings), false), None);
     }
 
     #[test]
@@ -1299,7 +1343,7 @@ mod tests {
             std::fs::write(&path, &contents).unwrap_or_else(|e| panic!("{e}"));
             let loaded = settings::load(&path);
             let notice =
-                settings_notice(&path, &loaded).unwrap_or_else(|| panic!("expected a settings recovery notice"));
+                settings_notice(&path, &loaded, false).unwrap_or_else(|| panic!("expected a settings recovery notice"));
             assert!(notice.contains(problem));
             assert!(notice.contains("defaults"));
             assert!(notice.contains("not being saved"));
@@ -1316,8 +1360,8 @@ mod tests {
             );
             std::fs::write(path.with_extension("json.bak"), "{}").unwrap_or_else(|e| panic!("{e}"));
             let recovered = settings::load(&path);
-            let notice =
-                settings_notice(&path, &recovered).unwrap_or_else(|| panic!("expected a settings recovery notice"));
+            let notice = settings_notice(&path, &recovered, false)
+                .unwrap_or_else(|| panic!("expected a settings recovery notice"));
             assert!(notice.contains("backup"));
             assert!(notice.contains(problem));
             assert!(!notice.contains(private));
@@ -1332,7 +1376,7 @@ mod tests {
             std::fs::remove_file(path.with_extension("json.bak")).unwrap_or_else(|e| panic!("{e}"));
         }
         std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
-        assert!(settings_notice(&path, &settings::load(&path)).is_none());
+        assert!(settings_notice(&path, &settings::load(&path), false).is_none());
     }
 
     #[test]

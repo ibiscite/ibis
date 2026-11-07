@@ -129,3 +129,12 @@ Not verified: legacy VMware Horizon Mac bundle IDs, separate NoMachine viewer
 helper bundle IDs and Jump Desktop's Windows executable. No guessed entries
 were added for these. The added table rows and per-app choice lookups are bounded;
 no new file, network access, polling or hidden activity is introduced.
+
+Upgrading from 0.2 (2026-11-07, decision 0016): 0.2 saved each app's format as
+an object this Ibis does not read, so the defaults apply. The first time Ibis
+finds one, it keeps `apps.json` whole as `apps.json.earlier`, before anything
+rewrites it, and says once: "Format choices from an earlier Ibis could not be
+read, so Ibis uses its defaults. Choose them again." Choosing a format ends the
+notice. If the copy cannot be made, Ibis never rewrites `apps.json`. The 0.2
+default format in `settings.json` stays in the file, unread, and is said the
+same way until a default is chosen.

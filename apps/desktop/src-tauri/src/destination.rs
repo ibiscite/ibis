@@ -114,6 +114,18 @@ pub(crate) struct AppMemory {
     path: PathBuf,
     /// Every app's choices, and whether lost choices still need resolving.
     state: Mutex<(Vec<Remembered>, bool)>,
+    /// Format choices an earlier Ibis wrote, which this one cannot read: kept
+    /// as `apps.json.earlier` (decision 0016), said until a format is chosen.
+    earlier: Mutex<Earlier>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Earlier {
+    None,
+    /// Kept as a copy this run; the notice says so until a format is chosen.
+    Kept,
+    /// The copy could not be made, so the file is never rewritten.
+    Unkept,
 }
 
 fn normalized(app: &AppId) -> AppId {
@@ -132,10 +144,21 @@ impl AppMemory {
             Err(error) if error.kind() == io::ErrorKind::NotFound => (Vec::new(), false),
             Err(_) => (Vec::new(), true),
         };
+        let earlier = if unreadable || !earlier_formats(&path) {
+            Earlier::None
+        } else {
+            keep_earlier(&path)
+        };
         AppMemory {
             path,
             state: Mutex::new((apps, unreadable)),
+            earlier: Mutex::new(earlier),
         }
+    }
+
+    /// Whether to say that earlier format choices could not be read.
+    pub(crate) fn says_earlier_formats(&self) -> bool {
+        self.earlier.lock().is_ok_and(|earlier| *earlier == Earlier::Kept)
     }
 
     /// The remembered output for `app`, and whether the file was unreadable.
@@ -208,6 +231,7 @@ impl AppMemory {
         if paste == Some(AppPaste::Paste) && lookup(&app).is_none() && identity.is_none() {
             return Err(io::Error::other("this app has no proven identity to approve"));
         }
+        let chose_output = output.is_some();
         self.change(|apps| {
             let previous = apps.iter().find(|entry| entry.app == app);
             let output = output.or_else(|| previous?.output);
@@ -230,7 +254,14 @@ impl AppMemory {
                 identity,
                 noted,
             });
-        })
+        })?;
+        if chose_output
+            && let Ok(mut earlier) = self.earlier.lock()
+            && *earlier == Earlier::Kept
+        {
+            *earlier = Earlier::None;
+        }
+        Ok(())
     }
 
     fn unreadable(&self) -> bool {
@@ -274,6 +305,10 @@ impl AppMemory {
             .state
             .lock()
             .map_err(|_| io::Error::other("app choices are unavailable"))?;
+        // Earlier choices that could not be kept as a copy are never overwritten.
+        if self.earlier.lock().map_or(true, |earlier| *earlier == Earlier::Unkept) {
+            return Err(io::Error::other("earlier format choices could not be kept"));
+        }
         let mut apps = state.0.clone();
         change(&mut apps);
         let excess = apps.len().saturating_sub(MAX_APPS);
@@ -282,6 +317,39 @@ impl AppMemory {
         write(&self.path, &apps, recovery)?;
         *state = (apps, recovery);
         Ok(())
+    }
+}
+
+/// Whether the file holds an output this Ibis cannot read, as 0.2 wrote them.
+fn earlier_formats(path: &Path) -> bool {
+    let Ok(text) = fs::read(path) else { return false };
+    let Ok(file) = serde_json::from_slice::<serde_json::Value>(&text) else {
+        return false;
+    };
+    file["apps"].as_array().is_some_and(|apps| {
+        apps.iter().any(|entry| {
+            entry
+                .get("output")
+                .is_some_and(|output| !output.is_null() && output.as_str().and_then(crate::output::listed).is_none())
+        })
+    })
+}
+
+/// Keep the file whole beside it, once: a copy from an earlier start stays.
+fn keep_earlier(path: &Path) -> Earlier {
+    let copy = path.with_file_name("apps.json.earlier");
+    match fs::symlink_metadata(&copy) {
+        Ok(found) if found.is_file() => Earlier::None,
+        Ok(_) => Earlier::Unkept,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            let kept = fs::read(path).and_then(|bytes| {
+                let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&copy)?;
+                file.write_all(&bytes)?;
+                file.sync_all()
+            });
+            if kept.is_ok() { Earlier::Kept } else { Earlier::Unkept }
+        }
+        Err(_) => Earlier::Unkept,
     }
 }
 
@@ -448,6 +516,7 @@ pub(crate) fn remember_app_output(
     let output = output
         .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
         .transpose()?;
+    let said = memory.says_earlier_formats();
     crate::paste::change_destination(&app, paste.is_some(), |captured| {
         let captured = captured.ok_or("no app to remember a choice for")?;
         let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
@@ -457,7 +526,12 @@ pub(crate) fn remember_app_output(
         memory
             .set_bound_choice(id, output, paste, identity)
             .map_err(|_| "the choice for this app could not be saved".into())
-    })
+    })?;
+    // A chosen format answers the notice about earlier format choices.
+    if said && !memory.says_earlier_formats() {
+        crate::library::refresh_settings_notice(&app, &app.state::<SettingsFile>());
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -514,6 +588,67 @@ mod tests {
 
     fn memory_in(directory: &tempfile::TempDir) -> AppMemory {
         AppMemory::open(directory.path().join("apps.json"))
+    }
+
+    #[test]
+    fn format_choices_from_0_2_are_kept_as_a_copy_said_once_and_defaults_apply() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        // As Ibis 0.2.7 wrote it: an output was an object, not an engine id.
+        let earlier = serde_json::to_vec(&serde_json::json!({ "version": 1, "apps": [
+            { "app": serde_json::to_value(word())?, "output": { "style": "ieee" }, "noted": true },
+            { "app": serde_json::to_value(mac("org.example.writer"))?, "output": { "key": "pandoc" } },
+        ] }))?;
+        fs::write(&path, &earlier)?;
+        let memory = AppMemory::open(path.clone());
+        assert_eq!(
+            fs::read(directory.path().join("apps.json.earlier"))?,
+            earlier,
+            "kept whole"
+        );
+        assert_eq!(memory.get(&word()), (None, false), "the defaults apply");
+        assert!(memory.says_earlier_formats());
+        let notice = crate::preferences::settings_notice(
+            &directory.path().join("settings.json"),
+            &settings::load(&directory.path().join("settings.json")),
+            memory.says_earlier_formats(),
+        );
+        assert_eq!(
+            notice.as_deref(),
+            Some(
+                "Format choices from an earlier Ibis could not be read, so Ibis uses its defaults. Choose them again."
+            )
+        );
+        // The plugin note stays shown, and saving keeps the copy as it was.
+        assert!(!memory.take_plugin_note(&word()));
+        memory.set(&mac("org.example.writer"), crate::output::listed("pandoc"))?;
+        assert!(!memory.says_earlier_formats(), "a chosen format answers it");
+        assert_eq!(fs::read(directory.path().join("apps.json.earlier"))?, earlier);
+        // Said once: the next start keeps the first copy and says nothing.
+        fs::write(&path, &earlier)?;
+        assert!(!AppMemory::open(path).says_earlier_formats());
+        assert_eq!(fs::read(directory.path().join("apps.json.earlier"))?, earlier);
+        Ok(())
+    }
+
+    #[test]
+    fn earlier_choices_are_never_overwritten_when_their_copy_cannot_be_kept() -> io::Result<()> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("apps.json");
+        let earlier = serde_json::to_vec(&serde_json::json!({ "version": 1, "apps": [
+            { "app": serde_json::to_value(word())?, "output": { "style": "ieee" } },
+        ] }))?;
+        fs::write(&path, &earlier)?;
+        fs::create_dir(directory.path().join("apps.json.earlier"))?;
+        fs::write(directory.path().join("apps.json.earlier").join("blocker"), "invented")?;
+        let memory = AppMemory::open(path.clone());
+        assert!(
+            memory
+                .set(&mac("org.example.other"), crate::output::listed("pandoc"))
+                .is_err()
+        );
+        assert_eq!(fs::read(&path)?, earlier);
+        Ok(())
     }
 
     #[test]
