@@ -1,4 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
+import { initialSession } from "./session";
 import { useSyncExternalStore } from "react";
 import { expect, test, vi } from "vitest";
 import type * as nativeApi from "../../api";
@@ -9,7 +10,8 @@ import { useLibrarySearch } from "./useLibrarySearch";
 type Inputs = Omit<Parameters<typeof useLibrarySearch>[0], "session" | "state">;
 /** The search as the picker runs it: inside a session, which may reopen. */
 function inSession(refreshSnapshot = vi.fn()) {
-  const session = createSessionController();
+  // A picker on screen.
+  const session = createSessionController({ ...initialSession(), resting: false });
   session.connect({ refresh: refreshSnapshot });
   const useSearch = (inputs: Inputs) => useLibrarySearch({ session, state: useSyncExternalStore(session.subscribe, session.getSnapshot), ...inputs });
   return { session, useSearch, refreshSnapshot };

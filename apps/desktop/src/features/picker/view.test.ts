@@ -42,7 +42,9 @@ test("Enter while reopening waits for the new opening's search, then copies the 
   expect(reopened.copies).toEqual([]);
   const { state } = reopened;
   // The picker tells the new opening what it searches: the settled answer is adopted without asking again.
-  const [next, effects] = reduceSession(state, { type: "search-inputs", inputs: state.search.inputs! });
+  const [heard, searched] = reduceSession(state, { type: "search-inputs", inputs: state.search.inputs! });
+  expect(searched).toEqual([]);
+  const [next, effects] = reduceSession(heard, { type: "committed" });
   expect(effects).toMatchObject([{ type: "copy", session: next.session, ticket: "ticket-a" }]);
 });
 
@@ -51,4 +53,18 @@ test("Esc steps back: clearing the search drops the waiting Enter", () => {
   expect(state.pendingCopy).toBeNull();
   expect(state.query).toBe("");
   expect(copies).toEqual([]);
+});
+
+test.each([false, true])("a destination read that answers before the screen catches up waits for its commit (new default format: %s)", (changed) => {
+  const [arranged, heard] = arrangeView({ ...initialSession("garcia"), presentation: 0 }, { ...base({ ...initialSession("garcia") }), appId: "example.writer" });
+  let [state] = reduceSession(arranged, heard);
+  [state] = reduceSession(state, { type: "read-destination", reset: false });
+  [state] = reduceSession(state, enter);
+  const [read, readEffects] = reduceSession(state, { type: "destination-read", request: state.destination.reads, destination: state.destination.destination! });
+  expect(readEffects.filter((effect) => effect.type === "copy")).toEqual([]);
+  // A new default format may still be on its way from the screen; the commit brings it first.
+  const [newer] = changed ? reduceSession(read, { type: "picker-inputs", inputs: { ...read.inputs!, fallback: "typst" } }) : [read];
+  const [, committed] = reduceSession(newer, { type: "committed" });
+  // Typst has no preview yet, so the Pandoc one is never copied.
+  expect(committed.filter((effect) => effect.type === "copy")).toHaveLength(changed ? 0 : 1);
 });

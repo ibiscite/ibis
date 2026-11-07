@@ -90,6 +90,8 @@ test("a failed visibility read cannot discard a successful presentation initiali
   backend({ "plugin:window|is_visible": () => Promise.reject(new Error("invented visibility failure")),
     picker_presentation: () => 41, hide_picker: hide, search: () => [result("a", "Invented reference")] });
   await act(async () => { render(<App />); });
+  // Unknown counts as hidden: the picker searches once it is shown.
+  await act(async () => { await emit("picker:shown", 41); });
   await screen.findByText("Invented reference");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
   await waitFor(() => expect(hide).toHaveBeenCalledExactlyOnceWith({ presentation: 41 }));
