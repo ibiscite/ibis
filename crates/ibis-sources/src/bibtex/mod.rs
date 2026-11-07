@@ -90,7 +90,12 @@ pub(crate) fn load_with_budget(
     }
     let (mut blocks, limited) = split_blocks(text);
     if limited {
-        result.cut_short = true;
+        // Comments past the cap leave no reference unread; when the first
+        // unread block is not known, assume the worst.
+        result.cut_short = blocks.get(crate::MAX_LIBRARY_RECORDS).is_none_or(|first| {
+            let unread = first.text.as_ptr() as usize - text.as_ptr() as usize;
+            lexer::has_entry(&text[unread..])
+        });
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),

@@ -260,8 +260,13 @@ fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
         "refs.bib",
         &format!("@misc{{kept, title={{T}}, file={{{}}}}}\n", files.join(";")),
     );
-    let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
-    assert_eq!(code, 4, "{stderr}");
-    assert!(stderr.contains("no reference has the citation key"), "{stderr}");
-    assert!(!stderr.contains("too large"), "{stderr}");
+    // Comments past the record cap leave no reference unread either.
+    let comments = format!("@misc{{kept, title={{T}}}}\n{}", "@comment{padding}\n".repeat(200_000));
+    let padded = lab.file("padded.bib", &comments);
+    for file in [file, padded] {
+        let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
+        assert_eq!(code, 4, "{stderr}");
+        assert!(stderr.contains("no reference has the citation key"), "{stderr}");
+        assert!(!stderr.contains("too large"), "{stderr}");
+    }
 }
