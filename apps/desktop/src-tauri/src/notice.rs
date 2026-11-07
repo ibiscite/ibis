@@ -511,7 +511,9 @@ fn present(app: &AppHandle) {
 /// The picker opening takes the notice away at once: both sit at the top of
 /// the display, and a notice must never cover the search field.
 pub(crate) fn retire(app: &AppHandle) {
-    let Some(notice) = app.try_state::<Notice>() else { return };
+    let Some(notice) = app.try_state::<Notice>() else {
+        return;
+    };
     if notice.text.lock().is_ok_and(|text| text.is_none()) {
         return;
     }
