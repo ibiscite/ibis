@@ -42,7 +42,7 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
     { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map((output) => (
       { id: output.id, label: output.name, sample: output.example ?? undefined })) },
     { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map((output) => (
-      { id: output.id, label: output.name, detail: output.description ?? undefined, sample: output.example ?? undefined, prose: true, disabled: !styles })) },
+      { id: output.id, label: output.name, keywords: output.description ?? undefined, disabled: !styles })) },
   ];
   const name = outputName(format);
   const value = writingProject ? say("picker-format-for-app", { format: name, app: writingProject.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });

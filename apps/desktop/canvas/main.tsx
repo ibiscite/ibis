@@ -20,6 +20,7 @@ import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
 import { WritingProjectsDialog } from "../src/features/picker/WritingProjects";
+import { SessionReferencesDialog } from "../src/features/picker/SessionReferences";
 import { inventedSource, PageSources } from "../src/features/reader/source";
 import type { WritingProjectsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
@@ -29,7 +30,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -255,6 +256,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
   if (scenario.startsWith("writing-projects")) return <WritingProjectsBoard picker={picker} variant={scenario} />;
+  if (scenario === "cited-since-opening") return <CitedSinceOpeningBoard picker={picker} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
     : <PageSources.Provider value={scenario === "reader" ? invented : null}><style>{pickerStyles}</style><App api={picker} preview={{ query: fixtures[scenario]?.query ?? (["first-run", "empty", "file-drag", "error", "loading"].includes(scenario) ? "" : "invented") }} /></PageSources.Provider>;
@@ -276,6 +278,19 @@ function WritingProjectsBoard({ picker, variant }: { picker: PickerApi; variant:
       editWritingProject: async () => variant === "writing-projects-pending" ? new Promise<WritingProjectsView>(() => {}) : view,
       chooseProject: async () => {}, stopProject: async () => {},
     }} />}
+  </>;
+}
+
+/** The real Cited Since Opening sheet over the real picker, with invented citations. */
+function CitedSinceOpeningBoard({ picker }: { picker: PickerApi }) {
+  const view = { revision: 1, rows: rows.slice(0, 3), absent: 0, overflowed: false, undo: null };
+  const text = rows.slice(0, 3).map((row) => `Aster. (2026). ${row.title}. Invented Press.`).join("\n");
+  return <><style>{pickerStyles}</style><App api={picker} preview={{ query: "invented" }} />
+    <SessionReferencesDialog style="apa" onClose={() => {}} api={{
+      sessionReferences: async () => view, editSessionReferences: async () => view,
+      sessionBibliography: async () => ({ content_hash: "synthetic", html: null, left_out: [], text, warnings: [] }),
+      copySessionBibliography: async () => null, exportSessionBibliography: async () => null,
+    }} />
   </>;
 }
 

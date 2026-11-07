@@ -362,8 +362,6 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-density-compact = Title and authors on one line
-look-density-comfortable = Title, then authors and journal
 look-accent-system =
     { $platform ->
         [macos] Follow the Mac

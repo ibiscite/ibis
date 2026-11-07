@@ -476,23 +476,26 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
         {page === "about" && (
           <>
+            {/* One leading edge for the whole page: the icon and its words form one
+                card, and every group, link and line below starts where row labels do. */}
             <div id="about-ibis" className="ui-about-hero">
               <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
-              <p className="ui-about-name">{name}</p>
-              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
-                {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
-              </Button>
-              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
-              <p className="ui-about-mission">{text("about-mission")}</p>
-              <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
-              {/* Under the version, as Mac apps place it; its outcome replaces the line under it. */}
-              {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
-                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <p className="ui-about-check-result" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
-              </div>}
+              <div className="ui-about-text">
+                <p className="ui-about-name">{name}</p>
+                <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+                  {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
+                </Button>
+                {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
+                <p className="ui-about-mission">{text("about-mission")}</p>
+                <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
+              </div>
             </div>
             <Group id="about-updates" title={text("about-updates")}>
+              {(updates !== null || readProblems.has("automatic")) && <Row id="check-updates" label={text("about-check-label")} highlighted={highlighted === "check-updates"}
+                problem={checkResult === "failed" ? text("about-check-failed") : undefined}>
+                <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
+              </Row>}
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {

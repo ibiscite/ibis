@@ -6,6 +6,7 @@ import { PageStrip } from "../../ui/PageStrip";
 import { confirmOffset, formatPages, parsePages } from "./pages";
 import type { PageSource } from "./source";
 import "./Reader.css";
+import "../../ui/Overlay.css";
 
 /** A reference's pages beside its details (decision 0038): thumbnails, the
  * pages, and one toolbar line. The Page value is the one truth: the thumbnails

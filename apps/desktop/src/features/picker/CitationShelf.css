@@ -3,12 +3,12 @@
    segments and the count. Hover and open steps are even: band, tertiary, system fill.
    At rest the count shows only its chevron, whose glyph is drawn inside its box, so
    it takes no end padding and the glyph ends on the year column [C3]. */
-.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-band-control); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-row); background: var(--fill-control); }
+.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--fill-control); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 /* Text starts on the title column; trailing controls keep the same gap S to the
    shelf's end as above and below them, so their corners nest in its own [C15]. */
-.shelf-output { position: relative; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--shelf-target)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
+.shelf-output { position: relative; display: flex; align-items: center; height: max(calc(var(--control-small-h) + 2 * var(--inset)), var(--hit)); padding-inline: var(--row-pad) var(--inset); font-size: var(--type-body-size); }
 .shelf-leading { flex: 0 0 var(--tile); display: flex; justify-content: end; margin-inline-end: var(--row-gap); }
 .shelf-leading[draggable] { cursor: grab; -webkit-user-drag: element; }
 .shelf-mark { display: block; flex: none; height: var(--space-5); width: auto; color: var(--scarlet); }
@@ -39,9 +39,6 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-copied path { animation: shelf-check var(--dur-panel) var(--ease); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
 @keyframes shelf-check { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
-@media (pointer: coarse) {
-  .shelf { --shelf-target: var(--touch-target); }
-}
 @media (prefers-reduced-motion: reduce) {
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
 }

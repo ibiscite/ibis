@@ -1,58 +1,51 @@
 /* In-window menus (More, format, library scope): one frame and one row, with
-   each platform's native menu metrics; radius and padding come from the
-   geometry chain in tokens.css (docs/design/foundations.md, Corners, and ui/README.md, Menus;
-   ADR 0021 §5). These are the look-layer tokens for menus. */
+   the native menu's metrics on the token scales: a --r-large frame, a
+   --space-1 pad and --r-control rows, so the corners are concentric (12 - 4 = 8).
+   The surface is the shared overlay (Overlay.css). */
 .menu-popover {
-  --menu-radius: var(--r-menu); --menu-padding: var(--menu-pad); --menu-item-radius: var(--r-mi); --menu-item-height: 1.5rem;
   /* Labels start after the item padding, one icon/check column and the gap. */
-  --menu-item-pad: 10px; --menu-check-width: var(--icon-small); --menu-item-gap: var(--space-2);
-  --menu-label-start: calc(var(--menu-item-pad) + var(--menu-check-width) + var(--menu-item-gap));
-  --menu-highlight: var(--selected); --menu-highlight-text: var(--selected-text);
-}
-@media (prefers-contrast: more), (forced-colors: active) {
-  :root .menu-popover, :root[data-platform] .menu-popover { --menu-highlight: Highlight; --menu-highlight-text: HighlightText; }
-  .menu-popover { border: var(--border-width) solid CanvasText; }
+  --menu-label-start: calc(var(--space-2) + var(--icon-small) + var(--space-2));
 }
 
 .menu-popover {
-  box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 16px)); max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
-  display: flex; flex-direction: column; padding-block: var(--menu-padding); overflow: hidden; overflow-wrap: anywhere;
-  border-radius: var(--menu-radius); box-shadow: var(--shadow-overlay);
+  box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 2 * var(--inset))); max-width: calc(100vw - 2 * var(--inset));
+  max-height: calc(100vh - 2 * var(--inset));
+  display: flex; flex-direction: column; padding-block: var(--space-1); overflow: hidden; overflow-wrap: anywhere;
+  border-radius: var(--r-large);
   font: var(--type-body-size) / var(--type-body-line) var(--font);
 }
 .menu-frame { display: contents; }
 /* The menu and its rows never show a focus ring: the highlight is a fill. */
 /* The side padding is on the scrolling list, so a classic scroll bar sits
    outside it and rows keep equal insets on both sides (#1031). */
-.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--menu-padding); outline: none; }
-.menu-popover > :not([role="menu"]) { margin-inline: var(--menu-padding); }
+.menu-popover [role="menu"] { position: static; display: flex; flex-direction: column; min-width: 0; min-height: 0; padding-inline: var(--space-1); outline: none; }
+.menu-popover > :not([role="menu"]) { margin-inline: var(--space-1); }
 /* Outranks the global ring, which the list would clip into lines at its top and bottom. */
 .menu-popover [role="menu"]:focus-visible { outline: none; box-shadow: none; }
 .menu-section { display: flex; flex: none; flex-direction: column; }
 /* A long list scrolls inside the menu after eight rows. */
-.menu-section-list { max-height: calc(8 * var(--menu-item-height)); overflow-y: auto; }
+.menu-section-list { max-height: calc(8 * var(--control-small-h)); overflow-y: auto; }
 /* One separator, whether a part draws it or sections imply it. */
-.menu-separator, .toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: var(--border-width); margin: var(--menu-pad) var(--menu-item-pad); border: 0; background: var(--separator); }
-.menu-header { padding-inline: var(--menu-item-pad); }
+.menu-separator, .toolbar-menu .menu-section + .menu-section::before { content: ""; flex: none; height: var(--border-width); margin: var(--space-1) var(--space-2); border: 0; background: var(--separator); }
+.menu-header { padding-inline: var(--space-2); }
 /* The one section title, as macOS menus write one: small, bold and secondary,
    aligned with the item labels, so it never reads as an item. */
-.menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+.menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
 .menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 /* A menu heading: small, bold and secondary like .menu-heading, never an item. */
 .menu-detail-title { font-weight: var(--strong); }
 .menu-item {
-  display: flex; flex: none; align-items: center; min-height: var(--menu-item-height); padding-block: var(--space-1); padding-inline: var(--menu-item-pad);
-  border-radius: var(--menu-item-radius); outline: none; cursor: default; text-align: start;
+  display: flex; flex: none; align-items: center; min-height: var(--control-small-h); padding-block: var(--space-1); padding-inline: var(--space-2);
+  border-radius: var(--r-control); outline: none; cursor: default; text-align: start;
 }
 /* Parts of a row are spaced by margins, not `gap`: WebKit leaves a flex row's gap
    out of the width a max-content menu measures, so a label that fits exactly would
    be cut. Lowest specificity, so keys and examples keep their own wider spacing. */
-.menu-item > :where(* + *) { margin-inline-start: var(--menu-item-gap); }
+.menu-item > :where(* + *) { margin-inline-start: var(--space-2); }
 /* Checks and icons share one leading column; plain rows and headings reserve
    it too, including menus of radio choices or source actions. */
 .menu-check > svg { width: var(--icon-small); height: var(--icon-small); }
-.menu-check { flex: 0 0 var(--menu-check-width); display: inline-flex; align-items: center; justify-content: center; }
+.menu-check { flex: 0 0 var(--icon-small); display: inline-flex; align-items: center; justify-content: center; }
 :root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }
 /* Grow to the intrinsic label width first; at the viewport limit full action
    labels wrap while checks and shortcut units retain their columns. */
@@ -60,11 +53,11 @@
    the window's edge. (WebKit measures a wrapping label a few pixels short, so
    one that fits exactly would break onto two lines.) */
 .menu-label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.menu-keys { flex: none; white-space: nowrap; margin-inline-start: 16px; color: var(--text-secondary); font: inherit; }
-.menu-example { flex: none; margin-inline-start: 16px; color: var(--text-secondary); }
+.menu-keys { flex: none; white-space: nowrap; margin-inline-start: var(--space-4); color: var(--text-secondary); font: inherit; }
+.menu-example { flex: none; margin-inline-start: var(--space-4); color: var(--text-secondary); }
 .menu-submenu-arrow { flex: none; margin-inline-start: var(--space-2); }
 [dir="rtl"] .menu-submenu-arrow { transform: scaleX(-1); }
-.menu-item[data-focused] { background: var(--menu-highlight); color: var(--menu-highlight-text); }
+.menu-item[data-focused] { background: var(--selected); color: var(--selected-text); }
 .menu-item[data-focused] :is(.menu-example, .menu-keys, .source-icon) { color: inherit; }
 .menu-item[aria-disabled="true"] { color: var(--text-secondary); }
 @media (prefers-contrast: more) { .menu-item[data-focused] { outline: 1px solid currentColor; outline-offset: -1px; } }
