@@ -108,7 +108,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ## Per platform
 
 - **macOS is the standard now.** Every system uses the macOS design: one code path, the same sizes, radii, controls and layout.
-- **Windows and Linux** share the macOS look with their own UI font, modifier keys and key labels (Ctrl+K), selection colours where the system demands them, and window corners (the system's own: square on Windows 10).
+- **Windows and Linux** share the macOS look with their own UI font, modifier keys and key labels (Ctrl+K), selection colours where the system demands them, and window corners (the system's own: square on Windows 10). On Linux, System appearance follows the desktop's dark preference ([decision 0041](../decisions/0041-linux-system-appearance.md)), and a Copied notice without a compositor is an opaque toast, drawn at once with no fade.
 - OS-specific designs for Windows and GNOME come later as their own value layers in `tokens.css` on the same components. Start from these recorded choices: Windows Acrylic with a footer band, Fluent radii (window 8, control 4), a deeper dark selected row (#0067C0, white text) and Fluent settings-card rows; GNOME opaque `window_bg`, libadwaita radii (window 15, row 7), AdwActionRow settings rows and menu checks after the label.
 
 | | Rule |

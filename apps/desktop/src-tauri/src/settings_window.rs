@@ -14,6 +14,30 @@ const TITLE: &str = "Ibis Settings";
 /// The design canvas's size (docs/design/settings.md).
 const SIZE: (f64, f64) = (920.0, 560.0);
 const MIN_SIZE: (f64, f64) = (800.0, 400.0);
+/// Room kept round the window, for its frame and title bar, on a small screen.
+const MARGIN: f64 = 32.0;
+
+/// Settings' size and minimum on a screen whose work area is `area` in logical
+/// pixels: the design size where it fits, never larger than the screen (a 1440
+/// × 900 display at GDK_SCALE=2 is 720 × 450), so no control is ever off it.
+fn fitted(area: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
+    let Some((width, height)) = area else {
+        return (SIZE, MIN_SIZE);
+    };
+    let room = ((width - 2.0 * MARGIN).max(1.0), (height - 2.0 * MARGIN).max(1.0));
+    let size = (SIZE.0.min(room.0), SIZE.1.min(room.1));
+    (size, (MIN_SIZE.0.min(size.0), MIN_SIZE.1.min(size.1)))
+}
+
+/// The work area of the screen Settings opens on: the picker's, else the main one.
+fn work_area<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<(f64, f64)> {
+    let picker = app
+        .get_webview_window("main")
+        .and_then(|window| window.current_monitor().ok().flatten());
+    let monitor = picker.or_else(|| app.primary_monitor().ok().flatten())?;
+    let size = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
+    Some((size.width, size.height))
+}
 
 /// Where Settings opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -133,10 +157,11 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
+    let (size, min) = fitted(work_area(app));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
-        .inner_size(SIZE.0, SIZE.1)
-        .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
+        .inner_size(size.0, size.1)
+        .min_inner_size(min.0, min.1)
         .center()
         .maximizable(false)
         .focused(true)
@@ -316,6 +341,27 @@ mod tests {
                 .unwrap_or_else(|e| panic!("settings page event missing: {e}"));
             assert_eq!(payload, serde_json::json!(expected).to_string());
         }
+    }
+
+    #[test]
+    fn settings_fits_a_small_or_scaled_screen_and_keeps_its_size_elsewhere() {
+        assert_eq!(
+            fitted(None),
+            (SIZE, MIN_SIZE),
+            "an unknown screen keeps the design size"
+        );
+        assert_eq!(fitted(Some((1440.0, 900.0))), (SIZE, MIN_SIZE));
+        // 1440 × 900 at GDK_SCALE=2: every control stays on the screen.
+        let (size, min) = fitted(Some((720.0, 450.0)));
+        assert!(
+            size.0 + 2.0 * MARGIN <= 720.0 && size.1 + 2.0 * MARGIN <= 450.0,
+            "{size:?}"
+        );
+        assert!(min.0 <= size.0 && min.1 <= size.1, "{min:?} fits within {size:?}");
+        assert!(
+            fitted(Some((10.0, 10.0))).0.0 > 0.0,
+            "a tiny screen still gets a window"
+        );
     }
 
     #[test]

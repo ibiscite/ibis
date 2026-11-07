@@ -22,22 +22,22 @@ const tokens = read("tokens.css").replace(/\/\*[^]*?\*\//g, "");
 const param = (name: string) => tokens.match(new RegExp(`${name}: (#[0-9a-f]{6});`))![1]!;
 const resolved = tokens.replaceAll("var(--ibis-dark)", param("--ibis-dark")).replaceAll("var(--ibis)", param("--ibis"));
 
-type Declaration = { file: string; selector: string; property: string; value: string; style: CSSStyleDeclaration; reduced: boolean; motionOnly: boolean };
+type Declaration = { file: string; selector: string; property: string; value: string; style: CSSStyleDeclaration; reduced: boolean; motionOnly: boolean; conditions: string };
 /** Every declaration as the CSS object model reads it, inside every @media and @supports. */
 function declarations(file: string, css: string): Declaration[] {
   const element = document.createElement("style");
   element.textContent = css;
   document.head.append(element);
   const found: Declaration[] = [];
-  const walk = (list: CSSRuleList, reduced: boolean, motionOnly: boolean) => {
+  const walk = (list: CSSRuleList, reduced: boolean, motionOnly: boolean, conditions = "") => {
     for (const rule of Array.from(list)) {
       if (rule.type === CSSRule.STYLE_RULE) {
         const { selectorText: selector, style } = rule as CSSStyleRule;
-        for (const property of Array.from(style)) found.push({ file, selector, property, value: style.getPropertyValue(property).trim(), style, reduced, motionOnly });
+        for (const property of Array.from(style)) found.push({ file, selector, property, value: style.getPropertyValue(property).trim(), style, reduced, motionOnly, conditions });
       } else if (rule.type !== CSSRule.KEYFRAMES_RULE && "cssRules" in rule) {
         const condition = (rule as CSSMediaRule).conditionText ?? "";
         walk((rule as CSSGroupingRule).cssRules, reduced || /prefers-reduced-motion:\s*reduce\b/.test(condition),
-          motionOnly || /prefers-reduced-motion:\s*no-preference/.test(condition));
+          motionOnly || /prefers-reduced-motion:\s*no-preference/.test(condition), `${conditions} ${condition}`);
       }
     }
   };
@@ -69,6 +69,11 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
     breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
+  { says: "the floating layer is see-through or blurred only while Reduce Transparency, Increase Contrast and forced colours are all off",
+    breaks: ({ property, value, conditions }) => (property === "--surface-overlay" && /\/\s*\d|transparent|color-mix/.test(value)
+      || property === "--blur" && value !== "none")
+      && !(/prefers-reduced-transparency:\s*no-preference/.test(conditions) && /prefers-contrast:\s*no-preference/.test(conditions) && /forced-colors:\s*none/.test(conditions)),
+    planted: "@media (prefers-contrast: no-preference) and (forced-colors: none) { :root { --surface-overlay: rgb(1 2 3 / 90%); } }" },
   { says: "one scroll bar, drawn only by Foundation.css", applies: (file) => app(file) && file !== "ui/Foundation.css",
     breaks: ({ property, selector }) => /^scrollbar-(width|color)$/.test(property) || selector.includes("::-webkit-scrollbar"),
     planted: ".planted { scrollbar-width: thin; }" },
@@ -148,6 +153,8 @@ const required: [file: string, selector: string, property: string, value: string
   // Problems and the copied mark read in the text colour, never a status hue.
   ["ui/SettingsGroup.css", ".ui-settings-row-problem", "color", "var(--text)"],
   ["features/picker/CitationShelf.css", ".shelf-copied", "color", "var(--text)"],
+  // A found About line keeps 4.5:1 on its tint over the card.
+  ["ui/Delights.css", ".ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted]", "color", "var(--text)"],
   // Settings reserves the title bar only where macOS draws its buttons over the window.
   ["tokens.css", ":root[data-system=\"macos\"]", "--titlebar-height", "var(--touch-target)"],
   // The focus ring is solid accent text, so it keeps 3:1 on every surface.

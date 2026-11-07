@@ -9,6 +9,8 @@
 .ui-about-name { margin: 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
 /* The mission is the hero's lead, in the text colour; the line on the name under
    it is quieter, so weight follows importance. */
+.ui-about-check { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block-start: var(--space-2); border-radius: var(--r-small); }
+.ui-about-check[data-highlighted] { background: var(--highlight); }
 .ui-about-mission { margin: 0; color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .ui-about-hero .ui-about-line { color: var(--text-secondary); }
 .ui-about-icon.ui-button[data-variant] { flex: none; width: var(--mark-app); height: var(--mark-app); padding: 0; border-radius: var(--r-icon); background: transparent; }
@@ -24,7 +26,8 @@
 @media (prefers-reduced-motion: reduce) { .ui-about-icon [data-dip] svg > g > g { animation: none; } }
 /* Every line takes the same two lines of room, so a new fact never moves the page. */
 .ui-about-line { box-sizing: content-box; margin: 0; min-block-size: calc(2 * var(--type-label-line)); text-wrap: pretty; }
-.ui-about-line[data-highlighted] { background: var(--highlight); border-radius: var(--r-small); }
+/* A found line reads in the text colour: secondary ink on the tint over a card falls below 4.5:1. */
+.ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted] { background: var(--highlight); border-radius: var(--r-small); color: var(--text); }
 .ui-about-line > [data-said] { display: block; animation: about-said var(--dur-panel) var(--ease); }
 @keyframes about-said { from { opacity: 0; } }
 .ui-about-links { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-inline-start: calc(var(--settings-row-pad) - var(--space-2)); }

@@ -81,5 +81,8 @@ the anchor older links use.
 ## 0040 One owner for shared settings
 [0040](decisions/0040-one-settings-owner.md): one engine owner orders every settings write by when it was asked for; formats per app move into `settings.json`.
 
+## 0041 System appearance follows the Linux desktop's dark preference
+[0041](decisions/0041-linux-system-appearance.md): on Linux, System follows the desktop portal's colour scheme or a dark GTK theme; Light and Dark still win.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.

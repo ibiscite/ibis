@@ -2,7 +2,7 @@
 
 [C18] Its own window (in the Dock and Alt+Tab while open), opened with **Settings…** (⌘,) from More, the menu bar or tray. A sidebar of pages runs under the window buttons, as in System Settings. Every change applies at once and reaches an open picker.
 
-- **Window**: 920 × 560 by default, minimum 800 × 400. A two-column shell with a reserved `--titlebar-height` (macOS only, where the window buttons sit over the content); the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.
+- **Window**: 920 × 560 by default, minimum 800 × 400, each limited to the screen's work area less a margin, so a small or scaled screen (1440 × 900 at `GDK_SCALE=2` is 720 × 450) never puts a control off it. A two-column shell with a reserved `--titlebar-height` (macOS only, where the window buttons sit over the content); the sidebar background runs full height. Nothing slides behind the title bar; only the page and the sidebar list scroll.
 - **Pages** (in this order): **General** (opening shortcut, Open at Login, pasting), **Appearance** (Appearance, Rows, Window size, then Accent and Text size), **Libraries**, **Citations** (default format, Recent citations), **Shortcuts**, then after a gap **Advanced** and **About Ibis**. A page with no built controls stays out of the sidebar.
 - **Only built settings appear**: no disabled promises or "Coming soon" rows, and nothing unbuilt in the search index.
 - Each setting is one entry in one registry (key, page, group, label, description, control, default, search words); pages and search are drawn from it.
