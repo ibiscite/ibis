@@ -277,26 +277,7 @@ jobs:
       - name: Build the command line
         env:
           TARGET: ${{ matrix.target }}
-        run: |
-          if [ "$RUNNER_OS" = Windows ]; then
-            # Link the C runtime in, as the app does, so ibis.exe runs on a PC
-            # without the Visual C++ Redistributable.
-            export RUSTFLAGS="-C target-feature=+crt-static"
-          fi
-          if [ "$RUNNER_OS" = Linux ]; then TARGET=x86_64-unknown-linux-musl; fi
-          echo "CLI_TARGET=$TARGET" >> "$GITHUB_ENV"
-          cargo build --release --locked -p ibis --target "$TARGET"
-          if [ "$RUNNER_OS" = Linux ] && ! file "target/$TARGET/release/ibis" | grep -q 'static'; then
-            echo "::error::The Linux command line is not static."
-            exit 1
-          fi
-          if [ "$RUNNER_OS" = Windows ] && grep -qai 'vcruntime140.dll' "target/$TARGET/release/ibis.exe"; then
-            echo "::error::ibis.exe still needs vcruntime140.dll."
-            exit 1
-          fi
-          if [ "$TARGET" != x86_64-apple-darwin ]; then
-            "target/$TARGET/release/ibis" --version
-          fi
+        run: bash scripts/build-cli.sh
 
       - name: Capture the picker (Linux and macOS)
         if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'
@@ -314,25 +295,7 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
           IBIS_LIBRARY: ${{ github.workspace }}/fixtures/bibtex/real-world.bib
-        run: |
-          ./scripts/check-offline.tests.ps1
-          New-Item -ItemType Directory -Force screenshots | Out-Null
-          $app = Start-Process "target/$env:TARGET/release/ibis-desktop.exe" -NoNewWindow -PassThru -RedirectStandardOutput screenshots/startup-Windows.log -RedirectStandardError screenshots/stderr-Windows.log
-          try {
-            # Observe startup as well as delayed WebView2 background services.
-            ./scripts/check-offline.ps1 -AppId $app.Id -Seconds 60
-            if ($app.HasExited) { throw 'The picker exited during startup; see the startup logs.' }
-            try {
-              Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-              $bounds = [System.Windows.Forms.SystemInformation]::VirtualScreen
-              $bitmap = [System.Drawing.Bitmap]::new($bounds.Width, $bounds.Height)
-              $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
-              try {
-                $graphics.CopyFromScreen($bounds.Location, [System.Drawing.Point]::Empty, $bounds.Size)
-                $bitmap.Save("$PWD/screenshots/picker-Windows.png")
-              } finally { $graphics.Dispose(); $bitmap.Dispose() }
-            } catch { Write-Output "::warning::Windows screenshot capture failed: $($_.Exception.Message)" }
-          } finally { if (!$app.HasExited) { Stop-Process -Id $app.Id -Force } }
+        run: ./scripts/capture-picker.ps1
 
       # Uploads still run after a job timeout (which counts as cancelled) so
       # a hang leaves its logs.
@@ -347,55 +310,9 @@ jobs:
 
       - name: Collect packages and checksums
         id: collect
-        run: |
-          bundle=target/${{ matrix.target }}/release/bundle
-          mkdir -p dist
-          find "$bundle" -maxdepth 2 -type f \( -name '*.dmg' -o -name '*.msi' -o -name '*-setup.exe' -o -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' \) -exec cp {} dist/ \;
-          if [ -z "$(ls dist)" ]; then
-            echo "no packages were produced in $bundle" >&2
-            exit 1
-          fi
-          # The macOS update package: the app in a gzipped tar, as the updater expects.
-          if [ -d "$bundle/macos" ]; then
-            app=$(find "$bundle/macos" -maxdepth 1 -name '*.app' -print -quit)
-            COPYFILE_DISABLE=1 tar -czf "dist/$(basename "$app").tar.gz" -C "$bundle/macos" "$(basename "$app")"
-          fi
-          # Give each package a plain name that says which computer it is for.
-          # Names carry no version, so a link to the nightly file never changes.
-          case "${{ matrix.target }}" in
-            aarch64-apple-darwin) platform=macOS-Apple-silicon ;;
-            x86_64-apple-darwin) platform=macOS-Intel ;;
-            x86_64-pc-windows-msvc) platform=Windows ;;
-            x86_64-unknown-linux-gnu) platform=Linux ;;
-            *) echo "no download name for ${{ matrix.target }}" >&2; exit 1 ;;
-          esac
-          for f in dist/*; do
-            case "$f" in
-              *-setup.exe) name="Ibis-$platform-setup.exe" ;;
-              *.app.tar.gz) name="Ibis-$platform.app.tar.gz" ;;
-              *) name="Ibis-$platform.${f##*.}" ;;
-            esac
-            if [ -e "dist/$name" ]; then echo "two packages would both be called $name" >&2; exit 1; fi
-            mv "$f" "dist/$name"
-          done
-          # The command line with its licence, in the archive each system unpacks
-          # without extra tools.
-          mkdir cli
-          cp LICENSE NOTICE.md cli/
-          if [ "$RUNNER_OS" = Windows ]; then
-            cp "target/$CLI_TARGET/release/ibis.exe" cli/
-            (cd cli && 7z a -tzip "../dist/ibis-$platform.zip" ibis.exe LICENSE NOTICE.md > /dev/null)
-          else
-            cp "target/$CLI_TARGET/release/ibis" cli/
-            COPYFILE_DISABLE=1 tar -czf "dist/ibis-$platform.tar.gz" -C cli ibis LICENSE NOTICE.md
-          fi
-          # Write the list outside dist first, so it never lists itself.
-          sums="SHA256SUMS-${{ matrix.target }}.txt"
-          (cd dist && for f in *; do
-            if command -v sha256sum >/dev/null; then sha256sum "$f"; else shasum -a 256 "$f"; fi
-          done) > "$sums"
-          mv "$sums" "dist/$sums"
-          cat "dist/SHA256SUMS-${{ matrix.target }}.txt"
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/collect-packages.sh
 
       - name: Attest build provenance
         id: provenance
@@ -659,130 +576,8 @@ jobs:
           "$bin" search garcia --file fixtures/bibtex/fidelity.bib
           "$bin" cite accents2021 --file fixtures/bibtex/fidelity.bib --style apa
 
-      # stays-up.py starts an installed app with the synthetic library and
-      # fails if it exits within 20 seconds. diagnose.sh turns a failed
-      # command and the end of its output into an annotation, so the cause is
-      # visible on the run summary. The steps below reuse both.
-      - name: Prepare the startup check
-        run: |
-          cat > "$RUNNER_TEMP/diagnose.sh" <<'SH'
-          trap 'echo "::error::Failed at line $LINENO: $BASH_COMMAND"' ERR
-          show() {
-            local out="$RUNNER_TEMP/show.log" rc=0
-            "$@" > "$out" 2>&1 || rc=$?
-            cat "$out"
-            if [ "$rc" -ne 0 ]; then
-              echo "::error::exit $rc from $*%0A$(tail -n 40 "$out" | tr -d '\r' | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}')"
-            fi
-            return "$rc"
-          }
-          SH
-          cat > "$RUNNER_TEMP/stays-up.py" <<'PY'
-          import subprocess, sys, time
-          app = subprocess.Popen(sys.argv[1:])
-          time.sleep(20)
-          if app.poll() is not None:
-              sys.exit(f"::error::{sys.argv[1]} exited with code {app.returncode} during startup")
-          app.terminate()
-          try:
-              app.wait(timeout=10)
-          except subprocess.TimeoutExpired:
-              app.kill()
-          print(f"{sys.argv[1]} started and stayed up")
-          PY
-
-      - name: Install, start and remove (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          . "$RUNNER_TEMP/diagnose.sh"
-          sudo apt-get update
-          # Only test tools here; the .deb must bring its own runtime libraries.
-          sudo apt-get install -y --no-install-recommends xvfb xauth xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core fonts-noto-core fonts-noto-cjk
-          show sudo apt-get install -y ./dist/Ibis-Linux.deb
-          package=$(dpkg-deb --field dist/Ibis-Linux.deb Package)
-          app=$(dpkg -L "$package" | grep -m1 '^/usr/bin/')
-          echo "installed $package at $app"
-          display() { xvfb-run -a -s '-screen 0 1280x800x24' dbus-run-session -- "$@"; }
-          show display /usr/bin/python3 scripts/smoke-native.py --app "$app" --output screenshots/install-Linux --identifier "$IDENTIFIER" --skip-performance
-          show display /usr/bin/python3 "$RUNNER_TEMP/stays-up.py" "$app"
-          sudo apt-get remove -y "$package"
-          test ! -e "$app"
-          # The AppImage needs FUSE 2, which Ubuntu 24.04 lacks by default;
-          # extract-and-run starts the same bundled files without it.
-          chmod +x dist/Ibis-Linux.AppImage
-          APPIMAGE_EXTRACT_AND_RUN=1 show display /usr/bin/python3 "$RUNNER_TEMP/stays-up.py" "$PWD/dist/Ibis-Linux.AppImage"
-          # NixOS has no libgpg-error outside the package that needs it.
-          (cd "$RUNNER_TEMP" && "$OLDPWD/dist/Ibis-Linux.AppImage" --appimage-extract usr/lib/libgpg-error.so.0 > /dev/null)
-          test -s "$RUNNER_TEMP/squashfs-root/usr/lib/libgpg-error.so.0"
-
-      # The app's name is read from what the package installs, never assumed.
-      - name: Install, start and remove (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          . "$RUNNER_TEMP/diagnose.sh"
-          mount="$RUNNER_TEMP/ibis-dmg"
-          apps="$RUNNER_TEMP/Applications"
-          mkdir -p "$apps"
-          hdiutil attach -nobrowse -readonly -mountpoint "$mount" dist/Ibis-macOS-Apple-silicon.dmg
-          bundle=$(find "$mount" -maxdepth 1 -name '*.app' | head -n 1)
-          test -n "$bundle" || { echo "::error::The disk image holds no app"; exit 1; }
-          installed="$apps/$(basename "$bundle")"
-          ditto "$bundle" "$installed"
-          hdiutil detach "$mount"
-          codesign --verify --deep --strict "$installed"
-          app=$(find "$installed/Contents/MacOS" -type f -perm -u+x | head -n 1)
-          echo "installed at $app"
-          show python3 "$RUNNER_TEMP/stays-up.py" "$app"
-          rm -rf "$installed"
-
-      - name: Install, start and remove (Windows)
-        if: runner.os == 'Windows'
-        run: |
-          . "$RUNNER_TEMP/diagnose.sh"
-          uninstall_keys() { pwsh -NoProfile -Command '(Get-ChildItem HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall).PSChildName' | tr -d '\r' | sort; }
-          before=$(uninstall_keys)
-          # The setup executable installs for the current user without prompts.
-          show ./dist/Ibis-Windows-setup.exe //S
-          # Find the install folder from the uninstall entry it registered.
-          key=$(comm -13 <(echo "$before") <(uninstall_keys) | head -n 1)
-          test -n "$key" || { echo "::error::The setup executable registered no uninstall entry"; exit 1; }
-          uninstaller=$(KEY="$key" pwsh -NoProfile -Command '(Get-ItemProperty ("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\" + $env:KEY)).UninstallString' | tr -d '"\r')
-          dir=$(dirname "$(cygpath -u "$uninstaller")")
-          app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-          test -n "$app" || { echo "::error::The setup executable installed no app in $dir"; exit 1; }
-          echo "installed at $app"
-          show python "$RUNNER_TEMP/stays-up.py" "$app"
-          "$dir/uninstall.exe" //S
-          # The uninstaller copies itself and returns early; wait for removal.
-          for _ in $(seq 30); do [ -e "$app" ] || break; sleep 2; done
-          test ! -e "$app" || { echo "::error::The uninstaller left $app behind"; exit 1; }
-          # Builds without an MSI skip the rest.
-          [ -e dist/Ibis-Windows.msi ] || exit 0
-          # The MSI installs for all users; the runner has administrator rights.
-          # The install folder is read from the installer's own log.
-          msiexec() {
-            MSI="$(cygpath -w "$PWD/dist/Ibis-Windows.msi")" LOG="$(cygpath -w "$RUNNER_TEMP/msi-$1.log")" MODE="$1" pwsh -NoProfile -Command '
-              $p = Start-Process msiexec.exe -Wait -PassThru -ArgumentList "/$env:MODE", "`"$env:MSI`"", "/qn", "/norestart", "/l*v", "`"$env:LOG`""
-              exit $p.ExitCode'
-          }
-          msi_log() { tr -d '\000\r' < "$RUNNER_TEMP/msi-$1.log"; }
-          if ! msiexec i; then
-            show sh -c 'tail -n 40; exit 1' msiexec < <(msi_log i)
-          fi
-          installdir=$(msi_log i | sed -n 's/^.*Property(S): INSTALLDIR = //p')
-          installdir=${installdir%%$'\n'*}
-          if [ -z "$installdir" ]; then
-            show sh -c 'grep -a "Property(S): .*\(DIR\|FOLDER\) = " | tail -n 40; exit 1' msiexec < <(msi_log i)
-          fi
-          dir=$(cygpath -u "$installdir")
-          app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-          test -n "$app" || { echo "::error::The MSI installed no app in $dir"; exit 1; }
-          echo "installed at $app"
-          show python "$RUNNER_TEMP/stays-up.py" "$app"
-          if ! msiexec x; then
-            show sh -c 'tail -n 40; exit 1' msiexec < <(msi_log x)
-          fi
-          test ! -e "$app"
+      - name: Install, start and remove
+        run: bash scripts/install-and-start.sh
 
       - name: Keep install screenshots and logs
         if: always()
@@ -860,24 +655,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
           REPO: ${{ github.repository }}
           TAG: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          # The feed's version must be the one the app reports, or it would
-          # offer the same release again and again.
-          if [ "${TAG#v}" != "$(node scripts/update-feed.mjs release)" ]; then
-            echo "::error::$TAG does not match the workspace version $(node scripts/update-feed.mjs release)."
-            exit 1
-          fi
-          VERSION="${TAG#v}"
-          for file in Ibis-macOS-Apple-silicon.app.tar.gz Ibis-macOS-Intel.app.tar.gz Ibis-Windows-setup.exe Ibis-Linux.AppImage; do
-            apps/desktop/node_modules/.bin/tauri signer sign --app-version "$VERSION" "dist/$file" > /dev/null
-          done
-          mkdir feed
-          mv dist/*.sig feed/
-          node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/$TAG" \
-            "$VERSION" "Ibis ${TAG#v}. Release notes: https://github.com/$REPO/releases/tag/$TAG"
-          rm feed/*.sig
-          cat feed/latest.json
+        run: scripts/sign-update-packages.sh release
 
       - name: Publish the verified release
         env:
@@ -1003,18 +781,7 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.UPDATE_SIGNING_KEY_PASSWORD }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.sha }}
-        run: |
-          set -euo pipefail
-          VERSION="$(node scripts/update-feed.mjs version)"
-          for file in Ibis-macOS-Apple-silicon.app.tar.gz Ibis-macOS-Intel.app.tar.gz Ibis-Windows-setup.exe Ibis-Linux.AppImage; do
-            apps/desktop/node_modules/.bin/tauri signer sign --app-version "$VERSION" "dist/$file" > /dev/null
-          done
-          mkdir feed
-          mv dist/*.sig feed/
-          node scripts/update-feed.mjs manifest feed "https://github.com/$REPO/releases/download/nightly" \
-            "$VERSION" "Nightly build of ${SHA:0:12} on main."
-          rm feed/*.sig
-          cat feed/latest.json
+        run: scripts/sign-update-packages.sh nightly
 
       # The update test (update-e2e job) starts the nightly being replaced and
       # lets it update itself to this one. Only the files are kept; nothing from
