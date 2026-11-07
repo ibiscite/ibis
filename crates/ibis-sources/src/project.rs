@@ -287,15 +287,14 @@ fn doi(record: &Record) -> Option<String> {
 }
 
 fn observed_text(path: &Path) -> Result<Arc<String>, ProjectProblem> {
-    let bibtex = path.extension().is_none_or(|extension| {
-        !["json", "csljson"]
-            .iter()
-            .any(|json| extension.eq_ignore_ascii_case(json))
-    });
-    if !bibtex {
+    if file::Format::of(path, "") != file::Format::Bibtex {
         return Err(ProjectProblem::NotBibtex);
     }
-    Ok(file::stable_observation(path).map_err(ProjectProblem::from)?.text())
+    let observation = file::stable_observation(path).map_err(ProjectProblem::from)?;
+    if file::Format::of(path, &observation.text()) != file::Format::Bibtex {
+        return Err(ProjectProblem::NotBibtex);
+    }
+    Ok(observation.text())
 }
 
 fn digest(text: &str) -> Fingerprint {

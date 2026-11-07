@@ -2,6 +2,7 @@
 mod attachments;
 mod bibtex;
 mod csl_json;
+mod exported;
 mod file;
 pub mod identity;
 pub mod project;
@@ -55,7 +56,7 @@ pub struct SourceWarning {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum LibraryKind {
-    /// A BibTeX, BibLaTeX or CSL-JSON file.
+    /// A BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file.
     File,
     Zotero,
     /// Data handed to the engine whole, with no source behind it.

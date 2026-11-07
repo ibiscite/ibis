@@ -602,17 +602,20 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
     source.setting()
 }
 
-// Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).
-const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "biblatex", "json", "csljson"];
+// Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix,
+// and `.txt`, which EndNote online gives its RIS exports).
+const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "biblatex", "json", "csljson", "ris", "csv", "txt"];
 
-/// Whether a dropped file's name says it is a library.
+/// Whether a dropped file's name says it is a library. The chooser also offers
+/// `.txt`, but a dropped one is too likely to be notes to replace the library.
 pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {
     path.extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
-            LIBRARY_FILE_EXTENSIONS
-                .iter()
-                .any(|known| known.eq_ignore_ascii_case(extension))
+            !extension.eq_ignore_ascii_case("txt")
+                && LIBRARY_FILE_EXTENSIONS
+                    .iter()
+                    .any(|known| known.eq_ignore_ascii_case(extension))
         })
 }
 
@@ -634,7 +637,7 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
         .dialog()
         .file()
         .set_title("Choose a library")
-        .add_filter("BibTeX, BibLaTeX and CSL-JSON", LIBRARY_FILE_EXTENSIONS);
+        .add_filter("BibTeX, BibLaTeX, CSL-JSON, RIS and CSV", LIBRARY_FILE_EXTENSIONS);
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);
     }

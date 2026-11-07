@@ -10,7 +10,7 @@ use std::time::Duration;
 use notify::{RecursiveMode, Watcher};
 use thiserror::Error;
 
-use crate::{LoadedLibrary, attachments, bibtex, csl_json};
+use crate::{LoadedLibrary, attachments, bibtex, csl_json, exported};
 use ibis_core::contract::{Fingerprint, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
@@ -45,6 +45,36 @@ pub enum SourceError {
     WatchUnavailable,
     #[error("the library file does not contain valid reference data")]
     InvalidData,
+    #[error("the CSV file's first row does not name the template's columns")]
+    CsvTemplate,
+}
+
+/// What a library file holds, from its name and, for RIS, its first line.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Format {
+    Bibtex,
+    CslJson,
+    Ris,
+    Csv,
+}
+
+impl Format {
+    pub(crate) fn of(path: &Path, text: &str) -> Self {
+        let named = |names: &[&str]| {
+            path.extension()
+                .is_some_and(|extension| names.iter().any(|name| extension.eq_ignore_ascii_case(name)))
+        };
+        // Select JSON by suffix: BibTeX comments may start with a JSON-looking bracket.
+        if named(&["json", "csljson"]) {
+            Self::CslJson
+        } else if named(&["csv"]) {
+            Self::Csv
+        } else if named(&["ris", "txt"]) || crate::exported::ris::looks_like_ris(text) {
+            Self::Ris
+        } else {
+            Self::Bibtex
+        }
+    }
 }
 
 pub fn read_library_file(path: &Path) -> Result<String, SourceError> {
@@ -228,13 +258,14 @@ pub fn original_entry(
     cite: &ibis_core::contract::Fingerprint,
 ) -> Result<String, crate::project::EntryRefusal> {
     use crate::project::EntryRefusal;
-    let json = path
-        .extension()
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
-    if json {
+    // Only BibTeX has an entry to copy; most other files say so by name.
+    if Format::of(path, "") != Format::Bibtex {
         return Err(EntryRefusal::NoOriginal);
     }
     let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
+    if Format::of(path, &observation.text) != Format::Bibtex {
+        return Err(EntryRefusal::NoOriginal);
+    }
     // Parsed from the canonical path, as the library was, so the item's ID matches.
     let loaded = parse(&observation.source, &observation.text, None).map_err(|_| EntryRefusal::Changed)?;
     let current = loaded.snapshot.get(item).ok_or(EntryRefusal::Changed)?;
@@ -272,14 +303,11 @@ fn parse_with_budget(
         .map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
-    let extension = source.extension();
-    // Select by suffix: BibTeX comments may start with a JSON-looking bracket.
-    let json = extension
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("json") || extension.eq_ignore_ascii_case("csljson"));
-    let parsed = if json {
-        csl_json::load_str(&library, text)?
-    } else {
-        bibtex::load_with_budget(&library, text, budget, previous)
+    let parsed = match Format::of(&source, text) {
+        Format::CslJson => csl_json::load_str(&library, text)?,
+        Format::Ris => exported::ris::load(&library, text, previous)?,
+        Format::Csv => exported::csv::load(&library, text, previous)?,
+        Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
     };
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;

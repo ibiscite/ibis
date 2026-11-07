@@ -1,0 +1,32 @@
+TY  - JOUR
+AU  - Doe, Jane
+TI  - A good invented record
+PY  - 2026
+ER  - 
+
+TY  - XYZ
+TI  - A type Ibis does not know
+ER  - 
+
+TY  - JOUR
+TI  - One title
+T1  - Another title
+ER  - 
+
+TY  - JOUR
+TI  - Dates that disagree
+PY  - 2026
+DA  - 2025/01/01/
+ER  - 
+
+AU  - Lost, Record
+TI  - A record without its TY line
+ER  - 
+
+TY  - BOOK
+TI  - A second good invented record
+PY  - 2020
+ER  - 
+
+TY  - JOUR
+TI  - A record the export never finished

@@ -289,13 +289,16 @@ fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
             "csljson",
             r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
         ),
+        ("ris", "TY  - BOOK\nTI  - Example reference\nER  - \n"),
+        ("txt", "TY  - BOOK\nTI  - Example reference\nER  - \n"),
+        ("csv", "type,title\nbook,Example reference\n"),
     ] {
         assert!(
             LIBRARY_FILE_EXTENSIONS.contains(&extension),
             "chooser hides .{extension}"
         );
         let path = directory.path().join(format!("synthetic.{extension}"));
-        assert!(accepts_library_file(&path), "drop hides .{extension}");
+        assert_eq!(accepts_library_file(&path), extension != "txt", "drop and .{extension}");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
         let file = super::super::engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
         let reply = file
