@@ -460,10 +460,8 @@ jobs:
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 test --locked
 
-      - name: Report or enforce 100k open/refresh budgets (release)
-        env:
-          BUILD_REF: ${{ github.ref }}
-        run: node scripts/preview-budgets.mjs "$BUILD_REF"
+      - name: Report 100k open/refresh budgets (release)
+        run: node scripts/preview-budgets.mjs
 
   windows-paste:
     name: Paste into Notepad (Windows)

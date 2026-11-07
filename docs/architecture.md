@@ -309,11 +309,12 @@ Enforcement is split by measured margin (maintainer, 2026-10-28):
 |---|---|---|
 | Search p95 ≤ 20 ms, each query | `ci.yml` → `test` (`Test (ubuntu-24.04)`), release `search_budget` | At least 61% measured margin |
 | Picker JS/CSS ≤ 400 KiB gzipped | `ci.yml` → `changes` and `web`, both picker build paths | Deterministic asset bytes |
-| 100k open and refresh < 3 s each | `preview.yml` → `release-checks`: `open_refresh_report` on branches and 0.2.x, `open_refresh_budget` on tags from 0.3 | Only 224 ms open margin; shared PR-runner noise can exceed it |
+| 100k open and refresh < 3 s each | Where `IBIS_ENFORCE_BUDGETS` is set; `preview.yml` → `release-checks` reports it on every build | Shared runners measured 2.1–4.1 s on one commit (v0.3.0, 2026-11-07) |
 
 Preview's release checks cover pushes to `main`, tags and manual runs; the
-scheduled update-test-only run skips them. Failing open/refresh stops a numbered
-release and never holds a nightly back.
+scheduled update-test-only run skips them. On shared runners a slow open or
+refresh is reported, never fatal; a failed command, ranking or refresh/copy check
+still stops the build.
 Both engine cases use one test thread after compilation finishes; no retries,
 discarded warmups or best-of selection hide failures. These local engine runs do
 not substitute for native release-machine measurements.

@@ -5,13 +5,6 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { budgetTest } from "./preview-budgets.mjs";
-
-test("the approved release boundary reports before 0.3 and enforces every later tag", () => {
-  for (const ref of ["refs/heads/main", "refs/heads/fix/preview", "refs/tags/v0.1.1", "refs/tags/v0.2.0", "refs/tags/v0.2.99"]) assert.equal(budgetTest(ref), "open_refresh_report", ref);
-  for (const ref of ["refs/tags/v0.3.0", "refs/tags/v0.3.0-rc.1", "refs/tags/v0.10.0", "refs/tags/v1.0.0", "refs/tags/v12.0.0"]) assert.equal(budgetTest(ref), "open_refresh_budget", ref);
-  for (const ref of ["", "v0.2.1", "refs/tags/v0.02.1", "refs/tags/vgarbage", "refs/tags/v0.2.1\nprivate", "refs/tags/nightly", "refs/tags/v0.2.1-.", "refs/tags/v0.2.1-01", "refs/tags/v0.2.1-a..b"]) assert.throws(() => budgetTest(ref), /Invalid build ref/, ref);
-});
 
 test("real command failures stay fatal in report mode and numbers reach the job summary", { skip: process.platform === "win32" }, (t) => {
   const dir = mkdtempSync(join(tmpdir(), "ibis-budget-policy-"));
@@ -19,10 +12,11 @@ test("real command failures stay fatal in report mode and numbers reach the job 
   writeFileSync(join(dir, "cargo"), '#!/bin/sh\nprintf "%s\\n" "$*"\nprintf "%s\\n" "100k budget: input=21053739bytes open=4110ms refresh=3359ms"\nexit "$TEST_EXIT"\n', { mode: 0o755 });
   for (const code of [0, 101]) {
     const summary = join(dir, `summary-${code}`);
-    const result = spawnSync(process.execPath, ["scripts/preview-budgets.mjs", "refs/heads/main"], { encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, TEST_EXIT: String(code), GITHUB_STEP_SUMMARY: summary } });
+    const env = { ...process.env, PATH: `${dir}:${process.env.PATH}`, TEST_EXIT: String(code), GITHUB_STEP_SUMMARY: summary };
+    delete env.IBIS_ENFORCE_BUDGETS;
+    const result = spawnSync(process.execPath, ["scripts/preview-budgets.mjs"], { encoding: "utf8", timeout: 5000, env });
     assert.equal(result.status, code === 0 ? 0 : 1, result.stderr);
-    assert.match(result.stdout, /open_refresh_report --ignored/);
+    assert.match(result.stdout, /open_refresh_budget --ignored/);
     assert.match(readFileSync(summary, "utf8"), /Report only/);
     assert.match(readFileSync(summary, "utf8"), /open=4110ms refresh=3359ms/);
   }
