@@ -1665,9 +1665,10 @@ class MacApp:
     """An Ibis process: started directly from an executable, or through
     LaunchServices from a bundle, so a bundle is its own paste-permission owner."""
 
-    def __init__(self, path, library):
+    def __init__(self, path, library, log):
         self.bundle = path if path.suffix == ".app" else None
-        environment = {"IBIS_LIBRARY": str(library)}
+        # Ibis's own fixed-stage paste diagnostics, kept beside the evidence.
+        environment = {"IBIS_LIBRARY": str(library), "IBIS_MAC_PASTE_DIAGNOSTICS": "1"}
         if self.bundle:
             self.marker = f"{path.resolve()}/Contents/MacOS/"
             if self.running():
@@ -1678,7 +1679,7 @@ class MacApp:
             self.pid = self.running()[0]
         else:
             self.process = subprocess.Popen([str(path.resolve())], env=dict(os.environ, **environment),
-                                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                                            stdout=log, stderr=log)
             self.pid = self.process.pid
 
     def running(self):
@@ -1722,7 +1723,7 @@ def _journey_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
     report = {"platform": system, "scenario": "native-journey", "status": "failed", "checks": []}
-    native = app = owned_settings = temporary = collector = None
+    native = app = owned_settings = temporary = collector = log = None
     started_textedit = started_terminal = False
     exit_code = 1
 
@@ -1750,8 +1751,9 @@ def _journey_main(args):
         settings.write_bytes(JOURNEY_SETTINGS)
         native = observe_native(MacOS(folder))
 
+        log = (args.output / "startup-journey.log").open("w", encoding="utf-8")
         with recording("action", "launch-journey"):
-            app = MacApp(args.app, library)
+            app = MacApp(args.app, library, log)
         native.app = app
         # Ibis shows its picker once it starts; wait for the library, then hide it.
         wait_for(native.ibis_focused, "the first picker has the keyboard", timeout=60)
@@ -1862,7 +1864,7 @@ def _journey_main(args):
         def stop_textedit():
             if started_textedit:
                 subprocess.run(["pkill", "-x", "TextEdit"], capture_output=True, timeout=10)
-        for cleanup in (app.stop if app else None, stop_collector, stop_textedit,
+        for cleanup in (app.stop if app else None, log.close if log else None, stop_collector, stop_textedit,
                         (lambda: clean_settings(owned_settings)) if owned_settings else None,
                         temporary.cleanup if temporary else None):
             try:
