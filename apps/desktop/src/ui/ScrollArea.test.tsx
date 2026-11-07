@@ -68,14 +68,14 @@ test("the middle owns overflowing hints, while a results viewport can shrink wit
 
 test("results, menus and Shortcuts share the scroll area; picker notices belong to the middle scroller", () => {
   const styles = css("../styles.css");
-  for (const selector of [".results-area", ".keys-scroll", ".picker-content > .notices"]) {
+  for (const selector of [".results-area", ".picker-content > .notices"]) {
     const rule = styles.split("\n").find((line) => line.startsWith(`${selector} {`)) ?? "";
     expect(rule, selector).not.toBe("");
     expect(rule, selector).not.toMatch(/overflow|scrollbar/);
   }
   expect(css("./Menu.css")).not.toMatch(/\[role="menu"\] \{[^}]*overflow/);
   const keys = render(<KeysDialog bindings={[{ region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] }]} isMac onClose={vi.fn()} />);
-  expect(keys.container.querySelector(".keys-scroll")?.classList.contains("scroll-area")).toBe(true);
+  expect(keys.container.querySelector(".ui-sheet-body")?.classList.contains("scroll-area")).toBe(true);
   const notices = render(<Notices library={null} failures={{}} error="Search failed" copyError={null} copied={null} onDismissCopied={vi.fn()} />);
   expect(notices.container.querySelector(".notices")?.classList.contains("scroll-area")).toBe(false);
   const noticeRule = styles.split("\n").find((line) => line.startsWith(".picker-content > .notices {")) ?? "";

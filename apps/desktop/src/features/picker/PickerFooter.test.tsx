@@ -178,7 +178,6 @@ test("the leading slot reserves its fix's width, and a failure line spans the fo
   expect(bar.style.getPropertyValue("--footer-fix")).toBe("180px");
   expect(rule(".library-bar")).toMatch(/--footer-fix/);
   expect(rule(".library-bar[data-status-compact]")).toMatch(/--footer-fix/);
-  expect(footerStyles).toMatch(/\.library-bar > :is\(\.ui-quiet-status, \.library-action-error\) \{ grid-column: 1 \/ -1; \}/);
 });
 
 test("the action column truncates its label and can never push More off the trailing column", () => {

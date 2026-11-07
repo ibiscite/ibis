@@ -1,25 +1,19 @@
-/* Readable overlays [C13]: content-sized groups, centred as one sheet, with
-   the menu's geometry, edge and shadow. Only its body can scroll. */
-.keys-backdrop:has(.ui-sheet) { z-index: var(--z-modal); padding: var(--inset); }
-.keys-dialog.ui-sheet {
-  box-sizing: border-box; display: flex; flex-direction: column; width: min(42rem, 100%); max-height: 100%; min-width: 0;
-  border: 0; border-radius: var(--r-menu); box-shadow: var(--shadow-overlay);
-}
-.ui-sheet .keys-heading { flex: none; border-bottom: 0; }
-.ui-sheet .keys-scroll { flex: 0 1 auto; }
-.keys-scroll .keys-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
-.keys-groups > table { min-width: 0; }
-.keys-groups th[scope="rowgroup"] { padding-block: var(--space-3) var(--space-1); }
+/* The keys sheet: two content-sized columns of groups, the action at the start
+   breaking only between words, its keys at the end on one line (#1034). */
+.keys-groups { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: start; gap: var(--space-4); }
+.keys-groups > table { min-width: 0; width: 100%; border-collapse: collapse; font-size: var(--type-body-size); }
+.keys-groups th, .keys-groups td { padding: var(--space-1) 0; vertical-align: baseline; overflow-wrap: normal; border-bottom: var(--border-width) solid var(--separator); }
+.keys-groups th { text-align: start; font-weight: inherit; }
+.keys-groups th[scope="rowgroup"] { padding-block: var(--space-3) var(--space-1); color: var(--text-secondary); font-weight: var(--strong); }
 .keys-groups tbody:first-of-type th[scope="rowgroup"] { padding-block-start: 0; }
-.keys-groups th, .keys-groups td { overflow-wrap: normal; }
+.keys-groups td { width: 1%; padding-inline-start: var(--space-4); text-align: end; white-space: nowrap; }
+.keys-groups kbd { margin-inline-start: 0; white-space: nowrap; }
 .keys-groups .ui-settings-keys { flex-wrap: nowrap; }
 /* Keep actions and whole key combinations intact when two columns no longer
    fit at Larger/200% text. The groups still hug their natural heights. */
 @media (max-width: 34em) {
-  .keys-scroll .keys-groups { grid-template-columns: minmax(0, 1fr); }
+  .keys-groups { grid-template-columns: minmax(0, 1fr); }
 }
-@media (prefers-contrast: more), (forced-colors: active) {
-  .keys-dialog.ui-sheet { border: var(--border-width) solid CanvasText; }
+@media (max-width: 460px) {
+  .keys-groups td { white-space: normal; }
 }
-
-.keys-dialog.ui-sheet:focus { outline: none; box-shadow: var(--shadow-overlay); }

@@ -93,12 +93,12 @@ try {
   await page.keyboard.press("Tab");
   assert.equal(await close.evaluate((node) => document.activeElement === node && node.hasAttribute("data-focus-visible")), true, "Tab reveals the close button's ring");
   const closeShape = await close.evaluate((node) => { const style = getComputedStyle(node); return { radius: parseFloat(style.borderRadius), size: node.clientWidth }; });
-  assert.ok(/^(6|7|8)px$/.test(await page.locator(".keys-heading .ui-button").evaluate((node) => getComputedStyle(node).borderTopLeftRadius)), "the close button is the square icon button");
+  assert.ok(/^(6|7|8)px$/.test(await page.locator(".ui-sheet-heading .ui-button").evaluate((node) => getComputedStyle(node).borderTopLeftRadius)), "the close button is the square icon button");
   for (const frame of [{ width: 720, height: 560 }, { width: 480, height: 360 }]) {
     await page.setViewportSize(frame);
-    const body = sheet.locator(".keys-scroll");
+    const body = sheet.locator(".ui-sheet-body");
     await body.evaluate((node) => { node.scrollTop = node.scrollHeight; });
-    const geometry = await sheet.evaluate((node) => { const box = node.getBoundingClientRect(), scroll = node.querySelector(".keys-scroll"), end = scroll.lastElementChild.getBoundingClientRect(); return { top: box.top, bottom: box.bottom, width: node.scrollWidth - node.clientWidth, end: end.bottom, port: scroll.getBoundingClientRect().bottom }; });
+    const geometry = await sheet.evaluate((node) => { const box = node.getBoundingClientRect(), scroll = node.querySelector(".ui-sheet-body"), end = scroll.lastElementChild.getBoundingClientRect(); return { top: box.top, bottom: box.bottom, width: node.scrollWidth - node.clientWidth, end: end.bottom, port: scroll.getBoundingClientRect().bottom }; });
     assert.ok(geometry.top >= 0 && geometry.bottom <= frame.height && geometry.width <= 1 && geometry.end <= geometry.port + 1, `whole sheet and reachable end: ${JSON.stringify(geometry)}`);
   }
   await page.keyboard.press("Escape");

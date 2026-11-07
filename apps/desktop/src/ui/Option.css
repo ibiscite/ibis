@@ -1,3 +1,123 @@
+/* The list row every list of options draws: results, commands, recent and sample rows. */
+.results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
+#results { list-style: none; padding: 0; margin: 0; }
+.recent-heading h2 { margin: 0; font: inherit; }
+/* Rows are exactly --row-height and --row-spacing apart in every list of
+   options (C4); the clear border (an edge only in increased contrast) is
+   taken from the side padding so titles stay aligned. */
+[role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid transparent; }
+[role="option"] + [role="option"] { margin-top: var(--row-spacing); }
+.result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
+/* The leading tile (docs/design/picker.md, "List and row"): the type icon on a quiet
+   fill. On hover and on the active row the icon gives way to the add control in
+   the same place, so the row never reflows; a row in the citation keeps a
+   scarlet tile with a white check, the only scarlet on the row. Fills only, no
+   rings (rule 8). Compact rows draw a 24 px tile without a fill whose control
+   still covers 32 px. */
+.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
+.result-tile .type-icon { width: var(--icon); height: var(--icon); }
+.result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-tile); opacity: 0; }
+[data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
+[data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
+[data-active] .result-tile { color: inherit; }
+@media (hover: hover) {
+  [role="option"][data-hovered] .tile-button { opacity: 1; }
+  [role="option"][data-hovered] .type-icon { opacity: 0; }
+  [role="option"][data-hovered] .result-tile { color: inherit; }
+  [role="option"][data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
+}
+@media (pointer: coarse) {
+  [role="option"] { min-height: max(var(--row-height), 2.75rem); }
+  .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
+}
+[data-active] .result-tile { background: var(--on-selected-fill); }
+/* A resting result shows its type as a glyph alone: the plate appears only where the
+   tile does something (hover, selection: Add) or says something (cited). Every row
+   carrying the same grey square was chrome, not information. */
+#results [role="option"]:not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
+@media (hover: hover) { #results [role="option"][data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
+[role="option"][data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
+/* The year shares the title's first line in every density, size and view. */
+.result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
+.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
+.result-year, .result-meta, .result-why, .result-project, .result-first-author { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+/* The meta line wraps only when the byline, type and library badge cannot
+   all fit at their sizes; then they move under the byline. A body at least
+   25em wide (after reserving the tile and year columns) keeps one line, and
+   its badge shortens towards its minimum instead. */
+.result-meta { margin-top: var(--space-1); flex-wrap: wrap; row-gap: 0; }
+@container (min-width: 25em) { .result-meta { flex-wrap: nowrap; } }
+/* The byline (authors · container) fills the line; the library badge gives
+   way first, down to a few letters (its shrink factor is far larger),
+   and the type word never shrinks. Inside the byline each part is only as
+   wide as its text, so in a right-to-left row a Latin journal sits beside its
+   separator. The authors keep their width up to 60% of the byline and the
+   container shortens first, each with an ellipsis. The separator keeps its
+   trailing space. */
+.result-byline { display: flex; align-items: baseline; flex: 1 1 auto; min-width: min(12em, 60%); overflow: hidden; }
+.result-authors { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-container { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-separator { flex: none; white-space: pre; }
+.result-authors, .result-container { unicode-bidi: isolate; }
+/* A narrow list (details open beside it, larger text) keeps the authors whole and
+   leaves the journal to Peek and the details: it gives way first, never the names. */
+@container (max-width: 30rem) { .result-separator, .result-container { display: none; } }
+.result-why { font-style: italic; }
+.result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The selected (active) row is a full accent fill with its paired text on
+   every platform (C4, D7): the system accent on macOS and Windows, the GTK
+   selection colour on Linux. Fill only: no border, ring or side pill. */
+[role="option"][data-active] { background: var(--selected); color: var(--selected-text); }
+[data-active] :is(.result-meta, .result-year, .result-why, .result-project, .result-first-author) { color: var(--selected-text-secondary); }
+/* An added row that is also selected keeps its tile apart from any accent,
+   red and orange included (D9): the selected text colour with a scarlet check. */
+[role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
+/* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
+   so titles still start where the search text does; its control covers 32 px. */
+:root[data-density="compact"] { --row-height: var(--row-compact); }
+:root[data-density="compact"] [role="option"]:not([data-citation-selected]) .result-tile { background: transparent; }
+:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - 1.5rem) / 2); }
+:root[data-density="compact"] .result-meta { display: none; }
+/* Rows that tell similar references apart (#492). Comfortable rows show
+   shortened authors and the container on one line; Compact puts the first
+   author after the title. */
+.result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+:root[data-density="compact"] .result-title { flex: 0 1 auto; }
+/* In a very narrow Compact row (large text in a small window) the title takes
+   its own line, with the first author below it, rather than being
+   squeezed beside them. */
+@container (max-width: 16em) {
+  :root[data-density="compact"] .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 0; }
+  :root[data-density="compact"] .result-first-author { grid-row: 2; }
+  :root[data-density="compact"] .result-year { grid-area: 1 / 2; }
+}
+@media (prefers-contrast: more) {
+  /* The 3 px edge comes out of the side padding, so the text stays put. */
+  [role="option"][data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - 3px); }
+  /* The tile carries the citation state as an inverted square with its check. */
+  [role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
+}
+@media (forced-colors: active) {
+  /* Opt the active row out of the forced-colours backplate, which would paint
+     Canvas behind its HighlightText text; its colours are already system pairs. */
+  [role="option"][data-active] { border-color: var(--selected); forced-color-adjust: none; }
+  /* The added tile keeps its fill and check as a system-colour pair: the text
+     colour with a Canvas check, or on the Highlight row the HighlightText tile
+     with a Highlight check. The check, not colour, says "added". */
+  .result-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; }
+  [data-active] .result-tile { background: Highlight; color: HighlightText; }
+  [role="option"][data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
+  [role="option"][data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
+}
+@media (max-width: 460px) {
+  .result-meta { flex-wrap: wrap; }
+  /* Authors and container flow as one wrapping run of text. */
+  .result-byline { display: block; }
+  .result-authors, .result-container { white-space: normal; overflow-wrap: anywhere; }
+  /* Let the line break after the separator rather than inside a word. */
+  .result-separator { white-space: pre-wrap; }
+}
 /* Row heights are minima. Wrapping grows the block without spending its
    padding or widening the picker (Wrapped text keeps its padding, C4). */
 .ui-option[role="option"], .choice-row[role="option"] {

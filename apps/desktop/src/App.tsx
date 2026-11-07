@@ -37,7 +37,7 @@ import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { usePickerMove } from "./features/picker/usePickerMove";
 import { useAltHeld } from "./features/picker/useAltHeld";
-import { HeldKeys } from "./features/picker/HeldKeys";
+import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
