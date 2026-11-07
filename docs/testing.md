@@ -355,8 +355,10 @@ test runs that script; no test matches workflow text with regular expressions
 (decision 0035). Rules only the structure can show, such as "CI result" running
 `always()` and needing every job, are read with a YAML parser
 (`scripts/test_workflow_policy.py`). Scripts the workflows run (`ci-*.sh`,
-`publish-*.sh`, `keep-previous-nightly.sh`, `update-test-decision.sh`) are
-workflow code: changing them needs the same review as the workflow.
+`publish-*.sh`, `sign-update-packages.sh`, `collect-packages.sh`,
+`install-and-start.sh`, `build-cli.sh`, `capture-picker.*`,
+`keep-previous-nightly.sh`, `update-test-decision.sh`) are workflow code:
+changing them needs the same review as the workflow.
 
 | What changed | What runs | Typical wait |
 |---|---|---|
