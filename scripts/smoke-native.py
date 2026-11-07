@@ -1902,12 +1902,12 @@ class Windows:
         return answer
 
     def ibis_focused(self, value=None):
-        """Ibis's picker is in front and its search field has the keyboard.
+        """Ibis's picker is the foreground window and has the keyboard.
 
         Keys are sent only after this, so they cannot reach another app."""
         front = self.foreground()
         shot = self.snapshot()
-        self.last_picker = {"onscreen": "Ibis" in shot["windows"], "search": shot["searches"] >= 1,
+        self.last_picker = {"onscreen": "Ibis" in shot["windows"], "search": shot["searches"] == 1,
                             "focused": shot["focused"],
                             "system_focus_is_ibis": bool(front) and self.owner(front) == self.app.pid
                                                     and self.title(front) == "Ibis",

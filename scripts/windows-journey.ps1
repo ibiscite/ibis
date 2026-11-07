@@ -25,15 +25,17 @@ try {
     foreach ($item in $items) {
       $name = $item.Current.Name
       if ($name -and $strings.Count -lt 400) { $strings.Add($name) }
-      if ($title -ceq 'Ibis' -and $name -ceq 'Search references' -and
+      if ($title -cne 'Ibis') { continue }
+      # The search is a combobox: once results show, Chromium reports the
+      # keyboard on its active option, so any focused picker element counts.
+      if ($item.Current.HasKeyboardFocus) { $answer.focused = $true }
+      if ($name -ceq 'Search references' -and
           $item.Current.ControlType.ProgrammaticName -cin @('ControlType.ComboBox', 'ControlType.Edit')) {
         $answer.searches++
-        if ($item.Current.HasKeyboardFocus) {
-          $answer.focused = $true
-          $pattern = $null
-          if ($item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
-            $answer.value = $pattern.Current.Value
-          }
+        $pattern = $null
+        if ($answer.searches -eq 1 -and
+            $item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
+          $answer.value = $pattern.Current.Value
         }
       }
     }
