@@ -80,6 +80,10 @@ A timeout says nothing about the target, so while it returns, and at the final
 check, every check runs again, fresh, for the rest of the 1 s return time
 (2026-11-07: TextEdit taking focus back or handling a keystroke missed one read
 and the citation was only copied). A final check that timed out never posts.
+The final identity read also refuses a focused control other than the one
+whose selection the final check just proved, so a page that moves focus
+between the two cannot have a selection nobody checked replaced (0.3.0
+pre-release review); that refusal is unproved and is asked again the same way.
 
 On macOS, Ibis snapshots the pasteboard change count immediately after writing
 every format, checking that ownership did not change during publication. A

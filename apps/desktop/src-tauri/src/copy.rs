@@ -341,14 +341,16 @@ fn commit_shown(
             session: &session,
         },
         |content| {
-            #[cfg(target_os = "windows")]
-            let delivery = {
-                let (token, sequence) = clipboard::write(&app, content)?;
-                crate::paste::remember_copy(&app, attempt, sequence, token)
-            };
-            #[cfg(not(target_os = "windows"))]
-            let delivery = clipboard::write(&app, content, &replaces)?;
-            Ok(delivery)
+            TURN.next(|| {
+                #[cfg(target_os = "windows")]
+                let delivery = {
+                    let (token, sequence) = clipboard::write(&app, content)?;
+                    crate::paste::remember_copy(&app, attempt, sequence, token)
+                };
+                #[cfg(not(target_os = "windows"))]
+                let delivery = clipboard::write(&app, content, &replaces)?;
+                Ok(delivery)
+            })
         },
     )?;
     record(&copied);
@@ -405,11 +407,59 @@ pub(crate) fn commit_copy(
     })
 }
 
+/// Every copy writes the clipboard in its turn, under one lock taken last. A
+/// copy that formats first notes the turn as it starts and writes only if no
+/// copy has written since, so a slow bibliography cannot replace a newer citation.
+#[derive(Default)]
+pub(crate) struct ClipboardTurn(Mutex<u64>);
+
+impl ClipboardTurn {
+    fn lock(&self) -> std::sync::MutexGuard<'_, u64> {
+        self.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    pub(crate) fn now(&self) -> u64 {
+        *self.lock()
+    }
+
+    pub(crate) fn next<T>(&self, write: impl FnOnce() -> T) -> T {
+        let mut turn = self.lock();
+        *turn += 1;
+        write()
+    }
+
+    /// `None`, with nothing written, when another copy wrote after `since`.
+    pub(crate) fn after<T>(&self, since: u64, write: impl FnOnce() -> T) -> Option<T> {
+        let mut turn = self.lock();
+        if *turn != since {
+            return None;
+        }
+        *turn += 1;
+        Some(write())
+    }
+}
+
+pub(crate) static TURN: ClipboardTurn = ClipboardTurn(Mutex::new(0));
+
 /// Whole content with no delivery: it is copied, never pasted.
 pub(crate) fn write_copy_only(
     app: &AppHandle,
     content: ibis_core::contract::ClipboardContent<'_>,
 ) -> Result<(), String> {
+    TURN.next(|| publish_copy_only(app, content))
+}
+
+/// As `write_copy_only`, for a copy that began at turn `since`: `None` when a
+/// newer copy has written meanwhile, which this one must not replace.
+pub(crate) fn write_copy_only_after(
+    app: &AppHandle,
+    content: ibis_core::contract::ClipboardContent<'_>,
+    since: u64,
+) -> Result<Option<()>, String> {
+    TURN.after(since, || publish_copy_only(app, content)).transpose()
+}
+
+fn publish_copy_only(app: &AppHandle, content: ibis_core::contract::ClipboardContent<'_>) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     let written = clipboard::write(app, content);
     // Nothing is replaced: this is a new copy, not a change to the last citation.

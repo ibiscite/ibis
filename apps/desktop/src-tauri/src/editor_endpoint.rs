@@ -66,10 +66,18 @@ impl Pending {
     }
 
     /// `retire` runs under the lock, before the request is visible, so no receipt
-    /// made for the picker's own output can answer for it.
-    fn begin(&self, pick: &CaywPick, style: &str, retire: impl FnOnce()) -> Option<(u64, Receiver<Option<String>>)> {
+    /// made for the picker's own output can answer for it. `stopped` is read
+    /// under the same lock: switching off sets it before it ends any request
+    /// here, so a request still reading the style cannot begin after that.
+    fn begin(
+        &self,
+        pick: &CaywPick,
+        style: &str,
+        stopped: &AtomicBool,
+        retire: impl FnOnce(),
+    ) -> Option<(u64, Receiver<Option<String>>)> {
         let mut active = self.lock();
-        if active.is_some() {
+        if active.is_some() || stopped.load(Ordering::SeqCst) {
             return None;
         }
         retire();
@@ -206,8 +214,12 @@ fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, s
         Err(refusal) => reply(&mut stream, refusal.status(), refusal.message()),
         Ok(CaywRequest::Probe) => reply(&mut stream, (200, "OK"), if host.ready() { "ready" } else { "No" }),
         Ok(CaywRequest::Pick(pick)) => {
-            let Some((id, answer)) = host.pending().begin(&pick, &host.style(), || host.retire()) else {
-                reply(&mut stream, (409, "Conflict"), BUSY);
+            let Some((id, answer)) = host.pending().begin(&pick, &host.style(), stop, || host.retire()) else {
+                if stop.load(Ordering::SeqCst) {
+                    let _ = stream.shutdown(Shutdown::Both);
+                } else {
+                    reply(&mut stream, (409, "Conflict"), BUSY);
+                }
                 return;
             };
             match stream.try_clone() {
@@ -520,6 +532,8 @@ mod tests {
         retired: AtomicUsize,
         ready: AtomicBool,
         then: StdMutex<Option<Then>>,
+        /// Runs while the request reads the person's style, before it begins.
+        reading_style: StdMutex<Option<Then>>,
     }
 
     impl Host for Fake {
@@ -530,6 +544,9 @@ mod tests {
             self.ready.load(Ordering::SeqCst)
         }
         fn style(&self) -> String {
+            if let Some(then) = self.reading_style.lock().ok().and_then(|mut then| then.take()) {
+                then(&self.pending);
+            }
             "apa".into()
         }
         fn changed(&self) {
@@ -688,11 +705,11 @@ mod tests {
             other => panic!("{other:?}"),
         };
         let (first, _first_answer) = pending
-            .begin(&pick, "apa", || {})
+            .begin(&pick, "apa", &AtomicBool::new(false), || {})
             .unwrap_or_else(|| panic!("a request"));
         assert!(pending.cancel(first, || {}));
         let (second, second_answer) = pending
-            .begin(&pick, "apa", || {})
+            .begin(&pick, "apa", &AtomicBool::new(false), || {})
             .unwrap_or_else(|| panic!("a request"));
         assert!(
             !pending.answer(first, "late", || panic!("a late answer retires nothing")),
@@ -758,7 +775,7 @@ mod tests {
             clipboard: false,
         };
         pending
-            .begin(&pick, "ieee", || {})
+            .begin(&pick, "ieee", &AtomicBool::new(false), || {})
             .unwrap_or_else(|| panic!("a request"));
         let request = pending.current().unwrap_or_else(|| panic!("a request"));
         assert_eq!(request.output, OutputSpec::Csl { style: "ieee".into() });
@@ -784,7 +801,9 @@ mod tests {
             form: CitationForm::Normal,
             clipboard: false,
         };
-        let (_id, _answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        let (_id, _answer) = pending
+            .begin(&pick, "apa", &AtomicBool::new(false), || {})
+            .ok_or("request")?;
         let destination = pending.app(Some("invented.writer"));
         assert!(
             history.lock().ids(destination).is_empty(),
@@ -809,7 +828,9 @@ mod tests {
             form: CitationForm::Normal,
             clipboard: true,
         };
-        let (request, answer) = pending.begin(&pick, "apa", || {}).ok_or("request")?;
+        let (request, answer) = pending
+            .begin(&pick, "apa", &AtomicBool::new(false), || {})
+            .ok_or("request")?;
         // Recording uses the destination captured before answering clears Pending.
         let destination = pending.app(Some("invented.writer"));
         assert!(pending.answer(request, "Invented citation", || {}));
@@ -837,7 +858,7 @@ mod tests {
             clipboard: false,
         };
         pending
-            .begin(&pick, "ieee", || {})
+            .begin(&pick, "ieee", &AtomicBool::new(false), || {})
             .unwrap_or_else(|| panic!("a request"));
         assert_eq!(
             pending.current().map(|request| request.form),
@@ -855,16 +876,18 @@ mod tests {
         };
         let mut retired = 0;
         let (id, _answer) = pending
-            .begin(&pick, "apa", || retired += 1)
+            .begin(&pick, "apa", &AtomicBool::new(false), || retired += 1)
             .unwrap_or_else(|| panic!("a request"));
         assert!(
-            pending.begin(&pick, "apa", || retired += 10).is_none(),
+            pending
+                .begin(&pick, "apa", &AtomicBool::new(false), || retired += 10)
+                .is_none(),
             "a busy request retires nothing"
         );
         assert!(pending.cancel(id, || retired += 100));
         assert_eq!(retired, 101);
         let (id, _answer) = pending
-            .begin(&pick, "apa", || retired += 1000)
+            .begin(&pick, "apa", &AtomicBool::new(false), || retired += 1000)
             .unwrap_or_else(|| panic!("a request"));
         assert!(
             !pending.answer(id + 1, "@a", || retired += 10_000),
@@ -928,6 +951,25 @@ mod tests {
         drop(listening);
         send(&mut early, port, &cayw(""), "");
         assert_eq!(answer(&mut early), "");
+        assert_eq!(host.presented.load(Ordering::SeqCst), 0);
+        assert_eq!(host.pending.current(), None);
+    }
+
+    #[test]
+    fn switching_off_while_a_request_reads_the_style_opens_nothing() {
+        let (listening, port, host) = server(Fake::default());
+        let listening = StdMutex::new(Some(listening));
+        // Switched off as `set_editor_endpoint` does: close, then end any request.
+        *host
+            .reading_style
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(Box::new(move |pending: &Pending| {
+            drop(listening.lock().ok().and_then(|mut listening| listening.take()));
+            pending.cancel_any(|| ());
+        }));
+        let mut stream = connect(port);
+        send(&mut stream, port, &cayw(""), "");
+        assert_eq!(answer(&mut stream), "");
         assert_eq!(host.presented.load(Ordering::SeqCst), 0);
         assert_eq!(host.pending.current(), None);
     }
