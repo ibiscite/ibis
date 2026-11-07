@@ -75,7 +75,7 @@ test("a focus read keeps the fact a click just said", async () => {
 
 test("a failed switch write restores the authoritative choice without losing other settings", async () => {
   const api = demoApi();
-  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("invented write failure"));
+  vi.spyOn(api, "pickerPreferencesSaved").mockRejectedValueOnce(new Error("invented write failure"));
   await act(async () => render(<SettingsApp api={api} initialPage="general" />));
   fireEvent.click(screen.getByRole("switch", { name: "Bird facts and milestones" }));
   await waitFor(() => expect(screen.getByRole<HTMLInputElement>("switch", { name: "Bird facts and milestones" }).checked).toBe(true));

@@ -56,7 +56,7 @@ test("a Settings notification invalidates a queued old save even when its newer 
   let reads = 0, resolve!: (value: PickerSave) => void;
   const saving = new Promise<PickerSave>((yes) => { resolve = yes; });
   backend({ picker_preferences: () => ++reads === 1 ? saved : Promise.reject(new Error("synthetic newer read failure")) });
-  const api = { ...nativeApi, setPickerPreferences: async () => saving };
+  const api = { ...nativeApi, pickerPreferencesSaved: async () => saving };
   render(<App api={api} />);
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("ibis"));
   await chooseRows("compact");

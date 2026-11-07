@@ -80,7 +80,8 @@ try {
           if (command === "picker_presentation") return 0;
           if (command === "native_appearance") return "opaque";
           if (command === "picker_preferences") return preferences;
-          if (command === "set_picker_preferences") return { preferences: Object.assign(preferences, args.preferences) };
+          if (command === "save_picker_preferences") { Object.assign(preferences, args.preferences); return 1; }
+          if (command === "picker_preferences_saved") return { preferences };
           if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;

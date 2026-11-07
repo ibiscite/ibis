@@ -34,7 +34,7 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
 
 test("the native preferences smoke can virtually open Copy as and choose Typst with the keyboard", async () => {
   const saved: unknown[] = [];
-  backend({ set_picker_preferences: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
+  backend({ picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
   await screen.findByText("No matching references");
@@ -63,7 +63,7 @@ test("More holds working actions, leaving preferences and update checks to Setti
   await chooseFromMore("Rows: Comfortable");
   // Opening Rows never changes the view or saves a preference.
   expect(document.documentElement.dataset.density).toBe("comfortable");
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
   const more = screen.getByRole("menu", { name: "More" });
   expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
     .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a .bib File…", "Rows: Comfortable", "Cited Since Opening…", "Keep Window OpenCtrl+Shift+P", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
@@ -73,7 +73,7 @@ test("More holds working actions, leaving preferences and update checks to Setti
 
 test.each(["Compact", "Comfortable"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {
   const saved: unknown[] = [];
-  backend({ set_picker_preferences: ({ preferences }) => { saved.push(preferences); return null; } });
+  backend({ picker_preferences_saved: ({ preferences }) => { saved.push(preferences); return null; } });
   render(<App />);
   await chooseFromMore("Rows: Comfortable");
   const rows = await screen.findByRole("menu", { name: "Rows" });
@@ -112,7 +112,7 @@ test("Rows supports arrow navigation and Escape returns to More without saving",
   await waitFor(() => expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull());
   expect(screen.getByRole("menu", { name: "More" })).toBeTruthy();
   expect(document.activeElement).toBe(trigger);
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test("Tab from Rows dismisses both menus and returns typing to Search", async () => {

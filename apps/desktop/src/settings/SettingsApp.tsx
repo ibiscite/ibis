@@ -167,8 +167,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [focused, setFocused] = useState(true);
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
-    revision: () => api.preferenceRevision(),
-    write: (patch, revision) => api.setPickerPreferences(patch, revision),
+    submit: (patch) => api.savePickerPreferences(patch),
+    saved: (receipt) => api.pickerPreferencesSaved(receipt),
   }, { restoreOnFailure: true }), [api]);
   useEffect(() => queue.subscribe((event) => {
     if (!live.current) return;

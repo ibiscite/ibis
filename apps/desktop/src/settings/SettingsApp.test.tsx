@@ -1,12 +1,15 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
-import type { PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
+
+/** The owner's save, by patch and receipt, so a test can hold or refuse one. */
+type TestApi = SettingsApi & { setPickerPreferences: (patch: Partial<PickerPreferences>, receipt: number) => Promise<PickerSave> };
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../../../../locales/en-US.ftl?raw";
@@ -151,12 +154,15 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     state.saved.push({ ...state.preferences });
     return { preferences: state.preferences };
   };
-  const api: SettingsApi = {
+  /** Each choice reaches the owner when made; how it went is asked for by receipt. */
+  const submitted = new Map<number, Partial<PickerPreferences>>();
+  const api: TestApi = {
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<null> => null),
     onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
-    preferenceRevision: async () => ++state.revision,
+    savePickerPreferences: async (patch) => { const receipt = ++state.revision; submitted.set(receipt, patch); return receipt; },
+    pickerPreferencesSaved: async (receipt) => api.setPickerPreferences(submitted.get(receipt)!, receipt),
     setPickerPreferences: commit,
     backUpSettings: vi.fn(async () => null),
     chooseSettingsBackup: vi.fn(async () => null),
@@ -744,11 +750,14 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(7); });
-  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "compact" } : { larger_text: true }, outcome === "failure" ? 1 : 2);
+  // Larger went out before Compact failed; the failed Compact is then sent again behind it.
+  expect(save).toHaveBeenNthCalledWith(2, { larger_text: true }, 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
-  expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
+  if (outcome === "failure") expect(save).toHaveBeenLastCalledWith({ density: "compact" }, 3);
+  else expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
+  expect(state.preferences).toMatchObject({ density: "compact", larger_text: true });
   expect(closed).toHaveBeenCalledOnce();
 });
 
@@ -1308,8 +1317,8 @@ test("a picker notification before a queued save fails stays uncertain until the
 
 test("a picker change survives a Settings save reply delayed beyond the close timeout", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
-  const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();
-  let older!: Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>;
+  const pending = deferred<Awaited<ReturnType<TestApi["setPickerPreferences"]>>>();
+  let older!: Awaited<ReturnType<TestApi["setPickerPreferences"]>>;
   vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (patch) => {
     older = await commit(patch);
     return pending.promise;

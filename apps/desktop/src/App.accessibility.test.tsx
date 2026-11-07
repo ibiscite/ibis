@@ -31,7 +31,7 @@ function feedback() {
 test("Rows applies once in a persistent polite region; initial load, same-value reads and save acknowledgements stay silent", async () => {
   const save = deferred<null>();
   let loaded = saved;
-  const calls = await open({ picker_preferences: () => loaded, set_picker_preferences: () => save.promise });
+  const calls = await open({ picker_preferences: () => loaded, picker_preferences_saved: () => save.promise });
   const { region, updates } = feedback();
   expect(region.textContent).toBe("");
   expect(region.getAttribute("aria-live")).toBe("polite");
@@ -48,7 +48,7 @@ test("Rows applies once in a persistent polite region; initial load, same-value 
   await act(async () => { await emit("preferences:changed"); });
   expect(screen.getByRole("status", { name: "View changes" })).toBe(region);
   expect(updates).toEqual(["Rows: Compact"]);
-  expect(calls.filter((call) => call === "set_picker_preferences")).toHaveLength(1);
+  expect(calls.filter((call) => call === "picker_preferences_saved")).toHaveLength(1);
   expect(calls).not.toContain("copy_file_citation");
 });
 
@@ -64,12 +64,12 @@ test.each([{ isComposing: true }, { keyCode: 229 }])("composition confirmation %
   expect(document.documentElement.dataset.density).toBe("comfortable");
   expect(region.textContent).toBe("");
   expect(updates).toEqual([]);
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test("a failed Rows save keeps the applied view and reports a fixed error without claiming persistence", async () => {
   const save = deferred<null>();
-  await open({ set_picker_preferences: () => save.promise });
+  await open({ picker_preferences_saved: () => save.promise });
   const { region, updates } = feedback();
   await chooseRows("compact");
   await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));
@@ -98,7 +98,7 @@ test("a delayed preference read cannot restore or announce A after the user appl
 
 test("hide/reopen retires Rows feedback before an old save completes", async () => {
   const save = deferred<null>();
-  await open({ set_picker_preferences: () => save.promise });
+  await open({ picker_preferences_saved: () => save.promise });
   const { region, updates } = feedback();
   await chooseRows("compact");
   await waitFor(() => expect(region.textContent).toBe("Rows: Compact"));

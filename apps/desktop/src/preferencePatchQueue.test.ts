@@ -10,79 +10,71 @@ const deferred = <T,>() => {
   return { promise, resolve, reject };
 };
 
+/** The settings owner seen from one window: a receipt when the choice is made,
+ * then `write` answers for it by patch and receipt. */
+function owner(write: (patch: Partial<PickerPreferences>, receipt: number) => Promise<PickerSave>) {
+  const sent = new Map<number, Partial<PickerPreferences>>();
+  let receipts = 0;
+  return {
+    submit: vi.fn(async (patch: Partial<PickerPreferences>) => { const receipt = ++receipts; sent.set(receipt, patch); return receipt; }),
+    saved: (receipt: number) => write(sent.get(receipt)!, receipt),
+  };
+}
+
 function fixture(policy = {}) {
   let state: PickerSave = { preferences: { ...defaults } };
-  let issued = 0;
   const api = {
-    revision: vi.fn(async () => ++issued),
     read: vi.fn(async (): Promise<PreferenceRead> => state),
-    write: vi.fn(async (patch: Partial<PickerPreferences>) => {
+    write: vi.fn(async (patch: Partial<PickerPreferences>, _receipt?: number) => {
       state = { preferences: { ...state.preferences, ...patch } };
       return state;
     }),
   };
-  const queue = new PreferencePatchQueue({ read: api.read, revision: api.revision, write: (patch) => api.write(patch) }, policy);
+  const submitted = owner((patch) => api.write(patch));
+  const queue = new PreferencePatchQueue({ read: api.read, ...submitted }, policy);
   const events = vi.fn<Parameters<typeof queue.subscribe>[0]>();
   queue.subscribe(events);
-  return { api, queue, events, saved: () => state };
+  return { api: { ...api, submit: submitted.submit }, queue, events, saved: () => state };
 }
 
-test("revisions are requested when the person acts, even behind an unfinished save", async () => {
-  let issued = 0;
+test("choices are submitted when the person makes them, even behind an unfinished save", async () => {
   const first = deferred<PickerSave>();
-  const api = {
-    revision: vi.fn(async () => ++issued),
-    read: async () => ({ preferences: defaults }),
-    write: vi.fn(async (_patch: Partial<PickerPreferences>, _revision: number) => first.promise),
-  };
-  const queue = new PreferencePatchQueue(api);
+  const write = vi.fn(async (_patch: Partial<PickerPreferences>, _receipt: number) => first.promise);
+  const submitted = owner(write);
+  const queue = new PreferencePatchQueue({ read: async () => ({ preferences: defaults }), ...submitted });
   await queue.load();
   queue.change({ density: "compact" });
   queue.change({ density: "compact" });
-  expect(api.revision).toHaveBeenCalledTimes(2);
+  expect(submitted.submit).toHaveBeenCalledTimes(2);
   first.resolve({ preferences: { ...defaults, density: "compact" } });
   await queue.finishSaving();
-  expect(api.write.mock.calls.map((call) => call[1])).toEqual([1, 2]);
+  expect(write.mock.calls.map((call) => call[1])).toEqual([1, 2]);
 });
 
-test("a rejected ticket does not prevent the next choice from saving", async () => {
+test("a refused submission is kept and goes with the next choice", async () => {
   const { api, queue, saved } = fixture();
   await queue.load();
-  api.revision.mockRejectedValueOnce(new Error("synthetic issuance failure"));
+  api.submit.mockRejectedValueOnce(new Error("synthetic refusal"));
   queue.change({ larger_text: true });
   await queue.finishSaving();
   expect(api.write).not.toHaveBeenCalled();
   queue.change({ density: "compact" });
   await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ density: "compact" }]]);
-  expect(saved().preferences).toMatchObject({ density: "compact", larger_text: false });
+  expect(api.write.mock.calls).toEqual([[{ larger_text: true, density: "compact" }]]);
+  expect(saved().preferences).toMatchObject({ density: "compact", larger_text: true });
 });
 
-test("retrying one field keeps its old ticket when a newer choice saves another field", async () => {
-  let issued = 0;
-  let disk = { ...defaults };
-  let attempt = 0;
-  const tickets: number[] = [];
-  const queue = new PreferencePatchQueue({
-    revision: async () => ++issued,
-    read: async () => ({ preferences: disk }),
-    write: async (patch, ticket) => {
-      tickets.push(ticket);
-      if (++attempt === 1) throw new Error("synthetic write failure");
-      // The other window has already written larger_text with ticket 2.
-      if (ticket > 2 || patch.larger_text === undefined) disk = { ...disk, ...patch };
-      return { preferences: disk };
-    },
-  });
+test.each([false, true])("a failed field goes with the next choice unless the other window chose since (notified=%s)", async (notified) => {
+  const { api, queue } = fixture();
   await queue.load();
+  api.write.mockRejectedValueOnce(new Error("synthetic write failure"));
   queue.change({ larger_text: true });
   await queue.finishSaving();
-  issued += 1;
-  disk = { ...disk, larger_text: false };
+  // The other window saves its own text size: newer than this retry.
+  if (notified) await queue.refresh(99);
   queue.change({ density: "compact" });
   await queue.finishSaving();
-  expect(tickets).toEqual([1, 1, 3]);
-  expect(queue.savedPreferences).toMatchObject({ density: "compact", larger_text: false });
+  expect(api.write.mock.calls.at(-1)).toEqual([notified ? { density: "compact" } : { larger_text: true, density: "compact" }]);
 });
 
 test.each([false, true])("writes stay ordered and acknowledged fields never ride a later patch (readAfterWrites=%s)", async (readAfterWrites) => {
@@ -102,7 +94,7 @@ test.each([false, true])("writes stay ordered and acknowledged fields never ride
   expect(events).toHaveBeenLastCalledWith({ type: "saved", value: { preferences: { ...defaults, output: "ieee", larger_text: true } } });
 });
 
-test("equal-valued later intents keep their own revision through failure and retry", async () => {
+test("an equal value chosen again keeps its own fate: its failure is sent again behind newer choices", async () => {
   const { api, queue, saved } = fixture();
   await queue.load();
   const first = deferred<PickerSave>();
@@ -117,7 +109,7 @@ test("equal-valued later intents keep their own revision through failure and ret
   await queue.finishSaving();
   expect(api.write.mock.calls).toEqual([
     [{ larger_text: true }], [{ larger_text: false }],
-    [{ larger_text: true }], [{ larger_text: true }], [{ density: "compact" }],
+    [{ larger_text: true }], [{ density: "compact" }], [{ larger_text: true }],
   ]);
   expect(saved().preferences).toMatchObject({ larger_text: true, density: "compact" });
 });
@@ -152,8 +144,9 @@ test("an unreadable initial file holds explicit edits until a successful read", 
   expect(api.write).not.toHaveBeenCalled();
   await queue.load();
   await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ output: "cite" }], [{ paste: false }]]);
-  expect(api.revision).toHaveBeenCalledTimes(2);
+  // Held choices go together once the file can be read.
+  expect(api.write.mock.calls).toEqual([[{ output: "cite", paste: false }]]);
+  expect(api.submit).toHaveBeenCalledOnce();
   expect(saved()).toMatchObject({ preferences: { paste: false } });
 });
 
@@ -214,12 +207,10 @@ test("Settings focus restores saved choices after a failed recovery read and kee
   expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingOutput: false });
   queue.change({ density: "compact" });
   await queue.finishSaving();
-  expect(api.write.mock.calls.slice(-2)).toEqual([[{ larger_text: true }], [{ density: "compact" }]]);
+  expect(api.write.mock.calls.at(-1)).toEqual([{ larger_text: true, density: "compact" }]);
 });
 
 test("a native change notification waits for local writes and refreshes cross-window state", async () => {
-  let issued = 0;
-  const revision = async () => ++issued;
   let state: PickerSave = { preferences: { ...defaults } };
   const local = deferred<void>();
   const read = vi.fn(async () => state);
@@ -230,8 +221,8 @@ test("a native change notification waits for local writes and refreshes cross-wi
     void picker.load();
     return state;
   };
-  const picker = new PreferencePatchQueue({ read, write, revision }, { readAfterWrites: true });
-  const settings = new PreferencePatchQueue({ read: async () => state, write, revision }, { restoreOnFailure: true });
+  const picker = new PreferencePatchQueue({ read, ...owner(write) }, { readAfterWrites: true });
+  const settings = new PreferencePatchQueue({ read: async () => state, ...owner(write) }, { restoreOnFailure: true });
   const updates = vi.fn<Parameters<typeof picker.subscribe>[0]>();
   const stop = picker.subscribe(updates);
   await Promise.all([picker.load(), settings.load()]);

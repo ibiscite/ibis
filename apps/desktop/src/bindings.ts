@@ -129,12 +129,17 @@ export const commands = {
 	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
-	/** Issue a save identity inline at IPC dispatch; unused identities block nothing. */
-	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
+	/**
+	 * Remember picker preferences in the order they were chosen (decision 0040).
+	 * Runs at IPC dispatch, so two windows and two quick choices keep their order:
+	 * it applies what must not wait for disk, hands the change to the settings
+	 * owner and returns its receipt at once. Other settings in the file are kept.
+	 */
+	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
-	/** Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferencesPatch, revision: number) => __TAURI_INVOKE<PickerSave>("set_picker_preferences", { preferences, revision }),
+	/** The saved preferences once a submitted change has run, and what follows a save. */
+	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**

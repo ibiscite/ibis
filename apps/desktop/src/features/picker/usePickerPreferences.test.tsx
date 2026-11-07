@@ -1,13 +1,19 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
-import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { usePickerPreferences } from "./usePickerPreferences";
 import type { PickerPreferences } from "../../api";
-import { commands } from "../../bindings";
+import type { PickerPreferencesPatch } from "../../bindings";
 
-beforeEach(() => {
-  let revision = 0;
-  vi.spyOn(commands, "preferenceRevision").mockImplementation(async () => ++revision);
-});
+/** The settings owner as the picker sees it: each choice gets a receipt when
+ * made, and `save` answers for it by patch and receipt. */
+function owner(save: (patch: Partial<PickerPreferences>, receipt: number) => Promise<{ preferences: PickerPreferences }>) {
+  const sent = new Map<number, Partial<PickerPreferences>>();
+  let receipts = 0;
+  return {
+    savePickerPreferences: async (patch: PickerPreferencesPatch) => { const receipt = ++receipts; sent.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
+    pickerPreferencesSaved: (receipt: number) => save(sent.get(receipt)!, receipt),
+  };
+}
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 const preferences: PickerPreferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true };
 const deferred = <T,>() => {
@@ -23,7 +29,7 @@ test("an older Settings notification read cannot restore the wrong global output
   const reads = [first.promise, second.promise];
   const { result } = renderHook(() => usePickerPreferences({
     pickerPreferences: () => reads.shift()!,
-    setPickerPreferences: vi.fn(async () => ({ preferences })), quit: vi.fn(async () => undefined),
+    ...owner(vi.fn(async () => ({ preferences }))), quit: vi.fn(async () => undefined),
   }, context));
   act(() => result.current.loadPreferences(() => true));
   act(() => result.current.loadPreferences(() => true));
@@ -40,7 +46,7 @@ test("a global key choice during a stale Settings read wins and sends only its f
   let reading = false;
   const { result } = renderHook(() => usePickerPreferences({
     pickerPreferences: async () => reading ? old.promise : { ...preferences, output: "apa" },
-    setPickerPreferences, quit: async () => undefined,
+    ...owner(setPickerPreferences), quit: async () => undefined,
   }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   reading = true;
@@ -61,7 +67,7 @@ test("a queued view save never replays an output acknowledged before it reaches 
       preferences: { ...preferences, output: "ieee", ...patch },
     }));
   const { result } = renderHook(() => usePickerPreferences({
-    pickerPreferences: async () => ({ ...preferences, output: "apa" }), setPickerPreferences, quit: async () => undefined }, context));
+    pickerPreferences: async () => ({ ...preferences, output: "apa" }), ...owner(setPickerPreferences), quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   act(() => result.current.chooseFormat("cite"));
   act(() => result.current.toggleLargerText());
@@ -82,7 +88,7 @@ test("a failed later equal-valued output intent remains retryable after older wr
     return { preferences: state };
   });
   const { result } = renderHook(() => usePickerPreferences({ pickerPreferences: async () => state,
-    setPickerPreferences, quit: async () => undefined }, context));
+    ...owner(setPickerPreferences), quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   act(() => result.current.chooseFormat("cite"));
   act(() => result.current.chooseFormat("ieee"));

@@ -2,7 +2,7 @@
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { OutputId } from "./format/outputs";
-import { commands, type CommandError, type LibraryStatus, type PickerPreferences, type PreferenceChange, type ShortcutStatus } from "./bindings";
+import { commands, type CommandError, type LibraryStatus, type PreferenceChange, type ShortcutStatus } from "./bindings";
 
 export type { Sources } from "./bindings";
 export type {
@@ -87,10 +87,8 @@ export function onWindowReset(handler: (state: { revision: number; undo: number 
   return listen<{ revision: number; undo: number | null }>("picker:window-reset", ({ payload }) => handler(payload));
 }
 
-/** UI edits omit unchanged fields. */
-export function setPickerPreferences(preferences: Partial<PickerPreferences>, revision: number) {
-  return commands.setPickerPreferences(preferences, revision);
-}
+/** UI edits omit unchanged fields; the owner saves them in the order chosen. */
+export const { savePickerPreferences, pickerPreferencesSaved } = commands;
 
 // The limit default, page and request number are not part of the UI's API:
 // each search is numbered so the app can stop searches for outdated queries,

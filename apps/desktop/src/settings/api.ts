@@ -9,8 +9,8 @@ export type { PastePermission } from "../bindings";
 export const settingsApi = {
   delightView: commands.delightView,
   pickerPreferences: commands.pickerPreferences,
-  preferenceRevision: commands.preferenceRevision,
-  setPickerPreferences: (preferences: Partial<PickerPreferences>, revision: number) => commands.setPickerPreferences(preferences, revision),
+  savePickerPreferences: (preferences: Partial<PickerPreferences>) => commands.savePickerPreferences(preferences),
+  pickerPreferencesSaved: commands.pickerPreferencesSaved,
   windowSize: commands.windowSize,
   setWindowSize: commands.setWindowSize,
   loginItem: commands.loginItem,

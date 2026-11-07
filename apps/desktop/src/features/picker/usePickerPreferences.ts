@@ -6,10 +6,10 @@ import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../forma
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
 import type { Operation } from "./Notices";
 
-type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "setPickerPreferences" | "quit">;
+type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" | "quit">;
 
 export function usePickerPreferences(
-  { pickerPreferences, setPickerPreferences, quit }: PreferencesApi,
+  { pickerPreferences, savePickerPreferences, pickerPreferencesSaved, quit }: PreferencesApi,
   { styles, report, perform, presentation }: {
     /** Immutable picker visibility identity; old feedback never enters a new presentation. */
     presentation: number;
@@ -30,7 +30,8 @@ export function usePickerPreferences(
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),
-    write: setPickerPreferences,
+    submit: savePickerPreferences,
+    saved: pickerPreferencesSaved,
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
     setSmallSurprises(value.small_surprises ?? true);

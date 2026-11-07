@@ -20,12 +20,12 @@ for (const theme of ["light", "dark"]) for (const panel of ["general", "look", "
           unregisterCallback: () => {},
           invoke: async (command, args) => {
             if (command === "picker_preferences") return preferences;
-            if (command === "preference_revision") return ++revision;
-            if (command === "set_picker_preferences") {
+            if (command === "save_picker_preferences") {
               preferences = { ...preferences, ...args.preferences };
               sessionStorage.setItem("preferences", JSON.stringify(preferences));
-              return { preferences };
+              return ++revision;
             }
+            if (command === "picker_preferences_saved") return { preferences };
             if (command === "login_item") return { name: "Synthetic App", enabled: false, problem: "refused" };
             if (command === "paste_permission") return { pastes: true, needed: true, granted, list: "Synthetic List" };
             if (command === "update_checks") return panel === "about-unavailable" ? null : false;

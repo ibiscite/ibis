@@ -133,7 +133,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   expect(copies[1]).toMatchObject({ output: "typst" });
   expect(screen.getByRole("button", { name: "Copy as LaTeX \\cite · Example Writer" })).toBeTruthy();
   expect(calls).not.toContain("remember_app_output");
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test.each(["Enter", " "])("copy confirmation expires, but copy warnings remain until dismissed with %s", async (key) => {

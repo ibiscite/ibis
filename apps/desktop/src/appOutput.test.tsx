@@ -269,7 +269,7 @@ test("a format pick is remembered for the browser, and a later pick replaces it"
   await pick("Typst");
   await waitFor(() => expect(remembered).toEqual(["cite", "typst"]));
   await waitFor(() => expect(formatShown()).toBe("Typst · Example Browser"));
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test("a pick that cannot be saved says it is for this paste, then the saved format returns", async () => {
@@ -286,7 +286,7 @@ test("a pick that cannot be saved says it is for this paste, then the saved form
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   await copy(previews, copies);
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test("a pasted list copies every result in order in the app's format, then hides", async () => {
@@ -304,7 +304,7 @@ test("a pasted list copies every result in order in the app's format, then hides
 test("a new default reaches apps with no remembered format and leaves remembered ones alone", async () => {
   let destination = { ...BROWSER, app: null, app_id: null, output_question: null } as PickerDestination;
   const saved: unknown[] = [];
-  const { remembered } = opened(() => destination, { set_picker_preferences: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
+  const { remembered } = opened(() => destination, { picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
   await screen.findByText("First");
   await pick("Typst");
   await waitFor(() => expect(saved).toEqual(["typst"]));
@@ -364,7 +364,7 @@ test.each([["the open first-paste question", true], ["the format menu with nothi
 
 test("an unread destination says what applies and never points at paste choices it cannot offer", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { set_picker_preferences: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
+  const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
   await screen.findByText("First");
   expect((await screen.findByText(/could not tell which app this is for/)).textContent).toContain("Reopen Ibis to try again");
   expect(screen.queryByText(/Choose Paste or Copy Only/)).toBeNull();
@@ -379,7 +379,7 @@ test("an unread destination says what applies and never points at paste choices 
 test("without a destination app format picks change the default", async () => {
   const saved: unknown[] = [];
   const { remembered } = opened(() => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }), {
-    set_picker_preferences: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; },
+    picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; },
   });
   await screen.findByText("First");
   await pick("LaTeX \\cite");
@@ -424,7 +424,7 @@ test("one format shortcut opens the formats without copying or changing any defa
   expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
   expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(OUTPUTS.length);
   expect(calls).not.toContain("copy_file_citation");
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
   expect(remembered).toEqual([]);
 });
 
