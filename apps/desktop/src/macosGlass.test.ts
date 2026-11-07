@@ -182,7 +182,7 @@ test("the frameless macOS writing toggles use the shared pressed fill", () => {
 
 test("menus stay opaque where the webview cannot blur behind them", () => {
   const fallback = native.slice(native.indexOf("@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))"));
-  expect(fallback).toMatch(/\.menu-popover, \.keys-dialog\)\s*\{\s*background:\s*var\(--surface\);/);
+  expect(fallback).toMatch(/\.menu-popover, \.ui-sheet\)\s*\{\s*background:\s*var\(--surface\);/);
 });
 
 // JSDOM does not evaluate media/supports queries. Apply the real rules for a
@@ -229,7 +229,7 @@ test.each([
   document.documentElement.dataset.platform = "macos";
   document.documentElement.dataset.system = platform;
   if (mode) document.documentElement.dataset.nativeAppearance = mode;
-  document.body.innerHTML = '<div class="menu-popover ui-overlay">Menu</div><div class="keys-dialog ui-overlay ui-sheet">Shortcuts</div>';
+  document.body.innerHTML = '<div class="menu-popover ui-overlay">Menu</div><div class="ui-overlay ui-sheet">Shortcuts</div>';
   try {
     for (const element of document.body.children) {
       const style = getComputedStyle(element);

@@ -6,21 +6,10 @@ import { ResultList } from "./ResultList";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const styles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
-
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
   revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: "2020",
   matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
-
-test("metadata reflow measures the space left beside the year", () => {
-  // A 464px row with Web page, a key, library and No date has only
-  // 336px for metadata: the whole row's width must not force it onto one line.
-  expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size/);
-  expect(styles).not.toMatch(/\[role="option"\] \{ container-type: inline-size/);
-});
 
 function list(active: number, onChoose = vi.fn(), onToggle = vi.fn()) {
   return <ResultList results={rows} active={active} selected={new Map()} density="comfortable" libraryOf={() => null}

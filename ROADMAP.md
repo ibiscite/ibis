@@ -44,9 +44,9 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it for that app. The first paste into a browser, code editor or unknown app asks once. Setup finishes itself, including the paste permission. Sample references when there is no library.
 - **Enter pastes** on macOS and Windows; Ibis copies instead, and says why, wherever pasting is unsafe (terminals, remote desktops, elevated apps, secure typing, password fields) or the app is set to copy only. A short receipt says what happened.
 - **Linux** copies and says why; on Wayland the shortcut comes from the desktop portal, or Ibis shows the binding to add.
-- **Citations:** rich text on the clipboard, plain text and Markdown copies; recent citations per app; Change Last Citation; a page or range; narrative and author-omitted forms; selected text becomes the search; a peek at a reference's details; a dropped `.bib` or CSL-JSON file becomes a library.
+- **Citations:** rich text and plain text on the clipboard; recent citations per app; Change Last Citation; a page or range; narrative and author-omitted forms; selected text becomes the search; a peek at a reference's details; a dropped `.bib` or CSL-JSON file becomes a library.
 - **Updates** keep the macOS paste permission through a stable self-signed identity.
-- **For agents:** `ibis mcp` (MCP 2026-07-28, answering 2025 clients), an Agent Skill for Claude Code and Codex, `ibis` using the app's libraries by default, the app installing `ibis`, Homebrew and winget.
+- **For agents:** `ibis mcp` (MCP 2026-07-28, answering 2025 clients), an Agent Skill for Claude Code and Codex, `ibis` using the app's libraries by default, Homebrew and winget.
 - **Release gates** ([decision 0032](docs/decisions/0032-release-gates.md)): VoiceOver, NVDA and Chinese, Japanese and Korean input, checked by hand.
 - **Ships when** consolidation steps 1 to 3 have landed and the maintainer's hands-on checks pass: the Mac hands-on run (VoiceOver, updates keeping the paste permission, help screenshots), NVDA on Windows and one input-method check (maintainer, 2026-11-07). Text ready for translation moves into step 4's catalogue, limits that run as checks into step 8, and small picker touches with the word-processor note into 0.4.
 
@@ -61,6 +61,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Live citations through keys:** Pandoc keys in Word or LibreOffice become live Zotero citations through Zotero's ODF/DOCX Scan, Google Docs through Zotero's switch-word-processor step; Ibis documents and tests the flow, checks its keys match Zotero's, and writes ODF Scan markers. Trials of real footnotes and Zotero's own Word field ship only if they work.
 - **Settings:** every shortcut can be changed, connected libraries (Zotero and `.bib` together), and a settings file to back up and restore ([#1561](https://github.com/ibiscite/ibis/issues/1561)); one rotating tip on the empty search; an opt-in "install updates when I quit".
 - **Links and integrations:** drag the citation into any app; `ibis://` links with Shortcuts and Alfred recipes; Show in Zotero and Open PDF at This Page; with Zotero in front, the same picker opens and Enter opens the PDF or shows the item; an editor endpoint compatible with Better BibTeX's Cite as You Write.
+- **Moved from 0.3** (maintainer, 2026-11-07): the app installs the matching `ibis` command, and Copy as Markdown gives a formatted citation in Markdown.
 - **For agents:** source health on every result, citation receipts and a strict mode; citing CSL-JSON a caller sends; output for an app named on the command line; the MCP Registry listing.
 - **The interface in German and one right-to-left language.** Public beta.
 

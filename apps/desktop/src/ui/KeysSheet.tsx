@@ -1,11 +1,7 @@
-import { IconButton } from "./IconButton";
-import { useEffect, useRef } from "react";
 import { useInterfaceMessages } from "../i18n";
 import { type KeyBinding } from "../keys";
 import { SHORTCUT_GROUPS, ShortcutGroup } from "./ShortcutTable";
-import { useLayer } from "./layers";
-import { useScrollEdges } from "./ScrollArea";
-import "./Overlay.css";
+import { Sheet } from "./Sheet";
 import "./KeysSheet.css";
 
 /** Settings' groups in the same order, less standard menu navigation, which
@@ -13,47 +9,16 @@ import "./KeysSheet.css";
 const GROUPS = SHORTCUT_GROUPS.filter((region) => region !== "menu");
 const SPLIT = GROUPS.indexOf("picker");
 
-/** The picker's keys in two compact columns of groups, as a modal dialog:
-    Escape or Close returns focus. */
+/** The picker's keys in two compact columns of groups, as a sheet. */
 export function KeysDialog({ bindings, isMac, onClose }: { bindings: readonly KeyBinding[]; isMac: boolean; onClose: () => void }) {
   const { text } = useInterfaceMessages();
-  const dialog = useRef<HTMLDivElement>(null);
-  const scroll = useRef<HTMLDivElement>(null);
-  useScrollEdges(scroll);
-  useEffect(() => { dialog.current?.focus(); }, []);
-  useLayer("sheet", true, () => onClose());
-  return (
-    <div className="keys-backdrop" onPointerDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div
-        ref={dialog}
-        role="dialog"
-        aria-modal="true"
-        // Clicking plain text inside keeps focus here, so Escape still closes it.
-        tabIndex={-1}
-        aria-labelledby="keys-title"
-        className="keys-dialog ui-overlay ui-sheet"
-        onKeyDown={(e) => {
-          if (e.key !== "Tab") return;
-          const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>("button, [tabindex='0']") ?? [])];
-          const at = focusable.indexOf(document.activeElement as HTMLElement);
-          e.preventDefault();
-          focusable[at < 0 ? e.shiftKey ? focusable.length - 1 : 0 : (at + (e.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
-        }}
-      >
-        <div className="keys-heading">
-          <h2 id="keys-title">{text("keys-title")}</h2>
-          <IconButton aria-label={text("keys-close")} title={text("keys-close")} aria-keyshortcuts="Escape" onPress={onClose} />
-        </div>
-        <div ref={scroll} className="keys-scroll scroll-area" tabIndex={0} role="group" aria-labelledby="keys-title">
-          <div className="keys-groups">
-            {/* The groups in their one order, read down the first column, then the second. */}
-            {[GROUPS.slice(0, SPLIT), GROUPS.slice(SPLIT)].map((regions, column) => <table key={column}>
-              <thead className="visually-hidden"><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
-              {regions.filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={isMac} />)}
-            </table>)}
-          </div>
-        </div>
-      </div>
+  return <Sheet title={text("keys-title")} closeLabel={text("keys-close")} onClose={onClose}>
+    <div className="keys-groups">
+      {/* The groups in their one order, read down the first column, then the second. */}
+      {[GROUPS.slice(0, SPLIT), GROUPS.slice(SPLIT)].map((regions, column) => <table key={column}>
+        <thead className="visually-hidden"><tr><th scope="col">{text("keys-action")}</th><th scope="col">{text("keys-shortcut")}</th></tr></thead>
+        {regions.filter((region) => bindings.some((binding) => binding.region === region)).map((region) => <ShortcutGroup key={region} region={region} bindings={bindings} isMac={isMac} />)}
+      </table>)}
     </div>
-  );
+  </Sheet>;
 }

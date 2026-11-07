@@ -83,8 +83,7 @@ test("keys read left to right in a right-to-left page, as the systems print them
 });
 
 test("the shortcuts list keeps native chords unbroken and left-to-right in a wrapping cell", () => {
-  const styles = readFileSync(new FileURL("../styles.css", import.meta.url), "utf8");
-  const capRule = styles.match(/\.keys-scroll kbd \{[^}]*\}/)?.[0] ?? "";
+  const capRule = readFileSync(new FileURL("./KeysSheet.css", import.meta.url), "utf8");
   const sharedCaps = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
   const { container } = render(<><style>{capRule + sharedCaps}</style><div dir="rtl" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}><KeysDialog bindings={[
     { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },

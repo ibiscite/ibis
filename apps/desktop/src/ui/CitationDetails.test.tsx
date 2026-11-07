@@ -80,6 +80,7 @@ test.each(["macos", "windows", "linux"])("%s uses labelled shared controls and p
   document.documentElement.dataset.platform = platform;
   const { container } = render(<Editor />);
   const page = screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement;
+  expect(page.placeholder).toBe("Add page");
   const text = "١٢–١٥ <script>";
   fireEvent.change(page, { target: { value: text } });
   expect(page.value).toBe(text);

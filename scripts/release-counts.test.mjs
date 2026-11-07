@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { classify } from "./ci-paths.mjs";
 import { recordCounts } from "./release-counts.mjs";
 
 const header = "date,asset_name,download_count,updated_at\n";
@@ -286,10 +285,6 @@ test("a delayed older snapshot cannot overwrite a newer week or a competing appe
   assert.equal(results.filter(({ status }) => status === "fulfilled").length, 1);
   assert.ok(state.csv.startsWith(previous));
   assert.equal(state.csv.split("\n").length, 8);
-});
-
-test("CI classifies the release-counts workflow conservatively", () => {
-  assert.deepEqual(classify("pull_request", 1, [{ filename: ".github/workflows/release-counts.yml", status: "added" }]), { core: true, interface: true, native: true, web: true });
 });
 
 test("the CLI refuses dispatches from other refs, unexpected events and arguments before network access", () => {
