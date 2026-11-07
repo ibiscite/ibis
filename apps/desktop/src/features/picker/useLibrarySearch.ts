@@ -1,11 +1,16 @@
-// The search for the current query in the open library, and which of its results may be acted on.
-import { useEffect, useRef, useState } from "react";
+// The search for the current query in the open library, and which of its
+// results may be acted on. The picker session owns the search (decision 0035);
+// this hook tells it what to search in and reads its answer.
+import { useEffect, useLayoutEffect } from "react";
 import type * as nativeApi from "../../api";
-import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../../api";
-import { say } from "../../i18n";
-import { choiceKey } from "./choice";
+import type { LibraryStatus } from "../../api";
+import type { SessionState } from "./session";
+import type { createSessionController } from "./sessionController";
+import { sameInputs, type SearchInputs } from "./search";
 
-export function useLibrarySearch({ search, emptySearch, query, interpretLocators, library, statusFailed, libraryVersion, sessionId = 0, isCurrentSession, setActive, refreshSnapshot }: {
+export function useLibrarySearch({ session, state, search, emptySearch, query, interpretLocators, library, statusFailed, libraryVersion }: {
+  session: ReturnType<typeof createSessionController>;
+  state: SessionState;
   search: typeof nativeApi.search;
   emptySearch?: () => ReturnType<typeof nativeApi.search>;
   query: string;
@@ -16,105 +21,27 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
   statusFailed: boolean;
   /** Changes whenever a library opens, so the current query is searched again. */
   libraryVersion: number;
-  sessionId?: number;
-  isCurrentSession?: (id: number) => boolean;
-  setActive: (index: number) => void;
-  /** Reads the library status again when a reply comes from a newer snapshot. */
-  refreshSnapshot: () => void;
 }) {
   const queryKey = JSON.stringify([query, interpretLocators]);
-  const [interpretation, setInterpretation] = useState<LocatorQuery | null>(null);
-  const [list, setList] = useState<PastedList | null>(null);
-  const [unfiltered, setUnfiltered] = useState<string | null>(null);
-  const [results, setResults] = useState<SearchResult[]>([]);
-  const [announcement, setAnnouncement] = useState("");
-  // The query the shown results belong to; differs while a search is pending.
-  const [resultsQuery, setResultsQuery] = useState<string | null>(null);
-  const [resultsRevision, setResultsRevision] = useState<string | null>(null);
-  const currentSession = useRef(sessionId);
-  currentSession.current = sessionId;
-  const [error, setError] = useState<string | null>(null);
-  const [settled, setSettled] = useState<{ queryKey: string; library: typeof library; version: number; sessionId: number; emptySearch: typeof emptySearch } | null>(null);
   const recentSearch = query.trim() ? undefined : emptySearch;
+  const inputs: SearchInputs = { queryKey, query, interpretLocators, library, version: libraryVersion, recent: recentSearch };
+  useLayoutEffect(() => { session.connect({ search, recent: recentSearch }); });
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the inputs are the query (queryKey covers query and locator mode), the library and the opening.
+  useEffect(() => { session.dispatch({ type: "search-inputs", inputs }); }, [queryKey, library, libraryVersion, state.session, recentSearch]);
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: searches when the query (queryKey covers query and locator mode) or the library changes. The earlier results are read only to keep the user's row when a reply repeats them.
-  useEffect(() => {
-    const request = { queryKey, library, version: libraryVersion, sessionId, emptySearch: recentSearch };
-    // Already settled results can be adopted by a new opening. An unfinished
-    // request is replaced, and its old completion cannot publish into it.
-    if (settled && settled.sessionId !== sessionId && settled.queryKey === queryKey && settled.library === library && settled.version === libraryVersion && settled.emptySearch === recentSearch) {
-      setSettled(request);
-      return;
-    }
-    setAnnouncement("");
-    // Typing before choosing a library is normal; preserve the query and
-    // chooser. Actual library/status failures still report search errors.
-    if (library === undefined || library?.state === "none" || library?.state === "loading" || (library?.state === "error" && !library.has_snapshot)) {
-      setResults([]);
-      setInterpretation(null);
-      setList(null);
-      setUnfiltered(null);
-      setResultsQuery(queryKey);
-      setActive(0);
-      setError(null);
-      setSettled(request);
-      return;
-    }
-    let current = true;
-    const owns = () => current && currentSession.current === sessionId && (isCurrentSession?.(sessionId) ?? true);
-    let announcementTimer: number | undefined;
-    (recentSearch ? recentSearch() : search(query, undefined, undefined, interpretLocators))
-      .then(({ revision, results: found, interpretation: interpreted, list: pasted, unfiltered: plain }) => {
-        if (owns()) {
-          setResults(found);
-          setInterpretation(interpreted ?? null);
-          setList(pasted ?? null);
-          setUnfiltered(plain ?? null);
-          setResultsRevision(revision);
-          if (revision !== library?.revision) refreshSnapshot();
-          setResultsQuery(queryKey);
-          // An unchanged reply must not undo the user's newer row choice.
-          const sameResults = resultsQuery === queryKey && resultsRevision === revision && choiceKey(results) === choiceKey(found);
-          if (!sameResults) setActive(0);
-          setError(null);
-          setSettled(request);
-          announcementTimer = window.setTimeout(() => {
-            if (!owns()) return;
-            const count = say("picker-result-count", { count: found.length });
-            setAnnouncement(found.some((r) => r.partial) ? `${say("picker-closest-matches")} · ${count}` : count);
-          }, 300);
-        }
-      })
-      .catch(() => {
-        // Results of an earlier query must not sit beside this query's error.
-        if (owns()) {
-          setResults([]);
-          setInterpretation(null);
-          setList(null);
-          setUnfiltered(null);
-          setResultsQuery(queryKey);
-          setError(say("picker-search-error"));
-          setSettled(request);
-        }
-      });
-    return () => {
-      current = false;
-      window.clearTimeout(announcementTimer);
-    };
-  }, [queryKey, library, libraryVersion, sessionId, recentSearch]);
-
+  const { results, interpretation, list, unfiltered, resultsQuery, resultsRevision, error, announcement, settled } = state.search;
   // The screen keeps showing the last answer while a newer search runs, so
   // typing never blanks rows, the shelf or the footer. Only actions wait:
   // rows are acted on, and a pasted list or its missing keys are trusted,
   // only when they answer the current query on the current snapshot.
   // Rows of an older snapshot are never formatted or offered; the next reply replaces them.
   const sameSnapshot = resultsRevision === library?.revision && results.every((record) => record.revision === resultsRevision);
-  const ready = sameSnapshot && resultsQuery === queryKey && settled?.emptySearch === recentSearch;
+  const answersThis = Boolean(settled) && sameInputs(settled!.inputs, inputs) && settled!.session === state.session;
+  const ready = sameSnapshot && resultsQuery === queryKey && settled?.inputs.recent === recentSearch;
   // A reply ahead of status is not actionable yet, even though its request
   // finished. Keep Enter waiting through the status read and refreshed search.
   const reconciling = !error && Boolean(library?.has_snapshot) && resultsQuery === queryKey && resultsRevision !== library?.revision;
-  const pending = !statusFailed && (library === undefined || library?.state === "loading" || settled?.queryKey !== queryKey
-    || settled.library !== library || settled.version !== libraryVersion || settled.sessionId !== sessionId || settled.emptySearch !== recentSearch || reconciling);
+  const pending = !statusFailed && (library === undefined || library?.state === "loading" || !answersThis || reconciling);
   // The query text the shown results answer; "" before the first reply.
   const answered = resultsQuery === null ? "" : (JSON.parse(resultsQuery) as [string, boolean])[0];
   return { queryKey, results, sameSnapshot, ready, answered, interpretation, list, unfiltered, announcement, resultsQuery, error, pending };

@@ -114,8 +114,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
-    search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators, library: settledLibrary, statusFailed: failures.status ?? false,
-    libraryVersion: checkVersion, sessionId: state.session, isCurrentSession, setActive, refreshSnapshot,
+    session, state, search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
   // biome-ignore lint/correctness/useExhaustiveDependencies: new results are the trigger: the pointer must move again before it counts.
