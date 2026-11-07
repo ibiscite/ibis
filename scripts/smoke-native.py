@@ -1816,7 +1816,12 @@ def _journey_main(args):
                 onscreen = native.helper("picker", app.pid)["onscreen"]
                 facts["picker_seen"] |= "Ibis" in onscreen
                 facts["notice_seen"] |= "Ibis notice" in onscreen
-                notices.update(text for text in native.ibis_strings() if text.startswith(("Copied", "Pasted")))
+                strings = native.ibis_strings()
+                notices.update(text for text in strings if text.startswith(("Copied", "Pasted")))
+                if "Ibis notice" in onscreen and not notices:
+                    # Ibis's own windows hold only its messages and the invented library.
+                    facts["notice_strings"] = strings[:20]
+                facts["polls"] = facts.get("polls", 0) + 1
             clipboard = native.clipboard()
             facts["clipboard"] = ("expected" if clipboard == JOURNEY_COPIED else "sentinel"
                                   if clipboard == CLIPBOARD_SENTINEL else "other")
