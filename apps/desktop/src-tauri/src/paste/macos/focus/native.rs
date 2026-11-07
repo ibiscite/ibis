@@ -17,8 +17,8 @@ use tauri_nspanel::objc2::rc::Retained;
 use super::super::secure_input;
 use super::{
     Attribute, FINAL_SELECTION_LIMIT, Identity, LIMIT, Provider, Reply, SELECTION_LIMIT, SelectedText, Selection,
-    capture_query, check_selection, claim_process, diagnostics, missing_identity_attribute, opening_selection, query,
-    range_length, same_live_process, selection_error,
+    capture_reason, check_selection, claim_process, diagnostics, missing_identity_attribute, opening_selection, query,
+    range_length, refused_because, same_live_process, selection_error,
 };
 
 // SAFETY: AXUIElement.h declares AXError=int32_t, pid_t=int and Boolean=u8.
@@ -408,7 +408,7 @@ pub(super) fn capture(
         activation_process: eligible,
         ..Native::default()
     };
-    let window = capture_query(&provider, pid, may_activate);
+    let window = capture_reason(&provider, pid, may_activate);
     // The same paste policy as the activation write, on a focus just proved.
     // A refusal or failure opens an empty search and stays unread for Enter.
     let (selection, search) = opening_selection(
@@ -426,6 +426,14 @@ pub(super) fn capture(
         saved.window = Some((token, window));
         Ok((token, selection, search))
     })
+}
+
+/// Why a paste just refused was refused, in the person's words.
+pub(super) fn refused(pid: i32, reason: CopyReason) -> CopyReason {
+    if !NSThread::isMainThread_class() {
+        return reason;
+    }
+    refused_because(&Native::default(), pid, reason, Instant::now() + SELECTION_LIMIT)
 }
 
 pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Instant) -> Result<(), CopyReason> {

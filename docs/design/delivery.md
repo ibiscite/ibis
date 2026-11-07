@@ -12,7 +12,7 @@
 - **One name per output** (#1260): every format is named once, by the engine's output list, and the menu, the format control, the footer, Settings, the command line and agents all use that name ("Pandoc", "BibLaTeX \parencite", "APA"). Chooser items read as that name with a quiet example ("BibLaTeX \parencite   \parencite{key}"); a style also shows its full title as a quiet detail ("APA   American Psychological Association 7th edition"). A remembered format that this Ibis no longer lists falls back to the default, never to a lookalike.
 - Refused apps (terminals, remote viewers, virtual machines) and targets Ibis cannot prove only copy, with the reason. A permission detour keeps the prepared citation and waits for a fresh Enter; newly selected text still opens as the search, with the shelf kept, because Enter would replace it.
 - **Selected text as the search** (macOS): short text on one line, selected in the target app, opens as the search, all selected, so typing replaces it; Enter pastes over it. It lasts one opening: it never returns as a recent search unless edited. Long or multi-line selections, secure typing, password fields, copy-only, refused or unapproved apps and failed reads open an empty search and change nothing. **Ibis replaces only text the person saw**: with a long selection the footer offers Copy, and any selection that changed, or was never read, stays as it is, with the reason. Enter still pastes at the caret when nothing is selected.
-- **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change. A failed Forget stays visible until cleanup succeeds, including after a failed retry.
+- **Change Last Citation** (More, ⌘E): reopens the last citation for this app on the shelf, with its pages and options; the footer says "Change Citation". Enter replaces text only when the old citation is selected in the document, proved just before the paste; otherwise it copies the changed citation and says so. After such a copy the person may paste it by hand or not, so the next change replaces whichever of the two is selected, and nothing else. Ibis never deletes text it cannot see. The last citation lives in memory only, for this run of Ibis and at most eight apps. Forget Recent Citations clears it, and the shortcut that opens Ibis never reopens it: hiding Ibis abandons the change. A failed Forget stays visible until cleanup succeeds, including after a failed retry.
 - **With Zotero in front** (maintainer, 2026-11-05): the same picker opens, and Enter opens the PDF or shows the item in Zotero instead of pasting; the footer says which.
 - A successful copy hides Ibis, returns focus to the previous window and shows the notice. Pinned, Ibis stays.
 
@@ -25,13 +25,12 @@
 - A notice's words start exactly where the status words start, from one shared measure (`--status-text-start`), whatever the dot or the button around it.
 - A notice is one line ending in an ellipsis, with short names ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
-Every "copied, not pasted" sentence ends with its fix, with full stops, and the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). These are the exact words; a test compares them with `copiedNoticeText`.
+Every "copied, not pasted" sentence says why, then ends with its fix, with full stops; the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). Every copy has a reason: none is a bare "Copied." These are the exact words; a test compares them with `copiedNoticeText`.
 
 | Reason | Code | Words |
 | --- | --- | --- |
-| No reason given | — | Copied. Press ⌘V to paste. |
-| Pasting off | `paste-off` | Copied. Press ⌘V to paste. |
-| Paste check unavailable | `paste-unavailable` | Copied. Press ⌘V to paste. |
+| Pasting off | `paste-off` | Copied. Pasting is off in Settings. Press ⌘V to paste. |
+| Paste check unavailable or too slow | `paste-unavailable` | Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste. |
 | No paste on this system | `unsupported-system` | Copied. Ibis can’t paste on this system yet. Press ⌘V to paste. |
 | No app to paste into | `no-target` | Copied. There was no app to paste into. Press ⌘V to paste. |
 | Unapproved app | `unknown-app` | Copied. Automatic paste is not approved for this app. Press ⌘V to paste. |
@@ -48,8 +47,8 @@ Every "copied, not pasted" sentence ends with its fix, with full stops, and the 
 | A field that hides typing | `secure-field` | Copied. This field hides what you type. Press ⌘V to paste. |
 | Secure Event Input on | `secure-input` | Copied. Secure typing is on, possibly in another app. Press ⌘V to paste. |
 | Administrator app (Windows) | `elevated-app` | Copied. Not pasted into an administrator app. Press ⌘V to paste. |
-| Windows keys stuck | `key-release-failed` | Copied. Press and release Ctrl and V to paste. |
+| Windows keys stuck | `key-release-failed` | Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste. |
 | Selected text never shown | `selection-not-shown` | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
 | Old citation not selected | `citation-not-selected` | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 
-Never call the destination a password field. The right paste key is shown per system.
+Never call the destination a password field. A field that hides typing is named only when its subrole says so (a web password field included); secure typing alone says "possibly in another app". The right paste key is shown per system.

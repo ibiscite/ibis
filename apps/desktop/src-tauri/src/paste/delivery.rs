@@ -117,33 +117,29 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
         granted: enabled && desk.may_post(),
         app: captured.paste.unwrap_or(None),
     };
-    let copied = |reason: Option<CopyReason>| Delivered::Copied {
-        reason: reason
-            .and_then(|reason| serde_json::to_value(reason).ok())
-            .and_then(|code| code.as_str().map(str::to_owned)),
-    };
+    let copied = Delivered::copied;
     if proof.is_some_and(|proof| !proof.policy_current()) {
-        return copied(Some(CopyReason::PasteUnavailable));
+        return copied(CopyReason::PasteUnavailable);
     }
     match delivery_decision(captured, permission) {
         Decision::Copy(reason @ (CopyReason::NoPermission | CopyReason::AccessibilityRequired)) => {
             desk.ask_to_post();
-            copied(Some(reason))
+            copied(reason)
         }
-        Decision::Copy(reason) => copied(Some(reason)),
+        Decision::Copy(reason) => copied(reason),
         Decision::Paste => {
             let Some(proof) = proof else {
-                return copied(Some(CopyReason::NoTarget));
+                return copied(CopyReason::NoTarget);
             };
             let deadline = proof.written() + LATE;
             if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
-                return copied(Some(failure.reason()));
+                return copied(failure.reason());
             }
             if let Err(reason) = desk.prepare() {
-                return copied(Some(reason));
+                return copied(reason);
             }
             let Some(pid) = captured.pid else {
-                return copied(None);
+                return copied(CopyReason::NoTarget);
             };
             // The same process and app: a process number alone can be reused.
             let id = captured.target.app.as_ref().map(|app| app.id.as_str());
@@ -156,68 +152,82 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 deadline: deadline.min(started + RETURN_LIMIT),
             };
             let mut checks = 0;
-            loop {
+            // A timed-out Accessibility read says nothing about the target (an
+            // app busy taking focus back, or handling a keystroke): every check
+            // runs again, fresh, while the return time lasts. Nothing is relaxed,
+            // and a final check that timed out posted nothing and never will.
+            let mut waiting_for;
+            let result = loop {
                 if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
-                    return copied(Some(failure.reason()));
+                    return copied(failure.reason());
                 }
                 desk.stage("readiness");
                 let ready = match desk.ready(&request, proof) {
-                    Ok(ready) => ready,
-                    Err(reason) => return copied(Some(reason)),
+                    Ok(ready) => {
+                        waiting_for = CopyReason::TargetChanged;
+                        ready
+                    }
+                    Err(CopyReason::PasteUnavailable) => {
+                        waiting_for = CopyReason::PasteUnavailable;
+                        false
+                    }
+                    Err(reason) => return copied(reason),
                 };
                 if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
-                    return copied(Some(failure.reason()));
+                    return copied(failure.reason());
                 }
                 // A check that proved the target ready counts even when a busy
                 // system made it finish after the limit; the final guards and
-                // the paste's own deadline still decide. Only a target that is
-                // not back in time has changed.
+                // the paste's own deadline still decide.
                 if ready {
-                    break;
+                    desk.settle();
+                    desk.stage("post.queue");
+                    let result = desk.finish(
+                        DeliveryRequest {
+                            pid,
+                            id: id.unwrap_or_default().to_owned(),
+                            #[cfg(any(target_os = "macos", test))]
+                            began,
+                            deadline,
+                        },
+                        proof,
+                    );
+                    if result != PostResult::Unavailable {
+                        break result;
+                    }
+                    waiting_for = CopyReason::PasteUnavailable;
                 }
-                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT {
+                // Only a target that is not back, or not answering, in time stays copied.
+                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT || checks >= RETURN_CHECKS {
                     desk.stage("readiness.timeout");
-                    return copied(Some(CopyReason::TargetChanged));
-                }
-                if checks >= RETURN_CHECKS {
-                    desk.stage("readiness.timeout");
-                    return copied(Some(CopyReason::TargetChanged));
+                    return copied(waiting_for);
                 }
                 desk.wait(RETURN_STEP);
                 checks += 1;
-            }
-            desk.settle();
-            desk.stage("post.queue");
-            let request = DeliveryRequest {
-                pid,
-                id: id.unwrap_or_default().to_owned(),
-                #[cfg(any(target_os = "macos", test))]
-                began,
-                deadline,
             };
-            match desk.finish(request, proof) {
+            match result {
                 PostResult::Pasted => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
-                PostResult::SecureInput => copied(Some(CopyReason::SecureInput)),
-                PostResult::Unavailable => copied(Some(CopyReason::PasteUnavailable)),
-                PostResult::Expired => copied(Some(CopyReason::PasteExpired)),
-                PostResult::TargetChanged => copied(Some(CopyReason::TargetChanged)),
-                PostResult::SelectionNotShown => copied(Some(CopyReason::SelectionNotShown)),
-                PostResult::CitationNotSelected => copied(Some(CopyReason::CitationNotSelected)),
-                PostResult::ClipboardChanged => copied(Some(CopyReason::ClipboardChanged)),
+                PostResult::SecureInput => copied(CopyReason::SecureInput),
+                PostResult::Unavailable => copied(CopyReason::PasteUnavailable),
+                PostResult::Expired => copied(CopyReason::PasteExpired),
+                PostResult::TargetChanged => copied(CopyReason::TargetChanged),
+                PostResult::SelectionNotShown => copied(CopyReason::SelectionNotShown),
+                PostResult::CitationNotSelected => copied(CopyReason::CitationNotSelected),
+                PostResult::ClipboardChanged => copied(CopyReason::ClipboardChanged),
                 PostResult::AccessibilityRequired => {
                     desk.ask_to_post();
-                    copied(Some(CopyReason::AccessibilityRequired))
+                    copied(CopyReason::AccessibilityRequired)
                 }
                 PostResult::NoPermission => {
                     desk.ask_to_post();
-                    copied(Some(CopyReason::NoPermission))
+                    copied(CopyReason::NoPermission)
                 }
-                PostResult::SecureField => copied(Some(CopyReason::SecureField)),
+                PostResult::SecureField => copied(CopyReason::SecureField),
                 #[cfg(any(target_os = "windows", test))]
                 PostResult::KeyReleaseFailed => key_release_failed(),
-                PostResult::Refused => copied(None),
+                PostResult::Refused => copied(CopyReason::PasteUnavailable),
             }
         }
     }
@@ -226,15 +236,13 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
 pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
     let loaded = ibis_core::settings::load(path);
     if loaded.problem.is_some() {
-        return Delivered::Copied {
-            reason: Some("paste-unavailable".into()),
-        };
+        return Delivered::copied(CopyReason::PasteUnavailable);
     }
     deliver(loaded.settings.paste.unwrap_or(true))
 }
 
 pub(super) fn key_release_failed() -> Delivered {
     Delivered::Copied {
-        reason: Some("key-release-failed".into()),
+        reason: "key-release-failed".into(),
     }
 }

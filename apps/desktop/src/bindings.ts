@@ -85,7 +85,7 @@ export const commands = {
 	 *  that runs on a worker with no lock held; the short commit that writes the
 	 *  clipboard stays on the main thread, as the native clipboard needs.
 	 */
-	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string[]) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
 	/**
@@ -417,10 +417,10 @@ export type Delivered = { outcome: "pasted";
 /**  The app's own name; `None` when it has none. */
 app: string | null } | { outcome: "copied";
 /**
- *  Why Ibis did not paste, when the person can do something about it
- *  or would expect a paste: a `CopyReason` code such as `terminal`.
+ *  Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
+ *  `key-release-failed`. Every copy says why (docs/design/delivery.md).
  */
-reason: string | null };
+reason: string };
 
 /**  How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable";
@@ -587,6 +587,13 @@ export type LibraryStatus = {
 	/**  Counts in the searchable snapshot by exact source ID; includes empty loaded Zotero libraries. */
 	source_counts: { [key in string]: number },
 	warnings: number,
+	/**
+	 *  What reading found, at most the engine's detail limit, so the footer
+	 *  can say which entries were skipped and where to look.
+	 */
+	reading: ReadingNotice[],
+	/**  A searched source cannot be watched, so edits show only after a reload. */
+	live_updates_off: boolean,
 	error: string | null,
 	/**  What kind of failure `error` is, so the picker can offer the fix. */
 	problem: LibraryProblem | null,
@@ -932,6 +939,15 @@ export type ProjectStatus = {
 	reason: string | null,
 	/**  The first lines that could not be read. */
 	damaged_lines: number[],
+};
+
+/**  One thing reading the library found: an entry skipped or one to check. */
+export type ReadingNotice = {
+	/**  The engine's warning code, such as `duplicate-key` or `syntax`. */
+	code: string,
+	line: number | null,
+	/**  The repeated key, for `duplicate-key` only: the person's own data. */
+	key: string | null,
 };
 
 export type ReceiptSummary = {

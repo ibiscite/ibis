@@ -63,7 +63,7 @@ test("a project switch does not offer another project's citation for replacement
   s.complete(1, { pinned: true });
   expect(s.state.lastCitations.has("example.editor")).toBe(true);
   s.send({ type: "change-last" });
-  expect(s.state.changing).toBe(prepared.text);
+  expect(s.state.changing).toEqual([prepared.text]);
   s.send(s.view({ appId: "example.editor", writingProjectId: "b", output: { opening: 0, choice: 1, delivery: 0 } }));
   expect(s.state.changing).toBeNull();
   s.send({ type: "change-last" });
@@ -620,7 +620,7 @@ test("Change Last reopens the app's last citation with its pages and options, an
   s.send({ type: "query", value: "something" });
   s.send(s.view({ appId: "example.writer" }));
   s.send({ type: "change-last" });
-  expect(s.state).toMatchObject({ query: "", changing: "(2020, p. 12)" });
+  expect(s.state).toMatchObject({ query: "", changing: ["(2020, p. 12)"] });
   const [reference] = [...s.state.selected.values()];
   expect(reference).toMatchObject({ locator: a.locator, form: "year-only" });
 });
@@ -631,7 +631,7 @@ test("only the changed citation's copy carries the text it may replace", () => {
   s.send({ type: "change-last" });
   s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { form: "normal" } });
   const [copy] = copyOnce(s, 2, "(Smith, 2020, p. 12)");
-  expect(copy).toMatchObject({ type: "copy", replaces: "(2020, p. 12)" });
+  expect(copy).toMatchObject({ type: "copy", replaces: ["(2020, p. 12)"] });
   expect(s.state.changing).toBeNull();
   s.send({ type: "toggle", result: b });
   const [plain] = copyOnce(s, 3, "(Jones, 2021)");
@@ -655,21 +655,21 @@ test("a permission detour keeps the change, so a fresh Enter still may only repl
   s.send({ type: "change-last" });
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  expect(s.effects).toMatchObject([{ type: "copy", replaces: "(2020, p. 12)" }]);
+  expect(s.effects).toMatchObject([{ type: "copy", replaces: ["(2020, p. 12)"] }]);
   s.send({ type: "copied", id: 2, session: 0, outcome: { text: prepared.text, warnings: [] }, output: { opening: 0, choice: 0, delivery: 0 }, pinned: false });
   s.send({ type: "hidden", now: 10 });
-  expect(s.state.changing).toBe("(2020, p. 12)");
+  expect(s.state.changing).toEqual(["(2020, p. 12)"]);
   s.send({ type: "hid", id: 2, session: 0 });
   s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
-  expect(s.state.changing).toBe("(2020, p. 12)");
+  expect(s.state.changing).toEqual(["(2020, p. 12)"]);
   expect(s.state.selected.size).toBe(1);
   s.send({ type: "hidden", now: 20 });
   s.send({ type: "preparing", now: 30 });
   s.send({ type: "shown", now: 31, presentation: 0 });
-  expect(s.state.changing).toBe("(2020, p. 12)");
+  expect(s.state.changing).toEqual(["(2020, p. 12)"]);
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  expect(s.effects).toMatchObject([{ type: "copy", replaces: "(2020, p. 12)" }]);
+  expect(s.effects).toMatchObject([{ type: "copy", replaces: ["(2020, p. 12)"] }]);
 });
 
 test("a selection ending a detour leaves the change it held, so Enter still proves the old citation", () => {
@@ -683,7 +683,7 @@ test("a selection ending a detour leaves the change it held, so Enter still prov
   s.send({ type: "delivered", id: 2, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
   s.send({ type: "hidden", now: 10 });
   s.send({ type: "preparing", now: 20, selection: "(2020, p. 12)" });
-  expect(s.state).toMatchObject({ changing: "(2020, p. 12)", permissionDetour: false, query: "(2020, p. 12)" });
+  expect(s.state).toMatchObject({ changing: ["(2020, p. 12)"], permissionDetour: false, query: "(2020, p. 12)" });
   expect(s.state.selected.size).toBe(1);
 });
 
@@ -694,7 +694,7 @@ test("reopening while the changed citation is on its way abandons the change", (
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
   s.send({ type: "hidden", now: 10 });
-  expect(s.state.changing).toBe("(2020, p. 12)");
+  expect(s.state.changing).toEqual(["(2020, p. 12)"]);
   s.send({ type: "preparing", now: 20 });
   s.send({ type: "shown", now: 21, presentation: 1 });
   expect(s.state.changing).toBeNull();
@@ -723,7 +723,7 @@ test("Enter on the same shelf joins a copy only when both may replace the same t
   s.send({ type: "change-last" });
   s.send(s.view({ appId: "example.writer", chosen: [...s.state.selected.values()] }));
   const [copy] = s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  expect(copy).toMatchObject({ type: "copy", replaces: "(2020, p. 12)" });
+  expect(copy).toMatchObject({ type: "copy", replaces: ["(2020, p. 12)"] });
   expect(s.state.flights).toHaveLength(2);
 });
 
@@ -779,7 +779,7 @@ test.each(["Forget", "disable then re-enable"])("%s never lets a delayed copy re
   s.send({ type: "toggle", result: b });
   copyOnce(s, 2, "fresh citation");
   s.send({ type: "change-last" });
-  expect(s.state.changing).toBe("fresh citation");
+  expect(s.state.changing).toEqual(["fresh citation"]);
   expect([...s.state.selected.values()]).toMatchObject([{ id: b.id }]);
 });
 
@@ -793,7 +793,7 @@ test("fresh Enter after Forget cannot join a retired copy or lose its newer cita
   s.complete(2, { pinned: true, outcome: { text: "newer citation", warnings: [] } });
   s.complete(1, { pinned: true });
   s.send({ type: "change-last" });
-  expect(s.state.changing).toBe("newer citation");
+  expect(s.state.changing).toEqual(["newer citation"]);
 });
 
 test("removing the last reference ends the change", () => {

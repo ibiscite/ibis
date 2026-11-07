@@ -723,6 +723,8 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             references: 0,
             source_counts: BTreeMap::new(),
             warnings: 0,
+            reading: Vec::new(),
+            live_updates_off: false,
             error: Some("library state is unavailable".to_string()),
             problem: Some(LibraryProblem::Other),
             error_reason: None,

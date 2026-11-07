@@ -246,7 +246,7 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
 pub(crate) async fn copy_file_citation(
     ticket: String,
     content_hash: String,
-    replaces: Option<String>,
+    replaces: Vec<String>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
@@ -270,7 +270,7 @@ pub(crate) async fn copy_file_citation(
 fn commit_shown(
     app: &AppHandle,
     recited: &crate::library::engine_file::Recited,
-    replaces: Option<String>,
+    replaces: Vec<String>,
 ) -> Result<Copied, CommandError> {
     use tauri::Manager;
     let library = app.state::<Mutex<Library>>();
@@ -286,7 +286,7 @@ fn commit_shown(
         crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
     }
     #[cfg(target_os = "windows")]
-    let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
+    let attempt = crate::paste::begin_copy(&app, &replaces);
     let file = open_file(&library)?;
     let captured = captured.map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
@@ -348,7 +348,7 @@ fn commit_shown(
                 crate::paste::remember_copy(&app, attempt, sequence, token)
             };
             #[cfg(not(target_os = "windows"))]
-            let delivery = clipboard::write(&app, content, replaces.as_deref())?;
+            let delivery = clipboard::write(&app, content, &replaces)?;
             Ok(delivery)
         },
     )?;
@@ -415,6 +415,6 @@ pub(crate) fn write_copy_only(
     let written = clipboard::write(app, content);
     // Nothing is replaced: this is a new copy, not a change to the last citation.
     #[cfg(not(target_os = "windows"))]
-    let written = clipboard::write(app, content, None);
+    let written = clipboard::write(app, content, &[]);
     written.map(|_| ())
 }

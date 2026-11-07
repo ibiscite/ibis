@@ -25,10 +25,11 @@ export type SessionView = {
 type Pending = { choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
 type Flight = { id: number; session: number; presentation: number; choice: string; format: OutputId; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
-  shelf: CitationReference[]; replaces: string | null; appId: string | null; writingProjectId?: string | null;
+  shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingProjectId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
-export type LastCitation = { text: string; references: CitationReference[]; format: OutputId; project?: string };
+/** `earlier`: texts a change replaced only on the clipboard, so either may be in the document. */
+export type LastCitation = { text: string; earlier?: readonly string[]; references: CitationReference[]; format: OutputId; project?: string };
 export type RemovedReference = { token: number; reference: CitationReference; before: string[]; after: string[] };
 export type ShelfCopied = Copied & { closestMatches?: readonly string[] };
 export type SessionState = {
@@ -39,8 +40,8 @@ export type SessionState = {
   fromDocument: boolean;
   /** The newest citation per app, in memory only: what Change Last Citation reopens. */
   lastCitations: ReadonlyMap<string, LastCitation>;
-  /** The shelf is changing this citation's text: Enter may replace only that, selected. */
-  changing: string | null;
+  /** The shelf is changing this citation, by any text it may have in the document: Enter may replace only that, selected. */
+  changing: readonly string[] | null;
   session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
   presentationSubscribed: boolean; readingPresentation: boolean; retryPresentation: boolean;
   hiddenAt: number | null; selectAll: number; permissionDetour: boolean;
@@ -73,7 +74,7 @@ export type SessionEvent =
   | (Completion & { type: "hid" | "hide-failed" | "hide-refused" })
   | (Completion & { type: "delivered"; delivered: Delivered | null });
 export type SessionEffect =
-  | (Completion & { type: "copy"; ticket: string; hash: string; replaces: string | null })
+  | (Completion & { type: "copy"; ticket: string; hash: string; replaces: readonly string[] | null })
   | (Completion & { type: "hide"; presentation: number })
   | (Completion & { type: "notice"; outcome: Copied })
   | { type: "hide-status"; failed: boolean }
@@ -192,7 +193,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       if (!last || (last.project ?? null) !== (s.view?.writingProjectId ?? null)
         || last.project && last.format !== s.view?.format) return [s, []];
       return [changed(s, { selected: new Map(last.references.map((reference) => [idKey(reference.id), reference])), removed: null, selectionChanged: true,
-        query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, changing: last.text }), []];
+        query: "", interpretLocators: true, fromDocument: false, active: 0, copyError: null, changing: [last.text, ...last.earlier ?? []] }), []];
     }
     case "forget-last": return [{ ...s, lastCitations: new Map(), changing: null, flights: s.flights.map((f) => ({ ...f, appId: null })) }, []];
     case "cancel": return [s.pendingCopy ? { ...s, pendingCopy: null } : s, []];
@@ -329,6 +330,15 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "delivered": {
       if (f.phase !== "notice") return [s, []];
       if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: readDelivered(event.delivered) }) };
+      // A change Ibis only copied left the old citation in the document, unless
+      // the person pasted the new one by hand: the next change replaces either.
+      const last = f.appId === null ? undefined : s.lastCitations.get(f.appId);
+      if (last && f.replaces !== null && f.id === s.lastSuccessfulCopy && event.delivered?.outcome === "copied"
+        && event.delivered.reason === "citation-not-selected") {
+        // Kept until a change is pasted: any of them may still be in the document.
+        const earlier = f.replaces.filter((text) => text !== last.text);
+        s = { ...s, lastCitations: new Map(s.lastCitations).set(f.appId!, { ...last, earlier }) };
+      }
       const permissionRefused = event.delivered?.outcome === "copied"
         && (event.delivered.reason === "no-permission" || event.delivered.reason === "accessibility-required");
       // Only a refusal this citation still owns is a detour; a newer opening is not.

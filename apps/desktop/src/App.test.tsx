@@ -991,8 +991,8 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
   await chooseFromLibrary("Choose Library…");
   pressRow(await screen.findByRole("option", { name: FILE_ROW }));
   await waitFor(() => expect(calls).toContain("choose_library"));
-  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, error: null, problem: null, note: null });
-  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 reading notice"));
+  await emit("library:changed", { revision: "1", state: "loaded", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 3, warnings: 1, reading: [{ code: "field", line: 2, key: null }], error: null, problem: null, note: null });
+  await waitFor(() => expect(bar.textContent).toContain("refs.bib · 3 references · 1 to check"));
   await chooseFromLibrary("Reload Library");
   await waitFor(() => expect(calls).toContain("reload_library"));
   await emit("library:changed", { revision: "1",
@@ -3834,7 +3834,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: [] }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

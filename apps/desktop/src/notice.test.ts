@@ -1,6 +1,6 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), copiedNotice: vi.fn(async () => ({ delivered: { outcome: "copied", reason: null }, text: "[@synthetic]" })) }));
+const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), copiedNotice: vi.fn(async () => ({ delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]" })) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: native.listen }));
 vi.mock("./bindings", () => ({ commands: { copiedNotice: native.copiedNotice } }));
 
@@ -24,7 +24,7 @@ test.each([["MacIntel", "macos"], ["Win32", "windows"], ["Linux x86_64", "linux"
   expect(document.documentElement.dataset.platform).toBe("macos");
   expect(document.documentElement.dataset.system).toBe(system);
   expect(document.documentElement.dataset.surface).toBe("opaque");
-  expect(document.querySelector(".copied-notice strong")?.textContent).toBe(`Copied. Press ${system === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
+  expect(document.querySelector(".copied-notice strong")?.textContent).toBe(`Copied. Ibis couldn’t confirm where the text would go. Press ${system === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
   expect(native.listen.mock.calls.map(([name]) => name)).toEqual(["notice:leave", "notice:show"]);
   expect(native.copiedNotice).toHaveBeenCalledOnce();
   expect(native.copiedNotice.mock.invocationCallOrder[0]).toBeGreaterThan(native.listen.mock.invocationCallOrder[1]!);

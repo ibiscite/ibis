@@ -16,7 +16,7 @@ function library(revision = "1"): LibraryStatus {
     source_generation: "1", source_is_requested: true, revision, state: "loaded", has_snapshot: true,
     name: "synthetic.bib", snapshot_name: "synthetic.bib", references: 1,
     zotero: false, zotero_libraries: [], snapshot_zotero: false,
-    source_counts: { "file:synthetic": 1 }, warnings: 0, error: null,
+    source_counts: { "file:synthetic": 1 }, warnings: 0, reading: [], live_updates_off: false, error: null,
     problem: null, note: null, settings_notice: null, stale: false,
     updated_at: null, checked_at: null,
   };
