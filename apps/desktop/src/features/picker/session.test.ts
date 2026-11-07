@@ -16,8 +16,9 @@ function scenario() {
     const [arranged, event] = arrangeView(state, { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey([a]),
       chosen: [a], shown: prepared, searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true,
       output: { opening: 0, choice: 0, delivery: 0 }, ...change });
-    state = arranged;
-    return event;
+    // The screen sends what it shows, then commits it.
+    [state] = reduceSession(arranged, event);
+    return { type: "committed" };
   };
   /** The copy's answer; the destination's token at that moment is the arranged view's. */
   const complete = (id: number, { output: _, ...change }: Partial<Extract<SessionEvent, { type: "copied" }>> & { output?: unknown } = {}) =>

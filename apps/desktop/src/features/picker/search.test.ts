@@ -108,3 +108,10 @@ test("a reply from a newer snapshot reads the library status again", () => {
   ]);
   expect(effects).toContainEqual({ type: "refresh" });
 });
+
+test("a hidden picker searches nothing until it is shown again", () => {
+  const hidden = run([{ type: "shown", now: 1, presentation: 1 }, { type: "hidden", now: 10 }, { type: "search-inputs", inputs: inputs("garcia") }]);
+  expect(searches(hidden.effects)).toHaveLength(0);
+  const shown = run([{ type: "shown", now: 20, presentation: 2 }, { type: "search-inputs", inputs: inputs("garcia") }], hidden.state);
+  expect(searches(shown.effects)).toHaveLength(1);
+});
