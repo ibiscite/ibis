@@ -192,7 +192,10 @@ pub(crate) fn check_from_menu(app: &AppHandle) {
             // A menu click leaves Ibis inactive; the prompt must come to the front.
             #[cfg(target_os = "macos")]
             crate::panel::activate_for_dialog(&app);
-            tell(&app, &ibis_engine::catalogue::text(id, None, &[]).unwrap_or_else(|| id.to_owned()));
+            tell(
+                &app,
+                &ibis_engine::catalogue::text(id, None, &[]).unwrap_or_else(|| id.to_owned()),
+            );
         }
     });
 }
