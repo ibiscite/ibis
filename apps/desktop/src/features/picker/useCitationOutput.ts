@@ -97,7 +97,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
       locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
       ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
       ...(r.form ? { form: r.form } : {}),
-    })), output, chosenRevision, abort.signal, projectContext).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, project_refusal: result.project_refusal, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
+    })), output, chosenRevision, abort.signal, projectContext).then((result) => ({ markup: result.html ? parse(result.html) : [result.text], text: result.text, html: result.html ?? "", warnings: result.warnings, spans: result.spans, project_refusal: result.project_refusal, notices: result.notices, preview: result, fileTicket: result.ticket, fileHash: result.content_hash }));
     made
       .then((result) => { if (owns()) { askedAgain.current = null; setFormatted({ key, request, session: sessionId, opened: currentOpening.current, preview: result.preview, result: result.preview.problem ? "failed" : result, problem: result.preview.problem ?? undefined }); } })
       .catch((error) => { if (owns() && !nativeApi.isLibraryLoading(error)) {

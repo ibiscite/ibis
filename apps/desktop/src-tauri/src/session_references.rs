@@ -1,4 +1,4 @@
-//! "Cited since Ibis opened": what Ibis copied since it started or since
+//! "Cited since opening": what Ibis copied since it started or since
 //! a reset. Ibis cannot see a document, so this is never called its bibliography.
 //!
 //! The list holds record identities and nothing else, in memory. It is written
@@ -158,13 +158,19 @@ pub(crate) async fn copy_session_bibliography(
     .map_err(|_| CommandError::from(FAILED))?
 }
 
+/// One of the app's own lines from the catalogue.
+fn words(id: &str) -> String {
+    ibis_engine::catalogue::text(id, None, &[]).unwrap_or_default()
+}
+
 /// The kinds of file a bibliography can be saved as, by its extension.
 fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<'_>) -> Option<String> {
     match extension.to_ascii_lowercase().as_str() {
         "rtf" => content.rtf.map(str::to_owned),
         "html" | "htm" => content.html.map(|html| {
+            let title = words("app-saved-page");
             format!(
-                "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>References cited since Ibis opened</title></head><body>{html}</body></html>\n"
+                "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>{title}</title></head><body>{html}</body></html>\n"
             )
         }),
         "txt" => Some(format!("{}\n", content.text.trim_end())),
@@ -202,8 +208,8 @@ pub(crate) async fn export_session_bibliography(
         .dialog()
         .file()
         .set_parent(&window)
-        .set_title("Save References Cited Since Ibis Opened")
-        .set_file_name("Cited since Ibis opened.rtf")
+        .set_title(words("app-saved-title"))
+        .set_file_name(format!("{}.rtf", words("app-saved-file")))
         .add_filter("Rich Text", &["rtf"])
         .add_filter("Web page", &["html"])
         .add_filter("Plain text", &["txt"]);
@@ -298,7 +304,7 @@ mod tests {
         let page = export_text("html", &content).unwrap_or_default();
         assert!(page.contains("<p>Taylor</p>") && page.contains("charset=\"utf-8\""));
         assert!(
-            page.contains("References cited since Ibis opened"),
+            page.contains("References cited since opening"),
             "never titled as a document's bibliography"
         );
         assert_eq!(export_text("pdf", &content), None);

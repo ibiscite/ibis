@@ -2,11 +2,12 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { useLayoutEffect } from "react";
 import { PickerScroll } from "./PickerScroll";
+import { ProjectCheckNotice } from "./ProjectContextStatus";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function Picker({ rows, notice, citationProblem, citationProblemIdentity, contextNotice, contextNoticeIdentity, extraNotice, generation = 0 }: { notice?: string; citationProblem?: string; citationProblemIdentity?: object; contextNotice?: string; contextNoticeIdentity?: object; extraNotice?: string; rows: number; generation?: number }) {
-  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblemIdentity} contextNotice={contextNotice} contextNoticeIdentity={contextNoticeIdentity}>{contextNotice && <div className="notices project-context-status" role="alert"><p>A key in thesis.bib identifies a different work.</p><button>Apply Updates</button></div>}{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
+  return <main><header className="search-bar"><input id="search" aria-label="Synthetic search" /></header><PickerScroll citationProblem={citationProblem} citationProblemIdentity={citationProblemIdentity} contextNotice={contextNotice} contextNoticeIdentity={contextNoticeIdentity}>{contextNotice && <ProjectCheckNotice refusal="A key in thesis.bib identifies a different work." problem={null} onRetry={() => {}} />}{notice && <div className="notices"><p role="alert" className={citationProblem ? "citation-problem" : undefined}>{notice}</p></div>}{extraNotice && <div className="notices secondary"><p role="alert">{extraNotice}</p></div>}<div className="results-area">{Array.from({ length: rows }, (_, i) => <p role="option" id={`result-${i}`} key={`${generation}/${i}`}>row</p>)}</div></PickerScroll><footer /></main>;
 }
 
 test("new project context status is revealed once without focus changes, then keeps its reading place across updates", () => {

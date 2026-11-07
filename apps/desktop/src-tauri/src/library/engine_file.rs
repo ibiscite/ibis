@@ -95,6 +95,10 @@ pub(crate) struct FilePreview {
     /// names a different work.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) project_refusal: Option<String>,
+    /// What the engine says about this citation that is no warning, such as a
+    /// full first note; the web view words each from the catalogue.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) notices: Vec<Notice>,
 }
 /// One answer from an engine's `libraries` method, by its field.
 fn engine_list<T: serde::de::DeserializeOwned>(
@@ -843,6 +847,7 @@ impl FileLibrary {
                 .collect(),
             problem: None,
             project_refusal: None,
+            notices: result.notices.clone(),
         };
         *slot = Some((preview.ticket.clone(), Arc::new(citation), original_output));
         Ok(preview)

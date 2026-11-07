@@ -17,7 +17,8 @@ import type { SourceActionProps } from "../../ui/SourceAction";
 import type { CitationDetailsChange, CitationReference } from "./choice";
 import type { InspectorPanel } from "./useCitationInspector";
 
-export type CitationNotes = { entry: string | null; output: readonly string[]; closest: readonly string[] };
+/** `entry` explains output that depends on the whole document: its short name and its sentence. */
+export type CitationNotes = { entry: { short: string; text: string } | null; output: readonly string[]; closest: readonly string[] };
 
 /** The details of one reference, or the notes on its citation. The column's
  * controls never move: everything that grows with the output sits beside them. */
@@ -50,7 +51,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   if (!editing) {
     const { entry, output, closest } = notes;
     return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} readOnly onClose={onClose}>
-      {entry && <><h3>{pickerText.entryOnlyShort}</h3><p>{entry}</p></>}
+      {entry && <><h3>{entry.short}</h3><p>{entry.text}</p></>}
       {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
       {closest.length > 0 && <h3>{pickerText.closestMatches}</h3>}
       {closest.map((warning, i) => <p key={`partial-${i}`}>{warning}</p>)}
@@ -81,7 +82,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     {/* What Enter will paste, in full, right under the fields that change it. */}
     {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
     {problem}
-    {[...notes.entry ? [notes.entry] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
+    {[...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
     {reference && <hr />}
     {reference && pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
       <span>{reading ? readerText.hide : readerText.show}</span>

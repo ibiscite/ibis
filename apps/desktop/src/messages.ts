@@ -344,6 +344,8 @@ export const pickerText = {
   previewStyleError: (style: string) => say("picker-preview-style-error", { style }),
   entryOnly: (style: string) => say("picker-entry-only", { style }),
   entryOnlyShort: say("picker-entry-only-short"),
+  firstNote: (style: string) => say("picker-first-note", { style }),
+  firstNoteShort: say("picker-first-note-short"),
   shelfStale: say("picker-shelf-stale"),
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),
   allChosen: (n: number) => say("picker-all-chosen", { n: String(n) }),
@@ -571,7 +573,7 @@ const reading = (status: Reading) => status.reading ?? [];
 function readingSummary(status: Reading) {
   if (status.warnings === 0) return "";
   const notices = reading(status);
-  if (notices.length < status.warnings) return ` · ${count(status.warnings, "reading problem")}`;
+  if (notices.length < status.warnings) return ` · ${say("library-entries-to-check", { count: status.warnings })}`;
   const skipped = notices.filter(({ code }) => skips(code)).length, check = status.warnings - skipped;
   return (skipped > 0 ? ` · ${count(skipped, "entry", "entries")} skipped` : "") + (check > 0 ? ` · ${numbers.format(check)} to check` : "");
 }
@@ -612,7 +614,7 @@ function readingDetail(status: Reading) {
     skipped > 0 ? `${count(skipped, "entry", "entries")} skipped: ${reasons.join(", ")}.` : null,
     check.length > 0 ? `Check ${lines(check) ?? "the library"}.` : null,
     ...[...new Set(notices.map(({ code }) => otherNotices[code]))].filter((text): text is string => text !== undefined),
-    notices.length < status.warnings ? `${count(status.warnings - notices.length, "more problem")} not listed.` : null,
+    notices.length < status.warnings ? say("library-more-not-listed", { count: status.warnings - notices.length }) : null,
   ].filter((text): text is string => text !== null);
   return sentences.join(" ");
 }

@@ -392,6 +392,11 @@ export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "
 export type FilePreview = {
 	content_hash: string;
 	html: string | null;
+	/**
+	 * What the engine says about this citation that is no warning, such as a
+	 * full first note; the web view words each from the catalogue.
+	 */
+	notices?: Notice[];
 	problem?: string | null;
 	/**
 	 * Why this key citation is refused: a key in the project bibliography
@@ -555,6 +560,8 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 
 /** Something the person should know before restoring. */
 export type Note = "library-not-found" | "shortcut-kept" | "repairs-settings";
+
+export type Notice = "needs-document-context" | "reference-entry" | "full-first-note" | "year-suffix-withheld" | "input-language-unsupported";
 
 /**
  * What the notice says: whether the citation was pasted or only copied, and

@@ -60,14 +60,16 @@ fn version_line(name: &str, version: &str) -> String {
     format!("{name} {version}")
 }
 
-/// "Open Picker", which names the shortcut that opens it.
+/// "Open Ibis", which names the shortcut that opens it.
 pub(crate) struct OpenMenuItem(MenuItem<tauri::Wry>);
 
 fn open_label(shortcut: Option<&str>) -> String {
+    use ibis_engine::catalogue::text;
     match shortcut {
-        Some(shortcut) => format!("Open Picker ({shortcut})"),
-        None => "Open Picker".to_string(),
+        Some(shortcut) => text("app-tray-open-shortcut", None, &[("shortcut", shortcut)]),
+        None => text("app-tray-open", None, &[]),
     }
+    .unwrap_or_default()
 }
 
 /// Name a changed shortcut in the menu at once.

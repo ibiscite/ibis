@@ -2,7 +2,7 @@
 // Each has one id, stored and sent as it is, and one name, shown everywhere.
 import { DEFAULT_OUTPUT, DEFAULT_STYLE, OUTPUTS } from "../bindings";
 import type { Markup } from "./markup";
-import type { CitationSpan } from "../bindings";
+import type { CitationSpan, Notice } from "../bindings";
 
 export type OutputChoice = (typeof OUTPUTS)[number];
 export type OutputId = OutputChoice["id"];
@@ -60,4 +60,6 @@ export interface FormattedCitation {
   spans?: CitationSpan[];
   /** Why a key citation is refused: a key in the project bibliography names a different work. */
   project_refusal?: string | null;
+  /** The engine's notices about it, such as a full first note. */
+  notices?: readonly Notice[];
 }

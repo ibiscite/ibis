@@ -410,7 +410,7 @@ fn command() -> Command {
         )
         .subcommand(
             Command::new("doctor")
-                .about("Report source health offline, without writing or sending anything")
+                .about(ibis_engine::catalogue::text("cli-doctor-about", None, &[]).unwrap_or_default())
                 .arg(
                     Arg::new("config")
                         .long("config")

@@ -182,8 +182,17 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                 .writing_projects
                 .iter()
                 .map(|project| {
+                    let bibliography = project
+                        .bibliography
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .map(|name| human::field(&name.to_string_lossy()))
+                        .unwrap_or_else(|| {
+                            ibis_engine::catalogue::text("cli-project-without-bibliography", None, &[])
+                                .unwrap_or_default()
+                        });
                     format!(
-                        "{}\t{}\t{}",
+                        "{}\t{}\t{}\t{bibliography}",
                         project.id,
                         human::field(&project.name),
                         crate::output_name(&project.output)

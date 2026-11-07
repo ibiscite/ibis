@@ -37,7 +37,7 @@ has its own page; read only the one your change touches:
 9. **Great defaults, then choice.** Most people never open Settings; no setting exists because a choice was hard.
 10. **The bar for anything people see.** A beginner succeeds with no reading, in plain words, without opening Settings; a pro does everything by keyboard, with nothing waiting or confirming.
 11. **One next action.** Every screen has one clear next action, and every failure says why and what to do.
-12. **People's words, not the engine's** (maintainer, 2026-11-05). Name things by what the person already has: "thesis.bib", "your Zotero library", "cited since Ibis opened". Engine words (session, project bibliography, context, scope, source health) never reach the interface, and the command line's human output uses the same words. Where a citation goes is read from the footer alone: the action names the app and format, the status names the library and any linked `.bib`; no other strip of selectors.
+12. **People's words, not the engine's** (maintainer, 2026-11-05). Name things by what the person already has: "thesis.bib", "your Zotero library", "cited since opening". Engine words (session, project bibliography, context, scope, source health) never reach the interface, and the command line's human output uses the same words. Where a citation goes is read from the footer alone: the action names the app and format, the status names the library and any linked `.bib`; no other strip of selectors.
 
 ## Where Ibis departs from macOS
 
@@ -110,7 +110,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | [Settings](design/settings.md) |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
-| Bibliography, "Cited since Ibis opened", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
+| Bibliography, "Cited since opening", project `.bib` (0.4) | A sheet from More; rows say "In refs.bib" or "Missing from refs.bib" |
 | `ibis check`, DOI lookup (0.6) | Command line first; DOI lookup as an opt-in no-results fallback |
 | A source's PDF, choosing the page there (#1252) | [Reader](design/inspector-and-reader.md#reader-planned-1252): the window widens once, the one planned exception to [C10]; thumbnails and pages sit between the list and the column, and a page is cited by choosing it ([M1]) |
 

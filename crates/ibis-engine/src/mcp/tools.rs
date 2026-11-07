@@ -22,8 +22,9 @@ pub const MAX_HITS: usize = 25;
 pub const MAX_STYLES: usize = 200;
 /// Entries kept of any one list (authors, keywords).
 pub const MAX_LIST: usize = 20;
-/// Bytes of JSON one tool answer may carry. Search returns fewer hits rather
-/// than more; anything else larger is refused.
+/// Bytes of JSON one tool result may take, its text and its structured copy of
+/// the answer together. Search returns fewer hits rather than more; anything
+/// else larger is refused.
 pub const MAX_ANSWER: usize = 256 * 1024;
 /// Said with every answer that holds library text, because anyone can write a
 /// title: a library can come from a colleague, a download or a web page.
@@ -128,12 +129,20 @@ impl From<EngineError> for Refusal {
 
 /// A tool's answer, or the error an agent reads instead.
 pub(super) fn call(engine: &Engine, problem: Option<&Refusal>, tool: &Tool, arguments: &Value) -> Value {
-    match answer(engine, problem, tool, arguments) {
-        Ok((text, data)) => json!({
+    let answered = answer(engine, problem, tool, arguments).and_then(|(text, data)| {
+        // The answer goes twice, as text and as structured content: the bound is on what is sent.
+        let result = json!({
             "content": [{"type": "text", "text": text}],
             "structuredContent": data,
             "isError": false
-        }),
+        });
+        if result.to_string().len() > MAX_ANSWER {
+            return Err(EngineError::new(ErrorCode::ResourceLimit).into());
+        }
+        Ok(result)
+    });
+    match answered {
+        Ok(result) => result,
         Err(Refusal { code, advice }) => {
             let name = serde_json::to_value(code).unwrap_or(Value::Null);
             let text = format!("error: {}. {advice}", name.as_str().unwrap_or("internal"));
@@ -161,11 +170,7 @@ fn answer(
         }
     }
     let data = (tool.answer)(engine, arguments)?;
-    let text = data.to_string();
-    if text.len() > MAX_ANSWER {
-        return Err(EngineError::new(ErrorCode::ResourceLimit).into());
-    }
-    Ok((text, data))
+    Ok((data.to_string(), data))
 }
 
 /// An argument nothing reads would be lost in silence, so it is refused by name.
@@ -308,9 +313,11 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
         let mut data = view::summary(&view::citable(record), reference);
         data.insert("partial".into(), json!(hit.partial));
         data.insert("typo".into(), json!(hit.typo));
-        size += Value::Object(data.clone()).to_string().len() + 1;
+        // Each hit is sent twice: as JSON, and escaped inside the answer's text.
+        let json = Value::Object(data.clone()).to_string();
+        size += json.len() + Value::String(json).to_string().len();
         // Leave room for the envelope; a shorter list is still a true answer.
-        if size > MAX_ANSWER - 4096 {
+        if size > MAX_ANSWER - 8192 {
             complete = false;
             break;
         }

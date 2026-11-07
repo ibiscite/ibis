@@ -331,6 +331,17 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
   expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
 });
 
+test("a note style says why it copies the full first note, from the engine's notice", () => {
+  vi.stubGlobal("innerWidth", 1024); vi.stubGlobal("innerHeight", 720);
+  render(shelf({ selected: chosen([record("a")]), style: "chicago-notes-bibliography", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
+  fireEvent.click(screen.getByRole("button", { name: "Full first note" }));
+  expect(within(details("Citation warnings")).getByText(/Chicago \(notes\) shortens later notes to the same work, which depends on your whole document/)).toBeTruthy();
+  cleanup();
+  // A style without the notice says nothing of the kind.
+  render(shelf({ selected: chosen([record("a")]), style: "apa", outputWarnings: [], shown: output() }));
+  expect(screen.queryByRole("button", { name: "Full first note" })).toBeNull();
+});
+
 test("a formatting refusal stays beside the citation before its details open, even with the preview hidden", () => {
   const reason = "Reference 1: This form cannot be expressed. Choose another form.";
   render(shelf({ selected: chosen([record("a")]), shown: "failed", problem: reason }));

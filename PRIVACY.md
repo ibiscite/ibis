@@ -15,7 +15,7 @@ and its local data. New Ibis data flows need a recorded decision ([decisions](do
   history, cloud clipboard and other apps may keep it under your system settings.
   Copy Entry writes the entry as your file has it, including any `file` or `note`
   field, so check it before adding it to a shared bibliography.
-- **Cited since Ibis opened:** which references you copied, by identity only,
+- **Cited since opening:** which references you copied, by identity only,
   in memory until you quit or reset the list. Ibis writes it nowhere unless you
   save the bibliography, to the file you choose.
 - **Automatic paste on macOS:** Ibis checks the active app and process, and opaque
