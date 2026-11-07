@@ -83,15 +83,16 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
     {problem}
     {[...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
-    {reference && <hr />}
-    {reference && pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
+    {/* The actions stay in view at the bottom while the details above them scroll. */}
+    {reference && <div className="inspector-actions"><hr />
+    {pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
       <span>{reading ? readerText.hide : readerText.show}</span>
     </Button>}
-    {reference && source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
+    {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
       <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
     </Button>}
-    {reference && <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
+    <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
       <span>{keyText.removeFromCitation}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
-    </Button>}
+    </Button></div>}
   </Inspector>;
 }

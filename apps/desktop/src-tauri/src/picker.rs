@@ -204,6 +204,8 @@ fn reveal_shows(visible: Option<bool>) -> bool {
 /// Show the picker on the display with the pointer, focused, and tell the interface to focus the search box.
 pub(crate) fn show_picker(app: &AppHandle) {
     crate::updater::picker_activity(app);
+    crate::notice::retire(app);
+    crate::settings_window::picker_opened();
     // Accept once, before dispatch/capture. A later request cannot donate its
     // ticket to this show between a separate advance and current() read.
     let owner = app.state::<PickerGeneration>().advance();

@@ -103,6 +103,24 @@ pub(crate) struct Notice {
     /// Held while the window is looked up or created, so two quick copies
     /// cannot both create it.
     window: Mutex<()>,
+    /// Advanced each time the picker opens: a copy claimed before then never
+    /// shows its notice over the search field.
+    retirements: Retirements,
+}
+
+#[derive(Default)]
+struct Retirements(AtomicU64);
+
+impl Retirements {
+    fn epoch(&self) -> u64 {
+        self.0.load(Ordering::SeqCst)
+    }
+    fn retire(&self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+    fn holds(&self, epoch: u64) -> bool {
+        self.epoch() == epoch
+    }
 }
 
 /// Delivery workers may finish out of order. A notice belongs to its immutable
@@ -153,6 +171,9 @@ pub(crate) struct NoticeMessage {
     /// document uses one.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     plugin_note: bool,
+    /// Ibis's own Light or Dark, set as the notice is shown; absent for System.
+    #[serde(skip_serializing_if = "crate::preferences::Appearance::is_system")]
+    appearance: crate::preferences::Appearance,
 }
 
 impl NoticeMessage {
@@ -184,6 +205,7 @@ pub(crate) async fn show_copied_notice(
     delivery: Option<u32>,
     summary: Option<crate::copy::ReceiptSummary>,
 ) -> Delivered {
+    let epoch = app.state::<Notice>().retirements.epoch();
     let receipt = app
         .state::<Notice>()
         .receipts
@@ -231,24 +253,29 @@ pub(crate) async fn show_copied_notice(
             more: summary.as_ref().map(|receipt| receipt.more),
             milestone,
             plugin_note: false,
+            appearance: Default::default(),
         },
-        receipt,
+        (receipt, epoch),
         pasted_into,
     );
     delivered
 }
 
-fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_into: Option<AppId>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), pasted_into: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
     let Ok(_creating) = notice.window.lock() else { return };
     let Ok(owner) = notice.receipts.lock() else { return };
-    if !owner.current(receipt) {
+    if !owner.current(receipt) || !notice.retirements.holds(epoch) {
         return;
     }
     // Spent only here: a notice a newer one replaced keeps it for the next paste.
     text.plugin_note = pasted_into.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
+    text.appearance = app
+        .try_state::<crate::preferences::SettingsFile>()
+        .map(|file| file.appearance())
+        .unwrap_or_default();
     let shown_for = text.shown_for();
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());
@@ -263,15 +290,20 @@ fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_i
                     report(window.set_position(corner.position()), NativeIssue::Position);
                 }
                 report(window.emit_to(LABEL, "notice:show", &text), NativeIssue::Notice);
-                present(app);
+                present(app, showing);
                 shown_for
             }
             // Its page starts the usual timer once it has loaded.
-            None if create(app).is_some() => LOAD_LIMIT,
+            None if create(app, showing).is_some() => LOAD_LIMIT,
             None => return,
         }
     };
     dismiss_after(app, showing, timer);
+    // The picker opened while this was being shown.
+    if !notice.retirements.holds(epoch) {
+        notice.showing.fetch_add(1, Ordering::SeqCst);
+        dismiss(app);
+    }
 }
 
 /// When a notice in view for `shown` starts fading out, and how long after
@@ -286,7 +318,7 @@ fn dismiss_after(app: &AppHandle, showing: u64, delay: Duration) {
     let handle = app.clone();
     let (leave_at, close_after) = leave_schedule(delay);
     let timer = std::thread::Builder::new().name("ibis-notice".into()).spawn(move || {
-        let current = || handle.state::<Notice>().showing.load(Ordering::SeqCst) == showing;
+        let current = || still_showing(&handle, showing);
         std::thread::sleep(leave_at);
         if !current() {
             return;
@@ -350,7 +382,7 @@ fn position(app: &AppHandle) -> Option<Corner> {
     })
 }
 
-fn create(app: &AppHandle) -> Option<()> {
+fn create(app: &AppHandle, showing: u64) -> Option<()> {
     let (width, height) = notice_size(Platform::CURRENT);
     // WebView2 refuses a second webview whose browser arguments differ from
     // the picker's, and they keep it offline (#201), so reuse them exactly.
@@ -429,13 +461,15 @@ fn create(app: &AppHandle) -> Option<()> {
     });
     let window = checked(builder.build(), NativeIssue::Notice)?;
     #[cfg(target_os = "macos")]
-    macos::configure(app, &window);
+    macos::configure(app, &window, showing);
     // Clicks pass through, including its transparent margins, so it never
     // blocks what is under it (macOS does this in `configure`).
     #[cfg(target_os = "windows")]
     report(window.set_ignore_cursor_events(true), NativeIssue::Notice);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = window;
+    #[cfg(not(target_os = "macos"))]
+    let _ = showing;
     Some(())
 }
 
@@ -493,11 +527,36 @@ fn x11_composited() -> Result<bool, ()> {
 }
 
 /// Bring a kept notice back to the front without activating Ibis.
-fn present(app: &AppHandle) {
+fn present(app: &AppHandle, showing: u64) {
     #[cfg(target_os = "macos")]
-    macos::present(app);
+    macos::present(app, showing);
     #[cfg(not(target_os = "macos"))]
-    let _ = app;
+    let _ = (app, showing);
+}
+
+/// Whether `showing` is still the notice to show: a showing queued for the
+/// main thread never brings back a notice that was replaced or retired since.
+fn still_showing(app: &AppHandle, showing: u64) -> bool {
+    app.state::<Notice>().showing.load(Ordering::SeqCst) == showing
+}
+
+/// The picker opening takes the notice away at once: both sit at the top of
+/// the display, and a notice must never cover the search field.
+/// A copy still being delivered keeps its paste but loses its notice.
+pub(crate) fn retire(app: &AppHandle) {
+    let Some(notice) = app.try_state::<Notice>() else {
+        return;
+    };
+    // Lock-free: this runs on the main thread, which a publication may be
+    // waiting for while it creates the window. A publication racing this
+    // checks again once it has shown, and takes itself away.
+    notice.retirements.retire();
+    if notice.text.lock().is_ok_and(|text| text.is_none()) {
+        return;
+    }
+    // A newer showing retires the old one's timers.
+    notice.showing.fetch_add(1, Ordering::SeqCst);
+    dismiss(app);
 }
 
 /// Take the notice away. Windows and Linux close it, since showing a hidden
@@ -534,8 +593,9 @@ mod macos {
         })
     }
 
-    pub(super) fn configure(app: &AppHandle, window: &tauri::WebviewWindow) {
+    pub(super) fn configure(app: &AppHandle, window: &tauri::WebviewWindow, showing: u64) {
         let window = window.clone();
+        let handle = app.clone();
         report(
             app.run_on_main_thread(move || {
                 let Some(panel) = checked(window.to_panel::<NoticePanel>(), NativeIssue::Notice) else {
@@ -565,16 +625,21 @@ mod macos {
                 panel.set_ignores_mouse_events(true);
                 // The picker's dismissal hides the whole app; the notice must stay.
                 panel.as_panel().setCanHide(false);
-                panel.order_front_regardless();
+                if super::still_showing(&handle, showing) {
+                    panel.order_front_regardless();
+                }
             }),
             NativeIssue::Notice,
         );
     }
 
-    pub(super) fn present(app: &AppHandle) {
+    pub(super) fn present(app: &AppHandle, showing: u64) {
         let handle = app.clone();
         report(
             app.run_on_main_thread(move || {
+                if !super::still_showing(&handle, showing) {
+                    return;
+                }
                 if let Some(panel) = checked(handle.get_webview_panel(super::LABEL), NativeIssue::Notice) {
                     panel.order_front_regardless();
                 }
@@ -627,6 +692,16 @@ mod tests {
         assert!(c_receipt.is_some(), "a fresh copy can replace a dismissed receipt");
         assert_eq!(owner.claim(b), None);
         assert!(owner.current(c_receipt));
+    }
+
+    #[test]
+    fn a_picker_opening_retires_a_notice_still_being_delivered() {
+        let retirements = Retirements::default();
+        let pending = retirements.epoch();
+        assert!(retirements.holds(pending), "a copy publishes its notice");
+        retirements.retire(); // the picker opened before the paste finished
+        assert!(!retirements.holds(pending), "its notice would cover the search field");
+        assert!(retirements.holds(retirements.epoch()), "the next copy shows its notice");
     }
 
     #[test]

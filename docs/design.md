@@ -28,7 +28,7 @@ has its own page; read only the one your change touches:
 
 1. **One anatomy everywhere.** Search, list, shelf and footer, in that order, at every size; layouts fold, never reorder.
 2. **One design, macOS first.** Every system uses the macOS design; only correctness follows the system (see [Per platform](design/foundations.md#per-platform)).
-3. **Readable first.** Nothing smaller than 12 px; with Increase Contrast, secondary text passes 4.5:1.
+3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the footer, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
 5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch.
 6. **Say what happened.** Every action ends in a visible result: copied, pasted, or why not. Colour is never the only signal. Nothing asks "are you sure?"; destructive actions apply at once with an 8 s Undo [D16].
@@ -47,6 +47,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | --- | --- | --- |
 | Hit areas | Regular controls are 24 pt | Drawn at Apple's size, hit area at least 32 px (menu rows keep 24) |
 | Smallest text | 10 and 11 pt captions | Nothing under 12 px |
+| Secondary text | 50% black in light | 60% black, so it keeps 4.5:1 on the window's glass without vibrancy behind it |
 | Accent | System accent | Follow the Mac by default, or **Ibis scarlet** |
 | Citation colour | None | The scarlet beak marks the citation; its text stays in the text colours [C14] |
 | Large buttons | Capsules on macOS 26 | Rounded rectangles at every size |

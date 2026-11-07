@@ -183,7 +183,7 @@ mode silently omits those postnotes, and Ibis cannot know the document's mode.
 
 Editor integrations written for Better BibTeX's Cite as You Write can use Ibis
 instead, if they let you enter the whole endpoint address. Switch on Settings ›
-Citations › **Editor endpoint**, choose **Copy Address**, and paste it where the
+Citations › **Cite from your editor**, choose **Copy Address**, and paste it where the
 editor asks for its Cite as You Write URL. Integrations that only let you change
 Zotero's port cannot reach it. Formats and options are listed in
 [parity](parity.md#better-bibtex-cite-as-you-write).

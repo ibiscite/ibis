@@ -342,7 +342,7 @@ about-unavailable = This build does not update itself.
 
 
 # Settings window pages and visual choices.
-settings-look = Look
+settings-look = Appearance
 settings-citations = Citations
 settings-search = Search Settings
 settings-no-results = No matching settings
@@ -389,7 +389,7 @@ citations-default-description = Used when an app has no remembered format.
 citations-recent = Recent citations
 citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
 citations-recent-words = history recents cited here forget privacy
-citations-editor = Editor endpoint
+citations-editor = Cite from your editor
 citations-editor-description = Lets an editor on this computer open the picker and receive the citation you choose, through Better BibTeX’s Cite as You Write. Web pages can’t use it, and nothing leaves this computer.
 citations-editor-words = cayw cite as you write vs code vscode better bibtex zotero endpoint port url editor
 citations-editor-address = Address for your editor
@@ -431,7 +431,7 @@ canvas-hovered = Hovered
 canvas-pressed = Pressed
 canvas-focused = Keyboard focus
 
-general-small-surprises-label = Small surprises
+general-small-surprises-label = Bird facts and milestones
 general-small-surprises-description = Bird facts, milestones and anniversaries.
 settings-surprises-words = delight easter egg fun
 delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
@@ -466,7 +466,11 @@ choice-back = Choose Another Source
 backup-words = backup restore export import move migrate new computer sync iCloud OneDrive
 backup-title = Another computer
 backup-label = Back up settings
-backup-description = A file to restore on another computer. Paste approvals and window places stay on this one.
+backup-description =
+    { $platform ->
+        [linux] A file to restore on another computer. Window places stay on this one.
+       *[other] A file to restore on another computer. The apps you let Ibis paste into, and window places, stay on this one.
+    }
 backup-button = Back Up…
 backup-saved = Saved to { $file }.
 restore-label = Restore settings
@@ -551,7 +555,11 @@ operation-failures-app-choices = Ibis needs your paste choice for this app becau
 operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
 setup-sources-title = Where do your references live?
-setup-sources-line = Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+setup-sources-line =
+    { $platform ->
+        [linux] Ibis finds a reference and copies its citation for you to paste where you’re typing. It only reads your library, never changes it.
+       *[other] Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+    }
 setup-return-hint = After this, open Ibis from any app with { $shortcut }.
 setup-shortcut-unavailable = The shortcut is unavailable. Open Ibis from the menu bar or tray.
 setup-no-shortcut = No shortcut is set.

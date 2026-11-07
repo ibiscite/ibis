@@ -145,7 +145,7 @@ const pair = (token: string) => {
   return [flatten(match![1]!, 0), flatten(match![2]!, 1)] as const;
 };
 
-test.each([["--text", 4.5], ["--scarlet", 3]] as const)(
+test.each([["--text", 4.5], ["--text-secondary", 4.5], ["--scarlet", 3]] as const)(
   "%s keeps %s:1 on the surface in light and dark", (token, ratio) => {
     const surface = pair("--surface"), value = pair(token);
     expect(contrast(value[0], surface[0])).toBeGreaterThanOrEqual(ratio);
@@ -197,7 +197,7 @@ test("choice titles use the label colour on every screen", () => {
 });
 
 test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
-  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 49.8%), rgb(255 255 255 / 54.9%))",
+  for (const value of ["--text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%))", "--text-secondary: light-dark(rgb(0 0 0 / 60%), rgb(255 255 255 / 54.9%))",
     "--text-tertiary: light-dark(rgb(0 0 0 / 25.9%), rgb(255 255 255 / 24.7%))", "--text-disabled: light-dark(rgb(0 0 0 / 24.7%), rgb(255 255 255 / 24.7%))",
     "--fill-1: light-dark(rgb(0 0 0 / 9.8%), rgb(255 255 255 / 9.8%))", "--fill-4: light-dark(rgb(0 0 0 / 2.7%), rgb(255 255 255 / 2.7%))",
     "--separator: light-dark(rgb(0 0 0 / 10%), rgb(255 255 255 / 12%))", "--surface: light-dark(#ffffff, #1e1e1e)", "--selected: light-dark(#0064e1, #0059d1)"]) expect(tokens).toContain(value);

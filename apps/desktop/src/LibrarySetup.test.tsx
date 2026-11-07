@@ -1,3 +1,4 @@
+import { currentPlatform } from "./platform";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
@@ -56,7 +57,10 @@ test("first run teaches the basics, focuses Zotero and moves through four tiles 
   const findSources = vi.fn(async () => ({ zotero: "absent" as const, list: 1, files: [], cut_short: false }));
   const { container } = render(<LibrarySetup api={{ chooseLibrary, useZotero: async () => undefined, findSources, useSampleLibrary }} perform={perform}
     shortcut={{ shortcut: "Control+Shift+Y", registered: true, error: null }} />);
-  expect(screen.getByText("Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.")).toBeTruthy();
+  // Linux copies rather than pastes, and says so.
+  expect(screen.getByText(currentPlatform() === "linux"
+    ? "Ibis finds a reference and copies its citation for you to paste where you’re typing. It only reads your library, never changes it."
+    : "Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.")).toBeTruthy();
   expect(screen.getByText(/After this, open Ibis from any app with/)).toBeTruthy();
   expect(container.querySelector('.welcome-mark[aria-hidden="true"]')).toBeTruthy();
   expect(screen.getAllByRole("option")).toHaveLength(4);
