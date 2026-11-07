@@ -132,8 +132,8 @@ fn sizing_larger_text_multiplies_only_the_default_height_without_compounding() {
 }
 
 #[test]
-fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes() {
-    use crate::preferences::{Accent, PickerPreferencesPatch, preference_revision, set_picker_preferences};
+fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
+    use crate::preferences::{Accent, PickerPreferencesPatch, picker_preferences_saved, save_picker_preferences};
 
     for failed_newer_flush in [false, true] {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
@@ -146,46 +146,53 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
         let window = tauri::WebviewWindowBuilder::new(&app, "settings", Default::default())
             .build()
             .unwrap_or_else(|error| panic!("{error}"));
-        let older = set_picker_preferences(
-            PickerPreferencesPatch {
-                larger_text: Some(false),
-                accent: Some(Accent::Ibis),
-                ..Default::default()
-            },
-            preference_revision(app.state::<SettingsFile>()).unwrap_or_else(|error| panic!("{error}")),
-            app.state::<SettingsFile>(),
-            app.handle().clone(),
-            window.as_ref().window(),
-        );
-        let newer = set_picker_preferences(
-            PickerPreferencesPatch {
-                larger_text: Some(true),
-                ..Default::default()
-            },
-            preference_revision(app.state::<SettingsFile>()).unwrap_or_else(|error| panic!("{error}")),
-            app.state::<SettingsFile>(),
-            app.handle().clone(),
-            window.as_ref().window(),
-        );
+        let save = |patch| {
+            let receipt = save_picker_preferences(
+                patch,
+                app.state::<SettingsFile>(),
+                app.handle().clone(),
+                window.as_ref().window(),
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+            tauri::async_runtime::block_on(picker_preferences_saved(receipt, app.state::<SettingsFile>()))
+        };
+        save(PickerPreferencesPatch {
+            larger_text: Some(false),
+            accent: Some(Accent::Ibis),
+            ..Default::default()
+        })
+        .unwrap_or_else(|error| panic!("{error}"));
+        let read_only = |on: bool| {
+            let mut permissions = std::fs::metadata(&path)
+                .unwrap_or_else(|error| panic!("{error}"))
+                .permissions();
+            permissions.set_readonly(on);
+            std::fs::set_permissions(&path, permissions).unwrap_or_else(|error| panic!("{error}"));
+        };
         if failed_newer_flush {
-            std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));
+            read_only(true);
         }
-        assert_eq!(tauri::async_runtime::block_on(newer).is_err(), failed_newer_flush);
+        let newer = save(PickerPreferencesPatch {
+            larger_text: Some(true),
+            ..Default::default()
+        });
+        assert_eq!(newer.is_err(), failed_newer_flush);
         let sizing = app.state::<Sizing>();
         let height = || plan(None, sizing.larger_text.load(Ordering::SeqCst), (1400.0, 900.0)).height;
-        assert_eq!(height(), 552, "accepted text size applies even if its flush fails");
+        assert_eq!(height(), 552, "the chosen text size applies even if its save fails");
         if failed_newer_flush {
-            std::fs::remove_dir(&path).unwrap_or_else(|error| panic!("{error}"));
+            read_only(false);
         }
         let geometry = sizing
             .record("display-a".into(), dragged(840, 600))
             .unwrap_or_else(|| panic!("missing synthetic frame"));
         assert_eq!(sizing.persist(&app.state::<SettingsFile>(), geometry), Some(true));
-        tauri::async_runtime::block_on(older).unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(height(), 552, "delayed A cannot undo the accepted B on reopen");
         let saved = ibis_core::settings::load(&path).settings;
         assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
-        assert_eq!(saved.unknown["accent"], "ibis", "A's unrelated field must still save");
+        assert_eq!(
+            saved.unknown["accent"], "ibis",
+            "the earlier choice's other field is saved"
+        );
         assert_eq!(saved.larger_text.unwrap_or(false), !failed_newer_flush);
         let restarted = Sizing::default();
         restarted.load(&saved);
@@ -195,53 +202,6 @@ fn sizing_preferences_delayed_first_poll_keeps_newer_text_and_unrelated_writes()
             if failed_newer_flush { 480 } else { 552 }
         );
     }
-}
-
-#[test]
-fn sizing_preferences_unissued_revision_cannot_change_the_frame_or_settings() {
-    use crate::preferences::{PickerPreferencesPatch, preference_revision, set_picker_preferences};
-
-    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-    let path = directory.path().join("settings.json");
-    let app = tauri::test::mock_builder()
-        .manage(SettingsFile::new(path.clone()))
-        .manage(Sizing::default())
-        .build(tauri::generate_context!(test = true))
-        .unwrap_or_else(|error| panic!("{error}"));
-    let window = tauri::WebviewWindowBuilder::new(&app, "settings", Default::default())
-        .build()
-        .unwrap_or_else(|error| panic!("{error}"));
-    let issued = preference_revision(app.state::<SettingsFile>()).unwrap_or_else(|error| panic!("{error}"));
-    for revision in [0, issued + 1, u64::MAX] {
-        let result = tauri::async_runtime::block_on(set_picker_preferences(
-            PickerPreferencesPatch {
-                larger_text: Some(true),
-                ..Default::default()
-            },
-            revision,
-            app.state::<SettingsFile>(),
-            app.handle().clone(),
-            window.as_ref().window(),
-        ));
-        assert!(result.is_err());
-        let larger = app.state::<Sizing>().larger_text.load(Ordering::SeqCst);
-        assert_eq!(plan(None, larger, (1400.0, 900.0)).height, 480);
-        assert!(!path.exists(), "refused revisions must not touch disk");
-    }
-    tauri::async_runtime::block_on(set_picker_preferences(
-        PickerPreferencesPatch {
-            larger_text: Some(true),
-            ..Default::default()
-        },
-        issued,
-        app.state::<SettingsFile>(),
-        app.handle().clone(),
-        window.as_ref().window(),
-    ))
-    .unwrap_or_else(|error| panic!("{error}"));
-    let larger = app.state::<Sizing>().larger_text.load(Ordering::SeqCst);
-    assert_eq!(plan(None, larger, (1400.0, 900.0)).height, 552);
-    assert_eq!(ibis_core::settings::load(&path).settings.larger_text, Some(true));
 }
 
 #[test]

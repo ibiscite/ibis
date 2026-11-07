@@ -79,13 +79,6 @@ pub(crate) fn of_project(output: &OutputSpec) -> Result<OutputRef, String> {
     })
 }
 
-/// A stored id read leniently: anything but a listed id, as a file from
-/// another version may hold, is no choice at all.
-pub(crate) fn lenient<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Option<OutputRef>, D::Error> {
-    let value = serde_json::Value::deserialize(deserializer)?;
-    Ok(value.as_str().and_then(listed))
-}
-
 /// One output as the web view shows it, from the engine's list, written into
 /// `bindings.ts` by `node scripts/gen.mjs`.
 #[cfg(test)]

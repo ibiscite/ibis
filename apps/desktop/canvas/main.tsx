@@ -130,7 +130,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     editWritingProject: projectContext ? async () => writingProjects : undefined,
     retryProject: projectContext ? noop : undefined,
     chooseProject: projectContext ? noop : undefined,
-    pickerPreferences: settings.pickerPreferences, setPickerPreferences: settings.setPickerPreferences,
+    pickerPreferences: settings.pickerPreferences, savePickerPreferences: settings.savePickerPreferences, pickerPreferencesSaved: settings.pickerPreferencesSaved,
     shortcutStatus: settings.shortcutStatus, onShortcutStatus: settings.onShortcutStatus,
     onPreferencesChanged: async (changed) => settings.onPreferencesChanged(() => changed(null)),
     pickerPresentation: async () => 0, pickerVisible: async () => true,
@@ -302,7 +302,7 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
-  void settings.setPickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }, 0);
+  void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";
   document.documentElement.classList.toggle("settings-window", settingsWindow);

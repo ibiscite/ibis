@@ -86,7 +86,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   }
   expect(copied).toHaveBeenCalledOnce();
   expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toContain("[Sample]");
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
 });
 
 test.each<Density>(["compact", "comfortable"])("samples stay labelled in %s rows", async (density) => {

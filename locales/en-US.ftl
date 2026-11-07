@@ -554,6 +554,7 @@ operation-failures-settings = Settings could not open. Try again.
 operation-failures-app-choices = Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy Only in the format menu.
 operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
+operation-failures-app-delivery = Ibis saved the format for this app, but not whether to paste into it. Choose Paste or Copy Only again.
 setup-sources-title = Where do your references live?
 setup-sources-line =
     { $platform ->

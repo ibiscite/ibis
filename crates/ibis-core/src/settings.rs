@@ -28,6 +28,17 @@ use crate::destination::System;
 /// Version of the settings format this build reads and writes.
 pub const SCHEMA_VERSION: u32 = 2;
 
+/// How many apps keep a format of their own; the least recently chosen goes first.
+pub const MAX_APP_OUTPUTS: usize = 200;
+
+/// One app's format: an engine output id. Never a document, window or path.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct AppOutput {
+    pub app: crate::destination::AppId,
+    pub output: String,
+}
+
 /// Settings are small; bound both primary and backup reads, including growth
 /// after metadata was checked. Recovery uses the same bound for damaged bytes.
 const MAX_SETTINGS_BYTES: u64 = 1024 * 1024;
@@ -302,6 +313,10 @@ pub struct Settings {
     /// Normalized system/app identifiers mapped to stable writing-project IDs.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub writing_project_apps: BTreeMap<String, String>,
+    /// The format chosen for each app, the most recently chosen last, at most
+    /// [`MAX_APP_OUTPUTS`]. It stays on this computer (decision 0040).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub app_outputs: Vec<AppOutput>,
     /// The Zotero profile read while Zotero is closed, by its safe name;
     /// `None` until a computer with several profiles needs a choice.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -343,6 +358,29 @@ pub struct Settings {
     pub unknown: serde_json::Map<String, Value>,
 }
 
+impl Settings {
+    /// The format chosen for `app`, compared as the platform compares app ids.
+    pub fn app_output(&self, app: &crate::destination::AppId) -> Option<&str> {
+        let key = app.normalized();
+        self.app_outputs
+            .iter()
+            .find(|entry| entry.app.system == app.system && entry.app.id == key)
+            .map(|entry| entry.output.as_str())
+    }
+
+    /// Remember `output` for `app` as the most recent choice.
+    pub fn remember_app_output(&mut self, app: &crate::destination::AppId, output: String) {
+        let app = crate::destination::AppId {
+            system: app.system,
+            id: app.normalized(),
+        };
+        self.app_outputs.retain(|entry| entry.app != app);
+        self.app_outputs.push(AppOutput { app, output });
+        let excess = self.app_outputs.len().saturating_sub(MAX_APP_OUTPUTS);
+        self.app_outputs.drain(..excess);
+    }
+}
+
 impl Default for Settings {
     fn default() -> Self {
         Settings {
@@ -354,6 +392,7 @@ impl Default for Settings {
             project_bibliography: None,
             writing_projects: Vec::new(),
             writing_project_apps: BTreeMap::new(),
+            app_outputs: Vec::new(),
             zotero_profile: None,
             editor_endpoint: None,
             output: None,
@@ -900,6 +939,47 @@ fn read_bounded(reader: impl Read) -> io::Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_app_keeps_its_latest_format_and_the_oldest_choice_goes_first() {
+        use crate::destination::{AppId, System};
+        let word = AppId {
+            system: System::Macos,
+            id: "com.microsoft.Word".into(),
+        };
+        let mut settings = Settings::default();
+        settings.remember_app_output(&word, "apa".into());
+        settings.remember_app_output(&word, "typst".into());
+        // Compared as macOS compares bundle ids, and saved in that form.
+        assert_eq!(
+            settings.app_output(&AppId {
+                system: System::Macos,
+                id: "COM.MICROSOFT.WORD".into()
+            }),
+            Some("typst")
+        );
+        assert_eq!(settings.app_outputs.len(), 1);
+        let other = |n: usize| AppId {
+            system: System::Macos,
+            id: format!("org.example.app{n}"),
+        };
+        for n in 0..MAX_APP_OUTPUTS {
+            settings.remember_app_output(&other(n), "pandoc".into());
+        }
+        assert_eq!(settings.app_outputs.len(), MAX_APP_OUTPUTS);
+        assert_eq!(
+            settings.app_output(&word),
+            None,
+            "the least recently chosen app went first"
+        );
+        assert_eq!(settings.app_output(&other(0)), Some("pandoc"));
+        // Only the system, the app id and the output are written.
+        let saved = serde_json::to_value(&settings).unwrap_or_default();
+        assert_eq!(
+            saved["app_outputs"][0],
+            serde_json::json!({ "app": { "system": "macos", "id": "org.example.app0" }, "output": "pandoc" })
+        );
+    }
 
     fn dir(name: &str) -> tempfile::TempDir {
         tempfile::Builder::new()

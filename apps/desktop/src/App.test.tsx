@@ -1899,7 +1899,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   let remembered = "typst";
   const calls = backend({
     picker_preferences: () => ({ output: remembered }),
-    set_picker_preferences: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
+    picker_preferences_saved: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
   });
   const first = render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
@@ -1911,14 +1911,14 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   await waitFor(() => expect(formatValue()).toBe(choice));
 });
 
-test("rapid A-B-A choices keep the last failed choice for retry without replaying a saved key", async () => {
+test("rapid A-B-A choices keep the last failed choice applied and never resend it", async () => {
   let finish = () => undefined as void;
   const firstSave = new Promise<void>((resolve) => { finish = resolve; });
   const keys: unknown[] = [];
   let remembered = "typst";
   backend({
     picker_preferences: () => ({ output: remembered }),
-    set_picker_preferences: async ({ preferences }) => {
+    picker_preferences_saved: async ({ preferences }) => {
       const output = savedOutput(preferences);
       keys.push(output);
       const attempt = keys.length;
@@ -1939,14 +1939,17 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   await screen.findByText(/could not read or save your picker choices/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
+  // The unsaved choice still applies in the picker until Ibis restarts.
+  expect(formatValue()).toBe("cite");
   await chooseRows("compact");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
-  expect(remembered).toBe("cite");
-  expect(keys).toEqual(["cite", "pandoc", "cite", "cite", null]);
+  // The next choice carries only its own field: the failed one is never sent again.
+  expect(keys).toEqual(["cite", "pandoc", "cite", null]);
+  expect(remembered).toBe("pandoc");
   remembered = "keys"; // A hand edit after a successful save must survive.
   await chooseRows("comfortable");
-  await waitFor(() => expect(keys).toHaveLength(6));
-  expect(keys[5]).toBeNull();
+  await waitFor(() => expect(keys).toHaveLength(5));
+  expect(keys[4]).toBeNull();
   expect(remembered).toBe("keys");
 });
 
@@ -1958,7 +1961,7 @@ test.each(["menu", "shortcut"])("%s Quit drains ordered format choices before ex
   const keys: unknown[] = [];
   const calls = backend({
     picker_preferences: () => ({ output: "typst" }),
-    set_picker_preferences: async ({ preferences }) => { keys.push(savedOutput(preferences)); await (keys.length === 1 ? first : last); return null; },
+    picker_preferences_saved: async ({ preferences }) => { keys.push(savedOutput(preferences)); await (keys.length === 1 ? first : last); return null; },
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
@@ -1982,7 +1985,7 @@ test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves 
   let atQuit: unknown = null;
   const calls = backend({
     picker_preferences: async () => { await reading; return { output: "apa", density: "comfortable", larger_text: false }; },
-    set_picker_preferences: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
+    picker_preferences_saved: ({ preferences }) => { remembered = savedOutput(preferences) ?? remembered; return null; },
     quit: () => { atQuit = { output: remembered }; return null; },
   });
   render(<App />);
@@ -1995,7 +1998,7 @@ test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves 
     expect(atQuit).toBeNull();
     await act(async () => { finishReading(); await reading; });
     await waitFor(() => expect(atQuit).toEqual({ output: "cite" }));
-    expect(calls.filter((call) => call === "set_picker_preferences")).toHaveLength(1);
+    expect(calls.filter((call) => call === "picker_preferences_saved")).toHaveLength(1);
   } finally {
     await act(async () => { finishReading(); await reading; });
   }
@@ -2004,7 +2007,7 @@ test.each(["menu", "shortcut"])("%s Quit waits for the initial read, then saves 
 test("a refused preference save reports failure and still allows Quit", async () => {
   const calls = backend({
     picker_preferences: () => ({ output: "typst" }),
-    set_picker_preferences: () => { throw new Error("SYNTHETIC_PRIVATE_SAVE_ERROR"); },
+    picker_preferences_saved: () => { throw new Error("SYNTHETIC_PRIVATE_SAVE_ERROR"); },
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
@@ -2018,7 +2021,7 @@ test("a refused preference save reports failure and still allows Quit", async ()
 test("a stuck settings request cannot keep Quit waiting indefinitely", async () => {
   const calls = backend({
     picker_preferences: () => ({ output: "typst" }),
-    set_picker_preferences: () => new Promise(() => undefined),
+    picker_preferences_saved: () => new Promise(() => undefined),
   });
   vi.useFakeTimers();
   await act(async () => { render(<App />); });
@@ -2034,7 +2037,7 @@ test("format, density and preview choices are saved without losing each other", 
   const saved: unknown[] = [];
   backend({
     picker_preferences: () => ({ output: "typst" }),
-    set_picker_preferences: ({ preferences }) => { saved.push(preferences); return null; },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences); return null; },
   });
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
@@ -2054,10 +2057,11 @@ test("format, density and preview choices are saved without losing each other", 
 test("a choice made while saved choices load is kept and saved, not replaced", async () => {
   let finish = () => undefined as void;
   const loaded = new Promise<void>((resolve) => { finish = resolve; });
-  const saved: unknown[] = [];
+  const saved: { output?: string }[] = [];
   backend({
-    picker_preferences: async () => { await loaded; return { output: "apa", density: "compact", larger_text: false }; },
-    set_picker_preferences: ({ preferences }) => { saved.push(preferences); return null; },
+    // Reads what is on disk when it answers, as the settings file does.
+    picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string }); return null; },
   });
   render(<App />);
   await waitFor(() => formatButton());
@@ -2068,8 +2072,10 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
 });
 
 test("unreadable saved choices are reported and never overwritten with defaults", async () => {
-  const calls = backend({
+  const saved: unknown[] = [];
+  backend({
     picker_preferences: () => { throw new Error("synthetic settings failure"); },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences); throw new Error("synthetic refusal"); },
   });
   render(<App />);
   await screen.findByText(/could not read or save your picker choices/);
@@ -2078,7 +2084,9 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   chooseFormat("apa");
   await chooseRows("compact");
   expect(document.documentElement.dataset.density).toBe("compact");
-  expect(calls).not.toContain("set_picker_preferences");
+  // Each choice names only its own field, so nothing else is written as a default;
+  // the settings owner refuses them while the file cannot be read.
+  await waitFor(() => expect(saved).toEqual([{ output: "apa" }, { density: "compact" }]));
 });
 
 const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
@@ -3474,7 +3482,7 @@ test.each([
 
 test("format toolbar menu exposes both sections and saves a choice without copying", async () => {
   const saved: unknown[] = [];
-  const calls = backend({ set_picker_preferences: (args) => { saved.push(savedOutput(args.preferences)); return null; } });
+  const calls = backend({ picker_preferences_saved: (args) => { saved.push(savedOutput(args.preferences)); return null; } });
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
   expect(screen.getByRole("group", { name: "Key formats" })).toBeTruthy();
@@ -3491,7 +3499,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
 
 test("engine citation styles are reachable and save their choice without copying", async () => {
   const saved = vi.fn(() => null);
-  backend({ set_picker_preferences: saved });
+  backend({ picker_preferences_saved: saved });
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
   const filter = screen.getByRole("searchbox");
@@ -3520,7 +3528,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   for (const key of ["Enter", "Escape", "k"]) fireEvent.keyDown(filter, { key, ctrlKey: key === "k", isComposing: true });
   expect(screen.getByRole("menu")).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
-  expect(calls).not.toContain("set_picker_preferences");
+  expect(calls).not.toContain("picker_preferences_saved");
   fireEvent.compositionEnd(filter);
   fireEvent.keyDown(filter, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());

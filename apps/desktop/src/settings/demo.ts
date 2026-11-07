@@ -12,6 +12,7 @@ export function demoApi(): SettingsApi {
   const facts: DelightFact[] = ["touch", "scarlet", "mummies", "national", "flight"];
   const updateListeners = new Set<(on: boolean) => void>();
   const listeners = new Set<(revision: number) => void>();
+  const submitted = new Map<number, Partial<PickerPreferences>>();
   const noop = async () => undefined as never;
   const subscribe = async () => () => undefined;
   return {
@@ -21,8 +22,13 @@ export function demoApi(): SettingsApi {
       return { fun, fact: fun && click ? facts[factIndex]! : null, status: null, peck: false, anniversary: false, revision, build: "0.2.1 · invented · 2026-11-01" };
     },
     pickerPreferences: async () => preferences,
-    preferenceRevision: async () => ++revision,
-    setPickerPreferences: async (patch, revision) => { preferences = { ...preferences, ...patch }; for (const changed of listeners) changed(revision); return { preferences }; },
+    savePickerPreferences: async (patch) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
+    pickerPreferencesSaved: async (receipt) => {
+      preferences = { ...preferences, ...submitted.get(receipt) };
+      submitted.delete(receipt);
+      for (const changed of listeners) changed(receipt);
+      return { preferences };
+    },
     windowSize: async () => "medium",
     setWindowSize: async () => null,
     onWindowSaved: subscribe,

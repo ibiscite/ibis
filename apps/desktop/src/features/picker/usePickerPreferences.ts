@@ -6,10 +6,10 @@ import { defaultOutput, isStyle, listedOutput, type OutputId } from "../../forma
 import { PreferencePatchQueue } from "../../preferencePatchQueue";
 import type { Operation } from "./Notices";
 
-type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "setPickerPreferences" | "quit">;
+type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" | "quit">;
 
 export function usePickerPreferences(
-  { pickerPreferences, setPickerPreferences, quit }: PreferencesApi,
+  { pickerPreferences, savePickerPreferences, pickerPreferencesSaved, quit }: PreferencesApi,
   { styles, report, perform, presentation }: {
     /** Immutable picker visibility identity; old feedback never enters a new presentation. */
     presentation: number;
@@ -30,7 +30,8 @@ export function usePickerPreferences(
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),
-    write: setPickerPreferences,
+    submit: savePickerPreferences,
+    saved: pickerPreferencesSaved,
   }, { readAfterWrites: true }));
   const applyView = useCallback((value: PickerPreferences) => {
     setSmallSurprises(value.small_surprises ?? true);
@@ -93,6 +94,8 @@ export function usePickerPreferences(
   /** Reads the saved preferences. The picker calls this from its
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
+  /** A choice saved in Settings: older replies and failed choices of its fields give way, then the picker reads. */
+  const preferencesChanged = (revision: number | undefined, fields: string[] | undefined, mounted: () => boolean) => { void queue.refresh(revision ?? -1, mounted, fields); };
 
-  return { ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
+  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
 }

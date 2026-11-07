@@ -1,12 +1,15 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
-import type { PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
+import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
+
+/** The owner's save, by patch and receipt, so a test can hold or refuse one. */
+type TestApi = SettingsApi & { setPickerPreferences: (patch: Partial<PickerPreferences>, receipt: number) => Promise<PickerSave> };
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../../../../locales/en-US.ftl?raw";
@@ -151,12 +154,15 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     state.saved.push({ ...state.preferences });
     return { preferences: state.preferences };
   };
-  const api: SettingsApi = {
+  /** Each choice reaches the owner when made; how it went is asked for by receipt. */
+  const submitted = new Map<number, Partial<PickerPreferences>>();
+  const api: TestApi = {
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<null> => null),
     onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
-    preferenceRevision: async () => ++state.revision,
+    savePickerPreferences: async (patch) => { const receipt = ++state.revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
+    pickerPreferencesSaved: async (receipt) => api.setPickerPreferences(submitted.get(receipt)!, receipt),
     setPickerPreferences: commit,
     backUpSettings: vi.fn(async () => null),
     chooseSettingsBackup: vi.fn(async () => null),
@@ -744,11 +750,14 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   await act(async () => { await Promise.resolve(); });
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { if (outcome === "failure") first.reject(); else first.resolve(7); });
-  expect(save).toHaveBeenNthCalledWith(2, outcome === "failure" ? { density: "compact" } : { larger_text: true }, outcome === "failure" ? 1 : 2);
+  // Larger went out before Compact failed; the failed Compact is then sent again behind it.
+  expect(save).toHaveBeenNthCalledWith(2, { larger_text: true }, 2);
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
+  // A failed Compact is not sent again: Settings shows what is saved.
   expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
+  expect(state.preferences).toMatchObject({ density: outcome === "failure" ? "comfortable" : "compact", larger_text: true });
   expect(closed).toHaveBeenCalledOnce();
 });
 
@@ -815,9 +824,11 @@ test("a failure read cannot overwrite a newer edit", async () => {
   fireEvent.click(larger);
   await act(async () => { save.reject(); });
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
-  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: true }));
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: false }));
   await act(async () => { read.resolve(saved); });
-  expect((larger as HTMLInputElement).checked).toBe(true);
+  // The older read cannot undo Compact; the failed Larger was not saved and is not sent again.
+  expect(screen.getByRole<HTMLInputElement>("radio", { name: "Compact" }).checked).toBe(true);
+  expect((larger as HTMLInputElement).checked).toBe(false);
 });
 
 test("the sidebar switches pages, a page request from the app moves it, and the window has no axe violations", async () => {
@@ -856,7 +867,7 @@ test("the latest focus read wins even when no local edit occurred", async () => 
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
 
-test("a later equal-valued switch intent is retried when its own save fails", async () => {
+test("a later equal-valued choice whose save fails is not sent again, and Settings shows what is saved", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const first = deferred<void>();
   let writes = 0;
@@ -871,12 +882,12 @@ test("a later equal-valued switch intent is retried when its own save fails", as
   fireEvent.click(larger);
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   fireEvent.click(larger);
-  // Retrying the third intent keeps its ticket separate from the newer row choice.
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => { first.resolve(); });
-  await waitFor(() => expect(writes).toBe(5));
-  expect(state.preferences).toMatchObject({ larger_text: true, density: "compact" });
-  expect((larger as HTMLInputElement).checked).toBe(true);
+  await waitFor(() => expect(writes).toBe(4));
+  // The second choice (Default) is the last saved text size.
+  expect(state.preferences).toMatchObject({ larger_text: false, density: "compact" });
+  await waitFor(() => expect((larger as HTMLInputElement).checked).toBe(false));
 });
 
 test("Shortcuts records a change, restores the default, and lists every picker key without controls", async () => {
@@ -1308,8 +1319,8 @@ test("a picker notification before a queued save fails stays uncertain until the
 
 test("a picker change survives a Settings save reply delayed beyond the close timeout", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
-  const pending = deferred<Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>>();
-  let older!: Awaited<ReturnType<SettingsApi["setPickerPreferences"]>>;
+  const pending = deferred<Awaited<ReturnType<TestApi["setPickerPreferences"]>>>();
+  let older!: Awaited<ReturnType<TestApi["setPickerPreferences"]>>;
   vi.spyOn(api, "setPickerPreferences").mockImplementationOnce(async (patch) => {
     older = await commit(patch);
     return pending.promise;

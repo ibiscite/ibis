@@ -1,8 +1,6 @@
-import { commands, type PickerPreferences, type PickerSave } from "./bindings";
+import type { PickerPreferences, PickerSave } from "./bindings";
 
 type Patch = Partial<PickerPreferences>;
-type Intent = { order: number; revision: Promise<number> };
-type Revisions = Partial<Record<keyof PickerPreferences, Intent>>;
 
 /** Null when the preferences cannot be read: nothing is replaced with defaults. */
 export type PreferenceRead = { preferences: PickerPreferences | null };
@@ -13,15 +11,27 @@ type Event =
   | { type: "saving"; promise: Promise<void> }
   | { type: "error"; source: "read" | "save" };
 
-/** One queue per window. The native lock remains the owner of durable state;
- * this queue sends only deliberate edits and unacknowledged retry fields. */
+/** One queue per window. The settings owner keeps durable state and applies
+ * choices in the order they were made (decision 0040): each choice is
+ * submitted when the person makes it, with only its own fields. A choice that
+ * fails to save is never sent again later, when it could land over a newer
+ * one. Settings shows what is saved; the picker keeps applying it until Ibis
+ * restarts, or until the other window saves that field after it. */
 export class PreferencePatchQueue {
   private listeners = new Set<(event: Event) => void>();
   private loaded = false;
   private durable: PickerPreferences | null = null;
+  /** Choices not yet acknowledged, shown over the durable state. */
   private patch: Patch = {};
-  private revisions: Revisions = {};
+  /** Which choice last set each field, so an equal value chosen again keeps its own fate. */
+  private latest: Partial<Record<keyof PickerPreferences, number>> = {};
+  /** The picker's choices that failed to save, by the owner's receipt, and the
+   * newest receipt the other window saved each field with: the later stands. */
+  private failed: Partial<Record<keyof PickerPreferences, number>> = {};
+  private foreign: Partial<Record<keyof PickerPreferences, number>> = {};
   private revision = 0;
+  /** Saves acknowledged so far: a read that started before one is older than it. */
+  private acknowledged = 0;
   private reads = 0;
   private notifications = 0;
   private foreignNotifications = 0;
@@ -33,13 +43,15 @@ export class PreferencePatchQueue {
   constructor(
     private api: {
       read: () => Promise<PreferenceRead>;
-      revision?: () => Promise<number>;
-      write: (patch: Patch, revision: number) => Promise<PickerSave>;
+      /** Hands a choice to the settings owner at once; resolves with its receipt. */
+      submit: (patch: Patch) => Promise<number>;
+      /** How a submitted choice went. */
+      saved: (receipt: number) => Promise<PickerSave>;
     },
     private policy: {
       /** Picker notifications read after its writes; Settings focus reads skip busy state. */
       readAfterWrites?: boolean;
-      /** Settings restores durable choices; the picker retains failed choices for retry. */
+      /** Settings records its own notifications, for rollback after a failed save. */
       restoreOnFailure?: boolean;
     } = {},
   ) {}
@@ -66,67 +78,56 @@ export class PreferencePatchQueue {
   }
 
   change(change: Patch): void {
+    const fields = Object.keys(change) as (keyof PickerPreferences)[];
+    if (!fields.length) return;
     const revision = ++this.revision;
     const reading = this.reads;
     const notification = this.notifications;
-    const fields = Object.keys(change) as (keyof PickerPreferences)[];
-    // Dispatch issuance in the input handler, before waiting for any local
-    // save or read. A reply arriving late cannot change this action's identity.
-    if (fields.length) {
-      const issued = (this.api.revision ?? commands.preferenceRevision)();
-      void issued.catch(() => undefined);
-      const intent = { order: revision, revision: issued };
-      for (const field of fields) this.revisions[field] = intent;
-    }
     this.patch = { ...this.patch, ...change };
-    // Never replace unreadable settings with defaults. Pre-load edits wait.
-    if (!this.loaded) return;
-    const queued = { ...this.patch };
-    const revisions = { ...this.revisions };
-    const deliberate = new Set(Object.keys(change));
+    for (const field of fields) { this.latest[field] = revision; delete this.failed[field]; }
+    // Submitted now, in the input handler, so the owner orders it by when it was
+    // chosen. A patch names only its own fields, so unreadable settings are
+    // never replaced with defaults: the owner refuses it.
+    const receipt = this.api.submit(change);
+    void receipt.catch(() => undefined);
     const save = this.enqueue(async () => {
-      const groups = new Map<Intent, Patch>();
-      const group = (intent: Intent) => {
-        if (!groups.has(intent)) groups.set(intent, {});
-        return groups.get(intent)!;
-      };
-      for (const field of Object.keys(queued) as (keyof PickerPreferences)[]) {
-        const intent = revisions[field];
-        if (intent && (deliberate.has(field) || this.revisions[field] === intent)) {
-          Object.assign(group(intent), { [field]: queued[field] });
-        }
-      }
       let saved: PickerSave | undefined;
-      for (const [intent, patch] of [...groups].sort(([a], [b]) => a.order - b.order)) {
-        const issued = await intent.revision.catch((error: unknown) => {
-          // An issuance failure has no ticket to retry; later choices remain usable.
-          this.retire(intent, patch);
-          throw error;
-        });
-        const own = { completed: false, notified: false };
+      let issued: number | undefined;
+      const own = { completed: false, notified: false };
+      try {
+        issued = await receipt;
         // Settings has versioned notifications and needs authoritative rollback.
         // The picker uses its existing reload path and retains no notice records.
         if (this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
         const foreign = this.foreignNotifications;
-        let completed = false;
-        try {
-          saved = await this.api.write(patch, issued);
-          completed = true;
-          if (foreign === this.foreignNotifications) this.durable = saved.preferences;
-        } finally {
-          own.completed = true;
-          if ((!completed || own.notified) && this.ownNotifications.get(issued) === own) this.ownNotifications.delete(issued);
+        saved = await this.api.saved(issued);
+        if (foreign === this.foreignNotifications) this.durable = saved.preferences;
+        this.acknowledged += 1;
+        this.acknowledge(fields, revision);
+      } catch (error) {
+        // Not saved. Settings shows what is saved; the picker keeps the choice
+        // applied, unsaved, and never sends it again.
+        if (this.policy.restoreOnFailure) this.acknowledge(fields, revision);
+        else {
+          for (const field of fields) {
+            if (this.latest[field] !== revision) continue;
+            // The other window already saved this field after it: its value shows.
+            if ((this.foreign[field] ?? -Infinity) > (issued ?? 0)) { delete this.patch[field]; delete this.latest[field]; }
+            else this.failed[field] = issued ?? 0;
+          }
         }
-        this.retire(intent, patch);
+        throw error;
+      } finally {
+        own.completed = true;
+        if (issued !== undefined && (!saved || own.notified) && this.ownNotifications.get(issued) === own) this.ownNotifications.delete(issued);
       }
       if (saved && revision === this.revision && notification === this.notifications && (!this.policy.readAfterWrites || reading === this.reads)) {
-        this.emit({ type: "saved", value: saved });
+        // The picker keeps showing choices that apply but are not saved, as its reads do.
+        this.emit({ type: "saved", value: this.policy.readAfterWrites ? { preferences: { ...saved.preferences, ...this.patch } } : saved });
       }
     }).catch((error: unknown) => {
       this.emit({ type: "error", source: "save" });
-      if (this.policy.restoreOnFailure && this.pending === 0 && revision === this.revision) {
-        void this.read(() => true, true);
-      }
+      if (this.policy.restoreOnFailure && this.pending === 0 && revision === this.revision) void this.read(() => true, true);
       throw error;
     });
     this.saving = save;
@@ -135,9 +136,10 @@ export class PreferencePatchQueue {
     this.emit({ type: "saving", promise: save });
   }
 
-  private retire(intent: Intent, patch: Patch) {
-    for (const field of Object.keys(patch) as (keyof PickerPreferences)[]) {
-      if (this.revisions[field] === intent) { delete this.patch[field]; delete this.revisions[field]; }
+  /** A settled field leaves the overlay, unless chosen again since. */
+  private acknowledge(fields: (keyof PickerPreferences)[], choice: number) {
+    for (const field of fields) {
+      if (this.latest[field] === choice) { delete this.patch[field]; delete this.latest[field]; }
     }
   }
 
@@ -147,7 +149,7 @@ export class PreferencePatchQueue {
 
   /** Notifications invalidate old rendering replies; self-notifications retain
    * rollback acknowledgements. Refresh waits for actual completion, not closing. */
-  async refresh(revision: number, active: () => boolean = () => true): Promise<void> {
+  async refresh(revision: number, active: () => boolean = () => true, fields?: readonly string[]): Promise<void> {
     const own = this.ownNotifications.get(revision);
     if (own) {
       own.notified = true;
@@ -155,6 +157,12 @@ export class PreferencePatchQueue {
     } else {
       this.foreignNotifications += 1;
       this.durable = null;
+      // The other window saved these fields after a choice here that failed: its value shows.
+      for (const field of (fields ?? Object.keys(this.failed)) as (keyof PickerPreferences)[]) {
+        this.foreign[field] = Math.max(this.foreign[field] ?? -Infinity, revision);
+        const failed = this.failed[field];
+        if (failed !== undefined && failed < revision) { delete this.failed[field]; delete this.patch[field]; delete this.latest[field]; }
+      }
       this.emit({ type: "invalidated" });
     }
     const notification = ++this.notifications;
@@ -169,6 +177,7 @@ export class PreferencePatchQueue {
 
   private read(active: () => boolean, restore: boolean): Promise<void> {
     const request = ++this.reads;
+    const acknowledged = this.acknowledged;
     const revision = this.revision;
     const loadedBefore = this.loaded;
     const idle = this.pending === 0;
@@ -178,22 +187,24 @@ export class PreferencePatchQueue {
     const read = this.policy.readAfterWrites
       ? this.saving.catch(() => undefined).then(() => this.api.read())
       : this.api.read();
-    this.loading = read.then((value) => {
+    this.loading = read.then((value): Promise<void> | void => {
       if (!current()) return;
+      // A save landed while this read was out, so the read is older: read again.
+      if (acknowledged !== this.acknowledged) return this.read(active, restore);
       if (restore) {
         this.patch = {};
-        this.revisions = {};
+        this.latest = {};
+        this.failed = {};
       }
       const pendingOutput = this.patch.output !== undefined;
       if (value.preferences) {
         this.loaded = true;
         this.durable = value.preferences;
-        // Picker reads preserve optimistic choices. Settings focus reads show
-        // durable state, even if a failed recovery left retry fields pending.
+        // Picker reads keep showing choices still being saved. Settings focus
+        // reads show durable state.
         if (this.policy.readAfterWrites) value = { ...value, preferences: { ...value.preferences, ...this.patch } };
       }
       this.emit({ type: "read", value, pendingOutput });
-      if (value.preferences && this.policy.readAfterWrites && Object.keys(this.patch).length) this.change({});
     }).catch(() => {
       if (current()) this.emit({ type: "error", source: "read" });
     });

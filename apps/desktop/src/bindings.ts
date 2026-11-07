@@ -129,17 +129,24 @@ export const commands = {
 	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
-	/** Issue a save identity inline at IPC dispatch; unused identities block nothing. */
-	preferenceRevision: () => __TAURI_INVOKE<number>("preference_revision"),
+	/**
+	 * Remember picker preferences in the order they were chosen (decision 0040).
+	 * Runs at IPC dispatch, so two windows and two quick choices keep their order:
+	 * it applies what must not wait for disk, hands the change to the settings
+	 * owner and returns its receipt at once. Other settings in the file are kept.
+	 */
+	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
-	/** Remember the picker preferences; other settings in the file are kept. */
-	setPickerPreferences: (preferences: PickerPreferencesPatch, revision: number) => __TAURI_INVOKE<PickerSave>("set_picker_preferences", { preferences, revision }),
+	/** The saved preferences once a submitted change has run. */
+	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**
 	 * Remember a format, a delivery choice or both for the captured app. Whichever
-	 * is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
+	 * is absent keeps its saved value; only a delivery choice revokes outstanding
+	 * proofs. The format goes to the settings file first, then the delivery choice
+	 * to the per-app file; a delivery that fails after its format saved says so.
 	 */
 	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/** Whether Ibis starts when the person logs in, read from the system now. */
@@ -269,6 +276,17 @@ export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
+
+/**
+ * Why a choice for an app was not saved, so the picker can say which part
+ * was kept without reading the words.
+ */
+export type AppChoiceError = {
+	code: "not_saved";
+	message: string;
+} | {
+	code: "delivery_not_saved";
+};
 
 /** A deliberate delivery choice for one captured app, independent of its format. */
 export type AppPaste = "paste" | "copy-only";
@@ -682,6 +700,11 @@ export type PreferenceChange = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density: Density;
+	/**
+	 * The fields this save set, so a window can tell a choice from an
+	 * unchanged value in the snapshot.
+	 */
+	fields: string[];
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;

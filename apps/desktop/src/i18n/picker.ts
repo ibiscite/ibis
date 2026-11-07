@@ -48,6 +48,7 @@ export const PICKER_IDS = [
   "operation-failures-app-choices",
   "operation-failures-app-read",
   "operation-failures-app-choice",
+  "operation-failures-app-delivery",
   "setup-sources-title",
   "setup-sources-line",
   "setup-return-hint",

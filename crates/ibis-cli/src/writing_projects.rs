@@ -11,7 +11,17 @@ use ibis_engine::{
     DispatchResult, Engine, ProjectAssessmentState, ProjectPolicy, WritingProjectCitation, request::StylesRequest,
 };
 use serde_json::{Value, json};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+
+/// A whole definition edit, through the one settings owner (decision 0040).
+fn change<T: Send + 'static>(
+    path: &Path,
+    edit: impl FnOnce(&mut ibis_core::settings::Settings) -> Result<T, projects::ProjectError>,
+) -> Result<T, projects::ProjectError> {
+    ibis_engine::settings::Owner::open(path.to_path_buf())
+        .change(edit)
+        .map(|(_, result)| result)
+}
 
 pub(crate) fn command() -> Command {
     let id = || {
@@ -220,18 +230,18 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                     .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose --format or --style."))?;
                 let bibliography = bibliography(args)?;
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                projects::change(&path, |settings| projects::create(settings, name, output, bibliography))
+                change(&path, |settings| projects::create(settings, name, output, bibliography))
             }
             "rename" => {
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                projects::change(&path, |settings| projects::rename(settings, id, name))
+                change(&path, |settings| projects::rename(settings, id, name))
             }
-            "remove" => projects::change(&path, |settings| projects::remove(settings, id)),
+            "remove" => change(&path, |settings| projects::remove(settings, id)),
             "update" => {
                 let output = output(engine, args)?;
                 let bibliography = bibliography(args)?;
                 let clear = args.get_flag("no-bibliography");
-                projects::change(&path, |settings| {
+                change(&path, |settings| {
                     let old = projects::find(settings, id)?.clone();
                     projects::update(
                         settings,

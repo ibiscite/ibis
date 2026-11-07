@@ -38,8 +38,10 @@ const MARKER: &str = "ibis_settings_backup";
 /// a working folder, the editor endpoint, whose token opens the picker, the
 /// update question, which each computer answers for itself because it allows
 /// network use (decision 0008), and the Zotero profile, a name that means
-/// nothing elsewhere. A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 8] = [
+/// nothing elsewhere. Formats per app stay too, like the apps Ibis may paste
+/// into. A restore keeps this computer's values for them.
+pub const LOCAL: [&str; 9] = [
+    "app_outputs",
     "picker_windows",
     "delights",
     "project_bibliography",
@@ -378,6 +380,7 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     restored.project_bibliography = current.project_bibliography.clone();
     restored.writing_projects = current.writing_projects.clone();
     restored.writing_project_apps = current.writing_project_apps.clone();
+    restored.app_outputs = current.app_outputs.clone();
     restored.editor_endpoint = current.editor_endpoint.clone();
     restored.update_checks = current.update_checks;
     restored.zotero_profile = current.zotero_profile.clone();

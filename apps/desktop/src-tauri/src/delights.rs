@@ -169,7 +169,7 @@ impl SettingsFile {
             }
         }
         if owner.record != before {
-            owner.revision = self.issue_preference_revision().unwrap_or(owner.revision);
+            owner.revision = owner.revision.wrapping_add(1);
         }
         view.revision = owner.revision;
         view
@@ -184,7 +184,7 @@ impl SettingsFile {
         let saved = owner.record();
         saved.paste_count = saved.paste_count.saturating_add(1);
         let count = saved.paste_count;
-        owner.revision = self.issue_preference_revision().unwrap_or(owner.revision);
+        owner.revision = owner.revision.wrapping_add(1);
         (self.surprises_enabled() && [1, 100, 1000].contains(&count)).then_some(count)
     }
 

@@ -40,7 +40,8 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   useEffect(() => {
     if (!onPreferencesChanged) return;
     const stop = onPreferencesChanged((change) => {
-      if (change?.recent_citations === false) retire();
+      // Only a save that set the switch: the rest of a snapshot may be older.
+      if (change?.recent_citations === false && change.fields?.includes("recent_citations")) retire();
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
   }, [onPreferencesChanged, retire]);

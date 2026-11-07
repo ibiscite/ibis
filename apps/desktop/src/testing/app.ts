@@ -129,6 +129,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
   let revision = 0;
   const written = new Map<string, number>();
+  const submitted = new Map<number, Partial<api.PickerPreferences>>();
   receipts.clear();
   const defaults: Record<string, Handler> = {
     "plugin:window|is_visible": () => true,
@@ -163,8 +164,8 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       return { text: preview.text, warnings: preview.warnings };
     },
     picker_preferences: () => preferences,
-    preference_revision: () => ++revision,
-    set_picker_preferences: () => null,
+    save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
+    picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
     picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
     remember_app_output: () => null,
@@ -187,15 +188,19 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       }
       const handler = overrides[cmd] ?? defaults[cmd];
       if (!handler) throw new Error(`unexpected command ${cmd}`);
-      const value = handler((args ?? {}) as Parameters<Handler>[0]);
+      // A test's save handler sees the choice the receipt stands for.
+      const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
+      const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
       if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
-      if (cmd === "set_picker_preferences") return Promise.resolve(value).then(() => {
-        const save = args as { preferences: Partial<api.PickerPreferences>; revision: number };
-        if (!Number.isSafeInteger(save.revision) || save.revision <= 0 || save.revision > revision) throw "preference revision was not issued";
-        const keep = (field: string) => save.revision > (written.get(field) ?? 0);
-        const patch = Object.fromEntries(Object.entries(save.preferences).filter(([field]) => keep(field)));
-        preferences = { ...preferences, ...patch };
-        for (const field of Object.keys(patch)) written.set(field, save.revision);
+      if (cmd === "picker_preferences_saved") return Promise.resolve(value).then(() => {
+        // The owner applies choices in the order they were submitted: a field
+        // a later choice already saved keeps that later value.
+        const patch = submitted.get(receipt);
+        if (!patch) throw "preference change was not submitted";
+        submitted.delete(receipt);
+        const kept = Object.fromEntries(Object.entries(patch).filter(([field]) => receipt > (written.get(field) ?? 0)));
+        preferences = { ...preferences, ...kept };
+        for (const field of Object.keys(kept)) written.set(field, receipt);
         return { preferences };
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
