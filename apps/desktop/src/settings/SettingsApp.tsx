@@ -100,7 +100,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [checking, setChecking] = useState(false);
   const manualCheck = useRef(0);
   const checkRunning = useRef(false);
-  /** The one update check a person asks for: the button, and the tray through this page. */
+  /** About's Check for Updates; the tray and menu bar check natively (updater/setting.rs). */
   const checkNow = useCallback(() => {
     if (checkRunning.current) return;
     checkRunning.current = true;
