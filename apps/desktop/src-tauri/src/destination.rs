@@ -421,43 +421,83 @@ pub(crate) fn remember_app_output(
     output: Option<String>,
     paste: Option<AppPaste>,
     identity: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppChoiceError> {
     // Only an id the engine lists is remembered; anything else changes nothing.
     let output = output
         .map(|id| crate::output::listed(&id).ok_or("this format is not available; choose another"))
-        .transpose()?;
-    crate::paste::change_destination(&app, paste.is_some(), |captured| {
-        let captured = captured.ok_or("no app to remember a choice for")?;
-        let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
-        if id.normalized() != app_id || captured.app_identity != identity {
-            return Err("the app changed; open the output menu again".into());
-        }
-        remember(&settings_file, &memory, id, output, paste, identity)
-    })
+        .transpose()
+        .map_err(AppChoiceError::not_saved)?;
+    // The settings turn before the destination, the order every writer takes them in.
+    settings_file
+        .exclusive(|settings_path| {
+            crate::paste::change_destination(&app, paste.is_some(), |captured| {
+                let captured = captured.ok_or("no app to remember a choice for")?;
+                let id = captured.target.app.as_ref().ok_or("no app to remember a choice for")?;
+                if id.normalized() != app_id || captured.app_identity != identity {
+                    return Err("the app changed; open the output menu again".into());
+                }
+                Ok(remember(settings_path, &memory, id, output, paste, identity))
+            })
+        })
+        .map_err(AppChoiceError::not_saved)?
+        .map_err(AppChoiceError::not_saved)?
 }
 
+/// Why a choice for an app was not saved, so the picker can say which part
+/// was kept without reading the words.
+#[derive(Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
+#[serde(tag = "code", rename_all = "snake_case")]
+pub(crate) enum AppChoiceError {
+    NotSaved {
+        message: String,
+    },
+    /// The format was saved; whether to paste into the app was not.
+    DeliveryNotSaved,
+}
+
+impl AppChoiceError {
+    fn not_saved(message: impl Into<String>) -> Self {
+        Self::NotSaved {
+            message: message.into(),
+        }
+    }
+}
+
+impl std::error::Error for AppChoiceError {}
+
+impl std::fmt::Display for AppChoiceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NotSaved { message } => f.write_str(message),
+            Self::DeliveryNotSaved => f.write_str("the format was saved, but the paste choice could not be"),
+        }
+    }
+}
+
+/// Save the choices in the settings turn the caller holds.
 fn remember(
-    settings_file: &SettingsFile,
+    settings_path: &Path,
     memory: &AppMemory,
     id: &AppId,
     output: Option<OutputRef>,
     paste: Option<AppPaste>,
     identity: Option<String>,
-) -> Result<(), String> {
+) -> Result<(), AppChoiceError> {
     if output.is_none() && paste.is_none() {
-        return Err("there is no choice to remember".into());
+        return Err(AppChoiceError::not_saved("there is no choice to remember"));
     }
     if let Some(output) = output {
-        settings_file
-            .update(|settings| settings.remember_app_output(id, output.id().to_owned()))
-            .map_err(|_| "the choice for this app could not be saved".to_string())?;
+        settings::update(settings_path, |settings| {
+            settings.remember_app_output(id, output.id().to_owned())
+        })
+        .map_err(|_| AppChoiceError::not_saved("the choice for this app could not be saved"))?;
     }
     if let Some(paste) = paste {
         memory.set_bound_choice(id, paste, identity).map_err(|_| {
             if output.is_some() {
-                "the format was saved, but the paste choice for this app could not be saved".to_string()
+                AppChoiceError::DeliveryNotSaved
             } else {
-                "the choice for this app could not be saved".to_string()
+                AppChoiceError::not_saved("the choice for this app could not be saved")
             }
         })?;
     }
@@ -477,7 +517,9 @@ fn remember_for(
     if id.normalized() != expected {
         return Err("the app changed; open the output menu again".into());
     }
-    remember(settings_file, memory, id, output, paste, test_identity(id))
+    settings_file
+        .exclusive(|path| remember(path, memory, id, output, paste, test_identity(id)))?
+        .map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -538,15 +580,19 @@ mod tests {
             })
         }
 
-        fn choose(&self, app: &AppId, output: Option<&str>, paste: Option<AppPaste>) -> Result<(), String> {
-            remember(
-                &self.settings,
-                &self.memory,
-                app,
-                output.and_then(listed),
-                paste,
-                test_identity(app),
-            )
+        fn choose(&self, app: &AppId, output: Option<&str>, paste: Option<AppPaste>) -> Result<(), AppChoiceError> {
+            self.settings
+                .exclusive(|path| {
+                    remember(
+                        path,
+                        &self.memory,
+                        app,
+                        output.and_then(listed),
+                        paste,
+                        test_identity(app),
+                    )
+                })
+                .map_err(AppChoiceError::not_saved)?
         }
 
         /// The format a restart reads for `app`.
@@ -670,7 +716,11 @@ mod tests {
         assert_eq!(reopened.paste_for(&app, None), Ok(None));
         // A format save from the replacement program cannot carry the old approval forward.
         let settings = SettingsFile::new(directory.path().join("settings.json"));
-        remember(&settings, &reopened, &app, listed("pandoc"), None, other.clone()).map_err(io::Error::other)?;
+        settings
+            .exclusive(|path| remember(path, &reopened, &app, listed("pandoc"), None, other.clone()))
+            .map_err(AppChoiceError::not_saved)
+            .and_then(|saved| saved)
+            .map_err(io::Error::other)?;
         assert_eq!(reopened.paste_for(&app, other.as_deref()), Ok(None));
         let json = fs::read_to_string(path)?;
         assert!(!json.contains("/invented/"), "only an identity digest is saved");
@@ -688,7 +738,11 @@ mod tests {
         let memory = AppMemory::open(path.clone());
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         let settings = SettingsFile::new(directory.path().join("settings.json"));
-        remember(&settings, &memory, &other, listed("pandoc"), None, None).map_err(io::Error::other)?;
+        settings
+            .exclusive(|path| remember(path, &memory, &other, listed("pandoc"), None, None))
+            .map_err(AppChoiceError::not_saved)
+            .and_then(|saved| saved)
+            .map_err(io::Error::other)?;
         assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
         let reopened = AppMemory::open(path.clone());
         assert_eq!(reopened.paste(&word), Err(CopyReason::PasteUnavailable));
@@ -732,7 +786,11 @@ mod tests {
         // The per-app file cannot be replaced: the delivery half fails.
         fs::create_dir(&path)?;
         let refused = choices.choose(&app, Some("typst"), Some(AppPaste::CopyOnly));
-        assert!(refused.is_err_and(|message| message.contains("format was saved")));
+        assert_eq!(
+            refused,
+            Err(AppChoiceError::DeliveryNotSaved),
+            "the picker says which choice was kept"
+        );
         assert_eq!(choices.format(&app), listed("typst"), "the format half stays saved");
         assert_eq!(choices.memory.paste(&app), Ok(None), "no delivery was recorded");
         Ok(())
@@ -919,7 +977,7 @@ mod tests {
             fs::write(&path, damaged).unwrap_or_else(|e| panic!("{e}"));
             let memory = AppMemory::open(path.clone());
             assert_eq!(memory.paste(&word), Err(CopyReason::PasteUnavailable));
-            remember(&settings, &memory, &word, listed("cite"), None, None).unwrap_or_else(|e| panic!("{e}"));
+            settings.exclusive(|path| remember(path, &memory, &word, listed("cite"), None, None)).map_err(AppChoiceError::not_saved).and_then(|saved| saved).unwrap_or_else(|e| panic!("{e}"));
             assert_eq!(AppMemory::open(path.clone()).paste(&word), Err(CopyReason::PasteUnavailable));
         }
     }

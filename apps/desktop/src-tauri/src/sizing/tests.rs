@@ -147,14 +147,14 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
             .build()
             .unwrap_or_else(|error| panic!("{error}"));
         let save = |patch| {
-            let receipt = save_picker_preferences(patch, app.state::<SettingsFile>(), app.handle().clone())
-                .unwrap_or_else(|error| panic!("{error}"));
-            tauri::async_runtime::block_on(picker_preferences_saved(
-                receipt,
+            let receipt = save_picker_preferences(
+                patch,
                 app.state::<SettingsFile>(),
                 app.handle().clone(),
                 window.as_ref().window(),
-            ))
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+            tauri::async_runtime::block_on(picker_preferences_saved(receipt, app.state::<SettingsFile>()))
         };
         save(PickerPreferencesPatch {
             larger_text: Some(false),

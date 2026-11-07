@@ -27,6 +27,8 @@ export class PreferencePatchQueue {
   private held: Patch = {};
   /** Which choice last set each field, so an equal value chosen again keeps its own fate. */
   private latest: Partial<Record<keyof PickerPreferences, number>> = {};
+  /** Choices the person made; resending a failure is not one. */
+  private chosen = 0;
   private revision = 0;
   private reads = 0;
   private notifications = 0;
@@ -75,6 +77,8 @@ export class PreferencePatchQueue {
 
   change(change: Patch): void {
     const revision = ++this.revision;
+    if (Object.keys(change).length) this.chosen += 1;
+    const chosen = this.chosen;
     const reading = this.reads;
     const notification = this.notifications;
     this.patch = { ...this.patch, ...change };
@@ -91,6 +95,8 @@ export class PreferencePatchQueue {
     if (!Object.keys(sent).length) return;
     // Submitted now, in the input handler, so the owner orders it by when it was chosen.
     const receipt = this.api.submit(sent);
+    // A choice saved in the other window after this one retires its failure.
+    const foreign = this.foreignNotifications;
     void receipt.catch(() => undefined);
     const save = this.enqueue(async () => {
       let saved: PickerSave | undefined;
@@ -101,16 +107,21 @@ export class PreferencePatchQueue {
         // Settings has versioned notifications and needs authoritative rollback.
         // The picker uses its existing reload path and retains no notice records.
         if (this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
-        const foreign = this.foreignNotifications;
         saved = await this.api.saved(issued);
         if (foreign === this.foreignNotifications) this.durable = saved.preferences;
         this.acknowledge(fields, revision);
       } catch (error) {
-        // Kept to send again, unless a newer choice for the field came since.
-        for (const field of fields) if (this.latest[field] === revision) Object.assign(this.retry, { [field]: sent[field] });
-        // A newer choice went out before this failure was known, so it could
-        // not carry the retry: send it once now, behind that choice.
-        if (revision !== this.revision && Object.keys(this.retry).length) queueMicrotask(() => this.change({}));
+        for (const field of fields) {
+          if (this.latest[field] !== revision) continue;
+          // The other window chose since: its choice stands and this one is dropped.
+          if (foreign !== this.foreignNotifications) { delete this.patch[field]; delete this.latest[field]; }
+          // Otherwise kept to send again.
+          else Object.assign(this.retry, { [field]: sent[field] });
+        }
+        // The person chose again before this failure was known, so that choice
+        // could not carry the retry: send it once now, behind it. A resend is
+        // not a choice, so failures never resend each other.
+        if (chosen !== this.chosen && Object.keys(this.retry).length) queueMicrotask(() => this.change({}));
         throw error;
       } finally {
         own.completed = true;
@@ -154,6 +165,7 @@ export class PreferencePatchQueue {
       this.foreignNotifications += 1;
       this.durable = null;
       // A choice made in the other window is newer than any retry here.
+      for (const field of Object.keys(this.retry) as (keyof PickerPreferences)[]) { delete this.patch[field]; delete this.latest[field]; }
       this.retry = {};
       this.emit({ type: "invalidated" });
     }

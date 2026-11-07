@@ -299,12 +299,15 @@ pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -
     // Off the main thread: a settings write in progress must never stall a paste.
     let settings_file = settings_file.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        // In turn, so it reads every change asked for before it.
-        let preferences = settings_file.exclusive(read_preferences)??;
-        settings_file
-            .surprises
-            .store(preferences.small_surprises.unwrap_or(true), Ordering::SeqCst);
-        Ok(preferences)
+        // In turn, so it reads every change asked for before it, and publishes
+        // what it read before any later change can.
+        settings_file.exclusive(|path| {
+            let preferences = read_preferences(path)?;
+            settings_file
+                .surprises
+                .store(preferences.small_surprises.unwrap_or(true), Ordering::SeqCst);
+            Ok(preferences)
+        })?
     })
     .await
     .map_err(|_| "settings are unavailable".to_string())?
@@ -335,6 +338,7 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferencesPatch,
     settings_file: State<'_, SettingsFile>,
     app: AppHandle<R>,
+    window: tauri::Window<R>,
 ) -> Result<u64, String> {
     // Geometry takes the text size now, even if the save then fails.
     if let Some(larger) = preferences.larger_text
@@ -342,39 +346,23 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
     {
         sizing.set_larger_text(larger);
     }
-    settings_file.submit_preferences(preferences)
-}
-
-/// The saved preferences once a submitted change has run, and what follows a save.
-#[tauri::command]
-#[ibis_desktop_macros::command]
-pub(crate) async fn picker_preferences_saved<R: tauri::Runtime>(
-    receipt: u64,
-    settings_file: State<'_, SettingsFile>,
-    app: AppHandle<R>,
-    window: tauri::Window<R>,
-) -> Result<PickerSave, String> {
-    let submitted = settings_file.take_receipt(receipt)?;
-    let settings_file = settings_file.inner().clone();
+    let changes_menu_bar = preferences.menu_bar.is_some();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
-    tauri::async_runtime::spawn_blocking(move || {
-        let saved = submitted
-            .saved
-            .wait()
-            .unwrap_or_else(|| Err("settings are unavailable".to_string()))?;
-        settings_file
-            .surprises
-            .store(saved.small_surprises.unwrap_or(true), Ordering::SeqCst);
-        let preferences = PickerPreferences::from_settings(&saved);
-        if submitted.menu_bar {
+    let file = settings_file.inner().clone();
+    // What follows a save runs once it is saved, whether or not a window asks
+    // how it went: a window may close first.
+    settings_file.submit_preferences(preferences, move |receipt, saved| {
+        let Ok(saved) = saved else { return };
+        let preferences = PickerPreferences::from_settings(saved);
+        if changes_menu_bar {
             crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar, receipt);
         }
         let change = PreferenceChange {
             revision: receipt,
             preferences,
         };
-        crate::library::refresh_settings_notice(&app, &settings_file);
+        crate::library::refresh_settings_notice(&app, &file);
         if from_elsewhere {
             crate::diagnostics::report(
                 app.emit_to("main", "preferences:changed", change),
@@ -385,7 +373,25 @@ pub(crate) async fn picker_preferences_saved<R: tauri::Runtime>(
             app.emit_to("settings", "preferences:changed", change),
             crate::diagnostics::NativeIssue::PickerEvent,
         );
-        Ok(PickerSave { preferences })
+    })
+}
+
+/// The saved preferences once a submitted change has run.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) async fn picker_preferences_saved(
+    receipt: u64,
+    settings_file: State<'_, SettingsFile>,
+) -> Result<PickerSave, String> {
+    let submitted = settings_file.take_receipt(receipt)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        let saved = submitted
+            .outcome
+            .recv()
+            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))?;
+        Ok(PickerSave {
+            preferences: PickerPreferences::from_settings(&saved),
+        })
     })
     .await
     .map_err(|_| "picker preferences could not be saved".to_string())?
@@ -403,8 +409,7 @@ struct Receipts {
 const MAX_RECEIPTS: usize = 256;
 
 struct Submitted {
-    saved: ibis_engine::settings::Pending<Result<settings::Settings, String>>,
-    menu_bar: bool,
+    outcome: std::sync::mpsc::Receiver<Result<settings::Settings, String>>,
 }
 
 impl SettingsFile {
@@ -412,7 +417,11 @@ impl SettingsFile {
         self.surprises.load(Ordering::SeqCst)
     }
 
-    fn submit_preferences(&self, preferences: PickerPreferencesPatch) -> Result<u64, String> {
+    fn submit_preferences(
+        &self,
+        preferences: PickerPreferencesPatch,
+        after: impl FnOnce(u64, &Result<settings::Settings, String>) + Send + 'static,
+    ) -> Result<u64, String> {
         let mut receipts = self
             .receipts
             .lock()
@@ -424,12 +433,25 @@ impl SettingsFile {
             .filter(|value| *value < 1 << 53)
             .ok_or_else(|| "settings are unavailable".to_string())?;
         receipts.next = receipt;
-        let menu_bar = preferences.menu_bar.is_some();
+        let surprises = Arc::clone(&self.surprises);
         // Submitted under the receipts lock, so receipts follow the owner's order.
-        let saved = self
-            .owner
-            .submit_on_file(move |path| save_preferences_at(path, preferences));
-        receipts.submitted.insert(receipt, Submitted { saved, menu_bar });
+        let saved = self.owner.submit_on_file(move |path| {
+            let saved = save_preferences_at(path, preferences);
+            // Published in the save's own turn, so no older read can undo it.
+            if let Ok(saved) = &saved {
+                surprises.store(saved.small_surprises.unwrap_or(true), Ordering::SeqCst);
+            }
+            saved
+        });
+        let (reply, outcome) = std::sync::mpsc::channel();
+        tauri::async_runtime::spawn_blocking(move || {
+            let saved = saved
+                .wait()
+                .unwrap_or_else(|| Err("settings are unavailable".to_string()));
+            after(receipt, &saved);
+            let _ = reply.send(saved);
+        });
+        receipts.submitted.insert(receipt, Submitted { outcome });
         while receipts.submitted.len() > MAX_RECEIPTS {
             receipts.submitted.pop_first();
         }
@@ -454,11 +476,11 @@ impl SettingsFile {
         if let Some(id) = output {
             preferences.output = Some(crate::output::listed(id).ok_or("not a listed output")?);
         }
-        let receipt = self.submit_preferences(preferences)?;
+        let receipt = self.submit_preferences(preferences, |_, _| ())?;
         self.take_receipt(receipt)?
-            .saved
-            .wait()
-            .unwrap_or_else(|| Err("settings are unavailable".to_string()))
+            .outcome
+            .recv()
+            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))
     }
 }
 
@@ -575,10 +597,13 @@ mod tests {
         let file = SettingsFile::new(directory.path().join("settings.json"));
         let receipts: Vec<u64> = (0..=MAX_RECEIPTS)
             .map(|_| {
-                file.submit_preferences(PickerPreferencesPatch {
-                    density: Some(Density::Compact),
-                    ..Default::default()
-                })
+                file.submit_preferences(
+                    PickerPreferencesPatch {
+                        density: Some(Density::Compact),
+                        ..Default::default()
+                    },
+                    |_, _| (),
+                )
                 .unwrap_or_else(|e| panic!("{e}"))
             })
             .collect();
@@ -589,7 +614,7 @@ mod tests {
         let last = file
             .take_receipt(receipts[MAX_RECEIPTS])
             .unwrap_or_else(|e| panic!("{e}"));
-        assert!(last.saved.wait().is_some_and(|saved| saved.is_ok()));
+        assert!(last.outcome.recv().is_ok_and(|saved| saved.is_ok()));
         assert_eq!(
             read_preferences(&file.path).unwrap_or_else(|e| panic!("{e}")).density,
             Density::Compact
@@ -620,6 +645,7 @@ mod tests {
             },
             app.state::<SettingsFile>(),
             app.handle().clone(),
+            older_window.as_ref().window(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         let newer = save_picker_preferences(
@@ -630,18 +656,15 @@ mod tests {
             },
             app.state::<SettingsFile>(),
             app.handle().clone(),
+            newer_window.as_ref().window(),
         )
         .unwrap_or_else(|e| panic!("{e}"));
         assert!(older < newer, "both windows share one order");
         // The newer window asks first; its choice still lands last.
         let saved = |receipt, window: &tauri::WebviewWindow<_>| {
-            tauri::async_runtime::block_on(picker_preferences_saved(
-                receipt,
-                app.state::<SettingsFile>(),
-                app.handle().clone(),
-                window.as_ref().window(),
-            ))
-            .unwrap_or_else(|e| panic!("{e}"))
+            let _ = window;
+            tauri::async_runtime::block_on(picker_preferences_saved(receipt, app.state::<SettingsFile>()))
+                .unwrap_or_else(|e| panic!("{e}"))
         };
         assert_eq!(saved(newer, &newer_window).preferences.density, Density::Compact);
         assert_eq!(
@@ -749,6 +772,55 @@ mod tests {
         assert!(
             read_preferences(&path).is_err(),
             "a failed read must not silently return defaults"
+        );
+    }
+
+    #[test]
+    fn a_choice_reaches_the_picker_even_when_its_window_closes_before_asking() {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        use tauri::Listener;
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("settings.json");
+        let app = tauri::test::mock_builder()
+            .manage(SettingsFile::new(path.clone()))
+            .invoke_handler(tauri::generate_handler![
+                save_picker_preferences,
+                picker_preferences_saved
+            ])
+            .build(tauri::generate_context!(test = true))
+            .unwrap_or_else(|e| panic!("{e}"));
+        let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"));
+        let settings = tauri::WebviewWindowBuilder::new(&app, "settings", Default::default())
+            .build()
+            .unwrap_or_else(|e| panic!("{e}"));
+        let (sent, events) = mpsc::channel();
+        main.listen("preferences:changed", move |event| {
+            let _ = sent.send(event.payload().to_string());
+        });
+        // Settings turns Recent citations off, then closes without asking how it went.
+        let off = PickerPreferences {
+            recent_citations: Some(false),
+            ..PickerPreferences::from_settings(&settings::Settings::default())
+        };
+        tauri::test::get_ipc_response(&settings, preference_request(&settings, off, None))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let payload = events
+            .recv_timeout(Duration::from_secs(3))
+            .unwrap_or_else(|e| panic!("the picker was never told: {e}"));
+        assert_eq!(
+            serde_json::from_str::<PickerPreferences>(&payload)
+                .ok()
+                .and_then(|seen| seen.recent_citations),
+            Some(false)
+        );
+        assert_eq!(
+            read_preferences(&path)
+                .unwrap_or_else(|e| panic!("{e}"))
+                .recent_citations,
+            Some(false)
         );
     }
 

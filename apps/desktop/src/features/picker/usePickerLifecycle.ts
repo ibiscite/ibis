@@ -108,7 +108,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     destination.read();
     preferences.loadPreferences(() => mounted);
     // Choices made in Settings apply to the picker at once.
-    const unlistenPreferences = onPreferencesChanged?.(() => { preferences.loadPreferences(() => mounted); destination.read(false); })
+    const unlistenPreferences = onPreferencesChanged?.((change) => { preferences.preferencesChanged(change?.revision, () => mounted); destination.read(false); })
       .catch(() => undefined);
     const unlistenProject = onProjectChanged?.((version) => {
       if (!mounted) return;

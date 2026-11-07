@@ -314,3 +314,40 @@ test("a failed read publishes nothing after unmount", async () => {
   await loading;
   expect(events).not.toHaveBeenCalled();
 });
+
+test("two failing fields never resend each other: the queue settles when saves keep failing", async () => {
+  const { api, queue } = fixture();
+  await queue.load();
+  const first = deferred<PickerSave>();
+  api.write.mockReturnValueOnce(first.promise).mockRejectedValue(new Error("synthetic read-only settings"));
+  queue.change({ larger_text: true });
+  queue.change({ density: "compact" });
+  first.reject(new Error("synthetic read-only settings"));
+  await queue.finishSaving();
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  await queue.finishSaving();
+  const settled = api.write.mock.calls.length;
+  // Two choices, then at most one resend behind the newer choice.
+  expect(settled).toBeLessThanOrEqual(3);
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  expect(api.write).toHaveBeenCalledTimes(settled);
+});
+
+test.each([false, true])("a failure that returns after the other window chose is dropped, never sent over it (readAfterWrites=%s)", async (readAfterWrites) => {
+  const { api, queue, saved } = fixture({ readAfterWrites });
+  await queue.load();
+  const failing = deferred<PickerSave>();
+  api.write.mockReturnValueOnce(failing.promise);
+  queue.change({ larger_text: true });
+  await vi.waitFor(() => expect(api.write).toHaveBeenCalledOnce());
+  // Settings saves the opposite while this save is still out, then it fails.
+  saved().preferences.larger_text = false;
+  const refreshed = queue.refresh(99);
+  failing.reject(new Error("synthetic save failure"));
+  await refreshed;
+  await queue.finishSaving();
+  queue.change({ density: "compact" });
+  await queue.finishSaving();
+  expect(api.write.mock.calls.at(-1)).toEqual([{ density: "compact" }]);
+  expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact" });
+});

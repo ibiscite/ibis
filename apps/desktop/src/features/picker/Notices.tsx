@@ -35,6 +35,7 @@ export const OPERATION_FAILURES = {
   appChoices: "operation-failures-app-choices",
   appRead: "operation-failures-app-read",
   appChoice: "operation-failures-app-choice",
+  appDelivery: "operation-failures-app-delivery",
 } as const satisfies Record<string, MessageId>;
 export type Operation = keyof typeof OPERATION_FAILURES;
 

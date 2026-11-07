@@ -138,7 +138,7 @@ export const commands = {
 	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
-	/** The saved preferences once a submitted change has run, and what follows a save. */
+	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
@@ -276,6 +276,17 @@ export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","
 export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
+
+/**
+ * Why a choice for an app was not saved, so the picker can say which part
+ * was kept without reading the words.
+ */
+export type AppChoiceError = {
+	code: "not_saved";
+	message: string;
+} | {
+	code: "delivery_not_saved";
+};
 
 /** A deliberate delivery choice for one captured app, independent of its format. */
 export type AppPaste = "paste" | "copy-only";

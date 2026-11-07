@@ -362,6 +362,15 @@ test.each([["the open first-paste question", true], ["the format menu with nothi
   await waitFor(() => expect(remembered).toEqual([asked ? "pandoc" : null]));
 });
 
+test("a first-paste answer whose paste choice cannot be saved says the format was kept", async () => {
+  opened(() => ({ ...BROWSER, can_choose_paste: true }), { remember_app_output: () => Promise.reject({ code: "delivery_not_saved" }) });
+  await screen.findByText("First");
+  await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Copy Only" }));
+  expect((await screen.findByText(/saved the format for this app, but not whether to paste into it/)).textContent).toContain("Choose Paste or Copy Only again");
+});
+
 test("an unread destination says what applies and never points at paste choices it cannot offer", async () => {
   const saved: unknown[] = [];
   const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });

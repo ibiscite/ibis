@@ -136,9 +136,11 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
       apply();
       if (clearHeld && choice === choices.current) { preserveOpeningOutput.current = false; setHeld(null); }
       report("appChoice", false);
-    }).catch(() => {
+    }).catch((error: unknown) => {
       if (opening !== openings.current) return;
-      report("appChoice");
+      // A format can save while its paste choice does not: say which was kept.
+      const partial = (error as { code?: string } | null)?.code === "delivery_not_saved";
+      report(partial ? "appDelivery" : "appChoice");
       failed?.();
     });
     saves.current = pending;

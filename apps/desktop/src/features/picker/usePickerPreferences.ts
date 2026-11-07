@@ -94,6 +94,8 @@ export function usePickerPreferences(
   /** Reads the saved preferences. The picker calls this from its
    * mount effect, after the library status, so the calls keep their order. */
   const loadPreferences = (mounted: () => boolean) => { void queue.load(mounted); };
+  /** A choice saved in Settings: it retires the picker's own failed choices before reading. */
+  const preferencesChanged = (revision: number | undefined, mounted: () => boolean) => { void queue.refresh(revision ?? -1, mounted); };
 
-  return { ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
+  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
 }
