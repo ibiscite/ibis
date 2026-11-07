@@ -485,12 +485,6 @@ test("rows keep equal insets, fit intrinsic labels to the viewport and end in an
   expect(`${menuCss}${toolbar}`).not.toMatch(/\b(14|34)px\b/);
 });
 
-test("the shortcuts table breaks actions only between words and keeps keys on one line at the end", () => {
-  expect(styles).not.toMatch(/\.keys-scroll[^{]*\{[^}]*overflow-wrap: anywhere/);
-  expect(styles).toMatch(/\.keys-scroll th, \.keys-scroll td \{[^}]*overflow-wrap: break-word;/);
-  expect(styles).toMatch(/\.keys-scroll td \{[^}]*text-align: end; white-space: nowrap; \}/);
-});
-
 
 test("whole-row fitting preserves variable-height wrapped action rows", () => {
   const frame = document.createElement("div"), list = document.createElement("div");

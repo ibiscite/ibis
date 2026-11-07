@@ -2,6 +2,7 @@
 // One command to trust before pushing:
 //   node scripts/check.mjs         what CI would run for this branch's changes
 //   node scripts/check.mjs --all   every check
+//   node scripts/check.mjs --plan  the check classes this branch's changes select, for land.sh
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
 // Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
 import { spawnSync } from "node:child_process";
@@ -9,7 +10,7 @@ import { readdirSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { classify } from "./ci-paths.mjs";
+import { classify, parseNameStatus } from "./ci-paths.mjs";
 
 /** Outline drawings stay on the 20 pt grid, inside the 16 pt live area.
  * Curves use bounded control points too: no hidden transform can move them. */
@@ -67,16 +68,13 @@ export function changedFiles(run = git) {
   const tracked = base && run(["diff", "--name-status", "-M", "-z", base]);
   const untracked = run(["ls-files", "--others", "--exclude-standard", "-z"]);
   if (tracked == null || tracked === false || untracked == null) return null;
-  const statuses = { A: "added", C: "copied", D: "removed", M: "modified", R: "renamed", T: "changed" };
-  const fields = tracked.split("\0").filter(Boolean);
-  const files = untracked.split("\0").filter(Boolean).map((filename) => ({ filename, status: "added" }));
-  while (fields.length > 0) {
-    const status = fields.shift();
-    const moved = /^[RC]/.test(status);
-    const previous_filename = moved ? fields.shift() : null;
-    files.push({ filename: fields.shift(), previous_filename, status: statuses[status[0]] ?? "unknown" });
-  }
-  return files;
+  return [...untracked.split("\0").filter(Boolean).map((filename) => ({ filename, status: "added" })), ...parseNameStatus(tracked)];
+}
+
+/** The check classes for this branch's changes, as CI's pull request run picks them. */
+export function plan(files = changedFiles()) {
+  const selected = classify("pull_request", files?.length, files);
+  return Object.keys(selected).filter((name) => name !== "proven" && selected[name]);
 }
 
 function git(args) {
@@ -86,10 +84,14 @@ function git(args) {
 
 function main() {
   const args = process.argv.slice(2);
+  if (args.length === 1 && args[0] === "--plan") {
+    console.log(plan().join(" "));
+    return;
+  }
   const scriptsOnly = args.length === 1 && ["--script-tests", "--platform-script-tests"].includes(args[0]);
   const brandOnly = args.length === 1 && args[0] === "--brand-assets";
   if (args.length > 0 && !scriptsOnly && !brandOnly && args.join() !== "--all") {
-    console.error("Usage: node scripts/check.mjs [--all | --script-tests | --platform-script-tests | --brand-assets]");
+    console.error("Usage: node scripts/check.mjs [--all | --plan | --script-tests | --platform-script-tests | --brand-assets]");
     process.exit(1);
   }
 
@@ -99,9 +101,9 @@ function main() {
     .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
     .map((name) => `scripts/${name}`);
   const scriptSteps = [
-    // The identity guard needs the Web job's full history.
+    // CI runs the identity guard in the dependency job, which every run needs.
     ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
-      .filter((name) => args[0] !== "--platform-script-tests" || name !== "check-agent-identity.mjs")
+      .filter((name) => !scriptsOnly || name !== "check-agent-identity.mjs")
       .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
     ["Script tests", "node", ["--test", ...scriptTests]],
     ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
@@ -143,7 +145,7 @@ function main() {
   const changed = args.length === 0;
   const files = changed ? changedFiles() : null;
   const selected = classify(changed ? "pull_request" : "all", files?.length, files);
-  if (changed) console.log(`Checks for ${files?.length ?? "unknown"} changed file(s): ${Object.keys(selected).filter((name) => selected[name]).join(", ") || "documentation only"}.`);
+  if (changed) console.log(`Checks for ${files?.length ?? "unknown"} changed file(s): ${plan(files).join(", ") || "documentation only"}.`);
 
   // On Windows commands run through a shell so that pnpm.cmd resolves; a missing
   // tool then fails like any other command instead of raising ENOENT. So when a

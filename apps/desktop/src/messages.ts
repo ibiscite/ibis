@@ -30,7 +30,7 @@ export const citationDetailsText = {
   page: "Page",
   none: "None",
   /** Page is optional; empty means no page, never the word "None". */
-  pagePlaceholder: "Optional",
+  pagePlaceholder: "Add page",
   pageHint: "A page, a range or several, as printed",
   form: "Show as",
   examplesUnavailable: "Examples are unavailable",

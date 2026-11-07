@@ -13,6 +13,7 @@ function fixture(t) {
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const bin = join(dir, "bin"), calls = join(dir, "calls");
   mkdirSync(bin);
+  mkdirSync(join(dir, "apps/desktop/src-tauri"), { recursive: true });
   const stubs = {
     git: `printf 'git %s\\n' "$*" >> "$CALLS"
 case "$1" in
@@ -32,15 +33,18 @@ elif [ "$*" = 'pr merge 42 --squash --auto' ]; then exit "$MERGE_STATUS"
 else echo 'unsupported GitHub command' >&2; exit 44
 fi`,
     node: `printf 'node %s\\n' "$*" >> "$CALLS"
+if [ "$*" = "scripts/check.mjs --plan" ]; then echo "$PLAN"; exit "$PLAN_STATUS"; fi
 [ "$*" = scripts/check-agent-identity.mjs ] || exit 99
 exit "$IDENTITY_STATUS"`,
+    cargo: `printf 'cargo %s\\n' "$*" >> "$CALLS"`,
+    pnpm: `printf 'pnpm %s\\n' "$*" >> "$CALLS"`,
   };
   for (const [name, body] of Object.entries(stubs)) writeFileSync(join(bin, name), `#!/usr/bin/env bash\n${body}\n`, { mode: 0o755 });
   return (overrides = {}) => {
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
       cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", MERGE_PENDING: "0", COMMIT_STATUS: "0", IDENTITY_STATUS: "0", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", ...overrides },
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", MERGE_PENDING: "0", COMMIT_STATUS: "0", IDENTITY_STATUS: "0", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", PLAN: "", PLAN_STATUS: "0", ...overrides },
     });
     return { ...result, calls: readFileSync(calls, "utf8").trim().split("\n") };
   };
@@ -101,6 +105,23 @@ test("landing preserves GitHub failures and explains a branch without a PR", { s
   }
 });
 
+test("landing checks what CI's plan selects and leaves test suites to CI", { skip: process.platform === "win32" }, (t) => {
+  const run = fixture(t);
+  const native = run({ PLAN: "core interface native scripts web" });
+  assert.equal(native.status, 0, native.stderr);
+  assert.ok(native.calls.includes("cargo test --workspace --locked --no-run -q"), "a merge that no longer compiles stops here");
+  assert.ok(native.calls.includes("pnpm exec tsc --noEmit -p ."));
+  assert.ok(!native.calls.some((call) => /^cargo test (?!--workspace --locked --no-run)/.test(call)), "the test suites run in CI");
+  const docs = run({ PLAN: "" });
+  assert.equal(docs.status, 0, docs.stderr);
+  assert.ok(!docs.calls.some((call) => /^(cargo|pnpm) /.test(call)), docs.calls.join("\n"));
+  const front = run({ PLAN: "interface web" });
+  assert.ok(front.calls.includes("pnpm exec tsc --noEmit -p .") && !front.calls.some((call) => call.startsWith("cargo ")));
+  const failed = run({ PLAN_STATUS: "1" });
+  assert.equal(failed.status, 1);
+  assert.ok(!failed.calls.some((call) => call.startsWith("git push") || call.startsWith("gh ")));
+});
+
 test("a rejected public commit identity stops before publishing anything", { skip: process.platform === "win32" }, (t) => {
   const result = fixture(t)({ IDENTITY_STATUS: "77" });
   assert.equal(result.status, 77);
@@ -136,7 +157,8 @@ test("a real Git integration preserves both changes and publishes signed, disclo
   git("--git-dir", origin, "fetch", repo, "main:main");
   git("switch", "fix/synthetic");
   mkdirSync(join(repo, "scripts"));
-  writeFileSync(join(repo, "scripts/check-agent-identity.mjs"), readFileSync(new URL("./check-agent-identity.mjs", import.meta.url)));
+  for (const name of ["check-agent-identity.mjs", "check.mjs", "ci-paths.mjs"]) writeFileSync(join(repo, "scripts", name), readFileSync(new URL(`./${name}`, import.meta.url)));
+  writeFileSync(join(repo, ".git/info/exclude"), "scripts/\n"); // The landing tools are not the branch's change.
   writeFileSync(join(bin, "gh"), "#!/bin/sh\nif [ \"$1\" = api ]; then echo 42; else [ \"$*\" = 'pr merge 42 --squash --auto' ]; fi\n", { mode: 0o755 });
   const land = () => {
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {

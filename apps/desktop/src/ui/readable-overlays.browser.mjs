@@ -6,7 +6,7 @@ import { build } from "vite";
 import react from "@vitejs/plugin-react";
 
 const built = await build({
-  configFile: false, root: fileURLToPath(new URL("../..", import.meta.url)), plugins: [react()], logLevel: "error",
+  configFile: false, root: fileURLToPath(new URL("../..", import.meta.url)), plugins: [react()], logLevel: "error", define: { "process.env.NODE_ENV": JSON.stringify("production") },
   build: { write: false, minify: false, lib: { entry: fileURLToPath(new URL("./readable-overlays.fixture.tsx", import.meta.url)), name: "Readability", formats: ["iife"] } },
 });
 const output = (Array.isArray(built) ? built : [built]).flatMap((result) => result.output);
@@ -34,6 +34,7 @@ try {
       header { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:8px; }
       .fixture-body { height:260px; overflow:auto; padding:8px; }
       .fixture-body ul { margin:0; padding:0; }
+      .fixture-inspector { display:grid; width:280px; height:200px; }
     </style></head><body><div id="fixture"></div></body></html>`);
     await page.addScriptTag({ content: script });
     await page.getByRole("button", { name: "Keys", exact: true }).waitFor();
@@ -58,7 +59,7 @@ try {
       });
       assert.ok(frame.left >= 7 && frame.right <= 473 && frame.top >= 7 && frame.bottom <= 353, `${name} stays inside minimum window`);
       assert.ok(Math.abs(frame.alpha - (preference === "normal" ? name === "Keys" ? .96 : .92 : 1)) < .001, `${name} uses its overlay role`);
-      assert.equal(frame.blur, preference === "normal" ? "blur(30px) saturate(1.8)" : "none");
+      assert.equal(frame.blur, preference === "normal" ? "blur(40px) saturate(1.6)" : "none");
       assert.deepEqual(await overlay.locator(".menu-item").evaluateAll((rows) => rows.flatMap((row) => {
         const box = row.getBoundingClientRect(), style = getComputedStyle(row);
         return [...row.children].flatMap((child) => {
@@ -87,15 +88,38 @@ try {
       await page.keyboard.press("Escape");
       await overlay.waitFor({ state: "detached" });
     }
+    // The three glitches of 2026-11-05, measured as drawn. Sheet text, rows and actions keep the sheet's inset.
+    await page.getByRole("button", { name: "Sheet", exact: true }).click();
+    assert.deepEqual(await page.locator(".ui-sheet").evaluate((sheet) => {
+      const box = sheet.getBoundingClientRect(), range = document.createRange();
+      return [...sheet.querySelectorAll(".ui-sheet-heading h2, .ui-sheet-body p, .ui-sheet-row span span, .ui-sheet-actions .ui-button")].flatMap((part) => {
+        range.selectNodeContents(part);
+        const text = range.getBoundingClientRect();
+        return text.left < box.left + 12 || text.right > box.right - 12 || (part.matches(".ui-button") && text.bottom > box.bottom - 12) ? [part.textContent.slice(0, 20)] : [];
+      });
+    }), [], `${colorScheme}/${preference}/${scale} sheet content is padded`);
+    await page.keyboard.press("Escape");
+    // A two-line title pushes the byline down instead of covering it.
+    const titles = await page.locator(".fixture-inspector .inspector-titles").evaluate((node) => {
+      const title = node.querySelector("h2"), box = title.getBoundingClientRect();
+      return { lines: Math.round(box.height / parseFloat(getComputedStyle(title).lineHeight)), gap: node.querySelector(".inspector-byline").getBoundingClientRect().top - box.bottom };
+    });
+    assert.ok(titles.lines === 2 && titles.gap >= 0, `${colorScheme}/${preference}/${scale} byline under a two-line title: ${JSON.stringify(titles)}`);
+    // A held key's badge sits beside the control it names, inside the window.
+    await page.keyboard.down("Meta");
+    await page.locator(".ui-held-key").waitFor();
+    const [control, badge] = await page.evaluate(() => ['[aria-keyshortcuts="Meta+Shift+P"]', ".ui-held-key"].map((selector) => document.querySelector(selector).getBoundingClientRect().toJSON()));
+    await page.keyboard.up("Meta");
+    assert.ok(badge.top >= 0 && !(badge.left < control.right && badge.right > control.left && badge.top < control.bottom && badge.bottom > control.top), `${colorScheme}/${preference}/${scale} key badge beside its control`);
     // At the ordinary window/text size, two content-sized columns are centred.
     if (scale === 1) {
       await page.setViewportSize({ width: 720, height: 480 });
       await page.getByRole("button", { name: "Keys", exact: true }).click();
-      const layout = await page.locator(".keys-dialog").evaluate((node) => {
-        const box = node.getBoundingClientRect(), groups = [...node.querySelectorAll("tbody")].map((group) => group.getBoundingClientRect());
+      const layout = await page.locator(".ui-sheet").evaluate((node) => {
+        const box = node.getBoundingClientRect(), groups = [...node.querySelectorAll(".keys-groups > table")].map((group) => group.getBoundingClientRect());
         return { columns: groups[0].left !== groups[1].left, centred: Math.abs((box.top + box.bottom) / 2 - innerHeight / 2) < 1, width: box.width };
       });
-      assert.ok(layout.columns && layout.centred && layout.width <= 600, "keys sheet is two centred columns, at most 600px wide");
+      assert.ok(layout.columns && layout.centred && layout.width <= 672, `keys sheet is two centred columns, at most 42rem wide: ${JSON.stringify(layout)}`);
     }
     await page.close(); profiles++;
   }
