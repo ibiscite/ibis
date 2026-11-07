@@ -2,15 +2,17 @@ import { expect, test, vi } from "vitest";
 import type { Copied } from "../../api";
 import { testStates } from "../../test-fixtures";
 import { choiceKey } from "./choice";
-import { initialSession, sessionQueryKey } from "./session";
+import { initialDestination } from "./destination";
+import { initialSession, sessionQueryKey, type SessionState } from "./session";
 import { createSessionController, type SessionPorts } from "./sessionController";
 
 function setup(overrides: Partial<SessionPorts> = {}) {
-  const controller = createSessionController({ ...initialSession(), presentation: 0 });
+  // A format picked for this citation only: the copy that uses it consumes it.
+  const controller = createSessionController({ ...initialSession(), presentation: 0, destination: { ...initialDestination, held: "apa" } });
   const ports: SessionPorts = { pickerPresentation: vi.fn(async () => 0), copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: [] })),
     hidePicker: vi.fn(async () => true), showCopiedNotice: vi.fn(async () => ({ outcome: "pasted" as const, app: "Example Writer" })),
-    output: () => ({ opening: 0, choice: 0, delivery: 0 }), pinned: () => false, consume: vi.fn(), refresh: vi.fn(), askFormat: vi.fn(), reportHide: vi.fn(),
-    search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
+    output: () => ({ opening: 0, choice: 0, delivery: 0 }), pinned: () => false, refresh: vi.fn(), askFormat: vi.fn(), reportHide: vi.fn(),
+    report: vi.fn(), chooseDefault: vi.fn(), search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
   controller.connect(ports);
   const chosen = [testStates[1]!.results[0]!];
   const ready = () => {
@@ -24,6 +26,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
   const enter = () => controller.dispatch({ type: "enter", choice: choiceKey(chosen) });
   return { controller, ports, ready, enter };
 }
+const held = (state: SessionState) => state.destination.held;
 const deferred = <T,>() => {
   let resolve!: (value: T) => void, reject!: (error: unknown) => void;
   const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
@@ -41,7 +44,7 @@ test("the runner writes and delivers one canonical result despite repeated Enter
   expect(s.ports.showCopiedNotice).toHaveBeenCalledExactlyOnceWith("canonical citation", 42, null);
   await Promise.resolve();
   expect(s.controller.getSnapshot().lastOutcome).toBe("Pasted into Example Writer");
-  expect(s.ports.consume).toHaveBeenCalledTimes(1);
+  expect(held(s.controller.getSnapshot())).toBeNull();
 });
 
 test("an old copy response cannot consume a reopened session's new copy", async () => {
@@ -53,7 +56,7 @@ test("an old copy response cannot consume a reopened session's new copy", async 
   s.ready(); s.enter();
   old.resolve({ text: "old citation", warnings: [] });
   await old.promise;
-  expect(s.ports.consume).not.toHaveBeenCalled();
+  expect(held(s.controller.getSnapshot())).toBe("apa");
   expect(s.ports.hidePicker).not.toHaveBeenCalled();
   expect(s.controller.getSnapshot().activeCopy).toBe(2);
   fresh.resolve({ text: "fresh citation", warnings: [] });
@@ -72,7 +75,7 @@ test("a delayed hide rejection cannot show an error in a reopened session", asyn
   hiding.reject(new Error("invented hide failure"));
   await hiding.promise.catch(() => {});
   expect(s.ports.reportHide).not.toHaveBeenCalled();
-  expect(s.ports.consume).not.toHaveBeenCalled();
+  expect(held(s.controller.getSnapshot())).toBe("apa");
   expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
 });
 
@@ -94,7 +97,7 @@ test("a hide carries A's native presentation even when it arrives after B reopen
   arrivals[0]!(); hiding.resolve(true);
   await hiding.promise;
   expect(visible).toBe(43);
-  expect(s.ports.consume).not.toHaveBeenCalled();
+  expect(held(s.controller.getSnapshot())).toBe("apa");
   expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
   s.ready(); s.enter();
   await Promise.resolve();
@@ -107,7 +110,7 @@ test("a refused native hide leaves the new picker and its output alone", async (
   const s = setup({ hidePicker: vi.fn(async () => false) });
   s.enter();
   await Promise.resolve(); await Promise.resolve();
-  expect(s.ports.consume).not.toHaveBeenCalled();
+  expect(held(s.controller.getSnapshot())).toBe("apa");
   expect(s.ports.showCopiedNotice).not.toHaveBeenCalled();
   expect(s.ports.reportHide).not.toHaveBeenCalled();
   expect(s.controller.getSnapshot().permissionDetour).toBe(false);

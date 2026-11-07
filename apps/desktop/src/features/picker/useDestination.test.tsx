@@ -1,10 +1,20 @@
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
-import { useDestination } from "./useDestination";
+import { useState, useSyncExternalStore } from "react";
+import type { OutputToken } from "./destination";
+import { createSessionController } from "./sessionController";
+import { useDestination as useSessionDestination } from "./useDestination";
 import type { PickerDestination, WritingProjectsView } from "../../api";
 import type { OutputId } from "../../format/outputs";
 
 afterEach(cleanup);
+/** The destination in its own picker session; `consumeHeld` is what a finished copy does. */
+function useDestination(api: Parameters<typeof useSessionDestination>[2], settings: Parameters<typeof useSessionDestination>[3]) {
+  const [session] = useState(() => createSessionController());
+  const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
+  return { ...useSessionDestination(session, state, api, settings),
+    consumeHeld: (output: OutputToken) => session.dispatch({ type: "consume-held", output }) };
+}
 const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
@@ -186,7 +196,7 @@ test("an unread destination may be a real app, so a pick holds for this paste an
   const rememberAppOutput = vi.fn();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => { throw new Error("synthetic read failure"); }, rememberAppOutput }, settings));
   await act(async () => result.current.read());
-  expect(settings.report).toHaveBeenLastCalledWith("appRead");
+  expect(settings.report).toHaveBeenLastCalledWith("appRead", true);
   expect(result.current).toMatchObject({ source: "default", pick: "paste" });
   act(() => result.current.choose("typst"));
   expect(result.current).toMatchObject({ format: "typst", source: "held" });
@@ -237,7 +247,7 @@ test.each(["failed I/O", "refused by the native side"])("a pick whose save is %s
   await act(async () => result.current.read());
   await act(async () => result.current.choose("cite"));
   expect(result.current).toMatchObject({ format: "cite", source: "held", saving: false });
-  expect(settings.report).toHaveBeenCalledWith("appChoice");
+  expect(settings.report).toHaveBeenCalledWith("appChoice", true);
   act(() => result.current.consumeHeld(result.current.copyToken()));
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
 });
@@ -461,4 +471,29 @@ test("a preserved browser output answers the question through refreshes until th
   expect(result.current.shouldAsk).toBe(true);
   expect(rememberAppOutput).toHaveBeenCalledTimes(1);
   expect(settings.chooseDefault).not.toHaveBeenCalled();
+});
+
+test("a late destination read cannot replace the newer one's Paste", async () => {
+  const reads: ((value: PickerDestination) => void)[] = [];
+  const pickerDestination = vi.fn(() => new Promise<PickerDestination>((resolve) => { reads.push(resolve); }));
+  const { result } = renderHook(() => useDestination({ pickerDestination, rememberAppOutput: vi.fn() }, options()));
+  act(() => { result.current.read(); result.current.read(false); });
+  await waitFor(() => expect(pickerDestination).toHaveBeenCalledTimes(2));
+  await act(async () => { reads[1]!({ ...browser, can_paste: true }); });
+  expect(result.current.canPaste).toBe(true);
+  await act(async () => { reads[0]!({ ...browser, can_paste: false }); });
+  expect(result.current.canPaste).toBe(true);
+});
+
+test("a new read withdraws Paste at once, and a failed read leaves Copy", async () => {
+  const again = pending<PickerDestination>();
+  const pickerDestination = vi.fn().mockResolvedValueOnce({ ...browser, can_paste: true }).mockReturnValueOnce(again.promise);
+  const { result } = renderHook(() => useDestination({ pickerDestination, rememberAppOutput: vi.fn() }, options()));
+  await act(async () => result.current.read());
+  expect(result.current.canPaste).toBe(true);
+  act(() => result.current.read(false));
+  expect(result.current.canPaste).toBe(false);
+  pickerDestination.mockRejectedValueOnce(new Error("synthetic unavailable destination"));
+  await act(async () => result.current.read(false));
+  expect(result.current.canPaste).toBe(false);
 });

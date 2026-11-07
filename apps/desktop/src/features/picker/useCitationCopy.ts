@@ -26,7 +26,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
   // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
     session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice, output: destination.copyToken,
-      pinned: () => currentPin.current, consume: destination.consumeHeld, refresh: refreshSnapshot,
+      pinned: () => currentPin.current, refresh: refreshSnapshot,
       askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
     send({ type: "view", session: state.session, interaction: state.interaction,
       view: { appId: destination.appId, writingProjectId: destination.writingProject?.id ?? null, projectVersion: destination.projectVersion(), queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,

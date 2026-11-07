@@ -3,12 +3,19 @@ import * as nativeApi from "../../api";
 import type { Delivered } from "../../bindings";
 import { say } from "../../i18n";
 import { parse } from "../../format/markup";
+import type { OutputId } from "../../format/outputs";
+import type { ProjectEdit } from "./destination";
+import type { Operation } from "./Notices";
 import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type OutputToken, type SessionEffect, type SessionEvent } from "./session";
 
-export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation" | "search" | "previewFileCitation"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
-  output: () => OutputToken; pinned: () => boolean; consume: (output: OutputToken) => unknown;
+export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation" | "search" | "previewFileCitation">
+  & Partial<Pick<typeof nativeApi, "showCopiedNotice" | "pickerDestination" | "rememberAppOutput" | "editWritingProject">> & {
+  output: () => OutputToken; pinned: () => boolean;
   refresh: () => void; askFormat: () => void; reportHide: (failed: boolean) => void;
+  report: (operation: Operation, failed: boolean) => void;
+  /** Saves the default format, for a pick with no app to remember it for. */
+  chooseDefault: (output: OutputId) => void;
   /** Recent citations, the answer to an empty query. */
   recent?: () => ReturnType<typeof nativeApi.search>;
 };
@@ -19,6 +26,13 @@ export function createSessionController(initial = initialSession()) {
   const listeners = new Set<() => void>();
   /** The preview still out; a newer one, or leaving its opening, stops it. */
   let previewing: AbortController | null = null;
+  /** Destination saves run one after another, and a read waits for them. */
+  let saves: Promise<unknown> = Promise.resolve();
+  const afterSaves = <T,>(action: () => Promise<T>) => {
+    const pending = saves.then(action);
+    saves = pending.then(() => undefined, () => undefined);
+    return pending;
+  };
   const dispatch = (event: SessionEvent) => {
     const [next, effects] = reduceSession(state, event);
     if (next !== state) { state = next; for (const notify of listeners) notify(); }
@@ -58,7 +72,28 @@ export function createSessionController(initial = initialSession()) {
         dispatch({ type: "delivered", id: effect.id, session: effect.session, delivered });
         break;
       }
-      case "consume": ports.consume(effect.output); break;
+      case "consume": dispatch({ type: "consume-held", output: effect.output }); break;
+      case "report": ports.report(effect.operation, effect.failed); break;
+      case "choose-default": ports.chooseDefault(effect.output); break;
+      case "read-destination": {
+        const { request } = effect;
+        // A reopening reads after outstanding saves, so it sees the durable choice.
+        await saves;
+        try { dispatch({ type: "destination-read", request, destination: await ports.pickerDestination!() }); }
+        catch (error) { dispatch({ type: "destination-read-failed", request, error }); }
+        break;
+      }
+      case "save-destination": {
+        const { save } = effect;
+        try {
+          await afterSaves(() => ports.rememberAppOutput!(save.appId, save.output, save.paste, save.identity));
+          dispatch({ type: "destination-saved", save });
+        } catch (error) {
+          dispatch({ type: "destination-save-failed", save, partial: (error as { code?: string } | null)?.code === "delivery_not_saved" });
+        }
+        dispatch({ type: "destination-save-settled" });
+        break;
+      }
       case "hide-status": ports.reportHide(effect.failed); break;
       case "refresh": ports.refresh(); break;
       case "ask-format": ports.askFormat(); break;
@@ -91,6 +126,27 @@ export function createSessionController(initial = initialSession()) {
   };
   // Each part connects the ports it owns; together they are the session's I/O.
   return { dispatch, connect: (next: Partial<SessionPorts>) => { ports = { ...ports, ...next }; }, getSnapshot: () => state,
+    /** A writing project change from the sheet or the format menu; its answer is the caller's. */
+    editProject: async (context: string, action: ProjectEdit) => {
+      dispatch({ type: "project-edit" });
+      const { opening, choice } = state.destination.output;
+      try {
+        const view = await afterSaves(() => ports.editWritingProject!(context, action));
+        dispatch({ type: "read-destination", reset: false });
+        return view;
+      } catch (error) {
+        dispatch({ type: "project-edit-failed", opening, choice, error });
+        throw error;
+      } finally {
+        dispatch({ type: "destination-save-settled" });
+      }
+    },
+    /** Waits for destination saves, at most `ms`, before quitting. */
+    afterSaves: async (ms: number) => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      await Promise.race([saves, new Promise<void>((done) => { timer = setTimeout(done, ms); })]);
+      clearTimeout(timer);
+    },
     /** The picker is gone: the engine stops what nobody will read. */
     stop: () => { previewing?.abort(); previewing = null; },
     subscribe: (notify: () => void) => { listeners.add(notify); return () => { listeners.delete(notify); }; } };

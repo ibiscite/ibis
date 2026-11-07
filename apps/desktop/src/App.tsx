@@ -21,7 +21,6 @@ import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays"
 import { useOperations } from "./features/picker/useOperations";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
-import { useDeliveryTarget } from "./features/picker/useDeliveryTarget";
 import { useDestination } from "./features/picker/useDestination";
 import { useRecentReferences } from "./features/picker/useRecentReferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
@@ -95,11 +94,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const updateProgress = useUpdateProgress(api, setFailures);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
   const { density, quitAfterSaving: quitPreferences } = preferences;
-  const deliveryTarget = useDeliveryTarget(api);
-  const destination = useDestination(deliveryTarget.api, {
-    fallback: preferences.format, chooseDefault: preferences.chooseFormat, report,
-    onProjectContext: (context) => send({ type: "project-observed", ...context }),
-  });
+  const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const libraryState = usePickerLibrary(api, report, cancelCopy);
@@ -189,7 +184,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const actions = usePickerActions({
     api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
     // The footer names what Enter copies now, or after the running search.
-    offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: deliveryTarget.canPaste,
+    offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
   });
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
