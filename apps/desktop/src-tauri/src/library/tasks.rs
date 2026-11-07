@@ -725,7 +725,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             warnings: 0,
             reading: Vec::new(),
             live_updates_off: false,
-            error: Some("library state is unavailable".to_string()),
+            error: Some(super::error::words("app-library-state-unavailable", &[])),
             problem: Some(LibraryProblem::Other),
             error_reason: None,
             kept_references: false,

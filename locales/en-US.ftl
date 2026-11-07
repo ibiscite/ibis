@@ -159,6 +159,41 @@ app-saved-title = Save References Cited Since Opening
 app-saved-file = Cited since opening
 app-saved-page = References cited since opening
 
+## The app’s own words when a library cannot be read or a command fails.
+# Most are joined into a longer line, so they start in lower case.
+
+app-library-file-unavailable = the library file is unavailable; download any online-only file to this computer first
+app-library-file-invalid = the library file does not contain valid reference data
+app-library-file-too-large = the library file is larger than 64 MiB
+app-library-file-unfinished = the library file contains an unfinished entry
+app-library-work-limit = the library exceeded the load work limit
+app-library-file-not-utf8 = the library file is not UTF-8 text; save it as UTF-8
+app-library-zotero-sharing-off = Zotero is open but is not sharing your library with other applications
+app-library-zotero-profile-needed = choose which Zotero profile to read
+app-library-zotero-closed = Zotero’s library cannot be read while it is closed
+app-library-zotero-not-found = no Zotero library was found on this computer
+app-library-zotero-no-space = there is not enough free space to read Zotero while it is closed; free some space or open Zotero
+app-library-zotero-cancelled = reading Zotero was cancelled
+app-library-zotero-work-limit = reading Zotero exceeded its work limit
+app-library-zotero-newer = this Zotero database is newer than Ibis can read
+app-library-zotero-group-not-found = a chosen Zotero group library was not found; check that you are still a member
+app-library-zotero-try-again = Zotero could not be read just now; try again
+app-library-not-local = the chosen file is not on this computer
+app-library-stopped = loading the library stopped unexpectedly
+# $error is one of the sentences above.
+app-library-kept = { $error }; keeping the last loaded references
+# $name is the library’s name; $error is one of the sentences above.
+app-library-retained-not-updated = the retained library { $name } could not be updated: { $error }
+app-library-not-refreshed = The library could not be refreshed; keeping the last loaded references.
+app-library-retained-not-refreshed = The retained library could not be refreshed; keeping the last loaded references.
+app-library-state-unavailable = library state is unavailable
+app-command-snapshot-changed = library snapshot changed
+app-command-library-loading = library is loading
+app-command-cancelled = cancelled
+app-command-shared-citation-key = the citation key `{ $key }` belongs to more than one reference
+app-command-not-prepared = The citation could not be prepared. Try again.
+app-command-source-not-opened = The source could not be opened. Try again.
+
 ## The app’s interface.
 
 # Citation language and text direction have separate owners.
