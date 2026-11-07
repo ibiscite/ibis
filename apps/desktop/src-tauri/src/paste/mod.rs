@@ -364,7 +364,9 @@ impl LastTarget {
     }
 
     /// Serialize own writes, presentation retirement and posting. Taking a
-    /// receipt does not surrender its ownership to a superseded worker.
+    /// receipt does not surrender its ownership to a superseded worker. A
+    /// final check that could not finish in time posted no key, so under this
+    /// same lock the copy keeps its one turn for the delivery's retry.
     #[cfg(any(target_os = "macos", test))]
     fn post_if_current(&self, request: &PostRequest, post: impl FnOnce() -> PostResult) -> PostResult {
         let Ok(mut last) = self.0.try_lock() else {
@@ -374,7 +376,11 @@ impl LastTarget {
             return PostResult::Refused;
         }
         last.owner = None;
-        post()
+        let result = post();
+        if result == PostResult::Unavailable {
+            last.owner = Some(request.token);
+        }
+        result
     }
 
     #[cfg(target_os = "macos")]

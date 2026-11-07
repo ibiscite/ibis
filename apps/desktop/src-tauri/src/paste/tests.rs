@@ -922,6 +922,67 @@ fn a_superseded_claimed_worker_cannot_post_even_if_citation_and_counter_match() 
 }
 
 #[test]
+fn a_final_check_that_posted_nothing_keeps_the_copy_for_its_retry_and_nothing_else() {
+    let last = LastTarget::default();
+    last.begin_presentation(Some(writer("com.microsoft.word")));
+    let copy = || {
+        let token = last
+            .write_copy(TEXT, &[], |_| Ok(None), || Ok(Some(COUNT)))
+            .unwrap_or_else(|e| panic!("{e}"));
+        last.take_copy(TEXT, token).unwrap_or_else(|| panic!("proof"))
+    };
+    let request = |proof: &CopyProof| {
+        PostRequest::new(
+            DeliveryRequest {
+                pid: 42,
+                id: "com.microsoft.word".into(),
+                began: proof.written,
+                deadline: proof.written + LATE,
+            },
+            proof,
+        )
+    };
+    let a = copy();
+    // A busy app timed the final check out before any key was posted.
+    assert_eq!(
+        last.post_if_current(&request(&a), || PostResult::Unavailable),
+        PostResult::Unavailable
+    );
+    assert_eq!(
+        last.post_if_current(&request(&a), || PostResult::Pasted),
+        PostResult::Pasted
+    );
+    assert_eq!(
+        last.post_if_current(&request(&a), || panic!("pasted twice")),
+        PostResult::Refused
+    );
+    // A refusal, or a newer copy, ends the old one's turn for good.
+    let b = copy();
+    assert_eq!(
+        last.post_if_current(&request(&b), || PostResult::TargetChanged),
+        PostResult::TargetChanged
+    );
+    assert_eq!(
+        last.post_if_current(&request(&b), || panic!("refused, then posted")),
+        PostResult::Refused
+    );
+    let c = copy();
+    assert_eq!(
+        last.post_if_current(&request(&c), || PostResult::Unavailable),
+        PostResult::Unavailable
+    );
+    let d = copy();
+    assert_eq!(
+        last.post_if_current(&request(&c), || panic!("superseded C")),
+        PostResult::Refused
+    );
+    assert_eq!(
+        last.post_if_current(&request(&d), || PostResult::Pasted),
+        PostResult::Pasted
+    );
+}
+
+#[test]
 fn target_and_lifecycle_are_rechecked_after_the_native_queries() {
     for change in [
         (|desk: &Fake| desk.window.set(Some(200))) as fn(&Fake),
