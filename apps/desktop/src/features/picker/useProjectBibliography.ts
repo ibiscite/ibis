@@ -69,5 +69,5 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
 /** A row's mark, when it belongs to the bibliography on screen and the output uses keys. */
 export function projectText(row: SearchResult, status: ProjectStatus | null): string | null {
   return row.project && status && row.project.generation === status.generation
-    ? pickerText.projectState(row.project.state, status.name, status.last_good, row.project.lines) : null;
+    ? pickerText.projectState(row.project.state, status.name, row.project.lines) : null;
 }

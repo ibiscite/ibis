@@ -9,19 +9,21 @@ const MAX_KEYS: usize = 1000;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectPolicy {
+    /// The check is advice: what it could not settle is a warning.
     #[default]
     Normal,
-    Unchecked,
+    /// A key citation needs a complete current read.
     Strict,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectAssessmentState {
+    /// The citation may be used; its key checks say what to look at.
     Ready,
-    Retained,
-    Unverified,
+    /// A strict request without a complete current read.
     Paused,
+    /// A key known to name a different work.
     Conflict,
 }
 
@@ -31,25 +33,13 @@ pub struct ProjectAssessment {
     pub state: ProjectAssessmentState,
     pub name: String,
     pub checks: Vec<ProjectKey>,
-    pub last_checked_ms: Option<u64>,
     pub message: Option<String>,
     /// Keys with contradictory work identifiers, not mere metadata differences.
     pub conflicts: Vec<String>,
 }
 impl ProjectAssessment {
     pub fn can_copy(&self) -> bool {
-        matches!(
-            self.state,
-            ProjectAssessmentState::Ready | ProjectAssessmentState::Retained | ProjectAssessmentState::Unverified
-        )
-    }
-    pub fn warning(&self) -> Option<String> {
-        matches!(
-            self.state,
-            ProjectAssessmentState::Retained | ProjectAssessmentState::Unverified
-        )
-        .then(|| self.message.clone())
-        .flatten()
+        self.state == ProjectAssessmentState::Ready
     }
 }
 

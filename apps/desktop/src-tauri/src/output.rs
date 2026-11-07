@@ -14,6 +14,7 @@ impl OutputRef {
     pub(crate) fn id(self) -> &'static str {
         &self.0.id
     }
+    #[cfg(test)]
     pub(crate) fn info(self) -> &'static OutputInfo {
         self.0
     }

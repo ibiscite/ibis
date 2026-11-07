@@ -44,7 +44,7 @@ import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { useProjectBibliography } from "./features/picker/useProjectBibliography";
-import { ProjectCheckStatus, WritingProjectTaskStatus } from "./features/picker/ProjectContextStatus";
+import { ProjectCheckNotice } from "./features/picker/ProjectContextStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -129,10 +129,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
-  const taskProject = destination.writingProject;
-  const taskNotice = taskProject?.pending ? `${taskProject.id}:${taskProject.pending.revision}`
-    : taskProject?.retained ? `${taskProject.id}:retained` : taskProject?.saved_problem ?? null;
-  const contextNotice = checkedPreview?.project_check ? `${checkedPreview.project_check}:${checkedPreview.project_message}:${destination.projectVersion()}` : taskNotice;
+  const projectRefusal = checkedPreview?.project_refusal ?? null;
+  // A file that can't be read is advice beside a key citation, never a gate.
+  const projectProblem = checkedPreview && styleOf(format) === null && (project.status?.state === "failed" || project.status?.state === "damaged")
+    ? pickerText.projectDetail(project.status) : null;
+  const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
@@ -246,24 +247,17 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         styles onFormatChange={chooseFormat}
       />
       <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}
-        contextNotice={contextNotice} contextNoticeIdentity={checkedPreview?.project_check === "paused" || checkedPreview?.project_check === "conflict" ? formatted?.request : undefined}>
+        contextNotice={contextNotice} contextNoticeIdentity={projectRefusal ? formatted?.request : undefined}>
         {shortcut?.error && <div className="notices">
           <p role="status">
             {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
-        <ProjectCheckStatus check={checkedPreview?.project_check ?? null} message={checkedPreview?.project_message ?? null}
-          checkedAtMs={checkedPreview?.project_checked_at_ms ?? null}
+        <ProjectCheckNotice refusal={projectRefusal} problem={projectProblem}
           onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
           onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
-          onUnverified={checkedPreview?.project_unverified_allowed === false ? undefined : () => requestCopy(choiceKey(shownChoice), true)} paste={deliveryTarget.canPaste && !pinned}
           disabled={!destination.ready || destination.saving || !ready || searchPending} />
-        <WritingProjectTaskStatus project={destination.writingProject} disabled={!destination.ready || destination.saving}
-          onApply={destination.editProject && destination.writingContext && destination.writingProject?.pending ? () => {
-            const activeProject = destination.writingProject!;
-            void perform("project", () => destination.editProject!(destination.writingContext!, { kind: "apply", id: activeProject.id, revision: activeProject.pending!.revision }));
-          } : undefined} />
         <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
@@ -279,7 +273,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
         changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} />
       <PickerStatusFooter
-        copyProblem={checkedPreview?.project_check === "paused" || checkedPreview?.project_check === "conflict" ? checkedPreview.project_message ?? "Check the project bibliography before inserting." : null}
+        copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}

@@ -90,9 +90,7 @@ pub(crate) fn chosen(args: &ArgMatches) -> Result<Option<WritingProject>, Failur
 }
 
 pub(crate) fn policy(args: &ArgMatches) -> ProjectPolicy {
-    if args.get_flag("unchecked-project") {
-        ProjectPolicy::Unchecked
-    } else if args.get_flag("strict-project") {
+    if args.get_flag("strict-project") {
         ProjectPolicy::Strict
     } else {
         ProjectPolicy::Normal
