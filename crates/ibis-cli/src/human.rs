@@ -45,9 +45,7 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
                 return Some(
                     match holdings {
                         Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
-                        Holdings::Empty => {
-                            "No open library holds any references. A file must be BibTeX, BibLaTeX, CSL-JSON, RIS or CSV in Ibis’s template."
-                        }
+                        Holdings::Empty => return catalogue::text("cli-no-references", None, &[]),
                         Holdings::References => "No references found.",
                     }
                     .into(),
@@ -243,8 +241,15 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
     let summary = record_summary(record.get("csl")?);
+    // The engine decides a word matched only with a spelling change; the row says so.
+    let spelling = (hit.get("typo").and_then(Value::as_bool) == Some(true)
+        && hit.get("partial").and_then(Value::as_bool) != Some(true))
+    .then(|| catalogue::text("cli-spelling-match", None, &[]))
+    .flatten()
+    .map(|label| format!(" {label}"))
+    .unwrap_or_default();
     Some(format!(
-        "{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}{spelling}",
         field(citation_key(record)?),
         if summary.authors.is_empty() {
             "—".into()
@@ -620,6 +625,9 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
             format!(
                 "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
             )
+        }
+        (_, Some(reason @ ErrorReason::LibraryCutShort)) => {
+            format!("cannot find '{shown}': {}", reason_sentence(reason))
         }
         (_, Some(ErrorReason::AmbiguousKey)) => {
             format!("several references use the citation key '{shown}'; give each one its own key in your library.")
