@@ -4,14 +4,16 @@ import type { Delivered } from "../../bindings";
 import { say } from "../../i18n";
 import { initialSession, reduceSession, type OutputToken, type SessionEffect, type SessionEvent } from "./session";
 
-export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
+export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation" | "search"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
   output: () => OutputToken; pinned: () => boolean; consume: (output: OutputToken) => unknown;
   refresh: () => void; askFormat: () => void; reportHide: (failed: boolean) => void;
+  /** Recent citations, the answer to an empty query. */
+  recent?: () => ReturnType<typeof nativeApi.search>;
 };
 
 export function createSessionController(initial = initialSession()) {
   let state = initial;
-  let ports: SessionPorts;
+  let ports = {} as SessionPorts;
   const listeners = new Set<() => void>();
   const dispatch = (event: SessionEvent) => {
     const [next, effects] = reduceSession(state, event);
@@ -56,8 +58,18 @@ export function createSessionController(initial = initialSession()) {
       case "hide-status": ports.reportHide(effect.failed); break;
       case "refresh": ports.refresh(); break;
       case "ask-format": ports.askFormat(); break;
+      case "search": {
+        const { seq } = effect;
+        try {
+          const reply = await (effect.recent && ports.recent ? ports.recent() : ports.search(effect.query, undefined, undefined, effect.interpretLocators));
+          dispatch({ type: "searched", seq, reply });
+        } catch { dispatch({ type: "search-failed", seq }); }
+        break;
+      }
+      case "announce-after": setTimeout(() => dispatch({ type: "announce", seq: effect.seq }), effect.ms); break;
     }
   };
-  return { dispatch, connect: (next: SessionPorts) => { ports = next; }, getSnapshot: () => state,
+  // Each part connects the ports it owns; together they are the session's I/O.
+  return { dispatch, connect: (next: Partial<SessionPorts>) => { ports = { ...ports, ...next }; }, getSnapshot: () => state,
     subscribe: (notify: () => void) => { listeners.add(notify); return () => { listeners.delete(notify); }; } };
 }
