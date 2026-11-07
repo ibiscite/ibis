@@ -45,14 +45,12 @@ fn a_different_doi_in_the_current_read_is_a_conflict_even_in_a_damaged_file() {
 }
 
 #[test]
-fn a_repeated_key_whose_entries_name_another_work_is_a_conflict() {
+fn a_repeated_key_is_a_warning_because_no_entry_can_be_chosen() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
     let other = MATCHED.replace("10.1000/intended", "10.1000/other");
-    std::fs::write(&path, format!("{other}{other}")).unwrap();
+    std::fs::write(&path, format!("{MATCHED}{other}")).unwrap();
     let read = ProjectRead::read(&path, None);
     assert_eq!(read.check("vale2024", None), KeyCheck::Repeated { lines: vec![1, 2] });
-    assert!(read.conflicts("vale2024", &record("10.1000/intended")));
-    std::fs::write(&path, format!("{MATCHED}{MATCHED}")).unwrap();
-    assert!(!ProjectRead::read(&path, None).conflicts("vale2024", &record("10.1000/intended")));
+    assert!(!read.conflicts("vale2024", &record("10.1000/intended")));
 }

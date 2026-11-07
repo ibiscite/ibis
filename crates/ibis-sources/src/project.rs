@@ -267,20 +267,16 @@ impl ProjectRead {
         self.read.as_ref().is_some_and(|read| read.coherent())
     }
 
-    /// An entry for `key` names a different work: it and the library's record
-    /// carry valid DOIs that differ. Every entry counts, a repeated key's too,
-    /// and damage elsewhere in the file does not hide one.
+    /// The file's entry for `key` names a different work: both it and the
+    /// library's record carry a valid DOI, and the two differ. Damage
+    /// elsewhere in the file does not hide this.
     pub fn conflicts(&self, key: &str, library: &Record) -> bool {
-        let (Some(read), Some(expected)) = (&self.read, doi(library)) else {
-            return false;
-        };
-        let written = read.keys.dois(key).iter().filter_map(|text| parse_doi(text));
-        read.records
-            .get(key)
+        self.read
+            .as_ref()
+            .and_then(|read| read.records.get(key))
             .and_then(doi)
-            .into_iter()
-            .chain(written)
-            .any(|doi| doi != expected)
+            .zip(doi(library))
+            .is_some_and(|(project, library)| project != library)
     }
 
     /// `library` is the record the key came from, when it has one.
@@ -292,11 +288,7 @@ impl ProjectRead {
 }
 
 fn doi(record: &Record) -> Option<String> {
-    parse_doi(&field(record, "DOI")?)
-}
-
-fn parse_doi(text: &str) -> Option<String> {
-    match ibis_core::identifier::parse_query(text)? {
+    match ibis_core::identifier::parse_query(&field(record, "DOI")?)? {
         ibis_core::identifier::Identifier::Doi(doi) => Some(doi),
         _ => None,
     }

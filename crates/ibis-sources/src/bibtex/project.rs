@@ -30,9 +30,6 @@ pub(crate) struct KeyScan {
     /// Keys of entries inside `@comment`. Biber skips them; classic BibTeX
     /// ignores only the word `@comment` and reads what follows.
     commented: HashMap<String, usize>,
-    /// Each occurrence's literal `doi`, so a repeated key the loader drops
-    /// still shows which works it names.
-    dois: HashMap<String, Vec<String>>,
     /// Lines the scan could not read, in file order.
     pub damaged: Vec<usize>,
     /// The scan stopped before the end of the file.
@@ -60,9 +57,6 @@ impl KeyScan {
     }
     pub fn alias_line(&self, key: &str) -> Option<usize> {
         self.aliases.get(key).copied()
-    }
-    pub fn dois(&self, key: &str) -> &[String] {
-        self.dois.get(key).map_or(&[], Vec::as_slice)
     }
     pub fn commented_line(&self, key: &str) -> Option<usize> {
         self.commented.get(key).copied()
@@ -205,14 +199,6 @@ fn record(scan: &mut KeyScan, entry: &RawEntry<'_>) {
         .entry(entry.key.to_lowercase())
         .or_default()
         .insert(entry.key.clone());
-    for doi in entry
-        .fields
-        .iter()
-        .filter(|field| field.name == "doi")
-        .filter_map(|field| literal(&field.parts))
-    {
-        scan.dois.entry(entry.key.clone()).or_default().push(doi);
-    }
     for field in entry.fields.iter().filter(|field| field.name == "ids") {
         match literal(&field.parts) {
             Some(value) => {
