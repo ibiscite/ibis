@@ -391,3 +391,65 @@ fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
     assert_eq!(citation_fields(&monthly)[0]["issued"], json!({"date-parts": [[2026]]}));
     assert_eq!(monthly.warnings[0].code, WarningCode::Field);
 }
+
+#[test]
+fn names_dates_and_identifiers_that_agree_keep_the_record() {
+    let directory = tempfile::tempdir().unwrap();
+    let read = |name: &str, text: &str| ibis_sources::load_file(&copy(directory.path(), name, text)).unwrap();
+    let ris = |record: &str| read("one.ris", &format!("TY  - BOOK\nTI  - Invented\n{record}ER  - \n"));
+    // A name given twice is one person, in the order first given.
+    let named = ris("AU  - Doe, Jane\nAU  - Roe, Rafael\nAU  - Doe, Jane\n");
+    assert_eq!(
+        citation_fields(&named)[0]["author"],
+        json!([{"family": "Doe", "given": "Jane"}, {"family": "Roe", "given": "Rafael"}])
+    );
+    // A year that agrees with a date kept as text keeps the record and the text.
+    let dated = ris("PY  - 2026\nY1  - 2026/07//Jul-Sep2026\n");
+    assert_eq!(dated.warnings, []);
+    assert_eq!(
+        citation_fields(&dated)[0]["issued"],
+        json!({"literal": "2026/07//Jul-Sep2026"})
+    );
+    // An ISBN or ISSN that fails its check digit is dropped with a warning.
+    let valid = ris("SN  - 978-0-00-000000-2 (pbk.)\n");
+    assert_eq!(citation_fields(&valid)[0]["ISBN"], "978-0-00-000000-2");
+    let invalid = ris("SN  - 9780000000003\n");
+    assert_eq!(citation_fields(&invalid)[0]["ISBN"], Value::Null);
+    assert_eq!(invalid.warnings[0].code, WarningCode::Field);
+    let csv = read(
+        "serials.csv",
+        "type,title,ISSN,ISBN\narticle-journal,Invented one,1234-5679,\nbook,Invented two,,9780000000003\n",
+    );
+    let fields = citation_fields(&csv);
+    assert_eq!(fields[0]["ISSN"], "1234-5679");
+    assert_eq!(fields[1]["ISBN"], Value::Null);
+    assert_eq!(
+        csv.warnings.iter().map(|w| (w.code, w.line)).collect::<Vec<_>>(),
+        [(WarningCode::Field, Some(3))]
+    );
+}
+
+#[test]
+fn a_quote_inside_an_unquoted_cell_skips_the_row() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = copy(
+        directory.path(),
+        "quote.csv",
+        "type,title\nbook,Unclosed \"quote\nbook,Invented\n",
+    );
+    assert_eq!(ibis_sources::load_file(&path).unwrap().warnings, skipped(&[2]));
+}
+
+#[test]
+fn the_record_limit_counts_every_record_the_file_holds() {
+    let directory = tempfile::tempdir().unwrap();
+    let mut text = String::from("type,title\n");
+    text.push_str(&"book,Invented same\n".repeat(ibis_sources::MAX_LIBRARY_RECORDS));
+    text.push_str("book,Invented past the limit\n");
+    let loaded = ibis_sources::load_file(&copy(directory.path(), "many.csv", &text)).unwrap();
+    assert_eq!(records(&loaded).len(), 1);
+    assert_eq!(
+        loaded.warnings.iter().map(|w| w.code).collect::<Vec<_>>(),
+        [WarningCode::WorkLimit]
+    );
+}

@@ -66,6 +66,65 @@ pub(crate) fn doi(text: &str) -> Option<String> {
     }
 }
 
+/// The ISBNs or ISSNs a cell gives, as written, and whether it held anything
+/// else; text such as `(Print)` beside a valid one is not a loss.
+pub(crate) fn serials(kind: Serial, values: &[&str]) -> (Option<String>, bool) {
+    let mut found = vec![];
+    for value in values {
+        let valid: Vec<_> = value
+            .split([',', ';', ' ', '(', ')'])
+            .filter(|token| kind.valid(token))
+            .collect();
+        if valid.is_empty() {
+            return (None, true);
+        }
+        found.extend(valid);
+    }
+    found.dedup();
+    ((!found.is_empty()).then(|| found.join(", ")), false)
+}
+
+#[derive(Clone, Copy)]
+pub(crate) enum Serial {
+    Isbn,
+    Issn,
+}
+
+impl Serial {
+    pub(crate) fn field(self) -> &'static str {
+        match self {
+            Self::Isbn => "ISBN",
+            Self::Issn => "ISSN",
+        }
+    }
+
+    fn valid(self, token: &str) -> bool {
+        match self {
+            Self::Isbn => matches!(
+                ibis_core::identifier::parse_query(token),
+                Some(ibis_core::identifier::Identifier::Isbn(_))
+            ),
+            // Seven digits and a check digit (or X), weighted 8 down to 1, mod 11.
+            Self::Issn => {
+                let compact: Vec<char> = token.chars().filter(|c| *c != '-').collect();
+                compact.len() == 8
+                    && token.len() <= 9
+                    && compact
+                        .iter()
+                        .enumerate()
+                        .try_fold(0, |sum, (index, c)| {
+                            let digit = match c {
+                                'X' | 'x' if index == 7 => 10,
+                                c => c.to_digit(10)?,
+                            };
+                            Some(sum + digit * (8 - index as u32))
+                        })
+                        .is_some_and(|sum| sum % 11 == 0)
+            }
+        }
+    }
+}
+
 /// Collects records, keeping one of each identity, in the shape the file
 /// loader expects.
 pub(crate) struct Records<'a> {
@@ -73,6 +132,8 @@ pub(crate) struct Records<'a> {
     previous: Option<&'a Snapshot>,
     prefix: &'static str,
     seen: HashSet<String>,
+    /// Records the file holds, read or not: the record limit counts these.
+    started: usize,
     pub(crate) parsed: ParsedLibrary,
 }
 
@@ -83,12 +144,20 @@ impl<'a> Records<'a> {
             previous,
             prefix,
             seen: HashSet::new(),
+            started: 0,
             parsed: ParsedLibrary::default(),
         }
     }
 
-    pub(crate) fn count(&self) -> usize {
-        self.seen.len()
+    /// Counts a record that starts at `line`; past the record limit it warns
+    /// once and says to stop reading.
+    pub(crate) fn start(&mut self, line: usize) -> bool {
+        self.started += 1;
+        if self.started > crate::MAX_LIBRARY_RECORDS {
+            self.warn(WarningCode::WorkLimit, line);
+            return false;
+        }
+        true
     }
 
     pub(crate) fn warn(&mut self, code: WarningCode, line: usize) {

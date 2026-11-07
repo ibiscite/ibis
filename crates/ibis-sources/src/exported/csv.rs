@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use ibis_core::contract::{LibraryId, Snapshot};
 use serde_json::Value;
 
-use super::{Records, date_parts, doi, person};
+use super::{Records, Serial, date_parts, doi, person, serials};
 use crate::{ParsedLibrary, SourceError, WarningCode};
 
 /// The template's columns, each a CSL variable. `type` and `title` are required.
@@ -69,17 +69,19 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
         return Err(SourceError::CsvTemplate);
     }
     for (line, row) in rows {
-        if records.count() >= crate::MAX_LIBRARY_RECORDS {
-            records.warn(WarningCode::WorkLimit, line);
+        if row
+            .as_ref()
+            .is_ok_and(|cells| cells.iter().all(|cell| cell.trim().is_empty()))
+        {
+            continue;
+        }
+        if !records.start(line) {
             break;
         }
         let Ok(cells) = row else {
             records.warn(WarningCode::Syntax, line);
             continue;
         };
-        if cells.iter().all(|cell| cell.trim().is_empty()) {
-            continue;
-        }
         match (cells.len() == columns.len()).then(|| csl(&columns, &cells)).flatten() {
             Some((csl, dropped)) => {
                 if dropped {
@@ -110,6 +112,16 @@ fn csl(columns: &[&str], cells: &[String]) -> Option<(BTreeMap<String, Value>, b
                 let mut parts = cell.splitn(3, '-');
                 let (year, month, day) = (parts.next().unwrap_or_default(), parts.next(), parts.next());
                 date_parts(year, month, day).unwrap_or_else(|| serde_json::json!({"literal": cell}))
+            }
+            "ISBN" | "ISSN" => {
+                let kind = if column == "ISBN" { Serial::Isbn } else { Serial::Issn };
+                match serials(kind, &[cell]) {
+                    (Some(value), _) => Value::String(value),
+                    (None, _) => {
+                        dropped = true;
+                        continue;
+                    }
+                }
             }
             "DOI" => match doi(cell) {
                 Some(doi) => Value::String(doi),
@@ -182,8 +194,10 @@ impl Iterator for Rows<'_> {
                     state = Cell::Start;
                 }
                 Cell::Start if c == '"' => state = Cell::Quoted,
-                // Text after a closing quote does not fit the template.
+                // Text after a closing quote, or a quote inside an unquoted
+                // cell, does not fit the template.
                 Cell::Closed => broken = true,
+                Cell::Plain if c == '"' => broken = true,
                 Cell::Start | Cell::Plain => {
                     cells.last_mut()?.push(c);
                     state = Cell::Plain;

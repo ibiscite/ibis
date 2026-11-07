@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 use ibis_core::contract::{LibraryId, Snapshot};
 use serde_json::Value;
 
-use super::{Records, date_parts, doi, person};
+use super::{Records, Serial, date_parts, doi, person, serials};
 use crate::{ParsedLibrary, SourceError, WarningCode};
 
 /// Whether the text starts as RIS does, with a `TY` line.
@@ -47,8 +47,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
                 if let Some((start, _)) = open.take() {
                     records.warn(WarningCode::Syntax, start);
                 }
-                if records.count() >= crate::MAX_LIBRARY_RECORDS {
-                    records.warn(WarningCode::WorkLimit, number);
+                if !records.start(number) {
                     return Ok(records.parsed);
                 }
                 open = Some((number, vec![(tag, value.to_owned())]));
@@ -193,12 +192,13 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     text(&mut csl, "title", one(book_title).ok()?);
 
     let names = |tags: &[&str]| -> Option<Value> {
-        let mut people: Vec<Value> = vec![];
-        for person in all(tags).into_iter().filter_map(person) {
-            if !people.contains(&person) {
-                people.push(person);
-            }
-        }
+        // A name given twice is one person, in the order first given.
+        let mut seen = std::collections::HashSet::new();
+        let people: Vec<Value> = all(tags)
+            .into_iter()
+            .filter(|name| seen.insert(name.trim()))
+            .filter_map(person)
+            .collect();
         (!people.is_empty()).then_some(Value::Array(people))
     };
     let put_names = |csl: &mut BTreeMap<String, Value>, field: &str, tags: &[&str]| {
@@ -274,14 +274,15 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
             Err(()) => dropped = true,
         }
     }
-    let serials = all(&["SN"]);
     let serial = match group {
-        Group::Article => Some("ISSN"),
-        Group::Book | Group::Part => Some("ISBN"),
+        Group::Article => Some(Serial::Issn),
+        Group::Book | Group::Part => Some(Serial::Isbn),
         Group::Web | Group::Other => None,
     };
-    if let Some(field) = serial.filter(|_| !serials.is_empty()) {
-        text(&mut csl, field, Some(&serials.join("; ")));
+    if let Some(kind) = serial {
+        let (value, lost) = serials(kind, &all(&["SN"]));
+        text(&mut csl, kind.field(), value.as_deref());
+        dropped |= lost;
     }
     let dois = all(&["DO"]);
     if let Some(first) = dois.first() {
@@ -315,60 +316,52 @@ fn text(csl: &mut BTreeMap<String, Value>, field: &str, value: Option<&str>) {
     }
 }
 
-/// `issued` from `PY`/`Y1` and `DA`, and whether a value was dropped. A year
-/// that disagrees with another refuses the record (`None`).
+/// `issued` from `PY`/`Y1` and `DA`, and whether a value was dropped. Every
+/// value must give the same year, and fuller dates must extend shorter ones;
+/// otherwise the record is refused (`None`). Exact parts win over text kept as
+/// written unless they give only the year.
 fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
-    let read = |text: &str| -> Result<Value, ()> {
-        let mut parts = text.split('/');
-        let year = parts.next().unwrap_or_default();
-        let month = parts.next().filter(|month| !month.is_empty());
-        let day = parts.next().filter(|day| !day.is_empty());
-        let other = parts.collect::<Vec<_>>().join("/");
-        let has_year = year.len() == 4 && year.bytes().all(|b| b.is_ascii_digit());
-        if !has_year {
-            // `DA  - MAY` and the like name no year: nothing to cite by.
-            return Err(());
-        }
-        match date_parts(year, month, day) {
-            Some(parts) if other.trim().is_empty() => Ok(parts),
-            // Text Ibis cannot split is kept as written, never guessed.
-            _ => Ok(serde_json::json!({"literal": text})),
-        }
-    };
-    let year_of = |value: &Value| -> Option<i64> { value["date-parts"][0][0].as_i64() };
     let mut dropped = false;
-    let mut chosen: Option<Value> = None;
+    let mut year = None;
+    let mut parts: Vec<Vec<Value>> = vec![];
+    let mut literal: Option<&str> = None;
     for &text in years.iter().chain(dates) {
-        let Ok(value) = read(text) else {
+        let mut pieces = text.split('/');
+        let written_year = pieces.next().unwrap_or_default();
+        if written_year.len() != 4 || !written_year.bytes().all(|b| b.is_ascii_digit()) {
+            // `DA  - MAY` and the like name no year: nothing to cite by.
             dropped = true;
             continue;
-        };
-        match &chosen {
-            None => chosen = Some(value),
-            Some(current) if current == &value => {}
-            Some(current) => {
-                let (Some(old), Some(new)) = (year_of(current), year_of(&value)) else {
-                    return None;
-                };
-                if old != new {
-                    return None;
-                }
-                let detail = |value: &Value| value["date-parts"][0].as_array().map_or(0, Vec::len);
-                let (shorter, longer) = if detail(current) <= detail(&value) {
-                    (current, &value)
-                } else {
-                    (&value, current)
-                };
-                // A fuller date must extend the other, never contradict it.
-                if !longer["date-parts"][0]
-                    .as_array()
-                    .is_some_and(|parts| parts.starts_with(shorter["date-parts"][0].as_array().unwrap_or(&vec![])))
-                {
-                    return None;
-                }
-                chosen = Some(longer.clone());
-            }
+        }
+        if year
+            .replace(written_year)
+            .is_some_and(|earlier| earlier != written_year)
+        {
+            return None;
+        }
+        let month = pieces.next().filter(|month| !month.is_empty());
+        let day = pieces.next().filter(|day| !day.is_empty());
+        let other = pieces.collect::<Vec<_>>().join("/");
+        match date_parts(written_year, month, day) {
+            Some(value) if other.trim().is_empty() => parts.push(value["date-parts"][0].as_array()?.clone()),
+            // Text Ibis cannot split is kept as written, never guessed.
+            _ if literal.is_some_and(|earlier| earlier != text) => return None,
+            _ => literal = Some(text),
         }
     }
-    Some((chosen, dropped))
+    parts.sort_by_key(Vec::len);
+    let fullest = parts.last();
+    if parts
+        .iter()
+        .any(|shorter| !fullest.is_some_and(|fullest| fullest.starts_with(shorter)))
+    {
+        return None;
+    }
+    let issued = match (fullest, literal) {
+        (Some(fullest), Some(text)) if fullest.len() == 1 => serde_json::json!({"literal": text}),
+        (Some(fullest), _) => serde_json::json!({"date-parts": [fullest]}),
+        (None, Some(text)) => serde_json::json!({"literal": text}),
+        (None, None) => return Some((None, dropped)),
+    };
+    Some((Some(issued), dropped))
 }
