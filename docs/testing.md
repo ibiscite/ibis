@@ -183,7 +183,7 @@ No cell is certified as tested by this source inventory.
 | Test layer | macOS (own Mac) | Windows (own PC) | Linux (existing CI) |
 |---|---|---|---|
 | Sequence/race models | limited | limited | limited |
-| Native destination readback | planned | limited | planned |
+| Native destination readback | limited | limited | limited |
 | Visual states | limited | limited | limited |
 | Screen readers and input methods | planned | planned | planned |
 | Performance and idle resources | limited | limited | limited |
