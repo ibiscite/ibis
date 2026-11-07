@@ -38,13 +38,11 @@ const LOGIN_PROBLEMS = {
   refused: "general-login-refused", unreadable: "general-login-unreadable",
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
-/** A page asked for by name; "paste" is General, scrolled to pasting, and
- * "updates" is About, running Check now. */
+/** A page asked for by name; "paste" is General, scrolled to pasting. */
 const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
-  if (name === "updates") return { page: "about", focus: null };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
 }
 
@@ -82,8 +80,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: opened to check, once; a later ask arrives as a page event.
-  useEffect(() => { if (initialPage === "updates") checkNow(); }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutUndo, setShortcutUndo] = useState<string | null>(null);
@@ -261,7 +257,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); if (name === "updates") checkNow(); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;

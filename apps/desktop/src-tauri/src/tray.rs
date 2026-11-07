@@ -299,7 +299,7 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
             "reload" => reload_library_file(app),
             "problem" => open_in_browser(app, problem_url(&app.package_info().version.to_string())),
             "idea" => open_in_browser(app, idea_url()),
-            "update_now" => crate::settings_window::open(app, Some(crate::settings_window::Page::Updates)),
+            "update_now" => updater::setting::check_from_menu(app),
             updater::setting::AUTOMATIC_ON | updater::setting::AUTOMATIC_OFF => {
                 updater::setting::toggle_automatic(app, event.id.as_ref());
             }
