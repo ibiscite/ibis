@@ -977,38 +977,87 @@ impl FileLibrary {
             *prepared = None;
         }
     }
-    pub(crate) fn copy(
-        &self,
-        ticket: &str,
-        hash: &str,
-        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
-    ) -> Result<crate::copy::Copied, CommandError> {
-        let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
-        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
-        if current != ticket || citation.result().content_hash.as_str() != hash {
-            return Err(CommandError::SnapshotChanged);
-        }
-        let copied = self
+    /// Cite the shown citation again for a copy. This can wait for the
+    /// formatter, so it holds no lock and its caller keeps it off the main thread.
+    pub(crate) fn recite(&self, ticket: &str, hash: &str) -> Result<Recited, CommandError> {
+        let citation = {
+            let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+            let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+            if current != ticket || citation.result().content_hash.as_str() != hash {
+                return Err(CommandError::SnapshotChanged);
+            }
+            Arc::clone(citation)
+        };
+        let result = self
             .engine
-            .recite(citation, &Cancellation::default())
+            .recite(&citation, &Cancellation::default())
             .map_err(|error| match error {
                 ibis_engine::CitationCommitError::Engine(_) => {
                     CommandError::from("The citation could not be copied. Try again.")
                 }
                 _ => CommandError::SnapshotChanged,
             })?;
+        Ok(Recited {
+            ticket: ticket.to_owned(),
+            hash: hash.to_owned(),
+            citation,
+            result,
+        })
+    }
+
+    /// Hand `write` what `recite` confirmed, while that preview is still the
+    /// shown one; a newer preview or another library refuses it.
+    pub(crate) fn copy_recited(
+        &self,
+        recited: &Recited,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+    ) -> Result<crate::copy::Copied, CommandError> {
+        let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+        if current != &recited.ticket || !Arc::ptr_eq(citation, &recited.citation) {
+            return Err(CommandError::SnapshotChanged);
+        }
+        let copied = &recited.result;
         write(
             copied
                 .copy_content(citation.items().len())
                 .ok_or(CommandError::SnapshotChanged)?,
         )?;
         Ok(crate::copy::Copied {
-            summary: Some(crate::copy::ReceiptSummary::citation(&copied)),
+            summary: Some(crate::copy::ReceiptSummary::citation(copied)),
             text: copied.text.clone(),
             warnings: citation_warnings_named(citation),
             delivery: None,
             cited: citation.items(),
         })
+    }
+
+    /// Both steps of a copy at once.
+    #[cfg(test)]
+    pub(crate) fn copy(
+        &self,
+        ticket: &str,
+        hash: &str,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+    ) -> Result<crate::copy::Copied, CommandError> {
+        self.copy_recited(&self.recite(ticket, hash)?, write)
+    }
+}
+
+/// A shown citation, cited again for a copy.
+pub(crate) struct Recited {
+    ticket: String,
+    hash: String,
+    citation: Arc<PreparedCitation>,
+    result: CitationResult,
+}
+
+impl Recited {
+    pub(crate) fn ticket(&self) -> &str {
+        &self.ticket
+    }
+    pub(crate) fn content_hash(&self) -> &str {
+        &self.hash
     }
 }
 

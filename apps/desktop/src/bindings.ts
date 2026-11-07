@@ -81,8 +81,9 @@ export const commands = {
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
 	/**
-	 *  Copy the shown citation. Copying cites it again, which can wait for the
-	 *  formatter, so it never runs on the main thread.
+	 *  Copy the shown citation. Citing it again can wait for the formatter, so
+	 *  that runs on a worker with no lock held; the short commit that writes the
+	 *  clipboard stays on the main thread, as the native clipboard needs.
 	 */
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	projectStatus: () => __TAURI_INVOKE<{

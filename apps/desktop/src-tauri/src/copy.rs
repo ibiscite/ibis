@@ -238,8 +238,9 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
     )
 }
 
-/// Copy the shown citation. Copying cites it again, which can wait for the
-/// formatter, so it never runs on the main thread.
+/// Copy the shown citation. Citing it again can wait for the formatter, so
+/// that runs on a worker with no lock held; the short commit that writes the
+/// clipboard stays on the main thread, as the native clipboard needs.
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn copy_file_citation(
@@ -247,22 +248,35 @@ pub(crate) async fn copy_file_citation(
     content_hash: String,
     replaces: Option<String>,
     app: AppHandle,
+    library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
-    tauri::async_runtime::spawn_blocking(move || copy_shown(&app, &ticket, &content_hash, replaces))
+    const FAILED: &str = "The citation could not be copied. Try again.";
+    let file = open_file(&library)?;
+    let recited = tauri::async_runtime::spawn_blocking(move || file.recite(&ticket, &content_hash))
         .await
-        .map_err(|_| CommandError::from("The citation could not be copied. Try again."))?
+        .map_err(|_| CommandError::from(FAILED))??;
+    let (send, committed) = std::sync::mpsc::sync_channel(1);
+    let main = app.clone();
+    app.run_on_main_thread(move || {
+        let _ = send.send(commit_shown(&main, &recited, replaces));
+    })
+    .map_err(|_| CommandError::from(FAILED))?;
+    tauri::async_runtime::spawn_blocking(move || committed.recv())
+        .await
+        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::from(FAILED))?
 }
 
-fn copy_shown(
+fn commit_shown(
     app: &AppHandle,
-    ticket: &str,
-    content_hash: &str,
+    recited: &crate::library::engine_file::Recited,
     replaces: Option<String>,
 ) -> Result<Copied, CommandError> {
+    use tauri::Manager;
+    let library = app.state::<Mutex<Library>>();
+    let editor = app.state::<crate::editor_endpoint::Pending>();
+    let project = app.state::<crate::project::ProjectBibliography>();
     let app = app.clone();
-    let library = tauri::Manager::state::<Mutex<Library>>(&app);
-    let editor = tauri::Manager::state::<crate::editor_endpoint::Pending>(&app);
-    let project = tauri::Manager::state::<crate::project::ProjectBibliography>(&app);
     let captured = editor.app(crate::paste::last_app(&app));
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
     let epoch = session.lock().epoch();
@@ -286,13 +300,13 @@ fn copy_shown(
     // A waiting editor gets the citation in place of the clipboard. It is
     // handed over under the same commit barrier, and nothing is pasted.
     if let Some(request) = editor.current() {
-        if !file.prepared_for(ticket, &request) {
+        if !file.prepared_for(recited.ticket(), &request) {
             return Err(CommandError::SnapshotChanged);
         }
         // The text leaves the commit barrier first; the editor is answered with no
         // lock held, because ending a request takes these locks the other way round.
         let mut text = None;
-        let copied = file.copy(ticket, content_hash, |content| {
+        let copied = file.copy_recited(recited, |content| {
             text = Some((
                 content.text.to_owned(),
                 content.html.map(str::to_owned),
@@ -322,8 +336,7 @@ fn copy_shown(
     }
     let copied = commit_copy(
         &file,
-        ticket,
-        content_hash,
+        recited,
         ProjectCopy {
             project: &project,
             session: &session,
@@ -364,11 +377,11 @@ pub(crate) struct ProjectCopy<'a> {
 
 pub(crate) fn commit_copy(
     file: &crate::library::engine_file::FileLibrary,
-    ticket: &str,
-    content_hash: &str,
+    recited: &crate::library::engine_file::Recited,
     context: ProjectCopy<'_>,
     write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
 ) -> Result<Copied, CommandError> {
+    let (ticket, content_hash) = (recited.ticket(), recited.content_hash());
     context.project.commit(ticket, |current| {
         let refused = file
             .prepared_project_evidence(ticket, content_hash, current.as_ref())?
@@ -381,7 +394,7 @@ pub(crate) fn commit_copy(
         }
         let warnings = file.prepared_project_warnings(ticket, content_hash, current.as_ref())?;
         let mut delivery = None;
-        let mut copied = file.copy(ticket, content_hash, |content| {
+        let mut copied = file.copy_recited(recited, |content| {
             delivery = write(content)?;
             Ok(())
         })?;
