@@ -11,7 +11,7 @@ const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encod
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
-  return { revision: "1", id: { source: "invented.bib", native_key: key }, key, title: `Invented title ${key}`, authors: first_author,
+  return { revision: "1", id: { library: "invented.bib", key }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
 const chosen = (records: CitationReference[]) => new Map(records.map((r) => [r.key, r]));
@@ -95,16 +95,16 @@ test("short names distinguish identical author/year labels without using the cit
 
 test("formatted segments keep passive small caps and underline from the engine", () => {
   render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), spans: [
-    { item: 0, text: "Caps", runs: [{ text: "Caps", small_caps: true }] },
-    { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", underline: true }] },
+    { item: 0, text: "Caps", runs: [{ text: "Caps", bold: false, italic: false, script: "normal", small_caps: true }] },
+    { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", bold: false, italic: false, script: "normal", underline: true }] },
   ] } }));
   expect(document.querySelector<HTMLElement>('.shelf [style*="small-caps"]')?.textContent).toBe("Caps");
   expect(document.querySelector<HTMLElement>('.shelf [style*="underline"]')?.textContent).toBe("Under");
 });
 
 test("colliding keys from different libraries have distinct visible and screen-reader names", async () => {
-  const first = { ...record("shared"), id: { source: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
-  const second = { ...first, id: { source: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
+  const first = { ...record("shared"), id: { library: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
+  const second = { ...first, id: { library: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
     referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library", shown: output() }));

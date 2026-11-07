@@ -35,18 +35,17 @@ pub(crate) use registration::{
 };
 
 /// Whether the global shortcut is working, shown in the interface.
-#[derive(Default, Clone, Serialize, specta::Type)]
+#[derive(Default, Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct ShortcutStatus {
     pub(crate) shortcut: String,
     pub(crate) registered: bool,
     pub(crate) error: Option<String>,
     /// Present on Wayland, including when the portal is unavailable.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(crate) desktop: Option<DesktopShortcut>,
 }
 
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct DesktopShortcut {
     pub(crate) configurable: bool,
     pub(crate) guidance: String,
@@ -511,14 +510,14 @@ fn foreground_full_screen() -> Option<bool> {
 
 /// Read the native presentation after subscribing, including on webview reload.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn picker_presentation(visits: State<'_, PickerGeneration>) -> u64 {
     visits.current()
 }
 
 /// Hide only the originating presentation; a delayed request cannot dismiss a reopen.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn hide_picker<R: PickerHideUi>(app: AppHandle<R>, presentation: Option<u64>) -> Result<bool, &'static str> {
     // This command must stay synchronous: Tauri spawns async commands before
     // running their bodies. Capture an unknown owner at IPC receipt, before
@@ -640,14 +639,14 @@ fn dismiss_with<W, A>(hide_window: impl FnOnce() -> Result<(), W>, hide_applicat
 /// End the app. Closing the window only hides it, so this is the way out on
 /// Windows and Linux, which have no application menu with Quit.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn quit(app: AppHandle) {
     app.exit(0);
 }
 
 /// Current state of the global shortcut.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn shortcut_status(status: State<'_, Mutex<ShortcutStatus>>) -> ShortcutStatus {
     status.lock().map(|s| s.clone()).unwrap_or_default()
 }
@@ -661,7 +660,7 @@ pub(crate) struct Pinned(pub(crate) AtomicBool);
 /// allow it, and there pinned means only that the picker stays open. The
 /// Windows picker is always on top while shown.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn set_pinned(app: AppHandle, pinned: State<'_, Pinned>, on: bool) {
     pinned.0.store(on, Ordering::SeqCst);
     // The macOS panel is already a floating panel; it only needs to stay open.
@@ -759,7 +758,7 @@ fn reconcile_move(app: &AppHandle, presentation: u64) {
 /// The interface reports move `id` of `presentation` starting, and its end
 /// once the pointer is back. A move whose end never arrives ends at its limit.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn picker_moving(app: AppHandle, presentation: u64, id: u64, moving: bool) {
     let state = app.state::<Moving>();
     if !moving {

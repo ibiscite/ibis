@@ -17,7 +17,7 @@ use crate::preferences::SettingsFile;
 
 /// One setting a restore changes. Values are as the settings file writes
 /// them, as text; `None` is the default. A bibliography is its file name only.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct RestoreChange {
     pub(crate) setting: String,
     pub(crate) from: Option<String>,
@@ -25,7 +25,7 @@ pub(crate) struct RestoreChange {
 }
 
 /// What restoring the chosen backup would change, before anything does.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct RestorePreview {
     /// Names this preview; only the latest one can be restored.
     pub(crate) ticket: u32,
@@ -142,7 +142,7 @@ fn preview(ticket: u32, backup: &backup::Backup, plan: &Plan) -> RestorePreview 
 
 /// Ask where to save a backup and write it there. `None` when cancelled.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<String>, BackupProblem> {
     let app = window.app_handle().clone();
     let path = app.state::<SettingsFile>().path.clone();
@@ -192,7 +192,7 @@ pub(crate) async fn back_up_settings(window: WebviewWindow) -> Result<Option<Str
 /// Ask for a backup, check it whole and say what restoring it would change.
 /// `None` when cancelled. Nothing changes yet.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Option<RestorePreview>, BackupProblem> {
     let app = window.app_handle().clone();
     let ticket = app.state::<PendingRestore>().begin().ok_or(BackupProblem::Changed)?;
@@ -218,7 +218,7 @@ pub(crate) async fn choose_settings_backup(window: WebviewWindow) -> Result<Opti
 /// Restore the previewed backup, then restart so every part of Ibis starts
 /// from the restored settings. The replaced settings become `settings.json.bak`.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Result<(), BackupProblem> {
     let plan = app
         .state::<PendingRestore>()
@@ -238,7 +238,7 @@ pub(crate) async fn restore_settings_backup(app: AppHandle, ticket: u32) -> Resu
 
 /// Forget the previewed restore.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn cancel_settings_restore(pending: State<'_, PendingRestore>, ticket: u32) -> Result<(), BackupProblem> {
     pending.cancel(ticket);
     Ok(())

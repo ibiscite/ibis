@@ -133,7 +133,7 @@ pub(crate) fn start_shortcut(app: &AppHandle, setting: Option<&str>) {
 
 /// Only Settings may request the desktop's configuration UI. It never saves.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn configure_shortcuts(app: AppHandle) -> Result<(), &'static str> {
     #[cfg(target_os = "linux")]
     return linux::configure(&app).await;

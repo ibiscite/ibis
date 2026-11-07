@@ -100,7 +100,7 @@ impl fmt::Display for LoadError {
 
 /// A failed command as the interface receives it: the interface decides
 /// from `code`, never from the text in `message`.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(tag = "code", rename_all = "snake_case")]
 pub(crate) enum CommandError {
     /// The references the interface chose from are no longer the open

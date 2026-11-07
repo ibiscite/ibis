@@ -62,8 +62,7 @@ pub struct Backup {
 }
 
 /// Why a backup or restore did not happen; the Settings window words it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum BackupProblem {
     NotDownloaded,
@@ -329,8 +328,7 @@ pub struct Change {
 }
 
 /// Something the person should know before restoring.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Note {
     /// The backup's bibliography file is not on this computer. It is restored

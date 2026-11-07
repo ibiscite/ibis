@@ -9,10 +9,11 @@ const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x
 // Markdown beside code or vendored assets can be pinned by Rust tests.
 // Only known documentation locations may bypass them.
 const documentation = (path) => !path.split("/").includes("vendor") && (
-  (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md" || path === "apps/desktop/src/ui/README.md"))
+  // docs/cli.md holds options generated from the command line, checked natively.
+  (path.endsWith(".md") && path !== "docs/cli.md" && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md" || path === "apps/desktop/src/ui/README.md"))
   || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
 );
-// Generated bindings are also a native contract, checked by Rust tests.
+// Generated bindings are also a native contract, checked by `node scripts/gen.mjs --check`.
 const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
   /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || path === "apps/desktop/index.html"
 );
@@ -21,8 +22,9 @@ const websiteFile = (path) => path.startsWith("website/");
 // Node scripts and the shell scripts their tests run. No native job runs them,
 // and no Rust reads them, so their tests on Linux, Windows and (outside pull
 // requests) macOS are enough. Python, PowerShell and C helpers run in the
-// native jobs; CI's own scripts and check.mjs decide what runs, so they run everything.
-const scriptFile = (path) => /^scripts\/[^/]+\.(?:mjs|sh)$/.test(path) && !/^scripts\/(?:ci-|check\.mjs$)/.test(path);
+// native jobs; CI's own scripts and check.mjs decide what runs, and gen.mjs makes
+// files the native job checks, so they run everything.
+const scriptFile = (path) => /^scripts\/[^/]+\.(?:mjs|sh)$/.test(path) && !/^scripts\/(?:ci-|check\.mjs$|gen\.mjs$)/.test(path);
 // Plain `cargo test` never builds the app, and no crate reads its files except
 // its manifest: the engine boundary test reads the crate graph from cargo metadata.
 const appFile = (path) => path.startsWith("apps/desktop/") && path !== "apps/desktop/src-tauri/Cargo.toml";

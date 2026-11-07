@@ -13,13 +13,12 @@ tauri-build = { version = "2.6", features = [] }
 
 [dependencies]
 getrandom = "0.3"
-ibis-core = { path = "../../../crates/ibis-core", features = ["type-export"] }
+ibis-core = { path = "../../../crates/ibis-core" }
+ibis-desktop-macros = { path = "macros" }
 ibis-engine = { path = "../../../crates/ibis-engine" }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
-specta = { version = "=2.0.0-rc.25", features = ["derive"] }
-specta-typescript = "0.0.12"
-tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
+schemars = "=1.2.3"
 tauri = { version = "2.12", features = ["tray-icon", "macos-private-api"] }
 tauri-plugin-clipboard-manager = "2.5"
 tauri-plugin-dialog = "2.8"

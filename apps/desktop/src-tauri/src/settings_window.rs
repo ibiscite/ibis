@@ -14,7 +14,7 @@ const SIZE: (f64, f64) = (920.0, 560.0);
 const MIN_SIZE: (f64, f64) = (800.0, 400.0);
 
 /// Where Settings opens.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Page {
     General,
@@ -50,7 +50,7 @@ impl Page {
 /// the window is built from the event loop: a sync command runs inside the
 /// WebView2 callback, where building a second webview deadlocks on Windows.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentation: Option<u64>) {
     // Tauri spawns async commands before their bodies run; the picker names
     // the opening that asked, so a newer one is not what gives way.
@@ -61,7 +61,7 @@ pub(crate) async fn open_settings(app: AppHandle, page: Option<Page>, presentati
 /// Close the paste guide after both grants; a fresh external activation opens
 /// the picker again. Granting permission never captures a target or retries Enter.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn finish_paste_guide(app: AppHandle) -> Result<bool, String> {
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();

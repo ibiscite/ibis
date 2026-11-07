@@ -31,7 +31,7 @@ pub(crate) fn idea_url() -> String {
 }
 
 /// A fixed page linked from About. The web page never chooses the address.
-#[derive(Clone, Copy, Debug, serde::Deserialize, specta::Type)]
+#[derive(Clone, Copy, Debug, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum AboutLink {
     Website,
@@ -41,7 +41,7 @@ pub(crate) enum AboutLink {
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn open_about_link(app: AppHandle, link: AboutLink) {
     let url = match link {
         AboutLink::Website => "https://ibiscite.org".to_owned(),

@@ -480,7 +480,7 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
         .preview(
             file.reserve_preview(),
             vec![FileSelection {
-                id: serde_json::from_value(row.id.clone())?,
+                id: row.id.clone(),
                 cite: serde_json::from_value(json!(row.cite))?,
                 locator: None,
                 page_input: None,
@@ -532,7 +532,7 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
             .preview(
                 file.reserve_preview(),
                 vec![FileSelection {
-                    id: serde_json::from_value(row.id.clone())?,
+                    id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
                     page_input: None,
@@ -582,7 +582,7 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
             .preview(
                 file.reserve_preview(),
                 vec![FileSelection {
-                    id: serde_json::from_value(row.id.clone())?,
+                    id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
                     page_input: None,
@@ -636,7 +636,7 @@ fn shelf_recents_resolve_current_records_and_source_added_order_without_old_page
         None,
         &Cancellation::default(),
     )?;
-    let id: ItemRef = serde_json::from_value(rows.results.first().ok_or("row")?.id.clone())?;
+    let id: ItemRef = rows.results.first().ok_or("row")?.id.clone();
     let recent = serde_json::to_value(file.recents(&[id], true)?)?;
     let rows = recent["results"].as_array().ok_or("results")?;
     assert_eq!(

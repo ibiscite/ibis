@@ -1,0 +1,390 @@
+[
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Find references in the user's own library by author, title words, year or citation key. Start here: every citation needs a `ref` from this tool. If nothing is found, say so; never cite from memory.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 10,
+          "maximum": 25,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "query": {
+          "description": "A few distinctive words: an author surname, title words, a year or a citation key.",
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "query"
+      ],
+      "type": "object"
+    },
+    "name": "search",
+    "outputSchema": {
+      "properties": {
+        "complete": {
+          "description": "False when more references match than these; use more distinctive words.",
+          "type": "boolean"
+        },
+        "hits": {
+          "items": {
+            "properties": {
+              "authors": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "container": {},
+              "doi": {},
+              "partial": {
+                "description": "True when only part of the query matched; ask the user before citing.",
+                "type": "boolean"
+              },
+              "ref": {
+                "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone.",
+                "type": "string"
+              },
+              "title": {},
+              "type": {},
+              "typo": {
+                "description": "True when spelling was corrected; ask the user before citing.",
+                "type": "boolean"
+              },
+              "year": {}
+            },
+            "required": [
+              "ref",
+              "partial",
+              "typo"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "library_notes": {
+          "description": "Why results may be missing or out of date. Tell the user.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "missing": {
+          "description": "Keys or identifiers from a pasted list that the library does not hold.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "hits",
+        "complete",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "title": "Search references"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Read one reference's bibliographic fields, such as pages, publisher and identifiers, given a `ref` from search. Not needed before citing.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "ref": {
+          "description": "A ref from search.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "ref"
+      ],
+      "type": "object"
+    },
+    "name": "show",
+    "outputSchema": {
+      "properties": {
+        "authors": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "container": {},
+        "doi": {},
+        "fields": {
+          "description": "Every other citable field, under its CSL name.",
+          "type": "object"
+        },
+        "library_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "provenance": {
+          "type": "string"
+        },
+        "ref": {
+          "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone.",
+          "type": "string"
+        },
+        "title": {},
+        "type": {},
+        "year": {}
+      },
+      "required": [
+        "ref",
+        "fields",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "title": "Show a reference"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "for_app": {
+          "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; format or style apply when it has none of its own.",
+          "type": "string"
+        },
+        "form": {
+          "description": "How it reads. bibliography-only writes reference-list entries and needs a style.",
+          "enum": [
+            "normal",
+            "narrative",
+            "author-only",
+            "year-only",
+            "full",
+            "bibliography-only"
+          ],
+          "type": "string"
+        },
+        "format": {
+          "description": "An output: a key syntax for the document's own citation processor, or one of the common styles.",
+          "enum": [
+            "pandoc",
+            "pandoc-bare",
+            "autocite",
+            "parencite",
+            "textcite",
+            "natbib",
+            "cite",
+            "context",
+            "typst",
+            "org-cite",
+            "myst",
+            "multi-markdown",
+            "ascii-doc",
+            "jupyter",
+            "jekyll-scholar",
+            "cayw-json",
+            "keys",
+            "apa",
+            "chicago-author-date",
+            "chicago-notes-bibliography",
+            "modern-language-association",
+            "harvard-cite-them-right",
+            "ieee",
+            "vancouver-nlm",
+            "nature",
+            "american-medical-association",
+            "american-chemical-society",
+            "china-national-standard-gb-t-7714-2025-numeric",
+            "china-national-standard-gb-t-7714-2025-author-date",
+            "china-national-standard-gb-t-7714-2025-note"
+          ],
+          "type": "string"
+        },
+        "items": {
+          "description": "The references, in order.",
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "locator": {
+                "description": "Where in the work, such as \"p. 12\", \"ch. 3\" or \"12-14\".",
+                "type": "string"
+              },
+              "omit_author": {
+                "description": "Leave out the author, for when the sentence already names them.",
+                "type": "boolean"
+              },
+              "prefix": {
+                "description": "Text before this item, such as \"see\".",
+                "type": "string"
+              },
+              "ref": {
+                "description": "A ref from search.",
+                "type": "string"
+              },
+              "suffix": {
+                "description": "Text after this item.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "ref"
+            ],
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
+        "locale": {
+          "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own.",
+          "type": "string"
+        },
+        "style": {
+          "description": "Any style id from the styles tool, instead of format.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "items"
+      ],
+      "type": "object"
+    },
+    "name": "cite",
+    "outputSchema": {
+      "properties": {
+        "destination": {
+          "description": "What Ibis does for the app named by for_app, with pasting on and permitted.",
+          "type": "object"
+        },
+        "language": {
+          "description": "The language a formatted citation is written in.",
+          "type": "string"
+        },
+        "library_notes": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "losses": {
+          "description": "What was asked for but could not be shown.",
+          "type": "array"
+        },
+        "notices": {
+          "type": "array"
+        },
+        "provenance": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        },
+        "warnings": {
+          "type": "array"
+        }
+      },
+      "required": [
+        "text",
+        "notices",
+        "losses",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "title": "Format a citation"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Find the style ids cite accepts by journal or style name, among every official CSL style, and list the languages a citation can be written in. With no query, the common styles come first.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {
+        "limit": {
+          "default": 25,
+          "maximum": 200,
+          "minimum": 1,
+          "type": "integer"
+        },
+        "offset": {
+          "default": 0,
+          "description": "How many matching styles to skip, for the next page.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "query": {
+          "description": "Words from a style's title or id, such as a journal's name.",
+          "maxLength": 1024,
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "name": "styles",
+    "outputSchema": {
+      "properties": {
+        "locales": {
+          "type": "array"
+        },
+        "styles": {
+          "items": {
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "title": {
+                "type": "string"
+              },
+              "updated": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "title",
+              "updated"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "total": {
+          "description": "How many styles match, beyond this page.",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "styles",
+        "total",
+        "locales"
+      ],
+      "type": "object"
+    },
+    "title": "Find citation styles"
+  }
+]

@@ -786,3 +786,12 @@ fn styles(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
     })?;
     serde_json::to_value(page).map_err(|_| EngineError::new(ErrorCode::Internal).into())
 }
+
+/// Run by `node scripts/gen.mjs`, which places it in `fixtures/mcp-tools.json`.
+#[test]
+#[ignore = "writes the generated tool list for gen.mjs"]
+fn write_tool_list() {
+    let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
+    let text = serde_json::to_string_pretty(&list()).unwrap_or_else(|e| panic!("{e}")) + "\n";
+    std::fs::write(std::path::Path::new(&directory).join("mcp-tools.json"), text).unwrap_or_else(|e| panic!("{e}"));
+}

@@ -17,7 +17,6 @@ pub use table::{APPS, App};
 
 /// An app ID that cannot tell Ibis which output its document needs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum OutputQuestion {
     Browser,
@@ -26,7 +25,6 @@ pub enum OutputQuestion {
 
 /// The operating system an app ID belongs to.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum System {
     Macos,
@@ -114,7 +112,6 @@ pub enum PasteSafety {
 
 /// A deliberate delivery choice for one captured app, independent of its format.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[cfg_attr(feature = "type-export", derive(specta::Type))]
 #[serde(rename_all = "kebab-case")]
 pub enum AppPaste {
     Paste,

@@ -229,7 +229,7 @@ pub(crate) use offer::menu_label as update_menu_label;
 
 /// Whether an automatic check found an update that has not been presented.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn update_available(app: AppHandle) -> bool {
     app.state::<Updates>().offer_available.load(Ordering::SeqCst)
 }
@@ -355,7 +355,7 @@ fn gtk_offer_dialog(text: String) -> (gtk::MessageDialog, gtk::Widget) {
 pub(crate) use offer::picker_activity;
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn update_picker_activity(window: tauri::WebviewWindow, ticket: Option<u32>) -> Option<u32> {
     offer::update_picker_activity(window, ticket)
 }

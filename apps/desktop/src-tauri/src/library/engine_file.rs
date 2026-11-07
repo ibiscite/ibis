@@ -33,23 +33,20 @@ pub(crate) struct FileLibrary {
     latest_preview: Mutex<(u64, Cancellation)>,
     observing: AtomicBool,
 }
-#[derive(Deserialize, specta::Type)]
+#[derive(Deserialize, schemars::JsonSchema)]
 pub(crate) struct FileSelection {
-    #[specta(type = specta_typescript::Unknown)]
     pub(crate) id: ItemRef,
-    #[specta(type = String)]
+    #[schemars(with = "String")]
     pub(crate) cite: Fingerprint,
     /// A canonical locator captured from search; its value is never parsed again.
     pub(crate) locator: Option<Locator>,
     /// Raw Page editor text, mutually exclusive with a captured locator.
-    #[specta(optional)]
     pub(crate) page_input: Option<String>,
-    #[specta(optional)]
     pub(crate) form: Option<ReferenceForm>,
 }
 /// A formatted bibliography, shown before it is copied. The picker's own
 /// citation receipt is untouched.
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SessionBibliography {
     pub(crate) text: String,
     pub(crate) html: Option<String>,
@@ -59,33 +56,32 @@ pub(crate) struct SessionBibliography {
     /// that the rest can still be used.
     pub(crate) left_out: Vec<String>,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ReferenceForm {
     Normal,
     Narrative,
     YearOnly,
 }
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct CitationSpan {
     pub(crate) item: Option<usize>,
     pub(crate) text: String,
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(crate) runs: Option<Vec<ibis_core::contract::DisplayRun>>,
 }
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FormOption {
     pub(crate) form: ReferenceForm,
     pub(crate) example: Option<String>,
     pub(crate) reason: Option<String>,
 }
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct ReferenceDetails {
     pub(crate) forms: Vec<FormOption>,
     pub(crate) current_form: Option<ReferenceForm>,
 }
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FilePreview {
     pub(crate) ticket: String,
     pub(crate) content_hash: String,
@@ -93,11 +89,11 @@ pub(crate) struct FilePreview {
     pub(crate) html: Option<String>,
     pub(crate) warnings: Vec<String>,
     pub(crate) spans: Vec<CitationSpan>,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) problem: Option<String>,
     /// Why this key citation is refused: a key in the project bibliography
     /// names a different work.
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) project_refusal: Option<String>,
 }
 /// One answer from an engine's `libraries` method, by its field.
@@ -588,9 +584,7 @@ impl FileLibrary {
     ) -> SearchReply {
         let Some(project) = project else { return reply };
         for row in &mut reply.results {
-            let check = serde_json::from_value::<ItemRef>(row.id.clone())
-                .ok()
-                .and_then(|id| self.engine.project_check_item(&project.read, &id).ok().flatten());
+            let check = self.engine.project_check_item(&project.read, &row.id).ok().flatten();
             row.project = project.mark(check.map(|(_, check)| check));
         }
         reply

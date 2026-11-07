@@ -18,7 +18,7 @@ use serde::Serialize;
 mod drag;
 
 /// Whether Ibis may paste, and where the person turns that on.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct PastePermission {
     /// Ibis pastes on this system; where it only copies, Settings offers no pasting choices.
     pub(crate) pastes: bool,
@@ -43,14 +43,14 @@ pub(crate) fn list_name(major: u32) -> &'static str {
 
 /// Whether Ibis may paste now. Read each time: the person can change it at any moment.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn paste_permission() -> PastePermission {
     current()
 }
 
 /// On an explicit user action, repair only missing grants and open the pane.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
     #[cfg(target_os = "macos")]
     {
@@ -63,7 +63,7 @@ pub(crate) fn open_paste_permission(app: tauri::AppHandle) {
 
 /// Drag only the running app bundle into the permission list.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn drag_paste_app(window: tauri::WebviewWindow) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {

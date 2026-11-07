@@ -126,7 +126,7 @@ impl SettingsFile {
 }
 
 /// Settings owns these choices until the picker consumes the same event fields.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Appearance {
     #[default]
@@ -135,7 +135,7 @@ pub(crate) enum Appearance {
     Dark,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum Accent {
     #[default]
@@ -143,7 +143,7 @@ pub(crate) enum Accent {
     Ibis,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct LookPreferences {
     pub(crate) appearance: Appearance,
@@ -167,11 +167,11 @@ fn look_from_settings(settings: &settings::Settings) -> Result<LookPreferences, 
 
 /// How the picker looks and what it formats with, remembered across restarts
 /// (ADR 0020).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct PickerPreferences {
     /// The default output: an id from the engine's list; an id it does not
     /// list was read as the engine's default.
-    #[specta(type = String)]
+    #[schemars(with = "String")]
     pub(crate) output: OutputRef,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) appearance: Option<Appearance>,
@@ -208,13 +208,13 @@ impl PickerPreferences {
 }
 
 /// The authoritative state after one locked patch and flush.
-#[derive(Debug, Serialize, specta::Type)]
+#[derive(Debug, Serialize, schemars::JsonSchema)]
 pub(crate) struct PickerSave {
     preferences: PickerPreferences,
 }
 
 /// The saved snapshot and the identity of the write that published it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct PreferenceChange {
     revision: u64,
     #[serde(flatten)]
@@ -222,7 +222,7 @@ pub(crate) struct PreferenceChange {
 }
 
 /// Only fields deliberately changed in one window cross the write boundary.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PickerPreferencesPatch {
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -231,7 +231,7 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) accent: Option<Accent>,
     /// Only an id the engine lists; any other refuses the whole change.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    #[specta(type = Option<String>)]
+    #[schemars(with = "Option<String>")]
     pub(crate) output: Option<OutputRef>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) density: Option<Density>,
@@ -299,7 +299,7 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
 
 /// The preferences the picker starts with.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Result<PickerPreferences, String> {
     // Off the main thread: a settings write in progress must never stall a paste.
     let settings_file = settings_file.inner().clone();
@@ -335,14 +335,14 @@ fn read_preference_settings(path: &Path) -> Result<settings::Settings, String> {
 
 /// Issue a save identity inline at IPC dispatch; unused identities block nothing.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn preference_revision(settings_file: State<'_, SettingsFile>) -> Result<u64, String> {
     settings_file.issue_preference_revision()
 }
 
 /// Remember the picker preferences; other settings in the file are kept.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
     preferences: PickerPreferencesPatch,
     revision: u64,

@@ -23,7 +23,7 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
   const { text } = useInterfaceMessages();
   const record: SearchResult = {
     revision: "sample", partial: false,
-    id: { source: "sample", key: "vale2021" }, key: "vale2021", title: text("look-sample-title"),
+    id: { library: "sample", key: "vale2021" }, key: "vale2021", cite: "sample", source: "sample", title: text("look-sample-title"),
     authors: text("look-sample-authors"), first_author: text("look-sample-authors"), author_count: 2,
     container: text("look-sample-journal"), year: "2021", item_type: "article-journal", matched: [],
   };

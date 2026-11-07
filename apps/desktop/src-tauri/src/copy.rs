@@ -7,16 +7,15 @@ use tauri::{AppHandle, State};
 
 use crate::library::{CommandError, Library, PreviewIntent, PreviewRequests};
 
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
-    #[specta(optional)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) summary: Option<ReceiptSummary>,
     /// Unique clipboard-write identity for receipts, even without a native paste proof.
     #[serde(skip_serializing_if = "Option::is_none")]
-    #[specta(optional)]
     pub(crate) delivery: Option<u32>,
     /// What was cited, for the session's list and the project check; stays
     /// on this side of the bridge.
@@ -24,7 +23,7 @@ pub(crate) struct Copied {
     pub(crate) cited: Vec<ibis_core::contract::ItemRef>,
 }
 
-#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Deserialize, Serialize, schemars::JsonSchema)]
 pub(crate) struct ReceiptSummary {
     pub(crate) text: String,
     pub(crate) more: usize,
@@ -132,7 +131,7 @@ mod engine_file_acceptance;
 
 /// Read-only examples owned by a prepared preview; never publishes a new ticket.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn citation_details(
     ticket: String,
     content_hash: String,
@@ -153,7 +152,7 @@ pub(crate) async fn citation_details(
 // Each managed state is its own argument: Tauri hands them to commands that way.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn preview_file_citation(
     items: Vec<crate::library::engine_file::FileSelection>,
     output: String,
@@ -242,7 +241,7 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
 /// that runs on a worker with no lock held; the short commit that writes the
 /// clipboard stays on the main thread, as the native clipboard needs.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn copy_file_citation(
     ticket: String,
     content_hash: String,

@@ -125,7 +125,7 @@ test("a stale checked copy cannot consume the one-time output a fresh Enter is w
 
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
-  const c = { ...b, id: { synthetic: "third" }, key: "third" };
+  const c = { ...b, id: { library: "synthetic", key: "third" }, key: "third" };
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
   s.send({ type: "toggle", result: b });

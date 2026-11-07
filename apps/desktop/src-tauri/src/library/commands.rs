@@ -18,7 +18,7 @@ use ibis_engine::{Cancellation, discovery, health::InspectionPolicy};
 /// Choose a library with the system file dialog. The interface never passes
 /// file paths; the result arrives as the `library:changed` event.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn choose_library(app: AppHandle) {
     choose_library_file(&app);
 }
@@ -26,14 +26,14 @@ pub(crate) fn choose_library(app: AppHandle) {
 /// Read the personal Zotero library while Zotero runs; the result arrives as
 /// `library:changed`.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn use_zotero(app: AppHandle) {
     use_zotero_library(&app);
 }
 
 /// Samples are an explicit, temporary source, never a saved library preference.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), String> {
     if enabled {
         let path = app
@@ -52,7 +52,7 @@ pub(crate) fn use_sample_library(app: AppHandle, enabled: bool) -> Result<(), St
 /// result arrives as `library:changed`. An empty list or a repeated library
 /// is refused.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>) -> Result<(), String> {
     let chosen = ZoteroLibraries::new(libraries).ok_or("Choose at least one Zotero library, each once")?;
     // Chosen from the open picker: showing it again would move focus out of
@@ -62,7 +62,7 @@ pub(crate) fn use_zotero_libraries(app: AppHandle, libraries: Vec<ZoteroLibrary>
 }
 
 /// A Zotero group library the user can choose.
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct ZoteroGroup {
     pub(crate) id: u64,
     pub(crate) name: String,
@@ -71,7 +71,7 @@ pub(crate) struct ZoteroGroup {
 /// The group libraries Zotero knows: asked of Zotero while it runs, or as
 /// listed by the closed read of the open library. Starts no read of its own.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<Vec<ZoteroGroup>, String> {
     let file = library.lock().ok().and_then(|library| library.file.clone());
     tauri::async_runtime::spawn_blocking(move || match file {
@@ -90,7 +90,7 @@ pub(crate) async fn zotero_groups(library: State<'_, Mutex<Library>>) -> Result<
 }
 
 /// The Zotero profiles on this computer and the one chosen, by name.
-#[derive(Clone, Serialize, specta::Type)]
+#[derive(Clone, Serialize, schemars::JsonSchema)]
 pub(crate) struct ZoteroProfiles {
     pub(crate) names: Vec<String>,
     pub(crate) chosen: Option<String>,
@@ -102,7 +102,7 @@ pub(crate) struct ZoteroProfiles {
 /// The profiles to choose from for reading while Zotero is closed. Their
 /// locations stay native.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, String> {
     tauri::async_runtime::spawn_blocking(move || {
         let chosen = app.state::<crate::preferences::SettingsFile>().zotero_profile();
@@ -118,7 +118,7 @@ pub(crate) async fn zotero_profiles(app: AppHandle) -> Result<ZoteroProfiles, St
 /// Read this Zotero profile from now on; the result arrives as
 /// `library:changed`, and only a closed read that used it saves the choice.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn use_zotero_profile(app: AppHandle, name: String) {
     super::tasks::use_zotero_profile(&app, name);
 }
@@ -136,7 +136,7 @@ fn zotero_answered(found: ZoteroPresence, problem: Option<LibraryProblem>) -> bo
 /// Ask Zotero while a screen waiting on it is shown. Once it answers, the
 /// failed choice is read again and the result arrives as `library:changed`.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresence, String> {
     let found = tauri::async_runtime::spawn_blocking(|| {
         discovery::find_zotero(InspectionPolicy::Setup, false, &Cancellation::default())
@@ -159,23 +159,30 @@ pub(crate) async fn check_zotero_sharing(app: AppHandle) -> Result<ZoteroPresenc
 
 /// Open the current library again; the result arrives as `library:changed`.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn reload_library(app: AppHandle) {
     reload_library_file(&app);
 }
 
 /// The library as it is now, for the interface when it starts.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn library_status(app: AppHandle) -> LibraryStatus {
     current_status(&app)
 }
 
 /// A possibly retired identity arriving from a desktop action.
-#[derive(specta::Type)]
-pub(crate) struct RecentIdentity(
-    #[specta(type = specta_typescript::Unknown)] pub(crate) Option<ibis_core::contract::ItemRef>,
-);
+pub(crate) struct RecentIdentity(pub(crate) Option<ibis_core::contract::ItemRef>);
+
+/// Any value: the web view sends back whatever identity it was given.
+impl schemars::JsonSchema for RecentIdentity {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RecentIdentity".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!(true)
+    }
+}
 
 /// History outlives identities: one that is no longer valid resolves to
 /// nothing, the same as one whose library is gone.
@@ -188,7 +195,7 @@ impl<'de> serde::Deserialize<'de> for RecentIdentity {
 
 /// Current destination's recents; Forget retires in-flight recording.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn recent_references(
     forget: bool,
     app: AppHandle,
@@ -236,7 +243,7 @@ pub(crate) async fn recent_references(
 // Each managed state is its own argument: Tauri hands them to commands that way.
 #[allow(clippy::too_many_arguments)]
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn search(
     query: SearchQuery,
     limit: usize,

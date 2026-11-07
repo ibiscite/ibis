@@ -11,6 +11,7 @@ The goal is a finished change on the nightly quickly. Agents merge to main on gr
 ```sh
 node scripts/check.mjs                     # what CI would run for this branch's changes
 node scripts/check.mjs --all               # every check
+node scripts/gen.mjs                       # regenerate bindings, schemas and the CLI options
 cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"

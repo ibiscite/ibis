@@ -19,7 +19,7 @@ use crate::library::commands::RecentIdentity;
 use crate::library::{Library, ProjectMark};
 use crate::picker::ChooserOpen;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ProjectState {
     /// No answer yet for this choice.
@@ -33,7 +33,7 @@ pub(crate) enum ProjectState {
 }
 
 /// What the picker may show. A file name, never a folder.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct ProjectStatus {
     pub(crate) generation: u32,
     /// Counts reads that changed an answer, which can happen with the status
@@ -399,14 +399,14 @@ fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), String> {
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn project_status(slot: State<'_, ProjectBibliography>) -> Option<ProjectStatus> {
     slot.status()
 }
 
 /// Recheck only after a person's explicit action; never a background timer.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn retry_project(app: AppHandle) {
     // A project changed elsewhere, by the command line for one, is used as
     // saved; a changed bibliography starts its own read here.
@@ -418,7 +418,7 @@ pub(crate) fn retry_project(app: AppHandle) {
 
 /// Choose the file with the system dialog; the interface never handles a path.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn choose_project(app: AppHandle) {
     let Some(owner) = app.state::<ChooserOpen>().begin() else {
         return;
@@ -461,13 +461,13 @@ pub(crate) fn choose_project(app: AppHandle) {
 
 /// Stop checking. The file itself is untouched.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn stop_project(app: AppHandle) -> Result<(), String> {
     apply(&app, None)
 }
 
 /// How an entry copy ended; a refusal says how to get the entry another way.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum EntryCopy {
     Copied,
@@ -492,7 +492,7 @@ impl From<EntryRefusal> for EntryCopy {
 /// Copy a reference's original entry with its key, for adding to the project's
 /// file. The text goes to the clipboard here and never through the web view.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn copy_project_entry(
     id: RecentIdentity,
     generation: u32,

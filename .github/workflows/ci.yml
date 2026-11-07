@@ -315,6 +315,11 @@ jobs:
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
 
+      # The bindings, schemas, MCP tools and CLI options made from the Rust code.
+      - name: Check generated files (Linux)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        run: node scripts/gen.mjs --check
+
       # The same journey into Notepad and a console. It runs before the Ctrl+V
       # check below, which leaves its Notepad open; exit 2 means unavailable.
       - name: Journey into Notepad (Windows)

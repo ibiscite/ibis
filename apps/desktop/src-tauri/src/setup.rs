@@ -15,7 +15,7 @@ use tauri::{AppHandle, Manager, State};
 #[derive(Default)]
 pub(crate) struct Offered(discovery::Discovery);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum ZoteroPresence {
     Available,
@@ -26,7 +26,7 @@ pub(crate) enum ZoteroPresence {
 }
 
 /// A `.bib` file found on this computer.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct FoundFile {
     /// The file name, such as `refs.bib`.
     pub(crate) name: String,
@@ -35,7 +35,7 @@ pub(crate) struct FoundFile {
 }
 
 /// What first-run setup can offer.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 pub(crate) struct Sources {
     pub(crate) zotero: ZoteroPresence,
     /// The number to send back with a choice from `files`.
@@ -60,7 +60,7 @@ impl From<discovery::ZoteroPresence> for ZoteroPresence {
 /// What the welcome screen can say about Zotero before anything is chosen, so
 /// it can offer Zotero first. Reads Zotero's profile configuration and no library.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {
     tauri::async_runtime::spawn_blocking(|| {
         discovery::find_zotero(InspectionPolicy::Setup, true, &Cancellation::default())
@@ -74,7 +74,7 @@ pub(crate) async fn find_zotero() -> Result<ZoteroPresence, String> {
 /// Find what setup can offer: whether Zotero is open, and `.bib` files in
 /// the documents, desktop and downloads folders.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
     let paths = app.path();
     let roots: Vec<PathBuf> = [paths.document_dir(), paths.desktop_dir(), paths.download_dir()]
@@ -115,7 +115,7 @@ pub(crate) async fn find_sources(app: AppHandle) -> Result<Sources, String> {
 /// remember it; the result arrives as `library:changed`. A choice from a
 /// list that has since been replaced is refused.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn open_found_library(
     app: AppHandle,
     offered: State<'_, Offered>,

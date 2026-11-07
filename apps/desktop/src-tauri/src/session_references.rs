@@ -21,14 +21,14 @@ pub(crate) use ibis_engine::recents::SessionReferences;
 use ibis_engine::recents::{List, Undo};
 
 /// The edit Undo would reverse, for its label. Only the removed row is named.
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(crate) enum UndoView {
     Removed { reference: Option<Box<SearchResult>> },
     Reset,
 }
 
-#[derive(Serialize, specta::Type)]
+#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SessionReferencesView {
     pub(crate) revision: u32,
     /// The listed references that are in the open library.
@@ -41,7 +41,7 @@ pub(crate) struct SessionReferencesView {
     pub(crate) undo: Option<UndoView>,
 }
 
-#[derive(Deserialize, specta::Type)]
+#[derive(Deserialize, schemars::JsonSchema)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
 pub(crate) enum SessionEdit {
     Remove { id: RecentIdentity },
@@ -77,7 +77,7 @@ fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn session_references(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
@@ -87,7 +87,7 @@ pub(crate) fn session_references(
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn edit_session_references(
     edit: SessionEdit,
     session: State<'_, SessionReferences>,
@@ -118,7 +118,7 @@ fn style_of(id: &str) -> Result<String, CommandError> {
 /// The list as a formatted bibliography, for the person to look at before
 /// copying it. `None` when nothing listed is in the open library.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn session_bibliography(
     style: String,
     session: State<'_, SessionReferences>,
@@ -138,7 +138,7 @@ pub(crate) async fn session_bibliography(
 /// Copy what was shown. Prepared again from the list as it is now, and refused
 /// unless that is exactly what the person saw.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn copy_session_bibliography(
     style: String,
     content_hash: String,
@@ -176,7 +176,7 @@ fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<
 /// way the list leaves memory, and only because the person asked. `None` when
 /// the dialog was cancelled; otherwise the file's name.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn export_session_bibliography(
     style: String,
     content_hash: String,

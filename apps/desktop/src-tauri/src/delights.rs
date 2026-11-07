@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 use crate::preferences::SettingsFile;
 
 /// Local calendar facts from the webview clock; eligibility is decided here.
-#[derive(Clone, Copy, Deserialize, specta::Type)]
+#[derive(Clone, Copy, Deserialize, schemars::JsonSchema)]
 pub(crate) struct LocalMoment {
     year: i32,
     month: u8,
@@ -21,7 +21,7 @@ impl LocalMoment {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum DelightStatus {
     PasteTip,
@@ -39,7 +39,7 @@ fn build_line(version: &str, commit: Option<&str>, date: &str) -> String {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum DelightFact {
     Touch,
@@ -56,7 +56,7 @@ const FACTS: [DelightFact; 5] = [
     DelightFact::Flight,
 ];
 
-#[derive(Default, Serialize, specta::Type)]
+#[derive(Default, Serialize, schemars::JsonSchema)]
 pub(crate) struct DelightView {
     status: Option<DelightStatus>,
     peck: bool,
@@ -239,7 +239,7 @@ fn library_claim(status: &crate::library::LibraryStatus, revision: Option<&str>)
 
 /// One request per visible presentation/snapshot. Settings passes no presentation.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn delight_view(
     app: AppHandle,
     now: LocalMoment,

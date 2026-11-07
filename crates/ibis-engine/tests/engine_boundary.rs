@@ -14,17 +14,21 @@ use serde_json::{Value, json};
 /// the workspace crates it ships with. `[dev-dependencies]` and
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
-/// The front ends' `ibis-core` and the app's `ibis-zotero-local` are the direct
-/// calls that #1260 removes: delete a name when its use goes; never add one. A
-/// new need belongs in an engine method.
-const LAYERS: [(&str, &[&str]); 8] = [
+/// The front ends' `ibis-core` is the direct call that #1260 removes: delete a
+/// name when its use goes; never add one. A new need belongs in an engine method.
+const LAYERS: [(&str, &[&str]); 9] = [
     ("crates/ibis-core", &[]),
     ("crates/ibis-zotero-local", &["ibis-core"]),
     ("crates/ibis-csl", &["ibis-core"]),
     ("crates/ibis-sources", &["ibis-core", "ibis-zotero-local"]),
     ("crates/ibis-engine", &["ibis-core", "ibis-csl", "ibis-sources"]),
     ("crates/ibis-cli", &["ibis-core", "ibis-engine"]),
-    ("apps/desktop/src-tauri", &["ibis-core", "ibis-engine"]),
+    (
+        "apps/desktop/src-tauri",
+        &["ibis-core", "ibis-desktop-macros", "ibis-engine"],
+    ),
+    // Records each command's types for the generated bindings; ships nothing else.
+    ("apps/desktop/src-tauri/macros", &[]),
     // The fuzzing harness ships nothing; it reads BibTeX as the engine does.
     ("fuzz", &["ibis-core", "ibis-sources"]),
 ];

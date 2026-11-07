@@ -7,7 +7,7 @@ import { ResultList } from "./ResultList";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 const rows: SearchResult[] = Array.from({ length: 10 }, (_, i) => ({
-  revision: "1", id: { source: "refs.bib", native_key: `k${i}` }, key: `k${i}`, title: `Title ${i}`, authors: "Author", year: "2020",
+  revision: "1", id: { library: "refs.bib", key: `k${i}` }, key: `k${i}`, cite: "1", source: "refs.bib", title: `Title ${i}`, authors: "Author", year: "2020",
   matched: ["title"], partial: false, first_author: "Author", author_count: 1, container: null, item_type: "book",
 }));
 

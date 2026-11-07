@@ -207,7 +207,7 @@ fn publish_available<R: OfferUi>(app: &AppHandle<R>, available: bool) {
 }
 
 /// How a check ended. Whoever asked says so in its own place.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, specta::Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum CheckResult {
     /// Nothing newer exists.

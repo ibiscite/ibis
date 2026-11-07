@@ -11,8 +11,8 @@ use std::time::{Duration, Instant};
 
 use ibis_core::settings::{PickerWindow, Settings};
 use owner::{Display, Event, MINIMUM, Owner, Sample, Save, content_room};
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use tauri::{AppHandle, Emitter, Manager, Monitor, WebviewWindow, WindowEvent};
 
 #[cfg(not(target_os = "macos"))]
@@ -28,7 +28,7 @@ const LARGER_TEXT_SCALE: f64 = 1.15;
 const FLUSH_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Settings › Look's window size. Any other dragged size is Custom.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "lowercase")]
 pub(crate) enum WindowSize {
     Small,
@@ -708,7 +708,7 @@ fn target(app: &AppHandle) -> Option<(WebviewWindow, Monitor)> {
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
     let (_, monitor) = target(&app)?;
     Some(WindowSize::of(app.state::<Sizing>().remembered(&display_key(&monitor))))
@@ -717,7 +717,7 @@ pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
 /// Kept like a dragged size: the one writer saves it and reports the outcome.
 /// Hidden, the next `prepare` applies it before the window appears.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), String> {
     const FAILED: &str = "Ibis could not change the window size. Try again.";
     let size = size.pixels().ok_or(FAILED)?;
@@ -756,14 +756,14 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), St
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn read_window_position_undo(sizing: tauri::State<'_, Sizing>) -> Option<u64> {
     let state = sizing.shared.state.lock().ok()?;
     state.undo_for(state.revision).map(|undo| undo.revision)
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
     if let Ok(mut state) = app.state::<Sizing>().shared.state.lock() {
         state.dismiss_undo(revision);
@@ -773,13 +773,13 @@ pub(crate) fn dismiss_window_position_undo(app: AppHandle, revision: u64) {
 
 /// Double-clicking the search bar's empty area returns Ibis to its place.
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) fn reset_window_position(app: AppHandle) {
     reset_position(&app);
 }
 
 #[tauri::command]
-#[specta::specta]
+#[ibis_desktop_macros::command]
 pub(crate) async fn undo_window_position(app: AppHandle, revision: u64) -> Result<bool, String> {
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     let (sent, mut received) = tauri::async_runtime::channel(1);

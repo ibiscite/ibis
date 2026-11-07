@@ -1,106 +1,180 @@
-//! One command registry drives both the runtime handler and generated bindings.
+//! One command registry drives both the runtime handler and the generated
+//! bindings: `node scripts/gen.mjs` turns `contract()` into `src/bindings.ts`.
+//! Only the handler ships; the rest exists in tests, which write the contract.
+#[cfg(test)]
+use schemars::{JsonSchema, Schema, SchemaGenerator, generate::SchemaSettings};
+#[cfg(test)]
+use serde_json::{Value, json};
 
-pub(crate) fn commands() -> tauri_specta::Builder<tauri::Wry> {
-    tauri_specta::Builder::new()
-        .typ::<crate::preferences::PreferenceChange>()
-        .typ::<crate::settings_backup::BackupProblem>()
-        .typ::<crate::settings_backup::RestorePreview>()
-        .commands(tauri_specta::collect_commands![
-            crate::library::commands::choose_library,
-            crate::library::commands::reload_library,
-            crate::library::commands::use_zotero,
-            crate::library::commands::use_sample_library,
-            crate::setup::find_zotero,
-            crate::setup::find_sources,
-            crate::setup::open_found_library,
-            crate::library::commands::use_zotero_libraries,
-            crate::library::commands::zotero_groups,
-            crate::library::commands::zotero_profiles,
-            crate::library::commands::use_zotero_profile,
-            crate::library::commands::check_zotero_sharing,
-            crate::library::commands::library_status,
-            crate::library::open_source::open_library_source,
-            crate::library::open_source::library_source,
-            crate::library::commands::search,
-            crate::library::commands::recent_references,
-            crate::copy::preview_file_citation,
-            crate::copy::citation_details,
-            crate::copy::copy_file_citation,
-            crate::project::project_status,
-            crate::project::retry_project,
-            crate::project::choose_project,
-            crate::project::stop_project,
-            crate::project::copy_project_entry,
-            crate::writing_projects::writing_projects,
-            crate::writing_projects::edit_writing_project,
-            crate::editor_endpoint::editor_request,
-            crate::editor_endpoint::editor_endpoint,
-            crate::editor_endpoint::set_editor_endpoint,
-            crate::editor_endpoint::copy_editor_endpoint,
-            crate::session_references::session_references,
-            crate::session_references::edit_session_references,
-            crate::session_references::session_bibliography,
-            crate::session_references::copy_session_bibliography,
-            crate::session_references::export_session_bibliography,
-            crate::preferences::picker_preferences,
-            crate::preferences::preference_revision,
-            crate::delights::delight_view,
-            crate::preferences::set_picker_preferences::<tauri::Wry>,
-            crate::destination::picker_destination,
-            crate::destination::remember_app_output,
-            crate::login_item::login_item,
-            crate::login_item::set_login_item,
-            crate::picker::hide_picker::<tauri::Wry>,
-            crate::picker::picker_presentation,
-            crate::picker::set_pinned,
-            crate::picker::picker_moving,
-            crate::picker::quit,
-            crate::picker::shortcut_status,
-            crate::picker::wayland::configure_shortcuts,
-            crate::notice::show_copied_notice,
-            crate::notice::copied_notice,
-            crate::native_feel::native_appearance,
-            crate::row_context::row_context,
-            crate::updater::setting::update_checks,
-            crate::updater::setting::set_update_checks,
-            crate::updater::setting::check_for_updates,
-            crate::feedback::open_about_link,
-            crate::updater::update_available,
-            crate::updater::update_picker_activity,
-            crate::settings_window::open_settings,
-            crate::settings_window::finish_paste_guide,
-            crate::settings_backup::back_up_settings,
-            crate::settings_backup::choose_settings_backup,
-            crate::settings_backup::restore_settings_backup,
-            crate::settings_backup::cancel_settings_restore,
-            crate::paste::permission::paste_permission,
-            crate::paste::permission::open_paste_permission,
-            crate::paste::permission::drag_paste_app,
-            crate::shortcut_setting::set_shortcut,
-            crate::sizing::window_size,
-            crate::sizing::set_window_size,
-            crate::tray::take_search_request,
-            crate::tray::alignment_tick,
-            crate::sizing::reset_window_position,
-            crate::sizing::read_window_position_undo,
-            crate::sizing::undo_window_position,
-            crate::sizing::dismiss_window_position_undo
-        ])
-        // The engine's outputs, read once at build time: names never wait for IPC.
-        .constant("OUTPUTS", crate::output::choices())
-        .constant("DEFAULT_OUTPUT", ibis_engine::outputs::DEFAULT)
-        .constant("DEFAULT_STYLE", ibis_engine::outputs::DEFAULT_STYLE)
-        // Match Tauri's existing Promise rejection behavior.
-        .error_handling(tauri_specta::ErrorHandlingMode::Throw)
-        // usize counts/limits already cross the JSON bridge as JS numbers.
-        // Library input is capped at 64 MiB and search results at 200.
-        .dangerously_cast_bigints_to_number()
+/// One command as the web view calls it.
+#[cfg(test)]
+pub(crate) struct Command {
+    pub(crate) name: &'static str,
+    pub(crate) docs: &'static str,
+    /// Each argument by its name in the web view.
+    pub(crate) args: Vec<(&'static str, Schema)>,
+    /// What a successful call returns; `None` when the command returns nothing.
+    pub(crate) returns: Option<Schema>,
+    /// What a failed call throws, for a command that returns a `Result`.
+    pub(crate) error: Option<Schema>,
+}
+
+/// What the web view sends is read as Rust deserializes it, and what it
+/// receives as Rust serializes it; a type can differ between the two.
+#[cfg(test)]
+pub(crate) struct Schemas {
+    input: SchemaGenerator,
+    output: SchemaGenerator,
+}
+
+#[cfg(test)]
+impl Schemas {
+    pub(crate) fn input<T: ?Sized + JsonSchema>(&mut self) -> Schema {
+        self.input.subschema_for::<T>()
+    }
+    pub(crate) fn output<T: ?Sized + JsonSchema>(&mut self) -> Schema {
+        self.output.subschema_for::<T>()
+    }
+}
+
+macro_rules! registry {
+    ($($command:tt)*) => {
+        /// The handler for every command the web view may call.
+        pub(crate) fn handler() -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static {
+            tauri::generate_handler![$($command)*]
+        }
+        #[cfg(test)]
+        fn commands() -> Vec<fn(&mut Schemas) -> Command> {
+            ibis_desktop_macros::commands![$($command)*]
+        }
+    };
+}
+
+registry![
+    crate::library::commands::choose_library,
+    crate::library::commands::reload_library,
+    crate::library::commands::use_zotero,
+    crate::library::commands::use_sample_library,
+    crate::setup::find_zotero,
+    crate::setup::find_sources,
+    crate::setup::open_found_library,
+    crate::library::commands::use_zotero_libraries,
+    crate::library::commands::zotero_groups,
+    crate::library::commands::zotero_profiles,
+    crate::library::commands::use_zotero_profile,
+    crate::library::commands::check_zotero_sharing,
+    crate::library::commands::library_status,
+    crate::library::open_source::open_library_source,
+    crate::library::open_source::library_source,
+    crate::library::commands::search,
+    crate::library::commands::recent_references,
+    crate::copy::preview_file_citation,
+    crate::copy::citation_details,
+    crate::copy::copy_file_citation,
+    crate::project::project_status,
+    crate::project::retry_project,
+    crate::project::choose_project,
+    crate::project::stop_project,
+    crate::project::copy_project_entry,
+    crate::writing_projects::writing_projects,
+    crate::writing_projects::edit_writing_project,
+    crate::editor_endpoint::editor_request,
+    crate::editor_endpoint::editor_endpoint,
+    crate::editor_endpoint::set_editor_endpoint,
+    crate::editor_endpoint::copy_editor_endpoint,
+    crate::session_references::session_references,
+    crate::session_references::edit_session_references,
+    crate::session_references::session_bibliography,
+    crate::session_references::copy_session_bibliography,
+    crate::session_references::export_session_bibliography,
+    crate::preferences::picker_preferences,
+    crate::preferences::preference_revision,
+    crate::delights::delight_view,
+    crate::preferences::set_picker_preferences,
+    crate::destination::picker_destination,
+    crate::destination::remember_app_output,
+    crate::login_item::login_item,
+    crate::login_item::set_login_item,
+    crate::picker::hide_picker,
+    crate::picker::picker_presentation,
+    crate::picker::set_pinned,
+    crate::picker::picker_moving,
+    crate::picker::quit,
+    crate::picker::shortcut_status,
+    crate::picker::wayland::configure_shortcuts,
+    crate::notice::show_copied_notice,
+    crate::notice::copied_notice,
+    crate::native_feel::native_appearance,
+    crate::row_context::row_context,
+    crate::updater::setting::update_checks,
+    crate::updater::setting::set_update_checks,
+    crate::updater::setting::check_for_updates,
+    crate::feedback::open_about_link,
+    crate::updater::update_available,
+    crate::updater::update_picker_activity,
+    crate::settings_window::open_settings,
+    crate::settings_window::finish_paste_guide,
+    crate::settings_backup::back_up_settings,
+    crate::settings_backup::choose_settings_backup,
+    crate::settings_backup::restore_settings_backup,
+    crate::settings_backup::cancel_settings_restore,
+    crate::paste::permission::paste_permission,
+    crate::paste::permission::open_paste_permission,
+    crate::paste::permission::drag_paste_app,
+    crate::shortcut_setting::set_shortcut,
+    crate::sizing::window_size,
+    crate::sizing::set_window_size,
+    crate::tray::take_search_request,
+    crate::tray::alignment_tick,
+    crate::sizing::reset_window_position,
+    crate::sizing::read_window_position_undo,
+    crate::sizing::undo_window_position,
+    crate::sizing::dismiss_window_position_undo,
+];
+
+/// Every command, the types they name, and the engine's outputs, read once at
+/// build time so names never wait for IPC.
+#[cfg(test)]
+fn contract() -> Value {
+    let mut schemas = Schemas {
+        input: SchemaSettings::draft2020_12().for_deserialize().into_generator(),
+        output: SchemaSettings::draft2020_12().for_serialize().into_generator(),
+    };
+    // Sent in events rather than returned by a command.
+    let events = [
+        schemas.output::<crate::preferences::PreferenceChange>(),
+        schemas.output::<crate::settings_backup::BackupProblem>(),
+        schemas.output::<crate::settings_backup::RestorePreview>(),
+    ];
+    let commands: Vec<Value> = commands()
+        .into_iter()
+        .map(|describe| {
+            let command = describe(&mut schemas);
+            json!({
+                "name": command.name,
+                "docs": command.docs,
+                "args": command.args.into_iter().map(|(name, schema)| json!([name, schema])).collect::<Vec<_>>(),
+                "returns": command.returns,
+                "error": command.error,
+            })
+        })
+        .collect();
+    json!({
+        "commands": commands,
+        "events": events,
+        "input": schemas.input.take_definitions(true),
+        "output": schemas.output.take_definitions(true),
+        "constants": {
+            "OUTPUTS": crate::output::choices(),
+            "DEFAULT_OUTPUT": ibis_engine::outputs::DEFAULT,
+            "DEFAULT_STYLE": ibis_engine::outputs::DEFAULT_STYLE,
+        },
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeSet;
-    use std::path::PathBuf;
 
     include!("../app_commands.rs");
 
@@ -155,62 +229,23 @@ mod tests {
         "cancel_settings_restore",
     ];
 
-    fn destination() -> PathBuf {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../src/bindings.ts")
-    }
-
-    fn generated() -> String {
-        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("cannot create contract directory: {e}"));
-        let path = directory.path().join("bindings.ts");
-        super::commands()
-            .export(specta_typescript::Typescript::default(), &path)
-            .unwrap_or_else(|e| panic!("cannot generate desktop contract: {e}"));
-        let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("cannot read generated contract: {e}"));
-        // The exporter emits trailing whitespace in documented enum unions.
-        // Normalize formatting only, keeping the generated schema untouched.
-        let lines = text.trim_end().lines().map(str::trim_end).collect::<Vec<_>>();
-        format!("{}\n", lines.join("\n"))
-    }
-
-    #[test]
-    fn generated_contract_is_current() {
-        let checked_in = std::fs::read_to_string(destination()).unwrap_or_default();
-        assert_eq!(
-            checked_in.replace("\r\n", "\n"),
-            generated().replace("\r\n", "\n"),
-            "stale desktop contract; run cargo test -p ibis-desktop bindings::tests::export_contract -- --ignored"
-        );
-    }
-
     #[test]
     fn command_manifest_matches_the_runtime_registry() {
-        struct Registry;
-        impl tauri_specta::LanguageExt for Registry {
-            type Error = std::io::Error;
-
-            fn export(
-                self,
-                config: &tauri_specta::BuilderConfiguration,
-                _: &std::path::Path,
-            ) -> Result<(), Self::Error> {
-                let registered = config
-                    .commands
-                    .iter()
-                    .map(|command| command.name())
-                    .collect::<BTreeSet<_>>();
-                assert_eq!(registered.len(), config.commands.len(), "duplicate runtime command");
-                assert_eq!(
-                    APP_COMMANDS.len(),
-                    registered.len(),
-                    "duplicate or missing manifest command"
-                );
-                assert_eq!(registered, APP_COMMANDS.iter().copied().collect());
-                Ok(())
-            }
-        }
-        super::commands()
-            .export(Registry, "unused")
-            .unwrap_or_else(|e| panic!("cannot inspect command registry: {e}"));
+        let mut schemas = super::Schemas {
+            input: schemars::SchemaGenerator::default(),
+            output: schemars::SchemaGenerator::default(),
+        };
+        let registered: Vec<_> = super::commands()
+            .into_iter()
+            .map(|describe| describe(&mut schemas).name)
+            .collect();
+        let unique: BTreeSet<_> = registered.iter().copied().collect();
+        assert_eq!(unique.len(), registered.len(), "duplicate runtime command");
+        assert_eq!(
+            unique,
+            APP_COMMANDS.iter().copied().collect(),
+            "manifest and registry differ"
+        );
     }
 
     #[test]
@@ -342,9 +377,13 @@ mod tests {
         }
     }
 
+    /// Run by `node scripts/gen.mjs`, which writes `src/bindings.ts` from it.
     #[test]
-    #[ignore = "explicitly regenerate checked-in TypeScript, never during checks"]
+    #[ignore = "writes the desktop contract for gen.mjs"]
     fn export_contract() {
-        std::fs::write(destination(), generated()).unwrap_or_else(|e| panic!("cannot write desktop contract: {e}"));
+        let directory = std::env::var_os("IBIS_GEN_DIR").unwrap_or_else(|| panic!("set IBIS_GEN_DIR"));
+        let text = serde_json::to_string_pretty(&super::contract()).unwrap_or_else(|e| panic!("{e}"));
+        std::fs::write(std::path::Path::new(&directory).join("desktop-contract.json"), text)
+            .unwrap_or_else(|e| panic!("cannot write desktop contract: {e}"));
     }
 }
