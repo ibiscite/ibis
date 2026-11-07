@@ -77,7 +77,8 @@ so. Preference writes from different windows apply only deliberate field
 patches, returning the authoritative saved state; the one settings owner
 orders them by when they were chosen (decision 0040). Settings and the picker
 share one frontend queue for acknowledgments, stale reads and recovery. Settings restores the saved choice
-after a failed save; the picker retains explicit choices for retry. Each window
+after a failed save; the picker keeps an unsaved choice applied until Ibis
+restarts, and never sends it again (decision 0040, 2026-11-07). Each window
 keeps its own queue; the native lock coordinates windows (2026-10-28).
 
 Unlisted-app Paste approval compares the normalised OS app ID and a SHA-256

@@ -1911,7 +1911,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   await waitFor(() => expect(formatValue()).toBe(choice));
 });
 
-test("rapid A-B-A choices keep the last failed choice for retry without replaying a saved key", async () => {
+test("rapid A-B-A choices keep the last failed choice applied and never resend it", async () => {
   let finish = () => undefined as void;
   const firstSave = new Promise<void>((resolve) => { finish = resolve; });
   const keys: unknown[] = [];
@@ -1939,11 +1939,13 @@ test("rapid A-B-A choices keep the last failed choice for retry without replayin
   await screen.findByText(/could not read or save your picker choices/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
+  // The unsaved choice still applies in the picker until Ibis restarts.
+  expect(formatValue()).toBe("cite");
   await chooseRows("compact");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
-  expect(remembered).toBe("cite");
-  // The failed choice rides with the next one; the saved pandoc is never replayed.
-  expect(keys).toEqual(["cite", "pandoc", "cite", "cite"]);
+  // The next choice carries only its own field: the failed one is never sent again.
+  expect(keys).toEqual(["cite", "pandoc", "cite", null]);
+  expect(remembered).toBe("pandoc");
   remembered = "keys"; // A hand edit after a successful save must survive.
   await chooseRows("comfortable");
   await waitFor(() => expect(keys).toHaveLength(5));
@@ -2055,10 +2057,11 @@ test("format, density and preview choices are saved without losing each other", 
 test("a choice made while saved choices load is kept and saved, not replaced", async () => {
   let finish = () => undefined as void;
   const loaded = new Promise<void>((resolve) => { finish = resolve; });
-  const saved: unknown[] = [];
+  const saved: { output?: string }[] = [];
   backend({
-    picker_preferences: async () => { await loaded; return { output: "apa", density: "compact", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences); return null; },
+    // Reads what is on disk when it answers, as the settings file does.
+    picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string }); return null; },
   });
   render(<App />);
   await waitFor(() => formatButton());
@@ -2069,8 +2072,10 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
 });
 
 test("unreadable saved choices are reported and never overwritten with defaults", async () => {
-  const calls = backend({
+  const saved: unknown[] = [];
+  backend({
     picker_preferences: () => { throw new Error("synthetic settings failure"); },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences); throw new Error("synthetic refusal"); },
   });
   render(<App />);
   await screen.findByText(/could not read or save your picker choices/);
@@ -2079,7 +2084,9 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   chooseFormat("apa");
   await chooseRows("compact");
   expect(document.documentElement.dataset.density).toBe("compact");
-  expect(calls).not.toContain("picker_preferences_saved");
+  // Each choice names only its own field, so nothing else is written as a default;
+  // the settings owner refuses them while the file cannot be read.
+  await waitFor(() => expect(saved).toEqual([{ output: "apa" }, { density: "compact" }]));
 });
 
 const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };

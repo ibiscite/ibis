@@ -51,32 +51,6 @@ test("choices are submitted when the person makes them, even behind an unfinishe
   expect(write.mock.calls.map((call) => call[1])).toEqual([1, 2]);
 });
 
-test("a refused submission is kept and goes with the next choice", async () => {
-  const { api, queue, saved } = fixture();
-  await queue.load();
-  api.submit.mockRejectedValueOnce(new Error("synthetic refusal"));
-  queue.change({ larger_text: true });
-  await queue.finishSaving();
-  expect(api.write).not.toHaveBeenCalled();
-  queue.change({ density: "compact" });
-  await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ larger_text: true, density: "compact" }]]);
-  expect(saved().preferences).toMatchObject({ density: "compact", larger_text: true });
-});
-
-test.each([false, true])("a failed field goes with the next choice unless the other window chose since (notified=%s)", async (notified) => {
-  const { api, queue } = fixture();
-  await queue.load();
-  api.write.mockRejectedValueOnce(new Error("synthetic write failure"));
-  queue.change({ larger_text: true });
-  await queue.finishSaving();
-  // The other window saves its own text size: newer than this retry.
-  if (notified) await queue.refresh(99);
-  queue.change({ density: "compact" });
-  await queue.finishSaving();
-  expect(api.write.mock.calls.at(-1)).toEqual([notified ? { density: "compact" } : { larger_text: true, density: "compact" }]);
-});
-
 test.each([false, true])("writes stay ordered and acknowledged fields never ride a later patch (readAfterWrites=%s)", async (readAfterWrites) => {
   const { api, queue, events } = fixture({ readAfterWrites });
   await queue.load();
@@ -92,26 +66,6 @@ test.each([false, true])("writes stay ordered and acknowledged fields never ride
   await queue.finishSaving();
   expect(api.write.mock.calls[1]).toEqual([{ larger_text: true }]);
   expect(events).toHaveBeenLastCalledWith({ type: "saved", value: { preferences: { ...defaults, output: "ieee", larger_text: true } } });
-});
-
-test("an equal value chosen again keeps its own fate: its failure is sent again behind newer choices", async () => {
-  const { api, queue, saved } = fixture();
-  await queue.load();
-  const first = deferred<PickerSave>();
-  api.write.mockReturnValueOnce(first.promise);
-  api.write.mockImplementationOnce(async () => ({ preferences: defaults }));
-  api.write.mockRejectedValueOnce(new Error("synthetic save failure"));
-  queue.change({ larger_text: true });
-  queue.change({ larger_text: false });
-  queue.change({ larger_text: true });
-  queue.change({ density: "compact" });
-  first.resolve({ preferences: { ...defaults, larger_text: true } });
-  await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([
-    [{ larger_text: true }], [{ larger_text: false }],
-    [{ larger_text: true }], [{ density: "compact" }], [{ larger_text: true }],
-  ]);
-  expect(saved().preferences).toMatchObject({ larger_text: true, density: "compact" });
 });
 
 test("Settings shortcut writes share ordering and closing waits with preference writes", async () => {
@@ -135,19 +89,51 @@ test("Settings shortcut writes share ordering and closing waits with preference 
   expect(closed).toHaveBeenCalledOnce();
 });
 
-test("an unreadable initial file holds explicit edits until a successful read", async () => {
+test("a choice made before the first read goes to the owner at once, with only its own field", async () => {
   const { api, queue, saved } = fixture({ readAfterWrites: true });
   api.read.mockResolvedValueOnce({ preferences: null });
+  await queue.load();
   queue.change({ output: "cite" });
   queue.change({ paste: false });
-  await queue.load();
-  expect(api.write).not.toHaveBeenCalled();
-  await queue.load();
   await queue.finishSaving();
-  // Held choices go together once the file can be read.
-  expect(api.write.mock.calls).toEqual([[{ output: "cite", paste: false }]]);
-  expect(api.submit).toHaveBeenCalledOnce();
-  expect(saved()).toMatchObject({ preferences: { paste: false } });
+  // The owner orders them with every other window's choices; it refuses them on unreadable settings.
+  expect(api.write.mock.calls).toEqual([[{ output: "cite" }], [{ paste: false }]]);
+  expect(saved()).toMatchObject({ preferences: { output: "cite", paste: false } });
+});
+
+test.each([[{ restoreOnFailure: true }, false], [{ readAfterWrites: true }, true]])("a failed choice is reported and never sent later; only the picker keeps it applied (%o)", async (policy, kept) => {
+  const { api, queue, events, saved } = fixture(policy);
+  await queue.load();
+  const failing = deferred<PickerSave>();
+  api.write.mockReturnValueOnce(failing.promise);
+  queue.change({ larger_text: true });
+  queue.change({ density: "compact" });
+  failing.reject(new Error("synthetic save failure"));
+  await queue.finishSaving();
+  await vi.waitFor(() => expect(events).toHaveBeenCalledWith({ type: "error", source: "save" }));
+  queue.change({ paste: false });
+  await queue.finishSaving();
+  await queue.load();
+  expect(api.write.mock.calls).toEqual([[{ larger_text: true }], [{ density: "compact" }], [{ paste: false }]]);
+  expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact", paste: false });
+  // Settings shows what is saved; the picker keeps the unsaved choice until Ibis restarts.
+  expect(events).toHaveBeenLastCalledWith({ type: "read", value: { preferences: { ...saved().preferences, larger_text: kept } }, pendingOutput: false });
+});
+
+test("a picker choice that failed gives way when the other window saves that field after it", async () => {
+  const { api, queue, events, saved } = fixture({ readAfterWrites: true });
+  await queue.load();
+  api.write.mockRejectedValueOnce(new Error("synthetic save failure"));
+  queue.change({ output: "cite" });
+  await queue.finishSaving();
+  // An older save of the field, and a newer save of another field, change nothing.
+  await queue.refresh(0, () => true, ["output"]);
+  await queue.refresh(5, () => true, ["density"]);
+  expect(events).toHaveBeenLastCalledWith({ type: "read", value: { preferences: { ...saved().preferences, output: "cite" } }, pendingOutput: true });
+  saved().preferences.output = "ieee";
+  await queue.refresh(6, () => true, ["output"]);
+  expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingOutput: false });
+  expect(api.write).toHaveBeenCalledOnce();
 });
 
 test.each([false, true])("the latest read supersedes older read success and failure (readAfterWrites=%s)", async (readAfterWrites) => {
@@ -181,7 +167,7 @@ test("Settings recovery restores durable state, but cannot overwrite a newer edi
   expect(api.read).toHaveBeenCalledTimes(2);
   queue.change({ density: "compact" });
   await queue.finishSaving();
-  expect(saved().preferences).toMatchObject({ larger_text: true, density: "compact" });
+  expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact" });
   events.mockClear();
   recovery.resolve({ preferences: defaults });
   await recovery.promise;
@@ -196,7 +182,7 @@ test("Settings recovery restores durable state, but cannot overwrite a newer edi
   expect(api.write).toHaveBeenLastCalledWith({ paste: false });
 });
 
-test("Settings focus restores saved choices after a failed recovery read and keeps the edit retryable", async () => {
+test("Settings focus restores saved choices after a failed recovery read", async () => {
   const { api, queue, events, saved } = fixture({ restoreOnFailure: true });
   await queue.load();
   api.write.mockRejectedValueOnce(new Error("synthetic save failure"));
@@ -207,7 +193,7 @@ test("Settings focus restores saved choices after a failed recovery read and kee
   expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingOutput: false });
   queue.change({ density: "compact" });
   await queue.finishSaving();
-  expect(api.write.mock.calls.at(-1)).toEqual([{ larger_text: true, density: "compact" }]);
+  expect(api.write.mock.calls.at(-1)).toEqual([{ density: "compact" }]);
 });
 
 test("a native change notification waits for local writes and refreshes cross-window state", async () => {
@@ -315,24 +301,6 @@ test("a failed read publishes nothing after unmount", async () => {
   expect(events).not.toHaveBeenCalled();
 });
 
-test("two failing fields never resend each other: the queue settles when saves keep failing", async () => {
-  const { api, queue } = fixture();
-  await queue.load();
-  const first = deferred<PickerSave>();
-  api.write.mockReturnValueOnce(first.promise).mockRejectedValue(new Error("synthetic read-only settings"));
-  queue.change({ larger_text: true });
-  queue.change({ density: "compact" });
-  first.reject(new Error("synthetic read-only settings"));
-  await queue.finishSaving();
-  for (let i = 0; i < 20; i++) await Promise.resolve();
-  await queue.finishSaving();
-  const settled = api.write.mock.calls.length;
-  // Two choices, then at most one resend behind the newer choice.
-  expect(settled).toBeLessThanOrEqual(3);
-  for (let i = 0; i < 20; i++) await Promise.resolve();
-  expect(api.write).toHaveBeenCalledTimes(settled);
-});
-
 test.each([false, true])("a failure that returns after the other window chose is dropped, never sent over it (readAfterWrites=%s)", async (readAfterWrites) => {
   const { api, queue, saved } = fixture({ readAfterWrites });
   await queue.load();
@@ -352,29 +320,3 @@ test.each([false, true])("a failure that returns after the other window chose is
   expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact" });
 });
 
-test.each([[0, true], [5, false]])("a failed choice is retired only by a later save of the same field (other window's receipt %i)", async (foreign, kept) => {
-  const { api, queue } = fixture();
-  await queue.load();
-  api.write.mockRejectedValueOnce(new Error("synthetic save failure"));
-  queue.change({ output: "cite" });
-  await queue.finishSaving();
-  // This window's choice went out with receipt 1; the other window's save of output has its own.
-  await queue.refresh(foreign, () => true, ["output"]);
-  // A notice about another field never retires it.
-  await queue.refresh(9, () => true, ["density"]);
-  queue.change({ paste: false });
-  await queue.finishSaving();
-  expect(api.write.mock.calls.at(-1)).toEqual([kept ? { output: "cite", paste: false } : { paste: false }]);
-});
-
-test("a choice held before the first read gives way to the other window's later save of that field", async () => {
-  const { api, queue } = fixture({ readAfterWrites: true });
-  api.read.mockResolvedValueOnce({ preferences: null });
-  await queue.load();
-  queue.change({ output: "cite" });
-  queue.change({ paste: false });
-  await queue.refresh(5, () => true, ["output"]);
-  await queue.load();
-  await queue.finishSaving();
-  expect(api.write.mock.calls).toEqual([[{ paste: false }]]);
-});

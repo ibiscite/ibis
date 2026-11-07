@@ -755,9 +755,9 @@ test.each(["success", "failure", "later edit"])("closing drains both queued choi
   expect(read).toHaveBeenCalledOnce();
   expect(closed).not.toHaveBeenCalled();
   await act(async () => { second.resolve(null); await closing; });
-  if (outcome === "failure") expect(save).toHaveBeenLastCalledWith({ density: "compact" }, 3);
-  else expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
-  expect(state.preferences).toMatchObject({ density: "compact", larger_text: true });
+  // A failed Compact is not sent again: Settings shows what is saved.
+  expect(save).toHaveBeenLastCalledWith({ larger_text: true }, 2);
+  expect(state.preferences).toMatchObject({ density: outcome === "failure" ? "comfortable" : "compact", larger_text: true });
   expect(closed).toHaveBeenCalledOnce();
 });
 
@@ -824,9 +824,11 @@ test("a failure read cannot overwrite a newer edit", async () => {
   fireEvent.click(larger);
   await act(async () => { save.reject(); });
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
-  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: true }));
+  await waitFor(() => expect(state.saved.at(-1)).toMatchObject({ density: "compact", larger_text: false }));
   await act(async () => { read.resolve(saved); });
-  expect((larger as HTMLInputElement).checked).toBe(true);
+  // The older read cannot undo Compact; the failed Larger was not saved and is not sent again.
+  expect(screen.getByRole<HTMLInputElement>("radio", { name: "Compact" }).checked).toBe(true);
+  expect((larger as HTMLInputElement).checked).toBe(false);
 });
 
 test("the sidebar switches pages, a page request from the app moves it, and the window has no axe violations", async () => {
@@ -865,7 +867,7 @@ test("the latest focus read wins even when no local edit occurred", async () => 
   expect((larger as HTMLInputElement).checked).toBe(true);
 });
 
-test("a later equal-valued switch intent is retried when its own save fails", async () => {
+test("a later equal-valued choice whose save fails is not sent again, and Settings shows what is saved", async () => {
   const { api, state, commit } = fakeApi({ granted: true });
   const first = deferred<void>();
   let writes = 0;
@@ -880,12 +882,12 @@ test("a later equal-valued switch intent is retried when its own save fails", as
   fireEvent.click(larger);
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   fireEvent.click(larger);
-  // Retrying the third intent keeps its ticket separate from the newer row choice.
   fireEvent.click(screen.getByRole("radio", { name: "Compact" }));
   await act(async () => { first.resolve(); });
-  await waitFor(() => expect(writes).toBe(5));
-  expect(state.preferences).toMatchObject({ larger_text: true, density: "compact" });
-  expect((larger as HTMLInputElement).checked).toBe(true);
+  await waitFor(() => expect(writes).toBe(4));
+  // The second choice (Default) is the last saved text size.
+  expect(state.preferences).toMatchObject({ larger_text: false, density: "compact" });
+  await waitFor(() => expect((larger as HTMLInputElement).checked).toBe(false));
 });
 
 test("Shortcuts records a change, restores the default, and lists every picker key without controls", async () => {

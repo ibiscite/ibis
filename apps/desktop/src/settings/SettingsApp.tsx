@@ -247,8 +247,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged((revision, fields) => {
-      void queue.refresh(revision, () => active, fields);
+    const preferenceEvents = api.onPreferencesChanged((revision) => {
+      void queue.refresh(revision, () => active);
     });
     readAll(false);
     void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });

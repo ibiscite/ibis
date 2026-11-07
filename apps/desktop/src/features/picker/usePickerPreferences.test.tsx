@@ -76,7 +76,7 @@ test("a queued view save never replays an output acknowledged before it reaches 
   expect(result.current.format).toBe("ieee");
 });
 
-test("a failed later equal-valued output intent remains retryable after older writes acknowledge", async () => {
+test("a failed later output stays applied in the picker and is never sent again", async () => {
   const first = deferred<void>();
   let state = { ...preferences, output: "apa" } as PickerPreferences;
   let writes = 0;
@@ -97,6 +97,8 @@ test("a failed later equal-valued output intent remains retryable after older wr
   expect(writes).toBe(3);
   expect(state.output).toBe("ieee");
   await act(async () => { result.current.toggleLargerText(); });
-  expect(state.output).toBe("typst");
+  // The next choice carries only its own field: the saved IEEE is never written over later.
+  expect(setPickerPreferences.mock.calls.at(-1)?.[0]).toEqual({ larger_text: true });
+  expect(state.output).toBe("ieee");
   expect(result.current.format).toBe("typst");
 });

@@ -27,8 +27,18 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   change, so a command-line change made between two app edits is kept.
 - **A refused or failed save publishes nothing.** The edit's caller gets the
   refusal, and every later edit still runs.
+- **A failed choice is never sent again later.** A resend could land over a
+  newer choice made in the other window, so no window keeps one to retry.
+  - Settings shows what is saved.
+  - The picker keeps the failed choice applied until Ibis restarts, or until
+    the other window saves that field after it.
+  - Each `preferences:changed` names the fields its save set, so a window acts
+    only on choices, never on unchanged values in a snapshot. Recent citations
+    are forgotten only by a save that set that switch.
+  - A choice made before the first read goes to the owner at once, which
+    refuses it if the settings cannot be read.
 - **Formats per app live in `settings.json`** (`app_outputs`): one output per
-  system and normalised app ID, most recently chosen first, at most 200.
+  system and normalised app ID, the most recently chosen last, at most 200.
   - They stay on this computer and never travel in a backup, like window places
     and paste approvals.
   - `apps.json` keeps only what is about pasting: the delivery choice (paste or
