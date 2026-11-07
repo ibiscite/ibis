@@ -5,10 +5,9 @@
 //! Presence is all a check can say. It does not show that the fields match,
 //! that the export is current or that the document compiles.
 
-use std::collections::{BTreeSet, HashMap};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use ibis_core::contract::{Fingerprint, LibraryObject, Record};
 use ibis_core::model::strip_markup;
@@ -20,9 +19,6 @@ use serde_json::Value;
 use crate::SourceError;
 use crate::bibtex::project::{self as scan, KeyScan};
 use crate::file;
-
-const MAX_OBSERVED_KEYS: usize = 4096;
-const MAX_OBSERVED_BYTES: usize = 256 * 1024;
 
 /// Why a read could not be used.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -36,8 +32,6 @@ pub enum ProjectProblem {
     Changing,
     /// A project bibliography is BibTeX or BibLaTeX.
     NotBibtex,
-    /// The newest read has parts that cannot be read, and an earlier one did not.
-    Damaged,
 }
 
 impl From<SourceError> for ProjectProblem {
@@ -75,7 +69,7 @@ pub enum KeyCheck {
     In {
         line: usize,
     },
-    /// Only after a complete scan of a coherent read.
+    /// Only after a complete scan.
     Missing,
     CouldNotCheck,
     Repeated {
@@ -87,24 +81,11 @@ pub enum KeyCheck {
     },
 }
 
-/// Work identity evidence is separate from key presence and metadata drift.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum WorkMatch {
-    /// Equal canonical DOI, or complete agreeing title/author/year evidence.
-    Matched,
-    /// Different valid DOIs explicitly identify different works.
-    Conflict,
-    /// Missing identifying metadata, ambiguous keys, or metadata-only drift.
-    Uncertain,
-}
-
-/// One coherent read: the keys as written, and its records only for comparing.
+/// One read: the keys as written, and its records only for comparing.
 pub struct ProjectBibliography {
     keys: KeyScan,
     records: HashMap<String, Record>,
     digest: Fingerprint,
-    coherent: bool,
 }
 
 impl std::fmt::Debug for ProjectBibliography {
@@ -131,23 +112,15 @@ impl ProjectBibliography {
                 _ => None,
             })
             .collect();
-        let coherent = keys.complete() && !keys.has_repeated_keys();
         Ok(Self {
             keys,
             records,
             digest: digest(text),
-            coherent,
         })
     }
 
     pub fn complete(&self) -> bool {
         self.keys.complete()
-    }
-
-    /// A full scan is not necessarily usable identity evidence: repeated keys
-    /// have had their records removed by the loader, even with valid syntax.
-    fn coherent(&self) -> bool {
-        self.coherent
     }
 
     fn check(&self, key: &str, library: Option<&Record>) -> KeyCheck {
@@ -200,24 +173,14 @@ impl ProjectBibliography {
     }
 }
 
-/// The newest read of the chosen file. A failed read keeps the last good copy
-/// and says so: it can still show a key, but can no longer prove one missing.
+/// The newest read of the chosen file, and nothing older: a read that fails
+/// checks no key, and a damaged one can call no key missing.
 #[derive(Clone, Default)]
 pub struct ProjectRead {
-    good: Option<Arc<ProjectBibliography>>,
+    read: Option<Arc<ProjectBibliography>>,
     problem: Option<ProjectProblem>,
-    /// Unreadable lines of the newest read, which may not be the copy kept.
-    damaged: Vec<usize>,
-    /// The newest text that could be read, so the same text is not parsed again.
-    seen: Option<Fingerprint>,
     /// Native identity of the selected bibliography; never serialized or logged.
     path: Option<PathBuf>,
-    last_checked_ms: Option<u64>,
-    /// Persistent-ID facts seen in incomplete edits. An older coherent copy
-    /// cannot hide them; only a newer coherent read resets these observations.
-    observed_dois: Arc<HashMap<String, BTreeSet<String>>>,
-    observed_bytes: usize,
-    evidence_limited: bool,
 }
 
 impl std::fmt::Debug for ProjectRead {
@@ -225,174 +188,61 @@ impl std::fmt::Debug for ProjectRead {
         formatter
             .debug_struct("ProjectRead")
             .field("problem", &self.problem)
-            .field("retained", &self.last_good())
             .finish_non_exhaustive()
     }
 }
 
 impl ProjectRead {
-    /// Read `path`, keeping `previous`'s good copy if this read fails. An
-    /// unchanged file is not parsed again, so opening the picker stays cheap.
+    /// Read `path`. An unchanged file is not parsed again, so opening the
+    /// picker stays cheap; `previous` is used for nothing else.
     pub fn read(path: &Path, previous: Option<&Self>) -> Self {
         let previous = previous.filter(|read| read.path.as_deref() == Some(path));
         // The owner of this read waits on it, so no failure may leave it waiting.
-        let mut read = panic_guard::attempt(|| Self::observe(path, previous))
-            .unwrap_or_else(|_| Self::after(previous, Err(ProjectProblem::Unavailable)));
-        read.path = Some(path.to_path_buf());
-        if read.current_complete() {
-            read.last_checked_ms = checked_time();
+        let read = panic_guard::attempt(|| Self::observe(path, previous)).unwrap_or(Err(ProjectProblem::Unavailable));
+        let (read, problem) = match read {
+            Ok(read) => (Some(read), None),
+            Err(problem) => (None, Some(problem)),
+        };
+        Self {
+            read,
+            problem,
+            path: Some(path.to_path_buf()),
         }
-        read
     }
 
-    fn observe(path: &Path, previous: Option<&Self>) -> Self {
-        let text = match observed_text(path) {
-            Ok(text) => text,
-            Err(problem) => return Self::after(previous, Err(problem)),
-        };
+    fn observe(path: &Path, previous: Option<&Self>) -> Result<Arc<ProjectBibliography>, ProjectProblem> {
+        let text = observed_text(path)?;
         let seen = digest(&text);
-        if let Some(previous) = previous.filter(|previous| previous.seen.as_ref() == Some(&seen)) {
-            return previous.clone();
+        if let Some(same) = previous
+            .and_then(|previous| previous.read.clone())
+            .filter(|read| read.digest == seen)
+        {
+            return Ok(same);
         }
-        let unchanged = previous.and_then(|previous| previous.good.clone());
-        if let Some(good) = unchanged.filter(|good| good.coherent() && good.digest == seen) {
-            return Self {
-                damaged: good.keys.damaged.clone(),
-                good: Some(good),
-                problem: None,
-                seen: Some(seen),
-                ..Self::default()
-            };
-        }
-        Self::after(previous, ProjectBibliography::from_text(path, &text))
-    }
-
-    fn after(previous: Option<&Self>, read: Result<ProjectBibliography, ProjectProblem>) -> Self {
-        let mut observed_dois = previous.map(|read| read.observed_dois.clone()).unwrap_or_default();
-        let mut observed_bytes = previous.map_or(0, |read| read.observed_bytes);
-        let mut evidence_limited = previous.is_some_and(|read| read.evidence_limited);
-        match &read {
-            Ok(bibliography) if bibliography.coherent() => {
-                observed_dois = Arc::default();
-                observed_bytes = 0;
-                evidence_limited = false;
-            }
-            Ok(bibliography) => {
-                // Deduplication discarded identities from ambiguous entries;
-                // an older match cannot make those unreadable edits safe.
-                evidence_limited |= bibliography.keys.has_repeated_keys() || bibliography.keys.limited;
-                for (key, record) in &bibliography.records {
-                    if let Some(doi) = doi(record) {
-                        if previous
-                            .and_then(|read| read.good.as_ref())
-                            .filter(|good| good.coherent())
-                            .and_then(|good| good.records.get(key))
-                            .and_then(self::doi)
-                            .as_ref()
-                            == Some(&doi)
-                        {
-                            continue;
-                        }
-                        let previous_values = observed_dois.get(key);
-                        if previous_values.is_some_and(|observed| observed.len() >= 2 || observed.contains(&doi)) {
-                            continue;
-                        }
-                        if previous_values.is_none() && observed_dois.len() >= MAX_OBSERVED_KEYS {
-                            evidence_limited = true;
-                            continue;
-                        }
-                        let additional =
-                            doi.len()
-                                .saturating_add(if previous_values.is_none() { key.len() } else { 0 });
-                        let Some(next_bytes) = observed_bytes
-                            .checked_add(additional)
-                            .filter(|bytes| *bytes <= MAX_OBSERVED_BYTES)
-                        else {
-                            evidence_limited = true;
-                            continue;
-                        };
-                        // Budget first: neither a key nor another DOI is cloned
-                        // into retained evidence until it fits the whole limit.
-                        Arc::make_mut(&mut observed_dois)
-                            .entry(key.clone())
-                            .or_default()
-                            .insert(doi);
-                        observed_bytes = next_bytes;
-                    }
-                }
-            }
-            Err(_) => {}
-        }
-        let kept = previous
-            .and_then(|previous| previous.good.clone())
-            .filter(|good| good.coherent());
-        let mut result = match read {
-            // A damaged read cannot replace a whole one; its lines are still reported.
-            Ok(bibliography) if !bibliography.coherent() && kept.is_some() => Self {
-                seen: Some(bibliography.digest.clone()),
-                damaged: bibliography.keys.damaged,
-                good: kept,
-                problem: Some(ProjectProblem::Damaged),
-                ..Self::default()
-            },
-            Ok(bibliography) => Self {
-                seen: Some(bibliography.digest.clone()),
-                damaged: bibliography.keys.damaged.clone(),
-                good: Some(Arc::new(bibliography)),
-                problem: None,
-                ..Self::default()
-            },
-            Err(problem) => Self {
-                good: previous.and_then(|previous| previous.good.clone()),
-                problem: Some(problem),
-                damaged: vec![],
-                seen: None,
-                ..Self::default()
-            },
-        };
-        result.path = previous.and_then(|read| read.path.clone());
-        result.last_checked_ms = if result.current_complete() {
-            checked_time()
-        } else {
-            previous.and_then(|read| read.last_checked_ms)
-        };
-        result.observed_dois = observed_dois;
-        result.observed_bytes = observed_bytes;
-        result.evidence_limited = evidence_limited;
-        result
+        ProjectBibliography::from_text(path, &text).map(Arc::new)
     }
 
     /// Whether every answer stays the same, so nobody needs to ask again.
     pub fn same_answers(&self, other: &Self) -> bool {
-        let same_file = match (&self.good, &other.good) {
+        let same_file = match (&self.read, &other.read) {
             (Some(a), Some(b)) => Arc::ptr_eq(a, b),
             (None, None) => true,
             _ => false,
         };
-        same_file
-            && self.path == other.path
-            && self.problem == other.problem
-            && self.damaged == other.damaged
-            && self.observed_dois == other.observed_dois
-            && self.evidence_limited == other.evidence_limited
+        same_file && self.path == other.path && self.problem == other.problem
     }
 
-    /// Lines of the newest read that could not be read, so a person can find them.
+    /// Lines that could not be read, so a person can find them.
     pub fn damaged_lines(&self) -> &[usize] {
-        &self.damaged
+        self.read.as_ref().map_or(&[], |read| &read.keys.damaged)
     }
 
     pub fn problem(&self) -> Option<ProjectProblem> {
         self.problem
     }
 
-    /// The answers come from an earlier read, because this one failed.
-    pub fn last_good(&self) -> bool {
-        self.problem.is_some() && self.good.as_ref().is_some_and(|good| good.coherent())
-    }
-
     pub fn bibliography(&self) -> Option<&ProjectBibliography> {
-        self.good.as_deref()
+        self.read.as_deref()
     }
 
     pub fn name(&self) -> String {
@@ -403,137 +253,36 @@ impl ProjectRead {
             .unwrap_or_else(|| "the project bibliography".into())
     }
 
-    pub fn last_checked_ms(&self) -> Option<u64> {
-        self.last_checked_ms
-    }
-
-    /// Losing conflict observations cannot become an unchecked escape hatch.
-    pub fn evidence_limited(&self) -> bool {
-        self.evidence_limited
-    }
-
+    /// The newest read scanned every entry. A key written twice is still a
+    /// warning, for that key only.
     pub fn current_complete(&self) -> bool {
-        self.problem.is_none() && self.good.as_ref().is_some_and(|good| good.coherent())
+        self.read.as_ref().is_some_and(|read| read.complete())
     }
 
-    /// A retained copy may support a work match, not merely key presence.
-    pub fn work_match(&self, key: &str, library: &Record) -> WorkMatch {
-        if let Some(observed) = self.observed_dois.get(key).filter(|observed| !observed.is_empty()) {
-            match doi(library) {
-                Some(expected) if observed.iter().any(|observed| observed != &expected) => return WorkMatch::Conflict,
-                None => return WorkMatch::Uncertain,
-                _ => {}
-            }
-        }
-        let Some(good) = self.good.as_ref().filter(|good| good.coherent()) else {
-            return WorkMatch::Uncertain;
-        };
-        if !matches!(
-            good.check(key, Some(library)),
-            KeyCheck::In { .. }
-                | KeyCheck::MayNameAnother {
-                    doubt: Doubt::Fields,
-                    ..
-                }
-        ) {
-            return WorkMatch::Uncertain;
-        }
-        let matched = good
-            .records
-            .get(key)
-            .map_or(WorkMatch::Uncertain, |project| compare_work(library, project));
-        // A retained coherent contradiction remains known even when later
-        // ambiguous edits prevent us from safely certifying other matches.
-        if self.evidence_limited && matched != WorkMatch::Conflict {
-            WorkMatch::Uncertain
-        } else {
-            matched
-        }
-    }
-
-    pub fn absent_from_retained_copy(&self, key: &str) -> bool {
-        self.last_good()
-            && self
-                .good
-                .as_ref()
-                .is_some_and(|good| matches!(good.check(key, None), KeyCheck::Missing))
+    /// The file's entry for `key` names a different work: both it and the
+    /// library's record carry a valid DOI, and the two differ. Damage
+    /// elsewhere in the file does not hide this.
+    pub fn conflicts(&self, key: &str, library: &Record) -> bool {
+        self.read
+            .as_ref()
+            .and_then(|read| read.records.get(key))
+            .and_then(doi)
+            .zip(doi(library))
+            .is_some_and(|(project, library)| project != library)
     }
 
     /// `library` is the record the key came from, when it has one.
     pub fn check(&self, key: &str, library: Option<&Record>) -> KeyCheck {
-        let Some(good) = &self.good else {
-            return KeyCheck::CouldNotCheck;
-        };
-        match good.check(key, library) {
-            KeyCheck::Missing if self.problem.is_some() => KeyCheck::CouldNotCheck,
-            check => check,
-        }
+        self.read
+            .as_ref()
+            .map_or(KeyCheck::CouldNotCheck, |read| read.check(key, library))
     }
-}
-
-fn checked_time() -> Option<u64> {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .ok()
-        .and_then(|time| u64::try_from(time.as_millis()).ok())
 }
 
 fn doi(record: &Record) -> Option<String> {
     match ibis_core::identifier::parse_query(&field(record, "DOI")?)? {
         ibis_core::identifier::Identifier::Doi(doi) => Some(doi),
         _ => None,
-    }
-}
-
-fn compare_work(library: &Record, project: &Record) -> WorkMatch {
-    if let (Some(a), Some(b)) = (doi(library), doi(project)) {
-        return if a == b {
-            WorkMatch::Matched
-        } else {
-            WorkMatch::Conflict
-        };
-    }
-    let title = |record: &Record| {
-        field(record, "title")
-            .map(|title| plain(&title))
-            .filter(|title| !title.is_empty())
-    };
-    let authors = |record: &Record| -> Option<Vec<String>> {
-        // Compact names are read as held; other lists as their JSON.
-        if let Some(names) = record.csl.names("author") {
-            return names
-                .iter()
-                .map(|name| {
-                    name.part("family")
-                        .or_else(|| name.part("literal"))
-                        .map(plain)
-                        .filter(|name| !name.is_empty())
-                })
-                .collect();
-        }
-        let values = record.csl.get("author")?.as_array()?;
-        if values.is_empty() {
-            return None;
-        }
-        values
-            .iter()
-            .map(|name| {
-                name.get("family")
-                    .or_else(|| name.get("literal"))?
-                    .as_str()
-                    .map(plain)
-                    .filter(|name| !name.is_empty())
-            })
-            .collect()
-    };
-    let agrees = |a: Option<String>, b: Option<String>| a.zip(b).is_some_and(|(a, b)| a == b);
-    if agrees(title(library), title(project))
-        && agrees(year(library), year(project))
-        && authors(library).zip(authors(project)).is_some_and(|(a, b)| a == b)
-    {
-        WorkMatch::Matched
-    } else {
-        WorkMatch::Uncertain
     }
 }
 
@@ -629,7 +378,10 @@ mod tests {
     use KeyCheck::*;
 
     fn read(text: &str) -> ProjectRead {
-        ProjectRead::after(None, Ok(ProjectBibliography::parsed(text)))
+        ProjectRead {
+            read: Some(Arc::new(ProjectBibliography::parsed(text))),
+            ..ProjectRead::default()
+        }
     }
     fn record(text: &str) -> Record {
         let bibliography = ProjectBibliography::parsed(text);
@@ -748,7 +500,9 @@ mod tests {
 
         write(&format!("{TWO}@book{{x,title={{Never closed\n"));
         let damaged = ProjectRead::read(&path, Some(&good));
-        assert_eq!(damaged.problem(), Some(ProjectProblem::Damaged));
+        assert_eq!(damaged.problem(), None);
+        assert_eq!(damaged.damaged_lines(), [4]);
+        assert_eq!(damaged.check("taylor2026", None), CouldNotCheck);
         assert!(
             damaged.same_answers(&ProjectRead::read(&path, Some(&damaged))),
             "the same damage again"
@@ -835,39 +589,6 @@ mod tests {
         assert_eq!(with_doi.check("a", Some(&same)), In { line: 1 });
         let other = record("@book{a,title={One},doi={10.1000/two}}");
         assert!(matches!(with_doi.check("a", Some(&other)), MayNameAnother { .. }));
-    }
-
-    #[test]
-    fn a_failed_read_keeps_the_last_good_copy_labelled_and_proves_nothing_missing() {
-        let good = read(TWO);
-        let failed = ProjectRead::after(Some(&good), Err(ProjectProblem::Unavailable));
-        assert!(failed.last_good());
-        assert_eq!(failed.problem(), Some(ProjectProblem::Unavailable));
-        assert_eq!(failed.check("taylor2026", None), In { line: 1 });
-        assert_eq!(failed.check("okafor2018", None), CouldNotCheck);
-
-        assert!(!failed.same_answers(&good), "the label changes what is shown");
-        let damaged = ProjectRead::after(
-            Some(&good),
-            Ok(ProjectBibliography::parsed(
-                "@book{taylor2026,}\n@article{broken,title={Never closed\n",
-            )),
-        );
-        assert!(damaged.last_good(), "a damaged read cannot replace a whole one");
-        assert_eq!(damaged.problem(), Some(ProjectProblem::Damaged));
-        assert_eq!(damaged.damaged_lines(), [2]);
-        assert_eq!(damaged.check("morgan2025", None), In { line: 3 }, "from the copy kept");
-        assert_eq!(damaged.check("okafor2018", None), CouldNotCheck);
-
-        assert!(failed.same_answers(&failed.clone()));
-
-        // A later good read clears the label; a first failure has nothing to keep.
-        let recovered = ProjectRead::after(Some(&failed), Ok(ProjectBibliography::parsed(TWO)));
-        assert!(!recovered.last_good());
-        assert_eq!(recovered.check("okafor2018", None), Missing);
-        let first = ProjectRead::after(None, Err(ProjectProblem::Changing));
-        assert!(!first.last_good());
-        assert_eq!(first.check("taylor2026", None), CouldNotCheck);
     }
 
     #[test]

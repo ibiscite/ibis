@@ -12,9 +12,6 @@ pub(crate) struct Copied {
     pub(crate) text: String,
     /// What the chosen syntax could not express, and other problems the user should see.
     pub(crate) warnings: Vec<String>,
-    /// Only an evidence-policy notice remains; other warnings still keep the picker open.
-    #[specta(optional)]
-    pub(crate) project_warning_only: Option<bool>,
     #[specta(optional)]
     pub(crate) summary: Option<ReceiptSummary>,
     /// Unique clipboard-write identity for receipts, even without a native paste proof.
@@ -31,10 +28,6 @@ pub(crate) struct Copied {
 pub(crate) struct ReceiptSummary {
     pub(crate) text: String,
     pub(crate) more: usize,
-    #[specta(optional)]
-    pub(crate) project_warning: Option<String>,
-    #[specta(optional)]
-    pub(crate) project_checked_at_ms: Option<u64>,
 }
 
 impl ReceiptSummary {
@@ -42,12 +35,7 @@ impl ReceiptSummary {
         const LIMIT: usize = 120;
         let line = result.text.split_whitespace().collect::<Vec<_>>().join(" ");
         if line.chars().count() <= LIMIT {
-            return Self {
-                text: line,
-                more: 0,
-                project_warning: None,
-                project_checked_at_ms: None,
-            };
+            return Self { text: line, more: 0 };
         }
         let owners: std::collections::BTreeSet<_> = result.display.nodes.iter().filter_map(|node| node.item).collect();
         let first = if owners.len() <= 1 {
@@ -74,8 +62,6 @@ impl ReceiptSummary {
         Self {
             text,
             more: owners.len().saturating_sub(1),
-            project_warning: None,
-            project_checked_at_ms: None,
         }
     }
 }
@@ -215,34 +201,12 @@ pub(crate) async fn preview_file_citation(
             &preview.content_hash,
             current_project.as_ref(),
         )?);
-        if let Some(assessment) = file.prepared_project_evidence(
-            &preview.ticket,
-            &preview.content_hash,
-            current_project.as_ref(),
-            ibis_engine::ProjectPolicy::Normal,
-        )? {
-            preview.project_check = match assessment.state {
-                ibis_engine::ProjectAssessmentState::Paused => Some(crate::library::engine_file::ProjectCheck::Paused),
-                ibis_engine::ProjectAssessmentState::Conflict => {
-                    Some(crate::library::engine_file::ProjectCheck::Conflict)
-                }
-                ibis_engine::ProjectAssessmentState::Retained => {
-                    Some(crate::library::engine_file::ProjectCheck::Retained)
-                }
-                _ => None,
-            };
-            preview.project_message = assessment.message;
-            preview.project_checked_at_ms = assessment.last_checked_ms;
-            preview.project_unverified_allowed = Some(
-                file.prepared_project_evidence(
-                    &preview.ticket,
-                    &preview.content_hash,
-                    current_project.as_ref(),
-                    ibis_engine::ProjectPolicy::Unchecked,
-                )?
-                .is_some_and(|assessment| assessment.can_copy()),
-            );
-        }
+        // Only a key known to name a different work is refused; the rest of
+        // the check joined the warnings above.
+        preview.project_refusal = file
+            .prepared_project_evidence(&preview.ticket, &preview.content_hash, current_project.as_ref())?
+            .filter(|assessment| !assessment.can_copy())
+            .and_then(|assessment| assessment.message);
         Ok::<_, CommandError>(preview)
     })
     .await
@@ -282,7 +246,6 @@ pub(crate) fn copy_file_citation(
     ticket: String,
     content_hash: String,
     replaces: Option<String>,
-    unverified_project: Option<bool>,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
     editor: State<'_, crate::editor_endpoint::Pending>,
@@ -292,8 +255,8 @@ pub(crate) fn copy_file_citation(
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
     let epoch = session.lock().epoch();
     if editor.current().is_none() {
-        // Another client may have edited this definition while the picker was
-        // open. Observe completed edits before granting a clipboard commit.
+        // The citation uses the project as saved: a change made elsewhere since
+        // the preview, by the command line for one, retires it before the commit.
         crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
     }
     #[cfg(target_os = "windows")]
@@ -352,7 +315,6 @@ pub(crate) fn copy_file_citation(
         ProjectCopy {
             project: &project,
             session: &session,
-            unverified: unverified_project.unwrap_or(false),
         },
         |content| {
             #[cfg(target_os = "windows")]
@@ -386,7 +348,6 @@ fn open_file(
 pub(crate) struct ProjectCopy<'a> {
     pub(crate) project: &'a crate::project::ProjectBibliography,
     pub(crate) session: &'a crate::session_references::SessionReferences,
-    pub(crate) unverified: bool,
 }
 
 pub(crate) fn commit_copy(
@@ -397,54 +358,23 @@ pub(crate) fn commit_copy(
     write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
 ) -> Result<Copied, CommandError> {
     context.project.commit(ticket, |current| {
-        let policy = if context.unverified {
-            ibis_engine::ProjectPolicy::Unchecked
-        } else {
-            ibis_engine::ProjectPolicy::Normal
-        };
-        let assessment = file.prepared_project_evidence(ticket, content_hash, current.as_ref(), policy)?;
-        if let Some(assessment) = assessment.as_ref().filter(|assessment| !assessment.can_copy()) {
+        let refused = file
+            .prepared_project_evidence(ticket, content_hash, current.as_ref())?
+            .filter(|assessment| !assessment.can_copy());
+        if let Some(assessment) = refused {
             return Err(assessment
                 .message
-                .clone()
-                .unwrap_or_else(|| "Couldn’t check this citation against the project bibliography.".into())
+                .unwrap_or_else(|| "A key in the project bibliography identifies a different work.".into())
                 .into());
         }
-        let mut warnings = file.prepared_project_warnings(ticket, content_hash, current.as_ref())?;
-        if let Some(warning) = assessment
-            .as_ref()
-            .filter(|assessment| assessment.state == ibis_engine::ProjectAssessmentState::Unverified)
-            .and_then(|assessment| assessment.warning())
-        {
-            warnings.push(warning);
-        }
+        let warnings = file.prepared_project_warnings(ticket, content_hash, current.as_ref())?;
         let mut delivery = None;
         let mut copied = file.copy(ticket, content_hash, |content| {
             delivery = write(content)?;
             Ok(())
         })?;
         copied.delivery = delivery;
-        if let Some(assessment) = assessment.filter(|assessment| {
-            matches!(
-                assessment.state,
-                ibis_engine::ProjectAssessmentState::Retained | ibis_engine::ProjectAssessmentState::Unverified
-            )
-        }) {
-            copied.project_warning_only = Some(copied.warnings.is_empty());
-            if let Some(summary) = copied.summary.as_mut() {
-                summary.project_warning = Some(
-                    if assessment.state == ibis_engine::ProjectAssessmentState::Retained {
-                        "Using the last checked bibliography copy."
-                    } else {
-                        "Unverified project key."
-                    }
-                    .to_owned(),
-                );
-                summary.project_checked_at_ms = assessment.last_checked_ms;
-            }
-        }
-        // Independent warnings still keep the picker open. Evidence-policy
-        // notices preserve the intended delivery and are repeated in its receipt.
+        // Project warnings keep the picker open like the citation's own.
         copied.warnings.extend(warnings);
         context.session.lock().add(copied.cited.clone());
         Ok(copied)

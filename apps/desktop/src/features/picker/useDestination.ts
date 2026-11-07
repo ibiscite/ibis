@@ -180,7 +180,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const choose = (choice: OutputId) => {
     if (writingProject && destination?.writing_context && editProject) {
       const context = destination.writing_context;
-      void editProject(context, { kind: "output", id: writingProject.id, revision: writingProject.revision, output: choice })
+      void editProject(context, { kind: "output", id: writingProject.id, output: choice })
         .then(() => report("appChoice", false), () => report("appChoice"));
       return;
     }

@@ -58,8 +58,6 @@ export interface FormattedCitation {
   html: string;
   warnings: string[];
   spans?: CitationSpan[];
-  project_check?: "paused" | "conflict" | "retained" | null;
-  project_message?: string | null;
-  project_checked_at_ms?: number | null;
-  project_unverified_allowed?: boolean | null;
+  /** Why a key citation is refused: a key in the project bibliography names a different work. */
+  project_refusal?: string | null;
 }

@@ -7,53 +7,50 @@ import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/ap
 
 afterEach(resetApp);
 
-test("an unreadable key check pauses Enter and the explicit unverified action applies to one copy only", async () => {
-  const copied: boolean[] = [];
+test("an unreadable bibliography is a warning with Retry: Enter copies, says why and stays open", async () => {
+  const warning = "Couldn't check a against thesis.bib.";
   const called = backend({
     search: () => [result("a", "Invented work")],
-    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: "paused", project_message: "Couldn’t check this citation against thesis.bib." }),
-    copy_file_citation: (args) => { copied.push(args.unverifiedProject === true); return { text: "[@a]", warnings: ["Unverified project key."] }; },
+    project_status: () => file({ state: "failed", reason: "It is not there, or not on this computer yet." }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), warnings: [warning] }),
+    copy_file_citation: () => ({ text: "[@a]", warnings: [warning] }),
   });
   render(<App />);
   await screen.findByText("Invented work");
-  const unverified = await screen.findByRole("button", { name: "Copy Unverified Key" });
-  expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
-  expect(document.querySelector(".footer-action")?.getAttribute("title")).toContain("Couldn’t check");
+  const notice = await screen.findByText((text) => plain(text).startsWith("Couldn’t read thesis.bib."));
+  expect(notice.closest('[role="status"]')).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() => expect(called).toContain("retry_project"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  expect(copied).toEqual([]);
+  await waitFor(() => expect(called).toContain("copy_file_citation"));
+  await waitFor(() => expect(screen.getAllByText(warning).length).toBeGreaterThan(0));
   expect(called).not.toContain("hide_picker");
-  fireEvent.click(unverified);
-  await waitFor(() => expect(copied).toEqual([true]));
-  await waitFor(() => expect(screen.getByText("Unverified project key.")).toBeTruthy());
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  await act(async () => { await Promise.resolve(); });
-  expect(copied).toEqual([true]);
 });
 
-test("a known wrong-work key has no unverified action and never reaches native copy", async () => {
+test("a known wrong-work key is refused and never reaches native copy", async () => {
   const called = backend({ search: () => [result("a", "Invented work")],
-    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: "conflict", project_message: "A key in thesis.bib identifies a different work." }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: "A key in thesis.bib identifies a different work." }),
   });
   render(<App />);
   await screen.findByText("A key in thesis.bib identifies a different work.");
-  expect(screen.queryByRole("button", { name: /Unverified Key/ })).toBeNull();
+  expect(document.querySelector<HTMLButtonElement>(".footer-action")?.disabled).toBe(true);
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(called).not.toContain("copy_file_citation");
 });
 
-test("Retry checks again and keeps the citation, but does not replay the stopped Enter", async () => {
-  let paused = true;
+test("Retry checks again and keeps the citation, but does not replay the refused Enter", async () => {
+  let refused = true;
   const called = backend({ search: () => [result("a", "Invented work")],
-    project_status: () => file({ revision: paused ? 1 : 2 }),
-    preview_file_citation: () => ({ ...receipt("[@a]"), project_check: paused ? "paused" : null, project_message: paused ? "Couldn’t check thesis.bib." : null }),
-    retry_project: async () => { paused = false; await emit("project:changed", [1, 2]); },
+    project_status: () => file({ revision: refused ? 1 : 2 }),
+    preview_file_citation: () => ({ ...receipt("[@a]"), project_refusal: refused ? "A key in thesis.bib identifies a different work." : null }),
+    retry_project: async () => { refused = false; await emit("project:changed", [1, 2]); },
     copy_file_citation: () => ({ text: "[@a]", warnings: [] }),
   });
   render(<App />);
-  await screen.findByRole("button", { name: "Copy Unverified Key" });
+  await screen.findByText("A key in thesis.bib identifies a different work.");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-  await waitFor(() => expect(screen.queryByRole("button", { name: "Copy Unverified Key" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Retry" })).toBeNull());
   expect(called.filter((command) => command === "retry_project")).toHaveLength(1);
   expect(called).not.toContain("copy_file_citation");
   expect(screen.getByText("Invented work")).toBeTruthy();
@@ -61,7 +58,7 @@ test("Retry checks again and keeps the citation, but does not replay the stopped
   await waitFor(() => expect(called.filter((command) => command === "copy_file_citation")).toHaveLength(1));
 });
 
-const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, revision: 1, name: "thesis.bib", state: "ready", last_good: false, reason: null, damaged_lines: [], ...over });
+const file = (over: Partial<ProjectStatus> = {}): ProjectStatus => ({ generation: 1, revision: 1, name: "thesis.bib", state: "ready", reason: null, damaged_lines: [], ...over });
 /** Names sit in invisible direction marks; a person reads the words between. */
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[\u2068\u2069]/g, "");
 const shownRow = () => plain(screen.getByRole("option").textContent);
@@ -124,11 +121,6 @@ test("new content in the same healthy file marks the rows again", async () => {
   mark = "in";
   await act(() => emit("project:changed"));
   await waitFor(() => expect(shownRow()).toContain("In thesis.bib"));
-});
-
-test("a failed read keeps its last good copy, labelled", async () => {
-  picker("in", () => file({ state: "failed", last_good: true }));
-  await waitFor(() => expect(shownRow()).toContain("In thesis.bib (last good copy)"));
 });
 
 test("a formatted output shows no mark, because a style has no key to check", async () => {
@@ -214,11 +206,11 @@ test("More says what is wrong with the file, and offers the choice when none is 
   await chooseFromMore("Check Against a Project Bibliography…");
 });
 
-test("More names the failed read and the lines to look at", async () => {
-  picker("could-not-check", () => file({ state: "failed", last_good: true, reason: "Part of it cannot be read.", damaged_lines: [7] }));
-  await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib (last good copy)"));
+test("More names the failed read and why", async () => {
+  picker("could-not-check", () => file({ state: "failed", reason: "It is still changing." }));
+  await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read thesis.bib; using the last good copy. Part of it cannot be read. Check line 7.");
+  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read thesis.bib. It is still changing.");
 });
 
 test("a choice that could not be saved says so", async () => {

@@ -220,9 +220,6 @@ fn command() -> Command {
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
                     .requires("project").help("Read the writing project from Ibis Nightly's settings"))
-                .arg(Arg::new("unchecked-project").long("unchecked-project").action(ArgAction::SetTrue)
-                    .requires("project").conflicts_with("strict-project")
-                    .help("Deliberately emit an unverified project key for this request; never overrides a known wrong-work conflict"))
                 .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
                     .requires("project").help("Require a current complete bibliography read for project key citations"))
                 .arg(
