@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.3.1](https://github.com/ibiscite/ibis/compare/v0.3.0...v0.3.1) (2026-11-07)
+
+
+### Features
+
+* read RIS files and a CSV template as libraries ([#1755](https://github.com/ibiscite/ibis/issues/1755)) ([443d7ac](https://github.com/ibiscite/ibis/commit/443d7ac9da2533dd0a2b8eef0789d1dd6fb878cd))
+
+
+### Bug Fixes
+
+* one finished look across light, dark and the smallest window ([#1745](https://github.com/ibiscite/ibis/issues/1745)) ([4ff54b9](https://github.com/ibiscite/ibis/commit/4ff54b98af8ddca7c1ea43921df2625b27c05cdb))
+* shared runners report the 100k open and refresh times ([#1747](https://github.com/ibiscite/ibis/issues/1747)) ([f792e20](https://github.com/ibiscite/ibis/commit/f792e203b788ebac358461ddec61e68e09f05a8e))
+* the update check answers in a native prompt, not Settings ([#1760](https://github.com/ibiscite/ibis/issues/1760)) ([8edcf09](https://github.com/ibiscite/ibis/commit/8edcf0990a8084c9c64cbfbfadbf7c41ae01a999))
+* word native library errors from the catalogue ([#1744](https://github.com/ibiscite/ibis/issues/1744)) ([32c275e](https://github.com/ibiscite/ibis/commit/32c275e0e8a23c2bf9e8fc0e8d4684590669430d))
+
+
+### Documentation
+
+* build so each change touches as few places as possible ([#1754](https://github.com/ibiscite/ibis/issues/1754)) ([9afb313](https://github.com/ibiscite/ibis/commit/9afb313fadd843e74e77f4eccb7e28d26a4fab4c))
+* Zotero-style citations come first in 0.4 ([#1752](https://github.com/ibiscite/ibis/issues/1752)) ([633bf73](https://github.com/ibiscite/ibis/commit/633bf73cba857d15d7cbe7a4e122efbfbc133360))
+
 ## [0.3.0](https://github.com/ibiscite/ibis/compare/v0.2.7...v0.3.0) (2026-11-07)
 
 
