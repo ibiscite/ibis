@@ -41,10 +41,6 @@ pub(crate) struct ProjectStatus {
     pub(crate) revision: u32,
     pub(crate) name: String,
     pub(crate) state: ProjectState,
-    /// Answers come from an earlier read, because the newest one failed.
-    pub(crate) last_good: bool,
-    #[specta(optional)]
-    pub(crate) last_checked_ms: Option<u64>,
     /// Why the newest read failed, as a sentence ending in a full stop.
     pub(crate) reason: Option<String>,
     /// The first lines that could not be read.
@@ -250,25 +246,17 @@ impl ProjectBibliography {
     pub(crate) fn status(&self) -> Option<ProjectStatus> {
         let slot = self.lock();
         let name = project_name(slot.path.as_deref()?);
-        let (state, last_good) = match &slot.read {
-            None => (ProjectState::Reading, false),
-            Some(read) if read.problem().is_some() => (ProjectState::Failed, read.last_good()),
-            Some(read) if read.bibliography().is_some_and(|good| !good.complete()) => (ProjectState::Damaged, false),
-            Some(_) => (ProjectState::Ready, false),
+        let state = match &slot.read {
+            None => ProjectState::Reading,
+            Some(read) if read.problem().is_some() => ProjectState::Failed,
+            Some(read) if read.bibliography().is_some_and(|read| !read.complete()) => ProjectState::Damaged,
+            Some(_) => ProjectState::Ready,
         };
         Some(ProjectStatus {
             generation: slot.generation,
             revision: slot.revision,
             name,
             state,
-            last_good,
-            // A healthy unchanged read has no new visible answer. Expose the
-            // date only when the status explains reliance on retained evidence.
-            last_checked_ms: if last_good {
-                slot.read.as_ref().and_then(ProjectRead::last_checked_ms)
-            } else {
-                None
-            },
             reason: slot
                 .read
                 .as_ref()
@@ -308,7 +296,6 @@ fn reason(problem: ProjectProblem) -> &'static str {
         ProjectProblem::NotUtf8 => "It is not UTF-8 text.",
         ProjectProblem::Changing => "It is still changing.",
         ProjectProblem::NotBibtex => "It must be a BibTeX or BibLaTeX file.",
-        ProjectProblem::Damaged => "Part of it cannot be read.",
     }
 }
 
@@ -319,15 +306,10 @@ impl Current {
     }
 
     /// A sentence for a key that is not plainly in the file. These join the
-    /// citation's own warnings, so the picker copies and stays open. A key
-    /// found only in the last good copy is not plainly in the file: the file
-    /// may have lost it since, so that is said too.
+    /// citation's own warnings, so the picker copies and stays open.
     pub(crate) fn warning(&self, key: &str, check: &KeyCheck) -> Option<String> {
         let name = &self.name;
         match check {
-            KeyCheck::In { .. } if self.read.problem().is_some() => Some(format!(
-                "Checked {key} against the last good copy of {name}; the file can't be read now."
-            )),
             KeyCheck::In { .. } => None,
             KeyCheck::Missing => Some(format!("{key} is missing from {name}.")),
             KeyCheck::CouldNotCheck => Some(format!("Couldn't check {key} against {name}.")),
@@ -426,6 +408,10 @@ pub(crate) fn project_status(slot: State<'_, ProjectBibliography>) -> Option<Pro
 #[tauri::command]
 #[specta::specta]
 pub(crate) fn retry_project(app: AppHandle) {
+    // A project changed elsewhere, by the command line for one, is used as
+    // saved; a changed bibliography starts its own read here.
+    let captured = crate::paste::last_app(&app);
+    let _ = crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id));
     let ticket = app.state::<ProjectBibliography>().check_again();
     start_read(&app, ticket);
 }
@@ -902,7 +888,6 @@ mod tests {
                 crate::copy::ProjectCopy {
                     project: &self.app.state::<ProjectBibliography>(),
                     session: &self.app.state::<crate::session_references::SessionReferences>(),
-                    unverified: false,
                 },
                 |_| Ok(None),
             )
@@ -929,89 +914,32 @@ mod tests {
     }
 
     #[test]
-    fn a_proven_wrong_work_key_cannot_reach_the_clipboard_even_when_unverified_is_requested() {
+    fn a_proven_wrong_work_key_cannot_reach_the_clipboard() {
         let (_project_dir, path) = written("thesis.bib", "@book{a2026,title={Another work},doi={10.5555/other}}\n");
         let picker = Picker::new("@book{a2026,title={Intended work},doi={10.5555/intended}}\n", &path);
         let (file, preview) = picker.prepare("a2026", 1);
-        assert!(matches!(
-            preview.project_check,
-            Some(crate::library::engine_file::ProjectCheck::Conflict)
-        ));
+        assert!(preview.project_refusal.is_some());
         let mut writes = 0;
-        for unverified in [false, true] {
-            assert!(
-                crate::copy::commit_copy(
-                    &file,
-                    &preview.ticket,
-                    &preview.content_hash,
-                    crate::copy::ProjectCopy {
-                        project: &picker.app.state::<ProjectBibliography>(),
-                        session: &picker.app.state::<crate::session_references::SessionReferences>(),
-                        unverified
-                    },
-                    |_| {
-                        writes += 1;
-                        Ok(None)
-                    }
-                )
-                .is_err()
-            );
-        }
+        let copied = crate::copy::commit_copy(
+            &file,
+            &preview.ticket,
+            &preview.content_hash,
+            crate::copy::ProjectCopy {
+                project: &picker.app.state::<ProjectBibliography>(),
+                session: &picker.app.state::<crate::session_references::SessionReferences>(),
+            },
+            |_| {
+                writes += 1;
+                Ok(None)
+            },
+        );
+        assert!(copied.is_err());
         assert_eq!(writes, 0);
         assert!(picker.listed().is_empty());
     }
 
     #[test]
-    fn an_unreadable_unchecked_key_requires_a_one_off_action_and_reports_its_policy() {
-        let (_project_dir, path) = written("thesis.bib", A);
-        std::fs::remove_file(&path).unwrap();
-        let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &path);
-        let (file, preview) = picker.prepare("a2026", 1);
-        assert!(matches!(
-            preview.project_check,
-            Some(crate::library::engine_file::ProjectCheck::Paused)
-        ));
-        assert_eq!(
-            preview.text, "[@a2026]",
-            "the selection and rendered preview remain available"
-        );
-        let mut writes = 0;
-        let mut commit = |unverified| {
-            crate::copy::commit_copy(
-                &file,
-                &preview.ticket,
-                &preview.content_hash,
-                crate::copy::ProjectCopy {
-                    project: &picker.app.state::<ProjectBibliography>(),
-                    session: &picker.app.state::<crate::session_references::SessionReferences>(),
-                    unverified,
-                },
-                |_| {
-                    writes += 1;
-                    Ok(Some(17))
-                },
-            )
-        };
-        assert!(commit(false).is_err());
-        let copied = commit(true).unwrap();
-        assert_eq!(copied.project_warning_only, Some(true));
-        assert!(
-            copied
-                .summary
-                .as_ref()
-                .unwrap()
-                .project_warning
-                .as_ref()
-                .is_some_and(|warning| warning.to_lowercase().contains("unverified"))
-        );
-        assert_eq!(copied.delivery, Some(17));
-        assert!(commit(false).is_err(), "the exception never changes the normal policy");
-        assert_eq!(writes, 1);
-        assert_eq!(picker.listed().len(), 1);
-    }
-
-    #[test]
-    fn a_key_verified_against_the_last_good_copy_warns_without_forcing_copy_only() {
+    fn an_unreadable_bibliography_is_a_warning_and_the_citation_is_still_copied() {
         let (_project_dir, project) = written("thesis.bib", "@book{a2026,title={A},author={Lee, Kim},year={2026}}\n");
         let picker = Picker::new("@book{a2026,title={A},author={Lee, Kim},year={2026}}\n", &project);
         let (previewed, copied) = picker.cite("a2026", 1);
@@ -1020,31 +948,25 @@ mod tests {
             "plainly in the file"
         );
 
-        // The key is deleted, and the file is left damaged.
-        std::fs::write(&project, "@book{b2026,}\n@article{broken,title={Never closed\n")
-            .unwrap_or_else(|error| panic!("{error}"));
-        picker.read_again();
-        let expected = ["Couldn't read thesis.bib. Using its last checked copy."];
-        let (previewed, copied) = picker.cite("a2026", 2);
-        assert_eq!(previewed, expected);
-        assert_eq!(
-            copied.project_warning_only,
-            Some(true),
-            "retained verified evidence keeps the intended action available"
-        );
-        assert!(copied.summary.as_ref().unwrap().project_checked_at_ms.is_some());
-        assert_eq!(
-            copied.warnings, expected,
-            "the copy reports the same freshness warning as its preview"
-        );
-
-        // And the same once the file is gone.
         std::fs::remove_file(&project).unwrap_or_else(|error| panic!("{error}"));
         picker.read_again();
-        let (previewed, copied) = picker.cite("a2026", 3);
-        assert_eq!(previewed, expected);
-        assert_eq!(copied.warnings, expected);
-        assert_eq!(picker.listed().len(), 1, "one reference, cited three times");
+        let (file, preview) = picker.prepare("a2026", 2);
+        assert_eq!(preview.project_refusal, None);
+        assert_eq!(preview.warnings, ["Couldn't check a2026 against thesis.bib."]);
+        let copied = crate::copy::commit_copy(
+            &file,
+            &preview.ticket,
+            &preview.content_hash,
+            crate::copy::ProjectCopy {
+                project: &picker.app.state::<ProjectBibliography>(),
+                session: &picker.app.state::<crate::session_references::SessionReferences>(),
+            },
+            |_| Ok(Some(17)),
+        )
+        .unwrap_or_else(|_| panic!("a copy"));
+        assert_eq!(copied.text, "[@a2026]");
+        assert_eq!(copied.delivery, Some(17));
+        assert_eq!(copied.warnings, preview.warnings, "the copy says what the preview said");
     }
 
     #[test]
@@ -1132,7 +1054,7 @@ mod tests {
     }
 
     #[test]
-    fn a_file_that_goes_away_keeps_its_last_good_copy_labelled() {
+    fn a_file_that_goes_away_checks_nothing() {
         let (_dir, a) = written("a.bib", A);
         let slot = ProjectBibliography::default();
         let ticket = slot.choose(Some(a.clone())).unwrap_or_else(|| panic!("a ticket"));
@@ -1142,19 +1064,9 @@ mod tests {
         std::fs::remove_file(&a).unwrap_or_else(|error| panic!("{error}"));
         let again = slot.check_again().unwrap_or_else(|| panic!("a ticket"));
         assert!(slot.finish(again.generation, read(&again)));
-        let status = slot.status().unwrap_or_else(|| panic!("a status"));
-        assert_eq!((status.state, status.last_good), (ProjectState::Failed, true));
+        assert_eq!(slot.status().map(|status| status.state), Some(ProjectState::Failed));
         let current = slot.current().unwrap_or_else(|| panic!("a read"));
-        assert!(matches!(current.read.check("a2026", None), KeyCheck::In { .. }));
-        assert_eq!(current.read.check("z2026", None), KeyCheck::CouldNotCheck);
-
-        // After a restart there is no copy to keep, and still nothing is missing.
-        let reopened = ProjectBibliography::default();
-        let ticket = reopened.choose(Some(a)).unwrap_or_else(|| panic!("a ticket"));
-        assert!(reopened.finish(ticket.generation, read(&ticket)));
-        let status = reopened.status().unwrap_or_else(|| panic!("a status"));
-        assert_eq!((status.state, status.last_good), (ProjectState::Failed, false));
-        let current = reopened.current().unwrap_or_else(|| panic!("a read"));
         assert_eq!(current.read.check("a2026", None), KeyCheck::CouldNotCheck);
+        assert_eq!(current.read.check("z2026", None), KeyCheck::CouldNotCheck);
     }
 }

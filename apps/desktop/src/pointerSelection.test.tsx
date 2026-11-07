@@ -8,7 +8,7 @@ import { usePointerSelection } from "./pointerSelection";
 // Vitest can load these existing runtime builtins without a Node-types dependency.
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+const styles = readFileSync(new FileURL("./ui/Option.css", import.meta.url), "utf8");
 
 const originalScroll = Object.getOwnPropertyDescriptor(Element.prototype, "scrollIntoView");
 let moveTime = 1000;

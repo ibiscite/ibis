@@ -30,7 +30,7 @@ export const citationDetailsText = {
   page: "Page",
   none: "None",
   /** Page is optional; empty means no page, never the word "None". */
-  pagePlaceholder: "Optional",
+  pagePlaceholder: "Add page",
   pageHint: "A page, a range or several, as printed",
   form: "Show as",
   examplesUnavailable: "Examples are unavailable",
@@ -215,17 +215,6 @@ export const writingProjectText = {
   use: (name: string) => `Use ${name}`,
   selected: "Selected writing project",
   selectedLabel: "Selected",
-  apply: "Apply Updates",
-  changedElsewhere: (name: string) => `${isolate(name)} settings changed elsewhere.`,
-  bibliographyChanged: "The bibliography file or location changed.",
-  savedUpdates: "Saved updates",
-  retained: (name: string) => `${isolate(name)} was removed elsewhere. Using retained settings.`,
-  using: (format: string, bibliography: string | null) => `Using ${format} · ${bibliography ? isolate(bibliography) : "No bibliography"}.`,
-  conflictTitle: "Saved settings from another writer",
-  conflictReview: "Review these saved settings before saving your changes. Your input is kept below.",
-  conflictDeleted: "This saved project was removed elsewhere. Your task settings and input are kept. Create another project to save them.",
-  saveMyName: "Save My Name",
-  removeUpdated: "Remove Updated Project",
   format: (name: string) => `Format: ${name}`,
   bibliography: (name: string) => `Bibliography: ${name}`,
   noBibliography: "No bibliography selected.",
@@ -252,10 +241,6 @@ export const writingProjectText = {
 export const projectCheckText = {
   retry: "Retry",
   locate: "Locate Bibliography…",
-  copyUnverified: "Copy Unverified Key",
-  pasteUnverified: "Paste Unverified Key",
-  lastChecked: (time: string) => `Last checked ${time}.`,
-  unknownCheckTime: "The last checked time is unavailable.",
 } as const;
 
 export const densityNames = {
@@ -264,20 +249,20 @@ export const densityNames = {
 } as const;
 
 export const pickerText = {
-  projectState: (state: ProjectKeyState, name: string, lastGood: boolean, lines: number[] = []) => {
+  projectState: (state: ProjectKeyState, name: string, lines: number[] = []) => {
     const file = isolate(name);
     const text = { in: `In ${file}`, missing: `Missing from ${file}`, "could-not-check": `Couldn’t check ${file}`,
       repeated: "Key appears more than once", "may-name-another": "Key may name another reference" }[state];
     const where = lines.length ? ` (${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")})` : "";
-    return lastGood ? `${text}${where} (last good copy)` : `${text}${where}`;
+    return `${text}${where}`;
   },
   /** The file the rows are marked against, and what is wrong with it if anything. */
-  projectDetail: ({ name, state, last_good, reason, damaged_lines: lines }: ProjectStatus) => {
+  projectDetail: ({ name, state, reason, damaged_lines: lines }: ProjectStatus) => {
     const file = isolate(name);
     const where = lines.length ? ` Check ${lines.length === 1 ? "line" : "lines"} ${lines.join(", ")}.` : "";
     if (state === "reading") return `Reading ${file}`;
     if (state === "damaged") return `Couldn’t read all of ${file}, so nothing is called missing.${where}`;
-    if (state === "failed") return `Couldn’t read ${file}${last_good ? "; using the last good copy" : ""}. ${reason ?? ""}${where}`.trim();
+    if (state === "failed") return `Couldn’t read ${file}. ${reason ?? ""}${where}`.trim();
     return `Checking against ${file}`;
   },
   chooseProject: "Check Against a Project Bibliography…",

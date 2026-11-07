@@ -1594,16 +1594,10 @@ test("rows with the same first author and year are told apart by their container
   expect(byline?.querySelector(".result-authors + .result-separator[aria-hidden] + .result-container")).toBeTruthy();
   expect(byline?.textContent).toBe("García, Okafor\u00a0· Journal of Sleep \u202eResearch");
   expect(byline?.querySelector(".result-separator")?.textContent).toBe("\u00a0· ");
-  // In the narrow layout the line may break after the separator, not inside a word.
-  expect(styles).toMatch(/\.result-separator \{ white-space: pre-wrap; \}/);
   // Each clipping part takes its own direction, so a right-to-left row cuts
   // Latin text at its end rather than its start.
   for (const part of [".result-authors", ".result-container"]) expect(rows[0]?.querySelector(part)?.getAttribute("dir")).toBe("auto");
   expect(rows[0]?.querySelector(".result-key")?.getAttribute("dir")).toBe("ltr");
-  expect(styles).toMatch(/\.result-separator \{ flex: none; white-space: pre; \}/);
-  const bylineRules = [...styles.matchAll(/([^{}]*\.result-(?:byline|authors|separator|container)\b[^{}]*)\{([^}]*)\}/g)];
-  expect(bylineRules.length).toBeGreaterThan(0);
-  for (const [, , body] of bylineRules) expect(body).not.toMatch(/margin|padding|gap|(^|[^-])width:/);
   // The row may shorten the container, so a match there is always named.
   expect(rows[1]?.textContent).toContain("Matched in");
   expect(rows[2]?.querySelector(".result-container")).toBeNull();
@@ -1621,13 +1615,6 @@ test("rows with the same first author and year are told apart by their container
   expect(line?.querySelector(".result-first-author")?.getAttribute("dir")).toBe("auto");
   // Two authors are both named, as in Comfortable; "et al." starts at three.
   expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
-  // No reliance on text-align: match-parent, which Chromium ignores here: the
-  // container is only as wide as its text, so it sits beside its separator.
-  expect(styles).not.toMatch(/match-parent/);
-  // It keeps its own width beside a long title, as in the prototype, capped and ellipsized.
-  expect(styles).toMatch(/\.result-first-author \{ flex: none; max-width: 30%;[^}]*text-overflow: ellipsis/);
-  // A very narrow Compact row gives the title its own line instead.
-  expect(styles).toMatch(/@container \(max-width: 16em\) \{\s*:root\[data-density="compact"\] \.result-line \{ display: grid;/);
   expect(line?.textContent).toBe("Sleep spindlesGarcía, Okafor2021");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
@@ -1654,20 +1641,6 @@ test("rows shorten the authors and keep the journal and library label visible", 
   expect(authors(rows[0])?.querySelector(".visually-hidden")?.textContent).toBe("García, Okafor, Lima, Chen, Novak, Haddad");
   expect(authors(rows[1])?.textContent).toBe("Smith, Institute, Research");
   expect(authors(rows[2])?.textContent).toBe("Smith");
-  // The key and library label give way first, down to a few letters; the type
-  // word and the authors (up to 60% of the byline) keep their width, and the
-  // container shortens first. Below 25em the meta line may wrap instead (no
-  // row gap). Chromium probe numbers for the crowded cases are in PR #502.
-  expect(styles).toMatch(/\.result-meta \{[^}]*flex-wrap: wrap; row-gap: 0;/);
-  // The body measures the space left after the tile and year columns.
-  expect(styles).toMatch(/\.result-body \{[^}]*container-type: inline-size; \}/);
-  expect(styles).toMatch(/@container \(min-width: 25em\) \{ \.result-meta \{ flex-wrap: nowrap; \} \}/);
-  expect(styles).toMatch(/\.result-byline \{[^}]*flex: 1 1 auto; min-width: min\(12em, 60%\)/);
-  expect(styles).toMatch(/\.result-authors \{ flex: none; max-width: 60%;[^}]*text-overflow: ellipsis/);
-  expect(styles).toMatch(/\.result-container \{ flex: 0 1 auto; min-width: 0;[^}]*text-overflow: ellipsis/);
-  expect(styles).not.toMatch(/\.result-key \{/);
-  expect(styles).toMatch(/\.result-library \{ flex: 0 1000 auto; min-width: min\(5em, 100%\);[^}]*text-overflow: ellipsis/);
-  expect(styles).not.toMatch(/\.result-library \{[^}]*min-width: 0/);
 });
 
 test("Escape clears the search before it hides the picker, keeping chosen references", async () => {
@@ -3861,7 +3834,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null, unverifiedProject: false }));
+  await waitFor(() => expect(copy).toHaveBeenCalledExactlyOnceWith({ ticket: output.ticket, contentHash: output.content_hash, replaces: null }));
 });
 
 test("applying a locator to the same identity retires a pending key preview", async () => {

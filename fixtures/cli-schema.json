@@ -2951,7 +2951,7 @@
                 "type": "object"
               },
               {
-                "description": "Only after a complete scan of a coherent read.",
+                "description": "Only after a complete scan.",
                 "properties": {
                   "status": {
                     "const": "missing",
@@ -3056,11 +3056,6 @@
               {
                 "const": "not-bibtex",
                 "description": "A project bibliography is BibTeX or BibLaTeX.",
-                "type": "string"
-              },
-              {
-                "const": "damaged",
-                "description": "The newest read has parts that cannot be read, and an earlier one did not.",
                 "type": "string"
               }
             ]

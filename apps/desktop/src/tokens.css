@@ -74,7 +74,6 @@
   /* Depth. */
   --shadow-card: 0 0 0 .5px rgb(0 0 0 / 10%), 0 1px 2px rgb(0 0 0 / 8%), 0 8px 20px -8px rgb(0 0 0 / 18%);
   --shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);
-  --shadow-dialog: 0 24px 48px rgb(0 0 0 / 22%);
   --shadow-toast: 0 8px 16px rgb(0 0 0 / 18%);
   --shadow-thumb: 0 0 0 .5px rgb(0 0 0 / 12%), 0 1px 2px rgb(0 0 0 / 22%);
   --thumb: var(--white);
@@ -204,7 +203,7 @@
 /* Increase Contrast and forced colours: system colours, solid edges, no depth. */
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
-    --shadow-card: none; --shadow-overlay: none; --shadow-dialog: none; --shadow-toast: none; --shadow-thumb: none;
+    --shadow-card: none; --shadow-overlay: none; --shadow-toast: none; --shadow-thumb: none;
     --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;

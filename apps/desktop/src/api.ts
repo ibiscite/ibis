@@ -7,7 +7,7 @@ import { commands, type CommandError, type LibraryStatus, type PickerPreferences
 export type { Sources } from "./bindings";
 export type {
   AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
-  WritingProjectView, WritingProjectsView, WritingProjectEdit, WritingProjectUpdate,
+  WritingProjectView, WritingProjectsView, WritingProjectEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
@@ -63,9 +63,8 @@ export const {
   openSettings,
 } = commands;
 
-/** Unverified insertion is one explicit action; ordinary copies never opt in. */
-export function copyFileCitation(ticket: string, contentHash: string, replaces: string | null, unverifiedProject?: boolean) {
-  return commands.copyFileCitation(ticket, contentHash, replaces, unverifiedProject ?? false);
+export function copyFileCitation(ticket: string, contentHash: string, replaces: string | null) {
+  return commands.copyFileCitation(ticket, contentHash, replaces);
 }
 
 /** Retry refreshes evidence only; the person chooses insertion afresh. */

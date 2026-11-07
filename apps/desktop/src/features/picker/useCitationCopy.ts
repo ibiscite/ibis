@@ -33,7 +33,7 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
         ready: destination.ready && view.ready, saving: destination.saving, shouldAsk: destination.shouldAsk, remembersLast: view.remembersLast,
         output: destination.copyToken() } });
   });
-  const requestCopy = (choice: string | null, unverified = false) => send({ type: "enter", choice, output: destination.copyToken(), ...(unverified ? { unverified: true } : {}) });
+  const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
   const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);
     send({ type: "question", format: choice, output: destination.copyToken(), answer: destination.askPaste ? "cancel" : "answered" });

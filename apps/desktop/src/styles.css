@@ -24,117 +24,10 @@ main:has(> .picker-content) {
   grid-template: "search search" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
 }
 /* The frame is native-owned. These bands retain their full control targets. */
-main > .search-bar { grid-area: search; }
 main > .shelf { grid-area: shelf; }
 main > footer { grid-area: footer; }
 
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
-.search-bar > svg { width: var(--icon); flex-shrink: 0; color: var(--text-secondary); pointer-events: none; }
-/* The Ibis mark is the logo, so it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
-.search-bar > svg.search-mark { width: 1.5rem; height: 1.5rem; color: var(--scarlet);
-  margin-inline: calc(var(--lead) - calc((1.5rem - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((1.5rem - var(--icon)) / 2));
-}
-/* The search glyph is centred over the tile column and the query starts where
-   row titles start (docs/design/foundations.md, "Two columns"). */
-/* No icon: the query starts at the leading inset; nothing is reserved. */
-.pin-button { flex: none; }
-.search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); }
-/* Reserve readable query space before wrapping controls, at every text size. */
-.search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }
-#search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
-.search-bar .pin-button { margin-inline-start: auto; }
-/* Controls fill the field's height, so their gap to the window's top and side is
-   one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
-.search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-row); }
-.search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-row); }
-#search::placeholder { color: var(--text-placeholder); }
-/* The search box never shows a ring: it always has focus, and the caret is the
-   cue. Contrast and forced colours restore it below. The clear glyph is quiet like the other icons: secondary colour,
-   16 px glyph in a 32 px target. */
-#search { border-radius: var(--r-row); }
-#search:focus-visible { outline: none; box-shadow: none; }
-#search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
-.search-clear.ui-button { --ring-offset: calc(-1 * var(--ring-width)); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }
-@media (pointer: coarse) {
-  :root, :root[data-platform] { --field-h: var(--touch-target); }
-  .search-field { --search-clear-size: var(--touch-target); }
-}
-:root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
-
 .results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
-.results-heading { display: flex; justify-content: space-between; padding: var(--space-1) var(--row-pad) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); letter-spacing: .02em; }
-#results { list-style: none; padding: 0; margin: 0; }
-/* Rows are exactly --row-height and --row-spacing apart in every list of
-   options (C4); the clear border (an edge only in increased contrast) is
-   taken from the side padding so titles stay aligned. */
-[role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid transparent; }
-[role="option"] + [role="option"] { margin-top: var(--row-spacing); }
-.result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
-/* The leading tile (docs/design/picker.md, "List and row"): the type icon on a quiet
-   fill. On hover and on the active row the icon gives way to the add control in
-   the same place, so the row never reflows; a row in the citation keeps a
-   scarlet tile with a white check, the only scarlet on the row. Fills only, no
-   rings (rule 8). Compact rows draw a 24 px tile without a fill whose control
-   still covers 32 px. */
-.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
-.result-tile .type-icon { width: var(--icon); height: var(--icon); }
-.result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-tile); opacity: 0; }
-[data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
-[data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
-[data-active] .result-tile { color: inherit; }
-@media (hover: hover) {
-  [role="option"][data-hovered] .tile-button { opacity: 1; }
-  [role="option"][data-hovered] .type-icon { opacity: 0; }
-  [role="option"][data-hovered] .result-tile { color: inherit; }
-  [role="option"][data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
-}
-@media (pointer: coarse) {
-  [role="option"] { min-height: max(var(--row-height), 2.75rem); }
-  .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
-}
-[data-active] .result-tile { background: var(--on-selected-fill); }
-/* A resting result shows its type as a glyph alone: the plate appears only where the
-   tile does something (hover, selection: Add) or says something (cited). Every row
-   carrying the same grey square was chrome, not information. */
-#results [role="option"]:not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
-@media (hover: hover) { #results [role="option"][data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
-[role="option"][data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
-/* The year shares the title's first line in every density, size and view. */
-.result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
-.result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
-.result-year, .result-meta, .result-why, .result-project { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
-/* The meta line wraps only when the byline, type and library badge cannot
-   all fit at their sizes; then they move under the byline. A body at least
-   25em wide (after reserving the tile and year columns) keeps one line, and
-   its badge shortens towards its minimum instead. */
-.result-meta { margin-top: var(--space-1); flex-wrap: wrap; row-gap: 0; }
-@container (min-width: 25em) { .result-meta { flex-wrap: nowrap; } }
-/* The byline (authors · container) fills the line; the library badge gives
-   way first, down to a few letters (its shrink factor is far larger),
-   and the type word never shrinks. Inside the byline each part is only as
-   wide as its text, so in a right-to-left row a Latin journal sits beside its
-   separator. The authors keep their width up to 60% of the byline and the
-   container shortens first, each with an ellipsis. The separator keeps its
-   trailing space. */
-.result-byline { display: flex; align-items: baseline; flex: 1 1 auto; min-width: min(12em, 60%); overflow: hidden; }
-.result-authors { flex: none; max-width: 60%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-container { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.result-separator { flex: none; white-space: pre; }
-.result-authors, .result-container { unicode-bidi: isolate; }
-/* A narrow list (details open beside it, larger text) keeps the authors whole and
-   leaves the journal to Peek and the details: it gives way first, never the names. */
-@container (max-width: 30rem) { .result-separator, .result-container { display: none; } }
-.result-why { font-style: italic; }
-.result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* The selected (active) row is a full accent fill with its paired text on
-   every platform (C4, D7): the system accent on macOS and Windows, the GTK
-   selection colour on Linux. Fill only: no border, ring or side pill. */
-[role="option"][data-active] { background: var(--selected); color: var(--selected-text); }
-[data-active] .result-meta, [data-active] .result-year, [data-active] .result-why, [data-active] .result-project { color: var(--selected-text-secondary); }
-/* An added row that is also selected keeps its tile apart from any accent,
-   red and orange included (D9): the selected text colour with a scarlet check. */
-[role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
 
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
@@ -171,44 +64,11 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 .status-dot[data-health="look"] { background: var(--status-warning); }
 .status-dot[data-health="stop"] { background: var(--status-error); }
 
-
 /* More keeps the last column, so its menu opens inward. */
 .more { position: relative; }
 
-@media (prefers-contrast: more) {
-
-  /* The 3 px edge comes out of the side padding, so the text stays put. */
-  [role="option"][data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - 3px); }
-  /* The tile carries the citation state as an inverted square with its check. */
-  [role="option"][data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
-  :root[data-platform] #search { border-color: var(--separator); }
-  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--ring-width) solid var(--ring); outline-offset: 2px; }
-}
-@media (forced-colors: active) {
-
-  /* Opt the active row out of the forced-colours backplate, which would paint
-     Canvas behind its HighlightText text; its colours are already system pairs. */
-  [role="option"][data-active] { border-color: var(--selected); forced-color-adjust: none; }
-  /* The added tile keeps its fill and check as a system-colour pair: the text
-     colour with a Canvas check, or on the Highlight row the HighlightText tile
-     with a Highlight check. The check, not colour, says "added". */
-  .result-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; }
-  [data-active] .result-tile { background: Highlight; color: HighlightText; }
-  [role="option"][data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
-  [role="option"][data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
-  .search-bar:focus-within { outline: var(--ring-width) solid var(--selected); outline-offset: -3px; }
-  #search:focus-visible, :root[data-platform] #search:focus { outline: var(--ring-width) solid CanvasText; outline-offset: 2px; }
-}
 @media (max-width: 460px) {
   .results-area { flex: none; overflow: visible; }
-  /* Keep an editable search row when enlarged text leaves no room for controls. */
-  .search-field { flex-basis: calc(100% - var(--lead) - var(--icon) - var(--lead-gap)); }
-  .result-meta { flex-wrap: wrap; }
-  /* Authors and container flow as one wrapping run of text. */
-  .result-byline { display: block; }
-  .result-authors, .result-container { white-space: normal; overflow-wrap: anywhere; }
-  /* Let the line break after the separator rather than inside a word. */
-  .result-separator { white-space: pre-wrap; }
 }
 /* Notices and results share one middle scroller. Search, shelf and footer are
    separate bands; the inspector sits beside the list and grows none of them. */
@@ -226,32 +86,8 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 /* Setup/recovery/hints always contribute their whole natural height. */
 .picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
 
-/* No animation: reduced-motion users get the same immediate feedback. */
-
-/* Remembered picker preferences (ADR 0020). Compact rows keep the title and
-   year only. */
-/* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
-   so titles still start where the search text does; its control covers 32 px. */
-:root[data-density="compact"] { --row-height: var(--row-compact); }
-:root[data-density="compact"] [role="option"]:not([data-citation-selected]) .result-tile { background: transparent; }
-:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - 1.5rem) / 2); }
-:root[data-density="compact"] .result-meta { display: none; }
+/* Remembered picker preferences (ADR 0020). */
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
-
-/* Rows that tell similar references apart (#492). Comfortable rows show
-   shortened authors and the container on one line; Compact puts the first
-   author after the title. */
-.result-first-author { flex: none; max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-[data-active] .result-first-author { color: var(--selected-text-secondary); }
-:root[data-density="compact"] .result-title { flex: 0 1 auto; }
-/* In a very narrow Compact row (large text in a small window) the title takes
-   its own line, with the first author below it, rather than being
-   squeezed beside them. */
-@container (max-width: 16em) {
-  :root[data-density="compact"] .result-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 0; }
-  :root[data-density="compact"] .result-first-author { grid-row: 2; }
-  :root[data-density="compact"] .result-year { grid-area: 1 / 2; }
-}
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and truncate instead of overlapping. */
@@ -267,41 +103,7 @@ footer .key-hint-label { display: inline; }
 @container (max-width: 28.75em) {
   footer .key-hint-label { display: none; }
 }
-@media (pointer: coarse) {
-}
 .empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
-
-/* The keys overlay: one table of every key, above a dimmed picker. */
-.keys-backdrop { position: fixed; inset: 0; z-index: 2; display: grid; place-items: center; padding: var(--space-4); background: var(--scrim); }
-.keys-dialog { display: flex; flex-direction: column; width: min(36rem, 100%); max-height: 100%; min-height: 0; background: var(--surface); color: var(--text); border: var(--border-width) solid var(--separator); border-radius: var(--r-win); box-shadow: var(--shadow-dialog); }
-.keys-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); border-bottom: var(--border-width) solid var(--separator); }
-.keys-heading h2 { margin: 0; font-size: inherit; font-weight: var(--strong); }
-.keys-heading button { min-height: var(--control-h); }
-.keys-scroll { min-height: 0; padding: var(--space-2) var(--space-4) var(--space-4); }
-.keys-scroll table { width: 100%; border-collapse: collapse; font-size: var(--type-body-size); }
-/* Grouped by where the keys work (#1034): a muted heading per group, the
-   action at the start breaking only between words, its keys at the end on
-   one line. */
-.keys-scroll th, .keys-scroll td { padding: var(--space-1) 0; vertical-align: baseline; overflow-wrap: break-word; border-bottom: var(--border-width) solid var(--separator); }
-.keys-scroll th { text-align: start; font-weight: inherit; }
-.keys-scroll th[scope="rowgroup"] { padding-block: var(--space-4) var(--space-1); color: var(--text-secondary); font-weight: var(--strong); }
-.keys-scroll td { width: 1%; padding-inline-start: var(--space-4); text-align: end; white-space: nowrap; }
-.keys-scroll kbd { margin-inline-start: 0; white-space: nowrap; }
-@media (forced-colors: active) {
-  .keys-dialog { border-color: CanvasText; }
-}
-@media (max-width: 460px) {
-  .keys-scroll td { white-space: normal; }
-}
-
-
-.search-page-token { display: flex; flex: none; align-items: center; gap: var(--space-1); min-width: 0; max-width: 50%; font: var(--type-label-size) / var(--type-label-line) var(--font); }
-.search-page-token > .ui-button { min-width: 0; max-width: 100%; border-radius: var(--r-full); background: var(--chip); }
-.search-page-token bdi { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
-.recent-heading h2 { margin: 0; font: inherit; }
-
-.query-input { position: relative; display: flex; flex: 1; min-width: 0; }
 
 /* The viewport never adds a second scrollbar: short-window content scrolls
    between the full-height search and footer controls. */
@@ -313,8 +115,6 @@ footer .key-hint-label { display: inline; }
      still work and are listed in More. The search rows keep their controls
      but give up vertical gaps. No second scroll owner is introduced. */
   @container (max-width: 20em) {
-    .search-bar { padding-block: 0; row-gap: 0; }
-    .search-bar .toolbar-menu-control { min-width: 0; max-width: calc(100% - var(--field-h) - var(--space-1)); }
     .enter-hints { display: none; }
     .library-bar > .more { display: flex; }
   }

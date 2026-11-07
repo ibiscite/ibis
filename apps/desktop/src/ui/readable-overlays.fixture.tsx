@@ -4,9 +4,12 @@ import { useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { KEY_TABLE } from "../keys";
 import { Button } from "./Button";
+import { HeldKeys } from "./HeldKeys";
+import { Inspector } from "./Inspector";
 import { KeysDialog } from "./KeysSheet";
 import { Menu, MenuItem, MenuSection } from "./Menu";
 import { Option } from "./Option";
+import { Sheet, SheetList, SheetRow } from "./Sheet";
 import { SettingsGroup, SettingsRow } from "./SettingsGroup";
 import { Switch } from "./Switch";
 import { ToolbarMenu } from "./ToolbarMenu";
@@ -33,7 +36,13 @@ function Fixture() {
         </MenuSection>
       </Menu>)}
       <Button onPress={() => setOpen("Keys")}>Keys</Button>
+      <Button onPress={() => setOpen("Sheet")}>Sheet</Button>
+      <Button aria-keyshortcuts="Meta+Shift+P">Pin</Button>
     </header>
+    <div className="fixture-inspector"><Inspector label="Details" heading={longLabel} byline="Aster and Alder · 2026" closeLabel="Close details" onClose={() => {}}>
+      <p>An invented field.</p>
+    </Inspector></div>
+    <HeldKeys />
     <div className="fixture-body">
       <ul role="listbox" aria-label="Invented results">
         {Array.from({ length: 12 }, (_, i) => <Option key={i} role="option" aria-selected={false}>
@@ -48,6 +57,12 @@ function Fixture() {
       </SettingsGroup>
     </div>
     {open === "Keys" && <KeysDialog bindings={KEY_TABLE} isMac onClose={() => setOpen(null)} />}
+    {open === "Sheet" && <Sheet title="Invented sheet" closeLabel="Close" description="What this invented sheet is for." onClose={() => setOpen(null)}
+      actions={<Button variant="primary" label="Copy" onPress={() => {}} />}>
+      <SheetList label="Invented references">{["Aster 2026", "Alder 2025"].map((name) => <SheetRow key={name}>
+        <span><span>{longLabel}</span><span className="ui-sheet-note">{name}</span></span><Button size="small" label="Remove" onPress={() => {}} />
+      </SheetRow>)}</SheetList>
+    </Sheet>}
   </>;
 }
 
