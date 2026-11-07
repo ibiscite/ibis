@@ -1615,7 +1615,8 @@ test("rows with the same first author and year are told apart by their container
   expect(line?.querySelector(".result-first-author")?.getAttribute("dir")).toBe("auto");
   // Two authors are both named, as in Comfortable; "et al." starts at three.
   expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
-  expect(line?.textContent).toBe("Sleep spindlesGarcía, Okafor2021");
+  // Read aloud as one name, its parts are separated, never "Okafor2021".
+  expect(line?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container")).toBeNull();
