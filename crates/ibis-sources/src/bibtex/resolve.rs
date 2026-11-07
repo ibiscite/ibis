@@ -11,6 +11,8 @@
 //! a link it could follow. Indexed field positions and merged names avoid
 //! quadratic name searches while preserving field order and precedence.
 
+use super::Problem;
+use crate::WarningCause;
 use std::borrow::Cow;
 use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
@@ -241,7 +243,7 @@ pub(crate) struct Resolved {
     pub source: String,
     /// Field values after expansion and inheritance, for checks that need raw text.
     pub fields: HashMap<String, String>,
-    pub problems: Vec<String>,
+    pub problems: Vec<Problem>,
 }
 
 /// State of resolving one entry.
@@ -249,7 +251,7 @@ struct Walk {
     path: Vec<usize>,
     memo: Memo,
     evaluations: usize,
-    problems: Vec<String>,
+    problems: Vec<Problem>,
 }
 
 impl<'a, 's> Resolver<'a, 's> {
@@ -325,8 +327,8 @@ impl<'a, 's> Resolver<'a, 's> {
                 )
             })
             .filter(|(name, value)| {
-                if let Err(problem) = validate_field_structure(value) {
-                    problems.push(format!("field `{name}` {problem}; it is omitted"));
+                if let Err(cause) = validate_field_structure(value) {
+                    problems.push(Problem::new(cause, Some(name)));
                     false
                 } else {
                     true
@@ -360,7 +362,7 @@ impl<'a, 's> Resolver<'a, 's> {
         source.push_str("}\n");
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
-        problems.retain(|p| self.budget.charge(p.len().saturating_mul(4)) && unique.insert(p.clone()));
+        problems.retain(|p| self.budget.charge(p.size().saturating_mul(4)) && unique.insert(p.clone()));
         Resolved {
             source,
             fields: fields.into_iter().collect(),
@@ -426,17 +428,15 @@ impl<'a, 's> Resolver<'a, 's> {
                 value
                     .len()
                     .saturating_mul(4)
-                    .saturating_add(field_problems.iter().map(String::len).sum::<usize>())
+                    .saturating_add(field_problems.iter().map(Problem::size).sum::<usize>())
                     .saturating_add(field_problems.len().saturating_mul(entry.key.len().saturating_add(128))),
             ) {
                 return Rc::default();
             }
-            walk.problems.extend(field_problems.into_iter().map(|p| {
-                if root {
-                    p
-                } else {
-                    format!("in inherited `{}`: {p}", entry.key)
-                }
+            // Abbreviation problems are cached without a field; this one used it.
+            walk.problems.extend(field_problems.into_iter().map(|mut problem| {
+                problem.field.get_or_insert_with(|| field.name.clone());
+                problem
             }));
             match field.name.as_str() {
                 "xdata" => xdata_keys.extend(
@@ -452,7 +452,7 @@ impl<'a, 's> Resolver<'a, 's> {
                         let existing = &mut own[position];
                         if root {
                             walk.problems
-                                .push(format!("field `{}` appears twice; the last value is used", field.name));
+                                .push(Problem::new(WarningCause::Conflicting, Some(&field.name)));
                         }
                         existing.1 = value;
                     } else {
@@ -472,15 +472,10 @@ impl<'a, 's> Resolver<'a, 's> {
             if !self.budget.charge(value.len()) {
                 return false;
             }
-            let Err(problem) = validate_field_structure(value) else {
+            let Err(cause) = validate_field_structure(value) else {
                 return true;
             };
-            let message = format!("field `{name}` {problem}; it is omitted");
-            walk.problems.push(if root {
-                message
-            } else {
-                format!("in inherited `{}`: {message}", entry.key)
-            });
+            walk.problems.push(Problem::new(cause, Some(name)));
             false
         });
 
@@ -500,6 +495,7 @@ impl<'a, 's> Resolver<'a, 's> {
             .chain(crossref_key.iter().map(|k| (k.as_str(), true)));
         let mut seen_targets = HashSet::new();
         for (target, is_crossref) in links {
+            let link = if is_crossref { "crossref" } else { "xdata" };
             if !self.budget.charge(
                 entry
                     .key
@@ -510,32 +506,22 @@ impl<'a, 's> Resolver<'a, 's> {
                 return Rc::default();
             }
             let Some(t) = self.find(target) else {
-                walk.problems.push(format!(
-                    "`{}` refers to `{target}`, which is not in this file; nothing is inherited from it",
-                    entry.key
-                ));
+                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
                 continue;
             };
             if !seen_targets.insert(t) {
                 continue;
             }
             if walk.path.contains(&t) {
-                walk.problems.push(format!(
-                    "cross-reference cycle through `{}` and `{}`; the link back is ignored",
-                    entry.key, self.entries[t].key
-                ));
+                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
                 continue;
             }
             if remaining == 0 {
-                walk.problems.push(format!(
-                    "inheritance is deeper than {MAX_DEPTH} levels; further levels are ignored"
-                ));
+                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
                 continue;
             }
             if walk.evaluations >= MAX_EVALUATIONS {
-                walk.problems.push(format!(
-                    "inheritance requires more than {MAX_EVALUATIONS} steps; remaining inherited entries are ignored"
-                ));
+                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
                 break;
             }
             walk.path.push(t);
@@ -636,7 +622,7 @@ impl<'a, 's> Resolver<'a, 's> {
         field: &str,
         parts: &[Part<'_>],
         epoch: usize,
-        problems: &mut Vec<String>,
+        problems: &mut Vec<Problem>,
         report: bool,
     ) -> String {
         let mut x = Expansion::default();
@@ -671,16 +657,14 @@ impl<'a, 's> Resolver<'a, 's> {
         }
         if x.stopped() {
             if report {
-                problems.push(if x.too_large {
-                    format!(
-                        "field `{field}` is too large after expanding abbreviations (over {} KiB); it is left empty",
-                        MAX_VALUE_BYTES / 1024
-                    )
-                } else {
-                    format!(
-                        "field `{field}` uses abbreviations that are too complex to expand (over {MAX_EXPANSION_STEPS} steps); it is left empty"
-                    )
-                });
+                problems.push(Problem::new(
+                    if x.too_large {
+                        WarningCause::TooLarge
+                    } else {
+                        WarningCause::Abbreviation
+                    },
+                    Some(field),
+                ));
             }
             return String::new();
         }
@@ -703,7 +687,7 @@ impl<'a, 's> Resolver<'a, 's> {
         field: &str,
         name: &str,
         epoch: usize,
-        problems: &mut Vec<String>,
+        problems: &mut Vec<Problem>,
         report: bool,
         x: &mut Expansion,
     ) {
@@ -724,7 +708,7 @@ impl<'a, 's> Resolver<'a, 's> {
             let mut expansion = Expansion::default();
             let mut problems = Vec::new();
             self.expand_macro_uncached(field, name, epoch, &mut problems, true, &mut expansion);
-            let bytes = name.len() + expansion.out.len() + problems.iter().map(String::len).sum::<usize>() + 128;
+            let bytes = name.len() + expansion.out.len() + problems.iter().map(Problem::size).sum::<usize>() + 128;
             let cached = Rc::new(CachedExpansion {
                 expansion,
                 problems,
@@ -765,7 +749,7 @@ impl<'a, 's> Resolver<'a, 's> {
         field: &str,
         name: &str,
         epoch: usize,
-        problems: &mut Vec<String>,
+        problems: &mut Vec<Problem>,
         report: bool,
         x: &mut Expansion,
     ) {
@@ -787,15 +771,13 @@ impl<'a, 's> Resolver<'a, 's> {
         let id = self.macro_id(name, epoch);
         if id.is_some_and(|id| x.stack.contains(&id)) {
             if report {
-                problems.push(format!("abbreviation `{name}` refers to itself; it is left empty"));
+                problems.push(Problem::new(WarningCause::Abbreviation, None));
             }
             return;
         }
         if x.stack.len() >= MAX_MACRO_DEPTH {
             if report {
-                problems.push(format!(
-                    "abbreviations are nested more than {MAX_MACRO_DEPTH} levels deep; deeper levels are left empty"
-                ));
+                problems.push(Problem::new(WarningCause::Abbreviation, None));
             }
             return;
         }
@@ -833,9 +815,7 @@ impl<'a, 's> Resolver<'a, 's> {
             return;
         }
         if report {
-            problems.push(format!(
-                "undefined abbreviation `{name}`; the field using it is left empty"
-            ));
+            problems.push(Problem::new(WarningCause::Abbreviation, None));
         }
     }
 }
@@ -844,19 +824,19 @@ impl<'a, 's> Resolver<'a, 's> {
 /// braces are groups, including those after an escaped pair of backslashes.
 /// Every prefix must balance within the value, and the final depth must be zero,
 /// so neither parser input nor the conversion fallback can escape its field.
-fn validate_field_structure(value: &str) -> Result<(), String> {
+fn validate_field_structure(value: &str) -> Result<(), WarningCause> {
     let mut depth = 0usize;
     for byte in value.bytes() {
         match byte {
             b'{' => {
                 depth += 1;
                 if depth > MAX_FIELD_NESTING {
-                    return Err(format!("is nested more than {MAX_FIELD_NESTING} levels deep"));
+                    return Err(WarningCause::TooLarge);
                 }
             }
             b'}' => {
                 let Some(remaining) = depth.checked_sub(1) else {
-                    return Err("has unbalanced braces".to_string());
+                    return Err(WarningCause::Unbalanced);
                 };
                 depth = remaining;
             }
@@ -864,7 +844,7 @@ fn validate_field_structure(value: &str) -> Result<(), String> {
         }
     }
     if depth != 0 {
-        return Err("has unbalanced braces".to_string());
+        return Err(WarningCause::Unbalanced);
     }
     Ok(())
 }
@@ -882,7 +862,7 @@ struct Expansion {
 struct CachedExpansion {
     bytes: usize,
     expansion: Expansion,
-    problems: Vec<String>,
+    problems: Vec<Problem>,
 }
 
 impl Expansion {
@@ -1098,7 +1078,7 @@ mod tests {
             if block.kind == "string" {
                 macros.extend(parse_string(block));
             } else {
-                let mut entry = parse_entry(block).unwrap_or_else(|e| panic!("{e}"));
+                let mut entry = parse_entry(block).unwrap_or_else(|e| panic!("{e:?}"));
                 entry.macro_epoch = macros.len();
                 entries.push(entry);
             }
@@ -1158,13 +1138,13 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "27e0238974729c5b067d50f6745c4758dbf78ebbeb471d8ab4daf81af46e0b55",
+                "c2008b19eed0aaa71e35057230214bafece94d3a45b43ac22f13271d7c752649",
             ),
             (
                 "unicode-and-verbatim-url",
                 r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
                   url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
-                "f7a2e261467750f597aaa38995d58ee2b784b899353497436f8cad6982585d11",
+                "9a92d30ec60b94f47fb3d9a68aec263241de569c93c5d95c8eb984ff67045310",
             ),
             (
                 "epochs-and-shared-inheritance",
@@ -1180,7 +1160,7 @@ mod tests {
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "d2863cb2fced2a90e311ef5862257e5c2213a3edea396c1cfd8eb313bbddce01",
+                "a57eca124a5734348f670bd0f20bd94ab6b39e3afda9caa21fbe43b8d6796bd1",
             ),
         ];
         let mut mismatches = Vec::new();
@@ -1221,9 +1201,9 @@ mod tests {
                     Budget::new(credits),
                     None,
                 );
-                let records = serde_json::to_value(&loaded.records).unwrap_or_else(|e| panic!("{e}"));
+                let records = serde_json::to_value(&loaded.records).unwrap_or_else(|e| panic!("{e:?}"));
                 let snapshot = Snapshot::new(loaded.records.into_iter().map(LibraryObject::Record).collect())
-                    .unwrap_or_else(|e| panic!("{e}"));
+                    .unwrap_or_else(|e| panic!("{e:?}"));
                 transcript.push(json!({
                     "credits": credits,
                     "resolved": resolved,
@@ -1233,7 +1213,7 @@ mod tests {
                     "limited": loaded.warnings.iter().any(|warning| warning.code == crate::WarningCode::WorkLimit),
                 }));
             }
-            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|e| panic!("{e}")));
+            let actual = Fingerprint::of_bytes(&serde_json::to_vec(&transcript).unwrap_or_else(|e| panic!("{e:?}")));
             if actual.as_str() != expected {
                 mismatches.push(format!("{name}: {}", actual.as_str()));
             }
@@ -1275,7 +1255,7 @@ mod tests {
         let entries: Vec<_> = split_blocks(text)
             .0
             .iter()
-            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e:?}")))
             .collect();
         let budget = Budget::new(usize::MAX);
         let warm = Resolver::new(Vec::new(), &entries, &budget);
@@ -1333,7 +1313,7 @@ mod tests {
             let entries: Vec<_> = split_blocks(text)
                 .0
                 .iter()
-                .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+                .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e:?}")))
                 .collect();
             let budget = Budget::new(usize::MAX);
             let warm = Resolver::new(Vec::new(), &entries, &budget);
@@ -1353,7 +1333,7 @@ mod tests {
         let entries: Vec<_> = split_blocks("@book{r,xdata={p}}\n@xdata{p,publisher={Press}}")
             .0
             .iter()
-            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e}")))
+            .map(|b| parse_entry(b).unwrap_or_else(|e| panic!("{e:?}")))
             .collect();
         let budget = Budget::new(1_024);
         let interrupted = Resolver::new(Vec::new(), &entries, &budget);
@@ -1400,7 +1380,7 @@ mod tests {
             let entries: Vec<_> = split_blocks(&text)
                 .0
                 .iter()
-                .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+                .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e:?}")))
                 .collect();
             let budget = Budget::new(usize::MAX);
             let resolver = Resolver::new(Vec::new(), &entries, &budget);
@@ -1429,7 +1409,7 @@ mod tests {
             return;
         }
         // Keep the deadline outside the resolver process so a regression cannot hang CI.
-        let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e}")))
+        let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e:?}")))
             .args([
                 "--exact",
                 "bibtex::resolve::tests::wide_parent_shared_children_finish_before_the_deadline",
@@ -1437,16 +1417,16 @@ mod tests {
             ])
             .env(CHILD, "1")
             .spawn()
-            .unwrap_or_else(|e| panic!("{e}"));
+            .unwrap_or_else(|e| panic!("{e:?}"));
         let start = Instant::now();
         loop {
-            if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e}")) {
+            if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e:?}")) {
                 assert!(status.success());
                 break;
             }
             if start.elapsed() >= Duration::from_secs(2) {
-                child.kill().unwrap_or_else(|e| panic!("{e}"));
-                child.wait().unwrap_or_else(|e| panic!("{e}"));
+                child.kill().unwrap_or_else(|e| panic!("{e:?}"));
+                child.wait().unwrap_or_else(|e| panic!("{e:?}"));
                 panic!("synthetic resolver exceeded the 2 second deadline");
             }
             std::thread::sleep(Duration::from_millis(10));
@@ -1469,7 +1449,7 @@ mod tests {
             );
             assert_eq!(
                 resolved.problems,
-                ["field `title` appears twice; the last value is used"]
+                [Problem::new(WarningCause::Conflicting, Some("title"))]
             );
         }
     }
@@ -1487,7 +1467,7 @@ mod tests {
                 assert!(!result.source.contains("emph"), "{field}");
                 assert!(result.source.contains("year = {2024}"));
                 assert_eq!(result.problems.len(), 1);
-                assert!(result.problems[0].contains(field) && result.problems[0].contains("omitted"));
+                assert_eq!(result.problems[0], Problem::new(WarningCause::TooLarge, Some(field)));
             }
         }
         let result = resolve(
@@ -1496,7 +1476,7 @@ mod tests {
         );
         assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
         assert!(!result.fields.contains_key("booktitle"));
-        assert!(result.problems[0].contains("booktitle"));
+        assert_eq!(result.problems[0].field.as_deref(), Some("booktitle"));
     }
 
     #[test]
@@ -1558,7 +1538,7 @@ mod tests {
         assert!(result.source.contains("year = {2024}"));
         assert_eq!(
             result.problems,
-            ["field `booktitle` has unbalanced braces; it is omitted"]
+            [Problem::new(WarningCause::Unbalanced, Some("booktitle"))]
         );
     }
 
@@ -1570,7 +1550,8 @@ mod tests {
         ] {
             let r = resolve(src, "a");
             assert!(
-                r.problems.iter().any(|p| p.contains("cycle")),
+                r.problems
+                    .contains(&Problem::new(WarningCause::Inheritance, Some("crossref"))),
                 "{src}: {:?}",
                 r.problems
             );

@@ -1,6 +1,6 @@
 //! CSL-JSON 1.0.2 ingestion; malformed fields warn and locations stay private.
 //! Field vocabulary: citation-style-language/schema v1.0.2, schemas/input/csl-data.json.
-use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCode};
+use crate::{ParsedLibrary, SourceError, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Record};
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -49,13 +49,16 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
     for (index, raw) in items.into_iter().take(crate::MAX_LIBRARY_RECORDS).enumerate() {
         let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
-        let warning = |code| SourceWarning { code, line, key: None };
+        let warning = |code| SourceWarning::at(code, line);
+        let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
         if raw.get().len() > 1024 * 1024 {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
         }
         let Ok(mut fields) = object_fields(raw.get()) else {
-            result.warnings.push(warning(WarningCode::Syntax));
+            result
+                .warnings
+                .push(warning(WarningCode::Syntax).because(WarningCause::Unreadable, None));
             continue;
         };
         let scalar = |name: &str| {
@@ -73,12 +76,16 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             })
             .map(|value| value.get().to_owned());
         if fields.contains_key("id") && id.is_none() {
-            result.warnings.push(warning(WarningCode::Field));
+            result
+                .warnings
+                .push(because(WarningCode::Field, WarningCause::Value, "id"));
         }
         let explicit = scalar("citation-key")
             .and_then(|value| value.as_str().filter(|key| !key.trim().is_empty()).map(str::to_owned));
         if fields.contains_key("citation-key") && explicit.is_none() {
-            result.warnings.push(warning(WarningCode::Field));
+            result
+                .warnings
+                .push(because(WarningCode::Field, WarningCause::Value, "citation-key"));
         }
         // A record's `id` names it inside this file; only `citation-key` is a key.
         // A number too large to stay exact can stand in only beside a real key.
@@ -88,7 +95,9 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 .map(|key| numeric_native.unwrap_or_else(|| key.clone()))
         });
         let Some(native) = native else {
-            result.warnings.push(warning(WarningCode::Syntax));
+            result
+                .warnings
+                .push(because(WarningCode::Syntax, WarningCause::MissingField, "id"));
             continue;
         };
         let kind = scalar("type");
@@ -96,7 +105,14 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             || native.chars().any(char::is_control)
             || !kind.as_ref().and_then(Value::as_str).is_some_and(valid_type)
         {
-            result.warnings.push(warning(WarningCode::Syntax));
+            let cause = match kind {
+                None => because(WarningCode::Syntax, WarningCause::MissingField, "type"),
+                Some(_) if !native.trim().is_empty() && !native.chars().any(char::is_control) => {
+                    warning(WarningCode::Syntax).because(WarningCause::UnknownType, None)
+                }
+                Some(_) => because(WarningCode::Syntax, WarningCause::Value, "id"),
+            };
+            result.warnings.push(cause);
             continue;
         }
         if explicit.as_ref().is_some_and(|key| key.len() > 64 * 1024) || native.len() > 64 * 1024 {
@@ -110,6 +126,8 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 code: WarningCode::DuplicateKey,
                 line,
                 key: Some(native.clone()),
+                cause: None,
+                field: None,
             });
             repeated.insert(format!("record:{native}"));
             continue;
@@ -135,18 +153,24 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             // Test the vocabulary before parsing its payload. In particular,
             // unknown/custom values may have arbitrary depth or private paths.
             if !known_field(&name) {
-                result.warnings.push(warning(WarningCode::Field));
+                result
+                    .warnings
+                    .push(because(WarningCode::Field, WarningCause::UnknownField, &name));
                 continue;
             }
             match serde_json::from_str::<Value>(value.get()) {
                 Ok(value) if valid_field(&name, &value) => {
                     csl.insert(name, value);
                 }
-                _ => result.warnings.push(warning(WarningCode::Field)),
+                _ => result
+                    .warnings
+                    .push(because(WarningCode::Field, WarningCause::Value, &name)),
             }
         }
         if crate::urls::remove_private_urls(&mut csl) {
-            result.warnings.push(warning(WarningCode::Field));
+            result
+                .warnings
+                .push(because(WarningCode::Field, WarningCause::Link, "URL"));
         }
         csl.insert("id".into(), Value::String(native));
         for (alias, canonical) in [
@@ -186,6 +210,8 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                     code: WarningCode::DuplicateKey,
                     line,
                     key: Some(native),
+                    cause: None,
+                    field: None,
                 });
             }
         }
@@ -198,6 +224,8 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
             key: None,
+            cause: None,
+            field: None,
         });
     }
     Ok(result)

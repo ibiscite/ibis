@@ -76,15 +76,19 @@ expression: "summary(\"damaged.bib\")"
       "line": 9
     },
     {
+      "cause": "no-key",
       "code": "syntax",
       "line": 21
     },
     {
+      "cause": "not-closed",
       "code": "syntax",
       "line": 25
     },
     {
+      "cause": "abbreviation",
       "code": "field",
+      "field": "journal",
       "line": 15
     }
   ]

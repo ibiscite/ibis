@@ -37,6 +37,8 @@ fn limit_warning(warnings: &mut Vec<SourceWarning>, line: Option<usize>) {
         code: WarningCode::WorkLimit,
         line,
         key: None,
+        cause: None,
+        field: None,
     });
 }
 
@@ -135,6 +137,8 @@ fn append_with(
                             code: WarningCode::InvalidAttachment,
                             line,
                             key: None,
+                            cause: None,
+                            field: None,
                         });
                         (title, kind, None, Availability::Unknown)
                     }
@@ -171,6 +175,8 @@ fn append_with(
                         code: WarningCode::InvalidAttachment,
                         line,
                         key: None,
+                        cause: None,
+                        field: None,
                     });
                     (String::new(), String::new(), None, Availability::Unknown)
                 }

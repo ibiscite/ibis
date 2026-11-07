@@ -6,6 +6,9 @@
 
 use std::borrow::Cow;
 
+use super::Problem;
+use crate::WarningCause;
+
 /// A top-level `@kind{...}` or `@kind(...)` block.
 #[derive(Debug)]
 pub(crate) struct Block<'a> {
@@ -316,9 +319,9 @@ fn next_entry_line(src: &str, from: usize) -> Option<usize> {
 }
 
 /// Parse an entry body: `key, name = value, ...`.
-pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, String> {
+pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, Problem> {
     if block.kind.contains('}') {
-        return Err("entry type contains an unexpected closing brace".to_string());
+        return Err(Problem::new(WarningCause::UnexpectedText, None));
     }
     let mut p = Parser::new(block.body);
     p.skip_ws();
@@ -328,7 +331,7 @@ pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, String>
     }
     let key = block.body[key_start..p.pos].to_string();
     if key.is_empty() || key.contains(['=', '{', '}', '"', '(', ')', '#']) {
-        return Err("entry has no citation key".to_string());
+        return Err(Problem::new(WarningCause::NoKey, None));
     }
     let mut fields = Vec::new();
     loop {
@@ -343,13 +346,13 @@ pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, String>
         }
         let name = p
             .ident()
-            .ok_or_else(|| format!("expected a field name near `{}`", p.context()))?;
+            .ok_or_else(|| Problem::new(WarningCause::UnexpectedText, None))?;
         p.skip_ws();
         if p.peek() != Some('=') {
-            return Err(format!("expected `=` after field `{name}`"));
+            return Err(Problem::new(WarningCause::MissingValue, Some(&name)));
         }
         p.bump();
-        let parts = p.value()?;
+        let parts = p.value().map_err(|cause| Problem::new(cause, Some(&name)))?;
         fields.push(Field {
             name: name.to_ascii_lowercase(),
             parts,
@@ -423,10 +426,6 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn context(&self) -> String {
-        self.src[self.pos..].chars().take(20).collect()
-    }
-
     /// Field or macro name: anything up to whitespace or a delimiter.
     fn ident(&mut self) -> Option<String> {
         let start = self.pos;
@@ -440,15 +439,15 @@ impl<'a> Parser<'a> {
     }
 
     /// `part # part # ...` up to the next top-level comma or end of body.
-    fn value(&mut self) -> Result<Vec<Part<'a>>, String> {
+    fn value(&mut self) -> Result<Vec<Part<'a>>, WarningCause> {
         // Nearly every field is one literal. Vec's first growth reserves four
         // Parts, which otherwise keeps three unused slots per ordinary field.
         let mut parts = Vec::with_capacity(1);
         loop {
             self.skip_ws();
             let part = match self.peek() {
-                Some('{') => Part::Text(self.delimited('{', '}')?),
-                Some('"') => Part::Text(self.delimited('"', '"')?),
+                Some('{') => Part::Text(self.delimited('}')?),
+                Some('"') => Part::Text(self.delimited('"')?),
                 Some(c) if c.is_ascii_digit() => {
                     let start = self.pos;
                     while self.peek().is_some_and(|c| c.is_ascii_digit()) {
@@ -456,25 +455,21 @@ impl<'a> Parser<'a> {
                     }
                     Part::Number(self.src[start..self.pos].to_string())
                 }
-                Some(_) => Part::Macro(
-                    self.ident()
-                        .ok_or_else(|| format!("unexpected text near `{}`", self.context()))?
-                        .to_ascii_lowercase(),
-                ),
-                None => return Err("field value is missing".to_string()),
+                Some(_) => Part::Macro(self.ident().ok_or(WarningCause::UnexpectedText)?.to_ascii_lowercase()),
+                None => return Err(WarningCause::MissingValue),
             };
             parts.push(part);
             self.skip_ws();
             match self.peek() {
                 Some('#') => self.bump(),
                 Some(',') | None => return Ok(parts),
-                Some(_) => return Err(format!("unexpected text near `{}`", self.context())),
+                Some(_) => return Err(WarningCause::UnexpectedText),
             }
         }
     }
 
     /// Contents of `{...}` (nested braces kept) or `"..."` (braces inside allowed).
-    fn delimited(&mut self, open: char, close: char) -> Result<Cow<'a, str>, String> {
+    fn delimited(&mut self, close: char) -> Result<Cow<'a, str>, WarningCause> {
         self.bump();
         let start = self.pos;
         let mut depth = 0usize;
@@ -498,7 +493,7 @@ impl<'a> Parser<'a> {
             }
             self.bump();
         }
-        Err(format!("unbalanced `{open}` in field value"))
+        Err(WarningCause::Unbalanced)
     }
 }
 
@@ -574,7 +569,7 @@ mod tests {
     #[test]
     fn fields_with_concatenation_numbers_and_macros() {
         let (blocks, _) = split_blocks("@article{k, title = \"A {B} C\" # x, year = 2020, month = mar,}");
-        let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e}"));
+        let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e:?}"));
         assert_eq!(entry.key, "k");
         assert_eq!(
             entry.fields[0].parts,
@@ -587,7 +582,7 @@ mod tests {
     #[test]
     fn entry_without_fields() {
         let (blocks, _) = split_blocks("@misc{lonely}");
-        let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e}"));
+        let entry = parse_entry(&blocks[0]).unwrap_or_else(|e| panic!("{e:?}"));
         assert_eq!(entry.key, "lonely");
         assert!(entry.fields.is_empty());
     }
@@ -619,7 +614,7 @@ mod tests {
         let (_, definition) = parse_string(&blocks[0]).unwrap_or_else(|| panic!("invalid macro"));
         let entries: Vec<_> = blocks[1..]
             .iter()
-            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e:?}")))
             .collect();
         drop(blocks);
         for ((entry, span), (_, expected)) in entries.iter().zip(spans).zip(cases) {
@@ -650,7 +645,7 @@ mod tests {
         assert!(!limited);
         let entries: Vec<_> = blocks
             .iter()
-            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e}")))
+            .map(|block| parse_entry(block).unwrap_or_else(|e| panic!("{e:?}")))
             .collect();
         let literal_capacity: usize = entries
             .iter()

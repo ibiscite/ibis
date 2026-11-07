@@ -323,6 +323,8 @@ impl ZoteroSource {
                     },
                     line: None,
                     key: None,
+                    cause: None,
+                    field: None,
                 })
                 .collect();
             let bbt_keys = keys.find(transport, reader.library(), &keyless).unwrap_or_else(|()| {
@@ -330,6 +332,8 @@ impl ZoteroSource {
                     code: WarningCode::CitationKeysUnavailable,
                     line: None,
                     key: None,
+                    cause: None,
+                    field: None,
                 });
                 BTreeMap::new()
             });
@@ -421,6 +425,8 @@ impl ZoteroSource {
                     code,
                     line: None,
                     key: None,
+                    cause: None,
+                    field: None,
                 })
                 .collect();
             loaded.push(self.map_items(
@@ -498,17 +504,23 @@ impl ZoteroSource {
                         },
                         line: None,
                         key: None,
+                        cause: None,
+                        field: None,
                     }));
                 }
                 Err(MappingError::UnsupportedType) => warnings.push(SourceWarning {
                     code: WarningCode::Field,
                     line: None,
                     key: None,
+                    cause: None,
+                    field: None,
                 }),
                 Err(MappingError::InputLimit) => warnings.push(SourceWarning {
                     code: WarningCode::WorkLimit,
                     line: None,
                     key: None,
+                    cause: None,
+                    field: None,
                 }),
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
@@ -897,6 +909,8 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                cause: None,
+                field: None,
             }]
         );
     }
@@ -926,6 +940,8 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                cause: None,
+                field: None,
             }]
         );
     }

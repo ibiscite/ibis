@@ -140,6 +140,50 @@ form-year-only = Year only
 form-full = Full reference
 form-bibliography-only = Reference list
 
+## Why a library skipped a record or asks for a field to be checked. `.field`
+## is used when the source names the field.
+
+cause-not-closed = it never closes
+cause-no-key = it has no citation key
+cause-missing-value = a field has no value
+    .field = { $field } has no value
+cause-unbalanced = a field’s braces or quotes do not pair up
+    .field = the braces or quotes in { $field } do not pair up
+cause-unexpected-text = it has text where a field should be
+    .field = { $field } has text Ibis cannot read
+cause-unknown-type = its type is not one Ibis knows
+cause-conflicting = a field is given twice with different values
+    .field = { $field } is given twice with different values
+cause-wrong-cells = it has more or fewer cells than the first row
+cause-missing-field = a required field is empty
+    .field = { $field } is empty
+cause-no-start = its fields come before any TY line
+cause-string-definition = an @string definition cannot be read
+cause-unreadable = it cannot be read
+cause-abbreviation = a field uses an abbreviation that is not defined or cannot be expanded
+    .field = { $field } uses an abbreviation that is not defined or cannot be expanded
+cause-date = a date cannot be read in full
+    .field = { $field } cannot be read in full as a date
+cause-names = a list of names cannot be read
+    .field = the names in { $field } cannot be read
+cause-role = a role has no CSL equivalent, so those names count as contributors
+    .field = { $field } has no CSL equivalent, so those names count as contributors
+cause-link = a link is private or not a web address, so it is left out
+    .field = { $field } is private or not a web address, so it is left out
+cause-inheritance = a cross-reference is missing or loops back
+    .field = { $field } names an entry that is missing or loops back
+cause-too-large = a field is too large to read
+    .field = { $field } is too large to read
+cause-identifier = an identifier is not valid
+    .field = { $field } is not a valid identifier
+cause-language = its language is not one Ibis recognises
+    .field = { $field } names a language Ibis does not recognise
+cause-tex-command = it uses a TeX command Ibis does not understand, kept as written
+cause-unknown-field = a field is not one the format has, so it is left out
+    .field = { $field } is not a field the format has, so it is left out
+cause-value = a value cannot be read as written
+    .field = { $field } cannot be read as written
+
 ## The command line’s own sentences about a refusal.
 
 cli-form-refused = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
@@ -981,6 +1025,8 @@ library-skipped-because =
 library-check = Check { $lines }.
 library-check-library = Check the library.
 library-line = line { $line }
+library-line-why = line { $line }: { $why }
+library-and-more = and { $count } more
 library-lines = lines { $lines } and { $last }
 library-lines-and-others = lines { $lines } and { $last }, and others
 library-work-limit = The library is too large to read in full.

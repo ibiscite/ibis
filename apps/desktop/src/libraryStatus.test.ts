@@ -82,15 +82,17 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
 });
 
 // fixtures/bibtex/damaged.bib, as the engine reads it: a key used twice skips
-// both entries under it (decision 0006), two entries cannot be read.
+// both entries under it (decision 0006), two entries cannot be read, and each
+// notice comes with the engine's words for why.
 const damaged = file({ name: "damaged.bib", snapshot_name: "damaged.bib", references: 3, warnings: 5, reading: [
   { code: "duplicate-key", line: 3, key: "good1" }, { code: "duplicate-key", line: 9, key: "good1" },
-  { code: "syntax", line: 21, key: null }, { code: "syntax", line: 25, key: null }, { code: "field", line: 15, key: null }] });
+  { code: "syntax", line: 21, key: null, why: "it has no citation key" }, { code: "syntax", line: 25, key: null, why: "it never closes" },
+  { code: "field", line: 15, key: null, why: "journal uses an abbreviation that is not defined or cannot be expanded" }] });
 
-test("a damaged library says what it skipped and where to look, in words", () => {
+test("a damaged library says what it skipped, why, and which field to fix", () => {
   expect(line(damaged)).toBe("damaged.bib · 3 references · 4 entries skipped · 1 to check");
   expect(detail(damaged)).toEqual(["damaged.bib · 3 references · 4 entries skipped · 1 to check",
-    `checked 3 hours ago, ${clockAt(3)} · 4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (lines 21 and 25). Check line 15.`]);
+    `checked 3 hours ago, ${clockAt(3)} · 4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (line 21: it has no citation key; line 25: it never closes). Check line 15: journal uses an abbreviation that is not defined or cannot be expanded.`]);
   // More notices than the engine details: the count stays honest.
   expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 entries to check");
 });

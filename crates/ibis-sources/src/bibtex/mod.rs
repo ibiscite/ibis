@@ -27,13 +27,33 @@ use std::collections::{HashMap, HashSet};
 
 use biblatex::Bibliography;
 
-use crate::{ParsedLibrary, SourceWarning, WarningCode};
+use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
 use lexer::{RawEntry, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
-const LOAD_LIMIT: &str = "load work limit reached; this entry and remaining entries were skipped";
+/// Why an entry was skipped or one of its fields needs checking: a fixed
+/// cause and the field's name, never the entry's own text.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+pub(crate) struct Problem {
+    pub cause: WarningCause,
+    pub field: Option<String>,
+}
+
+impl Problem {
+    /// What keeping it costs the load budget.
+    pub(crate) fn size(&self) -> usize {
+        self.field.as_ref().map_or(0, String::len).saturating_add(16)
+    }
+
+    pub(crate) fn new(cause: WarningCause, field: Option<&str>) -> Self {
+        Self {
+            cause,
+            field: field.map(str::to_owned),
+        }
+    }
+}
 
 #[cfg(test)]
 thread_local! {
@@ -84,6 +104,8 @@ pub(crate) fn load_with_budget(
             code: WarningCode::WorkLimit,
             line: None,
             key: None,
+            cause: None,
+            field: None,
         });
         return result;
     }
@@ -93,6 +115,8 @@ pub(crate) fn load_with_budget(
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
             key: None,
+            cause: None,
+            field: None,
         });
         blocks.truncate(crate::MAX_LIBRARY_RECORDS);
     }
@@ -107,17 +131,14 @@ pub(crate) fn load_with_budget(
         code: WarningCode::DuplicateKey,
         line: Some(line),
         key: Some(key.to_owned()),
+        cause: None,
+        field: None,
     };
     for block in &blocks {
-        let warn = |code, _key: Option<String>, _message: String| SourceWarning {
-            code,
-            line: Some(block.line),
-            key: None,
-        };
+        let warn = |code| SourceWarning::at(code, Some(block.line));
+        let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field.as_deref());
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
-            result
-                .warnings
-                .push(warn(WarningCode::WorkLimit, None, LOAD_LIMIT.into()));
+            result.warnings.push(warn(WarningCode::WorkLimit));
             return result;
         }
         match block.kind.as_str() {
@@ -125,29 +146,20 @@ pub(crate) fn load_with_budget(
             "string" => {
                 match block.complete.then(|| parse_string(block)).flatten() {
                     Some(definition) => macros.push(definition),
-                    None => result.warnings.push(warn(
-                        WarningCode::Syntax,
-                        None,
-                        "@string definition could not be read; skipped".to_string(),
-                    )),
+                    None => result
+                        .warnings
+                        .push(skip(Problem::new(WarningCause::StringDefinition, None))),
                 }
                 continue;
             }
             _ => {}
         }
         if !block.complete {
-            let key = parse_entry(block).ok().map(|e| e.key);
-            result.warnings.push(warn(
-                WarningCode::Syntax,
-                key,
-                "entry is not closed; skipped".to_string(),
-            ));
+            result.warnings.push(skip(Problem::new(WarningCause::NotClosed, None)));
             continue;
         }
         match parse_entry(block) {
-            Err(message) => result
-                .warnings
-                .push(warn(WarningCode::Syntax, None, format!("{message}; skipped"))),
+            Err(problem) => result.warnings.push(skip(problem)),
             Ok(entry) if seen.contains_key(&entry.key) => {
                 // Every entry under a repeated key is skipped, so each one is
                 // named, the first included, and the person can find them all.
@@ -184,22 +196,22 @@ pub(crate) fn load_with_budget(
         if outcome.is_err() {
             CAUGHT_PARSER_PANICS.with(|count| count.set(count.get() + 1));
         }
-        let warn = |code, _message: &str| SourceWarning {
-            code,
-            line: Some(entry.line),
-            key: None,
+        let warn = |code, problem: &Problem| {
+            SourceWarning::at(code, Some(entry.line)).because(problem.cause, problem.field.as_deref())
         };
         if let Ok(Ok((_, _, problems))) = &outcome {
             budget.charge(
                 problems
                     .iter()
-                    .map(String::len)
+                    .map(|problem| problem.field.as_ref().map_or(0, String::len).saturating_add(16))
                     .sum::<usize>()
                     .saturating_add(problems.len().saturating_mul(entry.key.len())),
             );
         }
         if budget.exhausted() {
-            result.warnings.push(warn(WarningCode::WorkLimit, LOAD_LIMIT));
+            result
+                .warnings
+                .push(SourceWarning::at(WarningCode::WorkLimit, Some(entry.line)));
             break;
         }
         match outcome {
@@ -212,11 +224,10 @@ pub(crate) fn load_with_budget(
                 }
                 result.push_record(record, previous);
             }
-            Ok(Err(message)) => result.warnings.push(warn(WarningCode::Syntax, &message)),
-            Err(_) => result.warnings.push(warn(
-                WarningCode::Syntax,
-                "entry could not be read safely (parser error); skipped",
-            )),
+            Ok(Err(problem)) => result.warnings.push(warn(WarningCode::Syntax, &problem)),
+            Err(_) => result
+                .warnings
+                .push(warn(WarningCode::Syntax, &Problem::new(WarningCause::Unreadable, None))),
         }
     }
     result
@@ -229,23 +240,22 @@ fn load_entry(
     i: usize,
     entry: &RawEntry<'_>,
     raw: &str,
-) -> Result<(Record, Option<String>, Vec<String>), String> {
+) -> Result<(Record, Option<String>, Vec<Problem>), Problem> {
     let resolved = resolver.resolve(i);
     if !resolver.budget.charge(
         raw.len()
             .saturating_add(source.as_str().len())
             .saturating_add(resolved.source.len().saturating_mul(8)),
     ) {
-        return Err(LOAD_LIMIT.into());
+        return Err(Problem::new(WarningCause::TooLarge, None));
     }
     let mut problems = resolved.problems;
-    let bib = Bibliography::parse(&resolved.source).map_err(|e| format!("{}; skipped", e.kind))?;
-    let parsed = bib
-        .get(&entry.key)
-        .ok_or_else(|| "entry could not be read; skipped".to_string())?;
+    let unreadable = || Problem::new(WarningCause::Unreadable, None);
+    let bib = Bibliography::parse(&resolved.source).map_err(|_| unreadable())?;
+    let parsed = bib.get(&entry.key).ok_or_else(unreadable)?;
     let mut record = convert::convert(source, &entry.kind, parsed, &resolved.fields, &mut problems);
     if crate::urls::remove_private_urls(&mut record.csl) {
-        problems.push("private URL omitted".into());
+        problems.push(Problem::new(WarningCause::Link, Some("url")));
     }
     let file = resolved.fields.get("file").map(|value| convert::literal_value(value));
     if !problems.is_empty() {

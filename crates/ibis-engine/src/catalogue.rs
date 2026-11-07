@@ -37,7 +37,9 @@ impl Audience {
 }
 
 /// The groups of engine codes, each a message per code.
-pub const GROUPS: [&str; 7] = ["error", "reason", "refusal", "warning", "loss", "notice", "form"];
+pub const GROUPS: [&str; 8] = [
+    "error", "reason", "refusal", "warning", "loss", "notice", "form", "cause",
+];
 
 fn bundle() -> &'static FluentBundle<FluentResource> {
     static BUNDLE: OnceLock<FluentBundle<FluentResource>> = OnceLock::new();
@@ -91,6 +93,17 @@ pub fn sentence(group: &str, code: impl Serialize, audience: Audience, args: &[(
     }
 }
 
+/// Why a library skipped a record or asks for a field to be checked, naming
+/// the field when the source gave one. `None` when the warning gives no cause.
+pub fn cause(warning: &ibis_sources::SourceWarning) -> Option<String> {
+    let id = id("cause", warning.cause?);
+    warning
+        .field
+        .as_deref()
+        .and_then(|field| text(&id, Some("field"), &[("field", field)]))
+        .or_else(|| text(&id, None, &[]))
+}
+
 /// An engine error in words: its reason when it gives one, else its code.
 pub fn error(error: &EngineError, audience: Audience) -> String {
     match error.reason {
@@ -139,6 +152,7 @@ mod tests {
             ("loss", names::<LossField>()),
             ("notice", names::<Notice>()),
             ("form", names::<CitationForm>()),
+            ("cause", names::<ibis_sources::WarningCause>()),
         ] {
             assert!(!names.is_empty(), "{group} lists its codes");
             ids.extend(names.into_iter().map(|name| format!("{group}-{name}")));

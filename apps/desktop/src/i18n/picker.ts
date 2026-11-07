@@ -364,6 +364,8 @@ export const PICKER_IDS = [
   "library-others-share",
   "library-could-not-read",
   "library-skipped-because",
+  "library-line-why",
+  "library-and-more",
   "library-check",
   "library-check-library",
   "library-line",
@@ -388,4 +390,4 @@ export const PICKER_IDS = [
 ] as const;
 
 /** The variables those messages take. */
-export const PICKER_VARIABLES = ["ago", "app", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value"] as const;
+export const PICKER_VARIABLES = ["ago", "app", "count", "date", "density", "field", "folder", "format", "id", "index", "key", "keys", "label", "last", "library", "line", "lines", "n", "name", "names", "outcome", "output", "platform", "printed", "reason", "reasons", "reference", "shortcut", "skipped", "source", "state", "style", "time", "title", "type", "unit", "value", "why"] as const;

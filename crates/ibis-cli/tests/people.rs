@@ -210,3 +210,37 @@ fn a_link_to_nothing_is_missing_rather_than_busy() {
     assert_eq!(code, 5);
     assert!(stderr.contains("there is no file at that path"), "{stderr}");
 }
+
+#[test]
+fn a_damaged_entry_says_why_it_was_skipped_and_which_field_to_fix() {
+    let lab = Lab::new("damage-causes");
+    let damaged = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/damaged.bib");
+    let file = damaged.to_str().unwrap();
+    let (code, stdout, _) = lab.run(&["libraries", "--file", file]);
+    assert_eq!(code, 1, "{stdout}");
+    assert!(
+        stdout.contains("line 21: an entry could not be read, so Ibis skips it (it has no citation key)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("line 25: an entry could not be read, so Ibis skips it (it never closes)"),
+        "{stdout}"
+    );
+    assert!(
+        stdout.contains("(journal uses an abbreviation that is not defined"),
+        "{stdout}"
+    );
+    // Clients get the same as fixed codes and a field name, never the entry's text.
+    let (_, json, _) = lab.run(&["libraries", "--file", file, "--json"]);
+    let warnings: serde_json::Value =
+        serde_json::from_str::<serde_json::Value>(&json).unwrap()["data"]["libraries"][0]["warnings"].clone();
+    assert!(
+        warnings
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|w| w["cause"] == "abbreviation" && w["field"] == "journal" && w["line"] == 15),
+        "{warnings}"
+    );
+    assert!(!json.contains("notdefined"), "{json}");
+}
