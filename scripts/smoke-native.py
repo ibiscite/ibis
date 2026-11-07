@@ -1633,6 +1633,10 @@ class MacOS:
     def ibis_strings(self):
         return self.helper("strings", self.app.pid)["strings"]
 
+    def notice_strings(self):
+        """The notice's text, read at its place on screen: [] when it is not shown."""
+        return self.helper("notice", self.app.pid)["strings"]
+
     def ibis_shows(self, text):
         """Whether Ibis shows text, also when highlighting splits it into pieces."""
         strings = self.ibis_strings()
@@ -1773,7 +1777,7 @@ def _journey_main(args):
         native.key("Return")
         seen = {"pasted": False, "notices": set()}
         def pasted():
-            strings = native.ibis_strings() if app.poll() is None else []
+            strings = native.notice_strings() if app.poll() is None else []
             seen["pasted"] |= PASTED_NOTICE in strings
             seen["notices"].update(text for text in strings if text.startswith(("Copied", "Pasted")))
             return read().get("text") == JOURNEY_PASTED and seen["pasted"]
@@ -1816,7 +1820,7 @@ def _journey_main(args):
                 onscreen = native.helper("picker", app.pid)["onscreen"]
                 facts["picker_seen"] |= "Ibis" in onscreen
                 facts["notice_seen"] |= "Ibis notice" in onscreen
-                strings = native.ibis_strings()
+                strings = native.notice_strings()
                 notices.update(text for text in strings if text.startswith(("Copied", "Pasted")))
                 if "Ibis notice" in onscreen and not notices:
                     # Ibis's own windows hold only its messages and the invented library.
