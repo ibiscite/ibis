@@ -351,3 +351,30 @@ test.each([false, true])("a failure that returns after the other window chose is
   expect(api.write.mock.calls.at(-1)).toEqual([{ density: "compact" }]);
   expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact" });
 });
+
+test.each([[0, true], [5, false]])("a failed choice is retired only by a later save of the same field (other window's receipt %i)", async (foreign, kept) => {
+  const { api, queue } = fixture();
+  await queue.load();
+  api.write.mockRejectedValueOnce(new Error("synthetic save failure"));
+  queue.change({ output: "cite" });
+  await queue.finishSaving();
+  // This window's choice went out with receipt 1; the other window's save of output has its own.
+  await queue.refresh(foreign, () => true, ["output"]);
+  // A notice about another field never retires it.
+  await queue.refresh(9, () => true, ["density"]);
+  queue.change({ paste: false });
+  await queue.finishSaving();
+  expect(api.write.mock.calls.at(-1)).toEqual([kept ? { output: "cite", paste: false } : { paste: false }]);
+});
+
+test("a choice held before the first read gives way to the other window's later save of that field", async () => {
+  const { api, queue } = fixture({ readAfterWrites: true });
+  api.read.mockResolvedValueOnce({ preferences: null });
+  await queue.load();
+  queue.change({ output: "cite" });
+  queue.change({ paste: false });
+  await queue.refresh(5, () => true, ["output"]);
+  await queue.load();
+  await queue.finishSaving();
+  expect(api.write.mock.calls).toEqual([[{ paste: false }]]);
+});

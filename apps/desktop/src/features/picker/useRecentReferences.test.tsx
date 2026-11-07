@@ -25,7 +25,7 @@ test.each(["startup", "Forget", "disable"])("%s removes private legacy history w
       native.mockResolvedValueOnce([empty, true, false]);
       await act(async () => { await result.current.load!(); });
       await act(async () => { result.current.forget!(); });
-    } else act(() => { changed({ recent_citations: false }); });
+    } else act(() => { changed({ recent_citations: false, fields: ["recent_citations"] }); });
   }
   expect(localStorage.getItem(key)).toBeNull();
   unmount();
@@ -105,4 +105,16 @@ test("a refresh waits for native Forget before reading rows", async () => {
   await act(async () => { clear.resolve(reply); await pending; });
   expect(native).toHaveBeenCalledTimes(3);
   expect(result.current.forget).toBeNull();
+});
+
+test("a snapshot that only happens to show Recent citations off forgets nothing", () => {
+  let changed!: Parameters<typeof onPreferencesChanged>[0];
+  const subscribe: typeof onPreferencesChanged = async (handler) => { changed = handler; return () => {}; };
+  const forgotten = vi.fn();
+  renderHook(() => useRecentReferences(vi.fn<typeof recentReferences>().mockResolvedValue(reply), null, 0, subscribe, forgotten));
+  // An older save of another field arrives late, its snapshot still showing Off.
+  act(() => { changed({ revision: 3, fields: ["density"], recent_citations: false }); });
+  expect(forgotten).not.toHaveBeenCalled();
+  act(() => { changed({ revision: 4, fields: ["recent_citations"], recent_citations: false }); });
+  expect(forgotten).toHaveBeenCalledOnce();
 });

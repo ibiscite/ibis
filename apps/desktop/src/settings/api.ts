@@ -36,7 +36,7 @@ export const settingsApi = {
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
-  onPreferencesChanged: (handler: (revision: number) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision)),
+  onPreferencesChanged: (handler: (revision: number, fields?: string[]) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision, event.payload.fields)),
   /** The window size writer's outcome; a refused write is the only news here. */
   onWindowSaved: (handler: (saved: boolean) => void): Promise<UnlistenFn> => listen<{ saved: boolean }>("picker:window-saved", (event) => handler(event.payload.saved)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),

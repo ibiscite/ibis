@@ -144,7 +144,7 @@ test("a saved off followed by on refreshes native rows and clears Change Last Ci
   await screen.findByText("Recent A");
   off = true;
   await act(async () => {
-    await emit("preferences:changed", { revision: 1, recent_citations: false });
+    await emit("preferences:changed", { revision: 1, fields: ["recent_citations"], recent_citations: false });
     await emit("preferences:changed", { revision: 2, recent_citations: true });
   });
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull());

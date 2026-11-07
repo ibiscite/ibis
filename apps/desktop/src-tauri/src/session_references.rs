@@ -280,9 +280,17 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
         let app = app.clone();
         let settings_path = settings_path.to_owned();
         window.listen("preferences:changed", move |event| {
-            if let Some(on) = serde_json::from_str::<serde_json::Value>(event.payload())
-                .ok()
-                .and_then(|value| value.get("recent_citations").and_then(serde_json::Value::as_bool))
+            let change = serde_json::from_str::<serde_json::Value>(event.payload()).unwrap_or_default();
+            // Only a save that set the switch says anything about it; the rest
+            // of a snapshot may be older than the switch.
+            let chose = change
+                .get("fields")
+                .and_then(serde_json::Value::as_array)
+                .is_some_and(|fields| fields.iter().any(|field| field == "recent_citations"));
+            if let Some(on) = change
+                .get("recent_citations")
+                .and_then(serde_json::Value::as_bool)
+                .filter(|_| chose)
             {
                 let history = app.state::<SessionReferences>();
                 let loaded = ibis_core::settings::load(&settings_path);

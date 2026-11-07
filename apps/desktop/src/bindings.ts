@@ -700,6 +700,11 @@ export type PreferenceChange = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density: Density;
+	/**
+	 * The fields this save set, so a window can tell a choice from an
+	 * unchanged value in the snapshot.
+	 */
+	fields: string[];
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;

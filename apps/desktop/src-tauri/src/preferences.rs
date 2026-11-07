@@ -242,9 +242,12 @@ pub(crate) struct PickerSave {
 }
 
 /// The saved snapshot and the identity of the write that published it.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, schemars::JsonSchema)]
 pub(crate) struct PreferenceChange {
     revision: u64,
+    /// The fields this save set, so a window can tell a choice from an
+    /// unchanged value in the snapshot.
+    fields: Vec<String>,
     #[serde(flatten)]
     preferences: PickerPreferences,
 }
@@ -273,6 +276,16 @@ pub(crate) struct PickerPreferencesPatch {
     pub(crate) recent_citations: Option<bool>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub(crate) small_surprises: Option<bool>,
+}
+
+impl PickerPreferencesPatch {
+    /// The names of the fields this change sets, as the interface spells them.
+    fn fields(&self) -> Vec<String> {
+        serde_json::to_value(self)
+            .ok()
+            .and_then(|value| value.as_object().map(|fields| fields.keys().cloned().collect()))
+            .unwrap_or_default()
+    }
 }
 
 #[cfg(test)]
@@ -347,6 +360,7 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
         sizing.set_larger_text(larger);
     }
     let changes_menu_bar = preferences.menu_bar.is_some();
+    let fields = preferences.fields();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
     let file = settings_file.inner().clone();
@@ -360,12 +374,13 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
         }
         let change = PreferenceChange {
             revision: receipt,
+            fields,
             preferences,
         };
         crate::library::refresh_settings_notice(&app, &file);
         if from_elsewhere {
             crate::diagnostics::report(
-                app.emit_to("main", "preferences:changed", change),
+                app.emit_to("main", "preferences:changed", change.clone()),
                 crate::diagnostics::NativeIssue::PickerEvent,
             );
         }

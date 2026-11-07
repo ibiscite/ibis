@@ -29,6 +29,10 @@ export class PreferencePatchQueue {
   private latest: Partial<Record<keyof PickerPreferences, number>> = {};
   /** Choices the person made; resending a failure is not one. */
   private chosen = 0;
+  /** The owner's receipt for each failed field, and the newest receipt another
+   * window saved each field with: the later one stands. */
+  private retryReceipt: Partial<Record<keyof PickerPreferences, number>> = {};
+  private foreignReceipt: Partial<Record<keyof PickerPreferences, number>> = {};
   private revision = 0;
   private reads = 0;
   private notifications = 0;
@@ -89,14 +93,13 @@ export class PreferencePatchQueue {
     }
     const sent: Patch = { ...this.retry, ...this.held, ...change };
     this.retry = {};
+    this.retryReceipt = {};
     this.held = {};
     const fields = Object.keys(sent) as (keyof PickerPreferences)[];
     for (const field of fields) this.latest[field] = revision;
     if (!Object.keys(sent).length) return;
     // Submitted now, in the input handler, so the owner orders it by when it was chosen.
     const receipt = this.api.submit(sent);
-    // A choice saved in the other window after this one retires its failure.
-    const foreign = this.foreignNotifications;
     void receipt.catch(() => undefined);
     const save = this.enqueue(async () => {
       let saved: PickerSave | undefined;
@@ -107,16 +110,17 @@ export class PreferencePatchQueue {
         // Settings has versioned notifications and needs authoritative rollback.
         // The picker uses its existing reload path and retains no notice records.
         if (this.policy.restoreOnFailure) this.ownNotifications.set(issued, own);
+        const foreign = this.foreignNotifications;
         saved = await this.api.saved(issued);
         if (foreign === this.foreignNotifications) this.durable = saved.preferences;
         this.acknowledge(fields, revision);
       } catch (error) {
         for (const field of fields) {
           if (this.latest[field] !== revision) continue;
-          // The other window chose since: its choice stands and this one is dropped.
-          if (foreign !== this.foreignNotifications) { delete this.patch[field]; delete this.latest[field]; }
+          // The other window saved this field after this choice: its choice stands.
+          if ((this.foreignReceipt[field] ?? 0) > (issued ?? 0)) { delete this.patch[field]; delete this.latest[field]; }
           // Otherwise kept to send again.
-          else Object.assign(this.retry, { [field]: sent[field] });
+          else { Object.assign(this.retry, { [field]: sent[field] }); this.retryReceipt[field] = issued ?? 0; }
         }
         // The person chose again before this failure was known, so that choice
         // could not carry the retry: send it once now, behind it. A resend is
@@ -156,7 +160,7 @@ export class PreferencePatchQueue {
 
   /** Notifications invalidate old rendering replies; self-notifications retain
    * rollback acknowledgements. Refresh waits for actual completion, not closing. */
-  async refresh(revision: number, active: () => boolean = () => true): Promise<void> {
+  async refresh(revision: number, active: () => boolean = () => true, fields?: readonly string[]): Promise<void> {
     const own = this.ownNotifications.get(revision);
     if (own) {
       own.notified = true;
@@ -164,9 +168,17 @@ export class PreferencePatchQueue {
     } else {
       this.foreignNotifications += 1;
       this.durable = null;
-      // A choice made in the other window is newer than any retry here.
-      for (const field of Object.keys(this.retry) as (keyof PickerPreferences)[]) { delete this.patch[field]; delete this.latest[field]; }
-      this.retry = {};
+      // The other window's save stands over this window's failed or held
+      // choices for the same fields, unless a failed one was saved later.
+      const touched = (fields ?? Object.keys({ ...this.retry, ...this.held, ...this.patch })) as (keyof PickerPreferences)[];
+      for (const field of touched) {
+        this.foreignReceipt[field] = Math.max(this.foreignReceipt[field] ?? 0, revision);
+        const failed = field in this.retry && (this.retryReceipt[field] ?? 0) < revision;
+        if (failed || field in this.held) {
+          delete this.retry[field]; delete this.retryReceipt[field]; delete this.held[field];
+          delete this.patch[field]; delete this.latest[field];
+        }
+      }
       this.emit({ type: "invalidated" });
     }
     const notification = ++this.notifications;
@@ -195,6 +207,7 @@ export class PreferencePatchQueue {
       if (restore) {
         this.patch = {};
         this.retry = {};
+        this.retryReceipt = {};
         this.held = {};
         this.latest = {};
       }

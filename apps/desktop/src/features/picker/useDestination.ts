@@ -57,6 +57,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
       preserveOpeningOutput.current = preserveOutput;
       setHeld(preserveOutput ? preparedFormat.current : null);
       report("appChoice", false);
+      report("appDelivery", false);
     }
     setReady(false);
     // A reopening reads after outstanding saves, so it sees the durable choice.
@@ -136,6 +137,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
       apply();
       if (clearHeld && choice === choices.current) { preserveOpeningOutput.current = false; setHeld(null); }
       report("appChoice", false);
+      report("appDelivery", false);
     }).catch((error: unknown) => {
       if (opening !== openings.current) return;
       // A format can save while its paste choice does not: say which was kept.
