@@ -147,7 +147,7 @@ impl FileLibrary {
         let results = picked
             .into_iter()
             .filter_map(|(object, cited)| {
-                let mut row = SearchResult::from_engine(object, vec![], false, &revision, self.sample)?;
+                let mut row = SearchResult::from_engine(object, vec![], false, false, &revision, self.sample)?;
                 if let Some(source) = sources.iter().find(|info| info.id == object.object.id().library) {
                     row.source = native_source(source);
                 }
@@ -171,7 +171,7 @@ impl FileLibrary {
         let revision = snapshot.fingerprints().full.as_str();
         Ok(ids
             .iter()
-            .filter_map(|id| SearchResult::from_engine(snapshot.get(id)?, vec![], false, revision, self.sample))
+            .filter_map(|id| SearchResult::from_engine(snapshot.get(id)?, vec![], false, false, revision, self.sample))
             .collect())
     }
 
@@ -554,7 +554,7 @@ impl FileLibrary {
             .into_iter()
             .filter_map(|hit| {
                 let mut result =
-                    SearchResult::from_engine(&hit.item, hit.matched, hit.partial, &revision, self.sample)?;
+                    SearchResult::from_engine(&hit.item, hit.matched, hit.partial, hit.typo, &revision, self.sample)?;
                 if let Some(source) = sources.get(hit.item.object.id().library.as_str()) {
                     result.source.clone_from(source);
                 }

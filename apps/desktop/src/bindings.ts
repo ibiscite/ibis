@@ -856,6 +856,11 @@ export type SearchResult = {
 	sample?: boolean;
 	source: string;
 	title: string;
+	/**
+	 * A word matched only with one spelling change, as the engine decided.
+	 * Sent only when true.
+	 */
+	typo?: boolean;
 	/** The year, or the source's own date text: `RecordSummary::year`. */
 	year: string | null;
 };

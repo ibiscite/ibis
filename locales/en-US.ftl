@@ -74,6 +74,10 @@ reason-csv-template = The first row of this CSV file does not match Ibis’s tem
     .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
     .agent = Ask the person to rename the columns in the file’s first row to the template’s.
     .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
+    .cli = Split the library into smaller files and give each with --file.
+    .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
+    .app = Split the library into smaller files.
 
 ## A reference a citation could not include. { $reference } names it.
 
@@ -153,6 +157,9 @@ cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
+cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
+cli-spelling-match = (spelling match)
+cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be BibTeX, BibLaTeX, CSL-JSON, RIS or CSV in Ibis’s template.
 
 ## The app’s own sentence about a citation.
 
@@ -742,6 +749,7 @@ picker-paste-into = Paste into { $app } · { $output }
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match
+picker-spelling-match = Spelling match
 picker-closest-match-warning = “{ $title }” is a closest match: only some search words matched.
 picker-no-matches = No matching references
 picker-no-matches-hint = Try a surname, year or fewer words.

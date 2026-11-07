@@ -121,6 +121,10 @@ pub(crate) struct SearchResult {
     matched: Vec<MatchField>,
     /// Only some query words matched; shown under "Closest matches".
     partial: bool,
+    /// A word matched only with one spelling change, as the engine decided.
+    /// Sent only when true.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    typo: bool,
     /// Family name of the first author (or the whole name of an
     /// organization); empty when the record names no authors.
     first_author: String,
@@ -146,6 +150,7 @@ impl SearchResult {
         object: &ibis_core::contract::SnapshotObject,
         matched: Vec<MatchField>,
         partial: bool,
+        typo: bool,
         revision: &str,
         sample: bool,
     ) -> Option<Self> {
@@ -178,6 +183,7 @@ impl SearchResult {
             year: summary.year.clone(),
             matched,
             partial,
+            typo,
             container: summary.container,
             item_type: summary.item_type.unwrap_or_default(),
         })
