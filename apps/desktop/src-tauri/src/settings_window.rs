@@ -1,6 +1,8 @@
 //! The Settings window (#776): a window of its own that, while open, shows in
 //! the Dock and the app switcher like any Mac settings window.
 
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindowBuilder};
 
@@ -145,11 +147,14 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         // surface (in Dark too).
         .visible(false)
         .on_page_load(|window, payload| {
-            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+            // A picker opened since asked for the keyboard later: Settings
+            // stays hidden until it is asked for again.
+            if payload.event() == tauri::webview::PageLoadEvent::Finished && FIRST_SHOW.claim() {
                 report(window.show(), NativeIssue::Show);
                 report(window.set_focus(), NativeIssue::Focus);
             }
         });
+    FIRST_SHOW.begin();
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
     {
@@ -180,6 +185,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
 
 /// Every presentation has a page; ordinary Settings opens on General at the top.
 fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<Page>) {
+    FIRST_SHOW.supersede();
     report(
         window.emit_to(LABEL, "settings:page", page.unwrap_or(Page::General)),
         NativeIssue::Window,
@@ -187,6 +193,32 @@ fn present_existing<R: Runtime>(window: &tauri::WebviewWindow<R>, page: Option<P
     report(window.unminimize(), NativeIssue::Unminimize);
     report(window.show(), NativeIssue::Show);
     report(window.set_focus(), NativeIssue::Focus);
+}
+
+/// Settings' first showing waits for its page. It belongs to the opening
+/// that created it, until a newer opening of the picker or of Settings itself
+/// takes it over.
+struct FirstShow(AtomicBool);
+
+static FIRST_SHOW: FirstShow = FirstShow(AtomicBool::new(false));
+
+impl FirstShow {
+    fn begin(&self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
+    fn supersede(&self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
+    /// Whether the loaded page may still show and focus Settings, once.
+    fn claim(&self) -> bool {
+        self.0.swap(false, Ordering::SeqCst)
+    }
+}
+
+/// The picker opened: a Settings window still loading must not take the
+/// keyboard from it when its page arrives.
+pub(crate) fn picker_opened() {
+    FIRST_SHOW.supersede();
 }
 
 /// Settings is on screen, so hiding the whole app would hide it too.
@@ -235,6 +267,20 @@ mod tests {
         assert_eq!(
             finish_guide_with(true, true, || Err("close failed")),
             Err("close failed")
+        );
+    }
+
+    #[test]
+    fn a_picker_opened_while_settings_loads_keeps_the_keyboard() {
+        let first = FirstShow(AtomicBool::new(false));
+        first.begin();
+        assert!(first.claim(), "the loaded page shows the Settings it was opened for");
+        assert!(!first.claim(), "and only once: a reload never steals focus");
+        first.begin();
+        first.supersede(); // the picker opened while the page loaded
+        assert!(
+            !first.claim(),
+            "a newer picker keeps the keyboard; Settings shows when asked again"
         );
     }
 

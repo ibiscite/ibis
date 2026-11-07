@@ -103,6 +103,24 @@ pub(crate) struct Notice {
     /// Held while the window is looked up or created, so two quick copies
     /// cannot both create it.
     window: Mutex<()>,
+    /// Advanced each time the picker opens: a copy claimed before then never
+    /// shows its notice over the search field.
+    retirements: Retirements,
+}
+
+#[derive(Default)]
+struct Retirements(AtomicU64);
+
+impl Retirements {
+    fn epoch(&self) -> u64 {
+        self.0.load(Ordering::SeqCst)
+    }
+    fn retire(&self) {
+        self.0.fetch_add(1, Ordering::SeqCst);
+    }
+    fn holds(&self, epoch: u64) -> bool {
+        self.epoch() == epoch
+    }
 }
 
 /// Delivery workers may finish out of order. A notice belongs to its immutable
@@ -187,6 +205,7 @@ pub(crate) async fn show_copied_notice(
     delivery: Option<u32>,
     summary: Option<crate::copy::ReceiptSummary>,
 ) -> Delivered {
+    let epoch = app.state::<Notice>().retirements.epoch();
     let receipt = app
         .state::<Notice>()
         .receipts
@@ -236,19 +255,19 @@ pub(crate) async fn show_copied_notice(
             plugin_note: false,
             appearance: Default::default(),
         },
-        receipt,
+        (receipt, epoch),
         pasted_into,
     );
     delivered
 }
 
-fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_into: Option<AppId>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), pasted_into: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
     let Ok(_creating) = notice.window.lock() else { return };
     let Ok(owner) = notice.receipts.lock() else { return };
-    if !owner.current(receipt) {
+    if !owner.current(receipt) || !notice.retirements.holds(epoch) {
         return;
     }
     // Spent only here: a notice a newer one replaced keeps it for the next paste.
@@ -280,6 +299,11 @@ fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_i
         }
     };
     dismiss_after(app, showing, timer);
+    // The picker opened while this was being shown.
+    if !notice.retirements.holds(epoch) {
+        notice.showing.fetch_add(1, Ordering::SeqCst);
+        dismiss(app);
+    }
 }
 
 /// When a notice in view for `shown` starts fading out, and how long after
@@ -510,10 +534,15 @@ fn present(app: &AppHandle) {
 
 /// The picker opening takes the notice away at once: both sit at the top of
 /// the display, and a notice must never cover the search field.
+/// A copy still being delivered keeps its paste but loses its notice.
 pub(crate) fn retire(app: &AppHandle) {
     let Some(notice) = app.try_state::<Notice>() else {
         return;
     };
+    // Lock-free: this runs on the main thread, which a publication may be
+    // waiting for while it creates the window. A publication racing this
+    // checks again once it has shown, and takes itself away.
+    notice.retirements.retire();
     if notice.text.lock().is_ok_and(|text| text.is_none()) {
         return;
     }
@@ -649,6 +678,16 @@ mod tests {
         assert!(c_receipt.is_some(), "a fresh copy can replace a dismissed receipt");
         assert_eq!(owner.claim(b), None);
         assert!(owner.current(c_receipt));
+    }
+
+    #[test]
+    fn a_picker_opening_retires_a_notice_still_being_delivered() {
+        let retirements = Retirements::default();
+        let pending = retirements.epoch();
+        assert!(retirements.holds(pending), "a copy publishes its notice");
+        retirements.retire(); // the picker opened before the paste finished
+        assert!(!retirements.holds(pending), "its notice would cover the search field");
+        assert!(retirements.holds(retirements.epoch()), "the next copy shows its notice");
     }
 
     #[test]
