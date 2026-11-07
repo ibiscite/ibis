@@ -638,7 +638,8 @@ impl Shared {
                 if failure == SourceError::WatchUnavailable {
                     let _ = self.file_watch_unavailable(&previous);
                 } else {
-                    let _ = self.failed(&previous, source_error(failure).code);
+                    // The whole error, so a refresh says why as an open would.
+                    let _ = self.failed(&previous, source_error(failure));
                 }
                 None
             }
@@ -719,6 +720,28 @@ mod tests {
             .shared
             .file_changed(id, generation, Ok(ibis_sources::load_file(&path).unwrap()));
         assert_eq!(engine.libraries().unwrap().libraries[0].watch_warning, None);
+    }
+
+    #[test]
+    fn a_watched_refresh_keeps_the_references_and_says_why_it_failed() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("refs.bak");
+        std::fs::write(&path, "@misc{kept}").unwrap();
+        let engine = Engine::new().unwrap().without_file_watches();
+        engine.open_file(&path, &Cancellation::default()).unwrap();
+        let (id, generation) = {
+            let registry = engine.shared.sources.lock().unwrap();
+            let (id, slot) = registry.slots.iter().next().unwrap();
+            (*id, slot.generation)
+        };
+        // The file became plain text while it was open.
+        std::fs::write(&path, "Invented notes").unwrap();
+        let refused = ibis_sources::load_file(&path).map(|_| ()).unwrap_err();
+        engine.shared.file_changed(id, generation, Err(refused));
+        let info = engine.libraries().unwrap();
+        assert_eq!(info.libraries[0].objects, 1);
+        assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::BadInput));
+        assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::UnknownFormat));
     }
 
     #[test]
