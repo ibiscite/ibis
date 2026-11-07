@@ -70,6 +70,10 @@ reason-zotero-not-found = No Zotero library was found on this computer.
 reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
     .cli = Free some space, or open Zotero.
     .app = Free some space, or open Zotero.
+reason-csv-template = The first row of this CSV file does not match Ibis’s template: it must name a type and a title column, and only columns the template lists.
+    .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+    .agent = Ask the person to rename the columns in the file’s first row to the template’s.
+    .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
 
 ## A reference a citation could not include. { $reference } names it.
 

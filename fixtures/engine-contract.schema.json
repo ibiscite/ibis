@@ -777,6 +777,11 @@
           "description": "A closed read needs a private copy and there is no room for it.",
           "type": "string",
           "const": "zotero-no-space"
+        },
+        {
+          "description": "A CSV file's first row does not name the columns of Ibis's template.",
+          "type": "string",
+          "const": "csv-template"
         }
       ]
     },

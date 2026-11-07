@@ -303,7 +303,7 @@ fn numeric_id(value: f64) -> Option<String> {
     Some(result)
 }
 
-fn valid_type(value: &str) -> bool {
+pub(crate) fn valid_type(value: &str) -> bool {
     matches!(
         value,
         "article"

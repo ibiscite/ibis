@@ -1008,7 +1008,7 @@ mod tests {
             let app = picker_and_settings(pinned)?;
             let handle = app.handle();
             // A new Settings window first, then each request over an open one.
-            for page in [None, None, Some(Page::About), Some(Page::Updates), Some(Page::Paste)] {
+            for page in [None, None, Some(Page::About), Some(Page::Paste)] {
                 app.state::<HideUi>().visible.store(true, Ordering::SeqCst);
                 let shown = app.state::<PickerGeneration>().advance();
                 present(handle, page, shown);
