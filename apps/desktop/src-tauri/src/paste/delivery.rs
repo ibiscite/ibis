@@ -27,7 +27,8 @@ pub(super) trait Desk {
     fn stamp(&self) -> SafetyStamp {
         SafetyStamp::now()
     }
-    /// The clock the readiness limit is measured on.
+    /// The one clock delivery measures its limits on: readiness and the
+    /// copy's age. A fake advances it instead of sleeping.
     fn delivery_clock(&self) -> Instant {
         Instant::now()
     }
@@ -68,9 +69,9 @@ pub(super) trait CopyEvidence {
     fn written(&self) -> Instant;
     fn stamp(&self) -> SafetyStamp;
 
-    fn check_age(&self, now: SafetyStamp) -> Result<(), SafetyFailure> {
-        self.stamp().check(now)?;
-        if Instant::now() >= self.written() + LATE {
+    fn check_age(&self, stamp: SafetyStamp, now: Instant) -> Result<(), SafetyFailure> {
+        self.stamp().check(stamp)?;
+        if now >= self.written() + LATE {
             return Err(SafetyFailure::Expired);
         }
         Ok(())
@@ -135,7 +136,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 return copied(Some(CopyReason::NoTarget));
             };
             let deadline = proof.written() + LATE;
-            if let Err(failure) = proof.check_age(desk.stamp()) {
+            if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
                 return copied(Some(failure.reason()));
             }
             if let Err(reason) = desk.prepare() {
@@ -156,7 +157,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
             };
             let mut checks = 0;
             loop {
-                if let Err(failure) = proof.check_age(desk.stamp()) {
+                if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
                     return copied(Some(failure.reason()));
                 }
                 desk.stage("readiness");
@@ -164,7 +165,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                     Ok(ready) => ready,
                     Err(reason) => return copied(Some(reason)),
                 };
-                if let Err(failure) = proof.check_age(desk.stamp()) {
+                if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
                     return copied(Some(failure.reason()));
                 }
                 // A check that proved the target ready counts even when a busy

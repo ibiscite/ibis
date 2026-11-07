@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the embedded Linux native picker; never substitute a browser or IPC mock.
+"""Exercise the embedded native picker (Linux X11; the macOS journey with --journey); never substitute a browser or IPC mock.
 
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import platform
 import re
+import shlex
 import shutil
 import signal
 import statistics
@@ -61,6 +62,8 @@ def native_session():
 # The short Copied notice is a second visible window of the app (#496); it is
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
+# messages.ts, worded for Linux: written here by hand, not read from the app.
+LINUX_NOTICE = "Copied. Ibis can\u2019t paste on this system yet. Press Ctrl+V to paste."
 PICKER_TITLE = "Ibis"
 EDITOR_TITLE = "Ibis synthetic editor"
 
@@ -989,7 +992,8 @@ class Linux:
         # instead of writing them. Desktops start their manager first; so must we.
         wait_for(self.window_manager_ready, "openbox manages the display")
         self.editor_input = tempfile.NamedTemporaryFile(prefix="ibis-synthetic-editor-")
-        self.editor = subprocess.Popen(["xterm", "-title", EDITOR_TITLE, "-e",
+        # Shift+Insert pastes the clipboard, as a person pastes a copied citation.
+        self.editor = subprocess.Popen(["xterm", "-title", EDITOR_TITLE, "-xrm", "XTerm*selectToClipboard: true", "-e",
             sys.executable, "-c", SYNTHETIC_EDITOR_SCRIPT, self.editor_input.name],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         self.app = None
@@ -1549,6 +1553,348 @@ def _first_run_preferences_main(args):
     return exit_code
 
 
+# The native journey (#1676, ROADMAP Consolidation step 2): the real app,
+# invented references, a real text app, and the document read back. macOS
+# only; Linux runs the same journey inside smoke_main, where Ibis copies and
+# the person pastes.
+JOURNEY_LIBRARY = """@article{journey2026, author = {Example, Ada}, title = {An invented journey through citation},
+  journal = {Journal of Tests}, year = {2026}}
+@article{decoy2025, author = {Sample, Ben}, title = {A decoy about sleep}, year = {2025}}
+@article{other2024, author = {Other, Cy}, title = {Another reference on memory}, year = {2024}}
+"""
+JOURNEY_QUERY = "invented journey"
+JOURNEY_TITLE = "An invented journey through citation"
+# The selected words become the search; the citation replaces exactly them.
+JOURNEY_DOCUMENT = "As shown in invented journey, sleep matters.\n"
+# Written by hand from the invented entry, never computed by Ibis's code:
+# TextEdit is a formatted app (APA by default), a terminal gets the default key.
+JOURNEY_PASTED = "As shown in (Example, 2026), sleep matters.\n"
+JOURNEY_COPIED = "[@journey2026]"
+JOURNEY_PASTED_CITATION = "(Example, 2026)"  # The plain text of TextEdit's formatted copy.
+COPIED_HINT = "Copied. Press \u2318V to paste."
+JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
+PASTED_NOTICE = "Pasted into TextEdit"
+TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
+COLLECTOR_TITLE = "ibis-journey-collector"
+
+
+class MacOS:
+    """TextEdit, Terminal and Ibis through Accessibility and posted keys.
+
+    Needs this terminal to have Accessibility access. Reads only TextEdit's
+    one text area and Ibis's own windows, and types only into Ibis."""
+
+    def __init__(self, folder):
+        if not shutil.which("swiftc"):
+            raise Unavailable("The macOS journey needs swiftc (Xcode Command Line Tools)", "native-driver")
+        self.helper_path = folder / "journey-helper"
+        source = Path(__file__).resolve().parent / "macos-journey.swift"
+        try:
+            subprocess.run(["swiftc", "-O", str(source), "-o", str(self.helper_path)], check=True,
+                           capture_output=True, timeout=300)
+        except (subprocess.SubprocessError, OSError):
+            raise Unavailable("The macOS journey helper could not be built", "native-driver") from None
+        if not self.helper("trusted")["accessibility"]:
+            raise Unavailable("Give this terminal Accessibility access in System Settings > Privacy & Security", "accessibility-driver")
+        self.app = None  # The Ibis process, set by the journey.
+        self.last_picker = self.last_shown = None
+
+    def helper(self, *arguments):
+        result = subprocess.run([str(self.helper_path), *map(str, arguments)], capture_output=True, text=True, timeout=20)
+        try:
+            answer = json.loads(result.stdout)
+        except ValueError:
+            raise RuntimeError("macOS journey helper gave no answer") from None
+        if result.returncode or "error" in answer:
+            raise RuntimeError(f"macOS journey helper refused: {answer.get('error', 'unknown')}")
+        return answer
+
+    def key(self, chord):
+        *modifiers, name = chord.split("+")
+        names = {"super": "cmd", "ctrl": "ctrl", "shift": "shift", "alt": "alt"}
+        self.helper("key", name.lower(), *(names[modifier] for modifier in modifiers))
+
+    def text(self, text):
+        self.helper("type", text)
+
+    def focus(self):
+        return self.helper("focus")
+
+    def ibis_focused(self, value=None):
+        """The picker is on screen and the system's focus is Ibis's search field.
+
+        Keys are posted only after this, so they cannot reach another app."""
+        picker = self.helper("picker", self.app.pid)
+        self.last_picker = {"onscreen": "Ibis" in picker["onscreen"], "role": picker["role"],
+                            "search": picker["label"] == "Search references",
+                            "system_focus_is_ibis": picker["system_pid"] == self.app.pid,
+                            "value_matches": value is None or picker["value"] == value}
+        return all(self.last_picker[key] for key in ("onscreen", "search", "system_focus_is_ibis", "value_matches"))
+
+    def ibis_strings(self):
+        return self.helper("strings", self.app.pid)["strings"]
+
+    def observe_notice(self, seen):
+        """Record that the notice is on screen and, when readable, its words.
+
+        While Ibis is inactive macOS often leaves the notice out of Ibis's
+        AXWindows, and it ignores the mouse, so hit-testing reaches the app
+        under it. Its words are best effort here; Linux checks them exactly."""
+        seen["shown"] |= "Ibis notice" in self.helper("picker", self.app.pid)["onscreen"]
+        seen["words"].update(text for text in self.ibis_strings() if text.startswith(("Copied", "Pasted")))
+
+    def ibis_shows(self, text):
+        """Whether Ibis shows text, also when highlighting splits it into pieces."""
+        strings = self.ibis_strings()
+        self.last_shown = {"strings": len(strings), "whole": text in strings,
+                           "pieces": [word in " ".join(strings) for word in text.split()]}
+        return text in strings or text in "".join(strings) or text in " ".join(strings)
+
+    def clipboard(self, *, timeout=20):
+        return subprocess.run(["pbpaste"], capture_output=True, text=True, check=True, timeout=timeout).stdout
+
+    def set_clipboard(self, text):
+        subprocess.run(["pbcopy"], input=text, text=True, check=True, timeout=20)
+
+    def front(self):
+        return self.helper("front")
+
+    def close(self):
+        pass
+
+
+class MacApp:
+    """An Ibis process: started directly from an executable, or through
+    LaunchServices from a bundle, so a bundle is its own paste-permission owner."""
+
+    def __init__(self, path, library, log):
+        self.bundle = path if path.suffix == ".app" else None
+        # Ibis's own fixed-stage paste diagnostics, kept beside the evidence.
+        environment = {"IBIS_LIBRARY": str(library), "IBIS_MAC_PASTE_DIAGNOSTICS": "1"}
+        if self.bundle:
+            self.marker = f"{path.resolve()}/Contents/MacOS/"
+            if self.running():
+                raise Unavailable("Quit Ibis before the journey", "disposable-settings")
+            subprocess.run(["open", "-n", "--env", f"IBIS_LIBRARY={library}", str(path)], check=True, timeout=30)
+            self.process = None
+            wait_for(lambda: self.running(), "Ibis started through LaunchServices")
+            self.pid = self.running()[0]
+        else:
+            self.process = subprocess.Popen([str(path.resolve())], env=dict(os.environ, **environment),
+                                            stdout=log, stderr=log)
+            self.pid = self.process.pid
+
+    def running(self):
+        ps = subprocess.run(["ps", "-axww", "-o", "pid=,args="], capture_output=True, text=True, check=True, timeout=10)
+        return [int(line.split(None, 1)[0]) for line in ps.stdout.splitlines()
+                if len(line.split(None, 1)) == 2 and line.split(None, 1)[1].startswith(self.marker)]
+
+    def poll(self):
+        if self.process:
+            return self.process.poll()
+        return None if self.pid in self.running() else 0
+
+    def stop(self):
+        if self.poll() is not None:
+            return
+        os.kill(self.pid, signal.SIGTERM)
+        try:
+            wait_for(lambda: self.poll() is not None, "Ibis stopped", timeout=10)
+        except AssertionError:
+            os.kill(self.pid, signal.SIGKILL)
+
+
+def app_executable(path):
+    """The file whose hash the evidence records: the bundle's executable."""
+    if path.suffix != ".app":
+        return path
+    import plistlib
+    with (path / "Contents/Info.plist").open("rb") as info:
+        return path / "Contents/MacOS" / plistlib.load(info)["CFBundleExecutable"]
+
+
+def running(name):
+    return subprocess.run(["pgrep", "-x", name], capture_output=True, timeout=10).returncode == 0
+
+
+def journey_main(args):
+    return evidence_main(args, _journey_main, "native-journey")
+
+
+def _journey_main(args):
+    args.output.mkdir(parents=True, exist_ok=True)
+    system = platform.system()
+    report = {"platform": system, "scenario": "native-journey", "status": "failed", "checks": []}
+    native = app = owned_settings = temporary = collector = log = None
+    started_textedit = started_terminal = False
+    exit_code = 1
+
+    def passed(name):
+        report["checks"].append({"name": name, "status": "passed"})
+        print(f"PASS {name}", flush=True)
+
+    try:
+        if system != "Darwin":
+            raise Unavailable("The journey runs on macOS; Linux runs it inside the native smoke", "linux-x11")
+        if not app_executable(args.app).is_file():
+            raise Unavailable("Build or install the app before the journey", "app-build")
+        if running("TextEdit"):
+            raise Unavailable("Quit TextEdit before the journey; it opens its own invented document", "native-session")
+        started_terminal = not running("Terminal")
+        temporary = tempfile.TemporaryDirectory(prefix="ibis-journey-")
+        folder = Path(temporary.name).resolve()
+        library = folder / "journey.bib"
+        library.write_text(JOURNEY_LIBRARY, encoding="utf-8")
+        document = folder / "journey.txt"
+        document.write_text(JOURNEY_DOCUMENT, encoding="utf-8")
+        settings = Path.home() / "Library/Application Support" / args.identifier / "settings.json"
+        owned_settings = claim_settings(settings)
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_bytes(JOURNEY_SETTINGS)
+        native = observe_native(MacOS(folder))
+
+        log = (args.output / "startup-journey.log").open("w", encoding="utf-8")
+        with recording("action", "launch-journey"):
+            app = MacApp(args.app, library, log)
+        native.app = app
+        # Ibis shows its picker once it starts; wait for the library, then hide it.
+        wait_for(native.ibis_focused, "the first picker has the keyboard", timeout=60)
+        native.key("Escape")
+        wait_for(lambda: "Ibis" not in native.helper("picker", app.pid)["onscreen"], "Escape hides the first picker")
+        passed("the app starts and Escape hides its first picker")
+
+        with recording("action", "open-document"):
+            subprocess.run(["open", "-a", "TextEdit", str(document)], check=True, timeout=30)
+        started_textedit = True
+        def textedit():
+            front = native.front()
+            return front if front["bundle"] == "com.apple.TextEdit" else None
+        wait_for(textedit, "TextEdit in front with the invented document")
+        editor = textedit()["pid"]
+        read = lambda: native.helper("document", editor)
+        wait_for(lambda: read().get("text") == JOURNEY_DOCUMENT, "TextEdit shows the invented document")
+        start = JOURNEY_DOCUMENT.index(JOURNEY_QUERY)
+        report["paste_attempts"] = 0
+        while True:
+            # Ibis copies instead when its last check before pasting cannot
+            # finish in time, as on a busy runner. That safe copy, with the
+            # document untouched and exactly the citation copied, earns one retry.
+            report["paste_attempts"] += 1
+            with recording("action", "select-placeholder"):
+                native.helper("select", editor, start, len(JOURNEY_QUERY))
+            assert read().get("selection") == [start, len(JOURNEY_QUERY)], "TextEdit did not select the placeholder"
+            native.key(args.shortcut)
+            wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
+            wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found")
+            if report["paste_attempts"] == 1:
+                passed("the shortcut opens the picker from TextEdit and searches the selection")
+            prime_clipboard(native)
+            native.key("Return")
+            seen = {"shown": False, "words": set()}
+            def pasted():
+                if app.poll() is None:
+                    native.observe_notice(seen)
+                return read().get("text") == JOURNEY_PASTED and seen["shown"]
+            try:
+                wait_for(pasted, "the citation replaces the selection in TextEdit", timeout=15)
+                break
+            except AssertionError:
+                text = read().get("text", "")
+                report["paste_failure"] = {"document_unchanged": text == JOURNEY_DOCUMENT,
+                                           "citation_in_document": "(Example, 2026)" in text,
+                                           "copied_exactly": native.clipboard() == JOURNEY_PASTED_CITATION,
+                                           "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
+                safe_copy = (report["paste_failure"]["document_unchanged"] and report["paste_failure"]["copied_exactly"]
+                             and seen["words"] <= {COPIED_HINT})
+                if not safe_copy or report["paste_attempts"] == 2:
+                    raise AssertionError("TextEdit did not end up with exactly the chosen citation; notice: "
+                                         + ("; ".join(sorted(seen["words"])) or "not read")) from None
+                wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
+                wait_for(lambda: native.front()["bundle"] == "com.apple.TextEdit", "TextEdit in front again")
+        wrong = seen["words"] - {PASTED_NOTICE}
+        assert not wrong, "The notice did not say it pasted: " + "; ".join(sorted(wrong))
+        report["pasted_notice_read"] = PASTED_NOTICE in seen["words"]
+        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
+        assert read().get("text") == JOURNEY_PASTED, "TextEdit changed again after the paste: pasted more than once"
+        passed("Enter pastes exactly the chosen citation into TextEdit, once")
+
+        # Refusal: a terminal runs pasted text as commands, so Ibis only copies.
+        received = folder / "received"
+        received.touch()
+        script = folder / f"{COLLECTOR_TITLE}.command"
+        script.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -c {shlex.quote(SYNTHETIC_EDITOR_SCRIPT)} "
+                          f"{shlex.quote(str(received))}\n", encoding="utf-8")
+        script.chmod(0o700)
+        with recording("action", "open-terminal"):
+            subprocess.run(["open", "-a", "Terminal", str(script)], check=True, timeout=30)
+        collector = script
+        wait_for(lambda: native.front()["bundle"] == "com.apple.Terminal", "Terminal in front with the collector")
+        native.key(args.shortcut)
+        wait_for(native.ibis_focused, "the shortcut opens Ibis from Terminal")
+        native.key("super+a")
+        native.text(JOURNEY_QUERY)
+        wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the search holds the typed query")
+        wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found again")
+        prime_clipboard(native)
+        native.key("Return")
+        seen = {"shown": False, "words": set()}
+        def copied():
+            if app.poll() is None:
+                native.observe_notice(seen)
+            return native.clipboard() == JOURNEY_COPIED and seen["shown"]
+        try:
+            wait_for(copied, "a copy and a notice", timeout=15)
+        except AssertionError:
+            clipboard = native.clipboard()
+            report["terminal"] = {"clipboard": "expected" if clipboard == JOURNEY_COPIED else
+                                  "sentinel" if clipboard == CLIPBOARD_SENTINEL else "other",
+                                  "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
+            raise AssertionError("Terminal did not get exactly the citation copied and a notice") from None
+        wrong = seen["words"] - {TERMINAL_NOTICE}
+        assert not wrong, "The notice did not give the terminal reason: " + "; ".join(sorted(wrong))
+        report["terminal_notice_read"] = TERMINAL_NOTICE in seen["words"]
+        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
+        assert received.read_bytes() == b"", "Ibis typed or pasted into the terminal"
+        passed("a terminal gets exactly the citation copied, a notice and no keystrokes")
+        report["status"], exit_code = "passed", 0
+    except Unavailable as error:
+        unavailable(error.code)
+        report.update(status="unavailable", reason=str(error))
+        exit_code = 2
+    except (AssertionError, RuntimeError, ValueError, KeyError, TypeError, subprocess.SubprocessError, OSError) as error:
+        failure(error)
+        report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
+        if native:
+            report["last_picker"] = native.last_picker  # Booleans and a role name only.
+            report["last_shown"] = native.last_shown
+            report["app_running"] = bool(app) and app.poll() is None
+    finally:
+        def stop_collector():
+            if collector:
+                subprocess.run(["pkill", "-f", COLLECTOR_TITLE], capture_output=True, timeout=10)
+                terminal = subprocess.run(["pgrep", "-x", "Terminal"], capture_output=True, text=True, timeout=10).stdout.split()
+                if started_terminal:
+                    subprocess.run(["pkill", "-x", "Terminal"], capture_output=True, timeout=10)
+                elif terminal and native:
+                    native.helper("close", terminal[0], COLLECTOR_TITLE)
+        def stop_textedit():
+            if started_textedit:
+                subprocess.run(["pkill", "-x", "TextEdit"], capture_output=True, timeout=10)
+        for cleanup in (app.stop if app else None, log.close if log else None, stop_collector, stop_textedit,
+                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        temporary.cleanup if temporary else None):
+            try:
+                if cleanup:
+                    cleanup()
+            except (OSError, subprocess.SubprocessError, RuntimeError, AssertionError) as error:
+                failure(error, "cleanup")
+                report.update(status="failed", reason="Journey cleanup failed")
+                exit_code = 1
+        print("NATIVE JOURNEY " + json.dumps(report), flush=True)
+        (args.output / "journey.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    return exit_code
+
+
 def evidence_main(args, scenario, scenario_id):
     """Always persist the closed manifest, independently of legacy diagnostics."""
     try:
@@ -1558,12 +1904,15 @@ def evidence_main(args, scenario, scenario_id):
                    "seed": getattr(args, "seed", 0)}
         fixtures = {"small": fixture().encode(), "initial-document": b"",
                     "initial-settings": b'{"schema_version": 2, "update_checks": false}'}
+        if scenario_id == "native-journey":
+            fixtures = {"journey": JOURNEY_LIBRARY.encode(), "initial-document": JOURNEY_DOCUMENT.encode(),
+                        "initial-settings": JOURNEY_SETTINGS}
         if scenario_id == "native-smoke":
             fixtures.update(four=fixture(4).encode(), empty=b"",
                             damaged=(Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_bytes())
             if not options["skip_performance"]:
                 fixtures["large"] = fixture(100000).encode()
-        recorder = Evidence(scenario_id, options, collect_metadata(args.app, fixtures), replay)
+        recorder = Evidence(scenario_id, options, collect_metadata(app_executable(args.app), fixtures), replay)
         recorder.finish(2)  # Validate all metadata/options before any native action.
     except BundleError as error:
         print(str(error), file=sys.stderr)
@@ -1602,6 +1951,7 @@ def main():
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y")
     parser.add_argument("--skip-performance", action="store_true", default=None, help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", default=None, help="Exercise first-run format persistence and settled More/Quit only")
+    parser.add_argument("--journey", action="store_true", default=None, help="macOS: summon, search, paste into TextEdit and read it back; then a terminal gets a copy")
     parser.add_argument("--seed", type=int, help="Recorded seed (the current scenarios are deterministic)")
     parser.add_argument("--replay", type=Path, help="Replay a version-1 evidence manifest against the same build")
     args = parser.parse_args()
@@ -1614,11 +1964,17 @@ def main():
                 setattr(args, key, value)
         if args.first_run_preferences is None and args.replay_bundle:
             args.first_run_preferences = args.replay_bundle["scenario"] == "first-run-preferences"
+        if args.journey is None and args.replay_bundle:
+            args.journey = args.replay_bundle["scenario"] == "native-journey"
+        if args.journey and not args.replay_bundle and args.shortcut == "ctrl+shift+y":
+            args.shortcut = "super+shift+y"  # The macOS default.
     except BundleError as error:
         print(str(error), file=sys.stderr)
         return 1
     if args.first_run_preferences:
         return first_run_preferences_main(args)
+    if args.journey:
+        return journey_main(args)
     return evidence_main(args, smoke_main, "native-smoke")
 
 
@@ -1796,6 +2152,14 @@ def smoke_main(args):
                 if hasattr(native, "notice_visible"):
                     wait_for(lambda: native.notice_visible() and native.editor_focused(),
                              "Copied notice shows while the editor keeps focus", timeout=5)
+                    # The journey: Ibis says why it only copied, and the person's
+                    # paste puts exactly the chosen citation into the editor.
+                    wait_for(lambda: LINUX_NOTICE in strings(snapshot()), "the notice says why Ibis copied", timeout=5)
+                    before = native.editor_received()
+                    assert before["available"], "Synthetic editor exited before the paste"
+                    native.key("shift+Insert")
+                    wait_for(lambda: native.editor_received().get("text") == before["text"] + "[@smoke000001]",
+                             "the person's paste puts exactly the citation into the editor", timeout=5)
 
             def live_settings_copy():
                 paths = [settings.with_suffix(suffix) for suffix in (".json", ".json.bak", ".json.tmp")]

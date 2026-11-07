@@ -47,7 +47,8 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Citations:** rich text on the clipboard, plain text and Markdown copies; recent citations per app; Change Last Citation; a page or range; narrative and author-omitted forms; selected text becomes the search; a peek at a reference's details; a dropped `.bib` or CSL-JSON file becomes a library.
 - **Updates** keep the macOS paste permission through a stable self-signed identity.
 - **For agents:** `ibis mcp` (MCP 2026-07-28, answering 2025 clients), an Agent Skill for Claude Code and Codex, `ibis` using the app's libraries by default, the app installing `ibis`, Homebrew and winget.
-- **Release gates** ([decision 0032](docs/decisions/0032-release-gates.md)): VoiceOver, NVDA and Chinese, Japanese and Korean input; text ready for translation; speed and resource limits that run as checks.
+- **Release gates** ([decision 0032](docs/decisions/0032-release-gates.md)): VoiceOver, NVDA and Chinese, Japanese and Korean input, checked by hand.
+- **Ships when** consolidation steps 1 to 3 have landed and the maintainer's hands-on checks pass: the Mac hands-on run (VoiceOver, updates keeping the paste permission, help screenshots), NVDA on Windows and one input-method check (maintainer, 2026-11-07). Text ready for translation moves into step 4's catalogue, limits that run as checks into step 8, and small picker touches with the word-processor note into 0.4.
 
 ### 0.4 Build any citation
 
