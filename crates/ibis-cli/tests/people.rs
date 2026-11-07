@@ -233,3 +233,20 @@ fn a_key_past_the_part_ibis_could_read_says_the_library_was_cut_short() {
     assert!(stderr.contains("too large to read in full"), "{stderr}");
     assert!(stderr.contains("Split the library"), "{stderr}");
 }
+
+#[test]
+fn a_spelling_match_says_so_and_an_exact_one_does_not() {
+    let lab = Lab::new("spelling");
+    let file = lab.file(
+        "refs.bib",
+        "@book{vale2024, title={Lanterns on the Tidal Marsh}, year=2024}\n",
+    );
+    let (code, stdout, _) = lab.run(&["search", "lanters", "--file", &file]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Lanterns on the Tidal Marsh (spelling match)"),
+        "{stdout}"
+    );
+    let (_, stdout, _) = lab.run(&["search", "lanterns", "--file", &file]);
+    assert!(!stdout.contains("spelling match"), "{stdout}");
+}

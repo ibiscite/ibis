@@ -219,6 +219,7 @@ export const PICKER_IDS = [
   "picker-add-named",
   "picker-remove-named",
   "picker-best-matches",
+  "picker-spelling-match",
   "picker-pasted-list",
   "picker-paste-into",
   "picker-last-outcome",

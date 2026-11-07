@@ -241,8 +241,15 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
     let summary = record_summary(record.get("csl")?);
+    // The engine decides a word matched only with a spelling change; the row says so.
+    let spelling = (hit.get("typo").and_then(Value::as_bool) == Some(true)
+        && hit.get("partial").and_then(Value::as_bool) != Some(true))
+    .then(|| catalogue::text("cli-spelling-match", None, &[]))
+    .flatten()
+    .map(|label| format!(" {label}"))
+    .unwrap_or_default();
     Some(format!(
-        "{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}{spelling}",
         field(citation_key(record)?),
         if summary.authors.is_empty() {
             "—".into()

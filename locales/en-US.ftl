@@ -154,6 +154,7 @@ cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
+cli-spelling-match = (spelling match)
 cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be BibTeX, BibLaTeX or CSL-JSON.
 
 ## The app’s own sentence about a citation.
@@ -744,6 +745,7 @@ picker-paste-into = Paste into { $app } · { $output }
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match
+picker-spelling-match = Spelling match
 picker-closest-match-warning = “{ $title }” is a closest match: only some search words matched.
 picker-no-matches = No matching references
 picker-no-matches-hint = Try a surname, year or fewer words.

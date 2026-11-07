@@ -283,6 +283,7 @@ mod tests {
             watch_warning: None,
             zotero: None,
             duplicate_keys: Default::default(),
+            cut_short: false,
         };
         let source = library_report(&library);
         assert_eq!(source["status"], "findings");
