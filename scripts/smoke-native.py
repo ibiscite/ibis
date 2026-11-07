@@ -1907,11 +1907,11 @@ class Windows:
         Keys are sent only after this, so they cannot reach another app."""
         front = self.foreground()
         shot = self.snapshot()
-        self.last_picker = {"onscreen": "Ibis" in shot["windows"], "search": shot["searches"] == 1,
+        self.last_picker = {"onscreen": "Ibis" in shot["windows"], "search": shot["searches"] >= 1,
                             "focused": shot["focused"],
                             "system_focus_is_ibis": bool(front) and self.owner(front) == self.app.pid
                                                     and self.title(front) == "Ibis",
-                            "value_matches": value is None or shot["value"] == value}
+                            "value_matches": value is None or value in shot["values"]}
         return all(self.last_picker.values()) and self.foreground() == front
 
     def picker_onscreen(self):

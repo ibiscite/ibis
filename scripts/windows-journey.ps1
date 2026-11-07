@@ -12,7 +12,7 @@ try {
   $condition = [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, $Id)
   $windows = @($A::RootElement.FindAll($S::Children, $condition))
   if ($windows.Count -gt 20) { throw 'Too many windows' }
-  $answer = [ordered]@{ windows = @(); searches = 0; focused = $false; value = $null; strings = @() }
+  $answer = [ordered]@{ windows = @(); searches = 0; focused = $false; values = @(); strings = @() }
   $strings = [System.Collections.Generic.List[string]]::new()
   foreach ($window in $windows) {
     if ($window.Current.ProcessId -ne $Id -or $window.Current.IsOffscreen) { continue }
@@ -33,9 +33,8 @@ try {
           $item.Current.ControlType.ProgrammaticName -cin @('ControlType.ComboBox', 'ControlType.Edit')) {
         $answer.searches++
         $pattern = $null
-        if ($answer.searches -eq 1 -and
-            $item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
-          $answer.value = $pattern.Current.Value
+        if ($item.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern, [ref]$pattern)) {
+          $answer.values += $pattern.Current.Value
         }
       }
     }
