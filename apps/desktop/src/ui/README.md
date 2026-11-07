@@ -1,5 +1,7 @@
 # Components and their states
 
+The rules for each shared part, beside its code. The principles are in [design](../../../../docs/design.md) and the values every part reads in [foundations](../../../../docs/design/foundations.md).
+
 Each component in `apps/desktop/src/ui/` wraps one React Aria component (decision 0021), owns one stylesheet that reads tokens only, and is the only way a screen draws that part. A screen needing a new control adds it to `ui/` with its line here first. Shared rules every window uses live in `ui/Foundation.css`.
 
 **States.** Hover (`@media (hover: hover)` only) never moves or resizes anything. Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
