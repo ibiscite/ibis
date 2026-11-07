@@ -89,7 +89,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
     zotero: false, snapshot_zotero: false, zotero_libraries: [],
     name: firstRun ? null : "invented.bib", snapshot_name: firstRun ? null : "invented.bib",
     references: firstRun || fixture ? 0 : rows.length, source_counts: firstRun ? {} : { "invented.bib": rows.length },
-    warnings: 0, error: scenario === "error" ? "the chosen file is not on this computer" : null, problem: scenario === "error" ? "other" : null, note: null, settings_notice: null,
+    warnings: 0, reading: [], live_updates_off: false, error: scenario === "error" ? "the chosen file is not on this computer" : null, problem: scenario === "error" ? "other" : null, note: null, settings_notice: null,
     // The backend's own words and times, so each picture shows what a person would see.
     stale: false, updated_at: null, checked_at: firstRun ? null : Date.now() - 3 * 60_000, ...fixed?.library,
   };

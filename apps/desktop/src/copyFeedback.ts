@@ -62,25 +62,25 @@ export const COPY_REASONS = [
   "key-release-failed",
 ] as const;
 export type CopyReason = typeof COPY_REASONS[number];
-/** What happened to a copy, with its reason checked: an unknown reason does not compile. */
-export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason | null };
+/** What happened to a copy, with its reason checked: an unknown or missing reason does not compile. */
+export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason };
 export type Notice = Omit<NoticeMessage, "delivered"> & { delivered: Delivered };
 
 const isCopyReason = (reason: string): reason is CopyReason => (COPY_REASONS as readonly string[]).includes(reason);
 
 /** Reads what Rust sent. A reason this build does not know is a bug, reported,
- * and the notice falls back to the plain paste hint rather than a bare title. */
+ * and the notice says Ibis could not confirm where the text would go. */
 export function readDelivered(delivered: WireDelivered): Delivered {
-  if (delivered.outcome !== "copied" || delivered.reason === null || isCopyReason(delivered.reason)) return delivered as Delivered;
+  if (delivered.outcome !== "copied" || isCopyReason(delivered.reason)) return delivered as Delivered;
   console.error(`Unknown copy reason: ${delivered.reason}`);
-  return { outcome: "copied", reason: null };
+  return { outcome: "copied", reason: "paste-unavailable" };
 }
 export const readNotice = (message: NoticeMessage): Notice => ({ ...message, delivered: readDelivered(message.delivered) });
 
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
 export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform = currentPlatform()): string {
   if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
-  const text = delivered.reason ? copiedNoticeText.reasons[delivered.reason]! : copiedNoticeText.hint;
+  const text = copiedNoticeText.reasons[delivered.reason]!;
   return platform === "macos" ? text : text.replaceAll("⌘V", "Ctrl+V");
 }
 

@@ -10,7 +10,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
-use ibis_core::destination::AppId;
+use ibis_core::destination::{AppId, CopyReason};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 
@@ -135,7 +135,7 @@ fn deliver_receipt(receipt: Option<u64>, deliver: impl FnOnce() -> Delivered) ->
     if receipt.is_some() {
         deliver()
     } else {
-        Delivered::Copied { reason: None }
+        Delivered::copied(CopyReason::PasteUnavailable)
     }
 }
 
@@ -209,7 +209,7 @@ pub(crate) async fn show_copied_notice(
         })
         .await
     }
-    .unwrap_or(Delivered::Copied { reason: None });
+    .unwrap_or(Delivered::copied(CopyReason::PasteUnavailable));
     #[cfg(target_os = "macos")]
     crate::menu_bar::dip(&app);
     let milestone = if receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }) {
@@ -612,7 +612,7 @@ mod tests {
     fn copies_without_native_paste_proofs_keep_write_order_with_delayed_claims() {
         let last = crate::paste::LastTarget::default();
         let copy = || {
-            last.write_copy("[@invented]", None, |_| Ok(None), || Ok(None))
+            last.write_copy("[@invented]", &[], |_| Ok(None), || Ok(None))
                 .unwrap_or_else(|e| panic!("{e}"))
         };
         let a = copy();
@@ -667,7 +667,7 @@ mod tests {
         // The rejected worker runs first. Only the accepted request can take proof.
         assert_eq!(
             deliver_receipt(duplicate, &mut deliver),
-            Delivered::Copied { reason: None }
+            Delivered::copied(CopyReason::PasteUnavailable)
         );
         let delivered = deliver_receipt(accepted, &mut deliver);
         assert!(matches!(delivered, Delivered::Pasted { .. }));

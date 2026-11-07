@@ -390,7 +390,7 @@ mv moved.bib real-world.bib
 ask "I renamed it back. Use Try again in Ibis, then search garcia." \
   "Does search work again?"
 ask "Choose Choose a library and pick damaged.bib, then empty.bib, then real-world.bib again in the test folder." \
-  "Did damaged.bib open the readable references, and empty.bib give clear next steps?"
+  "Did damaged.bib open with Loads after the damage, say 4 entries were skipped (the key good1 used twice, 2 unreadable), and empty.bib give clear next steps?"
 
 launch recovery
 summon

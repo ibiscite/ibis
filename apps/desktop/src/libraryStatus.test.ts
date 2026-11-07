@@ -11,7 +11,7 @@ const now = new Date(2026, 9, 20, 12, 0).getTime();
 const hour = 3_600_000;
 const file = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
   source_generation: "1", source_is_requested: true, revision: "1", state: "loaded", zotero: false, zotero_libraries: [], has_snapshot: true, name: "thesis.bib", snapshot_name: "thesis.bib",
-  references: 1204, source_counts: { "synthetic-file": 1204 }, warnings: 0, error: null, problem: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false,
+  references: 1204, source_counts: { "synthetic-file": 1204 }, warnings: 0, reading: [], live_updates_off: false, error: null, problem: null, note: null, settings_notice: null, snapshot_zotero: false, stale: false,
   updated_at: null, checked_at: now - 3 * hour, ...overrides,
 });
 const zotero = (overrides: Partial<LibraryStatus> = {}) => file({
@@ -68,7 +68,7 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
   ["just updated", zotero({ updated_at: now - 2 * 60_000, checked_at: now }), "Zotero · 1,204 references · updated 2 minutes ago", "done"],
   ["opened, never changed", zotero({ checked_at: now }), "Zotero · 1,204 references", "done"],
   ["a watched file", file(), "thesis.bib · 1,204 references", "done"],
-  ["reading notices", file({ warnings: 2 }), "thesis.bib · 1,204 references · 2 reading notices", "look"],
+  ["an entry to check", file({ warnings: 1, reading: [{ code: "field", line: 15, key: null }] }), "thesis.bib · 1,204 references · 1 to check", "look"],
   ["empty", zotero({ references: 0 }), "Zotero · no references", "look"],
   ["Zotero closed, copy kept", zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }), "Zotero not updated · 2 h", "look"],
   ["never opened", zotero({ state: "error", has_snapshot: false, snapshot_name: null, references: 0, error: "Zotero is not running" }), "Zotero · not opened", "stop"],
@@ -78,6 +78,20 @@ test.each<[string, LibraryStatus | null | undefined, string, ReturnType<typeof l
 ])("%s", (_, status, expected, health) => {
   expect(line(status)).toBe(expected);
   expect(libraryCondition(status).health).toBe(health);
+});
+
+// fixtures/bibtex/damaged.bib, as the engine reads it: a key used twice skips
+// both entries under it (decision 0006), two entries cannot be read.
+const damaged = file({ name: "damaged.bib", snapshot_name: "damaged.bib", references: 3, warnings: 5, reading: [
+  { code: "duplicate-key", line: 3, key: "good1" }, { code: "duplicate-key", line: 9, key: "good1" },
+  { code: "syntax", line: 21, key: null }, { code: "syntax", line: 25, key: null }, { code: "field", line: 15, key: null }] });
+
+test("a damaged library says what it skipped and where to look, in words", () => {
+  expect(line(damaged)).toBe("damaged.bib · 3 references · 4 entries skipped · 1 to check");
+  expect(detail(damaged)).toEqual(["damaged.bib · 3 references · 4 entries skipped · 1 to check",
+    `checked 3 hours ago, ${clockAt(3)} · 4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (lines 21 and 25). Check line 15.`]);
+  // More notices than the engine details: the count stays honest.
+  expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 reading problems");
 });
 
 test("the age leaves once the update is no longer news", () => {
@@ -109,7 +123,8 @@ test("date years follow the local calendar across New Year without changing futu
 test("the detail is a short line, then libraries, check time and any problem", () => {
   expect(detail(zotero({ zotero_libraries: ["user", { group: 41 }, { group: 9 }], checked_at: now - 3 * hour }))).toEqual(
     ["Zotero · 1,204 references", `My Library, Group 41, Group 9 · checked 3 hours ago, ${clockAt(3)}`]);
-  expect(detail(file({ warnings: 1 }))).toEqual(["thesis.bib · 1,204 references · 1 reading notice", `checked 3 hours ago, ${clockAt(3)}`]);
+  expect(detail(file({ warnings: 1, reading: [{ code: "syntax", line: 4, key: null }] }))).toEqual(
+    ["thesis.bib · 1,204 references · 1 entry skipped", `checked 3 hours ago, ${clockAt(3)} · 1 entry skipped: it could not be read (line 4).`]);
   expect(detail(zotero({ state: "error", error: kept, stale: true, checked_at: now - 2 * hour }))).toEqual(
     ["Zotero · 1,204 references", `My Library · last read 2 hours ago, ${clockAt(2)} · Zotero library could not be read. ${kept}. Open Zotero, then reload.`]);
   expect(detail(file({ state: "error", name: "missing.bib", error: "The library file is unavailable" }))).toEqual(

@@ -192,10 +192,13 @@ pub(super) fn capture_front(
             }
             Err(reason) => {
                 front.window = None;
-                // No surface was ever proved. Keep actionable grant failures,
-                // but do not call an unproven capture a changed target.
+                // No surface was ever proved. Keep actionable grant failures and
+                // hidden typing, but do not call an unproven capture a changed target.
                 front.focus_failure = Some(match reason {
-                    CopyReason::NoPermission | CopyReason::AccessibilityRequired => reason,
+                    CopyReason::NoPermission
+                    | CopyReason::AccessibilityRequired
+                    | CopyReason::SecureField
+                    | CopyReason::SecureInput => reason,
                     _ => CopyReason::PasteUnavailable,
                 });
             }
@@ -231,7 +234,7 @@ impl Mac {
         match outcome {
             Delivered::Pasted { .. } => self.trace.stage("posted"),
             Delivered::Copied { reason } => {
-                let stage = match reason.as_deref() {
+                let stage = match Some(reason.as_str()) {
                     Some("accessibility-required") => Some("permission.accessibility"),
                     Some("no-permission") => Some("permission.post_event"),
                     Some("paste-off") => Some("policy.paste_off"),
@@ -508,6 +511,10 @@ impl PostDesk for Ready<'_> {
         focus::selection_unchanged(self.request.pid, selection, self.request.deadline)
     }
 
+    fn refused(&self, reason: CopyReason) -> CopyReason {
+        focus::refused(self.request.pid, reason)
+    }
+
     fn change_count(&self) -> isize {
         diagnostics::stage("clipboard");
         NSPasteboard::generalPasteboard().changeCount()
@@ -580,7 +587,7 @@ mod tests {
 
     #[test]
     fn a_failed_capture_cannot_claim_an_unproven_target_changed() {
-        let active = Front {
+        let active = || Front {
             app_identity: None,
             id: Some("com.microsoft.word".into()),
             pid: 42,
@@ -591,10 +598,17 @@ mod tests {
             selection: Selection::Unknown,
             search: None,
         };
-        let front = capture_front(Some(active), 7, false, |_| Err(CopyReason::TargetChanged));
+        let front = capture_front(Some(active()), 7, false, |_| Err(CopyReason::TargetChanged));
         let captured = super::super::capture::captured(System::Macos, front, 7).unwrap_or_else(|| panic!("capture"));
         assert_eq!(captured.window, None);
         assert_eq!(captured.focus_failure, Some(CopyReason::PasteUnavailable));
+        // A field that hides typing, or secure typing, keeps its own words.
+        for reason in [CopyReason::SecureField, CopyReason::SecureInput] {
+            let front = capture_front(Some(active()), 7, false, |_| Err(reason));
+            let captured =
+                super::super::capture::captured(System::Macos, front, 7).unwrap_or_else(|| panic!("capture"));
+            assert_eq!(captured.focus_failure, Some(reason));
+        }
     }
 
     #[test]

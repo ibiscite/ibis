@@ -14,7 +14,7 @@ const noSelection = new Map<string, CitationReference>();
 
 export function PickerCitationShelf({
   state, send, showCitations, results, output, chosen, changeReference, copyChosen, libraryOf, format,
-  input, sourceState, inspector,
+  input, sourceState, inspector, deliverable,
 }: {
   state: ReturnType<typeof usePickerSession>["state"];
   send: ReturnType<typeof usePickerSession>["send"];
@@ -29,6 +29,8 @@ export function PickerCitationShelf({
   input: RefObject<HTMLInputElement | null>;
   sourceState: ReturnType<typeof usePickerSource>;
   inspector: CitationInspectorState;
+  /** Enter would deliver the shown citation now, not wait for a search or a setting. */
+  deliverable: boolean;
 }) {
   const { selected, selectionChanged } = state;
   const { previewReceipt, displayedOutput, shown, previewProblem } = output;
@@ -40,7 +42,7 @@ export function PickerCitationShelf({
     const shared = [...selected.values()].some((other) => other.key === r.key && other.source !== r.source);
     return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
   };
-  return <CitationShelf presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
+  return <CitationShelf deliverable={deliverable} presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
     send({ type: "remove-reference", reference: r });
     input.current?.focus({ preventScroll: true });
   }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}

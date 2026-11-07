@@ -95,6 +95,11 @@ pub(super) trait PostDesk {
     /// What the selection is now must be what the picker opened on. Read after
     /// the secure-input check, so a refused paste never reads selected text.
     fn selection_unchanged(&self, selection: &Selection) -> Result<(), CopyReason>;
+    /// Why a paste refused as unprovable or for secure typing was refused, when
+    /// the target's focused control hides typing. Asked only after the refusal.
+    fn refused(&self, reason: CopyReason) -> CopyReason {
+        reason
+    }
     fn change_count(&self) -> isize;
     fn secure_input(&self) -> Option<bool>;
     fn seconds_since_input(&self, event: InputPress) -> f64;
@@ -129,8 +134,23 @@ pub(super) fn check_input_since(desk: &(impl PostDesk + ?Sized), began: Instant)
     Ok(())
 }
 
+/// The paste, or why it stays copied in the person's words.
 #[cfg(any(target_os = "macos", test))]
 pub(super) fn checked_post(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
+    let reason = match post_checked(desk, request) {
+        PostResult::Unavailable => CopyReason::PasteUnavailable,
+        PostResult::SecureInput => CopyReason::SecureInput,
+        result => return result,
+    };
+    match desk.refused(reason) {
+        CopyReason::SecureField => PostResult::SecureField,
+        CopyReason::SecureInput => PostResult::SecureInput,
+        _ => PostResult::Unavailable,
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn post_checked(desk: &impl PostDesk, request: &PostRequest) -> PostResult {
     if let Err(failure) = request.stamp.check(desk.stamp()) {
         return failure.result();
     }

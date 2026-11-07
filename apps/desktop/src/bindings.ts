@@ -84,7 +84,7 @@ export const commands = {
 	 * that runs on a worker with no lock held; the short commit that writes the
 	 * clipboard stays on the main thread, as the native clipboard needs.
 	 */
-	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash, replaces }),
+	copyFileCitation: (ticket: string, contentHash: string, replaces: string[]) => __TAURI_INVOKE<Copied>("copy_file_citation", { ticket, contentHash, replaces }),
 	projectStatus: () => __TAURI_INVOKE<ProjectStatus | null>("project_status"),
 	/** Recheck only after a person's explicit action; never a background timer. */
 	retryProject: () => __TAURI_INVOKE<void>("retry_project"),
@@ -337,10 +337,10 @@ export type Delivered = {
 } | {
 	outcome: "copied";
 	/**
-	 * Why Ibis did not paste, when the person can do something about it
-	 * or would expect a paste: a `CopyReason` code such as `terminal`.
+	 * Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
+	 * `key-release-failed`. Every copy says why (docs/design/delivery.md).
 	 */
-	reason: string | null;
+	reason: string;
 };
 
 /** How much each result row shows (ADR 0020). */
@@ -461,12 +461,19 @@ export type LibraryStatus = {
 	error: string | null;
 	/** A successfully opened snapshot, including a valid empty library. */
 	has_snapshot: boolean;
+	/** A searched source cannot be watched, so edits show only after a reload. */
+	live_updates_off: boolean;
 	/** Requested file name only, including during opening and after failure. */
 	name: string | null;
 	/** Something to tell the user that is not a failure to open. */
 	note: string | null;
 	/** What kind of failure `error` is, so the picker can offer the fix. */
 	problem: LibraryProblem | null;
+	/**
+	 * What reading found, at most the engine's detail limit, so the footer
+	 * can say which entries were skipped and where to look.
+	 */
+	reading: ReadingNotice[];
 	references: number;
 	revision: string;
 	/** The searchable snapshot contains only bundled invented references. */
@@ -715,6 +722,15 @@ export type ProjectStatus = {
 	 */
 	revision: number;
 	state: ProjectState;
+};
+
+/** One thing reading the library found: an entry skipped or one to check. */
+export type ReadingNotice = {
+	/** The engine's warning code, such as `duplicate-key` or `syntax`. */
+	code: string;
+	/** The repeated key, for `duplicate-key` only: the person's own data. */
+	key: string | null;
+	line: number | null;
 };
 
 export type ReceiptSummary = {

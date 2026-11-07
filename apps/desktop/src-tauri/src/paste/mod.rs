@@ -271,7 +271,7 @@ impl LastTarget {
     pub(crate) fn write_copy(
         &self,
         text: &str,
-        replaces: Option<&str>,
+        replaces: &[String],
         paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
     ) -> Result<Option<u32>, String> {
@@ -300,7 +300,7 @@ impl LastTarget {
     ) -> Result<Option<u32>, String> {
         self.write_copy_observed(
             text,
-            None,
+            &[],
             stamp,
             paste_for,
             write,
@@ -313,7 +313,7 @@ impl LastTarget {
     fn write_copy_observed(
         &self,
         text: &str,
-        replaces: Option<&str>,
+        replaces: &[String],
         stamp: SafetyStamp,
         paste_for: impl FnOnce(&Captured) -> Result<Option<AppPaste>, CopyReason>,
         write: impl FnOnce() -> Result<Option<isize>, String>,
@@ -324,8 +324,8 @@ impl LastTarget {
         last.owner = None;
         let captured = last.captured.clone().map(|mut captured| {
             captured.paste = paste_for(&captured);
-            if let Some(old) = replaces {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of(old));
+            if !replaces.is_empty() {
+                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
             }
             #[cfg(target_os = "macos")]
             if captured.focus_failure.is_none()
@@ -364,7 +364,9 @@ impl LastTarget {
     }
 
     /// Serialize own writes, presentation retirement and posting. Taking a
-    /// receipt does not surrender its ownership to a superseded worker.
+    /// receipt does not surrender its ownership to a superseded worker. A
+    /// final check that could not finish in time posted no key, so under this
+    /// same lock the copy keeps its one turn for the delivery's retry.
     #[cfg(any(target_os = "macos", test))]
     fn post_if_current(&self, request: &PostRequest, post: impl FnOnce() -> PostResult) -> PostResult {
         let Ok(mut last) = self.0.try_lock() else {
@@ -374,7 +376,11 @@ impl LastTarget {
             return PostResult::Refused;
         }
         last.owner = None;
-        post()
+        let result = post();
+        if result == PostResult::Unavailable {
+            last.owner = Some(request.token);
+        }
+        result
     }
 
     #[cfg(target_os = "macos")]
@@ -462,10 +468,21 @@ pub(crate) enum Delivered {
         app: Option<String>,
     },
     Copied {
-        /// Why Ibis did not paste, when the person can do something about it
-        /// or would expect a paste: a `CopyReason` code such as `terminal`.
-        reason: Option<String>,
+        /// Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
+        /// `key-release-failed`. Every copy says why (docs/design/delivery.md).
+        reason: String,
     },
+}
+
+impl Delivered {
+    pub(crate) fn copied(reason: CopyReason) -> Self {
+        Self::Copied {
+            reason: serde_json::to_value(reason)
+                .ok()
+                .and_then(|code| code.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "paste-unavailable".into()),
+        }
+    }
 }
 
 /// A Windows copy freezes its destination before writing, then adds the
@@ -532,7 +549,7 @@ impl<W> CopyEvidence for DeliveryTicket<W> {
 }
 
 #[cfg(target_os = "windows")]
-pub(crate) fn begin_copy(app: &AppHandle, replaces: Option<&str>) -> CopyAttempt<windows::Window> {
+pub(crate) fn begin_copy(app: &AppHandle, replaces: &[String]) -> CopyAttempt<windows::Window> {
     let stamp = SafetyStamp::now();
     let written = Instant::now();
     let generation = app.state::<crate::picker::PickerGeneration>().current();
@@ -551,8 +568,8 @@ pub(crate) fn begin_copy(app: &AppHandle, replaces: Option<&str>) -> CopyAttempt
     let target = target.map(|mut target| {
         if let Some(captured) = &mut target.captured {
             captured.paste = app.state::<crate::destination::AppMemory>().for_capture(captured);
-            if let Some(old) = replaces {
-                captured.selection = capture::Selection::Citation(capture::OldCitation::of(old));
+            if !replaces.is_empty() {
+                captured.selection = capture::Selection::Citation(capture::OldCitation::of_any(replaces));
             }
         }
         target
@@ -621,7 +638,7 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
         return key_release_failed();
     }
     let Some(ticket) = ticket else {
-        return Delivered::Copied { reason: None };
+        return Delivered::copied(CopyReason::PasteUnavailable);
     };
     with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
         deliver_ticket(&desk, &ticket, text, enabled)

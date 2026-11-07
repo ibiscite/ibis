@@ -13,7 +13,8 @@ export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; prob
 export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, profilesFailed = false, failure = null }: {
   groupsFailed?: boolean; profilesFailed?: boolean; failure?: string | null;
 } = {}): LibraryCondition {
-  const problem = [groupsFailed && operationFailures.zoteroGroups, profilesFailed && setupText.zoteroProfilesFailed].filter(Boolean).join(" ") || null;
+  const problem = [groupsFailed && operationFailures.zoteroGroups, profilesFailed && setupText.zoteroProfilesFailed,
+    library?.has_snapshot && library.live_updates_off && libraryMessages.liveUpdatesOff].filter(Boolean).join(" ") || null;
   // An old copy kept after a failed read is still searched: a warning, not a stop.
   if (library?.stale) return { health: "look", problem };
   if (library === null || library?.error) return { health: "stop", problem };

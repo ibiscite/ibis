@@ -296,6 +296,35 @@ fn capture_query<P: Provider>(provider: &P, pid: i32, eligible: bool) -> Result<
     query(provider, pid, deadline.min(provider.now() + budget), || Ok(()))
 }
 
+/// The capture, or why it failed in the person’s words.
+fn capture_reason<P: Provider>(provider: &P, pid: i32, eligible: bool) -> Result<Identity<P::Element>, CopyReason> {
+    capture_query(provider, pid, eligible)
+        .map_err(|reason| refused_because(provider, pid, reason, provider.now() + SELECTION_LIMIT))
+}
+
+/// A paste already refused as unprovable or for secure typing says why: the
+/// target's focused control hides typing, or secure typing is on. It runs only
+/// after the refusal, so it changes the words and never the outcome; it reads
+/// the focused control's subrole and nothing of its text (decision 0029).
+fn refused_because<P: Provider>(provider: &P, pid: i32, refused: CopyReason, deadline: Instant) -> CopyReason {
+    if !matches!(refused, CopyReason::PasteUnavailable | CopyReason::SecureInput) || !provider.trusted() {
+        return refused;
+    }
+    let hides_typing = provider
+        .system()
+        .and_then(|system| provider.read(&system, Attribute::FocusedElement, deadline))
+        .ok()
+        .filter(|focused| provider.pid(focused) == Ok(pid) && provider.now() < deadline)
+        .is_some_and(|focused| matches!(provider.password_field(&focused, deadline), Reply::Value(true)));
+    if hides_typing {
+        CopyReason::SecureField
+    } else if provider.secure_typing() == Some(true) {
+        CopyReason::SecureInput
+    } else {
+        refused
+    }
+}
+
 fn query<P: Provider>(
     provider: &P,
     pid: i32,
@@ -438,6 +467,10 @@ pub(super) fn capture(
 
 pub(super) fn selection_unchanged(pid: i32, expected: &Selection, deadline: Instant) -> Result<(), CopyReason> {
     native::selection_unchanged(pid, expected, deadline)
+}
+
+pub(super) fn refused(pid: i32, reason: CopyReason) -> CopyReason {
+    native::refused(pid, reason)
 }
 
 pub(super) fn trusted() -> bool {
@@ -1372,5 +1405,91 @@ mod tests {
             capture_query(&replaced, 42, true),
             Err(CopyReason::TargetChanged)
         ));
+    }
+
+    #[test]
+    fn a_web_password_field_whose_window_cannot_be_proved_says_it_hides_typing() {
+        // Web content can lack a top-level surface; the paste is refused
+        // either way, and the words name the field rather than nothing.
+        let field = Fake {
+            unsupported: Some(Attribute::TopLevel),
+            password: Reply::Value(true),
+            secure_typing: Cell::new(Some(true)),
+            ..Fake::new()
+        };
+        assert!(matches!(
+            capture_reason(&field, 42, false),
+            Err(CopyReason::SecureField)
+        ));
+        assert_eq!(
+            *field.selection_reads.borrow(),
+            ["subrole"],
+            "never the range or the text"
+        );
+        let typing = Fake {
+            unsupported: Some(Attribute::TopLevel),
+            secure_typing: Cell::new(Some(true)),
+            ..Fake::new()
+        };
+        assert!(matches!(
+            capture_reason(&typing, 42, false),
+            Err(CopyReason::SecureInput)
+        ));
+        let neither = Fake {
+            unsupported: Some(Attribute::TopLevel),
+            ..Fake::new()
+        };
+        assert!(matches!(
+            capture_reason(&neither, 42, false),
+            Err(CopyReason::PasteUnavailable)
+        ));
+    }
+
+    #[test]
+    fn only_an_unproved_or_secure_refusal_is_reworded_and_only_by_the_targets_own_field() {
+        let foreign = Fake {
+            focused_pid: 99,
+            password: Reply::Value(true),
+            ..Fake::new()
+        };
+        assert_eq!(
+            refused_because(
+                &foreign,
+                42,
+                CopyReason::PasteUnavailable,
+                foreign.now() + SELECTION_LIMIT
+            ),
+            CopyReason::PasteUnavailable
+        );
+        let field = Fake {
+            password: Reply::Value(true),
+            ..Fake::new()
+        };
+        for kept in [
+            CopyReason::TargetChanged,
+            CopyReason::AccessibilityRequired,
+            CopyReason::ClipboardChanged,
+        ] {
+            assert_eq!(refused_because(&field, 42, kept, field.now() + SELECTION_LIMIT), kept);
+        }
+        assert!(field.selection_reads.borrow().is_empty());
+        assert_eq!(
+            refused_because(&field, 42, CopyReason::SecureInput, field.now() + SELECTION_LIMIT),
+            CopyReason::SecureField
+        );
+        let revoked = Fake {
+            password: Reply::Value(true),
+            trusted: Cell::new(false),
+            ..Fake::new()
+        };
+        assert_eq!(
+            refused_because(
+                &revoked,
+                42,
+                CopyReason::PasteUnavailable,
+                revoked.now() + SELECTION_LIMIT
+            ),
+            CopyReason::PasteUnavailable
+        );
     }
 }
