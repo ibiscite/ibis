@@ -110,6 +110,10 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
             .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
             .filter_map(|warning| warning.key.clone())
             .collect(),
+        cut_short: loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::WorkLimit),
     }
 }
 impl Engine {

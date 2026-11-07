@@ -70,6 +70,10 @@ reason-zotero-not-found = No Zotero library was found on this computer.
 reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
     .cli = Free some space, or open Zotero.
     .app = Free some space, or open Zotero.
+reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
+    .cli = Split the library into smaller files and give each with --file.
+    .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
+    .app = Split the library into smaller files.
 
 ## A reference a citation could not include. { $reference } names it.
 
@@ -149,6 +153,8 @@ cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
+cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
+cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be BibTeX, BibLaTeX or CSL-JSON.
 
 ## The app’s own sentence about a citation.
 

@@ -157,6 +157,8 @@ pub enum ErrorReason {
     ZoteroNotFound,
     /// A closed read needs a private copy and there is no room for it.
     ZoteroNoSpace,
+    /// Nothing has the key in what was read, and a library was too large to read whole.
+    LibraryCutShort,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

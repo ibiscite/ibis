@@ -45,9 +45,7 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
                 return Some(
                     match holdings {
                         Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
-                        Holdings::Empty => {
-                            "No open library holds any references. A file must be BibTeX, BibLaTeX or CSL-JSON."
-                        }
+                        Holdings::Empty => return catalogue::text("cli-no-references", None, &[]),
                         Holdings::References => "No references found.",
                     }
                     .into(),
@@ -616,6 +614,9 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
             format!(
                 "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
             )
+        }
+        (_, Some(reason @ ErrorReason::LibraryCutShort)) => {
+            format!("cannot find '{shown}': {}", reason_sentence(reason))
         }
         (_, Some(ErrorReason::AmbiguousKey)) => {
             format!("several references use the citation key '{shown}'; give each one its own key in your library.")

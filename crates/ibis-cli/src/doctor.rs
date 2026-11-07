@@ -86,14 +86,20 @@ fn unix_ms() -> u64 {
 /// The report for a person: a plain verdict line per check, then one conclusion.
 /// `--json` keeps every field; only these words are free to change.
 fn report_text(data: &Value, now_ms: u64) -> String {
-    let mut text = format!(
-        "Ibis {} · contract {} · {} engine methods, {} key outputs, {} styles\n\n",
-        ibis_core::VERSION,
-        data["contract_version"],
-        data["capabilities"]["methods"].as_array().map_or(0, Vec::len),
-        data["capabilities"]["key_outputs"].as_array().map_or(0, Vec::len),
-        data["capabilities"]["csl_styles"].as_array().map_or(0, Vec::len),
-    );
+    let count = |list: &str| data["capabilities"][list].as_array().map_or(0, Vec::len).to_string();
+    let mut text = ibis_engine::catalogue::text(
+        "cli-doctor-summary",
+        None,
+        &[
+            ("version", ibis_core::VERSION),
+            ("contract", &data["contract_version"].to_string()),
+            ("methods", &count("methods")),
+            ("outputs", &count("key_outputs")),
+            ("styles", &data["capabilities"]["csl_styles"]["count"].to_string()),
+        ],
+    )
+    .unwrap_or_default();
+    text.push_str("\n\n");
     let mut checks = vec![("Settings".to_owned(), &data["config"])];
     // Each library has its own line; this one only matters when there are none.
     if data["library_check"]["status"] != "ok" {
@@ -300,7 +306,7 @@ mod tests {
     fn report(sources: Vec<Value>) -> Value {
         json!({
             "contract_version": 1,
-            "capabilities": {"methods": ["search", "cite"], "key_outputs": [{}], "csl_styles": [{}, {}, {}]},
+            "capabilities": {"methods": ["search", "cite"], "key_outputs": [{}], "csl_styles": {"count": 3}},
             "config": {"status":"not-checked", "code":"config-not-requested", "message":"Add --config to check settings."},
             "library_check": {"status":"ok", "code":"sources-reported", "message":"Each selected source has its own result below."},
             "sources": sources,
@@ -319,7 +325,10 @@ mod tests {
     fn a_healthy_report_ends_in_all_good_and_a_skipped_check_is_not_a_problem() {
         let current = json!({"state":"current", "updated_at_ms":5});
         let text = report_text(&report(vec![source("ok", "source-ok", current)]), 10);
-        assert!(text.contains("2 engine methods, 1 key outputs, 3 styles"), "{text}");
+        assert!(
+            text.contains("2 engine methods, 1 key outputs, 3 citation styles"),
+            "{text}"
+        );
         assert!(text.contains("ok    Library 1 (file): The fixed message.\n"), "{text}");
         assert!(
             text.contains("skip  Settings: Add --config to check settings.\n"),
