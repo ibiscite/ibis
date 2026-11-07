@@ -1,7 +1,7 @@
 /* Peek (⌘Y): a readable overlay under the highlighted row, as Quick Look shows a
    file without leaving Finder. The menu's material, corner and shadow; facts as
    an inspector's label and value rows. */
-.peek-card { box-sizing: border-box; inline-size: min(28rem, calc(100vw - 16px)); padding: var(--space-3) var(--space-4); border-radius: var(--r-menu); box-shadow: var(--shadow-overlay); font: var(--type-body-size) / var(--type-body-line) var(--font); }
+.peek-card { box-sizing: border-box; inline-size: min(28rem, calc(100vw - 2 * var(--inset))); padding: var(--space-3) var(--space-4); border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); }
 .peek-title { margin: 0; font: var(--strong) var(--type-title-size) / var(--type-title-line) var(--font); overflow-wrap: anywhere; }
 .peek-byline { margin: var(--space-1) 0 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 .peek-facts { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--space-1) var(--space-3); margin: var(--space-3) 0 0; }
@@ -9,4 +9,3 @@
 .peek-facts dt { color: var(--text-secondary); text-align: end; }
 .peek-facts dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .peek-facts dd[data-mono] { font-family: var(--mono); }
-@media (forced-colors: active) { .peek-card { border: var(--border-width) solid CanvasText; } }

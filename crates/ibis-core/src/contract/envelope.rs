@@ -159,6 +159,8 @@ pub enum ErrorReason {
     ZoteroNoSpace,
     /// A CSV file's first row does not name the columns of Ibis's template.
     CsvTemplate,
+    /// Nothing has the key in what was read, and a library was too large to read whole.
+    LibraryCutShort,
     /// Neither the file's name nor its contents identify a supported library format.
     UnknownFormat,
 }

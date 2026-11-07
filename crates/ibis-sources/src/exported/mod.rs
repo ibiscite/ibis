@@ -160,6 +160,7 @@ impl<'a> Records<'a> {
         self.started += 1;
         if self.started > crate::MAX_LIBRARY_RECORDS {
             self.warn(WarningCode::WorkLimit, line);
+            self.parsed.cut_short = true;
             return false;
         }
         true

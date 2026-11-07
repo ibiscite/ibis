@@ -522,6 +522,7 @@ impl ZoteroSource {
             kind: LibraryKind::Zotero,
             snapshot,
             warnings,
+            cut_short: false,
             attachment_paths: Default::default(),
             best_attachments: Default::default(),
         });

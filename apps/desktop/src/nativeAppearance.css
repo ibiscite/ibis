@@ -21,7 +21,7 @@
 }
 
 /* macOS skin (docs/design/foundations.md, Per platform): frameless buttons
-   and key caps on soft fills, rounder menus. Increase contrast and forced colours
+   and key caps on soft fills. Menus and sheets take the shared overlay (Overlay.css). Increase contrast and forced colours
    keep their framed, opaque controls. */
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   /* Pressed and other state frames (for example the first-run writing choice) keep their own border. */
@@ -33,28 +33,5 @@
     content: ""; position: fixed; inset: 0; z-index: 3; pointer-events: none;
     border-radius: var(--r-win);
     box-shadow: inset 0 0 0 var(--border-width) var(--glass-edge, transparent);
-  }
-  :root[data-platform="macos"][data-native-appearance="vibrancy"] :is(.menu-popover, .ui-sheet),
-  :root[data-platform="macos"][data-native-appearance="liquid-glass"] :is(.menu-popover, .ui-sheet) {
-    background: color-mix(in srgb, var(--surface) 94%, transparent);
-    -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
-  }
-  /* Without a backdrop blur, list text would show through: keep menus opaque. */
-  @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-    :root[data-platform="macos"][data-native-appearance="vibrancy"] :is(.menu-popover, .ui-sheet),
-    :root[data-platform="macos"][data-native-appearance="liquid-glass"] :is(.menu-popover, .ui-sheet) { background: var(--surface); }
-  }
-}
-
-/* Native failure/unknown preferences must not leave a web-only glass menu. */
-:root[data-platform="macos"]:not(.notice-window):not([data-native-appearance="vibrancy"]):not([data-native-appearance="liquid-glass"]) :is(.menu-popover, .ui-sheet) {
-  background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
-}
-
-/* Include the applied-mode specificity while a native preference refresh waits. */
-@media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
-  :root[data-platform]:not(.notice-window) :is(.menu-popover, .ui-sheet),
-  :root[data-platform][data-native-appearance]:not(.notice-window) :is(.menu-popover, .ui-sheet) {
-    background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none;
   }
 }

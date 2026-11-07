@@ -7,7 +7,7 @@
 .citation-field { display: grid; grid-column: 1 / -1; grid-template-columns: subgrid; align-items: center; min-height: var(--control-h); }
 .citation-label { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: end; }
 /* The clear border is the rest of the target; the fill lines up with the pop-up's. */
-.citation-field input { --field-gap: calc((var(--control-h) - var(--action-h)) / 2); box-sizing: border-box; width: calc(100% + 2 * var(--field-gap)); min-width: 0; height: var(--control-h); margin-inline: calc(-1 * var(--field-gap)); padding-inline: calc(var(--space-3) + var(--border-width)); border: var(--field-gap) solid transparent; border-radius: calc(var(--r-control) + var(--field-gap)); background: var(--surface-field) padding-box; color: var(--text); font: var(--type-body-size) / var(--type-body-line) var(--font); font-variant-numeric: tabular-nums; }
+.citation-field input { --field-gap: calc((var(--control-h) - var(--action-h)) / 2); box-sizing: border-box; width: calc(100% + 2 * var(--field-gap)); min-width: 0; height: var(--control-h); margin-inline: calc(-1 * var(--field-gap)); padding-inline: calc(var(--space-3) + var(--border-width)); border: var(--field-gap) solid transparent; border-radius: var(--r-control); background: var(--surface-field) padding-box; color: var(--text); font: var(--type-body-size) / var(--type-body-line) var(--font); font-variant-numeric: tabular-nums; }
 .citation-field input::placeholder { color: var(--text-placeholder); opacity: 1; }
 /* With the caret in it, an empty field reads as empty, not as holding "None". */
 .citation-field input:focus::placeholder { color: transparent; }

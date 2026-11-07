@@ -18,6 +18,8 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
   const platform = currentPlatform();
   const { text } = useInterfaceMessages();
   const appearance = p.appearance ?? "system", accent = p.accent ?? "system";
+  // One kind of choice per row: every picture is the same small window, so
+  // Appearance, Rows and Window size read alike; two-way choices share one group.
   return <>
     <Group id="look-appearance" title={text("look-appearance")}>
       <Row bare id="appearance" label={text("look-appearance")} {...feedback("appearance")}>
@@ -26,17 +28,10 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
           onChange={(appearance) => change({ appearance })} />
       </Row>
     </Group>
-    <Group id="look-accent">
-      <Row id="accent" label={text("look-accent")} {...feedback("accent")}>
-        <Segmented label={text("look-accent")} value={accent}
-          options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`, { platform }) }))}
-          onChange={(accent) => change({ accent })} />
-      </Row>
-    </Group>
     <Group id="look-rows" title={text("general-rows")}>
       <Row bare id="rows" label={text("general-rows")} {...feedback("rows")}>
-        <PictureChoice strips label={text("general-rows")} value={p.density}
-          options={(["compact", "comfortable"] as const).map((value) => ({ value, label: text(`general-density-${value}`), note: text(`look-density-${value}`), picture: <PickerPicture rowsOnly density={value} /> }))}
+        <PictureChoice label={text("general-rows")} value={p.density}
+          options={(["compact", "comfortable"] as const).map((value) => ({ value, label: text(`general-density-${value}`), picture: <PickerPicture density={value} /> }))}
           onChange={(density) => change({ density })} />
       </Row>
     </Group>
@@ -49,7 +44,12 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
         {windowSize === "custom" && <p className="ui-settings-note">{text("look-window-custom-note")}</p>}
       </Row>
     </Group>
-    <Group id="look-text">
+    <Group id="look-accent">
+      <Row id="accent" label={text("look-accent")} {...feedback("accent")}>
+        <Segmented label={text("look-accent")} value={accent}
+          options={ACCENTS.map((value) => ({ value, label: text(`look-accent-${value}`, { platform }) }))}
+          onChange={(accent) => change({ accent })} />
+      </Row>
       <Row id="text-size" label={text("look-text-size")} {...feedback("text-size")}>
         <Segmented label={text("look-text-size")} value={p.larger_text ? "larger" : "default"}
           options={[{ value: "default", label: text("look-default-text") }, { value: "larger", label: text("look-larger-text") }]}

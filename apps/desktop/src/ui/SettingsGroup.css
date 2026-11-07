@@ -6,13 +6,14 @@
 }
 /* One group heading, shared with the shortcuts list, starting where its rows' text
    starts, as System Settings aligns them. */
-.ui-settings-group-title, .ui-shortcut-table th[scope="rowgroup"] {
+.ui-settings-group-title, .ui-shortcut-table th[scope="rowgroup"], .ui-sheet-body :is(h3, h4) {
   margin: 0; padding: 0 calc(var(--settings-row-pad) + var(--border-width)) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size);
   line-height: var(--type-label-line); font-weight: var(--strong);
 }
-/* Grouped content [D17]: the Mac's quaternary fill, so the window shows through. */
-.ui-settings-card {
-  flex: none; min-width: 0; border-radius: var(--r-card); background: var(--surface-grouped);
+/* Grouped content [D17]: the Mac's quaternary fill, so the window shows through.
+   A sheet's list and its output text are the same card. */
+.ui-settings-card, .ui-sheet-output {
+  flex: none; min-width: 0; border-radius: var(--r-large); background: var(--surface-grouped);
   /* One edge per shape: the fill separates the card, as System Settings does. */
   border: var(--border-width) solid transparent; overflow: hidden;
 }
@@ -25,7 +26,7 @@
    A highlighted row's fill is its own edge, so no divider touches it. */
 .ui-settings-row + .ui-settings-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--settings-row-pad); border-top: var(--border-width) solid var(--separator); }
 .ui-settings-row[data-highlighted]::before, .ui-settings-row[data-highlighted] + .ui-settings-row::before { display: none; }
-.ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 14rem; min-width: 0; overflow-wrap: anywhere; }
+.ui-settings-row-text { display: flex; flex-direction: column; flex: 1 1 var(--status-min); min-width: 0; overflow-wrap: anywhere; }
 .ui-settings-row > :not(.ui-settings-row-text) { max-inline-size: 100%; }
 .ui-settings-row .ui-button { padding-block: var(--space-1); }
 .ui-settings-description { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-body-line); }
@@ -34,7 +35,7 @@
 
 .ui-settings-row[data-highlighted] { background: var(--highlight); }
 .ui-settings-row-problem { flex-basis: 100%; margin: 0; color: var(--text); overflow-wrap: anywhere; }
-.ui-settings-search { position: relative; margin: 0 var(--inset) 10px; min-width: 0; }
+.ui-settings-search { position: relative; margin: 0 var(--inset) var(--space-2); min-width: 0; }
 /* The glyph sits on the sidebar's icon column. */
 .ui-settings-search > .ui-settings-search-glyph { position: absolute; inset-block-start: 50%; inset-inline-start: calc(var(--space-2) + (var(--icon) - var(--icon-small)) / 2); width: var(--icon-small); height: var(--icon-small); translate: 0 -50%; color: var(--text-tertiary); pointer-events: none; }
 /* No native search appearance: its focus glow is the Mac's accent, not Ibis's. */
@@ -49,4 +50,4 @@
 }
 
 .ui-settings-search input::-webkit-search-cancel-button { appearance: none; -webkit-appearance: none; display: none; }
-.ui-settings-search > .ui-settings-search-clear.ui-button { position: absolute; inset-block-start: 50%; inset-inline-end: var(--space-1); translate: 0 -50%; --ring-offset: calc(-1 * var(--ring-width)); }
+.ui-settings-search > .ui-settings-search-clear.ui-button { position: absolute; inset-block-start: 50%; inset-inline-end: var(--space-1); translate: 0 -50%; --ring-offset: var(--ring-inside); }

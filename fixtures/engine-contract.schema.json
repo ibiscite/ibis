@@ -784,6 +784,11 @@
           "const": "csv-template"
         },
         {
+          "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+          "type": "string",
+          "const": "library-cut-short"
+        },
+        {
           "description": "Neither the file's name nor its contents identify a supported library format.",
           "type": "string",
           "const": "unknown-format"

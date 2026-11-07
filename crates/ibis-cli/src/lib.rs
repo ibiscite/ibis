@@ -137,6 +137,8 @@ fn command() -> Command {
                         .long("limit")
                         .value_name("N")
                         .value_parser(search_limit)
+                        // `-1` reaches the parser, which says what a limit may be.
+                        .allow_negative_numbers(true)
                         .default_value("10")
                         .help("Return at most N results, from 1 to 1000"),
                 ),

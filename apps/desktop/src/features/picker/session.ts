@@ -58,6 +58,13 @@ export type SessionState = {
   shown: boolean;
   /** Shown and hidden events so far: a visibility read started before one is older. */
   visibilityEvents: number;
+  /** Hidden, or not yet known to be shown: the session asks the engine nothing
+   * until the picker is shown or read as visible. A prepared window is still
+   * hidden, and whatever it asked would belong to the opening before it. */
+  resting: boolean;
+  /** The newest search and preview held back while resting, asked for when the
+   * same opening wakes; a new opening asks afresh instead. */
+  deferred: SessionEffect[];
   /** The search for the current query and its shown answer. */
   search: SearchState;
   /** What Enter would paste for the chosen references. */
@@ -74,6 +81,8 @@ export type SessionEvent =
   | PreviewEvent
   | DestinationEvent
   | { type: "picker-inputs"; inputs: PickerInputs }
+  /** The screen has committed what the session last said, with every input it had. */
+  | { type: "committed" }
   | { type: "query"; value: string }
   /** The native answer to "is the picker shown?", read when the picker starts. */
   | { type: "visibility-read"; visible: boolean; events: number }
@@ -112,7 +121,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, view: null, inputs: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview, destination: initialDestination,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, resting: true, deferred: [], search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
@@ -148,9 +157,10 @@ function readPresentation(s: SessionState, retry = false): [SessionState, Sessio
   return [{ ...s, readingPresentation: true, retryPresentation: retry }, [{ type: "read-presentation", visibility: s.visibility }]];
 }
 
-// Readiness is supplied by the search/preview adapters. Their captured session
-// and interaction must still match before they can release a waiting Enter.
-function advance(s: SessionState): [SessionState, SessionEffect[]] {
+// A waiting Enter goes on once the view is ready. It copies only on a person's
+// own action or once the screen has committed: an engine answer can arrive
+// while newer preferences or library status are still on their way from React.
+function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect[]] {
   const p = s.pendingCopy, v = s.view;
   // A command query never copies.
   if (!p || !v || searchQuery(s) !== s.query) return [s, []];
@@ -169,11 +179,11 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   if (p.choice === null) {
     if (v.searchPending) return [s, []];
     if (!v.chosen.length) return [{ ...s, pendingCopy: null }, []];
-    return advance({ ...s, pendingCopy: { ...p, choice: key } });
+    return advance({ ...s, pendingCopy: { ...p, choice: key } }, copies);
   }
   if (!v.ready || v.saving) return [s, []];
   if (!p.question && v.shouldAsk) return [{ ...s, pendingCopy: { ...p, question: "open" } }, []];
-  if (p.question === "open" || v.shown === null) return [s, []];
+  if (p.question === "open" || v.shown === null || !copies) return [s, []];
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: say("picker-snapshot-changed") }, [{ type: "refresh" }]];
@@ -198,12 +208,12 @@ function observeProject(s: SessionState, clearReplacement: boolean): [SessionSta
 }
 
 /** A changed view retires what was made for the old one, then Enter may go on. */
-function applyView(s: SessionState): [SessionState, SessionEffect[]] {
+function applyView(s: SessionState, copies: boolean): [SessionState, SessionEffect[]] {
   const v = deriveView(s), old = s.view;
   if (!v) return [s, []];
   const same = old && Object.entries(v).every(([key, value]) => key === "chosen" ? choiceKey(old.chosen) === choiceKey(v.chosen) :
     key === "output" ? sameOutput(old.output, v.output) : old[key as keyof SessionView] === value);
-  if (same) return advance(s);
+  if (same) return advance(s, copies);
   const projectChanged = old && (old.writingProjectId ?? null) !== (v.writingProjectId ?? null);
   const contextChanged = old && (projectChanged || old.projectVersion !== v.projectVersion || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision || s.selected.size === 0 && old.defaultChoice !== v.defaultChoice);
   const newOutput = old && (projectChanged || old.format !== v.format || old.snapshotRevision !== v.snapshotRevision);
@@ -211,15 +221,34 @@ function applyView(s: SessionState): [SessionState, SessionEffect[]] {
   if (!v.remembersLast && (s.lastCitations.size || s.changing || s.flights.some((f) => f.appId))) s = reduceEvent(s, { type: "forget-last" })[0];
   return advance({ ...s, view: v, context: s.context + (contextChanged ? 1 : 0),
     changing: abandonReplacement ? null : s.changing,
-    shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
+    shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice }, copies);
 }
 
 /** One event, then the view it leaves. */
 export function reduceSession(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
+  const copies = event.type === "enter" || event.type === "question" || event.type === "committed";
   const [next, effects] = reduceEvent(s, event);
-  if (next === s) return [next, effects];
-  const [viewed, more] = applyView(next);
-  return [viewed, [...effects, ...more]];
+  if (next === s && event.type !== "committed") return [next, effects];
+  const [viewed, more] = applyView(next, copies);
+  return rest(s, viewed, [...effects, ...more]);
+}
+
+const engineWork = (effect: SessionEffect) => effect.type === "search" || effect.type === "preview";
+/** A resting picker asks the engine nothing. It keeps the newest search and
+ * preview, and asks for them when the same opening wakes. */
+function rest(before: SessionState, s: SessionState, effects: SessionEffect[]): [SessionState, SessionEffect[]] {
+  if (s.resting) {
+    // A stopped preview, or a newer request, replaces what was held back.
+    const stopped = effects.some((effect) => effect.type === "stop-preview");
+    if (!stopped && !effects.some(engineWork)) return [s, effects];
+    const held = s.deferred.filter((effect) => !effects.some((next) => next.type === effect.type) && !(stopped && effect.type === "preview"));
+    const deferred = [...held, ...effects.filter(engineWork)];
+    return [{ ...s, deferred }, effects.filter((effect) => !engineWork(effect))];
+  }
+  if (!before.resting || s.deferred.length === 0) return [s, effects];
+  // A new opening's hooks ask again for it; the same opening wakes with what it held back.
+  const woken = s.session === before.session ? s.deferred.filter((effect) => !effects.some((next) => next.type === effect.type)) : [];
+  return [{ ...s, deferred: [] }, [...woken, ...effects]];
 }
 
 function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
@@ -245,9 +274,10 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       return [observed, [...step.effects, ...effects]];
     }
     case "picker-inputs": return [{ ...s, inputs: event.inputs }, []];
+    case "committed": return [s, []];
     case "query": return [changed(s, { query: event.value, interpretLocators: true, fromDocument: false }), []];
     // A shown or hidden event since the read started is newer than its answer.
-    case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible } : s, []];
+    case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible, resting: !event.visible } : s, []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
     case "escape-search": return [changed(s, { query: "", interpretLocators: true, fromDocument: false }), []];
     case "sample": return [changed(s, { selected: new Map(), copied: null, removed: null, copyError: null, changing: null, lastCitations: new Map() }), []];
@@ -307,7 +337,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       const output = event.output ?? s.view.output;
       const next = { ...s, pendingCopy: { choice: event.choice, selection: s.selected, queryKey: sessionQueryKey(s),
         format: s.view.ready && sameOutput(s.view.output, output) ? s.view.format : null, output } };
-      return s.presentation === null ? readPresentation(next, true) : advance(next);
+      return s.presentation === null ? readPresentation(next, true) : [next, []];
     }
     case "question": {
       const p = s.pendingCopy;
@@ -319,7 +349,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       if (!s.readingPresentation || event.visibility !== s.visibility || s.presentation !== null) return [s, []];
       const retry = s.retryPresentation && s.pendingCopy !== null;
       s = { ...s, readingPresentation: false, retryPresentation: false, presentation: event.presentation };
-      if (event.presentation !== null) return advance(s);
+      if (event.presentation !== null) return [s, []];
       // One recovery read for an explicit action; another Enter can retry a
       // persistent failure. No timer or hidden retry loop owns this work.
       if (retry) return readPresentation(s);
@@ -332,8 +362,9 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       // permission detour is the same change coming back.
       const copying = s.flights.some((f) => f.id === s.activeCopy && f.replaces === s.changing);
       const left = s.changing !== null && !s.permissionDetour && !copying ? { selected: new Map(), changing: null } : {};
+      // The preview still out answers nothing now; showing again asks afresh.
       return [{ ...s, ...left, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null,
-        shown: false, visibilityEvents: s.visibilityEvents + 1 }, []];
+        shown: false, resting: true, visibilityEvents: s.visibilityEvents + 1, preview: { ...s.preview, started: null } }, s.preview.started ? [{ type: "stop-preview" }] : []];
     }
     case "preparing": {
       s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1 };
@@ -345,7 +376,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "shown": {
       s = returning(s, event.now);
       return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null,
-        shown: true, visibilityEvents: s.visibilityEvents + 1 }, []];
+        shown: true, resting: false, visibilityEvents: s.visibilityEvents + 1 }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }
