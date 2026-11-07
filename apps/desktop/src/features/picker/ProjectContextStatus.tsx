@@ -1,4 +1,4 @@
-import { projectCheckText } from "../../messages";
+import { say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import "./ProjectContextStatus.css";
 
@@ -12,7 +12,7 @@ export function ProjectCheckNotice({ refusal, problem, onRetry, onLocate, disabl
   if (!message) return null;
   return <div className="notices project-context-status" role={refusal ? "alert" : "status"}>
     <p className="project-context-message" dir="auto">{message}</p>
-    {onRetry && <Button label={projectCheckText.retry} isDisabled={disabled} onPress={onRetry} />}
-    {onLocate && <Button label={projectCheckText.locate} isDisabled={disabled} onPress={onLocate} />}
+    {onRetry && <Button label={say("project-check-retry")} isDisabled={disabled} onPress={onRetry} />}
+    {onLocate && <Button label={say("project-check-locate")} isDisabled={disabled} onPress={onLocate} />}
   </div>;
 }

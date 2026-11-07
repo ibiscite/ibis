@@ -3,7 +3,6 @@ import axe from "axe-core";
 import { afterEach, expect, test, vi } from "vitest";
 import type { PickerPreferences, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
-import { keyText } from "../messages";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
@@ -11,7 +10,8 @@ import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
 import english from "../../../../locales/en-US.ftl?raw";
-import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
+import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, say } from "../i18n";
+import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
@@ -25,8 +25,8 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
     for (const binding of KEY_TABLE) {
       const row = document.getElementById(`key-${binding.action}`)!.closest("tr")!;
-      expect(row.querySelector('th[scope="row"]')?.textContent).toBe(keyText.actions[binding.action]);
-      expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(keyText.regions[binding.region]);
+      expect(row.querySelector('th[scope="row"]')?.textContent).toBe(say(SHORTCUT_ACTIONS[binding.action]));
+      expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(say(SHORTCUT_REGIONS[binding.region]));
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
       expect(row.querySelectorAll("kbd")).toHaveLength(binding.keys.length);
       expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
@@ -888,7 +888,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
   const lists = [...document.querySelectorAll<HTMLElement>('tbody[id^="shortcuts-"]:not(#shortcuts-system)')];
-  for (const binding of KEY_TABLE) expect(screen.getByText(keyText.actions[binding.action])).toBeTruthy();
+  for (const binding of KEY_TABLE) expect(screen.getByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeTruthy();
   expect(lists.flatMap((list) => within(list).queryAllByRole("button"))).toEqual([]);
   expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(KEY_TABLE.length);
   fireEvent.click(recorder);

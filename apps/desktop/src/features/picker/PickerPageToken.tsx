@@ -1,6 +1,6 @@
 import { Icon } from "../../icons";
 import { Button } from "../../ui/Button";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import type { SessionEvent } from "./session";
 import type { CitationReference } from "./choice";
 import type { Locator } from "../../api";
@@ -14,11 +14,11 @@ export function PickerPageToken({ usingLocator, prepared, canApplyLocator, chang
   send: (event: SessionEvent) => void;
   focusHome: () => void;
 }) {
-  return usingLocator && <span className="search-page-token" role="group" aria-label={pickerText.usingLocator(usingLocator.label, usingLocator.value)}>
-    <Button variant="quiet" size="small" aria-label={pickerText.searchAsTyped} title={pickerText.searchAsTyped}
+  return usingLocator && <span className="search-page-token" role="group" aria-label={say("picker-using-locator", { label: usingLocator.label, value: usingLocator.value })}>
+    <Button variant="quiet" size="small" aria-label={say("picker-search-as-typed")} title={say("picker-search-as-typed")}
       onPress={() => { send({ type: "literal" }); focusHome(); }}>
       <bdi>{usingLocator.label === "page" ? "p." : usingLocator.label} {usingLocator.value}</bdi><Icon name="close" />
     </Button>
-    {canApplyLocator && prepared && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); focusHome(); }} aria-label={pickerText.applyLocator(prepared.key)} title={pickerText.applyLocator(prepared.key)}>Apply</Button>}
+    {canApplyLocator && prepared && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); focusHome(); }} aria-label={say("picker-apply-locator", { key: prepared.key })} title={say("picker-apply-locator", { key: prepared.key })}>Apply</Button>}
   </span>;
 }

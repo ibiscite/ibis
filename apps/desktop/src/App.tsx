@@ -5,7 +5,7 @@ import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
 import { PeekCard } from "./ui/PeekCard";
 
-import { peekText, pickerText, rowText } from "./messages";
+import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { choiceKey } from "./features/picker/choice";
@@ -43,7 +43,7 @@ import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
-import { useProjectBibliography } from "./features/picker/useProjectBibliography";
+import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
 import { ProjectCheckNotice } from "./features/picker/ProjectContextStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
@@ -57,6 +57,7 @@ import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
 import { useInterfaceMessages } from "./i18n";
+import { rowWords } from "./features/picker/ResultList";
 
 // A stable provider lets component tests use synthetic data without IPC.
 // Formatted citations are offered only when the provider can supply them.
@@ -132,9 +133,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const projectRefusal = checkedPreview?.project_refusal ?? null;
   // A file that can't be read is advice beside a key citation, never a gate.
   const projectProblem = checkedPreview && styleOf(format) === null && (project.status?.state === "failed" || project.status?.state === "damaged")
-    ? pickerText.projectDetail(project.status) : null;
+    ? projectDetail(project.status) : null;
   const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
-  const citationProblem = displayedOutput === "failed" ? previewProblem ?? pickerText.previewError : null;
+  const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
@@ -250,7 +251,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         contextNotice={contextNotice} contextNoticeIdentity={projectRefusal ? formatted?.request : undefined}>
         {shortcut?.error && <div className="notices">
           <p role="status">
-            {pickerText.shortcutError(shortcut.registered, shortcut.shortcut, shortcut.error)}
+            {shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
+              : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}
             {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
           </p>
         </div>}
@@ -283,12 +285,12 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
-        label={peekText.label(peekRecord.title || peekRecord.key)} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}
+        label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}
         facts={[
-          ...peekRecord.container ? [{ label: peekText.container, value: peekRecord.container }] : [],
-          { label: peekText.year, value: peekRecord.year ? String(peekRecord.year) : pickerText.noDate },
-          ...rowText.itemType(peekRecord.item_type) ? [{ label: peekText.type, value: rowText.itemType(peekRecord.item_type)! }] : [],
-          { label: peekText.key, value: peekRecord.key, mono: true },
+          ...peekRecord.container ? [{ label: say("peek-container"), value: peekRecord.container }] : [],
+          { label: say("peek-year"), value: peekRecord.year ? String(peekRecord.year) : say("picker-no-date") },
+          ...rowWords.itemType(peekRecord.item_type) ? [{ label: say("peek-type"), value: rowWords.itemType(peekRecord.item_type)! }] : [],
+          { label: say("peek-key"), value: peekRecord.key, mono: true },
         ]} />}
     </main>
   );

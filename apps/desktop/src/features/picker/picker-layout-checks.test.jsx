@@ -4,7 +4,7 @@ import { App } from "../../App";
 import { CitationShelf } from "./CitationShelf";
 import { useCitationInspector } from "./useCitationInspector";
 import { Notices } from "./Notices";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { backend, resetApp } from "../../testing/app";
 import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 
@@ -167,7 +167,7 @@ test.each([false, true])("a failed search notice stays reachable in a steady fra
   render(<App />);
   await screen.findByText("Type to find a reference");
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "refuse" } });
-  expect((await screen.findByText(pickerText.searchError)).getAttribute("role")).toBe("alert");
+  expect((await screen.findByText(say("picker-search-error"))).getAttribute("role")).toBe("alert");
   expect(calls).not.toContain("fit_picker");
   expect(isWholeNotice(noticeText.failedSearch)).toBe(true);
   expect(isWholeNotice("Unrelated synthetic notice")).toBe(false);

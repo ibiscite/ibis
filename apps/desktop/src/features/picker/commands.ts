@@ -3,9 +3,10 @@
 // command is written once and reads the same in More, the keys sheet and here.
 import type { IconName } from "../../icons";
 import { keysFor } from "../../keys";
-import { keyText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { isMac } from "../../platform";
 import type { PickerCommand } from "./shortcuts";
+import { SHORTCUT_ACTIONS } from "../../i18n/settings";
 
 /** Typed first in the search, it turns the list into commands, as in Raycast. */
 export const COMMAND_PREFIX = ">";
@@ -22,17 +23,17 @@ const ICONS: Record<PickerCommand, IconName> = {
  * ("Open thesis.bib", "Show in Zotero"); it is left out when there is none. */
 export function pickerCommands({ source, changeLast }: { source: string | null; changeLast: boolean }): PickerCommandEntry[] {
   const titled: [PickerCommand, string | null][] = [
-    ["format", pickerText.changeFormat],
+    ["format", say("picker-change-format")],
     ["source", source],
-    ["revealSource", source && pickerText.showSourceFolder(isMac)],
-    ["chooseSource", pickerText.chooseLibraryMenu],
-    ["changeLast", changeLast ? pickerText.changeLastCitation : null],
-    ["pin", pickerText.keepOpenMenu],
-    ["keys", keyText.title],
-    ["settings", pickerText.settings],
-    ["quit", pickerText.quitLabel],
+    ["revealSource", source && say("picker-show-source-folder", { platform: isMac ? "macos" : "other" })],
+    ["chooseSource", say("picker-choose-library-menu")],
+    ["changeLast", changeLast ? say("picker-change-last-citation") : null],
+    ["pin", say("picker-keep-open-menu")],
+    ["keys", say("key-title")],
+    ["settings", say("picker-settings")],
+    ["quit", say("picker-quit-label")],
   ];
-  return titled.flatMap(([id, title]) => title ? [{ id, title, about: keyText.actions[id], keys: keysFor(id), icon: ICONS[id] }] : []);
+  return titled.flatMap(([id, title]) => title ? [{ id, title, about: say(SHORTCUT_ACTIONS[id]), keys: keysFor(id), icon: ICONS[id] }] : []);
 }
 
 /** Commands whose title or description holds every typed word, in table order. */

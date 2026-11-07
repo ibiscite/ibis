@@ -3,7 +3,7 @@ import type { PickerApi } from "../../App";
 import type { LibraryStatus } from "../../api";
 import { isSnapshotChanged } from "../../api";
 import type { ItemRef, SourcePresentation } from "../../bindings";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 
 /** A source query/open owns its item, snapshot and picker presentation. Icons
  * are read once on that identity, only while shown; they never poll. */
@@ -62,7 +62,7 @@ export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librar
       settled();
       if (latest.current !== scope || request.current !== current) return;
       const changed = isSnapshotChanged(error);
-      setFailure({ scope, kind, changed, message: changed ? pickerText.sourceChanged : pickerText.sourceOpenFailed(kind === "zotero") });
+      setFailure({ scope, kind, changed, message: changed ? say("picker-source-changed") : say("picker-source-open-failed", { source: kind === "zotero" ? "zotero" : "file" }) });
       if (changed) refresh();
     });
   };

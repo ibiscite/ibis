@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { LibraryStatus, LocatorQuery, PastedList, SearchResult } from "../../api";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { choiceKey } from "./choice";
 
 export function useLibrarySearch({ search, emptySearch, query, interpretLocators, library, statusFailed, libraryVersion, sessionId = 0, isCurrentSession, setActive, refreshSnapshot }: {
@@ -80,8 +80,8 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
           setSettled(request);
           announcementTimer = window.setTimeout(() => {
             if (!owns()) return;
-            const count = pickerText.resultCount(found.length);
-            setAnnouncement(found.some((r) => r.partial) ? `${pickerText.closestMatches} · ${count}` : count);
+            const count = say("picker-result-count", { count: found.length });
+            setAnnouncement(found.some((r) => r.partial) ? `${say("picker-closest-matches")} · ${count}` : count);
           }, 300);
         }
       })
@@ -93,7 +93,7 @@ export function useLibrarySearch({ search, emptySearch, query, interpretLocators
           setList(null);
           setUnfiltered(null);
           setResultsQuery(queryKey);
-          setError(pickerText.searchError);
+          setError(say("picker-search-error"));
           setSettled(request);
         }
       });

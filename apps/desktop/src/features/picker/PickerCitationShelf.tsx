@@ -1,6 +1,6 @@
 import type { RefObject } from "react";
 import type { SearchResult } from "../../api";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { CitationShelf } from "./CitationShelf";
 import type { CitationReference } from "./choice";
 import { styleOf, type OutputId } from "../../format/outputs";
@@ -40,7 +40,7 @@ export function PickerCitationShelf({
   const removeLabel = (r: SearchResult) => {
     const library = libraryOf(r.source ?? "");
     const shared = [...selected.values()].some((other) => other.key === r.key && other.source !== r.source);
-    return shared && library ? pickerText.removeReferenceIn(r.key, library) : pickerText.removeReference(r.key);
+    return shared && library ? say("picker-remove-reference-in", { key: r.key, library }) : say("picker-remove-reference", { key: r.key });
   };
   return <CitationShelf deliverable={deliverable} presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
     send({ type: "remove-reference", reference: r });
@@ -50,5 +50,5 @@ export function PickerCitationShelf({
     shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
     outputNotices={shown && typeof shown === "object" ? shown.notices : undefined}
     problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
-    source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceState.openReference(reference.id)} />;
+    source={source.kind === "zotero" ? { ...sourceAction, label: say("picker-show-in-zotero") } : sourceAction} onOpenSource={(reference) => sourceState.openReference(reference.id)} />;
 }

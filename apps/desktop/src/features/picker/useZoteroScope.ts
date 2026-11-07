@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 import type { LibraryStatus, ZoteroGroup, ZoteroLibrary } from "../../api";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { sameLibrary } from "./choice";
 import type { useOperations } from "./useOperations";
 
@@ -79,13 +79,13 @@ export function useZoteroScope({ library, libraryVersion, menuOpen, nothingMatch
     focusSearch();
     choose(allLibraries());
   };
-  const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? pickerText.groupLibrary(id);
+  const groupName = (id: number) => groups?.find((group) => group.id === id)?.name ?? say("picker-group-library", { id: String(id) });
   // Every group Zotero lists, plus chosen groups it no longer lists, so they can be turned off.
   const offeredGroups = [...(groups?.map((group) => group.id) ?? []),
     ...chosenLibraries.flatMap((chosen) => (typeof chosen === "object" ? [chosen.group] : []))]
     .filter((id, i, all) => all.indexOf(id) === i);
   const libraryOf = (source: string) =>
-    source === "zotero:user" ? pickerText.myLibrary
+    source === "zotero:user" ? say("picker-my-library")
       : source.startsWith("zotero:group:") ? groupName(Number(source.slice("zotero:group:".length))) : null;
   const narrowed = Boolean(library?.zotero && chooseZoteroLibraries && groups) && allLibraries().some((option) => !isChosen(option));
   return { chosenLibraries, severalLibraries, isChosen, toggleLibrary, searchAllLibraries, groupName, offeredGroups, libraryOf, narrowed };

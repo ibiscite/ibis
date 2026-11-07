@@ -1,5 +1,4 @@
 import type { PickerCommand, ShortcutRefusal } from "../bindings";
-import type { KeyAction, KeyRegion } from "../keys";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
@@ -11,11 +10,11 @@ export const SHORTCUT_ACTIONS = {
   citationMove: "shortcuts-action-citation-move", citationRemove: "shortcuts-action-citation-remove",
   menuMove: "shortcuts-action-menu-move", menuEnds: "shortcuts-action-menu-ends",
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
-} as const satisfies Record<KeyAction, MessageId>;
+} as const satisfies Record<string, MessageId>;
 export const SHORTCUT_REGIONS = {
   search: "shortcuts-region-search", library: "shortcuts-region-library", picker: "shortcuts-region-picker",
   menu: "shortcuts-region-menu", system: "shortcuts-region-system", citation: "shortcuts-region-citation",
-} as const satisfies Record<KeyRegion, MessageId>;
+} as const satisfies Record<string, MessageId>;
 export const SHORTCUT_COMMANDS = {
   format: "shortcuts-command-format", pin: "shortcuts-command-pin", keys: "shortcuts-command-keys",
   source: "shortcuts-command-source", more: "shortcuts-command-more", "change-last": "shortcuts-command-change-last",

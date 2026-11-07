@@ -1,7 +1,7 @@
 // What the picker copies and which references it acts on. Pure; no React.
 import type { Locator, SearchResult, ZoteroLibrary } from "../../api";
 import type { ReferenceForm } from "../../bindings";
-import { keyText } from "../../messages";
+import { say } from "../../i18n";
 import { outputName, writesEntries, type OutputId } from "../../format/outputs";
 
 /** A prepared reference freezes its search locator independently of later queries. */
@@ -28,6 +28,6 @@ export function sameLibrary(a: ZoteroLibrary, b: ZoteroLibrary) {
 /** What Enter copies in `output`; numbered styles copy reference entries (#1129). */
 export function copyLabel(output: OutputId, count: number): string {
   const name = outputName(output);
-  if (writesEntries(output)) return keyText.copyEntries(count, name);
-  return count > 1 ? keyText.copySeveralAs(count, name) : keyText.copyAs(name);
+  if (writesEntries(output)) return say("key-copy-entries", { count: count, style: name });
+  return count > 1 ? say("key-copy-several-as", { count: String(count), format: name }) : say("key-copy-as", { format: name });
 }

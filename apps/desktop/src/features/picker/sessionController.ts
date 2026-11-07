@@ -1,7 +1,7 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
 import type { Delivered } from "../../bindings";
-import { copiedNoticeText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { initialSession, reduceSession, type OutputToken, type SessionEffect, type SessionEvent } from "./session";
 
 export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation"> & Partial<Pick<typeof nativeApi, "showCopiedNotice">> & {
@@ -34,7 +34,7 @@ export function createSessionController(initial = initialSession()) {
         } catch (error) {
           const stale = nativeApi.isSnapshotChanged(error), shared = nativeApi.sharedCitationKey(error);
           dispatch({ type: "copy-failed", id: effect.id, session: effect.session, output: ports.output(), stale,
-            message: stale ? pickerText.snapshotChanged : shared ? pickerText.sharedKey(shared) : pickerText.copyError });
+            message: stale ? say("picker-snapshot-changed") : shared ? say("picker-shared-key", { key: shared }) : say("picker-copy-error") });
         }
         break;
       }
@@ -48,7 +48,7 @@ export function createSessionController(initial = initialSession()) {
       case "notice": {
         let delivered: Delivered | null = null;
         try { delivered = await ports.showCopiedNotice?.(effect.outcome.text, effect.outcome.delivery ?? null, effect.outcome.summary ?? null) ?? null; }
-        catch { console.error(copiedNoticeText.noticeFailed); }
+        catch { console.error(say("copied-notice-notice-failed")); }
         dispatch({ type: "delivered", id: effect.id, session: effect.session, delivered });
         break;
       }

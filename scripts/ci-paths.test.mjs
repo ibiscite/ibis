@@ -18,7 +18,7 @@ const row = (filename, previous_filename = null) => ({ filename, previous_filena
 const pr = (files, expected = files.length) => classify("pull_request", expected, files);
 
 test("interface-only changes retain web checks without native jobs", () => {
-  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/messages.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html"]) {
+  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/libraryWords.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html"]) {
     assert.deepEqual(pr([row(path), row("docs/design.md")]), interfaceOnly, path);
   }
 });

@@ -2887,26 +2887,6 @@ test("first run leaves starting at login to Settings", async () => {
   expect(screen.queryByRole("checkbox", { name: /when you (log|sign) in/ })).toBeNull();
 });
 
-test("each system's login item is in its own words, and its problems name where to look", async () => {
-  const { loginItemsPlace, loginItemText } = await import("./messages");
-  expect((["macos", "windows", "linux"] as const).map(loginItemText.label)).toEqual(["Open at Login", "Start when you sign in", "Start on Login"]);
-  expect(loginItemText.sentence("Ibis Nightly", "windows")).toBe("Start Ibis Nightly when you sign in");
-  expect(loginItemText.sentence("Ibis", "macos")).toBe("Start Ibis when you log in");
-  expect(loginItemsPlace("macos")).toBe("System Settings > General > Login Items");
-  expect(loginItemsPlace("windows")).toBe("Settings > Apps > Startup");
-  expect(loginItemsPlace("linux")).toMatch(/startup applications/);
-  for (const platform of ["macos", "windows", "linux"] as const) {
-    for (const problem of ["unsupported", "needs_approval", "refused", "unreadable"] as const) {
-      const message = loginItemText.problem(problem, platform, "Ibis Nightly");
-      const place = `${loginItemsPlace(platform)}.`;
-      expect(message.endsWith(place)).toBe(true);
-      expect(message.indexOf("Ibis Nightly")).toBeGreaterThanOrEqual(0);
-      expect(message.indexOf("Ibis Nightly")).toBeLessThan(message.length - place.length);
-      expect(message.includes("log in")).toBe(platform !== "windows" && /unsupported|unreadable/.test(problem));
-    }
-  }
-});
-
 test.each(["ieee", "pandoc", "apa"])("changing format cancels a click waiting for its preview (%s)", async (next) => {
   let release: () => void = () => undefined;
   const ready = new Promise<void>((resolve) => { release = resolve; });

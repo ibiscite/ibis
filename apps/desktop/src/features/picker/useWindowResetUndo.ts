@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 
 /** The native geometry owner owns the snapshot. This hook owns only which
  * immutable ticket is visible; old reads and actions cannot consume a new one. */
@@ -45,7 +45,7 @@ export function useWindowResetUndo(api: PickerApi) {
     if (value === null || current.current !== value || !undoWindowPosition) return;
     const restored = await undoWindowPosition(value);
     if (current.current !== value) return;
-    if (!restored) throw new Error(pickerText.undoFailed);
+    if (!restored) throw new Error(say("picker-undo-failed"));
     retired.current = Math.max(retired.current, value);
     publish(null);
   }, [undoWindowPosition, publish]);

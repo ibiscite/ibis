@@ -3,7 +3,7 @@ import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
 import { IconButton } from "../../ui/IconButton";
 import { SearchBar, SearchField } from "../../ui/SearchBar";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { ariaKeys, keysFor } from "../../keys";
 import { currentPlatform } from "../../platform";
 import type { OutputId } from "../../format/outputs";
@@ -52,16 +52,16 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <SearchBar hidden={hidden} title={pickerText.dragSearchBar}
+    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
       <IbisMark className="search-mark" size="search" />
       <SearchField
         id="search"
-        label={pickerText.searchLabel}
-        clearLabel={pickerText.clearSearch}
+        label={say("picker-search-label")}
+        clearLabel={say("picker-clear-search")}
         onClear={() => { onQueryChange(""); inputRef.current?.focus(); }}
         trailing={pageToken}
-        placeholder={pickerText.searchPlaceholder}
+        placeholder={say("picker-search-placeholder")}
         role="combobox"
         aria-autocomplete="list"
         aria-expanded={expanded}
@@ -89,7 +89,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
         }}
       />
       {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} />}
-      <IconButton icon="pin" size="large" className="pin-button" aria-label={pickerText.keepOpen} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
+      <IconButton icon="pin" size="large" className="pin-button" aria-label={say("picker-keep-open")} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
         isSelected={pinned} onChange={onTogglePin}/>
     </SearchBar>
   );

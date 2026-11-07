@@ -6,7 +6,7 @@ import type { FilePreview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import { parse } from "../../format/markup";
 import { outputName, type FormattedCitation, type OutputId } from "../../format/outputs";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { choiceKey, type CitationReference } from "./choice";
 
 export function useCitationOutput({ chosen, library, libraryVersion, sessionId = 0, opened = sessionId, isCurrentSession, format, style, previewFileCitation, refreshSnapshot, projectContext, contextReady = true }: {
@@ -66,7 +66,7 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
   // What Enter would copy now; null while it is being formatted.
   const shown = ownsResult ? formatted?.result ?? null : null;
   // Why the preview failed, when the user can fix it.
-  const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? pickerText.previewStyleError(outputName(style)) : pickerText.previewError) : undefined;
+  const previewProblem = shown === "failed" ? formatted?.problem ?? (style ? say("picker-preview-style-error", { style: outputName(style) }) : say("picker-preview-error")) : undefined;
   const previewReceipt = ownsResult ? formatted?.preview : undefined;
   const displayedOutput = chosen.length > 0 ? shown : undefined;
   // Format the preview again whenever the choice or the style changes.
@@ -116,14 +116,14 @@ export function useCitationOutput({ chosen, library, libraryVersion, sessionId =
             setAttempt((value) => value + 1);
             return;
           }
-          setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: "failed", problem: pickerText.previewRefused });
+          setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: "failed", problem: say("picker-preview-refused") });
           return;
         }
         const stale = nativeApi.isSnapshotChanged(error);
         const shared = nativeApi.sharedCitationKey(error);
         const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
         const message = failure?.code === "failed" && typeof failure.message === "string" ? failure.message : undefined;
-        setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: stale ? "stale" : "failed", problem: shared ? pickerText.sharedKey(shared) : message });
+        setFormatted({ key, request, session: sessionId, opened: currentOpening.current, result: stale ? "stale" : "failed", problem: shared ? say("picker-shared-key", { key: shared }) : message });
         if (stale) {
           stalePreview.current = retryKey;
           refreshSnapshot();

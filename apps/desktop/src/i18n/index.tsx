@@ -98,6 +98,19 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
 }
 
 export const englishMessages = createInterfaceMessages(english);
+/** The picker's words, outside React: one lookup in the one catalogue. */
+export const say = englishMessages.text;
+
+/** First-strong isolation for a name inside a sentence, so a right-to-left name keeps its place. */
+export function isolate(name: string) {
+  return `\u2068${name}\u2069`;
+}
+
+/** A reason from Rust as the end of a sentence: with its full stop, capitalised when it starts one. */
+export function fullStop(reason: string, capital = false) {
+  const text = capital ? reason.charAt(0).toUpperCase() + reason.slice(1) : reason;
+  return /[.!?]$/.test(text) ? text : `${text}.`;
+}
 const InterfaceContext = createContext<InterfaceMessages>(englishMessages);
 export function InterfaceMessagesProvider({ messages, children }: { messages: InterfaceMessages; children: ReactNode }) {
   return <InterfaceContext value={messages}>{children}</InterfaceContext>;

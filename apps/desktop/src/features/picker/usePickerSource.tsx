@@ -1,13 +1,16 @@
 import { useCallback, useEffect } from "react";
 import type { PickerApi } from "../../App";
 import { keysFor } from "../../keys";
-import { pickerText } from "../../messages";
+import { isolate, say } from "../../i18n";
 import { isMac } from "../../platform";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerSession } from "./usePickerSession";
 import type { useOperations } from "./useOperations";
+
+/** "Find thesis.bib…": the action when the library file has moved. */
+export const findSourceLabel = (name: string | null | undefined) => name ? say("picker-find-source", { name: isolate(name) }) : say("picker-find-source-unnamed");
 import type { useLibrarySearch } from "./useLibrarySearch";
 import { closeOverlays } from "../../ui/layers";
 import { useSourceOpen } from "./useSourceOpen";
@@ -89,9 +92,9 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     } else sourceOpen.run(reveal, appOnly);
   };
   const source = sourceOpen.source;
-  const sourceLabel = missingSource ? pickerText.findSourceFile(library?.name ?? null) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? pickerText.findSourceFile(source.name) : pickerText.chooseLibraryMenu
-    : source.kind === "zotero" ? sourceItem && !zoteroFix ? pickerText.showInZotero : pickerText.openZotero
-    : altHeld ? pickerText.showSourceFolder(isMac) : pickerText.openSource(source.name);
+  const sourceLabel = missingSource ? findSourceLabel(library?.name) : sourceOpen.failure && !sourceOpen.failure.changed ? sourceOpen.failure.kind === "file" && library?.name ? findSourceLabel(source.name) : say("picker-choose-library-menu")
+    : source.kind === "zotero" ? sourceItem && !zoteroFix ? say("picker-show-in-zotero") : say("picker-open-zotero")
+    : altHeld ? say("picker-show-source-folder", { platform: isMac ? "macos" : "other" }) : (source.name ? say("picker-open-source", { name: isolate(source.name) }) : say("picker-open-library"));
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
   const sourceInChoices = !(sourceOpen.failure && !sourceOpen.failure.changed) && !libraryState.choosingLibrary && Boolean(library?.name) && Boolean(libraryChoices) && (!library?.zotero || zoteroWaits(library.problem));

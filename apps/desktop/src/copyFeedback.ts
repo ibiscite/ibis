@@ -4,7 +4,7 @@ import { iconPaths, iconStroke } from "./icon-paths";
 import type { Copied, NoticeMessage } from "./api";
 import type { Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
-import { copiedNoticeText } from "./messages";
+import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
 
 /**
@@ -79,8 +79,8 @@ export const readNotice = (message: NoticeMessage): Notice => ({ ...message, del
 
 /** The notice's heading: pasted into an app, or copied and why it was not pasted. */
 export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform = currentPlatform()): string {
-  if (delivered.outcome === "pasted") return copiedNoticeText.pasted(delivered.app);
-  const text = copiedNoticeText.reasons[delivered.reason]!;
+  if (delivered.outcome === "pasted") return delivered.app ? say("copied-notice-pasted-into", { app: delivered.app }) : say("copied-notice-pasted");
+  const text = say("copied-notice-reason", { reason: delivered.reason });
   return platform === "macos" ? text : text.replaceAll("⌘V", "Ctrl+V");
 }
 
@@ -100,7 +100,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   notice.setAttribute("aria-atomic", "true");
   const source = document.createElement("span");
   source.className = "copied-notice-source";
-  source.textContent = copiedNoticeText.source;
+  source.textContent = say("copied-notice-source");
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   mark.setAttribute("aria-hidden", "true");
   mark.setAttribute("viewBox", "0 0 20 20");
@@ -137,7 +137,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
     if (message.plugin_note) {
       const note = document.createElement("span");
       note.className = "copy-receipt-note";
-      note.textContent = copiedNoticeText.pluginNote;
+      note.textContent = say("copied-notice-plugin-note");
       notice.append(note);
     }
     // Restart the fade for a notice shown again while still visible.

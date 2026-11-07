@@ -4,7 +4,7 @@ import type { LibraryStatus } from "../../api";
 import { keysFor } from "../../keys";
 import { LibraryStatusLine } from "../../LibraryStatusLine";
 import "./PickerFooter.css";
-import { keyText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";
 import { QuietStatus } from "../../ui/Delights";
@@ -69,16 +69,16 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
   return <footer data-menu-floor>
     {/* The region includes More and Copy. Its name must stay distinct from
         the Library button, so native name lookup cannot activate the region. */}
-    <section ref={bar} aria-label={pickerText.pickerActions} className="library-bar" data-empty-action={emptyAction || undefined}
+    <section ref={bar} aria-label={say("picker-picker-actions")} className="library-bar" data-empty-action={emptyAction || undefined}
       data-status-compact={fit.status || undefined} data-hints-compact={fit.labels || undefined} data-alt-compact={altHeld && fit.alt || undefined}>
       <span className="footer-fit-measure" aria-hidden="true" inert><span ref={statusSize} className="footer-status-size" /><span ref={statusMinimum} className="footer-status-minimum" /><span ref={labelMinimum} className="footer-label-minimum" /></span>
       {status ?? <LibraryStatusLine library={library} groupName={groupName} />}
-      <small key="hints" ref={hintsRow} className="enter-hints" aria-label={keyText.footer} role="group">
+      <small key="hints" ref={hintsRow} className="enter-hints" aria-label={say("key-footer")} role="group">
         {altHeld ? <>
           {hints.shiftEnter && <FooterAction label={hints.shiftEnter} keys={keysFor("add")} onAction={actions.add} />}
           <FooterAction label={hints.escape} keys={keysFor("escape")} onAction={actions.escape} />
         </> : hints.enter ? <FooterAction label={hints.enter} keys={keysFor("copy")} primary onAction={actions.copy} disabled={Boolean(copyProblem)} description={copyProblem ?? undefined} />
-          : emptyAction && <FooterAction label={keyText.copy} keys={keysFor("copy")} disabled onAction={actions.copy} />}
+          : emptyAction && <FooterAction label={say("key-copy")} keys={keysFor("copy")} disabled onAction={actions.copy} />}
       </small>
       <span key="more" ref={menu} className="more">{more}</span>
       <QuietStatus>{library?.note}</QuietStatus>
