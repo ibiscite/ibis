@@ -290,11 +290,11 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
                     report(window.set_position(corner.position()), NativeIssue::Position);
                 }
                 report(window.emit_to(LABEL, "notice:show", &text), NativeIssue::Notice);
-                present(app);
+                present(app, showing);
                 shown_for
             }
             // Its page starts the usual timer once it has loaded.
-            None if create(app).is_some() => LOAD_LIMIT,
+            None if create(app, showing).is_some() => LOAD_LIMIT,
             None => return,
         }
     };
@@ -318,7 +318,7 @@ fn dismiss_after(app: &AppHandle, showing: u64, delay: Duration) {
     let handle = app.clone();
     let (leave_at, close_after) = leave_schedule(delay);
     let timer = std::thread::Builder::new().name("ibis-notice".into()).spawn(move || {
-        let current = || handle.state::<Notice>().showing.load(Ordering::SeqCst) == showing;
+        let current = || still_showing(&handle, showing);
         std::thread::sleep(leave_at);
         if !current() {
             return;
@@ -382,7 +382,7 @@ fn position(app: &AppHandle) -> Option<Corner> {
     })
 }
 
-fn create(app: &AppHandle) -> Option<()> {
+fn create(app: &AppHandle, showing: u64) -> Option<()> {
     let (width, height) = notice_size(Platform::CURRENT);
     // WebView2 refuses a second webview whose browser arguments differ from
     // the picker's, and they keep it offline (#201), so reuse them exactly.
@@ -461,13 +461,15 @@ fn create(app: &AppHandle) -> Option<()> {
     });
     let window = checked(builder.build(), NativeIssue::Notice)?;
     #[cfg(target_os = "macos")]
-    macos::configure(app, &window);
+    macos::configure(app, &window, showing);
     // Clicks pass through, including its transparent margins, so it never
     // blocks what is under it (macOS does this in `configure`).
     #[cfg(target_os = "windows")]
     report(window.set_ignore_cursor_events(true), NativeIssue::Notice);
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let _ = window;
+    #[cfg(not(target_os = "macos"))]
+    let _ = showing;
     Some(())
 }
 
@@ -525,11 +527,17 @@ fn x11_composited() -> Result<bool, ()> {
 }
 
 /// Bring a kept notice back to the front without activating Ibis.
-fn present(app: &AppHandle) {
+fn present(app: &AppHandle, showing: u64) {
     #[cfg(target_os = "macos")]
-    macos::present(app);
+    macos::present(app, showing);
     #[cfg(not(target_os = "macos"))]
-    let _ = app;
+    let _ = (app, showing);
+}
+
+/// Whether `showing` is still the notice to show: a showing queued for the
+/// main thread never brings back a notice that was replaced or retired since.
+fn still_showing(app: &AppHandle, showing: u64) -> bool {
+    app.state::<Notice>().showing.load(Ordering::SeqCst) == showing
 }
 
 /// The picker opening takes the notice away at once: both sit at the top of
@@ -585,8 +593,9 @@ mod macos {
         })
     }
 
-    pub(super) fn configure(app: &AppHandle, window: &tauri::WebviewWindow) {
+    pub(super) fn configure(app: &AppHandle, window: &tauri::WebviewWindow, showing: u64) {
         let window = window.clone();
+        let handle = app.clone();
         report(
             app.run_on_main_thread(move || {
                 let Some(panel) = checked(window.to_panel::<NoticePanel>(), NativeIssue::Notice) else {
@@ -616,16 +625,21 @@ mod macos {
                 panel.set_ignores_mouse_events(true);
                 // The picker's dismissal hides the whole app; the notice must stay.
                 panel.as_panel().setCanHide(false);
-                panel.order_front_regardless();
+                if super::still_showing(&handle, showing) {
+                    panel.order_front_regardless();
+                }
             }),
             NativeIssue::Notice,
         );
     }
 
-    pub(super) fn present(app: &AppHandle) {
+    pub(super) fn present(app: &AppHandle, showing: u64) {
         let handle = app.clone();
         report(
             app.run_on_main_thread(move || {
+                if !super::still_showing(&handle, showing) {
+                    return;
+                }
                 if let Some(panel) = checked(handle.get_webview_panel(super::LABEL), NativeIssue::Notice) {
                     panel.order_front_regardless();
                 }
