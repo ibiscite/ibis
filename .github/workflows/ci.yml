@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   merge_group:
+  # Pushes to main reuse the queue's run, so this daily run on main is what
+  # notices time-dependent breakage (new advisories, runner images) and keeps
+  # main's caches from expiring.
+  schedule:
+    - cron: "17 5 * * *"
   workflow_dispatch:
 
 # On a pull request, a newer push cancels the run in progress. On main, a run
@@ -12,6 +17,12 @@ on:
 # collected; GitHub keeps only the newest waiting push and replaces older ones
 # before they start, so a burst of merges never runs every commit. Each merge
 # queue entry has its own ref and group, and is never cancelled.
+#
+# Each change is checked twice at most: on its pull request and in the merge
+# queue. A queue entry that holds exactly the tree its pull request's passing
+# run checked, and a push to main of the commit the queue checked, reuse that
+# run (scripts/ci-changes.sh); main runs everything only when its caches'
+# inputs changed, so it saves new caches.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -31,19 +42,24 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      # Reads which CI runs passed, to reuse a run that checked the same tree.
+      actions: read
       contents: read
       pull-requests: read
     outputs:
       core: ${{ steps.classify.outputs.core }}
       interface: ${{ steps.classify.outputs.interface }}
       native: ${{ steps.classify.outputs.native }}
+      proven: ${{ steps.classify.outputs.proven }}
+      scripts: ${{ steps.classify.outputs.scripts }}
       web: ${{ steps.classify.outputs.web }}
     steps:
-      # Interface-only and website-only pull requests keep web validation
+      # Interface-only and website-only changes keep web validation
       # without native jobs and without building the interface for them.
       # A Linux Desktop placeholder still reports success for "CI result".
-      # Changes only inside apps/desktop skip the crates' tests.
-      # Main and unclear file lists build the complete app.
+      # Script-only changes add their tests on Windows (and macOS outside
+      # pull requests) without building the app. Changes only inside
+      # apps/desktop skip the crates' tests. Unclear file lists build everything.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -59,6 +75,10 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           EXPECTED: ${{ github.event.pull_request.changed_files }}
           EXPECTED_REFS: ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.base.sha }}
+          HEAD_REF: ${{ github.head_ref || github.event.merge_group.head_ref }}
+          ACTOR: ${{ github.triggering_actor }}
+          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: scripts/ci-changes.sh
 
       # Desktop embeds the interface built here, so it starts as soon as the
@@ -144,6 +164,7 @@ jobs:
   web:
     name: Web interface
     needs: changes
+    if: needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
@@ -206,17 +227,24 @@ jobs:
   desktop:
     name: Desktop (${{ matrix.os }})
     needs: changes
+    if: needs.changes.outputs.proven != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
       CORE: ${{ needs.changes.outputs.core }}
       NATIVE: ${{ needs.changes.outputs.native }}
+      SCRIPTS: ${{ needs.changes.outputs.scripts }}
     strategy:
       fail-fast: false
       matrix:
         # Without native inputs only a Linux placeholder reports, so a docs or
-        # interface change never waits for macOS or Windows runners.
-        os: ${{ needs.changes.outputs.native == 'true' && fromJSON('["ubuntu-24.04", "macos-15", "windows-2025"]') || fromJSON('["ubuntu-24.04"]') }}
+        # interface change never waits for macOS or Windows runners. Script
+        # changes add Windows, and macOS outside pull requests, for their tests.
+        os: >-
+          ${{ (needs.changes.outputs.native == 'true' || (needs.changes.outputs.scripts == 'true' && github.event_name != 'pull_request'))
+          && fromJSON('["ubuntu-24.04", "macos-15", "windows-2025"]')
+          || needs.changes.outputs.scripts == 'true' && fromJSON('["ubuntu-24.04", "windows-2025"]')
+          || fromJSON('["ubuntu-24.04"]') }}
     defaults:
       run:
         # bash stops at the first failing command on every OS; PowerShell on
@@ -225,10 +253,10 @@ jobs:
     steps:
       - name: Note a change without native checks
         if: env.NATIVE != 'true'
-        run: echo "::notice::No native inputs changed; native checks run on main."
+        run: echo "::notice::No native inputs changed, so the app is not built here."
 
       - name: Checkout
-        if: env.NATIVE == 'true'
+        if: env.NATIVE == 'true' || env.SCRIPTS == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
@@ -292,13 +320,16 @@ jobs:
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
       # Windows finds real bugs in the crates. macOS almost never finds one
-      # that Linux misses, so pull requests leave it to main.
-      - name: Lint and test the core and scripts (macOS and Windows)
+      # that Linux misses, so pull requests leave it to the merge queue.
+      - name: Lint and test the core (macOS and Windows)
         if: env.CORE == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
         run: |
           cargo clippy --all-targets --locked
           cargo test --locked
-          node scripts/check.mjs --platform-script-tests
+
+      - name: Test the scripts (macOS and Windows)
+        if: env.SCRIPTS == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
+        run: node scripts/check.mjs --platform-script-tests
 
       - name: Exercise the native picker (Linux)
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
@@ -397,7 +428,8 @@ jobs:
   # instead of six names. A matrix job skipped because a job it needs failed
   # never reports its per-system checks; this job always reports. Every
   # unconditional job must succeed. Test and WebKit may be skipped only when
-  # their inputs did not change; missing classifier output fails shut.
+  # their inputs did not change, and Web and Desktop only when a passing run
+  # already checked this exact tree; missing classifier output fails shut.
   # It also refuses stacked pull requests: every pull request targets main.
   result:
     name: CI result
@@ -420,6 +452,7 @@ jobs:
           NATIVE: ${{ needs.changes.outputs.native }}
           CORE: ${{ needs.changes.outputs.core }}
           INTERFACE: ${{ needs.changes.outputs.interface }}
+          PROVEN: ${{ needs.changes.outputs.proven }}
           TEST: ${{ needs.test.result }}
           WEBKIT: ${{ needs.webkit.result }}
           EVENT: ${{ github.event_name }}

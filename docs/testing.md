@@ -301,9 +301,21 @@ Rules for native harnesses, each learned from a false result:
 ## Where checks run
 
 [CI](../.github/workflows/ci.yml) reports through one required check, `CI result`.
-A pull request runs only what its paths can affect
-([`ci-paths.mjs`](../scripts/ci-paths.mjs)), and an unclear file list runs everything.
-`node scripts/check.mjs` makes the same choice locally. Main always runs everything, and so does the merge queue, which checks each pull request combined with current main before it merges (see AGENTS.md › Merging).
+Each change is checked twice at most, on its pull request and in the merge queue,
+and each run checks only what its paths can affect
+([`ci-paths.mjs`](../scripts/ci-paths.mjs)); an unclear file list runs everything.
+The queue classifies its entry against current main. An entry that is exactly its
+pull request's head, already on top of main, reuses that pull request's passing
+run, and main reuses the queue's run of the commit it points at. Main runs
+everything when no passing queue run of its commit exists or when its caches'
+inputs (`Cargo.lock`, manifests, toolchain, pnpm lockfile, `ci.yml`) changed, so
+that it saves new caches; a daily run on main runs everything, for what changes
+with time and so that caches do not expire. A reused run counts only when GitHub
+reports a passing run of the identical tree. Release Please's own updates to its
+pull request run nothing ([RELEASING.md](../RELEASING.md#how-a-release-is-built)).
+`node scripts/check.mjs` makes the same choice locally, and `--plan` prints it for
+`scripts/land.sh`, which compiles and type checks what the change selects and
+leaves test suites to CI.
 Workflow logic that a test covers lives in a script under `scripts/`, and the
 test runs that script; no test matches workflow text with regular expressions
 (decision 0035). Rules only the structure can show, such as "CI result" running
@@ -316,11 +328,12 @@ workflow code: changing them needs the same review as the workflow.
 |---|---|---|
 | Documentation | Script tests, dependency policy | 1 minute |
 | Website | Those, plus type check, lint, interface tests and picker size | 4 minutes |
+| Node and shell scripts (not `ci-*` or `check.mjs`) | Those, plus the script tests on Windows (and macOS in the queue), without building the app | 5 minutes |
 | Interface | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
 | Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
-| Crates, fixtures, scripts, workflows, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
+| Crates, fixtures, Python and CI scripts, workflows, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
 
-The crates' full tests run on macOS only on main: from 2026-10-25 to 2026-11-02,
+The crates' full tests run on macOS only in the merge queue and on main: from 2026-10-25 to 2026-11-02,
 in 200 failed runs, macOS failed alone twice, while Windows found real bugs in the
 crates. The app's own tests still run on macOS on every native change.
 

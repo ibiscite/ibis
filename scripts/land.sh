@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Land the current branch's pull request the way AGENTS.md › Merging asks,
-# in one command: merge origin/main, check what the change can break, push,
+# in one command: merge origin/main, check what the merge can break, push,
 # and turn on squash auto-merge. Stops at the first problem.
-#   bash scripts/land.sh            # full: workspace compile + desktop suite when Rust changed
-#   bash scripts/land.sh --quick    # compile only
+#   bash scripts/land.sh
+# The checks follow `node scripts/check.mjs --plan`, the classes CI picks for
+# this change: native changes compile every test target, interface changes
+# type check and lint. Test suites are CI's job, apart from changed interface
+# tests and, for script or website changes, the script tests.
 set -euo pipefail
-quick=${1:-}
 branch=$(git rev-parse --abbrev-ref HEAD)
 [ "$branch" != main ] && [ "$branch" != HEAD ] || { echo "Land a named branch, not main or detached HEAD."; exit 2; }
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=0
@@ -17,19 +19,18 @@ if git rev-parse -q --verify MERGE_HEAD >/dev/null; then
   git commit -s --no-edit --trailer "Assisted-by: Ibis development tooling (AI-assisted)" >/dev/null
 fi
 
+plan=" $(node scripts/check.mjs --plan) "
 changed=$(git diff --name-only origin/main...HEAD)
-rust=$(grep -E '\.rs$|Cargo\.(toml|lock)$' <<<"$changed" || true)
 web=$(grep -E '^apps/desktop/(src|canvas)/' <<<"$changed" || true)
 scripts=$(grep -E '^(scripts|website)/' <<<"$changed" || true)
 
-if [ -n "$rust" ]; then
+if [[ "$plan" == *" native "* ]]; then
   cargo fmt --all --check
   (cd apps/desktop/src-tauri && cargo fmt --check)
   # A merge with no conflict can still fail to compile: build every test target.
   cargo test --workspace --locked --no-run -q
-  [ "$quick" = --quick ] || cargo test -p ibis-desktop --locked -q
 fi
-if [ -n "$web" ]; then
+if [[ "$plan" == *" interface "* ]]; then
   (cd apps/desktop && pnpm install --frozen-lockfile >/dev/null && pnpm exec tsc --noEmit -p . && pnpm exec biome lint src canvas)
   files=$(grep -E '\.test\.tsx?$' <<<"$web" | sed 's|^apps/desktop/||' || true)
   [ -z "$files" ] || (cd apps/desktop && pnpm exec vitest run $files --maxWorkers=1)
