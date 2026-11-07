@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Exercise the embedded native picker (Linux X11; the macOS journey with --journey); never substitute a browser or IPC mock.
+"""Exercise the embedded native picker (Linux X11; the macOS and Windows journey with --journey); never substitute a browser or IPC mock.
 
 Exit 1 means a failed assertion; exit 2 means the session lacks a required native
 capability. Only synthetic test text is recorded, never the accessibility tree or
@@ -1555,8 +1555,8 @@ def _first_run_preferences_main(args):
 
 # The native journey (#1676, ROADMAP Consolidation step 2): the real app,
 # invented references, a real text app, and the document read back. macOS
-# only; Linux runs the same journey inside smoke_main, where Ibis copies and
-# the person pastes.
+# and Windows; Linux runs the same journey inside smoke_main, where Ibis
+# copies and the person pastes.
 JOURNEY_LIBRARY = """@article{journey2026, author = {Example, Ada}, title = {An invented journey through citation},
   journal = {Journal of Tests}, year = {2026}}
 @article{decoy2025, author = {Sample, Ben}, title = {A decoy about sleep}, year = {2025}}
@@ -1571,11 +1571,29 @@ JOURNEY_DOCUMENT = "As shown in invented journey, sleep matters.\n"
 JOURNEY_PASTED = "As shown in (Example, 2026), sleep matters.\n"
 JOURNEY_COPIED = "[@journey2026]"
 JOURNEY_PASTED_CITATION = "(Example, 2026)"  # The plain text of TextEdit's formatted copy.
-COPIED_HINT = "Copied. Press \u2318V to paste."
+# Notepad keeps the person's output choice, which starts as the Pandoc key.
+NOTEPAD_PASTED = "As shown in [@journey2026], sleep matters.\n"
+COPIED_HINT = "Copied. Press ⌘V to paste."
 JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
 PASTED_NOTICE = "Pasted into TextEdit"
 TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
 COLLECTOR_TITLE = "ibis-journey-collector"
+# The Windows collector: a console program that records every key it gets
+# and stops cleanly when the stop file appears, so its window closes.
+WINDOWS_COLLECTOR_SCRIPT = f"""import ctypes, msvcrt, os, sys, time
+ctypes.windll.kernel32.SetConsoleTitleW({COLLECTOR_TITLE!r})
+with open(sys.argv[1], "ab", buffering=0) as received:
+    while not os.path.exists(sys.argv[1] + ".stop"):
+        if msvcrt.kbhit():
+            received.write(msvcrt.getwch().encode("utf-8"))
+        else:
+            time.sleep(0.02)
+"""
+
+
+def shows(strings, text):
+    """Whether text is shown, also when highlighting splits it into pieces."""
+    return text in strings or text in "".join(strings) or text in " ".join(strings)
 
 
 class MacOS:
@@ -1583,6 +1601,21 @@ class MacOS:
 
     Needs this terminal to have Accessibility access. Reads only TextEdit's
     one text area and Ibis's own windows, and types only into Ibis."""
+
+    name, terminal = "TextEdit", "Terminal"
+    reads_selection = True  # Ibis opens with the selected words as the search.
+    select_all = "super+a"
+    pasted, pasted_citation = JOURNEY_PASTED, JOURNEY_PASTED_CITATION
+    pasted_notice, terminal_notice, copied_hint = PASTED_NOTICE, TERMINAL_NOTICE, COPIED_HINT
+
+    @staticmethod
+    def preflight():
+        if running("TextEdit"):
+            raise Unavailable("Quit TextEdit before the journey; it opens its own invented document", "native-session")
+
+    @staticmethod
+    def settings(identifier):
+        return Path.home() / "Library/Application Support" / identifier / "settings.json"
 
     def __init__(self, folder):
         if not shutil.which("swiftc"):
@@ -1598,6 +1631,10 @@ class MacOS:
             raise Unavailable("Give this terminal Accessibility access in System Settings > Privacy & Security", "accessibility-driver")
         self.app = None  # The Ibis process, set by the journey.
         self.last_picker = self.last_shown = None
+        self.started_terminal = not running("Terminal")
+        self.started_textedit = False
+        self.collector = self.editor = None
+        self.facts = {}
 
     def helper(self, *arguments):
         result = subprocess.run([str(self.helper_path), *map(str, arguments)], capture_output=True, text=True, timeout=20)
@@ -1617,9 +1654,6 @@ class MacOS:
     def text(self, text):
         self.helper("type", text)
 
-    def focus(self):
-        return self.helper("focus")
-
     def ibis_focused(self, value=None):
         """The picker is on screen and the system's focus is Ibis's search field.
 
@@ -1634,21 +1668,26 @@ class MacOS:
     def ibis_strings(self):
         return self.helper("strings", self.app.pid)["strings"]
 
+    def picker_onscreen(self):
+        return "Ibis" in self.helper("picker", self.app.pid)["onscreen"]
+
+    def notice_onscreen(self):
+        return "Ibis notice" in self.helper("picker", self.app.pid)["onscreen"]
+
     def observe_notice(self, seen):
         """Record that the notice is on screen and, when readable, its words.
 
         While Ibis is inactive macOS often leaves the notice out of Ibis's
         AXWindows, and it ignores the mouse, so hit-testing reaches the app
         under it. Its words are best effort here; Linux checks them exactly."""
-        seen["shown"] |= "Ibis notice" in self.helper("picker", self.app.pid)["onscreen"]
+        seen["shown"] |= self.notice_onscreen()
         seen["words"].update(text for text in self.ibis_strings() if text.startswith(("Copied", "Pasted")))
 
     def ibis_shows(self, text):
-        """Whether Ibis shows text, also when highlighting splits it into pieces."""
         strings = self.ibis_strings()
         self.last_shown = {"strings": len(strings), "whole": text in strings,
                            "pieces": [word in " ".join(strings) for word in text.split()]}
-        return text in strings or text in "".join(strings) or text in " ".join(strings)
+        return shows(strings, text)
 
     def clipboard(self, *, timeout=20):
         return subprocess.run(["pbpaste"], capture_output=True, text=True, check=True, timeout=timeout).stdout
@@ -1659,13 +1698,350 @@ class MacOS:
     def front(self):
         return self.helper("front")
 
+    def open_document(self, document):
+        subprocess.run(["open", "-a", "TextEdit", str(document)], check=True, timeout=30)
+        self.started_textedit = True
+        def textedit():
+            front = self.front()
+            return front if front["bundle"] == "com.apple.TextEdit" else None
+        wait_for(textedit, "TextEdit in front with the invented document")
+        self.editor = textedit()["pid"]
+        wait_for(lambda: self.document().get("text") == JOURNEY_DOCUMENT, "TextEdit shows the invented document")
+
+    def document(self):
+        return self.helper("document", self.editor)
+
+    def select(self, start, length):
+        self.helper("select", self.editor, start, length)
+
+    def document_in_front(self):
+        return self.front()["bundle"] == "com.apple.TextEdit"
+
+    def open_collector(self, folder, received):
+        script = folder / f"{COLLECTOR_TITLE}.command"
+        script.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -c {shlex.quote(SYNTHETIC_EDITOR_SCRIPT)} "
+                          f"{shlex.quote(str(received))}\n", encoding="utf-8")
+        script.chmod(0o700)
+        subprocess.run(["open", "-a", "Terminal", str(script)], check=True, timeout=30)
+        self.collector = script
+        wait_for(lambda: self.front()["bundle"] == "com.apple.Terminal", "Terminal in front with the collector")
+
     def close(self):
-        pass
+        if self.collector:
+            subprocess.run(["pkill", "-f", COLLECTOR_TITLE], capture_output=True, timeout=10)
+            terminal = subprocess.run(["pgrep", "-x", "Terminal"], capture_output=True, text=True, timeout=10).stdout.split()
+            if self.started_terminal:
+                subprocess.run(["pkill", "-x", "Terminal"], capture_output=True, timeout=10)
+            elif terminal:
+                self.helper("close", terminal[0], COLLECTOR_TITLE)
+        if self.started_textedit:
+            subprocess.run(["pkill", "-x", "TextEdit"], capture_output=True, timeout=10)
+
+
+class Windows:
+    """Notepad, a console and Ibis through Win32 calls and UI Automation.
+
+    Reads only the journey's Notepad editor and Ibis's own windows. Keys go
+    to Ibis only while its search field has the keyboard; the shortcut goes
+    to the app in front, as a person's would, and an Alt tap may help
+    Windows bring the journey's own window forward, as notepad_test.rs does."""
+
+    name, terminal = "Notepad", "the console"
+    reads_selection = False  # Ibis reads the selection as the search only on macOS.
+    select_all = "ctrl+a"
+    pasted, pasted_citation = NOTEPAD_PASTED, JOURNEY_COPIED
+    pasted_notice = "Pasted into Notepad"
+    terminal_notice = TERMINAL_NOTICE.replace("⌘V", "Ctrl+V")
+    copied_hint = COPIED_HINT.replace("⌘V", "Ctrl+V")
+    VIRTUAL_KEYS = {"ctrl": 0x11, "shift": 0x10, "alt": 0x12, "super": 0x5B, "return": 0x0D, "escape": 0x1B}
+
+    @staticmethod
+    def preflight():
+        tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq notepad.exe", "/NH"], capture_output=True,
+                               text=True, timeout=30).stdout
+        if "notepad.exe" in tasks.lower():
+            raise Unavailable("Close Notepad before the journey; it opens its own invented document", "native-session")
+
+    @staticmethod
+    def settings(identifier):
+        return Path(os.environ["APPDATA"]) / identifier / "settings.json"
+
+    def __init__(self, folder):
+        import ctypes
+        from ctypes import wintypes
+        if not shutil.which("pwsh"):
+            raise Unavailable("The Windows journey needs PowerShell 7 (pwsh)", "native-driver")
+        self.helper_path = Path(__file__).resolve().parent / "windows-journey.ps1"
+        self.ctypes, self.wintypes = ctypes, wintypes
+        user32 = self.user32 = ctypes.WinDLL("user32", use_last_error=True)
+        kernel32 = self.kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        HWND, UINT = wintypes.HWND, wintypes.UINT
+        self.Visitor = ctypes.WINFUNCTYPE(wintypes.BOOL, HWND, wintypes.LPARAM)
+        for function, arguments, result in (
+                (user32.EnumWindows, [self.Visitor, wintypes.LPARAM], wintypes.BOOL),
+                (user32.EnumChildWindows, [HWND, self.Visitor, wintypes.LPARAM], wintypes.BOOL),
+                (user32.GetWindowThreadProcessId, [HWND, ctypes.POINTER(wintypes.DWORD)], wintypes.DWORD),
+                (user32.GetWindowTextW, [HWND, wintypes.LPWSTR, ctypes.c_int], ctypes.c_int),
+                (user32.GetClassNameW, [HWND, wintypes.LPWSTR, ctypes.c_int], ctypes.c_int),
+                (user32.IsWindowVisible, [HWND], wintypes.BOOL),
+                (user32.GetForegroundWindow, [], HWND),
+                (user32.SetForegroundWindow, [HWND], wintypes.BOOL),
+                (user32.SendMessageTimeoutW, [HWND, UINT, wintypes.WPARAM, wintypes.LPARAM, UINT, UINT,
+                                              ctypes.POINTER(ctypes.c_size_t)], ctypes.c_size_t),
+                (user32.SendInput, [UINT, ctypes.c_void_p, ctypes.c_int], UINT),
+                (user32.OpenClipboard, [HWND], wintypes.BOOL),
+                (user32.CloseClipboard, [], wintypes.BOOL),
+                (user32.EmptyClipboard, [], wintypes.BOOL),
+                (user32.GetClipboardData, [UINT], wintypes.HANDLE),
+                (user32.SetClipboardData, [UINT, wintypes.HANDLE], wintypes.HANDLE),
+                (kernel32.GlobalAlloc, [UINT, ctypes.c_size_t], wintypes.HGLOBAL),
+                (kernel32.GlobalLock, [wintypes.HGLOBAL], ctypes.c_void_p),
+                (kernel32.GlobalUnlock, [wintypes.HGLOBAL], wintypes.BOOL),
+                (kernel32.GlobalFree, [wintypes.HGLOBAL], wintypes.HGLOBAL)):
+            function.argtypes, function.restype = arguments, result
+
+        class KEYBDINPUT(ctypes.Structure):
+            _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD), ("dwFlags", wintypes.DWORD),
+                        ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+        class MOUSEINPUT(ctypes.Structure):  # Only so the union has SendInput's size.
+            _fields_ = [("dx", wintypes.LONG), ("dy", wintypes.LONG), ("mouseData", wintypes.DWORD),
+                        ("dwFlags", wintypes.DWORD), ("time", wintypes.DWORD), ("dwExtraInfo", ctypes.c_size_t)]
+
+        class INPUT(ctypes.Structure):
+            class _Input(ctypes.Union):
+                _fields_ = [("ki", KEYBDINPUT), ("mi", MOUSEINPUT)]
+            _anonymous_ = ("input",)
+            _fields_ = [("type", wintypes.DWORD), ("input", _Input)]
+
+        self.INPUT, self.KEYBDINPUT = INPUT, KEYBDINPUT
+        self.app = None  # The Ibis process, set by the journey.
+        self.last_picker = self.last_shown = None
+        self.notepad = self.window = self.editor = self.collector = self.collector_stop = None
+        self.facts = {}  # Which Notepad and console host ran, for the report.
+
+    # Windows, read through Win32 only.
+    def windows(self, parent=None):
+        found = []
+        visit = self.Visitor(lambda window, _data: found.append(window) or True)
+        if parent:
+            self.user32.EnumChildWindows(parent, visit, 0)
+        else:
+            self.user32.EnumWindows(visit, 0)
+        return [window for window in found if window and self.user32.IsWindowVisible(window)]
+
+    def owner(self, window):
+        pid = self.wintypes.DWORD()
+        self.user32.GetWindowThreadProcessId(window, self.ctypes.byref(pid))
+        return pid.value
+
+    def title(self, window):
+        text = self.ctypes.create_unicode_buffer(256)
+        self.user32.GetWindowTextW(window, text, 256)
+        return text.value
+
+    def kind(self, window):
+        text = self.ctypes.create_unicode_buffer(64)
+        self.user32.GetClassNameW(window, text, 64)
+        return text.value
+
+    def message(self, window, message, wparam=0, lparam=0):
+        result = self.ctypes.c_size_t()
+        # SMTO_ABORTIFHUNG: a hung Notepad fails the read instead of the run.
+        if not self.user32.SendMessageTimeoutW(window, message, wparam, lparam, 0x0002, 5000, self.ctypes.byref(result)):
+            raise RuntimeError("A window did not answer")
+        return result.value
+
+    def owned_titles(self):
+        return [self.title(window) for window in self.windows() if self.owner(window) == self.app.pid]
+
+    def foreground(self):
+        return self.user32.GetForegroundWindow()
+
+    def activate(self, window):
+        """Bring the journey's own window forward. SetForegroundWindow is
+        refused to a process without recent input; an Alt tap gives it that."""
+        for attempt in range(2):
+            self.user32.SetForegroundWindow(window)
+            try:
+                wait_for(lambda: self.foreground() == window, "the journey's window comes to the front", timeout=5)
+                return
+            except AssertionError:
+                if attempt:
+                    raise
+                self.send([(self.VIRTUAL_KEYS["alt"], False), (self.VIRTUAL_KEYS["alt"], True)])
+
+    # Input, through SendInput.
+    def send(self, keys, unicode=False):
+        inputs = (self.INPUT * len(keys))()
+        for item, (code, up) in zip(inputs, keys):
+            item.type = 1  # INPUT_KEYBOARD
+            flags = (0x0002 if up else 0) | (0x0004 if unicode else 0)  # KEYUP, UNICODE
+            item.ki = self.KEYBDINPUT(0 if unicode else code, code if unicode else 0, flags, 0, 0)
+        if self.user32.SendInput(len(keys), inputs, self.ctypes.sizeof(self.INPUT)) != len(keys):
+            raise RuntimeError("Windows refused the journey's keys")
+
+    def key(self, chord):
+        *modifiers, name = chord.lower().split("+")
+        codes = [self.VIRTUAL_KEYS[modifier] for modifier in modifiers]
+        codes.append(self.VIRTUAL_KEYS.get(name) or ord(name.upper()))
+        self.send([(code, False) for code in codes] + [(code, True) for code in reversed(codes)])
+
+    def text(self, text):
+        self.send([(ord(character), up) for character in text for up in (False, True)], unicode=True)
+
+    # Ibis, through UI Automation.
+    def snapshot(self):
+        try:
+            result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(self.helper_path),
+                                     "snapshot", str(self.app.pid)], capture_output=True, timeout=30,
+                                    creationflags=subprocess.CREATE_NO_WINDOW)
+            answer = json.loads(result.stdout.decode("utf-8"))
+        except ValueError:
+            raise RuntimeError("Windows journey helper gave no answer") from None
+        if result.returncode or "error" in answer:
+            raise RuntimeError(f"Windows journey helper refused: {answer.get('error', 'unknown')}")
+        return answer
+
+    def ibis_focused(self, value=None):
+        """Ibis's picker is the foreground window and has the keyboard.
+
+        Keys are sent only after this, so they cannot reach another app."""
+        front = self.foreground()
+        shot = self.snapshot()
+        self.last_picker = {"onscreen": "Ibis" in shot["windows"], "search": shot["searches"] >= 1,
+                            "focused": shot["focused"],
+                            "system_focus_is_ibis": bool(front) and self.owner(front) == self.app.pid
+                                                    and self.title(front) == "Ibis",
+                            "value_matches": value is None or value in shot["values"]}
+        return all(self.last_picker.values()) and self.foreground() == front
+
+    def picker_onscreen(self):
+        return "Ibis" in self.owned_titles()
+
+    def notice_onscreen(self):
+        return NOTICE_TITLE in self.owned_titles()
+
+    def observe_notice(self, seen):
+        """The notice window by its title; its words when UI Automation shows them."""
+        if self.notice_onscreen():
+            seen["shown"] = True
+            seen["words"].update(text for text in self.snapshot()["strings"] if text.startswith(("Copied", "Pasted")))
+
+    def ibis_shows(self, text):
+        strings = self.snapshot()["strings"]
+        self.last_shown = {"strings": len(strings), "whole": text in strings,
+                           "pieces": [word in " ".join(strings) for word in text.split()]}
+        return shows(strings, text)
+
+    # The clipboard, as Unicode text.
+    @contextmanager
+    def opened_clipboard(self, timeout):
+        wait_for(lambda: self.user32.OpenClipboard(None), "the clipboard opens", timeout=timeout)
+        try:
+            yield
+        finally:
+            self.user32.CloseClipboard()
+
+    def clipboard(self, *, timeout=20):
+        with self.opened_clipboard(timeout):
+            handle = self.user32.GetClipboardData(13)  # CF_UNICODETEXT
+            if not handle:
+                return ""
+            pointer = self.kernel32.GlobalLock(handle)
+            try:
+                return self.ctypes.wstring_at(pointer) if pointer else ""
+            finally:
+                self.kernel32.GlobalUnlock(handle)
+
+    def set_clipboard(self, text):
+        data = text.encode("utf-16-le") + b"\0\0"
+        with self.opened_clipboard(20):
+            self.user32.EmptyClipboard()
+            handle = self.kernel32.GlobalAlloc(0x0002, len(data))  # GMEM_MOVEABLE
+            pointer = self.kernel32.GlobalLock(handle)
+            self.ctypes.memmove(pointer, data, len(data))
+            self.kernel32.GlobalUnlock(handle)
+            if not self.user32.SetClipboardData(13, handle):
+                self.kernel32.GlobalFree(handle)
+                raise RuntimeError("The clipboard could not be written")
+
+    # Notepad: the window titled with the invented document, and its one editor.
+    def open_document(self, document):
+        self.notepad = subprocess.Popen(["notepad.exe", str(document)])
+        def window():
+            # A packaged Notepad hands off to another process: match the
+            # class and the document, never the launcher's process.
+            found = [window for window in self.windows()
+                     if self.kind(window) == "Notepad" and document.stem in self.title(window)]
+            return found[0] if len(found) == 1 else None
+        wait_for(window, "Notepad shows a window for the invented document", timeout=30)
+        self.window = window()
+        def editor():
+            # Classic Notepad has one Edit; the modern one a RichEditD2DPT per
+            # tab, so take the one showing the invented document.
+            found = [child for child in self.windows(self.window) if self.kind(child) in ("Edit", "RichEditD2DPT")
+                     and self.read(child) == JOURNEY_DOCUMENT]
+            return found[0] if len(found) == 1 else None
+        wait_for(editor, "Notepad shows the invented document")
+        self.editor = editor()
+        self.facts["notepad"] = {"Edit": "classic", "RichEditD2DPT": "modern"}[self.kind(self.editor)]
+        self.activate(self.window)
+
+    def read(self, editor):
+        length = self.message(editor, 0x000E)  # WM_GETTEXTLENGTH
+        text = self.ctypes.create_unicode_buffer(length + 1)
+        self.message(editor, 0x000D, length + 1, self.ctypes.addressof(text))  # WM_GETTEXT
+        # Notepad ends lines with CRLF (classic) or CR (modern); compare as LF.
+        return text.value.replace("\r\n", "\n").replace("\r", "\n")
+
+    def document(self):
+        selection = self.message(self.editor, 0x00B0)  # EM_GETSEL: start, end
+        start, end = selection & 0xFFFF, (selection >> 16) & 0xFFFF
+        return {"text": self.read(self.editor), "selection": [start, end - start]}
+
+    def select(self, start, length):
+        self.message(self.editor, 0x00B1, start, start + length)  # EM_SETSEL
+
+    def document_in_front(self):
+        return self.foreground() == self.window
+
+    def open_collector(self, folder, received):
+        """cmd.exe owns the console, as when a person opens Command Prompt;
+        a default terminal such as Windows Terminal may host it instead."""
+        script = folder / f"{COLLECTOR_TITLE}.py"
+        script.write_text(WINDOWS_COLLECTOR_SCRIPT, encoding="utf-8")
+        self.collector_stop = Path(f"{received}.stop")
+        # /s keeps the quoted command whole, spaces in paths included.
+        self.collector = subprocess.Popen(f'cmd.exe /d /s /c ""{sys.executable}" "{script}" "{received}""',
+                                          creationflags=subprocess.CREATE_NEW_CONSOLE)
+        def console():
+            found = [window for window in self.windows() if self.title(window).endswith(COLLECTOR_TITLE)]
+            return found[0] if len(found) == 1 else None
+        wait_for(console, "a console window runs the collector", timeout=30)
+        self.facts["console"] = self.executable(self.owner(console()))
+        self.activate(console())
+
+    def executable(self, pid):
+        """The owner's file name when it is a known console host, else "other"."""
+        tasks = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True,
+                               text=True, timeout=30).stdout.lower()
+        return next((name for name in ("cmd.exe", "conhost.exe", "windowsterminal.exe") if f'"{name}"' in tasks), "other")
+
+    def close(self):
+        if self.collector:
+            self.collector_stop.touch()
+            try:
+                self.collector.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                subprocess.run(["taskkill", "/T", "/F", "/PID", str(self.collector.pid)], capture_output=True, timeout=30)
+        if self.notepad:
+            subprocess.run(["taskkill", "/F", "/IM", "notepad.exe"], capture_output=True, timeout=30)
 
 
 class MacApp:
-    """An Ibis process: started directly from an executable, or through
-    LaunchServices from a bundle, so a bundle is its own paste-permission owner."""
+    """An Ibis process: started directly from an executable, or on macOS
+    through LaunchServices from a bundle, so a bundle is its own paste-permission owner."""
 
     def __init__(self, path, library, log):
         self.bundle = path if path.suffix == ".app" else None
@@ -1697,11 +2073,17 @@ class MacApp:
     def stop(self):
         if self.poll() is not None:
             return
-        os.kill(self.pid, signal.SIGTERM)
+        if self.process:
+            self.process.terminate()
+        else:
+            os.kill(self.pid, signal.SIGTERM)
         try:
             wait_for(lambda: self.poll() is not None, "Ibis stopped", timeout=10)
         except AssertionError:
-            os.kill(self.pid, signal.SIGKILL)
+            if self.process:
+                self.process.kill()
+            else:
+                os.kill(self.pid, signal.SIGKILL)
 
 
 def app_executable(path):
@@ -1725,8 +2107,7 @@ def _journey_main(args):
     args.output.mkdir(parents=True, exist_ok=True)
     system = platform.system()
     report = {"platform": system, "scenario": "native-journey", "status": "failed", "checks": []}
-    native = app = owned_settings = temporary = collector = log = None
-    started_textedit = started_terminal = False
+    native = app = owned_settings = temporary = log = None
     exit_code = 1
 
     def passed(name):
@@ -1734,24 +2115,24 @@ def _journey_main(args):
         print(f"PASS {name}", flush=True)
 
     try:
-        if system != "Darwin":
-            raise Unavailable("The journey runs on macOS; Linux runs it inside the native smoke", "linux-x11")
+        driver = {"Darwin": MacOS, "Windows": Windows}.get(system)
+        if not driver:
+            raise Unavailable("The journey runs on macOS and Windows; Linux runs it inside the native smoke", "linux-x11")
         if not app_executable(args.app).is_file():
             raise Unavailable("Build or install the app before the journey", "app-build")
-        if running("TextEdit"):
-            raise Unavailable("Quit TextEdit before the journey; it opens its own invented document", "native-session")
-        started_terminal = not running("Terminal")
+        driver.preflight()
         temporary = tempfile.TemporaryDirectory(prefix="ibis-journey-")
         folder = Path(temporary.name).resolve()
         library = folder / "journey.bib"
         library.write_text(JOURNEY_LIBRARY, encoding="utf-8")
         document = folder / "journey.txt"
-        document.write_text(JOURNEY_DOCUMENT, encoding="utf-8")
-        settings = Path.home() / "Library/Application Support" / args.identifier / "settings.json"
+        document.write_bytes(JOURNEY_DOCUMENT.encode())  # LF on every system
+        settings = driver.settings(args.identifier)
         owned_settings = claim_settings(settings)
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_bytes(JOURNEY_SETTINGS)
-        native = observe_native(MacOS(folder))
+        native = observe_native(driver(folder))
+        editor, terminal = native.name, native.terminal
 
         log = (args.output / "startup-journey.log").open("w", encoding="utf-8")
         with recording("action", "launch-journey"):
@@ -1760,19 +2141,11 @@ def _journey_main(args):
         # Ibis shows its picker once it starts; wait for the library, then hide it.
         wait_for(native.ibis_focused, "the first picker has the keyboard", timeout=60)
         native.key("Escape")
-        wait_for(lambda: "Ibis" not in native.helper("picker", app.pid)["onscreen"], "Escape hides the first picker")
+        wait_for(lambda: not native.picker_onscreen(), "Escape hides the first picker")
         passed("the app starts and Escape hides its first picker")
 
         with recording("action", "open-document"):
-            subprocess.run(["open", "-a", "TextEdit", str(document)], check=True, timeout=30)
-        started_textedit = True
-        def textedit():
-            front = native.front()
-            return front if front["bundle"] == "com.apple.TextEdit" else None
-        wait_for(textedit, "TextEdit in front with the invented document")
-        editor = textedit()["pid"]
-        read = lambda: native.helper("document", editor)
-        wait_for(lambda: read().get("text") == JOURNEY_DOCUMENT, "TextEdit shows the invented document")
+            native.open_document(document)
         start = JOURNEY_DOCUMENT.index(JOURNEY_QUERY)
         report["paste_attempts"] = 0
         while True:
@@ -1781,57 +2154,58 @@ def _journey_main(args):
             # document untouched and exactly the citation copied, earns one retry.
             report["paste_attempts"] += 1
             with recording("action", "select-placeholder"):
-                native.helper("select", editor, start, len(JOURNEY_QUERY))
-            assert read().get("selection") == [start, len(JOURNEY_QUERY)], "TextEdit did not select the placeholder"
+                native.select(start, len(JOURNEY_QUERY))
+            assert native.document().get("selection") == [start, len(JOURNEY_QUERY)], f"{editor} did not select the placeholder"
             native.key(args.shortcut)
-            wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
+            if native.reads_selection:
+                wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
+            else:
+                wait_for(native.ibis_focused, f"the shortcut opens Ibis from {editor}")
+                native.key(native.select_all)
+                native.text(JOURNEY_QUERY)
+                wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the search holds the typed query")
             wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found")
             if report["paste_attempts"] == 1:
-                passed("the shortcut opens the picker from TextEdit and searches the selection")
+                passed(f"the shortcut opens the picker from {editor} and searches the selection" if native.reads_selection
+                       else f"the shortcut opens the picker from {editor} and finds the typed query")
             prime_clipboard(native)
             native.key("Return")
             seen = {"shown": False, "words": set()}
             def pasted():
                 if app.poll() is None:
                     native.observe_notice(seen)
-                return read().get("text") == JOURNEY_PASTED and seen["shown"]
+                return native.document().get("text") == native.pasted and seen["shown"]
             try:
-                wait_for(pasted, "the citation replaces the selection in TextEdit", timeout=15)
+                wait_for(pasted, f"the citation replaces the selection in {editor}", timeout=15)
                 break
             except AssertionError:
-                text = read().get("text", "")
+                text = native.document().get("text", "")
                 report["paste_failure"] = {"document_unchanged": text == JOURNEY_DOCUMENT,
-                                           "citation_in_document": "(Example, 2026)" in text,
-                                           "copied_exactly": native.clipboard() == JOURNEY_PASTED_CITATION,
+                                           "citation_in_document": native.pasted_citation in text,
+                                           "copied_exactly": native.clipboard() == native.pasted_citation,
                                            "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
                 safe_copy = (report["paste_failure"]["document_unchanged"] and report["paste_failure"]["copied_exactly"]
-                             and seen["words"] <= {COPIED_HINT})
+                             and seen["words"] <= {native.copied_hint})
                 if not safe_copy or report["paste_attempts"] == 2:
-                    raise AssertionError("TextEdit did not end up with exactly the chosen citation; notice: "
+                    raise AssertionError(f"{editor} did not end up with exactly the chosen citation; notice: "
                                          + ("; ".join(sorted(seen["words"])) or "not read")) from None
-                wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
-                wait_for(lambda: native.front()["bundle"] == "com.apple.TextEdit", "TextEdit in front again")
-        wrong = seen["words"] - {PASTED_NOTICE}
+                wait_for(lambda: not native.notice_onscreen(), "the notice goes away", timeout=15)
+                wait_for(native.document_in_front, f"{editor} in front again")
+        wrong = seen["words"] - {native.pasted_notice}
         assert not wrong, "The notice did not say it pasted: " + "; ".join(sorted(wrong))
-        report["pasted_notice_read"] = PASTED_NOTICE in seen["words"]
-        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
-        assert read().get("text") == JOURNEY_PASTED, "TextEdit changed again after the paste: pasted more than once"
-        passed("Enter pastes exactly the chosen citation into TextEdit, once")
+        report["pasted_notice_read"] = native.pasted_notice in seen["words"]
+        wait_for(lambda: not native.notice_onscreen(), "the notice goes away", timeout=15)
+        assert native.document().get("text") == native.pasted, f"{editor} changed again after the paste: pasted more than once"
+        passed(f"Enter pastes exactly the chosen citation into {editor}, once")
 
         # Refusal: a terminal runs pasted text as commands, so Ibis only copies.
         received = folder / "received"
         received.touch()
-        script = folder / f"{COLLECTOR_TITLE}.command"
-        script.write_text(f"#!/bin/sh\nexec {shlex.quote(sys.executable)} -c {shlex.quote(SYNTHETIC_EDITOR_SCRIPT)} "
-                          f"{shlex.quote(str(received))}\n", encoding="utf-8")
-        script.chmod(0o700)
         with recording("action", "open-terminal"):
-            subprocess.run(["open", "-a", "Terminal", str(script)], check=True, timeout=30)
-        collector = script
-        wait_for(lambda: native.front()["bundle"] == "com.apple.Terminal", "Terminal in front with the collector")
+            native.open_collector(folder, received)
         native.key(args.shortcut)
-        wait_for(native.ibis_focused, "the shortcut opens Ibis from Terminal")
-        native.key("super+a")
+        wait_for(native.ibis_focused, f"the shortcut opens Ibis from {terminal}")
+        native.key(native.select_all)
         native.text(JOURNEY_QUERY)
         wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the search holds the typed query")
         wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found again")
@@ -1849,11 +2223,11 @@ def _journey_main(args):
             report["terminal"] = {"clipboard": "expected" if clipboard == JOURNEY_COPIED else
                                   "sentinel" if clipboard == CLIPBOARD_SENTINEL else "other",
                                   "notice_shown": seen["shown"], "notice_words": sorted(seen["words"])}
-            raise AssertionError("Terminal did not get exactly the citation copied and a notice") from None
-        wrong = seen["words"] - {TERMINAL_NOTICE}
+            raise AssertionError(f"{terminal} did not get exactly the citation copied and a notice") from None
+        wrong = seen["words"] - {native.terminal_notice}
         assert not wrong, "The notice did not give the terminal reason: " + "; ".join(sorted(wrong))
-        report["terminal_notice_read"] = TERMINAL_NOTICE in seen["words"]
-        wait_for(lambda: "Ibis notice" not in native.helper("picker", app.pid)["onscreen"], "the notice goes away", timeout=15)
+        report["terminal_notice_read"] = native.terminal_notice in seen["words"]
+        wait_for(lambda: not native.notice_onscreen(), "the notice goes away", timeout=15)
         assert received.read_bytes() == b"", "Ibis typed or pasted into the terminal"
         passed("a terminal gets exactly the citation copied, a notice and no keystrokes")
         report["status"], exit_code = "passed", 0
@@ -1869,18 +2243,7 @@ def _journey_main(args):
             report["last_shown"] = native.last_shown
             report["app_running"] = bool(app) and app.poll() is None
     finally:
-        def stop_collector():
-            if collector:
-                subprocess.run(["pkill", "-f", COLLECTOR_TITLE], capture_output=True, timeout=10)
-                terminal = subprocess.run(["pgrep", "-x", "Terminal"], capture_output=True, text=True, timeout=10).stdout.split()
-                if started_terminal:
-                    subprocess.run(["pkill", "-x", "Terminal"], capture_output=True, timeout=10)
-                elif terminal and native:
-                    native.helper("close", terminal[0], COLLECTOR_TITLE)
-        def stop_textedit():
-            if started_textedit:
-                subprocess.run(["pkill", "-x", "TextEdit"], capture_output=True, timeout=10)
-        for cleanup in (app.stop if app else None, log.close if log else None, stop_collector, stop_textedit,
+        for cleanup in (app.stop if app else None, log.close if log else None, native.close if native else None,
                         (lambda: clean_settings(owned_settings)) if owned_settings else None,
                         temporary.cleanup if temporary else None):
             try:
@@ -1890,6 +2253,8 @@ def _journey_main(args):
                 failure(error, "cleanup")
                 report.update(status="failed", reason="Journey cleanup failed")
                 exit_code = 1
+        if native:
+            report.update(native.facts)
         print("NATIVE JOURNEY " + json.dumps(report), flush=True)
         (args.output / "journey.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return exit_code
@@ -1951,7 +2316,7 @@ def main():
     parser.add_argument("--shortcut", help="xdotool-style chord; defaults to Ctrl+Shift+Y")
     parser.add_argument("--skip-performance", action="store_true", default=None, help="Keep correctness checks but skip the four 100,000-reference launches")
     parser.add_argument("--first-run-preferences", action="store_true", default=None, help="Exercise first-run format persistence and settled More/Quit only")
-    parser.add_argument("--journey", action="store_true", default=None, help="macOS: summon, search, paste into TextEdit and read it back; then a terminal gets a copy")
+    parser.add_argument("--journey", action="store_true", default=None, help="macOS and Windows: summon, search, paste into TextEdit or Notepad and read it back; then a terminal gets a copy")
     parser.add_argument("--seed", type=int, help="Recorded seed (the current scenarios are deterministic)")
     parser.add_argument("--replay", type=Path, help="Replay a version-1 evidence manifest against the same build")
     args = parser.parse_args()
@@ -1966,7 +2331,7 @@ def main():
             args.first_run_preferences = args.replay_bundle["scenario"] == "first-run-preferences"
         if args.journey is None and args.replay_bundle:
             args.journey = args.replay_bundle["scenario"] == "native-journey"
-        if args.journey and not args.replay_bundle and args.shortcut == "ctrl+shift+y":
+        if args.journey and not args.replay_bundle and args.shortcut == "ctrl+shift+y" and platform.system() == "Darwin":
             args.shortcut = "super+shift+y"  # The macOS default.
     except BundleError as error:
         print(str(error), file=sys.stderr)

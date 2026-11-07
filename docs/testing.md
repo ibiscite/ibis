@@ -76,7 +76,20 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   It fails on a wrong or missing citation and exits 2 when this terminal lacks
   Accessibility access or TextEdit is open. CI runs the same command on the
   debug build (Desktop job, macOS); there Ibis's paste permission is the
-  runner's. Windows and Ubuntu desktops are checked by hand.
+  runner's. Ubuntu desktops are checked by hand.
+- **Native journey (Windows):** the same `smoke-native.py --journey` on the
+  debug build in the Desktop job (windows-2025), or on a Windows PC with
+  Notepad closed and no Ibis profile for that build. Ibis reads a selection as
+  the search only on macOS, so after the shortcut from Notepad the query is
+  typed; Enter must replace the selected words, and Notepad's text, read with
+  `WM_GETTEXT`, must be exactly the sentence with the default Pandoc key, once.
+  Then a console (cmd.exe, or the default terminal hosting it) runs an inert
+  collector: the clipboard must be exactly the key, the notice on screen and
+  the collector must get nothing. Keys go to Ibis only while its picker is the
+  foreground window and has the keyboard (UI Automation, through
+  `scripts/windows-journey.ps1`); the notice's words are best effort, as on
+  macOS. `journey.json` names the Notepad (classic or modern) and the console
+  host that ran.
 - **Windows paste smoke:** Preview runs a low-level paste check that starts an
   empty Notepad document, sends one Ctrl+V and reads its focused text. This
   bypasses the picker and citation preparation. Explicit OS denial of
