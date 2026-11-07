@@ -5,6 +5,8 @@ pub use method::Method;
 
 pub mod cayw;
 
+pub mod catalogue;
+
 pub mod mcp;
 
 pub mod outputs;

@@ -10,7 +10,7 @@ import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
 import type { PastePermission, SettingsApi } from "./api";
 import recordings from "../testing/shortcut-recordings.json";
 import pickerConflicts from "../testing/picker-shortcut-conflicts.json";
-import english from "../i18n/en-US.ftl?raw";
+import english from "../../../../locales/en-US.ftl?raw";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider } from "../i18n";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });

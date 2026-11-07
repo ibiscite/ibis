@@ -431,7 +431,7 @@ mod bibliography_tests {
             bibliography
                 .warnings
                 .iter()
-                .any(|warning| warning.starts_with("taylor2026: ")),
+                .any(|warning| warning.contains("the title of taylor2026")),
             "{:?}",
             bibliography.warnings
         );

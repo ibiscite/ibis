@@ -3,8 +3,8 @@ use super::CommandError;
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
 use ibis_core::{
     contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, CitationWarningCode, Fingerprint,
-        ItemOutcome, ItemRef, KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
+        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
+        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
     },
     settings::{ZoteroLibraries, ZoteroLibrary},
 };
@@ -255,11 +255,7 @@ impl FileLibrary {
         Ok(self
             .prepare_session_bibliography(ids, style)?
             .map(|(citation, left_out)| {
-                // Formatted numbers do not follow the list, so each is named here.
-                let warnings = citation_warnings_named(&citation)
-                    .into_iter()
-                    .map(|warning| named_reference(&citation, warning))
-                    .collect();
+                let warnings = citation_warnings_named(&citation);
                 let result = citation.into_result();
                 SessionBibliography {
                     text: result.text,
@@ -1063,21 +1059,6 @@ pub(super) fn native_source(info: &ibis_engine::LibraryInfo) -> String {
     }
 }
 
-/// "Reference 2: …" as the reference it means.
-fn named_reference(citation: &PreparedCitation, warning: String) -> String {
-    let Some((number, detail)) = warning
-        .strip_prefix("Reference ")
-        .and_then(|rest| rest.split_once(": "))
-    else {
-        return warning;
-    };
-    number
-        .parse::<usize>()
-        .ok()
-        .and_then(|number| citation.item_label(number.checked_sub(1)?))
-        .map_or_else(|| warning.clone(), |name| format!("{name}: {detail}"))
-}
-
 fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     let LibraryObject::Record(record) = &snapshot.get(id)?.object else {
         return None;
@@ -1092,50 +1073,39 @@ fn session_key(snapshot: &Snapshot, id: &ItemRef) -> Option<String> {
     )
 }
 
+/// What the citation could not say in full, each naming its reference by key or title.
 fn citation_warnings_named(citation: &PreparedCitation) -> Vec<String> {
-    citation_warnings(citation.result())
-        .into_iter()
-        .map(|warning| {
-            let name = citation
-                .result()
-                .losses
-                .iter()
-                .filter_map(|loss| loss.item)
-                .find_map(|item| {
-                    warning
-                        .starts_with(&format!("Reference {}:", item + 1))
-                        .then(|| citation.item_label(item))
-                        .flatten()
-                });
-            name.map_or(warning.clone(), |name| format!("{warning} Reference: {name}."))
-        })
-        .collect()
+    citation_warnings(citation.result(), |item| citation.item_label(item))
 }
-fn citation_warnings(result: &CitationResult) -> Vec<String> {
+fn citation_warnings(result: &CitationResult, label: impl Fn(usize) -> Option<String>) -> Vec<String> {
+    use ibis_engine::catalogue::{self, Audience};
+    let name = |item: usize| label(item).unwrap_or_else(|| format!("Reference {}", item + 1));
     let mut warnings = vec![];
     for warning in &result.warnings {
-        let detail = match warning.code {
-            CitationWarningCode::SourceField => "A source field could not be fully converted. Check the library entry.",
-            CitationWarningCode::SentenceCaseExpected => {
-                "APA expects sentence case for this title. Stored capitalization was preserved; check it in your document."
-            }
-        };
-        warnings.push(format!("Reference {}: {detail}", warning.item + 1));
+        let reference = name(warning.item);
+        warnings.push(catalogue::sentence(
+            "warning",
+            warning.code,
+            Audience::App,
+            &[("reference", &reference)],
+        ));
     }
     if result.notices.contains(&Notice::YearSuffixWithheld) {
-        warnings.push("Year suffixes require the whole document; Ibis leaves them out.".into());
+        warnings.push(catalogue::sentence(
+            "notice",
+            Notice::YearSuffixWithheld,
+            Audience::App,
+            &[],
+        ));
     }
     for loss in &result.losses {
-        use ibis_core::contract::LossField;
-        let detail = match loss.field {
-            LossField::Locator => "Page or location",
-            LossField::AuthorSuppression => "Omit author",
-            _ => "Part of the citation",
-        };
-        let owner = loss
-            .item
-            .map_or_else(String::new, |item| format!("Reference {}: ", item + 1));
-        warnings.push(format!("{owner}{detail} cannot be fully expressed in this output."));
+        let what = catalogue::text(&catalogue::id("loss", loss.field), None, &[]).unwrap_or_default();
+        let target = loss.item.map(|item| format!(" for {}", name(item))).unwrap_or_default();
+        warnings.extend(catalogue::text(
+            "app-loss",
+            None,
+            &[("what", &what), ("target", &target)],
+        ));
     }
     warnings
 }

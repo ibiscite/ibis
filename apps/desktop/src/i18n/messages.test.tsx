@@ -1,7 +1,7 @@
 import { pickerText } from "../messages";
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
-import english from "./en-US.ftl?raw";
+import english from "../../../../locales/en-US.ftl?raw";
 import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, type MessageId, useInterfaceMessages } from ".";
 import { loginItemText } from "../messages";
 

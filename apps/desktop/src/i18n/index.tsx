@@ -1,7 +1,7 @@
 import { FluentBundle, FluentResource } from "@fluent/bundle";
 import { parse } from "@fluent/syntax";
 import { createContext, type ReactNode, useContext } from "react";
-import english from "./en-US.ftl?raw";
+import english from "../../../../locales/en-US.ftl?raw";
 import { SETTINGS_IDS } from "./settings";
 
 /** Interface default only: never inferred from citation settings or navigator. */
@@ -12,6 +12,7 @@ const IDS = [
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
+  "form-normal", "form-narrative", "form-year-only",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",
@@ -34,6 +35,8 @@ const IDS = [
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
+/** Messages the Rust front ends own: engine codes, then the command line's and the app's native words. */
+const RUST = /^(error|reason|refusal|warning|loss|notice|form|cli|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
@@ -56,10 +59,13 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   const ids = new Set<string>();
   for (const entry of syntax.body) {
     if (entry.type === "Comment" || entry.type === "GroupComment" || entry.type === "ResourceComment") continue;
-    if (entry.type !== "Message" || !entry.value || entry.attributes.length || ids.has(entry.id.name)) throw invalid();
+    if (entry.type !== "Message" || !entry.value || ids.has(entry.id.name)) throw invalid();
+    // The engine's and the command line's words are checked by their own tests.
+    if (RUST.test(entry.id.name)) continue;
+    if (entry.attributes.length) throw invalid();
     ids.add(entry.id.name);
   }
-  if (ids.size !== IDS.length || IDS.some((id) => !ids.has(id))) throw invalid();
+  if (IDS.some((id) => !ids.has(id) && !RUST.test(id)) || [...ids].some((id) => !(IDS as readonly string[]).includes(id))) throw invalid();
   const bundle = new FluentBundle(INTERFACE_LOCALE, {
     // Preserve existing English text and accessible names byte for byte.
     // Direction/isolation policy is separate from this interface default.

@@ -713,14 +713,14 @@ impl Failure {
             unnamed: None,
         }
     }
-    fn sentence(&self) -> &str {
+    fn sentence(&self) -> String {
         self.message
-            .as_deref()
+            .clone()
             .unwrap_or_else(|| human::code_sentence(self.error.code))
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
-        let reason = self.unnamed.as_deref().unwrap_or_else(|| self.sentence());
+        let reason = self.unnamed.clone().unwrap_or_else(|| self.sentence());
         ibis_engine::mcp::Refusal::new(
             self.error.code,
             format!(
@@ -733,7 +733,7 @@ impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
             error,
-            message: error.reason.map(|reason| human::reason_sentence(reason).to_owned()),
+            message: error.reason.map(human::reason_sentence),
             unnamed: None,
         }
     }
@@ -825,7 +825,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         let session = match opened {
             Ok(_) => ibis_engine::mcp::Session::default(),
             Err(failure) => {
-                let _ = writeln!(errors, "ibis: {}", terminal_display(failure.sentence()));
+                let _ = writeln!(errors, "ibis: {}", terminal_display(&failure.sentence()));
                 ibis_engine::mcp::Session::without_libraries(failure.refusal())
             }
         };
@@ -935,7 +935,7 @@ fn open_libraries(
         )
         .map_err(|mut failure| {
             if chosen.is_none() {
-                failure.unnamed = Some(human::file_reason(&path, failure.error.code).to_owned());
+                failure.unnamed = Some(human::file_reason(&path, failure.error.code));
             }
             failure
         })?;
@@ -1490,9 +1490,9 @@ fn emit(
         Ok(result) => (result.exit_code, Envelope::success(result.data), result.text),
         Err(failure) => {
             // The sentence goes to stderr in both modes; --json adds the stable code on stdout.
-            say(failure
+            say(&failure
                 .message
-                .as_deref()
+                .clone()
                 .unwrap_or_else(|| human::code_sentence(failure.error.code)));
             if !json {
                 return failure.error.code.exit_code().value();
@@ -1574,7 +1574,7 @@ mod tests {
         assert!(refusal.contains("--zotero-profile"), "{refusal}");
         // Without names to hide, both readers get the same sentence.
         let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
-        assert!(format!("{:?}", plain.refusal()).contains(plain.sentence()));
+        assert!(format!("{:?}", plain.refusal()).contains(&plain.sentence()));
     }
 
     #[test]

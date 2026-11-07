@@ -240,15 +240,9 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                 assert_eq!(preview.text, expected.text, "{output} {form} {page}");
                 assert_eq!(preview.html, expected.html);
                 assert_eq!(preview.content_hash, expected.content_hash.as_str());
-                let expected_warnings = citation_warnings(&expected);
-                assert_eq!(preview.warnings.len(), expected_warnings.len());
-                assert!(
-                    preview
-                        .warnings
-                        .iter()
-                        .zip(&expected_warnings)
-                        .all(|(actual, expected)| actual.starts_with(expected))
-                );
+                // The one cited reference is named by its key.
+                let expected_warnings = citation_warnings(&expected, |_| Some("Example2026".into()));
+                assert_eq!(preview.warnings, expected_warnings, "{output} {form} {page}");
                 if !expected.losses.is_empty() {
                     assert!(preview.warnings.iter().any(|warning| warning.contains("Example2026")));
                 }
@@ -260,7 +254,12 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                 })
                 .map_err(|e| e.to_string())?;
                 if entries {
-                    assert!(preview.warnings.iter().any(|warning| warning.contains("Page")));
+                    assert!(
+                        preview
+                            .warnings
+                            .iter()
+                            .any(|warning| warning.contains("page or location"))
+                    );
                 } else {
                     assert!(preview.text.contains("12"));
                     if page.contains('–') {
@@ -478,7 +477,7 @@ fn unsupported_group_forms_refuse_and_field_losses_name_the_reference() -> Resul
         preview
             .warnings
             .iter()
-            .any(|warning| warning.contains("Reference 1: Page"))
+            .any(|warning| warning.contains("the page or location for "))
     );
     assert!(
         serde_json::from_value::<FileSelection>(

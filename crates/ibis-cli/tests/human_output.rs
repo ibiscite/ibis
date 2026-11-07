@@ -124,7 +124,7 @@ fn year_letters_notice_appears_only_when_two_cited_works_share_author_and_year()
     assert_eq!(code, 0);
     assert_eq!(text, "(Taylor, 2026, 2026)\n");
     assert!(
-        errors.contains("note: two of these works share author and year"),
+        errors.contains("note: Two of these works share author and year"),
         "{errors}"
     );
     for keys in [&["first"][..], &["first", "other"], &["other", "twin"]] {
@@ -160,7 +160,7 @@ fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::e
     assert!(text.is_empty(), "{text}");
     assert_eq!(
         errors,
-        "ibis: cannot cite 'first' in APA with --form narrative; try --form normal.\n"
+        "ibis: Cannot cite 'first' in APA with --form narrative. Try --form normal.\n"
     );
     // An unknown style is a wrong request, not a refused reference.
     let (code, text, errors) = run_file(&path, &["cite", "--style", "invented", "first"])?;

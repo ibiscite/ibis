@@ -1,4 +1,5 @@
 import type { EntryCopy, LibraryStatus, LoginItemProblem, ProjectKeyState, ProjectStatus, ZoteroPresence } from "./bindings";
+import { englishMessages } from "./i18n";
 import type { Platform } from "./platform";
 
 /** The reader (decision 0038). Page numbers are isolated so they never mirror. */
@@ -34,10 +35,11 @@ export const citationDetailsText = {
   pageHint: "A page, a range or several, as printed",
   form: "Show as",
   examplesUnavailable: "Examples are unavailable",
+  /** Each form by its one name, from the catalogue. */
   forms: [
-    { value: "normal", label: "Name in brackets" },
-    { value: "narrative", label: "Name in the sentence" },
-    { value: "year-only", label: "Year only" },
+    { value: "normal", label: englishMessages.text("form-normal") },
+    { value: "narrative", label: englishMessages.text("form-narrative") },
+    { value: "year-only", label: englishMessages.text("form-year-only") },
   ] as const,
   edit: (reference: string) => `Edit ${reference}`,
   details: (reference: string) => `Citation details for ${reference}`,

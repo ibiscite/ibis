@@ -204,7 +204,7 @@ test("the ladders hold the values measured from AppKit on macOS 27.2", () => {
 });
 
 test("menus, buttons and choice rows use title case, as the Mac does", () => {
-  const messages = read("messages.ts"), ftl = read("i18n/en-US.ftl");
+  const messages = read("messages.ts"), ftl = read("../../../locales/en-US.ftl");
   for (const label of ["Clear Search", "Keep Window Open", "Keyboard Shortcuts", "Remove from Citation", "Search All Zotero Libraries", "Choose Library…", "Reload Library",
     "Find Them on This Computer", "Try Sample References", "Try Again", "Use Another Library", "Use Your Own Library", "Look Again", "Choose a Found Library",
     "Add to Citation", "Close Menu", "Copy Only"]) expect(messages).toContain(`"${label}"`);
@@ -217,7 +217,7 @@ test("menus, buttons and choice rows use title case, as the Mac does", () => {
 function userStrings(): [string, string][] {
   const code = read("messages.ts").replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "");
   const literals = [...code.matchAll(/"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)].map((match) => match[1] ?? match[2]!);
-  const ftl = read("i18n/en-US.ftl").split("\n").filter((line) => line && !line.startsWith("#"))
+  const ftl = read("../../../locales/en-US.ftl").split("\n").filter((line) => line && !line.startsWith("#"))
     .map((line) => line.replace(/^[a-z][\w-]* =/, "").replace(/\{[^}]*\}/g, ""));
   return [...literals.map((text) => ["messages.ts", text] as [string, string]), ...ftl.map((text) => ["en-US.ftl", text] as [string, string])];
 }
@@ -231,14 +231,14 @@ test("people read typographic apostrophes, never typewriter ones", () => {
 });
 
 test("Settings descriptions are sentences that end with a full stop", () => {
-  const ftl = read("i18n/en-US.ftl");
+  const ftl = read("../../../locales/en-US.ftl");
   const descriptions = [...ftl.matchAll(/^([a-z][\w-]*-description) = (.+)$/gm)];
   expect(descriptions.length).toBeGreaterThan(10);
   expect(descriptions.filter(([, , text]) => !/[.?]$/.test(text!.trim())).map(([, id]) => id)).toEqual([]);
 });
 
 test("Settings row labels are sentence case, except Apple's own name for a login item", () => {
-  const ftl = read("i18n/en-US.ftl");
+  const ftl = read("../../../locales/en-US.ftl");
   const labels = ["general-menu-bar-label", "general-small-surprises-label", "backup-label", "restore-label", "general-paste-label", "about-automatic", "about-check-label",
     "look-appearance", "look-window-size", "look-text-size", "citations-default", "citations-recent", "citations-editor", "citations-editor-address"]
     .map((id) => ftl.match(new RegExp(`^${id} = (.+)$`, "m"))![1]!);

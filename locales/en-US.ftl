@@ -1,4 +1,160 @@
-# Interface messages only. Citation language and text direction have separate owners.
+# Ibis’s words, for the command line, agents (MCP) and the app (#1675).
+# The engine returns codes; each code has one sentence here, which every front
+# end shows. A `.cli`, `.agent` or `.app` attribute says what to do next in that
+# front end. Ids come from the codes’ wire names, and a test fails on a code
+# without words or words without a code. People’s words, not the engine’s
+# (design principle 12), and typographic apostrophes.
+
+## Engine errors: what went wrong, by code.
+
+error-usage = The command is not valid.
+    .cli = See: ibis --help
+    .agent = The arguments do not fit this tool’s input schema; check the names, types, limits and combinations it allows.
+error-bad-input = The input is not valid.
+    .cli = See: ibis --help
+    .agent = The arguments do not fit this tool’s input schema; check the names, types, limits and combinations it allows.
+error-not-found = Nothing matched.
+    .agent = Use a ref that search returned.
+error-source-unavailable = A library could not be read just now.
+    .cli = Try again.
+    .agent = Try again shortly.
+    .app = Try again.
+error-resource-limit = The request or its result is too large.
+    .cli = Ask for less.
+    .agent = Ask for fewer results.
+error-newer-format = A newer version of Ibis wrote this data. Update Ibis.
+error-internal = Ibis could not finish this.
+    .cli = Please report it at https://github.com/ibiscite/ibis/issues
+    .agent = Try again.
+    .app = Try again.
+error-cancelled = The request was cancelled.
+
+## Why, when the code alone cannot say.
+
+reason-unknown-style = No style has that name.
+    .cli = List the styles with: ibis styles
+    .agent = The styles tool lists them.
+reason-unknown-output = No output has that id.
+    .cli = List them with: ibis outputs
+    .agent = Use a format from this tool’s input schema.
+reason-unknown-locale = That citation language is not available.
+    .cli = List them with: ibis styles --locales
+    .agent = The styles tool lists the locales.
+reason-duplicate-key = The library gives this citation key to more than one entry, so Ibis skips them all. Give each entry its own key.
+reason-ambiguous-key = Several references use this citation key.
+    .cli = Give each one its own key in your library.
+    .agent = Use the ref that search returned.
+    .app = Give each one its own key in your library.
+reason-missing-key = This reference has no citation key.
+    .cli = Give it one in your library, or use --style.
+    .agent = Use a style, or ask the person to give it one.
+    .app = Give it one in your library, or choose a style.
+reason-app-missing = The Ibis app was not found.
+    .cli = Install it, or give its location with --app <path>.
+reason-not-ibis = The program given as the Ibis app is not Ibis.
+    .cli = Give the Ibis app’s location with --app <path>.
+reason-no-answer = The Ibis app started but did not answer.
+    .cli = Open Ibis once by hand, then try again.
+reason-zotero-sharing-off = Zotero is open but is not sharing your library with other apps.
+    .cli = In Zotero, open Settings, Advanced, and turn on Allow other applications on this computer to communicate with Zotero.
+    .agent = Ask the person to turn on Allow other applications in Zotero’s Advanced settings.
+reason-zotero-profile-needed = Zotero is closed, and Ibis needs to know which of its profiles to read.
+    .cli = Open Zotero, or name one with --zotero-profile NAME.
+    .agent = Ask the person to open Zotero, or to choose a profile in Ibis or pass --zotero-profile to ibis mcp.
+    .app = Open Zotero, or choose a profile.
+reason-zotero-needs-opening = Your Zotero library cannot be read while Zotero is closed.
+    .cli = Open Zotero, then try again.
+    .agent = Ask the person to open Zotero.
+reason-zotero-not-found = No Zotero library was found on this computer.
+    .cli = Check that Zotero is installed and has been opened once, or use --file.
+reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
+    .cli = Free some space, or open Zotero.
+    .app = Free some space, or open Zotero.
+
+## A reference a citation could not include. { $reference } names it.
+
+refusal-empty-selection = There is nothing to cite.
+refusal-too-many-items = One citation can hold at most { $limit } references.
+refusal-invalid-locator = The page or location for { $reference } is empty or has control characters.
+refusal-invalid-rich-text = The text before or after { $reference } has characters Ibis cannot write.
+refusal-output-too-large = The citation is too large to write.
+refusal-unsupported-form = { $output } cannot write { $reference } in this form or with these options.
+    .cli = Cite it on its own, or choose another output.
+    .agent = Try form normal, or another format or style.
+    .app = Choose Name in brackets, cite it alone, or choose another output.
+refusal-missing-item = { $reference } changed or was removed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
+refusal-changed-item = { $reference } changed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
+refusal-missing-key = { $reference } has no citation key.
+    .cli = Cite it with --style instead.
+    .agent = A key syntax cannot name it; use a style.
+    .app = Give it one in your library, or choose a style.
+refusal-ambiguous-key = Several references share the citation key of { $reference }.
+    .cli = Give each one its own key in your library.
+    .agent = Use a style, or ask the person to give each its own key.
+    .app = Give each one its own key in your library.
+refusal-conflicting-key = { $reference } has more than one citation key in its library.
+    .cli = Keep one.
+    .agent = Use a style, or ask the person to keep one key.
+    .app = Keep one in your library, or choose a style.
+refusal-invalid-key = The citation key of { $reference } has characters { $output } cannot write.
+    .agent = Use a style, or ask the person to change the key.
+refusal-unsupported-output = There is no style { $output }.
+    .cli = List the styles with: ibis styles
+    .agent = The styles tool lists them.
+refusal-invalid-locale = That citation language is not available.
+    .cli = List them with: ibis styles --locales
+    .agent = The styles tool lists the locales.
+refusal-cancelled = The citation was cancelled.
+refusal-formatter-unavailable = The citation could not be written just now. Try again.
+refusal-annotation-mismatch = The annotation given for { $reference } belongs to another reference.
+refusal-not-citable = { $reference } is not a reference, such as a note, so it cannot be cited.
+
+## What a citation could not say in full.
+
+warning-source-field = A field of { $reference } could not be fully converted. Check it in your library.
+warning-sentence-case-expected = APA expects sentence case for the title of { $reference }. Its capitalization was kept as stored, so check it in your document.
+loss-locator = the page or location
+loss-prefix = the text before
+loss-suffix = the text after
+loss-author-suppression = the omitted author
+loss-rich-text = text formatting
+loss-order = the order of the references
+notice-needs-document-context = This style numbers citations or places notes across the whole document, which Ibis does not see. Check the result in your document.
+notice-reference-entry = This is the full reference entry.
+notice-full-first-note = This is the full form a first note uses; later notes to the same work are usually shorter.
+notice-year-suffix-withheld = Two of these works share author and year. Add the year letters (such as 2026a and 2026b) in your document, because they depend on its whole reference list.
+notice-input-language-unsupported = Ibis does not recognize locator words in this language. Give the page or location in English, such as “p. 12”.
+
+## Citation forms, by their one name.
+
+form-normal = Name in brackets
+form-narrative = Name in the sentence
+form-author-only = Name only
+form-year-only = Year only
+form-full = Full reference
+form-bibliography-only = Reference list
+
+## The command line’s own sentences about a refusal.
+
+cli-form-refused = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
+cli-options-refused = Cannot cite { $reference } with { $options } in { $output }. Try without them.
+cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
+cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
+cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
+
+## The app’s own sentence about a citation.
+
+app-loss = This output cannot fully show { $what }{ $target }.
+
+## The app’s interface.
+
+# Citation language and text direction have separate owners.
 # Settings interface copy; native guidance and key notation keep their owners.
 settings-pages = Settings pages
 settings-general = General
