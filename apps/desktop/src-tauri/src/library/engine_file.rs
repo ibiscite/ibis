@@ -86,13 +86,6 @@ pub(crate) struct ReferenceDetails {
     pub(crate) current_form: Option<ReferenceForm>,
 }
 #[derive(Serialize, specta::Type)]
-#[serde(rename_all = "kebab-case")]
-pub(crate) enum ProjectCheck {
-    Paused,
-    Conflict,
-    Retained,
-}
-#[derive(Serialize, specta::Type)]
 pub(crate) struct FilePreview {
     pub(crate) ticket: String,
     pub(crate) content_hash: String,
@@ -102,14 +95,10 @@ pub(crate) struct FilePreview {
     pub(crate) spans: Vec<CitationSpan>,
     #[specta(optional)]
     pub(crate) problem: Option<String>,
+    /// Why this key citation is refused: a key in the project bibliography
+    /// names a different work.
     #[specta(optional)]
-    pub(crate) project_check: Option<ProjectCheck>,
-    #[specta(optional)]
-    pub(crate) project_message: Option<String>,
-    #[specta(optional)]
-    pub(crate) project_checked_at_ms: Option<u64>,
-    #[specta(optional)]
-    pub(crate) project_unverified_allowed: Option<bool>,
+    pub(crate) project_refusal: Option<String>,
 }
 /// One answer from an engine's `libraries` method, by its field.
 fn engine_list<T: serde::de::DeserializeOwned>(
@@ -618,24 +607,11 @@ impl FileLibrary {
         let Some(project) = project.filter(|_| matches!(citation.request_output(), OutputSpec::Key { .. })) else {
             return Ok(vec![]);
         };
-        let mut warnings: Vec<_> = citation
+        Ok(citation
             .project_checks(&project.read)
             .into_iter()
-            .filter_map(|key| {
-                if matches!(key.check, ibis_engine::KeyCheck::In { .. }) && project.read.problem().is_some() {
-                    None
-                } else {
-                    project.warning(&key.key, &key.check)
-                }
-            })
-            .collect();
-        if let Some(warning) = citation
-            .project_evidence(&project.read, ibis_engine::ProjectPolicy::Normal)
-            .warning()
-        {
-            warnings.push(warning);
-        }
-        Ok(warnings)
+            .filter_map(|key| project.warning(&key.key, &key.check))
+            .collect())
     }
 
     pub(crate) fn prepared_project_evidence(
@@ -643,7 +619,6 @@ impl FileLibrary {
         ticket: &str,
         hash: &str,
         project: Option<&crate::project::Current>,
-        policy: ibis_engine::ProjectPolicy,
     ) -> Result<Option<ibis_engine::ProjectAssessment>, CommandError> {
         let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
         let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
@@ -652,7 +627,7 @@ impl FileLibrary {
         }
         Ok(project
             .filter(|_| citation.uses_citation_keys())
-            .map(|project| citation.project_evidence(&project.read, policy)))
+            .map(|project| citation.project_evidence(&project.read, ibis_engine::ProjectPolicy::Normal)))
     }
 
     pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
@@ -872,10 +847,7 @@ impl FileLibrary {
                 })
                 .collect(),
             problem: None,
-            project_check: None,
-            project_message: None,
-            project_checked_at_ms: None,
-            project_unverified_allowed: None,
+            project_refusal: None,
         };
         *slot = Some((preview.ticket.clone(), Arc::new(citation), original_output));
         Ok(preview)
@@ -1023,7 +995,6 @@ impl FileLibrary {
             summary: Some(crate::copy::ReceiptSummary::citation(citation.result())),
             text: citation.result().text.clone(),
             warnings: citation_warnings_named(citation),
-            project_warning_only: None,
             delivery: None,
             cited: citation.items(),
         })

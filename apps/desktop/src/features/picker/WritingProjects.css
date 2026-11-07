@@ -7,8 +7,4 @@
 .writing-projects-current h3 { margin: 0; font: inherit; font-weight: 600; }
 .writing-projects-actions { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-block: var(--space-2); }
 .writing-projects-form { margin-block-start: var(--space-3); }
-.writing-projects-conflict { border-block-start: var(--border-width) solid var(--separator); margin-block-start: var(--space-3); padding-block-start: var(--space-2); }
-.writing-projects-conflict h3 { font: inherit; font-weight: 600; margin: 0; }
-.writing-projects-updates { margin-block: var(--space-2); }
-.writing-projects-updates h4 { font: inherit; font-weight: 600; margin: 0; }
 .writing-projects-status { min-height: var(--control-small-h); margin-block-start: var(--space-2); }
