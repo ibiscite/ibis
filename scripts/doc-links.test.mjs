@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
-import { dirname, join, normalize } from "node:path";
+import { dirname, join, posix } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -47,7 +47,8 @@ export function brokenLinks(paths, read = (path) => readFileSync(join(root, path
   for (const path of paths) {
     for (const target of links(read(path))) {
       const [file, anchor] = target.split("#");
-      const resolved = file ? normalize(join(dirname(path), decodeURIComponent(file))) : path;
+      // Repository paths use "/" on every system, as Git writes them.
+      const resolved = file ? posix.normalize(posix.join(posix.dirname(path), decodeURIComponent(file))) : path;
       if (resolved.startsWith("..") || !exists(resolved)) broken.push(`${path}: ${target} (no such file)`);
       else if (anchor && resolved.endsWith(".md") && !headings(resolved).has(decodeURIComponent(anchor).toLowerCase())) broken.push(`${path}: ${target} (no such heading)`);
     }
