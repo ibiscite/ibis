@@ -266,7 +266,6 @@ fn measure(include_refresh: bool, enforce_open_refresh: bool) {
     }))
     .unwrap();
     let prepared = engine.prepare_citation(&request, &cancel).unwrap();
-    let hash = prepared.result().content_hash.clone();
 
     std::fs::write(&path, library(RECORDS / 2)).unwrap();
     let refreshing = AtomicBool::new(true);
@@ -277,9 +276,7 @@ fn measure(include_refresh: bool, enforce_open_refresh: bool) {
             ready.wait();
             while refreshing.load(Ordering::Relaxed) {
                 let start = Instant::now();
-                engine
-                    .commit_citation(&prepared, &hash, |content| content.text.len())
-                    .unwrap();
+                engine.recite(&prepared, &cancel).unwrap();
                 samples.push(start.elapsed());
                 std::thread::sleep(Duration::from_millis(1));
             }

@@ -436,9 +436,7 @@ mod tests {
             snapshot_name: Some("refs.bib".into()),
             stale: true,
             kept_references: true,
-            error_reason: Some(crate::library::LoadError::Source(
-                ibis_core::source::SourceError::Unavailable,
-            )),
+            error_reason: Some(crate::library::LoadError::FILE_UNAVAILABLE),
             ..status(Some("refs.bib"), 0, Some("presentation wording is not a status code"))
         };
         assert_eq!(

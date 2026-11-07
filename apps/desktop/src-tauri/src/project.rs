@@ -883,8 +883,9 @@ mod tests {
             let (file, preview) = self.prepare(text, request);
             let copied = crate::copy::commit_copy(
                 &file,
-                &preview.ticket,
-                &preview.content_hash,
+                &file
+                    .recite(&preview.ticket, &preview.content_hash)
+                    .unwrap_or_else(|_| panic!("recited")),
                 crate::copy::ProjectCopy {
                     project: &self.app.state::<ProjectBibliography>(),
                     session: &self.app.state::<crate::session_references::SessionReferences>(),
@@ -922,8 +923,9 @@ mod tests {
         let mut writes = 0;
         let copied = crate::copy::commit_copy(
             &file,
-            &preview.ticket,
-            &preview.content_hash,
+            &file
+                .recite(&preview.ticket, &preview.content_hash)
+                .unwrap_or_else(|_| panic!("recited")),
             crate::copy::ProjectCopy {
                 project: &picker.app.state::<ProjectBibliography>(),
                 session: &picker.app.state::<crate::session_references::SessionReferences>(),
@@ -955,8 +957,9 @@ mod tests {
         assert_eq!(preview.warnings, ["Couldn't check a2026 against thesis.bib."]);
         let copied = crate::copy::commit_copy(
             &file,
-            &preview.ticket,
-            &preview.content_hash,
+            &file
+                .recite(&preview.ticket, &preview.content_hash)
+                .unwrap_or_else(|_| panic!("recited")),
             crate::copy::ProjectCopy {
                 project: &picker.app.state::<ProjectBibliography>(),
                 session: &picker.app.state::<crate::session_references::SessionReferences>(),

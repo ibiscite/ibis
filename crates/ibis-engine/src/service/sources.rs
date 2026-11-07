@@ -1033,17 +1033,13 @@ mod tests {
             ErrorCode::SourceUnavailable
         );
         assert!(matches!(
-            engine.commit_citation(&old, &old.result().content_hash, |_| panic!("uncertain Zotero")),
+            engine.recite(&old, &cancel),
             Err(CitationCommitError::Engine(EngineError {
                 code: ErrorCode::SourceUnavailable,
                 reason: None
             }))
         ));
-        engine
-            .commit_citation(&file, &file.result().content_hash, |content| {
-                assert_eq!(content.text, "[@Example2026]")
-            })
-            .unwrap();
+        assert_eq!(engine.recite(&file, &cancel).unwrap().text, "[@Example2026]");
         // Neither a failed read nor a successful file publication restores Zotero.
         engine.shared.failed(&id, ErrorCode::SourceUnavailable).unwrap();
         engine
@@ -1061,20 +1057,16 @@ mod tests {
             .publish_library(id.clone(), LibraryKind::Zotero, snapshot.clone())
             .unwrap();
         assert!(matches!(
-            engine.commit_citation(&old, &old.result().content_hash, |_| panic!("retired preview")),
+            engine.recite(&old, &cancel),
             Err(CitationCommitError::PreviewChanged)
         ));
         let current = engine.prepare_citation(&request, &cancel).unwrap();
-        engine
-            .commit_citation(&current, &current.result().content_hash, |content| {
-                assert_eq!(content.text, "[@Zotero2026]")
-            })
-            .unwrap();
+        assert_eq!(engine.recite(&current, &cancel).unwrap().text, "[@Zotero2026]");
         // A second full read retires the newer preview too, even with equal data.
         engine.shared.begin_zotero_read().unwrap();
         engine.publish_library(id, LibraryKind::Zotero, snapshot).unwrap();
         assert!(matches!(
-            engine.commit_citation(&current, &current.result().content_hash, |_| panic!("old generation")),
+            engine.recite(&current, &cancel),
             Err(CitationCommitError::PreviewChanged)
         ));
     }
