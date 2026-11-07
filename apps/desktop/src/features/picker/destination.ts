@@ -13,6 +13,8 @@ export type ProjectEdit = Parameters<typeof nativeApi.editWritingProject>[1];
 export type DestinationState = {
   /** Whether this picker reads its destination at all; without a reader it is always ready. */
   reader: boolean;
+  /** Whether a format or paste choice can be remembered for an app. */
+  remembers: boolean;
   destination: PickerDestination | null;
   /** Beats the app's format until saved or copied: a pick being saved, a pick
    * that could not be saved, or the output a permission return prepared. */
@@ -33,7 +35,7 @@ export type DestinationState = {
 };
 
 export const initialDestination: DestinationState = {
-  reader: false, destination: null, held: null, ready: false, saves: 0, readProblem: null, editProblem: null,
+  reader: false, remembers: false, destination: null, held: null, ready: false, saves: 0, readProblem: null, editProblem: null,
   reads: 0, resetRead: false, output: { opening: 0, choice: 0, delivery: 0 }, preserveOpeningOutput: false,
   capturedId: undefined, observedVersion: undefined, settlingOpening: false, settlingProject: false, lastPolicy: undefined,
 };
@@ -43,7 +45,7 @@ type Save = { opening: number; choice: number; appId: string; output: OutputId |
   remembered: OutputId | null; reread: boolean; clearHeld: boolean; rereadOnFailure: boolean };
 
 export type DestinationEvent =
-  | { type: "destination-reader"; present: boolean }
+  | { type: "destination-reader"; present: boolean; remembers: boolean }
   /** `format` is what the picker shows now: a permission return keeps it. */
   | { type: "read-destination"; reset: boolean; preserve?: boolean; format?: OutputId }
   | { type: "destination-read"; request: number; destination: PickerDestination }
@@ -74,6 +76,13 @@ export function destinationFormat(d: DestinationState, fallback: OutputId) {
   const project = listedOutput(d.destination?.writing_project?.output);
   return d.held ?? project ?? listedOutput(d.destination?.remembered) ?? listedOutput(d.destination?.automatic) ?? fallback;
 }
+/** Whether Enter first asks how to paste into this app. */
+export const asksPaste = (d: DestinationState) => Boolean(d.remembers && d.destination?.app_id && d.destination.paste_question);
+/** Whether Enter first asks: how to paste, or the first format for an app that has none. */
+export const shouldAsk = (d: DestinationState) => asksPaste(d) || Boolean(!d.destination?.writing_project && d.remembers && d.destination?.app_id
+  && d.destination.output_question && !listedOutput(d.destination.remembered) && d.held === null);
+/** Ready to copy: read, or nothing to read. */
+export const destinationReady = (d: DestinationState) => !d.reader || d.ready;
 export const projectVersion = (d: DestinationState) => d.observedVersion?.join(":") ?? null;
 export const sameOutput = (a: OutputToken, b: OutputToken) => a.opening === b.opening && a.choice === b.choice && a.delivery === b.delivery;
 
@@ -111,7 +120,8 @@ const older = (version: [number, number], previous: [number, number] | null | un
 export function reduceDestination(d: DestinationState, event: DestinationEvent): DestinationStep | null {
   switch (event.type) {
     case "destination-reader":
-      return d.reader === event.present ? null : { destination: { ...d, reader: event.present, ready: !event.present || d.ready }, effects: [] };
+      return d.reader === event.present && d.remembers === event.remembers ? null
+        : { destination: { ...d, reader: event.present, remembers: event.remembers, ready: !event.present || d.ready }, effects: [] };
     case "read-destination": return read(d, event.reset, event.preserve, event.format);
     case "destination-read": {
       if (event.request !== d.reads) return null;

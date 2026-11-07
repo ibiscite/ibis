@@ -2,25 +2,28 @@ import { expect, test, vi } from "vitest";
 import type { Copied } from "../../api";
 import { testStates } from "../../test-fixtures";
 import { choiceKey } from "./choice";
-import { initialDestination } from "./destination";
+import { arrangeView } from "../../testing/sessionView";
 import { initialSession, sessionQueryKey, type SessionState } from "./session";
 import { createSessionController, type SessionPorts } from "./sessionController";
 
 function setup(overrides: Partial<SessionPorts> = {}) {
+  const chosen = [testStates[1]!.results[0]!];
+  const [arranged] = arrangeView({ ...initialSession(), presentation: 0 }, { queryKey: sessionQueryKey(initialSession()), format: "apa", snapshotRevision: "synthetic",
+    defaultChoice: choiceKey(chosen), chosen, shown: { text: "canonical citation", html: "", markup: [], warnings: [], fileTicket: "prepared", fileHash: "hash" },
+    searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
   // A format picked for this citation only: the copy that uses it consumes it.
-  const controller = createSessionController({ ...initialSession(), presentation: 0, destination: { ...initialDestination, held: "apa" } });
+  const controller = createSessionController({ ...arranged, destination: { ...arranged.destination, held: "apa" } });
   const ports: SessionPorts = { pickerPresentation: vi.fn(async () => 0), copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: [] })),
     hidePicker: vi.fn(async () => true), showCopiedNotice: vi.fn(async () => ({ outcome: "pasted" as const, app: "Example Writer" })),
-    output: () => ({ opening: 0, choice: 0, delivery: 0 }), pinned: () => false, refresh: vi.fn(), askFormat: vi.fn(), reportHide: vi.fn(),
+    pinned: () => false, refresh: vi.fn(), reportHide: vi.fn(),
     report: vi.fn(), chooseDefault: vi.fn(), search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
   controller.connect(ports);
-  const chosen = [testStates[1]!.results[0]!];
+  /** The picker tells a new opening what it shows: the settled search and preview are adopted. */
   const ready = () => {
-    const state = controller.getSnapshot();
-    controller.dispatch({ type: "view", session: state.session, interaction: state.interaction,
-      view: { queryKey: sessionQueryKey(state), format: "pandoc", snapshotRevision: "synthetic", defaultChoice: choiceKey(chosen), chosen,
-        shown: { text: "canonical citation", html: "", markup: [], warnings: [], fileTicket: "prepared", fileHash: "hash" },
-        searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: ports.output() } });
+    const { inputs, search, preview } = controller.getSnapshot();
+    controller.dispatch({ type: "picker-inputs", inputs: { ...inputs! } });
+    controller.dispatch({ type: "search-inputs", inputs: search.inputs! });
+    controller.dispatch({ type: "preview-inputs", inputs: preview.inputs! });
   };
   ready();
   const enter = () => controller.dispatch({ type: "enter", choice: choiceKey(chosen) });
