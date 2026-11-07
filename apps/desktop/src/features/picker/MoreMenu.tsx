@@ -1,6 +1,6 @@
 import type { ReactNode, Ref, RefObject } from "react";
 import { ariaKeys, keyLabel } from "../../keys";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { KeyHint } from "../../ui/KeyCaps";
 import { Menu } from "../../ui/Menu";
@@ -20,10 +20,10 @@ export function MoreMenu({ isOpen, onOpenChange, buttonRef, searchRef, keys, chi
 }) {
   const platform = currentPlatform();
   const mac = platform === "macos";
-  return <Menu id="more-menu" label={pickerText.more} isOpen={isOpen} onOpenChange={onOpenChange} placement="top end"
-    triggerRef={buttonRef} triggerVariant="quiet" triggerSize="small" triggerLabel={pickerText.more} triggerTitle={pickerText.moreTitle(keyLabel(keys, mac))} triggerKeys={ariaKeys(keys, mac)}
+  return <Menu id="more-menu" label={say("picker-more")} isOpen={isOpen} onOpenChange={onOpenChange} placement="top end"
+    triggerRef={buttonRef} triggerVariant="quiet" triggerSize="small" triggerLabel={say("picker-more")} triggerTitle={say("picker-more-title", { keys: keyLabel(keys, mac) })} triggerKeys={ariaKeys(keys, mac)}
     tabFocusRef={searchRef}
-    trigger={<KeyHint label={pickerText.more} keys={keys} platform={platform} hidden />}>
+    trigger={<KeyHint label={say("picker-more")} keys={keys} platform={platform} hidden />}>
     {children}
   </Menu>;
 }

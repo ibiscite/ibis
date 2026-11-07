@@ -103,7 +103,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 - An input method's confirming Enter never copies or pastes. Every release passes the whole citation with VoiceOver and NVDA and with CJK input methods (decision 0032).
 - **Capitalisation:** on macOS, menu items, buttons, window, sheet titles and choice rows use title case ("Keep Window Open", "Try Again", "Find Them on This Computer"); everything else is sentence case. One string never appears in both styles; a sentence that names a command writes it as the command does ("Copy Only is set for this app").
 - **Settings words:** a row label is sentence case, as System Settings writes it ("Window size", "Open at login", "Show in menu bar"); buttons and menu items are title case ("Back Up…", "Check for Updates"). A row's description is one or two sentences, each ending in a full stop. Shortcut rows describe an action in sentence case ("Move through results"), naming a sheet or command by its title ("Show Keyboard Shortcuts").
-- **Punctuation:** typographic apostrophes and quotes (’ “ ”) and the ellipsis character (…), never three full stops, in everything a person reads; a test reads `messages.ts` and `en-US.ftl` for typewriter ones.
+- **Punctuation:** typographic apostrophes and quotes (’ “ ”) and the ellipsis character (…), never three full stops, in everything a person reads; a test reads `en-US.ftl` for typewriter ones.
 - **Long text:** containers grow to fit wrapped text with the same padding; in Settings the control moves below the label. Data truncates with a tooltip; file names shorten in the middle. Budget +35 % for German and Greek. RTL uses logical properties; citation keys stay LTR. Check at normal, Larger and 200 % text.
 
 ## Per platform

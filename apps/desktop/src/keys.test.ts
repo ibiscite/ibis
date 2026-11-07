@@ -1,11 +1,12 @@
 import { expect, test } from "vitest";
 import { ariaKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, keysFor, matchesAccelerator, shortcutLabel } from "./keys";
-import { keyText } from "./messages";
+import { say } from "./i18n";
 import pickerCommands from "./testing/picker-command-shortcuts.json";
+import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
 
 test("Enter's description follows the footer in both delivery modes", () => {
   expect(keysFor("copy")).toBe("Enter");
-  expect(keyText.actions.copy).toBe("Paste or copy the citation");
+  expect(say(SHORTCUT_ACTIONS.copy)).toBe("Paste or copy the citation");
 });
 
 test("Windows and Linux write modifiers Ctrl, Alt, Shift, as their menus do; macOS ⌃⌥⇧⌘", () => {
@@ -45,8 +46,8 @@ test("key labels follow the platform", () => {
 test("every key in the table has words and a region, and none is listed twice", () => {
   const seen = new Set<string>();
   for (const binding of KEY_TABLE) {
-    expect(keyText.actions[binding.action]).toBeTruthy();
-    expect(keyText.regions[binding.region]).toBeTruthy();
+    expect(say(SHORTCUT_ACTIONS[binding.action])).toBeTruthy();
+    expect(say(SHORTCUT_REGIONS[binding.region])).toBeTruthy();
     for (const keys of binding.keys) {
       const where = `${binding.region}:${keys}`;
       expect(seen.has(where), where).toBe(false);

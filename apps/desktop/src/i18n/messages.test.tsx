@@ -1,9 +1,7 @@
-import { pickerText } from "../messages";
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import english from "../../../../locales/en-US.ftl?raw";
-import { createInterfaceMessages, englishMessages, InterfaceMessagesProvider, type MessageId, useInterfaceMessages } from ".";
-import { loginItemText } from "../messages";
+import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, type MessageId, say, useInterfaceMessages } from ".";
 
 test("the bundled interface default is English, independent of browser language and direction", () => {
   expect(englishMessages.locale).toBe("en-US");
@@ -12,15 +10,6 @@ test("the bundled interface default is English, independent of browser language 
   expect(englishMessages.text("general-login-label", { platform: "macos" })).toBe("Open at login");
   expect(englishMessages.text("general-login-label", { platform: "linux" })).toBe("Start on login");
   expect(Object.isFrozen(englishMessages)).toBe(true);
-});
-
-test("English login status messages preserve the existing platform wording", () => {
-  for (const platform of ["macos", "windows", "linux"] as const) {
-    for (const [problem, id] of [["unsupported", "general-login-unsupported"], ["needs_approval", "general-login-needs-approval"],
-      ["refused", "general-login-refused"], ["unreadable", "general-login-unreadable"]] as const) {
-      expect(englishMessages.text(id, { platform, name: "Synthetic App" })).toBe(loginItemText.problem(problem, platform, "Synthetic App"));
-    }
-  }
 });
 
 test.each([
@@ -145,7 +134,7 @@ test("settings wording follows the platform, and a backend reason ends on one fu
     expect(says("look-accent-system", platform)).toBe("Follow the system");
   }
   expect(says("look-accent-system", "macos")).toBe("Follow the Mac");
-  expect(pickerText.shortcutError(false, "Ctrl+Shift+Y", "Restart Ibis after the desktop portal is available."))
+  expect(say("picker-shortcut-unavailable", { shortcut: "Ctrl+Shift+Y", reason: fullStop("Restart Ibis after the desktop portal is available.") }))
     .toBe("The shortcut Ctrl+Shift+Y is not available: Restart Ibis after the desktop portal is available.");
-  expect(pickerText.shortcutError(true, "Ctrl+Shift+Y", "it is taken")).toBe("Your shortcut setting was not used: it is taken.");
+  expect(say("picker-shortcut-not-used", { reason: fullStop("it is taken") })).toBe("Your shortcut setting was not used: it is taken.");
 });

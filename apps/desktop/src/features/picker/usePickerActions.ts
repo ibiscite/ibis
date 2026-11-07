@@ -1,5 +1,5 @@
 import { KEY_TABLE, type KeyBinding } from "../../keys";
-import { keyText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
@@ -78,7 +78,7 @@ export function usePickerActions({
   // What Enter does now, from the same state the copy uses; null when it does nothing.
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
-    : state.changing !== null ? pickerText.changeCitation(outputName(format))
+    : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
     : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
@@ -87,9 +87,9 @@ export function usePickerActions({
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
     choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
   const shiftEnterAction = highlighted && showCitations
-    ? (selected.has(idKey(highlighted.id)) ? keyText.removeFromCitation : keyText.addToCitation) : null;
-  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? keyText.close : nearest === "menu" ? keyText.closeMenu
-    : nearest === "search" ? keyText.clearSearch : keyText.hide;
+    ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
+  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")
+    : nearest === "search" ? say("key-clear-search") : say("key-hide");
   const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
   const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writingProject?.id ?? null)
     && (!destination.writingProject || rememberedCitation.format === format) ? rememberedCitation : undefined;

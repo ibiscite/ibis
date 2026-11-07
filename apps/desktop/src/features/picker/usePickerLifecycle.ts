@@ -1,6 +1,5 @@
 import { useEffect } from "react";
 import type { PickerApi } from "../../App";
-import { operationFailures as FAILURE_MESSAGES } from "../../messages";
 import type { Operation } from "./Notices";
 import { closeOverlays } from "../../ui/layers";
 import type { useOperations } from "./useOperations";
@@ -8,6 +7,8 @@ import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { useDestination } from "./useDestination";
 import type { usePickerPreferences } from "./usePickerPreferences";
+import { OPERATION_FAILURES } from "./Notices";
+import { say } from "../../i18n";
 
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
   api: PickerApi;
@@ -33,7 +34,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     let searchAtShow = "";
     const subscriptionFailure = (operation: Operation) => {
       if (mounted) report(operation);
-      else console.error(FAILURE_MESSAGES[operation]);
+      else console.error(say(OPERATION_FAILURES[operation]));
       return () => undefined;
     };
     const selectSearch = () => {

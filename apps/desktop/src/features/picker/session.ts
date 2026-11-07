@@ -3,7 +3,7 @@ import type { Copied, Locator, SearchResult } from "../../api";
 import type { Delivered } from "../../bindings";
 import { afterCopy, noticeTitle, readDelivered } from "../../copyFeedback";
 import type { FormattedCitation } from "../../format/outputs";
-import { copiedNoticeText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import type { OutputId } from "../../format/outputs";
 import { closestMatchWarnings } from "./rows";
@@ -148,9 +148,9 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
   if (p.question === "open" || v.shown === null) return [s, []];
   s = { ...s, pendingCopy: null };
   if (!v.chosen.length || v.shown === "failed") return [s, []];
-  if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: pickerText.snapshotChanged }, [{ type: "refresh" }]];
+  if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: say("picker-snapshot-changed") }, [{ type: "refresh" }]];
   if (v.shown.project_refusal) return [{ ...s, copyError: v.shown.project_refusal }, []];
-  if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: pickerText.previewError }, []];
+  if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: say("picker-preview-error") }, []];
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
   const existing = s.flights.find((f) => (f.projectVersion ?? null) === (v.projectVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session && f.appId === (v.remembersLast ? v.appId ?? null : null));
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
@@ -260,7 +260,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       // One recovery read for an explicit action; another Enter can retry a
       // persistent failure. No timer or hidden retry loop owns this work.
       if (retry) return readPresentation(s);
-      return [s.pendingCopy ? { ...s, pendingCopy: null, copyError: pickerText.copyError } : s, []];
+      return [s.pendingCopy ? { ...s, pendingCopy: null, copyError: say("picker-copy-error") } : s, []];
     }
     case "hiding": return [{ ...s, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
     case "hidden": {
@@ -295,7 +295,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "copied": {
       if (f.phase !== "copy") return [s, []];
       const outcome = { ...event.outcome, warnings: [...event.outcome.warnings, ...f.warnings] };
-      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: copiedNoticeText.title,
+      if (f.id > s.lastSuccessfulCopy) s = { ...s, lastSuccessfulCopy: f.id, lastOutcome: say("copied-notice-title"),
         lastCitations: remembered(s.lastCitations, f.appId, { text: outcome.text, references: f.shelf, format: f.format, ...f.writingProjectId ? { project: f.writingProjectId } : {} }, s.view?.remembersLast === true) };
       // Consuming a built citation can reveal a different default reference.
       // Confirm on the shelf only when its next target is this exact output.

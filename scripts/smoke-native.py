@@ -62,7 +62,7 @@ def native_session():
 # The short Copied notice is a second visible window of the app (#496); it is
 # never the picker, so picker visibility checks skip it.
 NOTICE_TITLE = "Ibis notice"
-# messages.ts, worded for Linux: written here by hand, not read from the app.
+# The catalogue's copied-notice-reason, worded for Linux: written here by hand, not read from the app.
 LINUX_NOTICE = "Copied. Ibis can\u2019t paste on this system yet. Press Ctrl+V to paste."
 PICKER_TITLE = "Ibis"
 EDITOR_TITLE = "Ibis synthetic editor"

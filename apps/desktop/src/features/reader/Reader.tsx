@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
 import { Input, Label, TextField } from "react-aria-components";
-import { readerText } from "../../messages";
+import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { PageStrip } from "../../ui/PageStrip";
 import { confirmOffset, formatPages, parsePages } from "./pages";
@@ -79,26 +79,26 @@ export function Reader({ source, title, page, onPageChange, onClose }: {
     onPageChange(formatPages(next, new Set([...parsed, unnumbered])));
   }}>
     <TextField className="reader-ask-field" value={printed} onChange={setPrinted} autoFocus>
-      <Label>{readerText.ask(unnumbered + 1)}</Label>
+      <Label>{say("reader-ask", { index: String(unnumbered + 1) })}</Label>
       <Input inputMode="numeric" />
     </TextField>
-    <Button size="small" type="submit">{readerText.useNearby}</Button>
+    <Button size="small" type="submit">{say("reader-use-nearby")}</Button>
   </form>;
   // As Preview: thumbnails in a sidebar, the pages on one canvas edge to edge, and
   // the page you are on in a small floating bar over them, with the one action
   // that acts on it. No toolbar row takes height from the page.
-  return <section className="reader" aria-label={readerText.region(title)} onKeyDown={keys}>
-    <div className="reader-strip"><PageStrip label={readerText.thumbnails} labels={labels} selected={selected} current={current} unlabelled={readerText.pdfPage} onChange={choose} draw={source.draw} /></div>
+  return <section className="reader" aria-label={say("reader-region", { title })} onKeyDown={keys}>
+    <div className="reader-strip"><PageStrip label={say("reader-thumbnails")} labels={labels} selected={selected} current={current} unlabelled={(index: number) => say("reader-pdf-page", { index: String(index + 1) })} onChange={choose} draw={source.draw} /></div>
     <div className="reader-view">
-      <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={readerText.pages}>
-        {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? readerText.indicator(printed, index + 1, labels.length) : readerText.unknown(index + 1, labels.length)}>
+      <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={say("reader-pages")}>
+        {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? say("reader-indicator", { printed: isolate(printed), index: String(index + 1), count: String(labels.length) }) : say("reader-unknown", { index: String(index + 1), count: String(labels.length) })}>
           <div className="reader-paper" />
         </div>)}
       </div>
-      <div className="reader-hud ui-overlay" role="group" aria-label={readerText.pageInView}>
+      <div className="reader-hud ui-overlay" role="group" aria-label={say("reader-page-in-view")}>
         {ask || <>
-          <span className="reader-indicator" aria-live="polite">{label ? readerText.indicator(label, current + 1, labels.length) : readerText.unknown(current + 1, labels.length)}</span>
-          <Button size="small" onPress={() => cite(false)}>{readerText.cite}</Button>
+          <span className="reader-indicator" aria-live="polite">{label ? say("reader-indicator", { printed: isolate(label), index: String(current + 1), count: String(labels.length) }) : say("reader-unknown", { index: String(current + 1), count: String(labels.length) })}</span>
+          <Button size="small" onPress={() => cite(false)}>{say("reader-cite")}</Button>
         </>}
       </div>
     </div>

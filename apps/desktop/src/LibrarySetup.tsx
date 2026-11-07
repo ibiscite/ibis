@@ -3,7 +3,7 @@ import type { ShortcutStatus, Sources, ZoteroPresence } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { keysFor } from "./keys";
 import { useInterfaceMessages } from "./i18n";
-import { setupText } from "./messages";
+import { say } from "./i18n";
 import { currentPlatform } from "./platform";
 import { shortcutLabel } from "./keys";
 import { ChoiceList, type Choice } from "./ui/ChoiceList";
@@ -82,23 +82,24 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   const files = openFoundLibrary ? sources?.files ?? [] : [];
   const onlyFile = files.length === 1 ? files[0] : undefined;
   const lookAgain = () => { intent.current += 1; setShowFiles(false); setSources(undefined); setSearch((n) => n + 1); };
-  const outcome = looking ? setupText.looking
-    : sources && files.length === 0 && zotero === "absent" ? setupText.nothingFound
-    : sources ? setupText.found(files.length, zotero) : setupText.findHelp;
+  const outcome = looking ? say("setup-looking")
+    : sources && files.length === 0 && zotero === "absent" ? say("setup-nothing-found")
+    : sources ? [zotero === "available" ? say("setup-zotero-open") : zotero === "closed" ? say("setup-zotero-installed") : "",
+      files.length ? say("setup-bib-found", { count: files.length }) : ""].filter(Boolean).join(" ") : say("setup-find-help");
 
   const choices: Choice[] = [
     { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <ChoiceIcon name="library" />,
-      tag: zoteroHere || empty?.zotero ? setupText.foundOn(currentPlatform()) : undefined, suggested: welcome && zoteroHere },
+      tag: zoteroHere || empty?.zotero ? say("setup-found-on", { platform: currentPlatform() }) : undefined, suggested: welcome && zoteroHere },
     { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="file" /> },
     ...(empty?.source ? [{ id: "source", title: empty.source.label, help: empty.source.help, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),
     ...(!empty && findSources ? [{
       id: "find", title: onlyFile ? text("choice-use-file", { name: onlyFile.name })
-        : files.length > 1 ? setupText.chooseFound : search === 0 ? setupText.findLibraries : setupText.lookAgain,
-      help: onlyFile?.folder ? setupText.foundIn(onlyFile.folder) : outcome,
+        : files.length > 1 ? say("setup-choose-found") : search === 0 ? say("setup-find-libraries") : say("setup-look-again"),
+      help: onlyFile?.folder ? say("setup-found-in", { folder: onlyFile.folder }) : outcome,
       // Stays enabled while looking so keyboard focus stays on it; presses wait.
       icon: <ChoiceIcon name="find" />,
     }] : []),
-    ...(!empty && changeSamples ? [{ id: "samples", title: setupText.samples, help: setupText.samplesHelp,
+    ...(!empty && changeSamples ? [{ id: "samples", title: say("setup-samples"), help: say("setup-samples-help"),
       icon: <ChoiceIcon name="sample" /> }] : []),
   ];
   const openFile = (index: number) => {
@@ -130,21 +131,21 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     else if (id === "back") { setFocusTile(true); setShowFiles(false); }
     else if (id.startsWith("found-")) openFile(Number(id.slice("found-".length)));
   };
-  const notes = [zotero === "access_off" && setupText.zoteroAccessOff, sources?.cut_short && setupText.cutShort].filter(Boolean);
+  const notes = [zotero === "access_off" && say("setup-zotero-access-off"), sources?.cut_short && say("setup-cut-short")].filter(Boolean);
   const hasShortcut = Boolean(shortcut?.shortcut.trim());
   const shortcutNote = !shortcut ? undefined : shortcut.registered && hasShortcut
-    ? setupText.returnHint(shortcut.desktop ? shortcut.shortcut : shortcutLabel(shortcut.shortcut, currentPlatform() === "macos"))
-    : hasShortcut ? shortcut.desktop?.guidance || setupText.shortcutUnavailable
-    : `${setupText.noShortcut} ${shortcut.desktop?.guidance || setupText.openWithoutShortcut}`;
+    ? say("setup-return-hint", { shortcut: shortcut.desktop ? shortcut.shortcut : shortcutLabel(shortcut.shortcut, currentPlatform() === "macos") })
+    : hasShortcut ? shortcut.desktop?.guidance || say("setup-shortcut-unavailable")
+    : `${say("setup-no-shortcut")} ${shortcut.desktop?.guidance || say("setup-open-without-shortcut")}`;
   const foundChoices: Choice[] = files.map((file, index) => ({
     id: `found-${index}`, title: text("choice-use-file", { name: file.name }), tag: file.folder || undefined, icon: <ChoiceIcon name="file" />,
   }));
   foundChoices.push({ id: "back", title: text("choice-back"), icon: <ChoiceIcon name="swap" /> });
   return (
     <div className={`library-setup${empty ? "" : " library-welcome"}`}>
-      {showFiles && !empty ? <ChoiceList key="found" title={setupText.foundTitle} choices={foundChoices} onChoose={choose} autoFocus
+      {showFiles && !empty ? <ChoiceList key="found" title={say("setup-found-title")} choices={foundChoices} onChoose={choose} autoFocus
         footnote={notes.length > 0 ? notes.join(" ") : undefined} />
-        : <ChoiceList key="starts" title={empty?.title ?? setupText.sourcesTitle} line={empty ? setupText.emptyLine : setupText.sourcesLine(currentPlatform())}
+        : <ChoiceList key="starts" title={empty?.title ?? say("setup-sources-title")} line={empty ? say("setup-empty-line") : say("setup-sources-line", { platform: currentPlatform() })}
           choices={choices} onChoose={choose} autoFocus={autoFocus || !empty} grid={!empty && choices.length === 4} focusId={focusTile ? "find" : undefined}
           mark={!empty && <IbisMark className="welcome-mark" size="welcome" />}
           footnote={empty ? text("choice-drop-file") : notes.length > 0 || shortcutNote ? <>
@@ -163,7 +164,7 @@ export function SampleLibraryExit({ useSampleLibrary: changeSamples, perform }: 
   perform: (action: Action, run: () => Promise<unknown>) => Promise<void>;
 }) {
   if (!changeSamples) return null;
-  return <ChoiceList title={setupText.sampleTitle} choices={[{
-    id: "own", title: setupText.ownLibrary, help: setupText.ownLibraryHelp, icon: <ChoiceIcon name="swap" />,
+  return <ChoiceList title={say("setup-sample-title")} choices={[{
+    id: "own", title: say("setup-own-library"), help: say("setup-own-library-help"), icon: <ChoiceIcon name="swap" />,
   }]} onChoose={() => void perform("samples", () => changeSamples(false))} />;
 }

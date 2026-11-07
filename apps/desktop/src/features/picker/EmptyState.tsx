@@ -3,7 +3,7 @@ import type { EmptyLibraryChoices, SourceChoice } from "../../LibrarySetup";
 import type { LibraryStatus, ZoteroProfiles } from "../../api";
 import { ChoiceIcon, Icon } from "../../icons";
 import { keysFor } from "../../keys";
-import { libraryMessages, pickerText, setupText } from "../../messages";
+import { fullStop, say } from "../../i18n";
 import { ChoiceList, type Choice } from "../../ui/ChoiceList";
 import { IndeterminateProgress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
@@ -11,6 +11,7 @@ import { IbisMark } from "../../ui/IbisMark";
 import { zoteroWaits } from "./PickerLibraryStatus";
 import { useWhileShown } from "./useWhileShown";
 import "./EmptyState.css";
+import { libraryMessages } from "../../libraryWords";
 
 // The empty-state contract keeps fast library opens free of transient content.
 const LOADING_DELAY_MS = 400;
@@ -37,7 +38,7 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
   return <div className="empty-opening" role="status" aria-live="polite">
     <IbisMark className="opening-mark" />
     <p className="opening-title" aria-hidden="true" dir="auto">{progress(shortName(name))}</p>
-    <p className="opening-line">{setupText.openingLine}</p>
+    <p className="opening-line">{say("setup-opening-line")}</p>
     {/* LibraryStatus reports snapshot counts, never read progress: do not turn
         the retained count into a made-up percentage. */}
     <IndeterminateProgress className="opening-progress update-progress" label={progress(name)}>
@@ -48,7 +49,7 @@ function LibraryProgress({ library }: { library: LibraryStatus }) {
 
 /** Every choice row has a help line [C12]: what opening the source does here. */
 export function sourceHelp(zotero: boolean, label: string): string {
-  return zotero && label === pickerText.openZotero ? setupText.openZoteroHelp : setupText.openFileHelp;
+  return zotero && label === say("picker-open-zotero") ? say("setup-open-zotero-help") : say("setup-open-file-help");
 }
 
 /** How often a screen waiting on Zotero asks it; only while that screen shows. */
@@ -87,29 +88,29 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   useWhileShown((waiting || missing) && !switching ? zotero?.checkSharing : undefined, ZOTERO_CHECK_EVERY);
   // The chosen row is gone, so the list that replaces it takes focus.
   if (switching) return <div className="empty-state">{setup(true)}</div>;
-  const name = shortName(library.name) ?? (library.zotero ? setupText.zotero : setupText.theLibrary);
-  const reason = library.error ? setupText.sentence(library.error) : undefined;
+  const name = shortName(library.name) ?? (library.zotero ? say("setup-zotero") : say("setup-the-library"));
+  const reason = library.error ? fullStop(library.error, true) : undefined;
   const problem = library.problem ?? "other";
-  const [title, line] = library.zotero && problem === "zotero_closed" ? [setupText.zoteroClosedTitle, setupText.zoteroClosedLine]
-    : library.zotero && problem === "zotero_access_off" ? [setupText.zoteroAccessOffTitle, `${setupText.zoteroAccessOff} ${setupText.zoteroAccessOffWaiting}`]
-    : missing ? [setupText.zoteroMissingTitle, setupText.zoteroMissingLine]
-    : askingProfile ? [setupText.zoteroProfilesTitle, profiles === null ? setupText.zoteroProfilesFailed : setupText.zoteroProfilesLine]
-    : problem === "missing" ? [setupText.missingTitle(name), setupText.missingLine]
-    : problem === "unreadable" ? [setupText.unreadableTitle(name), reason]
-    : [setupText.otherTitle(name), reason];
-  const tryAgain: Choice = { id: "retry", title: setupText.tryAgain, help: setupText.tryAgainHelp, icon: <ChoiceIcon name="retry" /> };
-  const another: Choice = { id: "another", title: setupText.another, help: setupText.anotherHelp, icon: <ChoiceIcon name="swap" /> };
+  const [title, line] = library.zotero && problem === "zotero_closed" ? [say("setup-zotero-closed-title"), say("setup-zotero-closed-line")]
+    : library.zotero && problem === "zotero_access_off" ? [say("setup-zotero-access-off-title"), `${say("setup-zotero-access-off")} ${say("setup-zotero-access-off-waiting")}`]
+    : missing ? [say("setup-zotero-missing-title"), say("setup-zotero-missing-line")]
+    : askingProfile ? [say("setup-zotero-profiles-title"), profiles === null ? say("setup-zotero-profiles-failed") : say("setup-zotero-profiles-line")]
+    : problem === "missing" ? [say("setup-missing-title", { name }), say("setup-missing-line")]
+    : problem === "unreadable" ? [say("setup-unreadable-title", { name }), reason]
+    : [say("setup-other-title", { name }), reason];
+  const tryAgain: Choice = { id: "retry", title: say("setup-try-again"), help: say("setup-try-again-help"), icon: <ChoiceIcon name="retry" /> };
+  const another: Choice = { id: "another", title: say("setup-another"), help: say("setup-another-help"), icon: <ChoiceIcon name="swap" /> };
   // Finding the file is what ⌘O does here, so it stays one row.
   const finding = problem === "missing" && !library.zotero;
   const profileRows: Choice[] = (profiles ?? []).map((profile, index) => ({ id: `profile-${index}`, title: profile, icon: <ChoiceIcon name="library" /> }));
   const choices: Choice[] = finding
-    ? [{ id: "find", title: setupText.find(name), help: setupText.findFileHelp, icon: <ChoiceIcon name="find" />, suggested: true, keys: keysFor("source") }, another]
+    ? [{ id: "find", title: say("setup-find", { name }), help: say("setup-find-file-help"), icon: <ChoiceIcon name="find" />, suggested: true, keys: keysFor("source") }, another]
     : profileRows.length > 0 ? [...profileRows, another]
     // The fix is in Zotero and this screen notices it, so that is the one next step.
     : waiting && source ? [another]
     : missing ? [{ ...another, suggested: true }, tryAgain]
     : [{ ...tryAgain, suggested: true }, another];
-  if (!finding && source && source.label !== pickerText.chooseLibraryMenu && !choices.some((choice) => choice.title === source.label)) {
+  if (!finding && source && source.label !== say("picker-choose-library-menu") && !choices.some((choice) => choice.title === source.label)) {
     const open: Choice = { id: "source", title: source.label, help: sourceHelp(library.zotero, source.label), icon: source.icon ?? <ChoiceIcon name={library.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: waiting && profileRows.length === 0 };
     if (open.suggested) choices.unshift(open); else choices.push(open);
   }
@@ -167,7 +168,7 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
     return <div className="empty-state">{setup(false, {
       title: title === fullTitle ? title : <><span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span></>,
       zotero: library.zotero,
-      source: source && { ...source, help: setupText.addReferencesHelp },
+      source: source && { ...source, help: say("setup-add-references-help") },
     })}</div>;
   }
   // The one obstacle to name, with its one fix: the nearest thing to undo first.
@@ -176,18 +177,18 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
   const filtered = Boolean(query) && unfiltered !== null && Boolean(onRemoveFilter);
   const scoped = Boolean(query) && !filtered && narrowed;
   const absent = Boolean(query) && !filtered && !scoped && missing;
-  const title = filtered ? pickerText.filterObstacle : absent ? pickerText.notInLibraries : query ? pickerText.noMatches : pickerText.typeToFind;
-  const description = filtered ? pickerText.filterObstacleHint : scoped ? pickerText.scopeObstacleHint : absent ? pickerText.notInLibrariesHint
-    : query ? pickerText.noMatchesHint : library.sample ? setupText.sampleSearchHelp : pickerText.typeToFindHint;
+  const title = filtered ? say("picker-filter-obstacle") : absent ? say("picker-not-in-libraries") : query ? say("picker-no-matches") : say("picker-type-to-find");
+  const description = filtered ? say("picker-filter-obstacle-hint") : scoped ? say("picker-scope-obstacle-hint") : absent ? say("picker-not-in-libraries-hint")
+    : query ? say("picker-no-matches-hint") : library.sample ? say("setup-sample-search-help") : say("picker-type-to-find-hint");
   return (
     <div className="empty-state empty-template">
       {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">
-        {filtered ? <Button variant="primary" className="empty-primary" onPress={() => onRemoveFilter?.(unfiltered!)}>{pickerText.removeFilter}</Button>
-          : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{pickerText.searchAllLibraries}</Button>
-          : <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{pickerText.clearSearch}</Button>}
+        {filtered ? <Button variant="primary" className="empty-primary" onPress={() => onRemoveFilter?.(unfiltered!)}>{say("picker-remove-filter")}</Button>
+          : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{say("picker-search-all-libraries")}</Button>
+          : <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{say("picker-clear-search")}</Button>}
       </div> : null}
     </div>
   );

@@ -1,7 +1,7 @@
 import type { RefObject } from "react";
 import type { PickerApi } from "../../App";
 import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { ResultList } from "./ResultList";
 import { EmptyState } from "./EmptyState";
 import { CommandList } from "./CommandList";
@@ -76,9 +76,9 @@ export function PickerResults({
   </div>;
   return <div className="results-area scroll-area" ref={resultArea}>
     {library?.has_snapshot && results.length > 0 && !results.some((r) => r.recent) && library.state !== "loading" && showCitations && <div className="results-heading" aria-hidden="true">
-      <span>{list ? pickerText.pastedList : results.some((r) => r.partial) ? pickerText.closestMatches : query ? pickerText.bestMatches : pickerText.references}</span><bdi>{pickerText.resultCount(results.length)}</bdi>
+      <span>{list ? say("picker-pasted-list") : results.some((r) => r.partial) ? say("picker-closest-matches") : query ? say("picker-best-matches") : say("picker-references")}</span><bdi>{say("picker-result-count", { count: results.length })}</bdi>
     </div>}
-    <p className="visually-hidden" role="status" aria-label={pickerText.searchResults} aria-live="polite" aria-atomic="true">
+    <p className="visually-hidden" role="status" aria-label={say("picker-search-results")} aria-live="polite" aria-atomic="true">
       {showCitations ? announcement : ""}
     </p>
     {busy && emptyState}

@@ -1,8 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import type { Density, SearchResult } from "../../api";
-import { rowText } from "../../messages";
-import { ResultList } from "./ResultList";
+import { ResultList, rowWords } from "./ResultList";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
@@ -69,7 +68,7 @@ test("a closest match says so on its own row, and its name reads with pauses", (
 
 test("moving the highlight re-renders only the rows it leaves and reaches", () => {
   const { rerender, container } = render(list(0));
-  const rendered = vi.spyOn(rowText, "itemType");
+  const rendered = vi.spyOn(rowWords, "itemType");
   rerender(list(1));
   const keys = new Set(rendered.mock.calls.map(([type]) => type));
   expect(keys).toEqual(new Set(["book"]));

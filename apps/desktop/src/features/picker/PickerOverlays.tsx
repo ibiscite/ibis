@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { UpdateProgress } from "../../api";
 import { useInterfaceMessages } from "../../i18n";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { isMac } from "../../platform";
 import { NoticeSlot, QuietNotice } from "../../ui/NoticeSlot";
 import { UndoNotice } from "../../ui/UndoNotice";
@@ -59,7 +59,7 @@ export function PickerNotices({ state, send, menus, updateProgress, remark, pass
     {state.removed && <UndoNotice key={`reference-${state.removed.token}`} message={text("undo-removed", { reference })} action={text("undo-remove", { reference })} paused={state.hiddenAt !== null} fallbackFocusRef={input}
         onExpire={() => send({ type: "expire-removal", removal: state.removed! })}
         onUndo={async () => { send({ type: "undo-reference", removal: state.removed! }); }} />}
-    {windowUndo.ticket !== null && <UndoNotice key={`window-${windowUndo.ticket}`} message={pickerText.windowReset} action={text("undo-reset-window")} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
+    {windowUndo.ticket !== null && <UndoNotice key={`window-${windowUndo.ticket}`} message={say("picker-window-reset")} action={text("undo-reset-window")} onUndo={windowUndo.undo} onExpire={windowUndo.expire} paused={state.hiddenAt !== null} fallbackFocusRef={input} />}
     {!offered && (remark ? <QuietNotice passive={passive} paused={paused} onExpire={onRemarkPassed}>{remark}</QuietNotice>
       : updateProgress && updateProgress.attempt !== seenAttempt && <UpdateNotice progress={updateProgress} paused={paused} onSeen={() => setSeenAttempt(updateProgress.attempt)} />)}
   </NoticeSlot>;

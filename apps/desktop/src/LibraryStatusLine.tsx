@@ -1,8 +1,9 @@
 import { useEffect, useState, type ComponentProps, type ReactNode } from "react";
 import type { LibraryStatus, ZoteroLibrary } from "./bindings";
-import { appLocale, isolate, libraryMessages, operationFailures, pickerText, setupText } from "./messages";
+import { isolate, say } from "./i18n";
 import { Menu, MenuDetail } from "./ui/Menu";
 import "./ui/LibraryStatus.css";
+import { appLocale, libraryMessages } from "./libraryWords";
 
 export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; problem: string | null };
 
@@ -13,8 +14,8 @@ export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; prob
 export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, profilesFailed = false, failure = null }: {
   groupsFailed?: boolean; profilesFailed?: boolean; failure?: string | null;
 } = {}): LibraryCondition {
-  const problem = [groupsFailed && operationFailures.zoteroGroups, profilesFailed && setupText.zoteroProfilesFailed,
-    library?.has_snapshot && library.live_updates_off && libraryMessages.liveUpdatesOff].filter(Boolean).join(" ") || null;
+  const problem = [groupsFailed && say("operation-failures-zotero-groups"), profilesFailed && say("setup-zotero-profiles-failed"),
+    library?.has_snapshot && library.live_updates_off && say("library-live-updates-off")].filter(Boolean).join(" ") || null;
   // An old copy kept after a failed read is still searched: a warning, not a stop.
   if (library?.stale) return { health: "look", problem };
   if (library === null || library?.error) return { health: "stop", problem };
@@ -28,8 +29,8 @@ const lists = new Intl.ListFormat(appLocale, { style: "short", type: "unit" });
 /** "My Library, Lab group", naming groups once their names are known. */
 export function zoteroLibraryNames(status: LibraryStatus, groupName: (id: number) => string) {
   const names = status.zotero_libraries.map((choice: ZoteroLibrary) =>
-    isolate(typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary));
-  return names.length > 0 ? lists.format(names) : isolate(pickerText.myLibrary);
+    isolate(typeof choice === "object" ? groupName(choice.group) : say("picker-my-library")));
+  return names.length > 0 ? lists.format(names) : isolate(say("picker-my-library"));
 }
 
 /** Re-renders only its user, so a relative time stays right while the picker
@@ -99,7 +100,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, n
     {separated && state && <bdi className="library-separator">{" · "}</bdi>}
     {state && <bdi className="library-state">{state}</bdi>}
   </>;
-  const liveProps = { role: "status", "aria-label": pickerText.libraryStatus, "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
+  const liveProps = { role: "status", "aria-label": say("picker-library-status"), "aria-live": announces ? "polite" : "off", "aria-atomic": true } as const;
   const content = <>
         <span className="status-dot" data-health={health} aria-hidden="true" />
         <bdi className="library-words" dir="ltr">
@@ -114,7 +115,7 @@ export function LibraryStatusLine({ library, groupName, menu, action, failure, n
           {/* Like More, the shared Menu button owns its visible content. Do not
               replace it with an empty button beneath a sibling text overlay. */}
           <Menu {...menu} trigger={<span className="library-status" data-health={health} title={detail}>{content}</span>}
-            triggerLabel={pickerText.libraryRegion} triggerVariant="quiet" triggerSize="small" triggerClassName="library-status-trigger" triggerTitle={detail} />
+            triggerLabel={say("picker-library-region")} triggerVariant="quiet" triggerSize="small" triggerClassName="library-status-trigger" triggerTitle={detail} />
         </span>
         {action}
         {notice}

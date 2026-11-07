@@ -2,11 +2,13 @@ import { useEffect, useState, type ReactNode, type RefObject } from "react";
 import type { LibraryStatus, ZoteroLibrary, ZoteroProfiles } from "../../api";
 import type { SystemIcon } from "../../bindings";
 import { LibraryDetail, libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "../../LibraryStatusLine";
-import { libraryMessages, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { shortenedLabel, SourceAction, type SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import { MenuItem, MenuSection, MenuSeparator } from "../../ui/Menu";
+import { findSourceLabel } from "./usePickerSource";
+import { libraryMessages } from "../../libraryWords";
 
 /** The fix for these is in Zotero itself, so opening it is the action. */
 export const zoteroWaits = (problem: LibraryStatus["problem"]) =>
@@ -51,23 +53,23 @@ export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpen
   // An optional list that fails says nothing about a healthy library.
   const condition = libraryCondition(library, { groupsFailed, profilesFailed: profilesFailed && Boolean(asked), failure });
   const openProfiles: SourceActionProps | null = asked && library.has_snapshot
-    ? { ...sourceAction, icon: statusIcon, file: false, label: pickerText.chooseZoteroProfile, keys: undefined, open: () => onOpenChange(true) } : null;
+    ? { ...sourceAction, icon: statusIcon, file: false, label: say("picker-choose-zotero-profile"), keys: undefined, open: () => onOpenChange(true) } : null;
   // The engine's problem code chooses the action. A closed Zotero with a
   // usable fresh snapshot has no problem and offers no interruption.
   const libraryAction = { ...sourceAction, icon: statusIcon, file: !(library?.snapshot_zotero ?? library?.zotero) };
   const failedChoice = library?.has_snapshot && library.error && !library.stale;
   const fix: SourceActionProps | null = sourceFailure ? sourceAction : openProfiles ?? (failedChoice
-    ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose }
+    ? { ...libraryAction, label: say("picker-choose-library-menu"), keys: keysFor("chooseSource"), open: actions.choose }
     : library?.error || library?.stale
     ? !library.zotero && (library.problem === "missing" || !sourceAction.file)
-      ? { ...libraryAction, label: pickerText.findSourceFile(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
+      ? { ...libraryAction, label: findSourceLabel(library.name), keys: library.stale && sourceAction.file ? sourceAction.keys : undefined, open: actions.find }
       // ⌘O appears only where it does the same thing: with a reference selected it means Show in Zotero.
-      : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: pickerText.openZotero, keys: sourceAction.label === pickerText.openZotero ? sourceAction.keys : undefined, open: actions.openZotero }
-      : library?.zotero ? { ...libraryAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: pickerText.chooseLibraryMenu, keys: keysFor("chooseSource"), open: actions.choose } : null);
+      : library?.zotero && zoteroWaits(library.problem) ? { ...libraryAction, label: say("picker-open-zotero"), keys: sourceAction.label === say("picker-open-zotero") ? sourceAction.keys : undefined, open: actions.openZotero }
+      : library?.zotero ? { ...libraryAction, label: say("picker-choose-library-menu"), keys: keysFor("chooseSource"), open: actions.choose } : sourceAction : failure ? { ...sourceAction, label: say("picker-choose-library-menu"), keys: keysFor("chooseSource"), open: actions.choose } : null);
   const detailLabel = [...detail, condition.problem].filter(Boolean).join(". ");
   return <LibraryStatusLine library={library} groupName={groupName} failure={failure} condition={condition} notice={notice}
     action={!hideAction && fix && fix.label !== rowAction && <SourceAction {...fix} />}
-    menu={{ label: pickerText.libraryRegion, id: "library-menu",
+    menu={{ label: say("picker-library-region"), id: "library-menu",
       isOpen, onOpenChange, tabFocusRef: searchRef, placement: "top end", children: <>
         {/* The spec's order: what the menu is about (the library, its count and
             age, then any profile and the libraries searched), then what you can
@@ -75,29 +77,29 @@ export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpen
             hears it on entering the menu even though the heading has no items. */}
         <MenuSection id="library-detail" label={detailLabel} header={<LibraryDetail lines={detail} problem={condition.problem ?? undefined} />}>{[]}</MenuSection>
         <MenuSeparator />
-        {profileRows && <MenuSection id="zotero-profile" label={pickerText.zoteroProfile} header={pickerText.zoteroProfile} layout="list" selectionMode="single">
+        {profileRows && <MenuSection id="zotero-profile" label={say("picker-zotero-profile")} header={say("picker-zotero-profile")} layout="list" selectionMode="single">
           {profileRows.names.map((name, index) => <MenuItem key={name} id={`profile-${index}`} label={shortenedLabel(name, 36)} title={name}
             checked={name === profileRows.chosen} closeOnSelect onAction={() => chooseProfile?.(name)} />)}
         </MenuSection>}
         {profileRows && <MenuSeparator />}
-        {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={pickerText.zoteroLibraries} header={pickerText.searchIn} layout="list">
-          <MenuItem id="all" label={pickerText.allLibraries} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />
+        {zotero && zotero.offered.length > 1 && <MenuSection id="library-scope" label={say("picker-zotero-libraries")} header={say("picker-search-in")} layout="list">
+          <MenuItem id="all" label={say("picker-all-libraries")} checked={zotero.chosenCount === zotero.offered.length} onAction={zotero.all} />
           {zotero.offered.map((choice) => {
             const checked = zotero.isChosen(choice);
             const last = checked && zotero.chosenCount === 1;
             const id = typeof choice === "object" ? `group:${choice.group}` : choice;
             const name = zotero.name(choice);
             return <MenuItem key={id} id={id} label={shortenedLabel(name, 36)} checked={checked} disabled={last}
-              title={last ? pickerText.keepOneLibrary : name} onAction={() => zotero.toggle(choice)} />;
+              title={last ? say("picker-keep-one-library") : name} onAction={() => zotero.toggle(choice)} />;
           })}
         </MenuSection>}
         {zotero && zotero.offered.length > 1 && <MenuSeparator />}
         <MenuSection id="library-actions" label={detailLabel}>
-          <MenuItem id="choose" label={pickerText.chooseLibraryMenu} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
-          {!library?.zotero && <MenuItem id="zotero" label={pickerText.useZotero} onAction={actions.useZotero} />}
+          <MenuItem id="choose" label={say("picker-choose-library-menu")} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
+          {!library?.zotero && <MenuItem id="zotero" label={say("picker-use-zotero")} onAction={actions.useZotero} />}
           {/* A reload can publish a recovery screen before an animated exit
               ends. Retire the modal and its same-named menu before that I/O. */}
-          {library?.name && <MenuItem id="reload" label={pickerText.reloadLibrary} closeOnSelect onAction={actions.reload} />}
+          {library?.name && <MenuItem id="reload" label={say("picker-reload-library")} closeOnSelect onAction={actions.reload} />}
         </MenuSection>
       </> }} />;
 }

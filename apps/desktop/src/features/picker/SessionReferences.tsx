@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
-import { sessionText } from "../../messages";
+import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Sheet, SheetList, SheetRow } from "../../ui/Sheet";
 import { idKey } from "./choice";
@@ -34,13 +34,13 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     setBibliography(null);
     sessionBibliography(style).then(
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
-      (error) => { if (request === formatting.current) setProblem(said(error, sessionText.notFormatted)); });
+      (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
   }, [sessionBibliography, style]);
   const load = useCallback((read: () => Promise<SessionReferencesView>) => {
     const request = ++listing.current;
     setProblem(null);
     read().then((next) => { if (request === listing.current) show(next); },
-      () => { if (request === listing.current) setProblem(sessionText.notRead); });
+      () => { if (request === listing.current) setProblem(say("session-not-read")); });
   }, [show]);
   useEffect(() => {
     load(sessionReferences);
@@ -56,46 +56,46 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     setStatus(null);
     setProblem(null);
     act().then((done) => { if (done) setStatus(done); }, (error) => {
-      if (changed(error)) { setProblem(sessionText.changed); load(sessionReferences); } else setProblem(said(error, failure));
+      if (changed(error)) { setProblem(say("session-changed")); load(sessionReferences); } else setProblem(said(error, failure));
     });
   };
   const hash = bibliography?.content_hash;
   const undo = view?.undo;
-  const undoLabel = !undo ? null : undo.kind === "reset" ? sessionText.undoReset
-    : sessionText.undoRemove(undo.reference ? tileName(undo.reference) : null);
+  const undoLabel = !undo ? null : undo.kind === "reset" ? say("session-undo-reset")
+    : (undo.reference ? say("session-undo-remove-named", { name: isolate(tileName(undo.reference)) }) : say("session-undo-remove"));
   const name = outputName(style);
-  return <Sheet title={sessionText.title} closeLabel={sessionText.close} description={sessionText.about} onClose={onClose}
+  return <Sheet title={say("session-title")} closeLabel={say("session-close")} description={say("session-about")} onClose={onClose}
     leadingActions={<>
       {undoLabel && <Button label={undoLabel} onPress={() => edit({ kind: "undo" })} />}
-      {view && view.rows.length + view.absent > 0 && <Button label={sessionText.reset} onPress={() => edit({ kind: "reset" })} />}
+      {view && view.rows.length + view.absent > 0 && <Button label={say("session-reset")} onPress={() => edit({ kind: "reset" })} />}
     </>}
     actions={<>
-      <Button label={sessionText.save} isDisabled={!hash} onPress={() => deliver(async () => {
+      <Button label={say("session-save")} isDisabled={!hash} onPress={() => deliver(async () => {
         const saved = await exportSessionBibliography(style, hash!);
-        return saved === null ? null : sessionText.saved(saved);
-      }, sessionText.notSaved)} />
-      <Button variant="primary" label={sessionText.copy} isDisabled={!hash} onPress={() => deliver(async () => {
+        return saved === null ? null : say("session-saved", { name: isolate(saved) });
+      }, say("session-not-saved"))} />
+      <Button variant="primary" label={say("session-copy")} isDisabled={!hash} onPress={() => deliver(async () => {
         await copySessionBibliography(style, hash!);
-        return sessionText.copied;
-      }, sessionText.notCopied)} />
+        return say("session-copied");
+      }, say("session-not-copied"))} />
     </>}>
-    {view && view.rows.length === 0 && view.absent === 0 && <p>{sessionText.empty}</p>}
-    {view && view.rows.length > 0 && <SheetList label={sessionText.title}>
+    {view && view.rows.length === 0 && view.absent === 0 && <p>{say("session-empty")}</p>}
+    {view && view.rows.length > 0 && <SheetList label={say("session-title")}>
       {view.rows.map((row) => <SheetRow key={idKey(row.id)}>
         <span>
           <span dir="auto">{row.title}</span>
           <span className="ui-sheet-note" dir="auto">{[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}</span>
         </span>
-        <Button size="small" label={sessionText.remove} aria-label={sessionText.removeNamed(tileName(row))} onPress={() => edit({ kind: "remove", id: row.id })} />
+        <Button size="small" label={say("session-remove")} aria-label={say("session-remove-named", { name: isolate(tileName(row)) })} onPress={() => edit({ kind: "remove", id: row.id })} />
       </SheetRow>)}
     </SheetList>}
-    {view && view.absent > 0 && <p role="status">{sessionText.absent(view.absent)}</p>}
-    {view?.overflowed && <p role="status">{sessionText.full}</p>}
+    {view && view.absent > 0 && <p role="status">{say("session-absent", { count: view.absent })}</p>}
+    {view?.overflowed && <p role="status">{say("session-full")}</p>}
     {bibliography && <>
-      <h3>{sessionText.bibliographyIn(name)}</h3>
+      <h3>{say("session-bibliography-in", { style: isolate(name) })}</h3>
       <p className="ui-sheet-output" dir="auto">{bibliography.text}</p>
       {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
-      {bibliography.left_out.length > 0 && <p role="status">{sessionText.leftOut(bibliography.left_out)}</p>}
+      {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
     </>}
     {problem && <p role="alert">{problem}</p>}
     {status && <p role="status">{status}</p>}

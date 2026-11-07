@@ -8,7 +8,7 @@ import type { FormattedCitation } from "../../format/outputs";
 import { render } from "../../format/markup";
 import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
-import { citationDetailsText, keyText, pickerText, readerText } from "../../messages";
+import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
@@ -50,10 +50,10 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {
     const { entry, output, closest } = notes;
-    return <Inspector ref={ref} id={id} label={pickerText.citationWarnings} heading={pickerText.citationWarnings} closeLabel={keyText.close} readOnly onClose={onClose}>
+    return <Inspector ref={ref} id={id} label={say("picker-citation-warnings")} heading={say("picker-citation-warnings")} closeLabel={say("key-close")} readOnly onClose={onClose}>
       {entry && <><h3>{entry.short}</h3><p>{entry.text}</p></>}
       {output.map((warning, i) => <p key={`output-${i}`}>{warning}</p>)}
-      {closest.length > 0 && <h3>{pickerText.closestMatches}</h3>}
+      {closest.length > 0 && <h3>{say("picker-closest-matches")}</h3>}
       {closest.map((warning, i) => <p key={`partial-${i}`}>{warning}</p>)}
       {problem}
     </Inspector>;
@@ -66,8 +66,8 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
     : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
   const byline = reference ? [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ") : undefined;
-  return <Inspector ref={ref} id={id} label={reference ? citationDetailsText.details(reference.title || reference.key) : pickerText.citationDetails}
-    heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={keyText.close} onClose={onClose}
+  return <Inspector ref={ref} id={id} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
+    heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose}
     reading={reading && pdf !== null}
     document={reading && pdf && reference && onChange ? <Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
       onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "page-editor" } : null })} onClose={() => setReading(false)} /> : undefined}
@@ -80,19 +80,19 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
       onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
       onFormChange={(form) => onChange(reference, { form })} onSubmit={onSubmit} />}
     {/* What Enter will paste, in full, right under the fields that change it. */}
-    {citation && <section aria-label={pickerText.fullCitation} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
+    {citation && <section aria-label={say("picker-full-citation")} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
     {problem}
     {[...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
     {/* The actions stay in view at the bottom while the details above them scroll. */}
     {reference && <div className="inspector-actions"><hr />
     {pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
-      <span>{reading ? readerText.hide : readerText.show}</span>
+      <span>{reading ? say("reader-hide") : say("reader-show")}</span>
     </Button>}
     {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
       <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
     </Button>}
     <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
-      <span>{keyText.removeFromCitation}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
+      <span>{say("key-remove-from-citation")}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
     </Button></div>}
   </Inspector>;
 }

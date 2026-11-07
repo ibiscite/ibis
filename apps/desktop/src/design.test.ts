@@ -214,21 +214,17 @@ test("menus, buttons and choice rows use title case, as the Mac does", () => {
   expect(ftl).toMatch(/^about-check = Check for Updates$/m);
 });
 
-/** Every message a person reads, as `[where, text]`: string literals in messages.ts, values in en-US.ftl. */
+/** Every word people read, from the one catalogue. */
 function userStrings(): [string, string][] {
-  const code = read("messages.ts").replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "");
-  const literals = [...code.matchAll(/"((?:[^"\\\n]|\\.)*)"|`((?:[^`\\]|\\.)*)`/g)].map((match) => match[1] ?? match[2]!);
-  const ftl = read("../../../locales/en-US.ftl").split("\n").filter((line) => line && !line.startsWith("#"))
-    .map((line) => line.replace(/^[a-z][\w-]* =/, "").replace(/\{[^}]*\}/g, ""));
-  return [...literals.map((text) => ["messages.ts", text] as [string, string]), ...ftl.map((text) => ["en-US.ftl", text] as [string, string])];
+  return read("../../../locales/en-US.ftl").split("\n").filter((line) => line && !line.startsWith("#"))
+    .map((line) => ["en-US.ftl", line.replace(/^[a-z][\w-]* =/, "").replace(/\{[^}]*\}/g, "")]);
 }
 
 test("people read typographic apostrophes, never typewriter ones", () => {
   const straight = userStrings().filter(([, text]) => /[A-Za-z]'|'[A-Za-z]/.test(text));
   expect(straight.map(([where, text]) => `${where}: ${text}`)).toEqual([]);
-  // The lint reads both files: a planted straight apostrophe would be caught.
-  expect(userStrings().some(([where, text]) => where === "en-US.ftl" && text.includes("’"))).toBe(true);
-  expect(userStrings().some(([where, text]) => where === "messages.ts" && text.includes("’"))).toBe(true);
+  // The lint reads the catalogue: a planted straight apostrophe would be caught.
+  expect(userStrings().some(([, text]) => text.includes("’"))).toBe(true);
 });
 
 test("Settings descriptions are sentences that end with a full stop", () => {

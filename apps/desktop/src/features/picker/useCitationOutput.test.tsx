@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import type { FilePreview } from "../../bindings";
 import type { LibraryStatus } from "../../api";
 import type { CitationReference } from "./choice";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { useCitationOutput } from "./useCitationOutput";
 
 afterEach(cleanup);
@@ -213,7 +213,7 @@ test("a shared citation key keeps its existing explanation ahead of a supplied m
   });
 
   await waitFor(() => expect(result.current.shown).toBe("failed"));
-  expect(result.current.previewProblem).toBe(pickerText.sharedKey("synthetic"));
+  expect(result.current.previewProblem).toBe(say("picker-shared-key", { key: "synthetic" }));
 });
 
 test("a stale file preview waits for a changed source instead of retrying each unchanged status read", async () => {
@@ -311,7 +311,7 @@ test("a preview the engine keeps refusing ends in a stated failure, not Formatti
   const { result, rerender } = renderHook(useCitationOutput, { initialProps: initial });
   await waitFor(() => expect(result.current.shown).toBe("failed"));
   expect(previewFileCitation).toHaveBeenCalledTimes(2);
-  expect(result.current.previewProblem).toBe(pickerText.previewRefused);
+  expect(result.current.previewProblem).toBe(say("picker-preview-refused"));
   await act(async () => { await Promise.resolve(); });
   expect(previewFileCitation).toHaveBeenCalledTimes(2);
 

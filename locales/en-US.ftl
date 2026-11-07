@@ -504,7 +504,7 @@ backup-problem-settings-unusable = Ibis can’t use its settings file as it is. 
 backup-problem-changed = Settings changed after the backup was shown. Choose it again.
 backup-problem-not-saved = Ibis couldn’t save. Nothing changed.
 
-## The picker, setup, menus, notices and receipts, from messages.ts.
+## The picker, setup, menus, notices and receipts.
 
 reader-show = Show PDF
 reader-hide = Hide PDF
@@ -656,8 +656,11 @@ writing-project-bibliography-not-saved = The bibliography choice could not be sa
 writing-project-pick = Your pick changes this project’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
-density-compact = Compact
-density-comfortable = Comfortable
+density-name =
+    { $density ->
+        [compact] Compact
+       *[comfortable] Comfortable
+    }
 picker-choose-project = Check Against a .bib File…
 picker-choose-other-project = Check Against Another Bibliography…
 picker-open-zotero = Open Zotero
@@ -698,7 +701,6 @@ picker-copy-only = Copy Only
 picker-copy-only-here = Copy Only in { $app }
 picker-preview = Preview
 picker-citation-details = Citation details
-picker-edit = Edit
 picker-details = Details
 picker-citation-warnings = Citation warnings
 picker-full-citation = Full citation
@@ -758,12 +760,10 @@ picker-drag-citation = Drag the citation into any app
 picker-commands = Commands
 picker-no-commands = No matching commands
 picker-more-title = More actions ({ $keys })
-picker-choose-library = Choose Library…
 picker-use-zotero = Use Zotero
 picker-library-region = Library
 picker-picker-actions = Picker actions
 picker-library-status = Library status
-picker-reload = Reload
 picker-reload-library = Reload Library
 picker-choose-zotero-profile = Choose Zotero Profile…
 picker-zotero-profile = Zotero Profile
@@ -773,11 +773,13 @@ picker-quit-label = Quit Ibis
 picker-settings = Settings…
 picker-density = Rows: { $name }
 picker-rows = Rows
-picker-density-examples-compact = 1 line
-picker-density-examples-comfortable = 2 lines
+picker-density-examples =
+    { $density ->
+        [compact] 1 line
+       *[comfortable] 2 lines
+    }
 picker-density-title = Show less or more of each reference
 picker-view-changes = View changes
-picker-larger-text = Larger text
 picker-zotero-libraries = Zotero libraries
 picker-search-in = Search in
 picker-all-libraries = All Libraries
@@ -788,36 +790,6 @@ picker-remove-reference = Remove { $key } from the selection
 picker-remove-reference-in = Remove { $key } ({ $library }) from the selection
 key-title = Keyboard Shortcuts
 key-close = Close
-key-regions-search = While searching
-key-regions-library = Your library
-key-regions-picker = Anywhere in Ibis
-key-regions-menu = In a menu
-key-regions-system = Open Ibis
-key-regions-citation = In the citation
-key-actions-source = Open the source
-key-actions-choose-source = Choose a library
-key-actions-reveal-source = Show the source in its folder
-key-actions-copy = Paste or copy the citation
-key-actions-add = Add another reference
-key-actions-move = Move through results
-key-actions-peek = Peek at the highlighted reference
-key-actions-escape = Step back or hide
-key-actions-format = Change the format
-key-actions-more = More actions
-key-actions-change-last = Edit the citation you just pasted
-key-actions-pin = Keep the window open
-key-actions-keys = Show keyboard shortcuts
-key-actions-settings = Open Settings
-key-actions-quit = Quit Ibis
-key-actions-undo = Undo
-key-actions-text-size = Make text larger or smaller
-key-actions-citation-move = Move between references
-key-actions-citation-remove = Remove the reference
-key-actions-menu-move = Move through the menu
-key-actions-menu-ends = Go to the first or last item
-key-actions-menu-choose = Choose the item
-key-actions-menu-leave = Leave the menu and return to the search
-key-actions-open = From any app
 key-footer = Keys
 key-copy = Copy
 key-copy-as = Copy as { $format }
@@ -833,6 +805,251 @@ copied-notice-title = Copied
 copied-notice-plugin-note = If this document uses a reference manager’s plugin (Zotero, Mendeley, EndNote, Citavi, Paperpile and others), insert with the plugin.
 copied-notice-source = Ibis
 copied-notice-notice-failed = The Copied notice could not be shown.
+# Names inside these sentences arrive isolated (⁨…⁩), so a right-to-left name keeps its place.
+reader-indicator = p. { $printed } · PDF page { $index } of { $count }
+reader-pdf-page = PDF { $index }
+setup-found-on =
+    { $platform ->
+        [macos] Found on this Mac
+        [windows] Found on this PC
+       *[other] Found on this computer
+    }
+setup-zotero-access-off = To read your references, in Zotero › Settings › Advanced turn on “Allow other applications on this computer to communicate with Zotero”.
+setup-zotero-open = Zotero is open.
+setup-zotero-installed = Zotero is on this computer.
+setup-bib-found =
+    { $count ->
+        [one] 1 .bib file found.
+       *[other] { $count } .bib files found.
+    }
+session-remove-named = Remove { $name }
+session-undo-remove = Undo Remove
+session-undo-remove-named = Undo Remove { $name }
+session-absent =
+    { $count ->
+        [one] 1 reference isn’t in the open library, so it is left out.
+       *[other] { $count } references aren’t in the open library, so they are left out.
+    }
+session-left-out = Left out because this style can’t write them: { $names }.
+session-bibliography-in = Bibliography in { $style }
+session-saved = Saved { $name }.
+writing-project-remove-question = Remove { $name } from Ibis? Its bibliography file stays where it is.
+writing-project-remembered = Saved for { $name }.
+picker-project-state =
+    { $state ->
+        [in] In { $name }
+        [missing] Missing from { $name }
+        [could-not-check] Couldn’t check { $name }
+        [repeated] Key appears more than once
+       *[may-name-another] Key may name another reference
+    }
+picker-project-lines =
+    { $count ->
+        [one] line { $lines }
+       *[other] lines { $lines }
+    }
+picker-project-reading = Reading { $name }
+picker-project-damaged = Couldn’t read all of { $name }, so nothing is called missing.
+picker-project-failed = Couldn’t read { $name }.
+picker-project-checking = Checking against { $name }
+picker-project-check-lines =
+    { $count ->
+        [one] Check line { $lines }.
+       *[other] Check lines { $lines }.
+    }
+picker-stop-project = Stop Checking { $name }
+picker-copy-project-entry = Copy Entry for { $name }
+picker-project-entry =
+    { $outcome ->
+        [copied] Copied the entry for { $key } as your file has it, including any file or note field. Check it, then add it to { $name }.
+        [no-original] This reference has no original BibTeX entry here. Export it from your reference manager in your project’s dialect, keeping its key.
+        [changed] The library or the bibliography changed. Search again, then try again.
+        [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
+       *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
+    }
+picker-editor-waiting = Citing for your editor in { $format }. Enter sends what you see; Esc cancels.
+picker-find-source = Find { $name }…
+picker-find-source-unnamed = Find…
+picker-show-source-folder =
+    { $platform ->
+        [macos] Show in Finder
+       *[other] Show in Folder
+    }
+picker-open-source = Open { $name }
+picker-open-library = Open library
+picker-source-open-failed =
+    { $source ->
+        [zotero] Zotero could not open. Try again.
+       *[file] The source file could not open. Try again.
+    }
+picker-warning-count =
+    { $count ->
+        [one] 1 warning
+       *[other] { $count } warnings
+    }
+picker-copy-citations =
+    { $count ->
+        [one] Copy 1 citation
+       *[other] Copy { $count } citations
+    }
+picker-entry-output =
+    { $count ->
+        [one] { $style } entry
+       *[other] { $count } { $style } entries
+    }
+picker-missing-citations = Not in your library: { $keys }
+picker-matched-in =
+    { $field ->
+        [doi] Matched in the DOI
+        [keyword] Matched in the keywords
+        [container] Matched in the journal or book
+        [abstract] Matched in the abstract
+        [identifier] Matched in an ISBN, PubMed ID or arXiv ID
+       *[other] Matched in { $field }
+    }
+picker-run-command = Run { $title }
+picker-result-count =
+    { $count ->
+        [one] 1 result
+       *[other] { $count } results
+    }
+picker-selection-count =
+    { $count ->
+        [one] 1 reference selected for citation
+       *[other] { $count } references selected for citation
+    }
+picker-shortcut-not-used = Your shortcut setting was not used: { $reason }
+picker-shortcut-unavailable = The shortcut { $shortcut } is not available: { $reason }
+key-copy-entries =
+    { $count ->
+        [one] Copy { $style } entry
+       *[other] Copy { $count } { $style } entries
+    }
+library-opening = Opening { $name }…
+library-opening-unnamed = Opening library…
+library-reloading = Reloading { $name }…
+library-reloading-unnamed = Reloading library…
+library-zotero-not-read = { $name } could not be read. { $reason }
+library-open-zotero-then-reload = Open Zotero, then reload.
+library-file-not-opened = The library could not be opened: { $name }. { $reason } Choose it again or reconnect the drive.
+library-the-chosen-file = the chosen file
+library-empty-title = No references in { $name }
+library-empty-title-unnamed = No references in this library
+library-checking = Checking library…
+library-details-unavailable = Library details unavailable
+library-none-chosen = No library chosen
+library-not-opened = not opened
+library-moved = moved
+library-not-updated = not updated
+library-no-references = no references
+library-references =
+    { $count ->
+        [one] { $count } reference
+       *[other] { $count } references
+    }
+library-skipped =
+    { $count ->
+        [one] { $count } entry skipped
+       *[other] { $count } entries skipped
+    }
+library-to-check = { $count } to check
+library-age-opening = opening…
+library-age-reloading = reloading…
+library-updated = updated { $ago }
+library-checked-at = checked { $ago }, { $time }
+library-last-read-at = last read { $ago }, { $time }
+library-zotero-unreachable = Zotero could not be reached
+library-file-unreadable = the file could not be read
+library-where = ({ $lines })
+library-key-users = { $count } use the key { $key }
+library-others-share =
+    { $count ->
+        [one] 1 other shares a key
+       *[other] { $count } others share a key
+    }
+library-could-not-read =
+    { $skipped ->
+        [one] it could not be read
+       *[other] { $count } could not be read
+    }
+library-skipped-because =
+    { $skipped ->
+        [one] { $skipped } entry skipped: { $reasons }.
+       *[other] { $skipped } entries skipped: { $reasons }.
+    }
+library-check = Check { $lines }.
+library-check-library = Check the library.
+library-line = line { $line }
+library-lines = lines { $lines } and { $last }
+library-lines-and-others = lines { $lines } and { $last }, and others
+library-work-limit = The library is too large to read in full.
+library-cloud-synced = It is in a cloud-synced folder, so changes can arrive late.
+library-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
+time-just-now = just now
+time-on = on { $date }
+time-short =
+    { $unit ->
+        [now] now
+        [minute] { $n } min
+        [hour] { $n } h
+       *[day] { $n } d
+    }
+# Short word for a CSL item type, read by screen readers; other types say none.
+row-item-type =
+    { $type ->
+        [article] Article
+        [article-journal] Article
+        [article-magazine] Article
+        [article-newspaper] Article
+        [book] Book
+        [chapter] Chapter
+        [dataset] Dataset
+        [entry-dictionary] Entry
+        [entry-encyclopedia] Entry
+        [manuscript] Manuscript
+        [paper-conference] Paper
+        [patent] Patent
+        [post] Post
+        [post-weblog] Post
+        [report] Report
+        [review] Review
+        [review-book] Review
+        [software] Software
+        [speech] Talk
+        [standard] Standard
+        [thesis] Thesis
+        [webpage] Web page
+       *[other] {""}
+    }
+copied-notice-pasted-into = Pasted into { $app }
+copied-notice-pasted = Pasted
+# Every "copied, not pasted" sentence says why and ends with its fix, written
+# with ⌘V; other systems show Ctrl+V. The words are the Notices table in
+# docs/design/delivery.md, which a test reads.
+copied-notice-reason =
+    { $reason ->
+        [paste-off] Copied. Pasting is off in Settings. Press ⌘V to paste.
+        [unsupported-system] Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.
+        [no-target] Copied. There was no app to paste into. Press ⌘V to paste.
+        [unknown-app] Copied. Automatic paste is not approved for this app. Press ⌘V to paste.
+        [copy-only] Copied. Copy Only is set for this app. Press ⌘V to paste.
+        [nonstandard-shortcut] Copied. This app’s paste key does something else. Use its own paste command.
+        [target-changed] Copied. The target app or window changed. Press ⌘V to paste.
+        [clipboard-changed] Copied. The clipboard changed since. Copy the citation again.
+        [paste-expired] Copied. The paste expired. Press ⌘V to paste.
+        [no-permission] Copied. Ibis needs your OK to paste. Press ⌘V to paste.
+        [accessibility-required] Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste.
+        [terminal] Copied. Not pasted into a terminal. Press ⌘V to paste.
+        [remote-desktop] Copied. Not pasted into a remote desktop. Press ⌘V to paste.
+        [virtual-machine] Copied. Not pasted into a virtual machine. Press ⌘V to paste.
+        [secure-field] Copied. This field hides what you type. Press ⌘V to paste.
+        [secure-input] Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.
+        [elevated-app] Copied. Not pasted into an administrator app. Press ⌘V to paste.
+        [key-release-failed] Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste.
+        [selection-not-shown] Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.
+        [citation-not-selected] Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.
+       *[paste-unavailable] Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.
+    }
 update-title = Updating Ibis
 update-downloading = Downloading
 update-installing = Checking and installing

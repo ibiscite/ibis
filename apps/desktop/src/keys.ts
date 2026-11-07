@@ -1,8 +1,8 @@
 import type { MessageId } from "./i18n";
-import type { keyText } from "./messages";
+import type { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
 
-export type KeyRegion = keyof typeof keyText.regions;
-export type KeyAction = keyof typeof keyText.actions;
+export type KeyRegion = keyof typeof SHORTCUT_REGIONS;
+export type KeyAction = keyof typeof SHORTCUT_ACTIONS;
 /** One key binding the picker really handles, in accelerator syntax. */
 export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string;
   /** The action's words right now, when they differ from the table's (Enter that only copies). */

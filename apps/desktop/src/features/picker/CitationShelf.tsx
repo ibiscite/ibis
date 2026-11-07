@@ -4,7 +4,7 @@ import type { SearchResult } from "../../api";
 import type { FilePreview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { render, renderRuns } from "../../format/markup";
-import { citationDetailsText, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
@@ -112,10 +112,10 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   // What depends on the whole document: a note style's full first note, from the
   // engine's notice about the citation shown (an editor's output included), or
   // a numbered style's entry.
-  const entryNotice = outputNotices.includes("full-first-note") ? { short: pickerText.firstNoteShort, text: pickerText.firstNote }
-    : style && writesEntries(style) ? { short: pickerText.entryOnlyShort, text: pickerText.entryOnly(outputName(style)) } : null;
-  const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice?.short,
-    partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ");
+  const entryNotice = outputNotices.includes("full-first-note") ? { short: say("picker-first-note-short"), text: say("picker-first-note") }
+    : style && writesEntries(style) ? { short: say("picker-entry-only-short"), text: say("picker-entry-only", { style: outputName(style) }) } : null;
+  const statusLabel = [warnings.length > 0 && say("picker-warning-count", { count: warnings.length }), entryNotice?.short,
+    partialWarnings.length > 0 && say("picker-closest-matches")].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });
   const inspecting = (reference: CitationReference) => panel?.kind === "reference" && panel.reference === idKey(reference.id);
   // As with Mail's tokens, a segment selects what the details show; pressed again, it closes them.
@@ -123,7 +123,7 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   const toggle = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => { if (panel?.kind === kind) close(); else open(kind, origin, reference); };
   const remove = (reference: CitationReference) => { close(); onRemove(reference); };
   const isSelected = (reference: CitationReference) => records.some((r) => idKey(r.id) === idKey(reference.id));
-  const fullProblem = problem ?? (style ? pickerText.previewStyleError(outputName(style)) : pickerText.previewError);
+  const fullProblem = problem ?? (style ? say("picker-preview-style-error", { style: outputName(style) }) : say("picker-preview-error"));
   const ready = shown && typeof shown === "object" ? shown : null;
   const referenceIds = JSON.stringify(references.map((reference) => idKey(reference.id)));
   const retained = useRef<{ presentation: typeof presentation; ids: string; value: FormattedCitation } | null>(null);
@@ -206,7 +206,7 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     const name = labels[span.item!]!;
-    return <ShelfSegment key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={citationDetailsText.edit(name)}
+    return <ShelfSegment key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={say("citation-details-edit", { reference: name })}
       aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
       aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
       onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}
@@ -214,7 +214,7 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
       <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
     </ShelfSegment>;
   });
-  const singleSegment = single && !spanned && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={citationDetailsText.edit(labels[0]!)}
+  const singleSegment = single && !spanned && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={say("citation-details-edit", { reference: labels[0]! })}
     aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
     aria-describedby={text !== undefined ? citationId : undefined}
     aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
@@ -223,51 +223,51 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
     <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
   </ShelfSegment> : null;
   return <>
-    <p className="visually-hidden" role="status" aria-label={pickerText.citationSelection} aria-live="polite" aria-atomic="true">
-      {announce ? [pickerText.selectionCount(selected.size), ...partialWarnings].join(" ") : ""}
+    <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
+      {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings].join(" ") : ""}
     </p>
-    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} heading={labels[editedIndex] ?? pickerText.citationDetails}
+    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} heading={labels[editedIndex] ?? say("picker-citation-details")}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`} citation={visible}
       failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source} keys={keys}
       onChange={onChangeReference} onSubmit={onSubmit} onOpenSource={onOpenSource} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
-      <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? pickerText.preview : pickerText.citationDetails}
+      <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}
         tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         {/* The beak is the citation's proxy, as a Mac window's title icon is its
             document's: drag it into any app to drop exactly what Enter pastes. */}
-        <span className="shelf-leading" draggable={Boolean(dragged?.text) || undefined} title={dragged?.text ? pickerText.dragCitation : undefined}
+        <span className="shelf-leading" draggable={Boolean(dragged?.text) || undefined} title={dragged?.text ? say("picker-drag-citation") : undefined}
           onDragStart={(event) => {
             if (!dragged?.text) return event.preventDefault();
             event.dataTransfer.effectAllowed = "copy";
             event.dataTransfer.setData("text/plain", dragged.text);
             if (!keys && dragged.html) event.dataTransfer.setData("text/html", dragged.html);
           }}><Beak /></span>
-        <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? pickerText.selectedReferences : undefined}>
+        <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? say("picker-selected-references") : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
-          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{pickerText.shelfStale}</p></>
-            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{pickerText.previewPending}</p> : null}
+          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
+            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">
-          {copied && <span role="status" aria-label={pickerText.copied} className="shelf-copied"><Icon name="check" />{pickerText.copied}</span>}
-          {!copied && references.length > 1 && <ToolbarMenu buttonRef={count} label={pickerText.selectedReferences} value={String(references.length)} placement="top end" selectedKey={panel?.reference ?? ""}
-            button={{ className: "shelf-count", quiet: true, label: interfaceText("shelf-references", { count: references.length }), title: pickerText.allChosen(references.length),
+          {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
+          {!copied && references.length > 1 && <ToolbarMenu buttonRef={count} label={say("picker-selected-references")} value={String(references.length)} placement="top end" selectedKey={panel?.reference ?? ""}
+            button={{ className: "shelf-count", quiet: true, label: interfaceText("shelf-references", { count: references.length }), title: say("picker-all-chosen", { n: String(references.length) }),
               // Words say what the count is; a folded shelf keeps the number, as its warnings do.
               content: compact ? String(references.length) : interfaceText("shelf-references", { count: references.length }) }}
-            filterLabel={pickerText.filterReferences} sections={[{ id: "references", label: pickerText.selectedReferences, items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
-              sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && pickerText.closestMatch].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
+            filterLabel={say("picker-filter-references")} sections={[{ id: "references", label: say("picker-selected-references"), items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
+              sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && say("picker-closest-match")].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
             onAction={(key) => { const reference = references.find((r) => idKey(r.id) === key); if (reference) open("reference", count.current!, reference); }} />}
           {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
-              {warnings.length > 0 && <span>{pickerText.warningCount(warnings.length)}</span>}
+              {warnings.length > 0 && <span>{say("picker-warning-count", { count: warnings.length })}</span>}
               {entryNotice && <span>{entryNotice.short}</span>}
             </>}</Button>}
           {!copied && !detailsOpen && (shown === "failed" || shown === "stale") && <Button variant="quiet" aria-expanded={false}
-            onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{pickerText.details}</Button>}
+            onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{say("picker-details")}</Button>}
         </div>
       </section>
     </div> : null}

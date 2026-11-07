@@ -424,8 +424,7 @@ fn system() -> &'static str {
     }
 }
 
-/// The menu item's label in this system's own words (#581). The picker's More
-/// menu reads the same (`loginItemText.label` in `messages.ts`).
+/// The menu item's label in this system's own words (#581).
 pub(crate) fn menu_label() -> &'static str {
     label_for(system())
 }
@@ -439,7 +438,7 @@ fn label_for(system: &str) -> &'static str {
 }
 
 /// What to tell the person, and where to look, in the menu bar or tray.
-/// The picker has its own copy of these sentences in `messages.ts`.
+/// Settings says the same through its `general-login-*` words.
 pub(crate) fn problem_message(problem: LoginItemProblem, name: &str) -> String {
     problem_for(problem, name, system())
 }
@@ -790,7 +789,6 @@ mod tests {
             assert!(message.contains("Ibis Nightly"), "{message}");
             assert!(message.ends_with('.'), "{message}");
         }
-        // The same words as `loginItemText` in messages.ts.
         assert_eq!(
             ["macos", "windows", "linux"].map(label_for),
             ["Open at Login", "Start when you sign in", "Start on Login"]

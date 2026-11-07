@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import { composing } from "../../composition";
-import { pickerText } from "../../messages";
 import { COMMAND_PREFIX, matchCommands, pickerCommands, type PickerCommandEntry } from "./commands";
 import type { PickerCommand } from "./shortcuts";
+import { say } from "../../i18n";
 
 /** ">" leading the search turns the list into the picker's commands, as in
  * Raycast: ↑ ↓ move, Enter or a click runs one and clears the search, Esc steps
@@ -36,6 +36,6 @@ export function useCommandSearch({ query, run, setQuery, source, changeLast }: {
   return {
     mode, list, active, run: runCommand, keys,
     // With nothing to run, the footer offers nothing rather than a dead action.
-    footer: mode ? { label: chosen ? pickerText.runCommand(chosen.title) : null, run: () => { if (chosen) runCommand(chosen); } } : null,
+    footer: mode ? { label: chosen ? say("picker-run-command", { title: chosen.title.replace(/…$/, "") }) : null, run: () => { if (chosen) runCommand(chosen); } } : null,
   };
 }

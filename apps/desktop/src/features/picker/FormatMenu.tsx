@@ -3,7 +3,7 @@ import { ariaKeys, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import type { AppPaste } from "../../api";
 import { keyOutputs, listedOutput, outputName, styleOutputs, type OutputId } from "../../format/outputs";
-import { pickerText, writingProjectText } from "../../messages";
+import { isolate, say } from "../../i18n";
 import { ToolbarMenu, type ToolbarMenuSection, type MenuCloseReason } from "../../ui/ToolbarMenu";
 import type { FormatPick, FormatSource } from "./useDestination";
 
@@ -34,27 +34,27 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
   onWritingProjects?: () => void;
 }) {
   const sections: ToolbarMenuSection[] = [
-    ...onWritingProjects ? [{ id: "project-actions", items: [{ id: "writing-projects", label: writingProjectText.menu, command: true }] }] : [],
-    ...pasteChoices && app ? [{ id: "delivery", label: pickerText.forApp(app), items: [
-      { id: "paste", label: pickerText.pasteFromNowOn(app), command: true },
-      { id: "copy-only", label: pickerText.copyOnly, command: true },
+    ...onWritingProjects ? [{ id: "project-actions", items: [{ id: "writing-projects", label: say("writing-project-menu"), command: true }] }] : [],
+    ...pasteChoices && app ? [{ id: "delivery", label: say("picker-for-app", { app }), items: [
+      { id: "paste", label: say("picker-paste-from-now-on", { app }), command: true },
+      { id: "copy-only", label: say("picker-copy-only"), command: true },
     ] }] : [],
-    { id: "key-formats", label: pickerText.keyFormats, items: keyOutputs.map((output) => (
+    { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map((output) => (
       { id: output.id, label: output.name, sample: output.example ?? undefined })) },
-    { id: "citation-styles", label: pickerText.formattedStyles, items: styleOutputs.map((output) => (
+    { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map((output) => (
       { id: output.id, label: output.name, detail: output.description ?? undefined, sample: output.example ?? undefined, prose: true, disabled: !styles })) },
   ];
   const name = outputName(format);
-  const value = writingProject ? pickerText.formatForApp(name, writingProject.name) : source === "held" ? pickerText.formatThisPaste(name) : source === "default" || !app ? pickerText.formatDefault(name) : pickerText.formatForApp(name, app);
-  const why = writingProject ? writingProjectText.remembered(writingProject.name) : source === "held" ? pickerText.formatHeld(name) : source === "default" ? app ? pickerText.formatAppDefault(app) : pickerText.formatNoApp
-    : app ? source === "remembered" ? pickerText.formatRemembered(app) : pickerText.formatSuggested(app) : pickerText.formatNoApp;
-  const next = writingProject ? writingProjectText.pick : source === "held" ? pick === "app" ? pickerText.pickToRemember : pick === "default" ? pickerText.pickToSetDefault : ""
-    : pick === "paste" ? pickerText.pickThisPaste : pick === "default" ? pickerText.pickDefault : source === "remembered" ? pickerText.pickReplaces : pickerText.pickRemembered;
+  const value = writingProject ? say("picker-format-for-app", { format: name, app: writingProject.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
+  const why = writingProject ? say("writing-project-remembered", { name: isolate(writingProject.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
+    : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : say("picker-format-no-app");
+  const next = writingProject ? say("writing-project-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
+    : pick === "paste" ? say("picker-pick-this-paste") : pick === "default" ? say("picker-pick-default") : source === "remembered" ? say("picker-pick-replaces") : say("picker-pick-remembered");
   // One line says where a pick goes; the full reason is the menu's description.
-  const heading = writingProject ? pickerText.forApp(writingProject.name) : pick === "paste" ? pickerText.pickHeadingThisPaste
-    : pick === "default" || !app ? pickerText.pickHeadingDefault : pickerText.forApp(app);
-  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={pickerText.copyAs} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
-    filterLabel={pickerText.filterFormats} onAction={(key) => {
+  const heading = writingProject ? say("picker-for-app", { app: writingProject.name }) : pick === "paste" ? say("picker-pick-heading-this-paste")
+    : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
+  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={say("picker-copy-as")} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
+    filterLabel={say("picker-filter-formats")} onAction={(key) => {
       if (key === "writing-projects") onWritingProjects?.();
       else if (key === "paste" || key === "copy-only") onPasteChange?.(key);
       else { const output = listedOutput(key); if (output) onChange(output); }

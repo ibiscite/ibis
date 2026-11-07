@@ -4,15 +4,18 @@ import type { Density, ProjectStatus, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
 import { AddGlyph, TypeIcon } from "../../icons";
-import { pickerText, rowText, setupText } from "../../messages";
+import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
 import { projectText } from "./useProjectBibliography";
 
+/** Words that tell similar result rows apart (#492): a CSL item type as a short word, or none. */
+export const rowWords = { itemType: (type: string): string | null => say("row-item-type", { type }) || null };
+
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
-const etAl = <bdi>{rowText.etAl}</bdi>;
+const etAl = <bdi>{say("row-et-al")}</bdi>;
 
 type RowHandlers = {
   onPointerDown: (e: React.PointerEvent) => void;
@@ -71,7 +74,7 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
   }, []);
   const handlers = useMemo<RowHandlers>(() => ({ onPointerDown, onClick, onTileClick, onContext: context }), [onPointerDown, onClick, onTileClick, context]);
   return (
-    <ul id="results" role="listbox" aria-label={pickerText.results} onMouseMove={onMouseMove}>
+    <ul id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
           density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers} />
@@ -128,18 +131,18 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       <span className="result-tile">
         <TypeIcon itemType={r.item_type} />
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
-          title={added ? pickerText.removeNamed(tileName(r)) : pickerText.addNamed(tileName(r))}
+          title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
           <AddGlyph added={added} />
         </PointerButton>
       </span>
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
-          <strong className="result-title">{r.sample && <><bdi>{setupText.sampleLabel}</bdi>{" · "}</>}{r.title}</strong>
+          <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
           {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
-          <span className="result-year">{r.year ?? pickerText.noDate}</span>
+          <span className="result-year">{r.year ?? say("picker-no-date")}</span>
           <span className="visually-hidden">, </span>
         </span>
         <span className="result-meta">
@@ -154,13 +157,13 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           </span>
           {library && <span className="result-library">{library}</span>}
         </span>
-        {why && <span className="result-why">{pickerText.matchedIn(why)}</span>}
+        {why && <span className="result-why">{say("picker-matched-in", { field: why })}</span>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}
-        {r.partial && <span className="result-why">{pickerText.closestMatch}</span>}
+        {r.partial && <span className="result-why">{say("picker-closest-match")}</span>}
         {project && <span className="result-project">{project}</span>}
         {/* The type in words; the tile's icon is decorative. */}
-        {rowText.itemType(r.item_type) && <span className="visually-hidden">{rowText.itemType(r.item_type)}</span>}
-        {added && <span className="visually-hidden">{pickerText.addedToCitation}</span>}
+        {rowWords.itemType(r.item_type) && <span className="visually-hidden">{rowWords.itemType(r.item_type)}</span>}
+        {added && <span className="visually-hidden">{say("picker-added-to-citation")}</span>}
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
         <span className="result-key visually-hidden" dir="ltr">{r.key}</span>
       </span>

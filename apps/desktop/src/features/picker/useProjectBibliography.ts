@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { EntryCopy, ProjectStatus, SearchResult } from "../../api";
-import { pickerText } from "../../messages";
 import type { useOperations } from "./useOperations";
+import { type ProjectKeyState } from "../../bindings";
+import { isolate, say } from "../../i18n";
 
 export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
   const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry, retryProject } = api;
@@ -53,7 +54,7 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
     if (!copyProjectEntry || !name || generation === undefined) return;
     void perform("project", async () => {
       const outcome: EntryCopy = await copyProjectEntry(row.id, generation);
-      setNotice(pickerText.projectEntry(outcome, row.key, name));
+      setNotice(say("picker-project-entry", { outcome: outcome, key: isolate(row.key), name: isolate(name) }));
     });
   }, [copyProjectEntry, perform, status?.name]);
   return {
@@ -69,5 +70,20 @@ export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof
 /** A row's mark, when it belongs to the bibliography on screen and the output uses keys. */
 export function projectText(row: SearchResult, status: ProjectStatus | null): string | null {
   return row.project && status && row.project.generation === status.generation
-    ? pickerText.projectState(row.project.state, status.name, row.project.lines) : null;
+    ? projectState(row.project.state, status.name, row.project.lines) : null;
+}
+
+function projectState(state: ProjectKeyState, name: string, lines: readonly number[]) {
+  const text = say("picker-project-state", { state, name: isolate(name) });
+  return lines.length ? `${text} ${say("library-where", { lines: say("picker-project-lines", { count: lines.length, lines: lines.join(", ") }) })}` : text;
+}
+
+/** The file the rows are marked against, and what is wrong with it if anything. */
+export function projectDetail({ name, state, reason, damaged_lines: lines }: ProjectStatus) {
+  const file = isolate(name);
+  const where = lines.length ? ` ${say("picker-project-check-lines", { count: lines.length, lines: lines.join(", ") })}` : "";
+  if (state === "reading") return say("picker-project-reading", { name: file });
+  if (state === "damaged") return say("picker-project-damaged", { name: file }) + where;
+  if (state === "failed") return `${say("picker-project-failed", { name: file })} ${reason ?? ""}${where}`.trim();
+  return say("picker-project-checking", { name: file });
 }

@@ -3,7 +3,7 @@ import { createElement } from "react";
 import { expect, onTestFinished, test, vi } from "vitest";
 import type { LibraryStatus } from "./bindings";
 import { libraryCondition, LibraryStatusLine, zoteroLibraryNames } from "./LibraryStatusLine";
-import { ago, libraryMessages, recentUpdate } from "./messages";
+import { ago, libraryMessages, recentUpdate } from "./libraryWords";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");

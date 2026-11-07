@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
-import { libraryMessages, operationFailures as FAILURE_MESSAGES, pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
 import type { PickerApi } from "../../App";
 import type { LibraryStatus, SearchResult } from "../../api";
 import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
 import { PickerMenu } from "./PickerMenu";
-import { libraryOperations } from "./Notices";
+import { libraryOperations, OPERATION_FAILURES } from "./Notices";
 import { closeNearestLayer } from "../../ui/layers";
 import type { useZoteroScope } from "./useZoteroScope";
 import type { usePickerSource } from "./usePickerSource";
@@ -19,6 +19,7 @@ import type { useRecentReferences } from "./useRecentReferences";
 import type { usePickerPreferences } from "./usePickerPreferences";
 import type { useOperations } from "./useOperations";
 import type { useProjectBibliography } from "./useProjectBibliography";
+import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
@@ -65,12 +66,12 @@ export function PickerStatusFooter({
       rowAction={menuOpen && api.openLibrarySource && sourceState.sourceAvailable ? sourceAction.label : undefined}
       zotero={library?.zotero && chooseZoteroLibraries ? {
         offered: ["user" as const, ...offeredGroups.map((group) => ({ group }))], isChosen, chosenCount: chosenLibraries.length,
-        name: (choice) => typeof choice === "object" ? groupName(choice.group) : pickerText.myLibrary, toggle: toggleLibrary, all: searchAllLibraries,
+        name: (choice) => typeof choice === "object" ? groupName(choice.group) : say("picker-my-library"), toggle: toggleLibrary, all: searchAllLibraries,
       } : null}
       actions={{ choose: chooseSources, find: chooseFile, reload: () => runFromMenu("reload", reloadLibrary),
         useZotero: () => runFromMenu("zotero", useZotero), openZotero: () => openSource(true) }}
       listProfiles={api.zoteroProfiles} chooseProfile={api.useZoteroProfile && ((name) => runFromMenu("zotero", async () => api.useZoteroProfile!(name)))}
-      groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => FAILURE_MESSAGES[operation]).join(" ")} />}
+      groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => say(OPERATION_FAILURES[operation])).join(" ")} />}
 
     hints={command ? { ...hints, enter: command.label, shiftEnter: null } : hints}
     altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}

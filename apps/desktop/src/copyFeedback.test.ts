@@ -14,8 +14,8 @@ test("paste milestones decorate only the receipt heading and preserve the citati
   expect(root.querySelector("strong")?.textContent).toBe("Pasted into Invented Writer");
 });
 import type { NoticeMessage } from "./api";
+import { say } from "./i18n";
 import { afterCopy, COPY_REASONS, type CopyReason, DRAG_DISTANCE, leaveNotice, type Notice, noticePlatform, noticeTitle, readNotice, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
-import { copiedNoticeText } from "./messages";
 
 const copied = (text: string, reason: CopyReason = "paste-unavailable"): Notice => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
@@ -131,18 +131,18 @@ test("the copy reasons are exactly the ones Rust sends, and each has its words",
   const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: "([a-z-]+)"\.into\(\)/g)].map((match) => match[1]!);
   expect(core).toContain("paste-off");
   expect([...COPY_REASONS].sort()).toEqual([...new Set([...core, ...delivery])].sort());
-  expect(Object.keys(copiedNoticeText.reasons).sort()).toEqual([...COPY_REASONS].sort());
 });
 
 test("every reason reads as the Notices table in docs/design/delivery.md says: why, then its fix", async () => {
+  const reasons: Record<string, string> = Object.fromEntries(COPY_REASONS.map((reason) => [reason, say("copied-notice-reason", { reason })]));
   const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
   const design = readFileSync(new FileURL("../../../docs/design/delivery.md", import.meta.url), "utf8");
   const section = design.slice(design.indexOf("## Notices"));
   const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
   const table = Object.fromEntries(rows.map(([, code, words]) => [code!.replaceAll("`", ""), words]));
-  expect(table).toEqual(copiedNoticeText.reasons);
-  for (const words of Object.values(copiedNoticeText.reasons)) {
+  expect(table).toEqual(reasons);
+  for (const words of Object.values(reasons)) {
     // Copied, a sentence saying why, then the fix: never the fix alone.
     expect(words).toMatch(/^Copied\. [^.]+\. .*\.$/);
     expect(words).not.toMatch(/^Copied\. (Press|Use|Select)/);
@@ -150,11 +150,11 @@ test("every reason reads as the Notices table in docs/design/delivery.md says: w
     expect(words).not.toContain("'");
   }
   // Where the fix is pasting, the same words say so, in the system's key.
-  const pastes = Object.entries(copiedNoticeText.reasons).filter(([, words]) => words.includes("⌘V to paste")).map(([reason]) => reason as CopyReason);
+  const pastes = Object.entries(reasons).filter(([, words]) => words.includes("⌘V to paste")).map(([reason]) => reason as CopyReason);
   expect(pastes.length).toBeGreaterThan(15);
   for (const reason of pastes) expect(noticeTitle(copied("[@a]", reason), "macos")).toMatch(/ Press ⌘V to paste\.$/);
   // Each system shows the table's words whole, in its own paste key.
-  for (const [reason, words] of Object.entries(copiedNoticeText.reasons) as [CopyReason, string][]) {
+  for (const [reason, words] of Object.entries(reasons) as [CopyReason, string][]) {
     expect(noticeTitle(copied("[@a]", reason), "macos")).toBe(words);
     for (const platform of ["windows", "linux"] as const) expect(noticeTitle(copied("[@a]", reason), platform)).toBe(words.replaceAll("⌘V", "Ctrl+V"));
   }

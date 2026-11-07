@@ -1,6 +1,6 @@
 import { Icon } from "../../icons";
 import { keyLabel } from "../../keys";
-import { pickerText } from "../../messages";
+import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { Option } from "../../ui/Option";
 import type { PickerCommandEntry } from "./commands";
@@ -15,10 +15,10 @@ export function CommandList({ commands, active, hoverAllowed, onRun }: {
   onRun: (command: PickerCommandEntry) => void;
 }) {
   const mac = currentPlatform() === "macos";
-  if (!commands.length) return <div className="results-heading" role="status"><span>{pickerText.noCommands}</span></div>;
+  if (!commands.length) return <div className="results-heading" role="status"><span>{say("picker-no-commands")}</span></div>;
   return <>
-    <div className="results-heading" aria-hidden="true"><span>{pickerText.commands}</span></div>
-    <ul id="results" role="listbox" aria-label={pickerText.commands}>
+    <div className="results-heading" aria-hidden="true"><span>{say("picker-commands")}</span></div>
+    <ul id="results" role="listbox" aria-label={say("picker-commands")}>
       {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} className="command-row" role="option" aria-selected={i === active}
         aria-keyshortcuts={command.keys || undefined} aria-description={command.about} data-density="compact" data-active={i === active || undefined}
         hoverAllowed={hoverAllowed} onClick={() => onRun(command)}>
