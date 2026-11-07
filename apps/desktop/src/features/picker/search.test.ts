@@ -115,3 +115,10 @@ test("a hidden picker searches nothing until it is shown again", () => {
   const shown = run([{ type: "shown", now: 20, presentation: 2 }, { type: "search-inputs", inputs: inputs("garcia") }], hidden.state);
   expect(searches(shown.effects)).toHaveLength(1);
 });
+
+test("a picker that starts hidden searches nothing until it is shown", () => {
+  const hidden = run([{ type: "visibility-read", visible: false, events: 0 }, { type: "search-inputs", inputs: inputs("garcia") }]);
+  expect(searches(hidden.effects)).toHaveLength(0);
+  const shown = run([{ type: "preparing", now: 10 }, { type: "shown", now: 20, presentation: 1 }, { type: "search-inputs", inputs: inputs("garcia") }], hidden.state);
+  expect(searches(shown.effects)).toHaveLength(1);
+});

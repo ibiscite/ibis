@@ -58,6 +58,8 @@ export type SessionState = {
   shown: boolean;
   /** Shown and hidden events so far: a visibility read started before one is older. */
   visibilityEvents: number;
+  /** Hidden, including a start behind the scenes: the session asks the engine nothing until the picker is prepared again. */
+  resting: boolean;
   /** The search for the current query and its shown answer. */
   search: SearchState;
   /** What Enter would paste for the chosen references. */
@@ -114,7 +116,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, view: null, inputs: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview, destination: initialDestination,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, resting: false, search: initialSearch, preview: initialPreview, destination: initialDestination,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
@@ -224,7 +226,7 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
   if (next === s && event.type !== "committed") return [next, effects];
   const [viewed, more] = applyView(next, copies);
   // A hidden picker asks the engine nothing: showing it again asks afresh.
-  const asked = viewed.hiddenAt === null ? [...effects, ...more] : [...effects, ...more].filter((effect) => effect.type !== "search" && effect.type !== "preview");
+  const asked = !viewed.resting ? [...effects, ...more] : [...effects, ...more].filter((effect) => effect.type !== "search" && effect.type !== "preview");
   return [viewed, asked];
 }
 
@@ -254,7 +256,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "committed": return [s, []];
     case "query": return [changed(s, { query: event.value, interpretLocators: true, fromDocument: false }), []];
     // A shown or hidden event since the read started is newer than its answer.
-    case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible } : s, []];
+    case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible, resting: !event.visible } : s, []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
     case "escape-search": return [changed(s, { query: "", interpretLocators: true, fromDocument: false }), []];
     case "sample": return [changed(s, { selected: new Map(), copied: null, removed: null, copyError: null, changing: null, lastCitations: new Map() }), []];
@@ -341,10 +343,10 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       const left = s.changing !== null && !s.permissionDetour && !copying ? { selected: new Map(), changing: null } : {};
       // The preview still out answers nothing now; showing again asks afresh.
       return [{ ...s, ...left, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null,
-        shown: false, visibilityEvents: s.visibilityEvents + 1, preview: { ...s.preview, started: null } }, s.preview.started ? [{ type: "stop-preview" }] : []];
+        shown: false, resting: true, visibilityEvents: s.visibilityEvents + 1, preview: { ...s.preview, started: null } }, s.preview.started ? [{ type: "stop-preview" }] : []];
     }
     case "preparing": {
-      s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1 };
+      s = { ...returning(s, event.now), hiddenAt: null, resting: false, opened: s.opened + 1 };
       if (!event.selection) return [s, []];
       // The paste would replace this text, so it always shows, even after a
       // permission detour; the shelf stays.
@@ -353,7 +355,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "shown": {
       s = returning(s, event.now);
       return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null,
-        shown: true, visibilityEvents: s.visibilityEvents + 1 }, []];
+        shown: true, resting: false, visibilityEvents: s.visibilityEvents + 1 }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }
