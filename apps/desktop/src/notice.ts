@@ -18,11 +18,16 @@ if (root) {
   if (new URLSearchParams(window.location.search).get("surface") === "opaque") {
     document.documentElement.dataset.surface = "opaque";
   }
-  const show = renderNotice(root, platform);
+  const render = renderNotice(root, platform);
+  // Ibis's own Light or Dark, as the picker shows it; System follows the Mac.
+  const show = (message: NoticeMessage) => {
+    document.documentElement.dataset.appearance = message.appearance ?? "system";
+    render(readNotice(message));
+  };
   // Listen first, then ask for the text in case the event came before the page.
   void listen("notice:leave", () => leaveNotice(root)).catch(() => console.error(copiedNoticeText.noticeFailed));
-  void listen<NoticeMessage>("notice:show", (event) => show(readNotice(event.payload)))
+  void listen<NoticeMessage>("notice:show", (event) => show(event.payload))
     .then(() => commands.copiedNotice())
-    .then((message) => { if (message !== null) show(readNotice(message)); })
+    .then((message) => { if (message !== null) show(message); })
     .catch(() => console.error(copiedNoticeText.noticeFailed));
 }

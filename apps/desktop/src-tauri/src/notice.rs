@@ -153,6 +153,9 @@ pub(crate) struct NoticeMessage {
     /// document uses one.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     plugin_note: bool,
+    /// Ibis's own Light or Dark, set as the notice is shown; absent for System.
+    #[serde(skip_serializing_if = "crate::preferences::Appearance::is_system")]
+    appearance: crate::preferences::Appearance,
 }
 
 impl NoticeMessage {
@@ -231,6 +234,7 @@ pub(crate) async fn show_copied_notice(
             more: summary.as_ref().map(|receipt| receipt.more),
             milestone,
             plugin_note: false,
+            appearance: Default::default(),
         },
         receipt,
         pasted_into,
@@ -249,6 +253,10 @@ fn show(app: &AppHandle, mut text: NoticeMessage, receipt: Option<u64>, pasted_i
     }
     // Spent only here: a notice a newer one replaced keeps it for the next paste.
     text.plugin_note = pasted_into.is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(&id));
+    text.appearance = app
+        .try_state::<crate::preferences::SettingsFile>()
+        .map(|file| file.appearance())
+        .unwrap_or_default();
     let shown_for = text.shown_for();
     if let Ok(mut current) = notice.text.lock() {
         *current = Some(text.clone());
@@ -498,6 +506,18 @@ fn present(app: &AppHandle) {
     macos::present(app);
     #[cfg(not(target_os = "macos"))]
     let _ = app;
+}
+
+/// The picker opening takes the notice away at once: both sit at the top of
+/// the display, and a notice must never cover the search field.
+pub(crate) fn retire(app: &AppHandle) {
+    let Some(notice) = app.try_state::<Notice>() else { return };
+    if notice.text.lock().is_ok_and(|text| text.is_none()) {
+        return;
+    }
+    // A newer showing retires the old one's timers.
+    notice.showing.fetch_add(1, Ordering::SeqCst);
+    dismiss(app);
 }
 
 /// Take the notice away. Windows and Linux close it, since showing a hidden

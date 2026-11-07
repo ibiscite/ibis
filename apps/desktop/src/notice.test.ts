@@ -9,7 +9,7 @@ afterEach(() => {
   vi.clearAllMocks();
   document.body.replaceChildren();
   document.documentElement.classList.remove("notice-window");
-  for (const name of ["platform", "system", "surface"]) delete document.documentElement.dataset[name];
+  for (const name of ["platform", "system", "surface", "appearance"]) delete document.documentElement.dataset[name];
   window.history.replaceState(null, "", "/");
 });
 
@@ -28,4 +28,18 @@ test.each([["MacIntel", "macos"], ["Win32", "windows"], ["Linux x86_64", "linux"
   expect(native.listen.mock.calls.map(([name]) => name)).toEqual(["notice:leave", "notice:show"]);
   expect(native.copiedNotice).toHaveBeenCalledOnce();
   expect(native.copiedNotice.mock.invocationCallOrder[0]).toBeGreaterThan(native.listen.mock.invocationCallOrder[1]!);
+});
+
+test("the notice follows Ibis's own Light or Dark, not only the system's", async () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
+  document.documentElement.classList.add("notice-window");
+  document.body.innerHTML = '<div id="notice"></div>';
+  native.copiedNotice.mockResolvedValueOnce({ delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]", appearance: "dark" } as never);
+  vi.resetModules();
+  await import("./notice");
+  await vi.waitFor(() => expect(document.documentElement.dataset.appearance).toBe("dark"));
+  // A later notice with Ibis set to System follows the Mac again.
+  const show = native.listen.mock.calls.find(([name]) => name === "notice:show")![1] as (event: { payload: unknown }) => void;
+  show({ payload: { delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]" } });
+  expect(document.documentElement.dataset.appearance).toBe("system");
 });
