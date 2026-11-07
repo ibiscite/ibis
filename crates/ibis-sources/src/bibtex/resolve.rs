@@ -1138,7 +1138,7 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "c2008b19eed0aaa71e35057230214bafece94d3a45b43ac22f13271d7c752649",
+                "6fcd6d2e966899d4d3a82ffe2b3f4ebe9d2c514cf378b38ed4038c1dd94259f7",
             ),
             (
                 "unicode-and-verbatim-url",
