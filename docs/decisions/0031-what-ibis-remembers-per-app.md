@@ -135,6 +135,7 @@ an object this Ibis does not read, so the defaults apply. The first time Ibis
 finds one, it keeps `apps.json` whole as `apps.json.earlier`, before anything
 rewrites it, and says once: "Format choices from an earlier Ibis could not be
 read, so Ibis uses its defaults. Choose them again." Choosing a format ends the
-notice. If the copy cannot be made, Ibis never rewrites `apps.json`. The 0.2
-default format in `settings.json` stays in the file, unread, and is said the
-same way until a default is chosen.
+notice. The copy is flushed under a temporary name and linked into place, so
+one that exists is complete and is never replaced. If it cannot be made, Ibis
+never rewrites `apps.json`. The 0.2 default format in `settings.json` stays in
+the file, unread; it is kept as `settings.json.earlier` and said the same way.

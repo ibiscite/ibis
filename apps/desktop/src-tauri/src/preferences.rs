@@ -21,14 +21,7 @@ const EARLIER_FORMATS: &str =
 /// This notice is for the interface only: its settings path must not be logged.
 /// `earlier_formats`: the per-app file kept earlier format choices this run.
 pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded, earlier_formats: bool) -> Option<String> {
-    // 0.2 kept its default format in keys this Ibis keeps in the file but does not read.
-    let earlier = earlier_formats
-        || loaded.problem.is_none()
-            && loaded.settings.output.is_none()
-            && ["copy_format", "citation_style"]
-                .iter()
-                .any(|key| loaded.settings.unknown.contains_key(*key));
-    match (recovery_notice(path, loaded), earlier) {
+    match (recovery_notice(path, loaded), earlier_formats) {
         (notice, false) => notice,
         (None, true) => Some(EARLIER_FORMATS.into()),
         (Some(notice), true) => Some(format!("{EARLIER_FORMATS} {notice}")),
@@ -391,6 +384,7 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
         }
     }
     let changes_menu_bar = intent.preferences.menu_bar.is_some();
+    let chose_output = intent.preferences.output.is_some();
     let settings_file = settings_file.inner().clone();
     // A change made in Settings reaches the picker; the picker's own are already shown.
     let from_elsewhere = window.label() != "main";
@@ -402,6 +396,9 @@ pub(crate) async fn set_picker_preferences<R: tauri::Runtime>(
             crate::tray::show_in_menu_bar(app.app_handle(), preferences.menu_bar, revision);
         }
         let change = PreferenceChange { revision, preferences };
+        if chose_output && let Some(memory) = app.try_state::<crate::destination::AppMemory>() {
+            memory.answer_earlier_formats();
+        }
         crate::library::refresh_settings_notice(&app, &settings_file);
         if from_elsewhere {
             crate::diagnostics::report(
@@ -1304,27 +1301,6 @@ mod tests {
             .unwrap_or_else(|| panic!("expected a settings recovery notice"));
         assert!(notice.contains("could not be read"));
         assert!(!notice.contains("synthetic-private-detail"));
-    }
-
-    #[test]
-    fn a_0_2_default_format_is_said_until_a_default_is_chosen() {
-        let mut settings = settings::Settings::default();
-        settings
-            .unknown
-            .insert("citation_style".into(), serde_json::json!("ieee"));
-        let loaded = |settings: settings::Settings| settings::Loaded {
-            settings,
-            problem: None,
-            primary_read: settings::PrimaryRead::Present,
-            from_backup: false,
-        };
-        let path = Path::new("synthetic/settings.json");
-        assert_eq!(
-            settings_notice(path, &loaded(settings.clone()), false).as_deref(),
-            Some(EARLIER_FORMATS)
-        );
-        settings.output = Some("apa".into());
-        assert_eq!(settings_notice(path, &loaded(settings), false), None);
     }
 
     #[test]
