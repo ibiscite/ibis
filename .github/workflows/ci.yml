@@ -291,14 +291,22 @@ jobs:
         if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
-      # The whole journey into TextEdit and a terminal (scripts/smoke-native.py
-      # --journey). Exit 2 means this runner could not grant what it needs.
+      # The whole journey into TextEdit or Notepad and a terminal
+      # (scripts/smoke-native.py --journey). Exit 2 means this runner could not grant what it needs.
       - name: Journey into TextEdit (macOS)
         if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
         run: |
           status=0
           python3 scripts/smoke-native.py --journey --app target/debug/ibis-desktop --output screenshots/journey-macOS || status=$?
           if [ "$status" = 2 ]; then echo "::warning::The macOS journey was unavailable on this runner."; exit 0; fi
+          exit "$status"
+
+      - name: Journey into Notepad (Windows)
+        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
+        run: |
+          status=0
+          python -B scripts/smoke-native.py --journey --app target/debug/ibis-desktop.exe --output screenshots/journey-Windows || status=$?
+          if [ "$status" = 2 ]; then echo "::warning::The Windows journey was unavailable on this runner."; exit 0; fi
           exit "$status"
 
       # Windows finds real bugs in the crates. macOS almost never finds one
@@ -328,7 +336,7 @@ jobs:
 
       # Keep native smoke evidence even after a failure or timeout.
       - name: Keep screenshots and startup logs
-        if: always() && env.NATIVE == 'true' && runner.os != 'Windows'
+        if: always() && env.NATIVE == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picker-${{ github.sha }}-${{ runner.os }}
