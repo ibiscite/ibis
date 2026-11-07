@@ -1619,16 +1619,15 @@ class MacOS:
         return self.helper("focus")
 
     def ibis_focused(self, value=None):
-        """The picker is on screen and its search field is Ibis's focused element.
+        """The picker is on screen and the system's focus is Ibis's search field.
 
-        The panel never activates Ibis, so this is Ibis's own focus, not the
-        system's; the journey's outcomes prove where the keys went."""
+        Keys are posted only after this, so they cannot reach another app."""
         picker = self.helper("picker", self.app.pid)
         self.last_picker = {"onscreen": "Ibis" in picker["onscreen"], "role": picker["role"],
                             "search": picker["label"] == "Search references",
                             "system_focus_is_ibis": picker["system_pid"] == self.app.pid,
                             "value_matches": value is None or picker["value"] == value}
-        return (self.last_picker["onscreen"] and self.last_picker["search"] and self.last_picker["value_matches"])
+        return all(self.last_picker[key] for key in ("onscreen", "search", "system_focus_is_ibis", "value_matches"))
 
     def ibis_strings(self):
         return self.helper("strings", self.app.pid)["strings"]
