@@ -79,9 +79,9 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   runner's. Ubuntu desktops are checked by hand.
 - **Native journey (Windows):** the same `smoke-native.py --journey` on the
   debug build in the Desktop job (windows-2025), or on a Windows PC from its
-  signed-in desktop with Notepad closed and no Ibis profile for that build. Ibis reads a selection as
-  the search only on macOS, so after the shortcut from Notepad the query is
-  typed; Enter must replace the selected words, and Notepad's text, read with
+  signed-in desktop with Notepad closed and no Ibis profile for that build
+  (checked on Windows 10 22H2). Ibis reads a selection as the search only on
+  macOS, so after the shortcut from Notepad the query is typed; Enter must replace the selected words, and Notepad's text, read with
   `WM_GETTEXT`, must be exactly the sentence with the default Pandoc key, once.
   Then a console (cmd.exe, or the default terminal hosting it) runs an inert
   collector: the clipboard must be exactly the key, the notice on screen and
