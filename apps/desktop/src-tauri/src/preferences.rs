@@ -58,8 +58,8 @@ pub(crate) fn settings_notice(path: &Path, loaded: &settings::Loaded) -> Option<
 #[derive(Clone)]
 pub(crate) struct SettingsFile {
     pub(crate) path: PathBuf,
-    /// Held for each whole read, change and save, so two saves never interleave.
-    writing: Arc<Mutex<()>>,
+    /// Orders every save of this file by when it was asked for (decision 0040).
+    owner: Arc<ibis_engine::settings::Owner>,
     preference_intents: Arc<Mutex<PreferenceIntents>>,
     pub(crate) delights: Arc<Mutex<crate::delights::DelightOwner>>,
 }
@@ -70,8 +70,8 @@ impl SettingsFile {
         let surprises = loaded.small_surprises.unwrap_or(true);
         let delights = crate::delights::DelightOwner::new(loaded.delights);
         SettingsFile {
+            owner: Arc::new(ibis_engine::settings::Owner::open(path.clone())),
             path,
-            writing: Arc::new(Mutex::new(())),
             preference_intents: Arc::new(Mutex::new(PreferenceIntents {
                 surprises,
                 ..PreferenceIntents::default()
@@ -88,11 +88,9 @@ impl SettingsFile {
     /// Run `work` on the settings file while no save can interleave, such as a
     /// restore that must find the settings it was shown.
     pub(crate) fn exclusive<T>(&self, work: impl FnOnce(&Path) -> T) -> Result<T, String> {
-        let _writing = self
-            .writing
-            .lock()
-            .map_err(|_| "settings are unavailable".to_string())?;
-        Ok(work(&self.path))
+        self.owner
+            .in_turn(work)
+            .ok_or_else(|| "settings are unavailable".to_string())
     }
 
     /// Conditional writes test their immutable owner after acquiring the writer.
@@ -101,16 +99,30 @@ impl SettingsFile {
         current: impl FnOnce() -> bool,
         change: impl FnOnce(&mut settings::Settings),
     ) -> Result<Option<settings::Settings>, String> {
-        let _writing = self
-            .writing
-            .lock()
-            .map_err(|_| "settings are unavailable".to_string())?;
-        if !current() {
-            return Ok(None);
-        }
-        settings::update(&self.path, change)
-            .map(Some)
-            .map_err(|error| settings_message(&error))
+        self.exclusive(|path| {
+            if !current() {
+                return Ok(None);
+            }
+            settings::update(path, change)
+                .map(Some)
+                .map_err(|error| settings_message(&error))
+        })?
+    }
+
+    /// Hold the owner's queue until the returned sender is dropped.
+    #[cfg(test)]
+    pub(crate) fn hold(&self) -> std::sync::mpsc::Sender<()> {
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let (held, holding) = std::sync::mpsc::channel();
+        let file = self.clone();
+        std::thread::spawn(move || {
+            let _ = file.exclusive(|_| {
+                let _ = held.send(());
+                let _ = released.recv();
+            });
+        });
+        let _ = holding.recv();
+        release
     }
 
     /// The Zotero profile chosen for reading while Zotero is closed.
@@ -320,11 +332,8 @@ pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -
     // Off the main thread: a settings write in progress must never stall a paste.
     let settings_file = settings_file.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let _writing = settings_file
-            .writing
-            .lock()
-            .map_err(|_| "settings are unavailable".to_string())?;
-        let preferences = read_preferences(&settings_file.path)?;
+        // In turn, so it reads every change asked for before it.
+        let preferences = settings_file.exclusive(read_preferences)??;
         if let Ok(mut owner) = settings_file.preference_intents.lock() {
             owner.surprises = preferences.small_surprises.unwrap_or(true);
         }
@@ -473,12 +482,12 @@ impl SettingsFile {
         self.save_reserved_preferences(intent)
     }
 
-    fn save_reserved_preferences(&self, mut intent: PreferenceIntent) -> Result<settings::Settings, String> {
-        // The same writer owns geometry, library, shortcut and preference saves.
-        let _writing = self
-            .writing
-            .lock()
-            .map_err(|_| "settings are unavailable".to_string())?;
+    fn save_reserved_preferences(&self, intent: PreferenceIntent) -> Result<settings::Settings, String> {
+        // The same owner orders geometry, library, shortcut and preference saves.
+        self.exclusive(|_| self.save_reserved_preferences_in_turn(intent))?
+    }
+
+    fn save_reserved_preferences_in_turn(&self, mut intent: PreferenceIntent) -> Result<settings::Settings, String> {
         let current = self
             .preference_intents
             .lock()
@@ -1039,7 +1048,7 @@ mod tests {
             .build()
             .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
         let file = app.state::<SettingsFile>();
-        let writing = file.writing.lock().unwrap_or_else(|_| panic!("writer lock poisoned"));
+        let writing = file.hold();
         let chosen = PickerPreferences {
             output: out("pandoc"),
             appearance: Some(Appearance::System),

@@ -91,16 +91,32 @@ impl Owner {
         Pending(outcome)
     }
 
-    /// Submit and wait, for callers with nothing else to do meanwhile.
-    pub fn change<T, E>(
+    /// Wait for this change's turn, then run it as one transaction on the
+    /// calling thread, so it may read borrowed state. For callers that would
+    /// wait anyway; never call it from inside another change.
+    pub fn change<T, E: From<SettingsError>>(
         &self,
-        change: impl FnOnce(&mut Settings) -> Result<T, E> + Send + 'static,
-    ) -> Result<(Settings, T), E>
-    where
-        T: Send + 'static,
-        E: From<SettingsError> + Send + 'static,
-    {
-        self.submit(change).wait().unwrap_or_else(|| Err(closed().into()))
+        change: impl FnOnce(&mut Settings) -> Result<T, E>,
+    ) -> Result<(Settings, T), E> {
+        self.in_turn(|path| settings::transaction(path, change))
+            .unwrap_or_else(|| Err(closed().into()))
+    }
+
+    /// Run `work` on the calling thread when its turn in the queue comes; the
+    /// changes after it wait until it returns. `None` once the owner closed.
+    pub fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
+        let (start, turn) = mpsc::channel::<()>();
+        let (finished, done) = mpsc::channel::<()>();
+        // Its own outcome is the turn itself; nothing waits on the reply.
+        let _ = self.submit_on_file(move |_| {
+            let _ = start.send(());
+            // Returns when `finished` is dropped: after `work`, or as it unwinds.
+            let _ = done.recv();
+        });
+        turn.recv().ok()?;
+        let result = work(&self.path);
+        drop(finished);
+        Some(result)
     }
 
     /// Finish every change already asked for, then refuse new ones.
@@ -245,6 +261,39 @@ mod tests {
         }
         let saved = owner.read().settings;
         assert_eq!((saved.larger_text, saved.menu_bar), (Some(true), Some(false)));
+    }
+
+    #[test]
+    fn a_change_in_turn_waits_for_earlier_ones_and_holds_back_later_ones() {
+        let (_directory, owner) = owner();
+        let owner = Arc::new(owner);
+        let started = Arc::new(AtomicBool::new(false));
+        let running = started.clone();
+        let earlier = owner.submit(move |s: &mut Settings| -> Result<(), SettingsError> {
+            running.store(true, Ordering::SeqCst);
+            std::thread::sleep(Duration::from_millis(30));
+            s.density = Some(settings::Density::Compact);
+            Ok(())
+        });
+        while !started.load(Ordering::SeqCst) {
+            std::thread::yield_now();
+        }
+        // Borrowed state, read in its turn: the earlier change is already saved.
+        let seen = std::cell::Cell::new(None);
+        let (saved, ()) = owner
+            .change(|s| {
+                seen.set(s.density);
+                s.density = Some(settings::Density::Comfortable);
+                Ok::<_, SettingsError>(())
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(seen.get(), Some(settings::Density::Compact));
+        assert_eq!(saved.density, Some(settings::Density::Comfortable));
+        assert!(earlier.wait().is_some_and(|saved| saved.is_ok()));
+        // A turn that panics releases the queue.
+        let unwound = std::panic::catch_unwind(AssertUnwindSafe(|| owner.in_turn(|_| panic!("a broken change"))));
+        assert!(unwound.is_err());
+        assert!(density(&owner, settings::Density::Compact).is_ok());
     }
 
     #[test]
