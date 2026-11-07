@@ -127,7 +127,7 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
   const baseFormat = projectFormat ?? remembered ?? suggested ?? fallback;
   const format = held ?? baseFormat;
   preparedFormat.current = format;
-  const save = (action: () => Promise<unknown>, apply: () => void, clearHeld = true) => {
+  const save = (action: () => Promise<unknown>, apply: () => void, clearHeld = true, failed?: () => void) => {
     const opening = openings.current;
     const choice = choices.current;
     setSaving(true);
@@ -136,7 +136,11 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
       apply();
       if (clearHeld && choice === choices.current) { preserveOpeningOutput.current = false; setHeld(null); }
       report("appChoice", false);
-    }).catch(() => { if (opening === openings.current) report("appChoice"); });
+    }).catch(() => {
+      if (opening !== openings.current) return;
+      report("appChoice");
+      failed?.();
+    });
     saves.current = pending;
     void pending.finally(() => { if (saves.current === pending) setSaving(false); });
   };
@@ -204,7 +208,8 @@ export function useDestination({ pickerDestination, rememberAppOutput, editWriti
     // Read the native policy back before showing an intended paste in the footer.
     // Answering an open first-paste question accepts the format it showed, so it is not asked again.
     const output = asked && !writingProject && held === null && destination?.output_question && !remembered ? format : null;
-    save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false);
+    // Its format saves before its delivery choice, so a failure can leave the format saved: read what was.
+    save(() => rememberAppOutput(id, output, paste, destination?.app_identity ?? null), () => read(false), false, output ? () => read(false) : undefined);
   };
   const copyToken = (): CopyToken => ({ opening: openings.current, choice: choices.current, delivery: delivery.current });
   const isCurrentCopy = (token: CopyToken) => token.opening === openings.current && token.choice === choices.current && token.delivery === delivery.current;

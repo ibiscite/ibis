@@ -161,7 +161,7 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
     setWindowSize: vi.fn(async (): Promise<null> => null),
     onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
-    savePickerPreferences: async (patch) => { const receipt = ++state.revision; submitted.set(receipt, patch); return receipt; },
+    savePickerPreferences: async (patch) => { const receipt = ++state.revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
     pickerPreferencesSaved: async (receipt) => api.setPickerPreferences(submitted.get(receipt)!, receipt),
     setPickerPreferences: commit,
     backUpSettings: vi.fn(async () => null),

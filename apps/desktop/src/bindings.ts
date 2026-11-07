@@ -144,7 +144,9 @@ export const commands = {
 	pickerDestination: () => __TAURI_INVOKE<PickerDestination>("picker_destination"),
 	/**
 	 * Remember a format, a delivery choice or both for the captured app. Whichever
-	 * is absent keeps its saved value; only a delivery choice revokes outstanding proofs.
+	 * is absent keeps its saved value; only a delivery choice revokes outstanding
+	 * proofs. The format goes to the settings file first, then the delivery choice
+	 * to the per-app file; a delivery that fails after its format saved says so.
 	 */
 	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
 	/** Whether Ibis starts when the person logs in, read from the system now. */

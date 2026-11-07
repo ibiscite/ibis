@@ -27,8 +27,8 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
         system: System::Macos,
         id: "example.browser".into(),
     };
-    let memory_path = directory.path().join("apps.json");
-    let memory = AppMemory::open(memory_path.clone());
+    let settings_path = directory.path().join("settings.json");
+    let settings_file = crate::preferences::SettingsFile::new(settings_path.clone());
     let word = AppId {
         system: System::Macos,
         id: "com.microsoft.Word".into(),
@@ -58,10 +58,14 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
     }));
     assert!(cases.len() > 10, "every key output");
     for (output, expected) in cases {
-        memory.set(&browser, Some(output))?;
-        let reopened = AppMemory::open(memory_path.clone());
-        assert_eq!(reopened.get(&browser), (Some(output), false));
-        let remembered = reopened.get(&browser).0.ok_or("remembered output")?;
+        settings_file.update(|settings| settings.remember_app_output(&browser, output.id().to_owned()))?;
+        // What a restart reads for the app.
+        let reopened = ibis_core::settings::load(&settings_path).settings;
+        let remembered = reopened
+            .app_output(&browser)
+            .and_then(crate::output::listed)
+            .ok_or("remembered output")?;
+        assert_eq!(remembered, output);
         let selection: FileSelection =
             serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
         let preview = file

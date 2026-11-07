@@ -22,7 +22,7 @@ export function demoApi(): SettingsApi {
       return { fun, fact: fun && click ? facts[factIndex]! : null, status: null, peck: false, anniversary: false, revision, build: "0.2.1 · invented · 2026-11-01" };
     },
     pickerPreferences: async () => preferences,
-    savePickerPreferences: async (patch) => { const receipt = ++revision; submitted.set(receipt, patch); return receipt; },
+    savePickerPreferences: async (patch) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
     pickerPreferencesSaved: async (receipt) => {
       preferences = { ...preferences, ...submitted.get(receipt) };
       submitted.delete(receipt);
