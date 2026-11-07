@@ -277,7 +277,7 @@ jobs:
       - name: Build the command line
         env:
           TARGET: ${{ matrix.target }}
-        run: scripts/build-cli.sh
+        run: bash scripts/build-cli.sh
 
       - name: Capture the picker (Linux and macOS)
         if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'
@@ -312,7 +312,7 @@ jobs:
         id: collect
         env:
           TARGET: ${{ matrix.target }}
-        run: scripts/collect-packages.sh
+        run: bash scripts/collect-packages.sh
 
       - name: Attest build provenance
         id: provenance
@@ -577,7 +577,7 @@ jobs:
           "$bin" cite accents2021 --file fixtures/bibtex/fidelity.bib --style apa
 
       - name: Install, start and remove
-        run: scripts/install-and-start.sh
+        run: bash scripts/install-and-start.sh
 
       - name: Keep install screenshots and logs
         if: always()
