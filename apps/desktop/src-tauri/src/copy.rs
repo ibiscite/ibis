@@ -250,6 +250,13 @@ pub(crate) async fn copy_file_citation(
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
     const FAILED: &str = "The citation could not be copied. Try again.";
+    // What the copy is for is fixed when it is asked for: a Forget or a new
+    // target while it waits must not adopt it.
+    let editor = tauri::Manager::state::<crate::editor_endpoint::Pending>(&app);
+    let captured = editor.app(crate::paste::last_app(&app));
+    let epoch = tauri::Manager::state::<crate::session_references::SessionReferences>(&app)
+        .lock()
+        .epoch();
     let file = open_file(&library)?;
     let recited = tauri::async_runtime::spawn_blocking(move || file.recite(&ticket, &content_hash))
         .await
@@ -257,7 +264,7 @@ pub(crate) async fn copy_file_citation(
     let (send, committed) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
-        let _ = send.send(commit_shown(&main, &recited, replaces));
+        let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch));
     })
     .map_err(|_| CommandError::from(FAILED))?;
     tauri::async_runtime::spawn_blocking(move || committed.recv())
@@ -270,15 +277,15 @@ fn commit_shown(
     app: &AppHandle,
     recited: &crate::library::engine_file::Recited,
     replaces: Vec<String>,
+    captured: Option<(ibis_core::destination::AppId, String, Option<String>)>,
+    epoch: std::sync::Arc<()>,
 ) -> Result<Copied, CommandError> {
     use tauri::Manager;
     let library = app.state::<Mutex<Library>>();
     let editor = app.state::<crate::editor_endpoint::Pending>();
     let project = app.state::<crate::project::ProjectBibliography>();
     let app = app.clone();
-    let captured = editor.app(crate::paste::last_app(&app));
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
-    let epoch = session.lock().epoch();
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.

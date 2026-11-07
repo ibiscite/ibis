@@ -109,9 +109,11 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   const partialWarnings = copied ? [...copied.closestMatches ?? []] : closestMatchWarnings(references);
   const currentWarnings = copied ? copied.warnings.slice(0, copied.warnings.length - partialWarnings.length) : outputWarnings;
   const warnings = [...currentWarnings, ...partialWarnings];
-  // What depends on the whole document: a numbered style's entry, or a note style's full first note (the engine's notice).
-  const entryNotice = !style ? null : writesEntries(style) ? { short: pickerText.entryOnlyShort, text: pickerText.entryOnly(outputName(style)) }
-    : outputNotices.includes("full-first-note") ? { short: pickerText.firstNoteShort, text: pickerText.firstNote(outputName(style)) } : null;
+  // What depends on the whole document: a note style's full first note, from the
+  // engine's notice about the citation shown (an editor's output included), or
+  // a numbered style's entry.
+  const entryNotice = outputNotices.includes("full-first-note") ? { short: pickerText.firstNoteShort, text: pickerText.firstNote }
+    : style && writesEntries(style) ? { short: pickerText.entryOnlyShort, text: pickerText.entryOnly(outputName(style)) } : null;
   const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice?.short,
     partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });

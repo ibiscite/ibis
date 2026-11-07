@@ -333,9 +333,10 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
 
 test("a note style says why it copies the full first note, from the engine's notice", () => {
   vi.stubGlobal("innerWidth", 1024); vi.stubGlobal("innerHeight", 720);
-  render(shelf({ selected: chosen([record("a")]), style: "chicago-notes-bibliography", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
+  // The picker's own format may differ from the output shown (an editor's request): the notice decides.
+  render(shelf({ selected: chosen([record("a")]), style: "pandoc", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
   fireEvent.click(screen.getByRole("button", { name: "Full first note" }));
-  expect(within(details("Citation warnings")).getByText(/Chicago \(notes\) shortens later notes to the same work, which depends on your whole document/)).toBeTruthy();
+  expect(within(details("Citation warnings")).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
   cleanup();
   // A style without the notice says nothing of the kind.
   render(shelf({ selected: chosen([record("a")]), style: "apa", outputWarnings: [], shown: output() }));

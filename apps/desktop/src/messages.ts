@@ -344,7 +344,7 @@ export const pickerText = {
   previewStyleError: (style: string) => say("picker-preview-style-error", { style }),
   entryOnly: (style: string) => say("picker-entry-only", { style }),
   entryOnlyShort: say("picker-entry-only-short"),
-  firstNote: (style: string) => say("picker-first-note", { style }),
+  firstNote: say("picker-first-note"),
   firstNoteShort: say("picker-first-note-short"),
   shelfStale: say("picker-shelf-stale"),
   warningCount: (n: number) => (n === 1 ? "1 warning" : `${n} warnings`),

@@ -983,15 +983,14 @@ impl FileLibrary {
             }
             Arc::clone(citation)
         };
-        let result = self
-            .engine
-            .recite(&citation, &Cancellation::default())
-            .map_err(|error| match error {
-                ibis_engine::CitationCommitError::Engine(_) => {
-                    CommandError::from("The citation could not be copied. Try again.")
-                }
-                _ => CommandError::SnapshotChanged,
-            })?;
+        // A newer preview cancels this one's work, a copy's included.
+        let cancel = self.preview_cancellation(ticket.parse().map_err(|_| CommandError::SnapshotChanged)?)?;
+        let result = self.engine.recite(&citation, &cancel).map_err(|error| match error {
+            ibis_engine::CitationCommitError::Engine(_) => {
+                CommandError::from("The citation could not be copied. Try again.")
+            }
+            _ => CommandError::SnapshotChanged,
+        })?;
         Ok(Recited {
             ticket: ticket.to_owned(),
             hash: hash.to_owned(),
@@ -1012,6 +1011,15 @@ impl FileLibrary {
         if current != &recited.ticket || !Arc::ptr_eq(citation, &recited.citation) {
             return Err(CommandError::SnapshotChanged);
         }
+        // A preview asked for since, even one that failed, retires this copy.
+        let latest = self.latest_preview.lock().map_err(|_| CommandError::SnapshotChanged)?.0;
+        if latest.to_string() != recited.ticket {
+            return Err(CommandError::SnapshotChanged);
+        }
+        // Zotero may have begun a full read while the copy waited for this thread.
+        self.engine
+            .still_current(citation)
+            .map_err(|_| CommandError::SnapshotChanged)?;
         let copied = &recited.result;
         write(
             copied

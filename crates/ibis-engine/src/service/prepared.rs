@@ -297,6 +297,14 @@ impl Engine {
         Ok(fresh.result)
     }
 }
+impl Engine {
+    /// Whether a citation `recite` confirmed still comes from the same ready
+    /// Zotero read. Cheap, with no formatting: a copy checks it right before
+    /// it writes, because a full read can begin while the copy waits.
+    pub fn still_current(&self, prepared: &PreparedCitation) -> Result<(), CitationCommitError> {
+        prepared.check_zotero(self.state()?.as_ref())
+    }
+}
 impl PreparedCitation {
     fn check_zotero(&self, state: &super::State) -> Result<(), CitationCommitError> {
         if let Some(expected) = self.zotero_generation {
