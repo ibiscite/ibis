@@ -8,19 +8,17 @@ export function useUpdateOfferActivity(api: PickerApi, state: SessionState,
   { overlay }: Pick<ReturnType<typeof usePickerMenus>, "overlay">, choosingLibrary: boolean) {
   const { query, pendingCopy, selected } = state;
   const updateInputBlocked = useRef(false);
-  updateInputBlocked.current = Boolean(query || pendingCopy || overlay || choosingLibrary || selected.size || state.activeCopy !== null);
+  updateInputBlocked.current = Boolean(query || pendingCopy || overlay || choosingLibrary || selected.size || state.activeCopy !== null || !state.shown);
   const updateInput = useRef<ReturnType<typeof monitorUpdateOfferInput> | null>(null);
   useEffect(() => {
     if (!api.updatePickerActivity) return;
     const monitor = monitorUpdateOfferInput(window, api.updatePickerActivity, () =>
-      updateInputBlocked.current || !document.hasFocus() || document.documentElement.dataset.pickerHidden !== undefined ||
+      updateInputBlocked.current || !document.hasFocus() ||
       [...document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input:not([type]), input[type="text"], input[type="search"], textarea')].some((input) => input.value.length > 0) ||
       [...document.querySelectorAll('[contenteditable="true"]')].some((input) => Boolean(input.textContent?.length)));
     updateInput.current = monitor;
-    const visibility = new MutationObserver(monitor.activity);
-    visibility.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
-    return () => { visibility.disconnect(); monitor.stop(); updateInput.current = null; };
+    return () => { monitor.stop(); updateInput.current = null; };
   }, [api.updatePickerActivity]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: each interaction transition invalidates the old idle ticket, including close/reopen; the monitor reads current blocking state through a ref.
-  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, overlay, choosingLibrary, selected.size, state.activeCopy, state.visibility]);
+  useEffect(() => { updateInput.current?.activity(); }, [query, pendingCopy, overlay, choosingLibrary, selected.size, state.activeCopy, state.visibility, state.shown]);
 }

@@ -29,7 +29,6 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
   // biome-ignore lint/correctness/useExhaustiveDependencies: subscribes once on mount. The handlers only call setters, refs and native calls that never change, so the first render's copies are current.
   useEffect(() => {
     let mounted = true;
-    let visibilityEvents = 0;
     let focusAfterActivation = false;
     let searchAtShow = "";
     const subscriptionFailure = (operation: Operation) => {
@@ -72,10 +71,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     // a monotonic clock keeps clock changes from clearing or keeping a search.
     const unlistenHidden = onPickerHidden(() => {
       if (!mounted) return;
-      visibilityEvents += 1;
       focusAfterActivation = false;
-      // A hidden native window may not throttle the web view: pause looping animations.
-      document.documentElement.dataset.pickerHidden = "";
       resetPointer();
       send({ type: "hidden", now: performance.now() });
       closeOverlays();
@@ -91,19 +87,15 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
     }).catch(() => subscriptionFailure("pickerEvents"));
     const unlisten = onPickerShown((presentation) => {
       if (!mounted) return;
-      visibilityEvents += 1;
-      delete document.documentElement.dataset.pickerHidden;
       focusSearch(presentation);
     }).catch(() => subscriptionFailure("pickerEvents"));
     void Promise.all([unlistenHidden, unlisten]).then(async () => {
       if (!mounted) return;
       send({ type: "initialize" });
-      const events = visibilityEvents;
+      const events = session.getSnapshot().visibilityEvents;
       const visible = await pickerVisible();
-      // A newer event wins over this read; failed reads leave the flag alone.
-      if (!mounted || events !== visibilityEvents) return;
-      if (visible) delete document.documentElement.dataset.pickerHidden;
-      else document.documentElement.dataset.pickerHidden = "";
+      // The session keeps a newer event over this read; a failed read changes nothing.
+      if (mounted) send({ type: "visibility-read", visible, events });
     }).catch(() => undefined);
     destination.read();
     preferences.loadPreferences(() => mounted);

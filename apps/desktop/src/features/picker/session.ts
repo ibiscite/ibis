@@ -45,6 +45,11 @@ export type SessionState = {
   session: number; presentation: number | null; visibility: number; interaction: number; context: number; viewInteraction: number; view: SessionView | null;
   presentationSubscribed: boolean; readingPresentation: boolean; retryPresentation: boolean;
   hiddenAt: number | null; selectAll: number; permissionDetour: boolean;
+  /** Whether the picker window is on screen: the one answer every part reads.
+   * Unknown counts as hidden, so nothing runs before the first native word. */
+  shown: boolean;
+  /** Shown and hidden events so far: a visibility read started before one is older. */
+  visibilityEvents: number;
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
   shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
@@ -54,6 +59,8 @@ export type SessionEvent =
   | { type: "view"; session: number; interaction: number; view: SessionView }
   | { type: "project-observed"; output: OutputToken; version: string | null; clearReplacement: boolean }
   | { type: "query"; value: string }
+  /** The native answer to "is the picker shown?", read when the picker starts. */
+  | { type: "visibility-read"; visible: boolean; events: number }
   | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
@@ -86,7 +93,7 @@ export function initialSession(query = "", copied: Copied | null = null): Sessio
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
@@ -185,6 +192,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
         shelfCopied: newOutput ? null : s.shelfCopied, copyNotice: newOutput ? null : s.copyNotice });
     }
     case "query": return [changed(s, { query: event.value, interpretLocators: true, fromDocument: false }), []];
+    // A shown or hidden event since the read started is newer than its answer.
+    case "visibility-read": return [event.events === s.visibilityEvents ? { ...s, shown: event.visible } : s, []];
     case "literal": return [changed(s, { interpretLocators: false }), []];
     case "escape-search": return [changed(s, { query: "", interpretLocators: true, fromDocument: false }), []];
     case "sample": return [changed(s, { selected: new Map(), copied: null, removed: null, copyError: null, changing: null, lastCitations: new Map() }), []];
@@ -269,7 +278,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
       // permission detour is the same change coming back.
       const copying = s.flights.some((f) => f.id === s.activeCopy && f.replaces === s.changing);
       const left = s.changing !== null && !s.permissionDetour && !copying ? { selected: new Map(), changing: null } : {};
-      return [{ ...s, ...left, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
+      return [{ ...s, ...left, presentation: null, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, hiddenAt: event.now, pendingCopy: null, shelfCopied: null, copyNotice: null,
+        shown: false, visibilityEvents: s.visibilityEvents + 1 }, []];
     }
     case "preparing": {
       s = { ...returning(s, event.now), hiddenAt: null, opened: s.opened + 1 };
@@ -280,7 +290,8 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     }
     case "shown": {
       s = returning(s, event.now);
-      return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null }, []];
+      return [{ ...s, opened: s.opened + 1, session: s.session + 1, presentation: event.presentation, readingPresentation: false, retryPresentation: false, visibility: s.visibility + 1, viewInteraction: -1, hiddenAt: null, pendingCopy: null, shelfCopied: null, copyNotice: null,
+        shown: true, visibilityEvents: s.visibilityEvents + 1 }, []];
     }
     case "retire": return [{ ...s, presentation: null, presentationSubscribed: false, readingPresentation: false, retryPresentation: false, session: s.session + 1, visibility: s.visibility + 1, viewInteraction: -1, pendingCopy: null, flights: [], activeCopy: null }, []];
   }

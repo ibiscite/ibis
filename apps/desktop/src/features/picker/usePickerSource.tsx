@@ -33,7 +33,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   const { active, selected } = state;
   const { chooseLibrary, onLibraryFileDropped, onLibraryFileRefused } = api;
   const sourceItem = !libraryChoices ? results[active]?.id ?? (selected.size === 1 ? [...selected.values()][0]?.id : null) ?? null : null;
-  const sourceOpen = useSourceOpen(api, library, state.visibility, sourceItem, false, refreshSnapshot, () => session.getSnapshot().presentation);
+  const sourceOpen = useSourceOpen(api, library, state.visibility, state.shown, sourceItem, false, refreshSnapshot, () => session.getSnapshot().presentation);
   const chooseSources = () => {
     cancelCopy(); closeOverlays();
     chooserRequest.current = {};

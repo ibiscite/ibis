@@ -4,20 +4,13 @@ import type { LibraryStatus } from "../../api";
 import { isSnapshotChanged } from "../../api";
 import type { ItemRef, SourcePresentation } from "../../bindings";
 import { say } from "../../i18n";
+import { useShown } from "./pickerShown";
 
 /** A source query/open owns its item, snapshot and picker presentation. Icons
  * are read once on that identity, only while shown; they never poll. */
 export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librarySource">, library: LibraryStatus | null | undefined,
-  visibility: number, item: unknown | null, zoteroOnly: boolean, refresh: () => void, presentation: () => number | null = () => null) {
-  const [visible, setVisible] = useState(false);
-  useEffect(() => {
-    const sync = () => setVisible(document.visibilityState !== "hidden" && !document.documentElement.hasAttribute("data-picker-hidden"));
-    const observer = new MutationObserver(sync);
-    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-picker-hidden"] });
-    document.addEventListener("visibilitychange", sync);
-    sync();
-    return () => { observer.disconnect(); document.removeEventListener("visibilitychange", sync); };
-  }, []);
+  visibility: number, shown: boolean, item: unknown | null, zoteroOnly: boolean, refresh: () => void, presentation: () => number | null = () => null) {
+  const visible = useShown(shown);
   const identity = JSON.stringify(item);
   const scope = useMemo(() => ({ library, visibility, identity, zoteroOnly }), [library, visibility, identity, zoteroOnly]);
   const latest = useRef(scope);
