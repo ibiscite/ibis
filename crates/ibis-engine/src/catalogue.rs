@@ -162,6 +162,30 @@ mod tests {
     }
 
     #[test]
+    fn library_format_words_resolve_the_shared_term_for_every_front_end() {
+        let formats = "BibTeX, BibLaTeX, CSL-JSON, RIS or CSV";
+        for id in [
+            "reason-unknown-format",
+            "choice-library-file-help",
+            "choice-drop-file",
+            "operation-failures-drop-refused",
+            "cli-no-references",
+            "cli-file-help",
+            "cli-file-unreadable",
+            "app-file-dialog-formats",
+        ] {
+            let said = text(id, None, &[]).unwrap_or_default();
+            assert!(said.contains(formats), "{id}: {said}");
+        }
+        for audience in [Audience::Cli, Audience::Agent, Audience::App] {
+            assert!(
+                text("reason-unknown-format", Some(audience.attribute()), &[])
+                    .is_some_and(|fix| fix.contains("another file"))
+            );
+        }
+    }
+
+    #[test]
     fn every_engine_code_has_words_and_no_engine_message_is_unused() {
         let catalogue = catalogue_ids();
         let unique: BTreeSet<_> = catalogue.iter().cloned().collect();

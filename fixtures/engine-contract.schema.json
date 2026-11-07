@@ -782,6 +782,11 @@
           "description": "A CSV file's first row does not name the columns of Ibis's template.",
           "type": "string",
           "const": "csv-template"
+        },
+        {
+          "description": "Neither the file's name nor its contents identify a supported library format.",
+          "type": "string",
+          "const": "unknown-format"
         }
       ]
     },

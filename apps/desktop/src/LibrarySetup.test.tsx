@@ -22,7 +22,7 @@ test("initial setup never searches and manual source choices are immediately usa
   expect(screen.getByRole("listbox", { name: "Where do your references live?" })).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
   expect(option(/^Use Zotero/).textContent).toContain("Your Zotero library, open or closed");
-  expect(option(/^Choose a Library File…/).textContent).toContain("BibTeX, BibLaTeX or CSL-JSON");
+  expect(option(/^Choose a Library File…/).textContent).toContain("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
   press(option(/^Choose a Library File…/));
   press(option(/^Use Zotero/));
   expect(chooseLibrary).toHaveBeenCalledOnce();
@@ -254,7 +254,7 @@ test("empty-library choices show a known Zotero tag without searching or adding 
   expect(screen.getByRole("heading", { name: "No references in My Library" })).toBeTruthy();
   expect(screen.getAllByRole("option")).toHaveLength(2);
   expect(option(/^Use Zotero/).textContent).toMatch(/Found on this (Mac|PC|computer)/);
-  expect(screen.getByText("Or drag a .bib or CSL-JSON file into this window.")).toBeTruthy();
+  expect(screen.getByText("Or drag a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file into this window.")).toBeTruthy();
   expect(findSources).not.toHaveBeenCalled();
 });
 

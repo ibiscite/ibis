@@ -68,6 +68,7 @@ impl LoadError {
             LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
                 (_, ErrorCode::SourceUnavailable) => "app-library-file-unavailable",
                 _ if error.reason == Some(ErrorReason::CsvTemplate) => "reason-csv-template",
+                _ if error.reason == Some(ErrorReason::UnknownFormat) => "reason-unknown-format",
                 (LoadError::File(_), ErrorCode::BadInput) => "app-library-file-invalid",
                 (LoadError::File(_), ErrorCode::ResourceLimit) => "app-library-file-too-large",
                 (_, ErrorCode::BadInput) => "app-library-file-unfinished",

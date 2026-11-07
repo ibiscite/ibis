@@ -1,6 +1,66 @@
 use ibis_core::contract::{Availability, LibraryObject};
 
 #[test]
+fn unknown_file_names_require_reference_entry_blocks() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let mut outcomes = Vec::new();
+    for name in ["notes.xyz", "library"] {
+        let path = dir.path().join(name);
+        for text in [
+            "Invented notes without references.",
+            "",
+            "@COMMENT{A note with @book{hidden,title={Not an entry}}}\n@PREAMBLE{\"Invented\"}\n@STRING{press={Invented Press}}",
+        ] {
+            std::fs::write(&path, text)?;
+            outcomes.push((name, ibis_sources::load_file(&path).err()));
+            outcomes.push((name, ibis_sources::reload_file(&path).err()));
+        }
+    }
+    assert!(
+        outcomes
+            .iter()
+            .all(|(_, error)| *error == Some(ibis_sources::SourceError::UnknownFormat)),
+        "unknown names must be refused rather than opened empty: {outcomes:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn unknown_file_names_still_load_bibtex_and_ris() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    for (name, text) in [
+        ("refs.bak", "@book{one,title={Invented book}}"),
+        ("refs.bak", "@book(one,title={Invented book})"),
+        ("export.dat", "TY  - BOOK\nID  - one\nTI  - Invented book\nER  - \n"),
+    ] {
+        let path = dir.path().join(name);
+        std::fs::write(&path, text)?;
+        let loaded = ibis_sources::load_file(&path)?;
+        assert_eq!(loaded.snapshot.objects().len(), 1, "{name}");
+        assert!(matches!(&loaded.snapshot.objects()[0].object,
+            LibraryObject::Record(record) if record.csl.get("title").and_then(serde_json::Value::as_str) == Some("Invented book")));
+        if name == "refs.bak" {
+            let entry = &loaded.snapshot.objects()[0];
+            let original = ibis_sources::original_entry(&path, entry.object.id(), "one", &entry.fingerprints.cite)
+                .map_err(|error| format!("original backup entry: {error:?}"))?;
+            assert!(original.contains("Invented book"));
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn named_bibtex_without_entries_remains_an_empty_library() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("empty.bib");
+    for text in ["", "Only an invented comment.\n@comment{Nothing to cite}"] {
+        std::fs::write(&path, text)?;
+        assert!(ibis_sources::load_file(&path)?.snapshot.objects().is_empty());
+    }
+    Ok(())
+}
+
+#[test]
 fn nonempty_json_without_csl_records_is_a_format_error_but_empty_libraries_are_allowed()
 -> Result<(), Box<dyn std::error::Error>> {
     use ibis_sources::SourceError;

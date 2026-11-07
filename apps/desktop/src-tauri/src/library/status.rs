@@ -260,6 +260,35 @@ mod tests {
     use crate::tray::library_line;
 
     #[test]
+    fn an_unknown_file_open_publishes_a_refusal_without_an_empty_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("notes.xyz");
+        std::fs::write(&path, "Invented notes without references.")?;
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, path.clone()).ok_or("begin file open")?;
+        let opened = install(&library, &requests, request, load_library(path, false)).ok_or("install refusal")?;
+        assert!(matches!(opened.state, LibraryState::Error));
+        assert!(!opened.has_snapshot);
+        assert_eq!(opened.name.as_deref(), Some("notes.xyz"));
+        assert_eq!(opened.references, 0);
+        assert_eq!(opened.problem, Some(LibraryProblem::Unreadable));
+        assert_eq!(
+            opened.error_reason,
+            Some(LoadError::File(EngineError::because(
+                ErrorCode::BadInput,
+                ErrorReason::UnknownFormat,
+            )))
+        );
+        assert_eq!(
+            opened.error.as_deref(),
+            Some("This file is not in a format Ibis reads: BibTeX, BibLaTeX, CSL-JSON, RIS or CSV.")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn source_identity_distinguishes_an_empty_reload_from_a_same_named_switch() -> Result<(), Box<dyn std::error::Error>>
     {
         let mut library = candidate(PathBuf::from("first/empty.bib"), "");

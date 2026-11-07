@@ -35,6 +35,15 @@ use resolve::Resolver;
 
 const LOAD_LIMIT: &str = "load work limit reached; this entry and remaining entries were skipped";
 
+/// Recognize entries with the loader's scanner, including parenthesized and
+/// damaged blocks, without treating directives or their contents as entries.
+pub(crate) fn has_entry_block(text: &str) -> bool {
+    split_blocks(text)
+        .0
+        .iter()
+        .any(|block| !matches!(block.kind.as_str(), "comment" | "preamble" | "string"))
+}
+
 #[cfg(test)]
 thread_local! {
     // Per-thread so concurrent generated cases cannot hide each other's panics.

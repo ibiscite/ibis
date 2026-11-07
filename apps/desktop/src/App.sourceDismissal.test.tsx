@@ -249,7 +249,7 @@ test("a dropped file Ibis cannot use says what it accepts, until the next good d
     search: () => ({ revision: library.revision, results: [{ ...result("kept", "Invented kept reference"), revision: library.revision }] }) });
   render(<App />);
   await screen.findByText("Invented kept reference");
-  const refusal = "Ibis opens one .bib, .biblatex or CSL-JSON file at a time.";
+  const refusal = "Ibis opens one BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file at a time.";
   await act(async () => { await emit("library:file-refused"); });
   expect(screen.getByRole("alert").textContent).toBe(refusal);
   expect(screen.getByText("Invented kept reference")).toBeTruthy();

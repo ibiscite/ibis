@@ -159,6 +159,8 @@ pub enum ErrorReason {
     ZoteroNoSpace,
     /// A CSV file's first row does not name the columns of Ibis's template.
     CsvTemplate,
+    /// Neither the file's name nor its contents identify a supported library format.
+    UnknownFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

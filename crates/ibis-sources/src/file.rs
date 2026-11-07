@@ -47,9 +47,11 @@ pub enum SourceError {
     InvalidData,
     #[error("the CSV file's first row does not name the template's columns")]
     CsvTemplate,
+    #[error("the file is not in a format Ibis reads")]
+    UnknownFormat,
 }
 
-/// What a library file holds, from its name and, for RIS, its first line.
+/// What a library file holds, from its name or reference entry structure.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Format {
     Bibtex,
@@ -70,17 +72,22 @@ const NAMES: [(Format, &[&str]); 4] = [
 
 impl Format {
     /// By name first: BibTeX comments may start with a JSON-looking bracket.
-    /// A file with another name is RIS when it starts as RIS, else BibTeX.
-    pub(crate) fn of(path: &Path, text: &str) -> Self {
-        let named = NAMES.iter().find(|(_, names)| {
+    /// An unknown name needs a RIS opening or a BibTeX entry block.
+    pub(crate) fn of(path: &Path, text: &str) -> Result<Self, SourceError> {
+        match Self::named(path) {
+            Some(format) => Ok(format),
+            None if crate::exported::ris::looks_like_ris(text) => Ok(Self::Ris),
+            None if bibtex::has_entry_block(text) => Ok(Self::Bibtex),
+            None => Err(SourceError::UnknownFormat),
+        }
+    }
+
+    pub(crate) fn named(path: &Path) -> Option<Self> {
+        NAMES.iter().find_map(|(format, names)| {
             path.extension()
                 .is_some_and(|extension| names.iter().any(|name| extension.eq_ignore_ascii_case(name)))
-        });
-        match named {
-            Some((format, _)) => *format,
-            None if crate::exported::ris::looks_like_ris(text) => Self::Ris,
-            None => Self::Bibtex,
-        }
+                .then_some(*format)
+        })
     }
 }
 
@@ -279,11 +286,11 @@ pub fn original_entry(
 ) -> Result<String, crate::project::EntryRefusal> {
     use crate::project::EntryRefusal;
     // Only BibTeX has an entry to copy; most other files say so by name.
-    if Format::of(path, "") != Format::Bibtex {
+    if Format::named(path).is_some_and(|format| format != Format::Bibtex) {
         return Err(EntryRefusal::NoOriginal);
     }
     let observation = stable_observation(path).map_err(|_| EntryRefusal::Changed)?;
-    if Format::of(path, &observation.text) != Format::Bibtex {
+    if Format::of(path, &observation.text) != Ok(Format::Bibtex) {
         return Err(EntryRefusal::NoOriginal);
     }
     // Parsed from the canonical path, as the library was, so the item's ID matches.
@@ -323,7 +330,7 @@ fn parse_with_budget(
         .map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
-    let parsed = match Format::of(&source, text) {
+    let parsed = match Format::of(&source, text)? {
         Format::CslJson => csl_json::load_str(&library, text)?,
         Format::Ris => exported::ris::load(&library, text, previous)?,
         Format::Csv => exported::csv::load(&library, text, previous)?,

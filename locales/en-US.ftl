@@ -5,6 +5,8 @@
 # without words or words without a code. People’s words, not the engine’s
 # (design principle 12), and typographic apostrophes.
 
+-library-formats = BibTeX, BibLaTeX, CSL-JSON, RIS or CSV
+
 ## Engine errors: what went wrong, by code.
 
 error-usage = The command is not valid.
@@ -74,6 +76,10 @@ reason-csv-template = The first row of this CSV file does not match Ibis’s tem
     .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
     .agent = Ask the person to rename the columns in the file’s first row to the template’s.
     .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+reason-unknown-format = This file is not in a format Ibis reads: { -library-formats }.
+    .cli = Choose another file with --file.
+    .agent = Ask the person to choose another file.
+    .app = Choose another file.
 
 ## A reference a citation could not include. { $reference } names it.
 
@@ -153,6 +159,11 @@ cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
+cli-no-references = No open library holds any references. A file must be { -library-formats } in Ibis’s template.
+cli-file-help = Open a { -library-formats } file; repeat for several libraries
+cli-file-unreadable = It cannot be read, or it is not a { -library-formats } library; check its permissions and contents.
+app-file-dialog-title = Choose a library
+app-file-dialog-formats = { -library-formats }
 
 ## The app’s own sentence about a citation.
 
@@ -454,8 +465,8 @@ undo-removed = Removed { $reference }
 choice-use-zotero = Use Zotero
 choice-zotero-help = Your Zotero library, open or closed
 choice-library-file = Choose a Library File…
-choice-library-file-help = BibTeX, BibLaTeX or CSL-JSON
-choice-drop-file = Or drag a .bib or CSL-JSON file into this window.
+choice-library-file-help = { -library-formats }
+choice-drop-file = Or drag a { -library-formats } file into this window.
 shelf-references = { $count } references
 keys-title = Keyboard Shortcuts
 keys-close = Close
@@ -539,7 +550,7 @@ operation-failures-row-context = The reference menu could not open. Use Enter to
 operation-failures-status = Ibis could not check your library. Choose the file again.
 operation-failures-shortcut = Ibis could not check the shortcut. Open Ibis from the menu bar or tray.
 operation-failures-choose = The file chooser did not open. Try again.
-operation-failures-drop-refused = Ibis opens one .bib, .biblatex or CSL-JSON file at a time.
+operation-failures-drop-refused = Ibis opens one { -library-formats } file at a time.
 operation-failures-zotero = Ibis could not start reading Zotero. Try again.
 operation-failures-samples = Ibis could not change the sample library. Try again.
 operation-failures-zotero-groups = Ibis could not list your Zotero groups. Check that Zotero is open, then try again.
