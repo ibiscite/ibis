@@ -254,6 +254,11 @@ pub(crate) fn copy_file_citation(
     let captured = editor.app(crate::paste::last_app(&app));
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
     let epoch = session.lock().epoch();
+    if editor.current().is_none() {
+        // The citation uses the project as saved: a change made elsewhere since
+        // the preview, by the command line for one, retires it before the commit.
+        crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
+    }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, replaces.as_deref());
     let file = open_file(&library)?;
