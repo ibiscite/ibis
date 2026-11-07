@@ -31,10 +31,12 @@ paste". The app table's starting formats stay, as suggestions the menu names, so
 a new install still pastes APA into Word.
 
 `apps.json`, beside `settings.json`, keeps
-only the operating system, normalised app ID, output, optional delivery choice
+only the operating system, normalised app ID, optional delivery choice
 (`paste` or `copy-only`), the identity binding described below and whether the
 one-time plugin note was shown, for at most 200 apps;
-the least recently chosen app is dropped first. Never a document title, URL,
+the least recently chosen app is dropped first. Since 2026-11-07 the format
+per app lives in `settings.json` instead (decision 0040), under the same
+limits. Never a document title, URL,
 window title, document text or citation. Browser and editor IDs cannot identify
 a project's syntax, so the first paste in each browser or code editor opens
 the output chooser once and remembers the pick (maintainer, 2026-10-28).
@@ -72,9 +74,9 @@ Unknown apps ask for delivery approval
 separately from format, in the same chooser (0009); recognised apps also offer
 Copy only there and in More for the current ordinary app. A failed save leaves the previous durable choices intact and says
 so. Preference writes from different windows apply only deliberate field
-patches under the native owner lock, returning the authoritative saved state.
-Settings and the picker share one frontend patch queue for ordering, field
-acknowledgments, stale reads and recovery. Settings restores the saved choice
+patches, returning the authoritative saved state; the one settings owner
+orders them by when they were chosen (decision 0040). Settings and the picker
+share one frontend queue for acknowledgments, stale reads and recovery. Settings restores the saved choice
 after a failed save; the picker retains explicit choices for retry. Each window
 keeps its own queue; the native lock coordinates windows (2026-10-28).
 
