@@ -139,8 +139,11 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       <span className="result-body" title={r.key || undefined}>
         <span className="result-line">
           <strong className="result-title">{r.sample && <><bdi>{say("setup-sample-label")}</bdi>{" · "}</>}{r.title}</strong>
-          {compact && r.first_author && <span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span>}
+          {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
+          <span className="visually-hidden">, </span>
+          {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
           <span className="result-year">{r.year ?? say("picker-no-date")}</span>
+          <span className="visually-hidden">, </span>
         </span>
         <span className="result-meta">
           {/* Each clipping part takes its own text direction, so Latin text in a
@@ -155,6 +158,8 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           {library && <span className="result-library">{library}</span>}
         </span>
         {why && <span className="result-why">{say("picker-matched-in", { field: why })}</span>}
+        {/* Only some search words matched this row: it says so itself, not only its group. */}
+        {r.partial && <span className="result-why">{say("picker-closest-match")}</span>}
         {project && <span className="result-project">{project}</span>}
         {/* The type in words; the tile's icon is decorative. */}
         {rowWords.itemType(r.item_type) && <span className="visually-hidden">{rowWords.itemType(r.item_type)}</span>}

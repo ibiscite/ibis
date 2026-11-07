@@ -8,13 +8,13 @@ const nameLine = "Named for the bird ancient Egyptians linked with Thoth, god of
 test("Small surprises defaults on, persists off, and thoth still reveals the passive name line", async () => {
   const api = demoApi();
   const mounted = await act(async () => render(<SettingsApp api={api} initialPage="general" />));
-  const toggle = screen.getByRole<HTMLInputElement>("switch", { name: "Small surprises" });
+  const toggle = screen.getByRole<HTMLInputElement>("switch", { name: "Bird facts and milestones" });
   expect(toggle.checked).toBe(true);
   fireEvent.click(toggle);
   await waitFor(() => expect(toggle.checked).toBe(false));
   mounted.unmount();
   await act(async () => render(<SettingsApp api={api} initialPage="general" />));
-  expect(screen.getByRole<HTMLInputElement>("switch", { name: "Small surprises" }).checked).toBe(false);
+  expect(screen.getByRole<HTMLInputElement>("switch", { name: "Bird facts and milestones" }).checked).toBe(false);
   fireEvent.change(screen.getByRole("searchbox"), { target: { value: "thoth" } });
   await act(async () => fireEvent.click(screen.getByRole("option", { name: /^About Ibis/ })));
   expect(screen.getByText(nameLine).closest("[data-highlighted]")).not.toBeNull();
@@ -77,8 +77,8 @@ test("a failed switch write restores the authoritative choice without losing oth
   const api = demoApi();
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("invented write failure"));
   await act(async () => render(<SettingsApp api={api} initialPage="general" />));
-  fireEvent.click(screen.getByRole("switch", { name: "Small surprises" }));
-  await waitFor(() => expect(screen.getByRole<HTMLInputElement>("switch", { name: "Small surprises" }).checked).toBe(true));
+  fireEvent.click(screen.getByRole("switch", { name: "Bird facts and milestones" }));
+  await waitFor(() => expect(screen.getByRole<HTMLInputElement>("switch", { name: "Bird facts and milestones" }).checked).toBe(true));
   expect((await api.pickerPreferences()).paste).toBe(true);
 });
 

@@ -493,7 +493,7 @@ test("Settings opens at the top of General with every built page in a navigable,
   const sidebar = screen.getByRole("navigation", { name: "Settings pages" });
   const list = within(sidebar).getByRole("listbox", { name: "Settings pages" });
   const items = within(list).getAllByRole("option");
-  expect(items.map((item) => item.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
+  expect(items.map((item) => item.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
   const selected = () => within(list).getAllByRole("option", { selected: true });
   expect(selected().map((item) => item.textContent)).toEqual(["General"]);
   expect(selected()[0]!.getAttribute("aria-current")).toBe("page");
@@ -518,12 +518,12 @@ test("sidebar arrows and Home/End move focus, select the page and reset its scro
   render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
   const general = screen.getByRole("option", { name: "General" });
-  const shortcuts = screen.getByRole("option", { name: "Look" });
+  const shortcuts = screen.getByRole("option", { name: "Appearance" });
   const about = screen.getByRole("option", { name: "About Ibis" });
   act(() => general.focus());
   for (const [key, target, name] of [
-    ["ArrowDown", shortcuts, "Look"], ["End", about, "About Ibis"],
-    ["Home", general, "General"], ["ArrowDown", shortcuts, "Look"],
+    ["ArrowDown", shortcuts, "Appearance"], ["End", about, "About Ibis"],
+    ["Home", general, "General"], ["ArrowDown", shortcuts, "Appearance"],
     ["End", about, "About Ibis"], ["Home", general, "General"],
   ] as const) {
     screen.getByRole("main").scrollTop = 120;
@@ -539,7 +539,7 @@ test("clicking the current sidebar page once resets its scroll to the top", asyn
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
-  for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
     const item = screen.getByRole("option", { name });
     fireEvent.click(item);
     const main = screen.getByRole("main", { name });
@@ -1062,11 +1062,11 @@ test("a physical default-position key still offers the logical default", async (
 test("seven pages and search find common words, reveal and briefly tint their cause", async () => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
-  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Look", "Citations", "Shortcuts", "About Ibis"]);
+  expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
   fireEvent.change(search, { target: { value: "dark" } });
-  fireEvent.click(await screen.findByRole("option", { name: "Appearance, Look" }));
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  fireEvent.click(await screen.findByRole("option", { name: "Appearance, Appearance" }));
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 2100));
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
@@ -1079,14 +1079,14 @@ test("search results are sidebar rows, and Enter opens the first", async () => {
   fireEvent.change(search, { target: { value: "a" } });
   const results = await screen.findByRole("listbox", { name: "Search results" });
   expect(within(results).queryAllByRole("button")).toEqual([]);
-  const row = within(results).getByRole("option", { name: "Appearance, Look" });
+  const row = within(results).getByRole("option", { name: "Appearance, Appearance" });
   expect(row.classList.contains("ui-side-navigation-item")).toBe(true);
   expect(row.querySelector('.ui-side-navigation-tile[data-page="look"] svg')).not.toBeNull();
   fireEvent.keyDown(search, { key: "Enter", isComposing: true });
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
   fireEvent.change(search, { target: { value: "appearance" } });
   fireEvent.keyDown(search, { key: "Enter" });
-  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Look");
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
   expect(container.querySelector(".ui-settings-search-results")).toBeNull();
   fireEvent.change(search, { target: { value: "no such setting" } });
   expect((await screen.findByText("No matching settings")).classList.contains("ui-side-navigation-empty")).toBe(true);
@@ -1120,7 +1120,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
   render(<SettingsApp api={api} initialPage="look" />);
   await screen.findByRole("radiogroup", { name: "Appearance" });
   expect(screen.queryByRole("radio", { name: /Coming soon|Largest/ })).toBeNull();
-  for (const name of ["General", "Look", "Citations", "Shortcuts", "About Ibis"]) {
+  for (const name of ["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]) {
     fireEvent.click(screen.getByRole("option", { name }));
     expect(screen.queryByText(/Coming soon/)).toBeNull();
     expect(screen.queryByText("Show the welcome again")).toBeNull();
@@ -1150,7 +1150,7 @@ test("Look serializes older A before B, so B stays selected and survives reopeni
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
-  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("option", { name: "Appearance" }));
   expect((await screen.findByRole("radio", { name: "Compact" }))).toHaveProperty("checked", true);
 });
 
@@ -1293,7 +1293,7 @@ test("a picker notification before a queued save fails stays uncertain until the
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   await act(async () => { fireEvent.focus(window); });
   expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
-  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("option", { name: "Appearance" }));
   fireEvent.click(screen.getByRole("radio", { name: "Default" }));
   await act(async () => state.closes[0]!());
   expect(screen.getByRole("alert")).toHaveProperty("textContent", uncertainty);
@@ -1345,7 +1345,7 @@ test("Appearance, both accents and both text sizes persist separately", async ()
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
-  fireEvent.click(screen.getByRole("option", { name: "Look" }));
+  fireEvent.click(screen.getByRole("option", { name: "Appearance" }));
   expect(await screen.findByRole("radio", { name: "Ibis scarlet" })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.appearance).toBe("dark");
   fireEvent.click(screen.getByRole("radio", { name: "System" }));
@@ -1471,7 +1471,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 test.each([
   ["no remembered format.", "Default format", "Citations", "default-format"],
-  ["Follow the system", "Appearance", "Look", "appearance"],
+  ["Follow the system", "Appearance", "Appearance", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);

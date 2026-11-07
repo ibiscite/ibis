@@ -61,8 +61,15 @@
 .result-separator { flex: none; white-space: pre; }
 .result-authors, .result-container { unicode-bidi: isolate; }
 /* A narrow list (details open beside it, larger text) keeps the authors whole and
-   leaves the journal to Peek and the details: it gives way first, never the names. */
-@container (max-width: 30rem) { .result-separator, .result-container { display: none; } }
+   shows the journal only when it fits whole: one that does not wraps onto a line
+   the byline clips, never a stub. Peek and the details always show it. */
+@container (max-width: 30rem) {
+  .result-byline { flex-wrap: wrap; max-height: 1lh; }
+  .result-byline > .result-authors { max-width: 100%; }
+  .result-separator { display: none; }
+  .result-container { flex: none; max-width: 100%; }
+  .result-container::before { content: " · "; white-space: pre; }
+}
 .result-why { font-style: italic; }
 .result-library { flex: 0 1000 auto; min-width: min(5em, 100%); max-width: 30%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* The selected (active) row is a full accent fill with its paired text on
@@ -113,7 +120,7 @@
 @media (max-width: 460px) {
   .result-meta { flex-wrap: wrap; }
   /* Authors and container flow as one wrapping run of text. */
-  .result-byline { display: block; }
+  .result-byline { display: block; max-height: none; }
   .result-authors, .result-container { white-space: normal; overflow-wrap: anywhere; }
   /* Let the line break after the separator rather than inside a word. */
   .result-separator { white-space: pre-wrap; }

@@ -1615,7 +1615,8 @@ test("rows with the same first author and year are told apart by their container
   expect(line?.querySelector(".result-first-author")?.getAttribute("dir")).toBe("auto");
   // Two authors are both named, as in Comfortable; "et al." starts at three.
   expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
-  expect(line?.textContent).toBe("Sleep spindlesGarcía, Okafor2021");
+  // Read aloud as one name, its parts are separated, never "Okafor2021".
+  expect(line?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
   expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container")).toBeNull();
@@ -2630,7 +2631,9 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   await waitFor(() => expect(copied).toEqual(selections([{ library: "refs.bib", key: "a" }])));
   expect(screen.queryByRole("button", { name: "Shortcuts" })).toBeNull();
   await chooseFromMore("Keyboard Shortcuts");
-  expect(await screen.findByRole("dialog", { name: "Keyboard Shortcuts" })).toBeTruthy();
+  const sheet = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+  // No citation was pasted into this app yet, so there is none to change: as More, the sheet omits it.
+  expect(sheet.textContent).not.toContain("Edit the citation you just pasted");
   fireEvent.click(screen.getByRole("button", { name: "Close" }));
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });

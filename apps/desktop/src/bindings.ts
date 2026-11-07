@@ -568,6 +568,8 @@ export type Notice = "needs-document-context" | "reference-entry" | "full-first-
  * one line of it.
  */
 export type NoticeMessage = {
+	/** Ibis's own Light or Dark, set as the notice is shown; absent for System. */
+	appearance?: Appearance;
 	delivered: Delivered;
 	milestone?: number | null;
 	more?: number | null;

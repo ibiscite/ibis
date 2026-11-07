@@ -7,6 +7,7 @@ use ibis_core::settings::ZoteroLibrary;
 use serde::Serialize;
 
 use super::LoadError;
+use super::error::words;
 use super::source::Source;
 use super::state::Library;
 
@@ -204,7 +205,10 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         note: match &library.retained_error {
             Some(error) => {
                 let name = library.source.as_ref().and_then(Source::name).unwrap_or_default();
-                let update = format!("the retained library {name} could not be updated: {error}");
+                let update = words(
+                    "app-library-retained-not-updated",
+                    &[("name", &name), ("error", &error.to_string())],
+                );
                 Some(match &library.choice_save_warning {
                     Some(note) => format!("{note}\n{update}"),
                     None => update,
@@ -222,16 +226,16 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     for info in sources {
         if ibis_engine::health::classify(info).1 == "refresh-failed" {
             result.stale = true;
-            result.error.get_or_insert_with(|| {
-                "The library could not be refreshed; keeping the last loaded references.".into()
-            });
+            result
+                .error
+                .get_or_insert_with(|| words("app-library-not-refreshed", &[]));
         }
     }
     if result.stale && library.error.is_some() && !source_is_requested {
-        let note = "The retained library could not be refreshed; keeping the last loaded references.";
+        let note = words("app-library-retained-not-refreshed", &[]);
         result.note = Some(match result.note.take() {
             Some(previous) => format!("{previous}\n{note}"),
-            None => note.into(),
+            None => note,
         });
     }
     result
@@ -578,7 +582,7 @@ mod tests {
         // The file's references are kept, as after a failed switch to another file.
         assert_eq!(
             failed.error.as_deref(),
-            Some("Zotero's library cannot be read while it is closed; keeping the last loaded references")
+            Some("Zotero’s library cannot be read while it is closed; keeping the last loaded references")
         );
         assert!(failed.zotero, "Zotero was asked for");
         assert!(!failed.snapshot_zotero, "but the file is what is searched");

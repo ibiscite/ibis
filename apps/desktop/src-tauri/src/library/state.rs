@@ -927,7 +927,7 @@ mod tests {
         assert!(offline.snapshot_zotero);
         assert_eq!(
             offline.error.as_deref(),
-            Some("Zotero's library cannot be read while it is closed; keeping the last loaded references")
+            Some("Zotero’s library cannot be read while it is closed; keeping the last loaded references")
         );
         assert_eq!(
             Source::Zotero(ZoteroLibrary::User.into()).name().as_deref(),

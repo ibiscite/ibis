@@ -145,7 +145,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     <div className={`library-setup${empty ? "" : " library-welcome"}`}>
       {showFiles && !empty ? <ChoiceList key="found" title={say("setup-found-title")} choices={foundChoices} onChoose={choose} autoFocus
         footnote={notes.length > 0 ? notes.join(" ") : undefined} />
-        : <ChoiceList key="starts" title={empty?.title ?? say("setup-sources-title")} line={empty ? say("setup-empty-line") : say("setup-sources-line")}
+        : <ChoiceList key="starts" title={empty?.title ?? say("setup-sources-title")} line={empty ? say("setup-empty-line") : say("setup-sources-line", { platform: currentPlatform() })}
           choices={choices} onChoose={choose} autoFocus={autoFocus || !empty} grid={!empty && choices.length === 4} focusId={focusTile ? "find" : undefined}
           mark={!empty && <IbisMark className="welcome-mark" size="welcome" />}
           footnote={empty ? text("choice-drop-file") : notes.length > 0 || shortcutNote ? <>

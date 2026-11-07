@@ -159,6 +159,41 @@ app-saved-title = Save References Cited Since Opening
 app-saved-file = Cited since opening
 app-saved-page = References cited since opening
 
+## The app’s own words when a library cannot be read or a command fails.
+# Most are joined into a longer line, so they start in lower case.
+
+app-library-file-unavailable = the library file is unavailable; download any online-only file to this computer first
+app-library-file-invalid = the library file does not contain valid reference data
+app-library-file-too-large = the library file is larger than 64 MiB
+app-library-file-unfinished = the library file contains an unfinished entry
+app-library-work-limit = the library exceeded the load work limit
+app-library-file-not-utf8 = the library file is not UTF-8 text; save it as UTF-8
+app-library-zotero-sharing-off = Zotero is open but is not sharing your library with other applications
+app-library-zotero-profile-needed = choose which Zotero profile to read
+app-library-zotero-closed = Zotero’s library cannot be read while it is closed
+app-library-zotero-not-found = no Zotero library was found on this computer
+app-library-zotero-no-space = there is not enough free space to read Zotero while it is closed; free some space or open Zotero
+app-library-zotero-cancelled = reading Zotero was cancelled
+app-library-zotero-work-limit = reading Zotero exceeded its work limit
+app-library-zotero-newer = this Zotero database is newer than Ibis can read
+app-library-zotero-group-not-found = a chosen Zotero group library was not found; check that you are still a member
+app-library-zotero-try-again = Zotero could not be read just now; try again
+app-library-not-local = the chosen file is not on this computer
+app-library-stopped = loading the library stopped unexpectedly
+# $error is one of the sentences above.
+app-library-kept = { $error }; keeping the last loaded references
+# $name is the library’s name; $error is one of the sentences above.
+app-library-retained-not-updated = the retained library { $name } could not be updated: { $error }
+app-library-not-refreshed = The library could not be refreshed; keeping the last loaded references.
+app-library-retained-not-refreshed = The retained library could not be refreshed; keeping the last loaded references.
+app-library-state-unavailable = library state is unavailable
+app-command-snapshot-changed = library snapshot changed
+app-command-library-loading = library is loading
+app-command-cancelled = cancelled
+app-command-shared-citation-key = the citation key `{ $key }` belongs to more than one reference
+app-command-not-prepared = The citation could not be prepared. Try again.
+app-command-source-not-opened = The source could not be opened. Try again.
+
 ## The app’s interface.
 
 # Citation language and text direction have separate owners.
@@ -307,7 +342,7 @@ about-unavailable = This build does not update itself.
 
 
 # Settings window pages and visual choices.
-settings-look = Look
+settings-look = Appearance
 settings-citations = Citations
 settings-search = Search Settings
 settings-no-results = No matching settings
@@ -354,7 +389,7 @@ citations-default-description = Used when an app has no remembered format.
 citations-recent = Recent citations
 citations-recent-description = Shows what you cited recently in each app. Turning this off forgets them.
 citations-recent-words = history recents cited here forget privacy
-citations-editor = Editor endpoint
+citations-editor = Cite from your editor
 citations-editor-description = Lets an editor on this computer open the picker and receive the citation you choose, through Better BibTeX’s Cite as You Write. Web pages can’t use it, and nothing leaves this computer.
 citations-editor-words = cayw cite as you write vs code vscode better bibtex zotero endpoint port url editor
 citations-editor-address = Address for your editor
@@ -396,7 +431,7 @@ canvas-hovered = Hovered
 canvas-pressed = Pressed
 canvas-focused = Keyboard focus
 
-general-small-surprises-label = Small surprises
+general-small-surprises-label = Bird facts and milestones
 general-small-surprises-description = Bird facts, milestones and anniversaries.
 settings-surprises-words = delight easter egg fun
 delight-name = Named for the bird ancient Egyptians linked with Thoth, god of writing and keeper of records.
@@ -431,7 +466,11 @@ choice-back = Choose Another Source
 backup-words = backup restore export import move migrate new computer sync iCloud OneDrive
 backup-title = Another computer
 backup-label = Back up settings
-backup-description = A file to restore on another computer. Paste approvals and window places stay on this one.
+backup-description =
+    { $platform ->
+        [linux] A file to restore on another computer. Window places stay on this one.
+       *[other] A file to restore on another computer. The apps you let Ibis paste into, and window places, stay on this one.
+    }
 backup-button = Back Up…
 backup-saved = Saved to { $file }.
 restore-label = Restore settings
@@ -516,7 +555,11 @@ operation-failures-app-choices = Ibis needs your paste choice for this app becau
 operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
 setup-sources-title = Where do your references live?
-setup-sources-line = Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+setup-sources-line =
+    { $platform ->
+        [linux] Ibis finds a reference and copies its citation for you to paste where you’re typing. It only reads your library, never changes it.
+       *[other] Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+    }
 setup-return-hint = After this, open Ibis from any app with { $shortcut }.
 setup-shortcut-unavailable = The shortcut is unavailable. Open Ibis from the menu bar or tray.
 setup-no-shortcut = No shortcut is set.

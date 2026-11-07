@@ -150,6 +150,22 @@ pub(crate) struct LookPreferences {
     pub(crate) accent: Accent,
 }
 
+impl Appearance {
+    pub(crate) fn is_system(&self) -> bool {
+        *self == Self::System
+    }
+}
+
+impl SettingsFile {
+    /// The saved Appearance, for a window that shows without the picker's
+    /// preferences: the Copied notice follows Ibis's Light or Dark, not only the system's.
+    pub(crate) fn appearance(&self) -> Appearance {
+        look_from_settings(&settings::load(&self.path).settings)
+            .map(|look| look.appearance)
+            .unwrap_or_default()
+    }
+}
+
 fn look_from_settings(settings: &settings::Settings) -> Result<LookPreferences, String> {
     let read = |key: &str| {
         settings

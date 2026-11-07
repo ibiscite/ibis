@@ -32,7 +32,7 @@ function fakeApi(overrides: Partial<BackupApi> = {}): BackupApi {
 test("a backup is saved and named, and a cancelled save says nothing", async () => {
   const api = fakeApi({ backUpSettings: vi.fn().mockResolvedValueOnce("Ibis settings.json").mockResolvedValueOnce(null) });
   render(<BackupRows api={api} />);
-  expect(screen.getByText(/Paste approvals and window places stay on this one/)).toBeTruthy();
+  expect(screen.getByText(/window places,? stay on this one/i)).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Back Up…" }));
   await act(async () => undefined);
   expect(screen.getByRole("status").textContent).toBe("Saved to Ibis settings.json.");
