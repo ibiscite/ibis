@@ -260,8 +260,12 @@ fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
         "refs.bib",
         &format!("@misc{{kept, title={{T}}, file={{{}}}}}\n", files.join(";")),
     );
-    // Comments past the record cap leave no reference unread either.
-    let comments = format!("@misc{{kept, title={{T}}}}\n{}", "@comment{padding}\n".repeat(200_000));
+    // Comments past the record cap leave no reference unread either, even one
+    // that quotes an entry as an example.
+    let comments = format!(
+        "@misc{{kept, title={{T}}}}\n{}@comment{{An example: @book{{dummy, title={{X}}}}}}\n",
+        "@comment{padding}\n".repeat(200_000)
+    );
     let padded = lab.file("padded.bib", &comments);
     for file in [file, padded] {
         let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);

@@ -49,8 +49,9 @@ pub(crate) struct RawEntry<'s> {
 }
 
 /// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
-/// Whether `src` holds a reference entry: `@type{` or `@type(` for any type
-/// but a comment, preamble or `@string`. One pass, nothing allocated.
+/// Whether `src` may hold a reference entry: `@type{` or `@type(` for any type
+/// but a comment, preamble or `@string`, whose bodies are skipped. One pass,
+/// nothing allocated.
 pub(crate) fn has_entry(src: &str) -> bool {
     let bytes = src.as_bytes();
     let mut i = 0;
@@ -66,15 +67,21 @@ pub(crate) fn has_entry(src: &str) -> bool {
             k += 1;
         }
         let opens = k < bytes.len() && matches!(bytes[k], b'{' | b'(');
-        if opens
-            && !kind.is_empty()
-            && !["comment", "preamble", "string"]
-                .iter()
-                .any(|other| kind.eq_ignore_ascii_case(other))
-        {
+        let ignored = ["comment", "preamble", "string"]
+            .iter()
+            .any(|other| kind.eq_ignore_ascii_case(other));
+        if !opens || kind.is_empty() {
+            i = start;
+        } else if !ignored {
             return true;
+        } else {
+            // An example inside a comment is not an entry, so the whole block
+            // is skipped. One that never closes leaves the rest unknown.
+            match find_close(bytes, k) {
+                Some(end) => i = end + 1,
+                None => return true,
+            }
         }
-        i = start;
     }
     false
 }
