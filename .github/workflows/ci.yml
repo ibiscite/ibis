@@ -20,9 +20,10 @@ on:
 #
 # Each change is checked twice at most: on its pull request and in the merge
 # queue. A queue entry that holds exactly the tree its pull request's passing
-# run checked, and a push to main of the commit the queue checked, reuse that
-# run (scripts/ci-changes.sh); main runs everything only when its caches'
-# inputs changed, so it saves new caches.
+# run checked, and changes no crate or script (whose macOS tests pull requests
+# leave to the queue), reuses that run; so does a push to main of the commit
+# the queue checked (scripts/ci-changes.sh). Main runs everything only when its
+# caches' inputs changed, so it saves new caches.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -183,7 +184,6 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # The identity guard reads the pull request range or the queue candidate.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -202,7 +202,7 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # Every script test, as scripts/check.mjs runs them locally.
-      - name: Script tests and public commit identities
+      - name: Script tests
         working-directory: .
         env:
           GIT_CONFIG_COUNT: 1
@@ -414,8 +414,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+  # Every run needs this job, a reused one included: a queue entry's squash
+  # commit carries metadata (the pull request's text as its message) that no
+  # earlier run saw, and the identity guard reads it.
   dependencies:
-    name: Dependency policy
+    name: Dependency policy and commit identities
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -423,6 +426,16 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # The identity guard reads the pull request range or the queue candidate.
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Public commit identities
+        run: node scripts/check-agent-identity.mjs
 
       - name: Validate workflow expressions
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12

@@ -322,7 +322,10 @@ and each run checks only what its paths can affect
 ([`ci-paths.mjs`](../scripts/ci-paths.mjs)); an unclear file list runs everything.
 The queue classifies its entry against current main. An entry that is exactly its
 pull request's head, already on top of main, reuses that pull request's passing
-run, and main reuses the queue's run of the commit it points at. Main runs
+run unless it changes a crate or a script, whose macOS tests pull requests leave
+to the queue; main reuses the queue's run of the commit it points at. The commit
+identity guard runs in every run, reused or not, because the squash commit's
+message is new. Main runs
 everything when no passing queue run of its commit exists or when its caches'
 inputs (`Cargo.lock`, manifests, toolchain, pnpm lockfile, `ci.yml`) changed, so
 that it saves new caches; a daily run on main runs everything, for what changes

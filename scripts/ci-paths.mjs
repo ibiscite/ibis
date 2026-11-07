@@ -50,20 +50,25 @@ function pathsOf(expected, files) {
  * Which checks a run needs. A pull request and a merge queue entry run what
  * their files can affect. `proven` means a passing run already checked this
  * exact tree: the pull request's own run for a queue entry that changes nothing
- * beside it, or the queue's run for the commit main now points at. Main still
- * runs everything when its caches' inputs changed, so it saves new caches.
+ * beside it, or the queue's run for the commit main now points at. A queue
+ * entry reuses its pull request's run only when that run skipped nothing the
+ * queue must add: pull requests leave the crates' and scripts' macOS tests to
+ * the queue. Main still runs everything when its caches' inputs changed, so it
+ * saves new caches.
  */
 export function classify(event, expected, files, proven = false) {
-  if (proven === true && event === "merge_group") return { ...none };
   const paths = pathsOf(expected, files);
   if (proven === true && event === "push" && paths && !paths.some(cacheInput)) return { ...none };
   if (!["pull_request", "merge_group"].includes(event) || !paths) return { ...full };
   const web = paths.filter((path) => !documentation(path));
   const native = web.filter((path) => !interfaceFile(path) && !websiteFile(path) && !scriptFile(path));
+  const core = native.some((path) => !appFile(path));
+  // Script tests on other systems run for script changes and, as before, for any crate change.
+  const scripts = web.some(scriptFile) || core;
+  if (proven === true && event === "merge_group" && !scripts) return { ...none };
   return {
-    core: native.some((path) => !appFile(path)), interface: web.some((path) => !websiteFile(path) && !scriptFile(path)),
-    // Script tests on other systems run for script changes and, as before, for any crate change.
-    native: native.length > 0, proven: false, scripts: web.some(scriptFile) || native.some((path) => !appFile(path)), web: web.length > 0,
+    core, interface: web.some((path) => !websiteFile(path) && !scriptFile(path)),
+    native: native.length > 0, proven: false, scripts, web: web.length > 0,
   };
 }
 

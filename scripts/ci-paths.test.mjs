@@ -158,9 +158,14 @@ test("the merge queue runs what its entry changes; anything else runs everything
 });
 
 test("a run reuses only a passing run of the same tree, and main still saves changed caches", () => {
-  // A queue entry identical to its pull request's checked head.
-  assert.deepEqual(classify("merge_group", null, null, true), reused);
-  assert.deepEqual(classify("merge_group", 1, [row("crates/ibis-core/src/lib.rs")], true), reused);
+  // A queue entry identical to its pull request's checked head...
+  for (const path of ["docs/design.md", "apps/desktop/src/App.tsx", "apps/desktop/src-tauri/src/lib.rs", "website/index.html"]) {
+    assert.deepEqual(classify("merge_group", 1, [row(path)], true), reused, path);
+  }
+  // ...still runs the macOS crate and script tests its pull request left to the queue.
+  assert.deepEqual(classify("merge_group", 1, [row("crates/ibis-core/src/lib.rs")], true), full);
+  assert.deepEqual(classify("merge_group", 1, [row("scripts/land.sh")], true), scriptsOnly);
+  for (const files of [[], null]) assert.deepEqual(classify("merge_group", files?.length, files, true), full, "an unclear list reuses nothing");
   // Main at the commit the queue checked.
   for (const path of ["docs/design.md", "crates/ibis-core/src/lib.rs", "apps/desktop/src/App.tsx", "scripts/land.sh"]) {
     assert.deepEqual(classify("push", 1, [row(path)], true), reused, path);
@@ -319,7 +324,7 @@ test("a queue entry runs what it changes, or nothing beside the run of the same 
   const { base, docs, crate, run } = commitsFixture(t);
   const entry = (candidate, overrides = {}) => run(candidate, { EVENT: "merge_group", BASE_SHA: base, HEAD_REF: `refs/heads/gh-readonly-queue/main/pr-7-${base}`, ...overrides });
   assert.deepEqual(entry(docs), reused, "the pull request's head, on top of this base, passed");
-  assert.deepEqual(entry(crate), reused);
+  assert.deepEqual(entry(crate), full, "macOS crate tests still run in the queue");
   // Anything less than a passing run of the identical tree on top of this base runs the entry's classes.
   for (const overrides of [{ PR_RUNS: "false" }, { PR_RUNS: "" }, { COMPARE: "diverged" }, { COMPARE: "" }, { PR_HEAD: crate }, { PR_HEAD: "" }, { PR_HEAD: "not-a-sha" }, { HEAD_REF: "refs/heads/feature" }]) {
     assert.deepEqual(entry(docs, overrides), docsOnly, JSON.stringify(overrides));

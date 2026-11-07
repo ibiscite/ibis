@@ -101,9 +101,9 @@ function main() {
     .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
     .map((name) => `scripts/${name}`);
   const scriptSteps = [
-    // The identity guard needs the Web job's full history.
+    // CI runs the identity guard in the dependency job, which every run needs.
     ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
-      .filter((name) => args[0] !== "--platform-script-tests" || name !== "check-agent-identity.mjs")
+      .filter((name) => !scriptsOnly || name !== "check-agent-identity.mjs")
       .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
     ["Script tests", "node", ["--test", ...scriptTests]],
     ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
