@@ -12,10 +12,14 @@ const documentation = (path) => !path.split("/").includes("vendor") && (
   // docs/cli.md holds options generated from the command line, checked natively.
   (path.endsWith(".md") && path !== "docs/cli.md" && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md" || path === "apps/desktop/src/ui/README.md"))
   || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
+  // Pull request CI runs no other workflow; actionlint, which always runs, checks them.
+  || (/^\.github\/workflows\/[^/]+\.yml$/.test(path) && path !== ".github/workflows/ci.yml")
 );
 // Generated bindings are also a native contract, checked by `node scripts/gen.mjs --check`.
+// The design canvas and its gallery are built and pictured only by the interface checks.
 const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
-  /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || path === "apps/desktop/index.html"
+  /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || /^apps\/desktop\/(?:index|notice|settings)\.html$/.test(path)
+  || /^apps\/desktop\/(?:canvas|gallery)\//.test(path) || path === "apps/desktop/vite.canvas.config.ts"
 );
 // The website is plain files checked by the script tests in the Web job.
 const websiteFile = (path) => path.startsWith("website/");

@@ -1,13 +1,13 @@
 import { useLayoutEffect, type RefObject } from "react";
 import type { PickerApi } from "../../App";
-import type { SessionState, SessionView } from "./session";
+import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
 import type { useOperations } from "./useOperations";
 import type { OutputId } from "../../format/outputs";
 import type { MenuCloseReason } from "../../ui/ToolbarMenu";
 
-export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, view, setFormatOpen }: {
+export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen }: {
   api: PickerApi;
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
@@ -16,23 +16,18 @@ export function useCitationCopy({ api, session, state, destination, currentPin, 
   formatButtonRef: RefObject<HTMLButtonElement | null>;
   refreshSnapshot: () => void;
   report: ReturnType<typeof useOperations>["report"];
-  view: Omit<SessionView, "appId" | "ready" | "saving" | "shouldAsk" | "output"> & { ready: boolean };
   setFormatOpen: (open: boolean) => void;
 }) {
   const { copyFileCitation, hidePicker, showCopiedNotice } = api;
   const send = session.dispatch;
-  const { queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending } = view;
-  // The controller receives readiness from the existing search/preview I/O
-  // adapters. Session and interaction tickets reject an obsolete render.
   useLayoutEffect(() => {
-    session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice, output: destination.copyToken,
-      pinned: () => currentPin.current, consume: destination.consumeHeld, refresh: refreshSnapshot,
-      askFormat: () => formatButtonRef.current?.click(), reportHide: (failed) => report("hide", failed) });
-    send({ type: "view", session: state.session, interaction: state.interaction,
-      view: { appId: destination.appId, writingProjectId: destination.writingProject?.id ?? null, projectVersion: destination.projectVersion(), queryKey, format, snapshotRevision, defaultChoice, chosen, shown, searchPending,
-        ready: destination.ready && view.ready, saving: destination.saving, shouldAsk: destination.shouldAsk, remembersLast: view.remembersLast,
-        output: destination.copyToken() } });
+    session.connect({ copyFileCitation, hidePicker, pickerPresentation: api.pickerPresentation, showCopiedNotice,
+      pinned: () => currentPin.current, refresh: refreshSnapshot,
+      reportHide: (failed) => report("hide", failed) });
   });
+  // An Enter that must first ask opens the format menu once the screen shows its question.
+  const asking = state.pendingCopy?.question === "open";
+  useLayoutEffect(() => { if (asking) formatButtonRef.current?.click(); }, [asking, formatButtonRef]);
   const requestCopy = (choice: string | null) => send({ type: "enter", choice, output: destination.copyToken() });
   const chooseFormat = (choice: OutputId) => {
     destination.choose(choice);

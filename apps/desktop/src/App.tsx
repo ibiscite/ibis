@@ -8,7 +8,6 @@ import { PeekCard } from "./ui/PeekCard";
 import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
-import { choiceKey } from "./features/picker/choice";
 import { styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { PickerScroll } from "./features/picker/PickerScroll";
@@ -21,7 +20,6 @@ import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays"
 import { useOperations } from "./features/picker/useOperations";
 import { useShortcutStatus } from "./features/picker/useShortcutStatus";
 import { usePickerPreferences } from "./features/picker/usePickerPreferences";
-import { useDeliveryTarget } from "./features/picker/useDeliveryTarget";
 import { useDestination } from "./features/picker/useDestination";
 import { useRecentReferences } from "./features/picker/useRecentReferences";
 import { useLibrarySearch } from "./features/picker/useLibrarySearch";
@@ -73,7 +71,7 @@ export type PickerPreview = { query?: string; copied?: Copied };
 export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
   const api = usePickerAppearance(sourceApi);
   const pickerSession = usePickerSession(preview);
-  const { session, state, send, setQuery, setActive, cancelCopy, isCurrentSession } = pickerSession;
+  const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
   // The page's one hidden mark, from the session: CSS pauses looping animations
   // with it. Unknown counts as hidden, so nothing runs before the native read.
@@ -95,11 +93,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const updateProgress = useUpdateProgress(api, setFailures);
   const preferences = usePickerPreferences(api, { styles: true, report, perform, presentation: state.visibility });
   const { density, quitAfterSaving: quitPreferences } = preferences;
-  const deliveryTarget = useDeliveryTarget(api);
-  const destination = useDestination(deliveryTarget.api, {
-    fallback: preferences.format, chooseDefault: preferences.chooseFormat, report,
-    onProjectContext: (context) => send({ type: "project-observed", ...context }),
-  });
+  const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
   const libraryState = usePickerLibrary(api, report, cancelCopy);
@@ -114,7 +108,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const recents = useRecentReferences(api.recentReferences, destination.appId, state.session, api.onPreferencesChanged, () => send({ type: "forget-last" }));
   const searchState = useLibrarySearch({
     // ">" asks for commands, never the library.
-    session, state, search: api.search, emptySearch: recents.load, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
+    session, state, search: api.search, emptySearch: recents.load, app: destination.appId, query: query.startsWith(COMMAND_PREFIX) ? "" : query, interpretLocators,
     library: settledLibrary, statusFailed: failures.status ?? false, libraryVersion: checkVersion,
   });
   const { queryKey, results, sameSnapshot, ready, interpretation, list, error, pending: searchPending } = searchState;
@@ -127,8 +121,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
-    chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, sessionId: state.session, opened: state.opened, isCurrentSession, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, refreshSnapshot, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
+    session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
+    previewFileCitation: api.previewFileCitation, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
@@ -143,18 +137,15 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
-  const highlightedChoice = choiceKey(results.slice(active, active + 1)
-    .map((r) => ({ ...r, locator: interpretation?.locator })));
-  const defaultChoice = list && ready ? choiceKey(results) : highlightedChoice;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
-    view: {
-      queryKey, format, snapshotRevision, defaultChoice, chosen, shown,
-      // The citation stays in view through a reload, but Enter waits for its end.
-      searchPending, ready: preferences.ready && library?.state !== "reloading",
-      remembersLast: preferences.recentCitations === true,
-    },
   });
+  // What the session hears from preferences and the library's lifecycle.
+  const statusFailed = failures.status ?? false, remembersLast = preferences.recentCitations === true;
+  useLayoutEffect(() => {
+    send({ type: "picker-inputs", inputs: { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
+      statusFailed, showCitations, version: checkVersion } });
+  }, [send, preferences.format, remembersLast, preferences.ready, library, settledLibrary, statusFailed, showCitations, checkVersion]);
   useLibrarySetup(library, setFailures, send, focusHome);
   const { clearNotice } = project;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.
@@ -189,7 +180,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const actions = usePickerActions({
     api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
     // The footer names what Enter copies now, or after the running search.
-    offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: deliveryTarget.canPaste,
+    offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
   });
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);

@@ -6,7 +6,7 @@ import type { SearchInputs, SearchReply } from "./search";
 const library = { ...testStates[0]!.library, revision: "1" };
 const row = (key: string) => ({ ...testStates[1]!.results[0]!, id: { ...testStates[1]!.results[0]!.id, key }, revision: "1" });
 const inputs = (query: string, overrides: Partial<SearchInputs> = {}): SearchInputs =>
-  ({ queryKey: JSON.stringify([query, true]), query, interpretLocators: true, library, version: 0, recent: undefined, ...overrides });
+  ({ queryKey: JSON.stringify([query, true]), query, interpretLocators: true, library, version: 0, recent: undefined, app: null, ...overrides });
 
 /** Run events through the session, keeping every effect it asks for. */
 function run(events: SessionEvent[], start: SessionState = initialSession()) {
