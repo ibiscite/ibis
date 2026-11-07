@@ -52,7 +52,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 
 ### 0.4 Build any citation
 
-- **Everything Zotero's citation dialog does:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
+- **Everything Zotero's citation dialog does** (built first in 0.4, maintainer, 2026-11-07)**:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
 - **Every key syntax Ibis can write correctly** (Typst, org-cite, MyST, AsciiDoc, ConTeXt and more); **any official CSL style and locale**; output presets; bibliography entries; references cited since Ibis opened as an editable bibliography.
 - **The project's bibliography:** link a `.bib` and results say "In thesis.bib" or "Missing from thesis.bib", with the missing entry to copy. The check is advice: an unreadable file is a warning, and only a key known to name a different work is refused.
 - **Optional writing projects** ([#1697](https://github.com/ibiscite/ibis/issues/1697)): a project is a `.bib` file and its format, nothing more, picked in the format menu and remembered per app ([decision 0031](docs/decisions/0031-what-ibis-remembers-per-app.md)).
