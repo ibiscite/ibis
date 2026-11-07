@@ -18,7 +18,7 @@ let out = URL(fileURLWithPath: CommandLine.arguments[2])
 let accents = ["system", "ibis"]
 let screens = ["results", "settings-look"]
 // Picker screens whose layout rules are checked; the list grows with the canvas.
-let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "format-menu", "library-menu"]
+let geometryScreens = ["results", "first-run", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "update", "undo-notice", "larger-text", "right-to-left", "compact", "long-titles", "stale", "more", "format-menu", "library-menu"]
 // The Mac's appearance, then Ibis's own Appearance setting.
 let modes: [(mac: NSAppearance.Name, name: String, chosen: String)] = [
   (.aqua, "light", "system"), (.darkAqua, "dark", "system"), (.aqua, "dark", "dark"), (.darkAqua, "light", "light"),
@@ -90,7 +90,9 @@ func accentRGB(_ appearance: NSAppearance) -> [Double] {
   } } }
   // The layout rules (canvas/geometry.ts), once per screen: they hold in every mode.
   for screen in geometryScreens {
-    let size = NSSize(width: 720, height: 480)
+    // More is also checked in a window so short that its list scrolls: a scroll
+    // bar must never take its width from the labels [C9].
+    let size = screen == "more" ? NSSize(width: 640, height: 240) : NSSize(width: 720, height: 480)
     let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30000, y: -30000), size: size), styleMask: .borderless, backing: .buffered, defer: false)
     let view = WKWebView(frame: NSRect(origin: .zero, size: size))
     window.contentView = view; window.orderBack(nil)
