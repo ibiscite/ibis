@@ -1,5 +1,5 @@
 //! The shortcut is ignored while a full-screen app or presentation is in
-//! front, unless it is pressed again soon after (docs/design.md, "Never").
+//! front, unless it is pressed again soon after (docs/design/picker.md, "Never").
 //! A presenter who brushes the keys does not cover the audience's slides,
 //! and someone who wants Ibis there gets it with a second press.
 

@@ -11,7 +11,7 @@ const here = new FileURL("./", import.meta.url);
 const sheets = readdirSync(here).filter((name) => name.endsWith(".css")).sort();
 const css = (name: string) => readFileSync(new FileURL(name, here), "utf8");
 
-/** Nothing animates longer than this (docs/design.md, "Never"). */
+/** Nothing animates longer than this (docs/design/foundations.md, Motion). */
 const LONGEST_MS = 280;
 /** Reduced motion keeps fades; anything that moves must be this short. */
 const REDUCED_MS = 1;

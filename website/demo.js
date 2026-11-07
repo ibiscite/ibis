@@ -90,7 +90,7 @@ export function setupDemo() {
     row.setAttribute("role", "option");
     // Match the app's pointer ownership: a click leaves its row under the
     // pointer. Rendering is synchronous here; only the keyboard handler below
-    // reveals a chosen row by scrolling (docs/design.md, "List scrolling").
+    // reveals a chosen row by scrolling (docs/design/picker.md, "List scrolling").
     row.addEventListener("click", event => { state.selected = model.found().indexOf(ref); if (commandKey(event, mac) || event.target.closest(".tile")) model.add(ref.key); render(); input.focus(); });
     row.addEventListener("dblclick", event => { if (!commandKey(event, mac) && !event.target.closest(".tile")) performCopy(); });
     const item = el("li", {}, row); item.setAttribute("role", "none"); list.append(item);

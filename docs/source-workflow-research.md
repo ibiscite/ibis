@@ -3,7 +3,7 @@
 Planning research, 2026-10-30; not implemented or a compatibility claim. This
 refines four of the [approved directions in 0.4 to 0.6](../ROADMAP.md#05-find-the-passage),
 following #1521. The interaction contract remains in
-[design.md](design.md#source-checks-and-passage-reuse-planned); the behavioral
+[design](design/sources-and-sheets.md#source-checks-and-passage-reuse-planned); the behavioral
 bounds below keep that work small. New presentation/keyboard proposals are marked
 as such and require a canonical design update before implementation. No additional
 manager adapter, source write, network use or MCP permission is approved here.
@@ -46,7 +46,7 @@ treat unavailable coverage as zero matches.
 References / Passages scopes with the canonical design's passages unfolded under
 a reference row. Preserve the query if scopes are tested. Likewise, Enter opening
 a passage is a proposal, not a new default imposed by this research. Resolve
-these choices in a comprehension walkthrough and update design.md before UI
+these choices in a comprehension walkthrough and update the design pages before UI
 implementation; the current design remains the baseline. Do not add a mode or
 setting merely because it was proposed here.
 

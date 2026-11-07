@@ -2596,7 +2596,7 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   expect(calls).not.toContain("show_copied_notice");
 });
 
-// Each visible hint as "label keys"; the label always comes first (docs/design.md, Footer).
+// Each visible hint as "label keys"; the label always comes first (docs/design/picker.md, Footer).
 const footerKeys = () => [...screen.getByRole("group", { name: "Keys" }).children]
   .filter((hint) => hint.getAttribute("aria-hidden") !== "true")
   .map((hint) => `${hint.querySelector(".key-hint-label")?.textContent} ${hint.querySelector(".key-caps")?.textContent}`).join(" · ");

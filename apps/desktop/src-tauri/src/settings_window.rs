@@ -9,7 +9,7 @@ use crate::picker::{PickerGeneration, PickerHideUi, Takeover, yield_to_window};
 
 pub(crate) const LABEL: &str = "settings";
 const TITLE: &str = "Ibis Settings";
-/// The design canvas's size (docs/design.md).
+/// The design canvas's size (docs/design/settings.md).
 const SIZE: (f64, f64) = (920.0, 560.0);
 const MIN_SIZE: (f64, f64) = (800.0, 400.0);
 

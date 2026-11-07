@@ -77,7 +77,7 @@ test("website-only changes keep web checks without native jobs", () => {
 
 test("only allowlisted documentation additions, edits and deletions take the fast path", () => {
   for (const status of ["added", "modified", "removed"]) {
-    for (const filename of ["README.md", "ROADMAP.md", "docs/design/menu.md", "website/README.md", "LICENSE", ".github/ISSUE_TEMPLATE/bug_report.yml"]) {
+    for (const filename of ["README.md", "ROADMAP.md", "docs/design/menu.md", "website/README.md", "apps/desktop/src/ui/README.md", "LICENSE", ".github/ISSUE_TEMPLATE/bug_report.yml"]) {
       assert.deepEqual(pr([{ filename, status }]), docsOnly, `${status}: ${filename}`);
     }
   }

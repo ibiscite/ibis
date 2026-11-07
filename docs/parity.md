@@ -62,7 +62,7 @@ documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
 
 ## Better BibTeX Cite as You Write
 
-The endpoint is #42. Under [decision 0008](decisions.md#0008-offline-by-default)
+The endpoint is #42. Under [decision 0008](decisions/0008-offline-by-default.md)
 it listens only on `127.0.0.1`, on its own port (23124), and is off until switched
 on in Settings › Citations, which shows the address to paste into the editor. That
 address holds a token, and a request without it, from a browser or through another

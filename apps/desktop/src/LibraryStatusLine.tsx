@@ -9,7 +9,7 @@ export type LibraryCondition = { health: "done" | "look" | "stop" | "idle"; prob
 /** The one reading of a library's health. The dot, the hover text and the
  * menu all draw from it, so a screen can never say two things at once: a
  * problem in words is never a Done dot. Nothing to search is a stop; an older
- * copy still searched is a warning (docs/design.md, Footer). */
+ * copy still searched is a warning (docs/design/picker.md, Footer). */
 export function libraryCondition(library: LibraryStatus | null | undefined, { groupsFailed = false, profilesFailed = false, failure = null }: {
   groupsFailed?: boolean; profilesFailed?: boolean; failure?: string | null;
 } = {}): LibraryCondition {

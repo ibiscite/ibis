@@ -1,5 +1,5 @@
-// Every picker command by name, for ">" in the search (docs/design.md, Command
-// search). Titles are the words the menus use and keys come from KEY_TABLE, so a
+// Every picker command by name, for ">" in the search (docs/design/picker.md,
+// Command search). Titles are the words the menus use and keys come from KEY_TABLE, so a
 // command is written once and reads the same in More, the keys sheet and here.
 import type { IconName } from "../../icons";
 import { keysFor } from "../../keys";

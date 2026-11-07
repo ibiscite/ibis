@@ -1,7 +1,7 @@
 /* The tokens set a scheme for app windows; here the page's theme decides. */
 [data-app-tokens] { color-scheme: inherit; }
 /* App pictures read the generated scope of the canonical desktop tokens.
-   Only geometry without a token lives here (design.md C7/C10). */
+   Only geometry without a token lives here (docs/design/ C7/C10). */
 .journey { max-width: 45rem; }
 .picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .picker-search { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }

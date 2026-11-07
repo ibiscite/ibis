@@ -18,7 +18,7 @@ export type Choice = {
   suggested?: boolean;
 };
 
-/** The choice screen pattern (docs/design.md, First run and choice screens
+/** The choice screen pattern (docs/design/choice-screens.md
  * [C12]): one centred group, with result-style rows or the welcome grid.
  * React Aria owns spatial arrow navigation, activation and focus. */
 export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus = false, grid = false, mark, focusId }: {

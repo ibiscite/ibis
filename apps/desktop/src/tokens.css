@@ -1,4 +1,4 @@
-/* Ibis tokens, the same names and values as the canvas (docs/design.md, "Tokens").
+/* Ibis tokens, the same names and values as the canvas (docs/design/foundations.md, "Tokens").
    Three layers, each value declared once:
      1 Primitives  raw values, named by what they are.
      2 Semantic    what a value is for, set per mode.
@@ -84,7 +84,7 @@
   --ring-width: 2px; --ring-offset: 1px;
 
   /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
-     (docs/design.md, "Exact macOS values"), raised only where Ibis's floors need it.
+     (docs/design/foundations.md, "Exact macOS values"), raised only where Ibis's floors need it.
      System colours sit underneath for webviews without light-dark(). */
   --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
   --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;

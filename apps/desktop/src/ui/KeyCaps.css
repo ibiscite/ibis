@@ -4,7 +4,7 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   kbd { border-color: transparent; font-weight: var(--strong); }
 }
-/* One hint pattern (docs/design.md, Footer): the label, 8 px, then its keys.
+/* One hint pattern (docs/design/picker.md, Footer): the label, 8 px, then its keys.
    Caps keep the shared kbd look (20 px fill); only how keys split differs. */
 .key-hint { display: inline-flex; align-items: center; gap: var(--space-2); white-space: nowrap; }
 .key-hint[data-primary] { color: var(--text); }
