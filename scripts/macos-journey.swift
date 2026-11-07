@@ -57,12 +57,9 @@ func textArea(_ app: AXUIElement) -> AXUIElement? {
 /// Ibis's own windows, whose content is the journey's invented library.
 func strings(_ app: AXUIElement) -> [String: Any] {
     let windows = elements(app, kAXWindowsAttribute)
-    return strings(windows.reversed(), titles: windows.map { string($0, kAXTitleAttribute) })
-}
-
-func strings(_ roots: [AXUIElement], titles: [String]) -> [String: Any] {
+    let titles = windows.map { string($0, kAXTitleAttribute) }
     var found: [String] = []
-    var stack = roots
+    var stack = Array(windows.reversed())
     var seen = 0
     while let item = stack.popLast(), seen < 4000 {
         seen += 1
@@ -125,25 +122,6 @@ case "picker":
         value = string(focused, kAXValueAttribute)
     }
     out(["onscreen": onscreen, "role": role, "label": label, "value": value, "system_pid": Int(systemFocus)])
-case "notice":
-    // A window Ibis never activates can be missing from its AXWindows; find
-    // the notice by its on-screen frame and read the window under it.
-    guard arguments.count == 2, let target = pid_t(arguments[1]) else { fail("usage") }
-    let listed = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
-        as? [[String: Any]] ?? []
-    guard let notice = listed.first(where: { ($0[kCGWindowOwnerPID as String] as? Int) == Int(target)
-                                             && ($0[kCGWindowName as String] as? String) == "Ibis notice" }),
-          let frame = notice[kCGWindowBounds as String] as? NSDictionary,
-          let bounds = CGRect(dictionaryRepresentation: frame)
-    else { out(["shown": false, "strings": []]); break }
-    var hit: AXUIElement?
-    guard AXUIElementCopyElementAtPosition(system, Float(bounds.midX), Float(bounds.midY), &hit) == .success,
-          let element = hit, pid(of: element) == target
-    else { out(["shown": true, "strings": []]); break }
-    let window = attribute(element, kAXWindowAttribute).map { $0 as! AXUIElement } ?? element
-    var answer = strings([window], titles: [string(window, kAXTitleAttribute)])
-    answer["shown"] = true
-    out(answer)
 case "strings":
     guard arguments.count == 2, let target = pid_t(arguments[1]) else { fail("usage") }
     out(strings(AXUIElementCreateApplication(target)))

@@ -69,7 +69,9 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   shortcut opens it from TextEdit with the selected words as the search,
   Enter pastes, and TextEdit's text, read through Accessibility, must be
   exactly the expected sentence, once. Then a Terminal collector must get no
-  keystrokes, the clipboard the exact key and the notice its terminal reason.
+  keystrokes and the clipboard exactly the key, with the notice on screen.
+  The notice's words are checked only when Accessibility exposes them (an
+  inactive Ibis often hides that window from it); Linux checks them exactly.
   It fails on a wrong or missing citation and exits 2 when this terminal lacks
   Accessibility access or TextEdit is open. CI runs the same command on the
   debug build (Desktop job, macOS); there Ibis's paste permission is the
