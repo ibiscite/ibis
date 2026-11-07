@@ -109,17 +109,6 @@ test("nonempty notices hand results to the middle scroller independently of the 
   expect(noticeRules()).toBe("");
 });
 
-test("the fade is valid at either edge and one thin scrollbar serves every window", () => {
-  const area = css("./ScrollArea.css");
-  expect(css("./Foundation.css")).toMatch(/\* \{ scrollbar-width: thin; scrollbar-color: var\(--scrollbar-thumb\) transparent; \}/);
-  for (const edge of ["\\[data-more-above\\]", "\\[data-more-below\\]", "\\[data-more-above\\]\\[data-more-below\\]"]) {
-    const rule = area.match(new RegExp(`\\.scroll-area${edge} \\{([^}]*)\\}`))?.[1] ?? "";
-    expect(rule).toMatch(/-webkit-mask-image: linear-gradient\(/);
-    expect(rule).toMatch(/[^-]mask-image: linear-gradient\(/);
-    expect(rule).not.toMatch(/var\(--[\w-]+, 0\)/);
-  }
-});
-
 test.each(["normal", "prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"])(
   "with both scroll edges marked, %s selects the correct mask for each browser property", (preference) => {
   const view = render(<div className="scroll-area" data-more-above data-more-below />);

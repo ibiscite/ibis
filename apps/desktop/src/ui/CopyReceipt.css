@@ -4,10 +4,10 @@
    soft green circle confirms success, centred on both lines. A long reason
    wraps and is never clipped; the citation stays one line, ending in "…"
    with its "+N more" in view. */
-.copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: var(--icon) minmax(0, 1fr); align-items: center; column-gap: var(--space-3); row-gap: 1px; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-large); background: var(--surface); color: var(--text-secondary); box-shadow: var(--shadow-toast); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
+.copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: var(--icon) minmax(0, 1fr); align-items: center; column-gap: var(--space-3); row-gap: 0; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-large); background: var(--surface); color: var(--text-secondary); box-shadow: var(--shadow-toast); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; text-wrap: balance; }
 .copy-receipt > code { grid-column: 2; min-width: 0; display: flex; align-items: baseline; gap: var(--space-2); overflow: hidden; white-space: nowrap; color: var(--text); font: 400 var(--type-body-size) / var(--type-body-line) var(--mono); }
-.copy-receipt-mark { grid-row: 1 / span 2; box-sizing: border-box; width: var(--icon); height: var(--icon); padding: 3px; border-radius: var(--r-full); background: var(--status-ok-fill); fill: none; stroke: var(--status-ok); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
+.copy-receipt-mark { grid-row: 1 / span 2; box-sizing: border-box; width: var(--icon); height: var(--icon); padding: calc(var(--space-1) - var(--border-width)); border-radius: var(--r-full); background: var(--status-ok-fill); fill: none; stroke: var(--status-ok); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; }
 @media (prefers-contrast: more), (forced-colors: active) {
   .copy-receipt { border-color: CanvasText; box-shadow: none; }
   .copy-receipt-mark { background: Canvas; stroke: CanvasText; border: var(--border-width) solid CanvasText; }

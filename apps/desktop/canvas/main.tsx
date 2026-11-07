@@ -191,7 +191,7 @@ function Tokens({ theme }: { theme: Theme }) {
   // A browser without the resolved value (a DOM without a cascade) keeps them all.
   const resolved = getComputedStyle(document.documentElement);
   const colour = (name: string) => { const value = resolved.getPropertyValue(name).trim(); return !value || typeof CSS === "undefined" || CSS.supports("color", value); };
-  const colours = family("--text", "--surface", "--sheet", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring").filter(colour);
+  const colours = family("--text", "--surface", "--accent", "--selected", "--fill", "--separator", "--scarlet", "--status", "--ring").filter(colour);
   return <div className="canvas-tokens"><style>{tokensStyle}</style>
     <h2>Colour</h2>
     <div className="canvas-token-grid">{colours.map((name) => <span key={name}><i style={{ background: `var(${name})` }} /><code>{name}</code></span>)}</div>

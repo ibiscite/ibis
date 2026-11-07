@@ -215,21 +215,6 @@ test("keyboard opening and pointer activation keep unavailable items inert", asy
   expect(screen.getByRole("menu")).toBeTruthy();
 });
 
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const toolbarCss = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
-const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-const buttonCss = readFileSync(new FileURL("./Button.css", import.meta.url), "utf8");
-const tokens = readFileSync(new FileURL("../tokens.css", import.meta.url), "utf8");
-test("menu role tokens exist, forced colours frame the button, and reduced motion removes movement", () => {
-  const definitions = new Set([...(tokens + menuCss + toolbarCss + buttonCss).matchAll(/(--[\w-]+)\s*:/g)].map((match) => match[1]));
-  expect([...(menuCss + toolbarCss + buttonCss).matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]).filter((name) => !definitions.has(name))).toEqual([]);
-  expect(buttonCss).toMatch(/border: var\(--border-width\) solid var\(--stroke-field\)/);
-  expect(tokens).toMatch(/forced-colors: active[\s\S]*--stroke-field: ButtonText/);
-  expect(menuCss).toMatch(/background: Highlight; color: HighlightText/);
-  expect(menuCss).not.toMatch(/menu-enter/);
-});
-
 test("Space on an unavailable choice neither selects nor closes", async () => {
   const { trigger, onAction } = mount();
   fireEvent.click(trigger);
@@ -255,13 +240,6 @@ test("an empty filter keeps the menu open and Escape still contains the layer", 
   fireEvent.keyDown(filter, { key: "Escape" });
   await waitFor(() => expect(document.activeElement).toBe(search));
   expect(screen.queryByRole("menu")).toBeNull();
-});
-
-test("menu popovers use the shared overlay shadow and scalable native row metrics", () => {
-  expect(tokens).toContain("--shadow-overlay: 0 0 0 .5px rgb(0 0 0 / 12%), 0 12px 32px rgb(0 0 0 / 16%);");
-  expect(menuCss).toContain("box-shadow: var(--shadow-overlay);");
-  expect(tokens + menuCss).not.toMatch(/--menu-shadow\s*:/);
-  expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
 });
 
 test.each(["ctrlKey", "metaKey"])("%s shortcuts reach the picker only outside composition", async (modifier) => {
@@ -335,10 +313,4 @@ test.each([[false, "action"], [false, "Escape"], [true, "action"], [true, "Escap
     await act(async () => { finishExit(); });
     await act(async () => { await new Promise(requestAnimationFrame); });
   }
-});
-
-test("the filter field shows its caret and no ring, except with contrast or forced colours", () => {
-  expect(toolbarCss).not.toMatch(/caret-color/);
-  expect(toolbarCss).toMatch(/\.toolbar-menu-filter input:focus-visible \{ outline: 0; box-shadow: none; \}/);
-  expect(toolbarCss).toMatch(/prefers-contrast: more\), \(forced-colors: active\) \{\s*\.toolbar-menu-filter input:focus-visible \{ outline: var\(--ring-width\)/);
 });

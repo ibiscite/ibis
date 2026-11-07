@@ -25,11 +25,11 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Search field (`ui/SearchBar`) | The picker's top band is the window's drag region; `SearchField` is its large frameless input with a hidden label, a clear button while it holds text, and a trailing slot (the page token). Controls in the band fill the field's height and nest their corners in the window's. |
 | TextField | A visible label above one single-line input; `--surface-field`, the shared control height and corner, and the same keyboard focus ring. Forms keep validation beside the field and own saving. |
 | List row (`ui/Option`) | Every list of options (results, commands, recent and sample rows) draws the same row: the leading tile, a title that wraps to two lines (one in Compact), the year on the first line and a quiet meta line. A screen fills its row's text, never its spacing or colours. |
-| Sheet (`ui/Sheet`) | A modal over a dimmed picker: title and × on one line, one body that alone scrolls, and an optional row of actions (leading ones, then the trailing ones with the primary last). Every part keeps the same side inset (`--sheet-pad`), so no text touches the sheet's edge. Tab stays inside; Esc, a hide, the backdrop or × close it; a control that disappears hands the keyboard back to the sheet. `SheetList`/`SheetRow` for a list of things with their buttons, `SheetSection` for a part under a divider, `SheetButtons` for buttons that act on what is just above them. The keys sheet, Cited Since Opening and Writing Projects use it. |
+| Sheet (`ui/Sheet`) | A modal over a dimmed picker: title and × on one line, one body that alone scrolls, and an optional row of actions (leading ones, then the trailing ones with the primary last). Every part keeps the same side inset (`--sheet-pad`), so no text touches the sheet's edge. Tab stays inside; Esc, a hide, the backdrop or × close it; a control that disappears hands the keyboard back to the sheet. `SheetList`/`SheetRow` for a list of things with their buttons, `SheetSection` for a part under a divider, `SheetButtons` for buttons that act on what is just above them. The keys sheet, Cited Since Opening and Writing Projects use it. | Its lists and its output text are Settings cards and rows (`ui/SettingsGroup`), so a sheet looks like the rest of Ibis.
 | Held keys (`ui/HeldKeys`) | Holding ⌘ (Ctrl elsewhere) for a second shows each visible control's key in a small badge just above it, or below it where the window has no room above; a badge never covers its control. |
 | Pop-up button (`ui/PopupButton`, `ToolbarMenu`) | Shows its value and a chevron that never turns, nearer the edge than the label starts; Space, Enter or ↓ opens it; a pick or Esc returns to search. Named by what it sets ("Copy as Pandoc"). Quiet wherever its neighbours are quiet: in the search bar beside × and pin, and in a band that is itself a fill (the shelf's count); its chevrons say it opens, and its plate shows on hover and while open. |
 | Menu (`ui/Menu`) | See **Menus** below. |
-| Segmented | `--r-seg` thumb on a quiet track. |
+| Segmented | `--r-small` thumb on a quiet `--r-control` track. |
 | Switch (`ui/Switch`) | The one on/off control: accent track when on, `--text-on-accent` thumb, size from `--switch-*`. |
 | Search field | Frameless and large in the picker; a hairline field with no fill in Settings, glyph on the icon column. |
 | Settings group and row (`ui/SettingsGroup`) | See [Settings](../../../../docs/design/settings.md). |
@@ -43,14 +43,14 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Choice cards (`ui/ChoiceList`) | See [First run and choice screens](../../../../docs/design/choice-screens.md). |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |
-| Scroll area (`ui/ScrollArea`) | The system's own scroll bars; the side inset sits inside the bar; `--scroll-fade` only at an edge with more beyond it. |
+| Scroll area (`ui/ScrollArea`) | One drawn scroll bar everywhere (`ui/Foundation.css`): a `--scrollbar-thumb` capsule on a clear track, the same at every size and on every system; the side inset sits inside the bar; `--scroll-fade` only at an edge with more beyond it. |
 | File drag (`ui/FileDrag`) | A draggable file icon with button states. |
 
 **Tables** size columns to content and never break or hyphenate a word. **No browser disclosure controls**: never `details`/`summary` or raw triangles; use always-open groups.
 
 ## Menus
 
-- [C9] In-window menus (format, library, More, the reference count, Form) use `--r-menu`, `--menu-pad`, AppKit's item height, separators and the overlay material.
+- [C9] In-window menus (format, library, More, the reference count, Form) are `--r-large` frames padded `--space-1`, with `--r-control` rows at AppKit's item height (`--control-small-h`), separators and the shared overlay layer (`ui/Overlay`). A pop-up menu of choices is one narrow column (at most 20rem): each row a label and at most one short sample cut with "…"; longer words (a style's full title) are found by the filter, never drawn.
 - A menu with any check keeps a leading check column for every row, so labels share one start and shortcuts line up at the end.
 - **Menu heading**: small bold secondary type that never reads as an item.
 - Sections keep one order: what it is about, what you can do, Ibis itself. Labels name the result; a quiet example of the output sits on a second line under the label, as macOS menu subtitles do, in full up to the menu's width, never cut to a column.

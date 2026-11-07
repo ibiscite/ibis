@@ -205,7 +205,7 @@ const carried: Record<string, number> = {
   "src/features/picker/CitationShelf.css": 41,
   "src/features/picker/EmptyState.css": 18,
   "src/features/picker/ProjectContextStatus.css": 2,
-  "src/features/reader/Reader.css": 29,
+  "src/features/reader/Reader.css": 26,
   "src/notice.css": 3,
   "src/settings/Settings.css": 43,
   "src/styles.css": 27,
@@ -221,7 +221,7 @@ test("screens take their spacing, colours and corners from parts, never their ow
 });
 
 test("the look guard fails a screen that pads, paints or rounds itself, and passes one that only lays parts out", () => {
-  expect(ownLook(".my-screen { padding: var(--space-2); color: var(--text-secondary); border-radius: var(--r-row); }")).toHaveLength(3);
+  expect(ownLook(".my-screen { padding: var(--space-2); color: var(--text-secondary); border-radius: var(--r-control); }")).toHaveLength(3);
   expect(ownLook(".my-screen { margin-block: var(--inset); } .my-row:hover { background: var(--fill-control); border-top: var(--border-width) solid var(--separator); }")).toHaveLength(3);
   expect(ownLook(".my-screen { display: grid; grid-template-columns: 1fr auto; min-width: 0; margin: 0; padding: 0; background: transparent; color: inherit; }")).toEqual([]);
 });

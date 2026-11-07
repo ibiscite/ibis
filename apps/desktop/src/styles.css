@@ -32,8 +32,8 @@ main > footer { grid-area: footer; }
 .notices:empty { display: none; }
 .notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
 .notices p { margin: var(--space-3) 0; }
-.copy-notice { display: flow-root; padding-bottom: .5rem; }
-.dismiss { float: right; margin: .5rem 0 .5rem .5rem; }
+.copy-notice { display: flow-root; padding-bottom: var(--space-2); }
+.dismiss { float: right; margin: var(--space-2) 0 var(--space-2) var(--space-2); }
 
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.

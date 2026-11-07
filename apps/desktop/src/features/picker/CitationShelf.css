@@ -33,7 +33,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 /* The receipt text owns its intrinsic width: both beaks hug it symmetrically. */
 .shelf[data-copied] .shelf-citation { flex: 0 1 auto; gap: var(--row-gap); }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
-.shelf[data-copied]::before { animation: shelf-copy-wash 160ms var(--ease); }
+.shelf[data-copied]::before { animation: shelf-copy-wash var(--dur-panel) var(--ease); }
 .shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
 .shelf-copied svg { color: var(--status-ok); width: var(--icon-small); height: var(--icon-small); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
 .shelf-copied path { animation: shelf-check var(--dur-panel) var(--ease); }

@@ -82,12 +82,13 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
-  // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
+  // One control per row, on the page grid: Check for Updates and the switch are the Updates group's two rows.
   const rowOf = (node: Element) => node.closest(".ui-settings-row")!;
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
-  expect(check.closest(".ui-about-hero")).toBeTruthy();
+  expect(check.closest("#about-updates")).toBeTruthy();
   expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
-  expect(document.querySelectorAll("#about-updates .ui-settings-row")).toHaveLength(1);
+  expect(rowOf(check).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
+  expect(document.querySelectorAll("#about-updates .ui-settings-row")).toHaveLength(2);
   fireEvent.click(check);
   fireEvent.click(automatic);
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);

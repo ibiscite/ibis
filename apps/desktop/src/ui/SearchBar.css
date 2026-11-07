@@ -7,8 +7,8 @@ main > .search-bar { grid-area: search; }
    start (docs/design/foundations.md, "Two columns"). The Ibis mark is the logo, so
    it keeps brand scarlet; contrast modes make it CanvasText (#1293). */
 .search-bar > svg { width: var(--icon); flex-shrink: 0; margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); color: var(--text-secondary); pointer-events: none; }
-.search-bar > svg.search-mark { width: 1.5rem; height: 1.5rem; color: var(--scarlet);
-  margin-inline: calc(var(--lead) - calc((1.5rem - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((1.5rem - var(--icon)) / 2));
+.search-bar > svg.search-mark { width: var(--control-small-h); height: var(--control-small-h); color: var(--scarlet);
+  margin-inline: calc(var(--lead) - calc((var(--control-small-h) - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((var(--control-small-h) - var(--icon)) / 2));
 }
 /* Reserve readable query space before wrapping controls, at every text size. */
 .search-field { --search-clear-size: var(--action-h); position: relative; display: flex; flex: 1; min-width: min(12rem, calc(100% - var(--lead) - var(--icon) - var(--lead-gap))); }

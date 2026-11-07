@@ -18,7 +18,7 @@
 @media (prefers-contrast: more) { .reader-sheet { box-shadow: 0 0 0 var(--border-width) var(--stroke-field); } }
 @media (forced-colors: active) { .reader-sheet { background: Canvas; color: CanvasText; } }
 /* The invented book: real text, so the thumbnails and screen readers have words. */
-.invented-page { box-sizing: border-box; block-size: 100%; padding: 8% 10%; color: var(--paper-ink); font: 0.8125rem / 1.55 var(--font-reading, ui-serif, Georgia, serif); }
+.invented-page { box-sizing: border-box; block-size: 100%; padding: 8% 10%; color: var(--paper-ink); font: var(--type-base) / 1.55 var(--font-reading, ui-serif, Georgia, serif); }
 .invented-page h4 { margin: 0 0 0.75em; font-size: 1.05em; }
 .invented-page p { margin: 0 0 0.6em; }
 .invented-folio { display: block; margin-block-start: 1em; text-align: center; color: var(--paper-ink-secondary); }

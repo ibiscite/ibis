@@ -84,7 +84,7 @@
    so titles still start where the search text does; its control covers 32 px. */
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] [role="option"]:where(:not(.ui-side-navigation-item)):not([data-citation-selected]) .result-tile { background: transparent; }
-:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - 1.5rem) / 2); }
+:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - var(--control-small-h)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 /* Rows that tell similar references apart (#492). Comfortable rows show
    shortened authors and the container on one line; Compact puts the first
@@ -101,7 +101,7 @@
 }
 @media (prefers-contrast: more) {
   /* The 3 px edge comes out of the side padding, so the text stays put. */
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - 3px); }
+  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - var(--ring-width) - var(--border-width)); }
   /* The tile carries the citation state as an inverted square with its check. */
   [role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
 }

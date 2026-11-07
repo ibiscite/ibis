@@ -5,8 +5,8 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 ## Tokens
 
 - **Primitives:** raw values named by what they are (the 4 px space scale, ink, measured hues such as `--scarlet`). Only roles read them.
-- **Semantic roles:** what a value is for, per mode (light, dark, Increase Contrast, forced colours): labels, fills, separator, surfaces, accent, selection, status, the corner roots (`--r-win`, `--r-menu`, `--r-control`, `--r-card`), `--inset`, `--action-h`, `--key`.
-- **Component values:** derived from roles by a written rule, never typed as a second number (`--r-row`, `--r-key`, `--r-mi`, `--key-gap`, `--footer-h`, `--key-fill`).
+- **Semantic roles:** what a value is for, per mode (light, dark, Increase Contrast, forced colours): labels, fills, separator, surfaces, accent, selection, status, the corners (`--r-small`, `--r-control`, `--r-large`, `--r-win`), `--inset`, `--action-h`, `--key`, `--hit`.
+- **Component values:** derived from roles by a written rule, never typed as a second number (`--key-gap`, `--footer-h`, `--key-fill`). A part never names a value a token already holds: no second name for a radius, a target or a ring offset.
 - Components read roles and component values only: no raw colours, `GrayText`, literal radii or literal shadows [D1]. A new need picks an existing step before adding a token.
 - Light and dark come from `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`. Roles default to CSS system colours so an unknown webview still follows dark mode and high contrast.
 - `data-system` records the OS for fonts, modifier labels and native material; it never chooses a layout.
@@ -29,8 +29,8 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 - **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`. Settings cards are grouped content. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
-- **Readable overlays** [C13]: menus, the keys sheet and dialogs use the panel's glass, denser than the window, so content behind reads as soft colour only.
-- **Elevation** [D11]: one overlay shadow for every menu; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
+- **Readable overlays** [C9][C13]: everything that floats (menus, pop-overs, sheets, the peek card, held keys, the reader's controls) is one raised layer, `ui/Overlay` (`.ui-overlay`): `--surface-overlay`, a step off the window in either mode as a Mac menu is (never the window's own white or black), the panel's glass where it applied, and one shadow. No part paints its own.
+- **Elevation** [D11]: one overlay shadow, on that layer only; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
 - **Layers** [D15]: one z-order (`--z-*`); one overlay of each kind at a time; overlays keep `--inset` from the window edge and never leave it.
 - **Increase Contrast** uses the Mac's stronger set: stronger labels and marks, a solid ring, no scroll fades.
 - **Reduce Transparency** makes every material opaque.
@@ -55,10 +55,9 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Corners
 
-- **Corners** [C15][D3]: rounded rectangles on one concentric chain. A shape near its container's edge keeps equal gaps and takes the container's radius minus that gap; every derived radius is computed in `tokens.css`, never typed. Window (`--r-win`, 16 on every macOS) → rows, fields, shelf (`--r-row`) → footer actions (`--r-control`) → key caps (`--r-key`); menus (`--r-menu`) → menu items (`--r-mi`).
-- **Floors**: `--r-floor` for surfaces, `--r-floor-mark` for text-sized marks.
+- **Corners** [C15][D3]: three steps from `--radius`, and nothing else: `--r-small` (6: tiles, key caps, segments, small marks), `--r-control` (8: controls, rows, fields, menu items) and `--r-large` (12: menus, sheets, cards, the copy receipt), plus the window's `--r-win` (16, the Mac's own), capsules and the app icon. Nested shapes are concentric by choosing the step below: the window (16) inset 8 holds rows at 8; a menu (12) padded 4 holds items at 8; a control (8) holds a key cap or segment at 6.
 - **Neighbours share a radius**: shapes side by side at one depth use one radius and one gap.
-- Overlays float on their own layer and keep `--r-menu`; Settings cards use `--r-card`.
+- Overlays and Settings cards take `--r-large`.
 - **Capsules** (`--r-full`) only for switches, count and tag pills and progress tracks. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.
 - The miniature pictures in Settings keep the picker's radii; see [Previews](settings.md) in Settings.
 
@@ -86,7 +85,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K and Ctrl+Alt+Shift+K, modifiers in that order, on Windows and Linux (`ui/KeyCaps`). A pointer binding reads ⌘-click (Ctrl+click elsewhere).
 - Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
-- A cap is `--fill-control` with `--r-key`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
+- A cap is `--fill-control` with `--r-small`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 
 ## Motion

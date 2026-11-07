@@ -39,7 +39,7 @@
   transition: background-color var(--dur-panel) var(--ease);
 }
 .paste-guide-switch > span {
-  position: absolute; top: 1px; inset-inline-start: 1px; width: 13px; height: 13px; border-radius: var(--r-full);
+  position: absolute; top: var(--border-width); inset-inline-start: var(--border-width); width: 13px; height: 13px; border-radius: var(--r-full);
   background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-panel) var(--ease);
 }
 .paste-guide-switch[data-on] { background: var(--accent); }
