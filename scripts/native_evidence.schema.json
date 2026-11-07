@@ -13,6 +13,7 @@
         "key-select-all",
         "key-menu",
         "key-shortcut",
+        "key-paste",
         "text-query-0",
         "text-query-1",
         "text-query-2",
@@ -23,6 +24,7 @@
         "text-typst",
         "text-probe",
         "text-probe-alternate",
+        "text-journey",
         "click-more",
         "click-library",
         "click-reload",
@@ -47,7 +49,11 @@
         "launch-100000-warmup",
         "launch-100000-1",
         "launch-100000-2",
-        "launch-100000-3"
+        "launch-100000-3",
+        "launch-journey",
+        "open-document",
+        "select-placeholder",
+        "open-terminal"
       ]
     },
     "request": {"type": "string", "pattern": "^(?:(?:wait|check)-[0-9]{1,5})$"}
@@ -56,7 +62,7 @@
   "properties": {
     "schema_version": {"const": 1},
     "run_id": {"type": "string", "pattern": "^(?:[0-9a-f]{32})$"},
-    "scenario": {"enum": ["native-smoke", "first-run-preferences"]},
+    "scenario": {"enum": ["native-smoke", "first-run-preferences", "native-journey"]},
     "build": {
       "type": "object",
       "properties": {
@@ -78,9 +84,9 @@
     "harness_sha256": {"$ref": "#/$defs/hash"},
     "fixtures": {
       "type": "object",
-      "propertyNames": {"enum": ["small", "four", "empty", "large", "damaged", "initial-settings", "initial-document"]},
+      "propertyNames": {"enum": ["small", "four", "empty", "large", "damaged", "journey", "initial-settings", "initial-document"]},
       "additionalProperties": {"$ref": "#/$defs/hash"},
-      "required": ["small", "initial-settings", "initial-document"]
+      "required": ["initial-settings", "initial-document"]
     },
     "environment": {
       "type": "object",

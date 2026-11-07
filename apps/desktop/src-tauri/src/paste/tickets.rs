@@ -18,6 +18,9 @@ pub(super) trait TicketDesk {
     fn stamp(&self) -> SafetyStamp {
         SafetyStamp::now()
     }
+    fn now(&self) -> Instant {
+        Instant::now()
+    }
     fn release_keys(&self) -> bool;
     fn keys_unreleased(&self) -> bool;
     fn may_post(&self) -> bool;
@@ -87,9 +90,9 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
 
     fn checked(&self, request: &DeliveryRequest) -> Result<(), PostResult> {
         self.ticket
-            .check_age(self.desk.stamp())
+            .check_age(self.desk.stamp(), self.desk.now())
             .map_err(SafetyFailure::result)?;
-        if Instant::now() >= request.deadline {
+        if self.desk.now() >= request.deadline {
             return Err(PostResult::Expired);
         }
         self.target_in_front(request).map_err(|reason| match reason {
@@ -100,9 +103,9 @@ impl<D: TicketDesk> TicketDeskGuard<'_, D> {
         // Windows target/provider queries can wait. Recheck the immutable
         // pre-I/O deadline after them; SendInput has its own final native guard.
         self.ticket
-            .check_age(self.desk.stamp())
+            .check_age(self.desk.stamp(), self.desk.now())
             .map_err(SafetyFailure::result)?;
-        if Instant::now() >= request.deadline {
+        if self.desk.now() >= request.deadline {
             return Err(PostResult::Expired);
         }
         Ok(())
@@ -115,6 +118,9 @@ impl<D: TicketDesk> Desk for TicketDeskGuard<'_, D> {
 
     fn stamp(&self) -> SafetyStamp {
         self.desk.stamp()
+    }
+    fn delivery_clock(&self) -> Instant {
+        self.desk.now()
     }
     fn release_keys(&self) -> bool {
         self.desk.release_keys()
