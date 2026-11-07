@@ -76,6 +76,10 @@ Both checks are passive; they never request trust or show a permission prompt.
 Without Accessibility, Enter copies with `accessibility-required`:
 "Copied. Ibis needs Accessibility access to paste safely. Press ⌘V to paste."
 Provider errors, unsupported attributes and timeouts remain `paste-unavailable`.
+A timeout says nothing about the target, so while it returns, and at the final
+check, every check runs again, fresh, for the rest of the 1 s return time
+(2026-11-07: TextEdit taking focus back or handling a keystroke missed one read
+and the citation was only copied). A final check that timed out never posts.
 
 On macOS, Ibis snapshots the pasteboard change count immediately after writing
 every format, checking that ownership did not change during publication. A

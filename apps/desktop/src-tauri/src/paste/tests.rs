@@ -20,6 +20,10 @@ struct Fake {
     stamp: Cell<SafetyStamp>,
     window: Cell<Option<u32>>,
     focus_error: Cell<Option<CopyReason>>,
+    /// Accessibility reads that time out before the app answers again, as an
+    /// app busy taking focus back or handling a keystroke does.
+    busy_returning: Cell<u32>,
+    busy_final: Cell<u32>,
     presentation: Cell<u64>,
     hidden: bool,
     change_count: Cell<isize>,
@@ -46,7 +50,6 @@ struct Fake {
     input_error: Option<f64>,
     checks: RefCell<Vec<&'static str>>,
     posts: RefCell<Vec<i32>>,
-    pending: PendingPost,
     /// What the final selection read finds, or why it fails.
     selection_now: RefCell<Option<Result<Selection, CopyReason>>>,
 }
@@ -70,6 +73,8 @@ impl Fake {
             }),
             window: Cell::new(Some(100)),
             focus_error: Cell::new(None),
+            busy_returning: Cell::new(0),
+            busy_final: Cell::new(0),
             presentation: Cell::new(PRESENTATION),
             hidden: true,
             change_count: Cell::new(COUNT),
@@ -94,7 +99,6 @@ impl Fake {
             input_error: None,
             checks: RefCell::default(),
             posts: RefCell::default(),
-            pending: PendingPost::default(),
             selection_now: RefCell::new(None),
         }
     }
@@ -136,6 +140,10 @@ impl Desk for Fake {
         self.asked.set(self.asked.get() + 1);
     }
     fn frontmost(&self) -> Result<Option<Front>, CopyReason> {
+        if self.busy_returning.get() > 0 {
+            self.busy_returning.set(self.busy_returning.get() - 1);
+            return Err(CopyReason::PasteUnavailable);
+        }
         if let Some(window) = self.returning_windows.borrow().first() {
             self.window.set(*window);
         }
@@ -161,7 +169,8 @@ impl Desk for Fake {
         if let Some(pid) = self.front_after_queue {
             self.fronts.replace(vec![pid]);
         }
-        self.pending.run(|| checked_post(self, &request))
+        // Each final check owns its pending post, as on the Mac.
+        PendingPost::default().run(|| checked_post(self, &request))
     }
     fn wait(&self, time: Duration) {
         self.waits.set(self.waits.get() + 1);
@@ -226,6 +235,10 @@ impl PostDesk for Fake {
         }
         if let Some(reason) = self.focus_error.get() {
             return Err(reason);
+        }
+        if self.busy_final.get() > 0 {
+            self.busy_final.set(self.busy_final.get() - 1);
+            return Err(CopyReason::PasteUnavailable);
         }
         refresh()?;
         self.checks.borrow_mut().push("foreground");
@@ -977,6 +990,42 @@ fn a_concurrent_destination_holder_cannot_block_windows_paste_or_queue_key_downs
         !posted.load(Ordering::Acquire),
         "refused input must not run after the holder releases"
     );
+}
+
+#[test]
+fn an_app_busy_for_a_moment_still_gets_exactly_one_paste() {
+    // TextEdit taking focus back, or handling a keystroke, can miss one
+    // Accessibility read. That says nothing about the target: check again.
+    for desk in [
+        Fake {
+            busy_returning: Cell::new(3),
+            ..Fake::new()
+        },
+        Fake {
+            busy_final: Cell::new(2),
+            ..Fake::new()
+        },
+    ] {
+        assert!(matches!(deliver(&desk, Some(&proof()), true), Delivered::Pasted { .. }));
+        assert_eq!(*desk.posts.borrow(), [42]);
+    }
+}
+
+#[test]
+fn an_app_that_never_answers_in_time_is_copied_with_that_reason_and_never_pasted() {
+    for desk in [
+        Fake {
+            busy_returning: Cell::new(u32::MAX),
+            ..Fake::new()
+        },
+        Fake {
+            busy_final: Cell::new(u32::MAX),
+            ..Fake::new()
+        },
+    ] {
+        assert_eq!(deliver(&desk, Some(&proof()), true), copied("paste-unavailable"));
+        assert!(desk.posts.borrow().is_empty());
+    }
 }
 
 #[test]

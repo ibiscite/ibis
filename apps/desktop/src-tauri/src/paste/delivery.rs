@@ -152,13 +152,25 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 deadline: deadline.min(started + RETURN_LIMIT),
             };
             let mut checks = 0;
-            loop {
+            // A timed-out Accessibility read says nothing about the target (an
+            // app busy taking focus back, or handling a keystroke): every check
+            // runs again, fresh, while the return time lasts. Nothing is relaxed,
+            // and a final check that timed out posted nothing and never will.
+            let mut waiting_for;
+            let result = loop {
                 if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
                     return copied(failure.reason());
                 }
                 desk.stage("readiness");
                 let ready = match desk.ready(&request, proof) {
-                    Ok(ready) => ready,
+                    Ok(ready) => {
+                        waiting_for = CopyReason::TargetChanged;
+                        ready
+                    }
+                    Err(CopyReason::PasteUnavailable) => {
+                        waiting_for = CopyReason::PasteUnavailable;
+                        false
+                    }
                     Err(reason) => return copied(reason),
                 };
                 if let Err(failure) = proof.check_age(desk.stamp(), desk.delivery_clock()) {
@@ -166,32 +178,34 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
                 }
                 // A check that proved the target ready counts even when a busy
                 // system made it finish after the limit; the final guards and
-                // the paste's own deadline still decide. Only a target that is
-                // not back in time has changed.
+                // the paste's own deadline still decide.
                 if ready {
-                    break;
+                    desk.settle();
+                    desk.stage("post.queue");
+                    let result = desk.finish(
+                        DeliveryRequest {
+                            pid,
+                            id: id.unwrap_or_default().to_owned(),
+                            #[cfg(any(target_os = "macos", test))]
+                            began,
+                            deadline,
+                        },
+                        proof,
+                    );
+                    if result != PostResult::Unavailable {
+                        break result;
+                    }
+                    waiting_for = CopyReason::PasteUnavailable;
                 }
-                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT {
+                // Only a target that is not back, or not answering, in time stays copied.
+                if desk.delivery_clock().duration_since(started) >= RETURN_LIMIT || checks >= RETURN_CHECKS {
                     desk.stage("readiness.timeout");
-                    return copied(CopyReason::TargetChanged);
-                }
-                if checks >= RETURN_CHECKS {
-                    desk.stage("readiness.timeout");
-                    return copied(CopyReason::TargetChanged);
+                    return copied(waiting_for);
                 }
                 desk.wait(RETURN_STEP);
                 checks += 1;
-            }
-            desk.settle();
-            desk.stage("post.queue");
-            let request = DeliveryRequest {
-                pid,
-                id: id.unwrap_or_default().to_owned(),
-                #[cfg(any(target_os = "macos", test))]
-                began,
-                deadline,
             };
-            match desk.finish(request, proof) {
+            match result {
                 PostResult::Pasted => Delivered::Pasted {
                     app: captured.name.clone(),
                 },
