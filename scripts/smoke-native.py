@@ -1634,6 +1634,7 @@ class MacOS:
         self.started_terminal = not running("Terminal")
         self.started_textedit = False
         self.collector = self.editor = None
+        self.facts = {}
 
     def helper(self, *arguments):
         result = subprocess.run([str(self.helper_path), *map(str, arguments)], capture_output=True, text=True, timeout=20)
@@ -1817,6 +1818,7 @@ class Windows:
         self.app = None  # The Ibis process, set by the journey.
         self.last_picker = self.last_shown = None
         self.notepad = self.window = self.editor = self.collector = self.collector_stop = None
+        self.facts = {}  # Which Notepad and console host ran, for the report.
 
     # Windows, read through Win32 only.
     def windows(self, parent=None):
@@ -1983,6 +1985,7 @@ class Windows:
             return found[0] if len(found) == 1 else None
         wait_for(editor, "Notepad shows the invented document")
         self.editor = editor()
+        self.facts["notepad"] = {"Edit": "classic", "RichEditD2DPT": "modern"}[self.kind(self.editor)]
         self.activate(self.window)
 
     def read(self, editor):
@@ -2016,7 +2019,14 @@ class Windows:
             found = [window for window in self.windows() if self.title(window).endswith(COLLECTOR_TITLE)]
             return found[0] if len(found) == 1 else None
         wait_for(console, "a console window runs the collector", timeout=30)
+        self.facts["console"] = self.executable(self.owner(console()))
         self.activate(console())
+
+    def executable(self, pid):
+        """The owner's file name when it is a known console host, else "other"."""
+        tasks = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True,
+                               text=True, timeout=30).stdout.lower()
+        return next((name for name in ("cmd.exe", "conhost.exe", "windowsterminal.exe") if f'"{name}"' in tasks), "other")
 
     def close(self):
         if self.collector:
@@ -2243,6 +2253,8 @@ def _journey_main(args):
                 failure(error, "cleanup")
                 report.update(status="failed", reason="Journey cleanup failed")
                 exit_code = 1
+        if native:
+            report.update(native.facts)
         print("NATIVE JOURNEY " + json.dumps(report), flush=True)
         (args.output / "journey.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     return exit_code
