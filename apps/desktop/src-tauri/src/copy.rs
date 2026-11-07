@@ -238,19 +238,31 @@ pub(crate) fn write_plain(app: &AppHandle, text: &str) -> Result<(), String> {
     )
 }
 
-// Each managed state is its own argument: Tauri hands them to commands that way.
-#[allow(clippy::too_many_arguments)]
+/// Copy the shown citation. Copying cites it again, which can wait for the
+/// formatter, so it never runs on the main thread.
 #[tauri::command]
 #[specta::specta]
-pub(crate) fn copy_file_citation(
+pub(crate) async fn copy_file_citation(
     ticket: String,
     content_hash: String,
     replaces: Option<String>,
     app: AppHandle,
-    library: State<'_, Mutex<Library>>,
-    editor: State<'_, crate::editor_endpoint::Pending>,
-    project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<Copied, CommandError> {
+    tauri::async_runtime::spawn_blocking(move || copy_shown(&app, &ticket, &content_hash, replaces))
+        .await
+        .map_err(|_| CommandError::from("The citation could not be copied. Try again."))?
+}
+
+fn copy_shown(
+    app: &AppHandle,
+    ticket: &str,
+    content_hash: &str,
+    replaces: Option<String>,
+) -> Result<Copied, CommandError> {
+    let app = app.clone();
+    let library = tauri::Manager::state::<Mutex<Library>>(&app);
+    let editor = tauri::Manager::state::<crate::editor_endpoint::Pending>(&app);
+    let project = tauri::Manager::state::<crate::project::ProjectBibliography>(&app);
     let captured = editor.app(crate::paste::last_app(&app));
     let session = tauri::Manager::state::<crate::session_references::SessionReferences>(&app);
     let epoch = session.lock().epoch();
@@ -274,13 +286,13 @@ pub(crate) fn copy_file_citation(
     // A waiting editor gets the citation in place of the clipboard. It is
     // handed over under the same commit barrier, and nothing is pasted.
     if let Some(request) = editor.current() {
-        if !file.prepared_for(&ticket, &request) {
+        if !file.prepared_for(ticket, &request) {
             return Err(CommandError::SnapshotChanged);
         }
         // The text leaves the commit barrier first; the editor is answered with no
         // lock held, because ending a request takes these locks the other way round.
         let mut text = None;
-        let copied = file.copy(&ticket, &content_hash, |content| {
+        let copied = file.copy(ticket, content_hash, |content| {
             text = Some((
                 content.text.to_owned(),
                 content.html.map(str::to_owned),
@@ -310,8 +322,8 @@ pub(crate) fn copy_file_citation(
     }
     let copied = commit_copy(
         &file,
-        &ticket,
-        &content_hash,
+        ticket,
+        content_hash,
         ProjectCopy {
             project: &project,
             session: &session,

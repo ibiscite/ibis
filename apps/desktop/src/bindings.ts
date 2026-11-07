@@ -80,6 +80,10 @@ export const commands = {
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview_Serialize>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/**  Read-only examples owned by a prepared preview; never publishes a new ticket. */
 	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
+	/**
+	 *  Copy the shown citation. Copying cites it again, which can wait for the
+	 *  formatter, so it never runs on the main thread.
+	 */
 	copyFileCitation: (ticket: string, contentHash: string, replaces: string | null) => __TAURI_INVOKE<Copied_Serialize>("copy_file_citation", { ticket, contentHash, replaces }),
 	projectStatus: () => __TAURI_INVOKE<{
 	generation: number,
