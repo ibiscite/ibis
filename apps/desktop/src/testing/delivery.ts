@@ -108,7 +108,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const deliver = ({ text, delivery }: DeliveryRequest): Delivered => {
     // Identity precedes consumption: a stale worker must leave a newer proof.
     const owned = proof?.delivery === delivery && proof?.text === text ? proof : null;
-    if (!owned) return { outcome: "copied", reason: null };
+    if (!owned) return { outcome: "copied", reason: "paste-unavailable" };
     proof = null;
     if (target.refusal) return { outcome: "copied", reason: target.refusal };
     if (owned.paste === "copy-only") return { outcome: "copied", reason: "copy-only" };
@@ -127,7 +127,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     if (owned.replaces === null && owned.unread && selectedText() !== "") return { outcome: "copied", reason: "selection-not-shown" };
     if (owned.replaces === null && owned.selection !== null && (!shows(owned.selection) && owned.selection !== "" || owned.selection !== selectedText())) return { outcome: "copied", reason: "selection-not-shown" };
     if (visible || owned.presentation !== presentation || clipboard.owner !== "ibis"
-      || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: null };
+      || owned.sequence !== clipboard.sequence || owned.app !== document.app) return { outcome: "copied", reason: "paste-unavailable" };
     const destination = owned.surface === null ? undefined : documents.get(owned.surface);
     if (!destination) return { outcome: "copied", reason: "target-changed" };
     const [start, end] = destination.selection;

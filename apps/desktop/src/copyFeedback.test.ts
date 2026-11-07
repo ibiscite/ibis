@@ -17,23 +17,23 @@ import type { NoticeMessage } from "./api";
 import { afterCopy, COPY_REASONS, type CopyReason, DRAG_DISTANCE, leaveNotice, type Notice, noticePlatform, noticeTitle, readNotice, renderNotice, rowClickAction, type RowClick } from "./copyFeedback";
 import { copiedNoticeText } from "./messages";
 
-const copied = (text: string, reason: CopyReason | null = null): Notice => ({ delivered: { outcome: "copied", reason }, text });
+const copied = (text: string, reason: CopyReason = "paste-unavailable"): Notice => ({ delivered: { outcome: "copied", reason }, text });
 import noticeCapability from "../src-tauri/capabilities/notice.json";
 
 test.each([["macos", "⌘V"], ["windows", "Ctrl+V"], ["linux", "Ctrl+V"]] as const)("plain-copy receipts always use %s's paste key, including after reopening", (platform, key) => {
   const root = document.createElement("div"), show = renderNotice(root, platform);
   for (let copy = 0; copy < 4; copy++) {
     show(copied(`[@invented${copy}]`));
-    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste.`);
+    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Ibis couldn’t confirm where the text would go. Press ${key} to paste.`);
   }
   renderNotice(root, platform)(copied("[@reopened]"));
-  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${key} to paste.`);
+  expect(root.querySelector("strong")?.textContent).toBe(`Copied. Ibis couldn’t confirm where the text would go. Press ${key} to paste.`);
 });
 
 test("on Linux every refusal keeps its reason and ends with Ctrl+V, and a paste names the app", () => {
   const root = document.createElement("div"), show = renderNotice(root, "linux");
   for (const [reason, title] of [["terminal", "Copied. Not pasted into a terminal. Press Ctrl+V to paste."],
-    ["unsupported-system", "Copied. Ibis can’t paste on this system yet. Press Ctrl+V to paste."], ["paste-off", "Copied. Press Ctrl+V to paste."]] as const) {
+    ["unsupported-system", "Copied. Ibis can’t paste on this system yet. Press Ctrl+V to paste."], ["paste-off", "Copied. Pasting is off in Settings. Press Ctrl+V to paste."]] as const) {
     show(copied("[@invented]", reason));
     expect(root.querySelector("strong")?.textContent).toBe(title);
   }
@@ -99,23 +99,23 @@ test("the notice is a polite status that shows text as text and replays when sho
   expect(notice.querySelectorAll("code")).toHaveLength(1);
   const windows = document.createElement("div");
   renderNotice(windows, "windows")(copied("[@a]"));
-  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Press Ctrl+V to paste.");
+  expect(windows.querySelector("strong")?.textContent).toBe("Copied. Ibis couldn’t confirm where the text would go. Press Ctrl+V to paste.");
   expect(windows.textContent).not.toContain("⌘V");
 });
 
 test("the notice says where the citation was pasted, or why it was only copied", () => {
   expect(noticeTitle({ delivered: { outcome: "pasted", app: "Writer" } })).toBe("Pasted into Writer");
   expect(noticeTitle({ delivered: { outcome: "pasted", app: null } })).toBe("Pasted");
-  expect(noticeTitle(copied("[@a]"), "macos")).toBe("Copied. Press ⌘V to paste.");
+  expect(noticeTitle(copied("[@a]", "terminal"), "macos")).toBe("Copied. Not pasted into a terminal. Press ⌘V to paste.");
 });
 
-test("a reason Rust sends that this build does not know is reported and still says how to paste", () => {
+test("a reason Rust sends that this build does not know is reported and still says why and how to paste", () => {
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
     const wire: NoticeMessage = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" };
     const notice = readNotice(wire);
-    expect(notice.delivered).toEqual({ outcome: "copied", reason: null });
-    expect(noticeTitle(notice, "macos")).toBe("Copied. Press ⌘V to paste.");
+    expect(notice.delivered).toEqual({ outcome: "copied", reason: "paste-unavailable" });
+    expect(noticeTitle(notice, "macos")).toBe("Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.");
     expect(error).toHaveBeenCalledExactlyOnceWith("Unknown copy reason: unknown-future-code");
     expect(readNotice({ delivered: { outcome: "copied", reason: "terminal" }, text: "[@a]" }).delivered).toEqual({ outcome: "copied", reason: "terminal" });
     expect(error).toHaveBeenCalledOnce();
@@ -128,23 +128,24 @@ test("the copy reasons are exactly the ones Rust sends, and each has its words",
   const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
   const core = read("../../../crates/ibis-core/src/destination/mod.rs").match(/pub enum CopyReason \{([^}]*)\}/)![1]!
     .replace(/\/\/[^\n]*/g, "").match(/[A-Z]\w*/g)!.map((name) => name.replace(/(?<!^)[A-Z]/g, (letter) => `-${letter}`).toLowerCase());
-  const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: Some\("([a-z-]+)"\.into\(\)\)/g)].map((match) => match[1]!);
+  const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: "([a-z-]+)"\.into\(\)/g)].map((match) => match[1]!);
   expect(core).toContain("paste-off");
   expect([...COPY_REASONS].sort()).toEqual([...new Set([...core, ...delivery])].sort());
   expect(Object.keys(copiedNoticeText.reasons).sort()).toEqual([...COPY_REASONS].sort());
 });
 
-test("every reason reads as the Notices table in docs/design/delivery.md says, ending with its fix", async () => {
+test("every reason reads as the Notices table in docs/design/delivery.md says: why, then its fix", async () => {
   const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
   const design = readFileSync(new FileURL("../../../docs/design/delivery.md", import.meta.url), "utf8");
   const section = design.slice(design.indexOf("## Notices"));
   const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
-  const table = Object.fromEntries(rows.filter(([, code]) => code !== "—").map(([, code, words]) => [code!.replaceAll("`", ""), words]));
+  const table = Object.fromEntries(rows.map(([, code, words]) => [code!.replaceAll("`", ""), words]));
   expect(table).toEqual(copiedNoticeText.reasons);
-  expect(rows.find(([, code]) => code === "—")?.[2]).toBe(copiedNoticeText.hint);
-  for (const words of [copiedNoticeText.hint, ...Object.values(copiedNoticeText.reasons)]) {
-    expect(words).toMatch(/^Copied\. .*\.$/);
+  for (const words of Object.values(copiedNoticeText.reasons)) {
+    // Copied, a sentence saying why, then the fix: never the fix alone.
+    expect(words).toMatch(/^Copied\. [^.]+\. .*\.$/);
+    expect(words).not.toMatch(/^Copied\. (Press|Use|Select)/);
     expect(words).not.toMatch(/password/i);
     expect(words).not.toContain("'");
   }
@@ -169,7 +170,7 @@ test.each(["macos", "windows", "linux"] as const)("%s receipt updates announce t
     expect(root.querySelector("strong")?.textContent).toBe("Pasted into Example Writer");
     show(copied("[@invented]", "paste-off"));
     expect(root.querySelector('[role="status"]')?.getAttribute("aria-live")).toBe("polite");
-    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
+    expect(root.querySelector("strong")?.textContent).toBe(`Copied. Pasting is off in Settings. Press ${platform === "macos" ? "⌘V" : "Ctrl+V"} to paste.`);
     expect(document.activeElement).toBe(editor);
   } finally { editor.remove(); root.remove(); }
 });
@@ -180,7 +181,7 @@ test.each<[CopyReason, string]>([
   ["clipboard-changed", "Copied. The clipboard changed since. Copy the citation again."],
   ["paste-expired", "Copied. The paste expired. Press ⌘V to paste."],
   ["secure-input", "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste."],
-  ["paste-unavailable", "Copied. Press ⌘V to paste."],
+  ["paste-unavailable", "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."],
   ["selection-not-shown", "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it."],
   ["citation-not-selected", "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V."],
 ])("%s offers manual paste without claiming the target is a password field", (reason, message) => {

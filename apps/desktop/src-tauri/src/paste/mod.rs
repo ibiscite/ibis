@@ -462,10 +462,21 @@ pub(crate) enum Delivered {
         app: Option<String>,
     },
     Copied {
-        /// Why Ibis did not paste, when the person can do something about it
-        /// or would expect a paste: a `CopyReason` code such as `terminal`.
-        reason: Option<String>,
+        /// Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
+        /// `key-release-failed`. Every copy says why (docs/design/delivery.md).
+        reason: String,
     },
+}
+
+impl Delivered {
+    pub(crate) fn copied(reason: CopyReason) -> Self {
+        Self::Copied {
+            reason: serde_json::to_value(reason)
+                .ok()
+                .and_then(|code| code.as_str().map(str::to_owned))
+                .unwrap_or_else(|| "paste-unavailable".into()),
+        }
+    }
 }
 
 /// A Windows copy freezes its destination before writing, then adds the
@@ -621,7 +632,7 @@ pub(crate) fn deliver_copy(app: &AppHandle, text: &str, ticket: Option<DeliveryT
         return key_release_failed();
     }
     let Some(ticket) = ticket else {
-        return Delivered::Copied { reason: None };
+        return Delivered::copied(CopyReason::PasteUnavailable);
     };
     with_paste_settings(&app.state::<crate::preferences::SettingsFile>().path, |enabled| {
         deliver_ticket(&desk, &ticket, text, enabled)

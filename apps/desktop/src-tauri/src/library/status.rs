@@ -32,6 +32,9 @@ pub(crate) struct LibraryStatus {
     /// Counts in the searchable snapshot by exact source ID; includes empty loaded Zotero libraries.
     pub(crate) source_counts: BTreeMap<String, usize>,
     pub(crate) warnings: usize,
+    /// What reading found, at most the engine's detail limit, so the footer
+    /// can say which entries were skipped and where to look.
+    pub(crate) reading: Vec<ReadingNotice>,
     pub(crate) error: Option<String>,
     /// What kind of failure `error` is, so the picker can offer the fix.
     pub(crate) problem: Option<LibraryProblem>,
@@ -61,6 +64,16 @@ pub(crate) struct LibraryStatus {
     /// When the library was last read or found unchanged, in the same unit;
     /// when `stale`, the time of the copy still being searched.
     pub(crate) checked_at: Option<f64>,
+}
+
+/// One thing reading the library found: an entry skipped or one to check.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, specta::Type)]
+pub(crate) struct ReadingNotice {
+    /// The engine's warning code, such as `duplicate-key` or `syntax`.
+    pub(crate) code: String,
+    pub(crate) line: Option<u32>,
+    /// The repeated key, for `duplicate-key` only: the person's own data.
+    pub(crate) key: Option<String>,
 }
 
 /// A library failure grouped by what the person can do about it.
@@ -175,6 +188,17 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             })
             .collect(),
         warnings: sources.iter().map(|info| info.warnings_total).sum(),
+        reading: sources
+            .iter()
+            .flat_map(|info| &info.warnings)
+            .filter_map(|warning| {
+                Some(ReadingNotice {
+                    code: serde_json::to_value(warning.code).ok()?.as_str()?.to_owned(),
+                    line: warning.line.and_then(|line| u32::try_from(line).ok()),
+                    key: warning.key.clone(),
+                })
+            })
+            .collect(),
         error: library
             .error
             .map(|error| error.with_snapshot_context(references > 0, zotero)),

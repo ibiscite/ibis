@@ -504,7 +504,7 @@ export const libraryMessages = {
     const source = snapshotLabel(status);
     if (status.stale) return [source, status.problem === "missing" && !status.snapshot_zotero ? " moved" : " not updated"];
     return [source, ` · ${status.references === 0 ? "no references" : count(status.references, "reference")}` +
-      (status.warnings > 0 ? ` · ${count(status.warnings, "reading notice")}` : "") +
+      readingSummary(status) +
       (status.error ? ` · ${isolate(requestedLabel(status))} ${status.problem === "missing" ? "moved" : "not opened"}` : "")];
   },
   summary: (status: LibraryStatus | null | undefined) => {
@@ -536,6 +536,7 @@ export const libraryMessages = {
       status.error ? libraryMessages.openError(status.name, status.error, status.zotero, status.problem)
         : status.stale ? (zoteroSnapshot(status) ? "Zotero could not be reached" : "the file could not be read")
         : null,
+      readingDetail(status),
     ].filter((part): part is string => part !== null);
     const first = status.stale ? `${isolate(snapshotLabel(status))} · ${count(status.references, "reference")}` : summary;
     return [first, parts.length > 0 ? parts.join(" · ") : null];
@@ -550,8 +551,64 @@ export const recentUpdate = 10 * minute;
 const numbers = new Intl.NumberFormat(appLocale);
 const relative = new Intl.RelativeTimeFormat(appLocale, { numeric: "auto" });
 
-function count(n: number, noun: string) {
-  return `${numbers.format(n)} ${n === 1 ? noun : `${noun}s`}`;
+function count(n: number, noun: string, plural = `${noun}s`) {
+  return `${numbers.format(n)} ${n === 1 ? noun : plural}`;
+}
+
+/** Entries the engine left out of the library (decision 0006). */
+const skips = (code: string) => code === "duplicate-key" || code === "syntax";
+type Reading = Pick<LibraryStatus, "warnings" | "reading">;
+const reading = (status: Reading) => status.reading ?? [];
+
+/** The footer's words for what reading found: entries skipped, then those to
+ * check. More problems than the engine details is said as one honest count. */
+function readingSummary(status: Reading) {
+  if (status.warnings === 0) return "";
+  const notices = reading(status);
+  if (notices.length < status.warnings) return ` · ${count(status.warnings, "reading problem")}`;
+  const skipped = notices.filter(({ code }) => skips(code)).length, check = status.warnings - skipped;
+  return (skipped > 0 ? ` · ${count(skipped, "entry", "entries")} skipped` : "") + (check > 0 ? ` · ${numbers.format(check)} to check` : "");
+}
+
+/** "line 3", "lines 3 and 9", "lines 3, 9, 12 and 40", then "and others". */
+function lines(found: readonly (number | null)[]) {
+  const known = found.filter((line): line is number => line !== null).map((line) => numbers.format(line));
+  if (known.length === 0) return null;
+  if (known.length === 1) return `line ${known[0]}`;
+  const shown = known.slice(0, 4);
+  return `lines ${shown.slice(0, -1).join(", ")} and ${known.length > 4 ? `${shown.at(-1)}, and others` : shown.at(-1)}`;
+}
+const at = (found: readonly (number | null)[]) => { const where = lines(found); return where ? ` (${where})` : ""; };
+
+const otherNotices: Record<string, string> = {
+  "work-limit": "The library is too large to read in full.",
+  "cloud-synced-directory": "It is in a cloud-synced folder, so changes can arrive late.",
+  "citation-keys-unavailable": "Better BibTeX keys could not be read, so some items have none.",
+};
+
+/** Where to look: which entries were skipped and why, then lines to check.
+ * Keys are the person's own and shown only to them. */
+function readingDetail(status: Reading) {
+  const notices = reading(status);
+  if (notices.length === 0) return null;
+  const repeated = new Map<string, (number | null)[]>();
+  for (const { code, key, line } of notices) if (code === "duplicate-key") repeated.set(key ?? "", [...repeated.get(key ?? "") ?? [], line]);
+  const unreadable = notices.filter(({ code }) => code === "syntax").map(({ line }) => line);
+  const skipped = notices.filter(({ code }) => skips(code)).length;
+  const keys = [...repeated];
+  const reasons = [
+    ...keys.slice(0, 3).map(([key, found]) => `${numbers.format(found.length)} use the key ${isolate(key)}${at(found)}`),
+    ...keys.length > 3 ? [`${count(keys.slice(3).reduce((sum, [, found]) => sum + found.length, 0), "other")} share a key`] : [],
+    ...unreadable.length > 0 ? [`${skipped === 1 ? "it" : numbers.format(unreadable.length)} could not be read${at(unreadable)}`] : [],
+  ];
+  const check = notices.filter(({ code }) => !skips(code) && !(code in otherNotices)).map(({ line }) => line);
+  const sentences = [
+    skipped > 0 ? `${count(skipped, "entry", "entries")} skipped: ${reasons.join(", ")}.` : null,
+    check.length > 0 ? `Check ${lines(check) ?? "the library"}.` : null,
+    ...[...new Set(notices.map(({ code }) => otherNotices[code]))].filter((text): text is string => text !== undefined),
+    notices.length < status.warnings ? `${count(status.warnings - notices.length, "more problem")} not listed.` : null,
+  ].filter((text): text is string => text !== null);
+  return sentences.join(" ");
 }
 
 /** The library asked for, which may not have opened. */
@@ -649,14 +706,13 @@ const itemTypeWords: Record<string, string> = {
 // app the picker was opened from (#27), or copied and why it was not pasted.
 export const copiedNoticeText = {
   title: "Copied",
-  /** Every "copied, not pasted" sentence ends with its fix. Written with ⌘V;
-   * noticeTitle shows Ctrl+V on other systems. The words are the Notices
-   * table in docs/design/delivery.md, which a test reads. */
-  hint: "Copied. Press ⌘V to paste.",
+  /** Every "copied, not pasted" sentence says why and ends with its fix.
+   * Written with ⌘V; noticeTitle shows Ctrl+V on other systems. The words
+   * are the Notices table in docs/design/delivery.md, which a test reads. */
   pasted: (app: string | null) => (app ? `Pasted into ${app}` : "Pasted"),
-  /** Keyed by the destination's copy reason codes; any other reason says the hint. */
+  /** Keyed by the destination's copy reason codes; every copy has one. */
   reasons: {
-    "paste-off": "Copied. Press ⌘V to paste.",
+    "paste-off": "Copied. Pasting is off in Settings. Press ⌘V to paste.",
     "unsupported-system": "Copied. Ibis can’t paste on this system yet. Press ⌘V to paste.",
     "no-target": "Copied. There was no app to paste into. Press ⌘V to paste.",
     "unknown-app": "Copied. Automatic paste is not approved for this app. Press ⌘V to paste.",
@@ -672,9 +728,9 @@ export const copiedNoticeText = {
     "virtual-machine": "Copied. Not pasted into a virtual machine. Press ⌘V to paste.",
     "secure-field": "Copied. This field hides what you type. Press ⌘V to paste.",
     "secure-input": "Copied. Secure typing is on, possibly in another app. Press ⌘V to paste.",
-    "paste-unavailable": "Copied. Press ⌘V to paste.",
+    "paste-unavailable": "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.",
     "elevated-app": "Copied. Not pasted into an administrator app. Press ⌘V to paste.",
-    "key-release-failed": "Copied. Press and release Ctrl and V to paste.",
+    "key-release-failed": "Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste.",
     "selection-not-shown": "Copied. Ibis replaces only text it showed you. Press ⌘V to replace it.",
     "citation-not-selected": "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.",
   } as Record<string, string>,

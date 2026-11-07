@@ -61,8 +61,14 @@ flag is system-wide and can be enabled by another app; it does not establish
 that the destination is a password field. An enabled flag copies with the
 `secure-input` reason: "Copied. Secure typing is on, possibly in another app.
 Press ⌘V to paste." An unavailable or timed-out check uses `paste-unavailable`:
-"Copied. Press ⌘V to paste." Neither outcome claims password-field detection.
-The AX password/subrole guard remains removed (#1280, #1360). macOS auto-paste
+"Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."
+Neither outcome claims password-field detection. The AX password/subrole guard
+remains removed (#1280, #1360) as a reason to paste or not: after a paste is
+already refused as `paste-unavailable` or `secure-input`, Ibis reads only the
+`AXSubrole` of the system's focused control, when the target process owns it,
+and says `secure-field` ("This field hides what you type") for
+`AXSecureTextField`. It changes the words, never the outcome, and reads no
+range, text or value (2026-11-07, a web password field copied with no reason). macOS auto-paste
 requires two separate authorizations: PostEvent to send the shortcut and
 Accessibility to prove its destination. The identity-only proof below adds an
 Accessibility requirement compared with the old PostEvent-only contract.

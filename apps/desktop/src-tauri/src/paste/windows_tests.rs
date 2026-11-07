@@ -252,9 +252,9 @@ fn writer(id: &str) -> Captured {
     .unwrap_or_else(|| panic!("external Windows capture"))
 }
 
-fn copied(reason: Option<&str>) -> Delivered {
+fn copied(reason: &str) -> Delivered {
     Delivered::Copied {
-        reason: reason.map(str::to_owned),
+        reason: reason.to_owned(),
     }
 }
 
@@ -265,7 +265,7 @@ fn a_detached_windows_ticket_cannot_post_after_its_policy_is_revoked() {
     ticket.policy.epoch.store(1, Ordering::Release);
     assert_eq!(
         deliver_ticket(&desk, &ticket, "[@synthetic]", true),
-        copied(Some("paste-unavailable"))
+        copied("paste-unavailable")
     );
     assert!(desk.posts.borrow().is_empty());
     assert!(desk.restores.borrow().is_empty());
@@ -308,28 +308,28 @@ fn nothing_is_posted_when_the_paste_is_unsafe_or_unproven() {
             Fake::new("[@synthetic]"),
             writer("org.example.other"),
             true,
-            copied(Some("unknown-app")),
+            copied("unknown-app"),
         ),
         // A macOS bundle ID does not describe a known Windows executable.
         (
             Fake::new("[@synthetic]"),
             writer("com.microsoft.word"),
             true,
-            copied(Some("unknown-app")),
+            copied("unknown-app"),
         ),
         // Another app replaced the clipboard.
         (
             Fake::new("other text"),
             writer("winword.exe"),
             true,
-            copied(Some("clipboard-changed")),
+            copied("clipboard-changed"),
         ),
         // The switch is off.
         (
             Fake::new("[@synthetic]"),
             writer("winword.exe"),
             false,
-            copied(Some("paste-off")),
+            copied("paste-off"),
         ),
         // The captured app never came back.
         (
@@ -339,14 +339,14 @@ fn nothing_is_posted_when_the_paste_is_unsafe_or_unproven() {
             },
             writer("winword.exe"),
             true,
-            copied(Some("target-changed")),
+            copied("target-changed"),
         ),
         // Nothing was in front.
         (
             Fake::new("[@synthetic]"),
             Captured::unknown(System::Windows),
             true,
-            copied(Some("no-target")),
+            copied("no-target"),
         ),
     ];
     for (desk, captured, enabled, expected) in cases {
@@ -363,7 +363,7 @@ fn password_fields_and_apps_with_more_rights_copy_with_a_reason() {
     };
     assert_eq!(
         deliver(&desk, Some(&writer("winword.exe")), "[@synthetic]", true),
-        copied(Some("secure-field"))
+        copied("secure-field")
     );
     assert!(desk.posts.borrow().is_empty());
 
@@ -372,7 +372,7 @@ fn password_fields_and_apps_with_more_rights_copy_with_a_reason() {
     admin.target.elevated = true;
     assert_eq!(
         deliver(&desk, Some(&admin), "[@synthetic]", true),
-        copied(Some("elevated-app"))
+        copied("elevated-app")
     );
     assert!(desk.posts.borrow().is_empty());
 }
@@ -392,7 +392,7 @@ fn a_delayed_copy_cannot_adopt_the_target_of_a_later_open_then_dismiss() {
     desk.hidden.set(true);
     assert_eq!(
         deliver_ticket(&desk, &frozen, "[@synthetic]", true),
-        copied(Some("target-changed"))
+        copied("target-changed")
     );
     assert!(desk.restores.borrow().is_empty());
     assert!(desk.posts.borrow().is_empty());
@@ -506,9 +506,10 @@ fn overlapping_copy_deliveries_leave_the_newer_windows_ticket_available() {
         // Delay A's claim until after B has copied on a new presentation.
         let delivery = |token, text| {
             let frozen = take_ticket(&mut pending.borrow_mut(), token);
-            frozen
-                .as_ref()
-                .map_or_else(|| copied(None), |ticket| deliver_ticket(&desk, ticket, text, true))
+            frozen.as_ref().map_or_else(
+                || copied("paste-unavailable"),
+                |ticket| deliver_ticket(&desk, ticket, text, true),
+            )
         };
         let target_b = CopyTarget {
             generation: 12,
@@ -528,7 +529,7 @@ fn overlapping_copy_deliveries_leave_the_newer_windows_ticket_available() {
         );
         assert_ne!(token_a, token_b);
         desk.generation.set(13);
-        assert_eq!(delivery(token_a, text_a), copied(None));
+        assert_eq!(delivery(token_a, text_a), copied("paste-unavailable"));
         assert!(desk.restores.borrow().is_empty());
         assert!(desk.posts.borrow().is_empty());
         assert_eq!(
@@ -537,7 +538,7 @@ fn overlapping_copy_deliveries_leave_the_newer_windows_ticket_available() {
                 app: Some("Writer".into())
             }
         );
-        assert_eq!(delivery(token_b, "[@synthetic]"), copied(None));
+        assert_eq!(delivery(token_b, "[@synthetic]"), copied("paste-unavailable"));
         assert_eq!(*desk.posts.borrow(), [(42, 0x09)]);
         assert_eq!(desk.clipboard_reads.get(), 0);
     }
@@ -552,11 +553,11 @@ fn a_foreign_clipboard_owner_is_never_read_or_adopted_as_the_baseline() {
         desk.sequence.set(sequence);
         assert_eq!(
             deliver_ticket(&desk, &frozen, "[@synthetic]", true),
-            copied(Some(if sequence.is_some() {
+            copied(if sequence.is_some() {
                 "clipboard-changed"
             } else {
                 "paste-unavailable"
-            }))
+            })
         );
         assert_eq!(desk.clipboard_reads.get(), 0);
         assert!(desk.restores.borrow().is_empty());
@@ -576,10 +577,7 @@ fn a_replaced_or_unavailable_clipboard_has_its_own_refusal_reason() {
     for (sequence, reason) in [(Some(18), "clipboard-changed"), (None, "paste-unavailable")] {
         let desk = Fake::new("[@synthetic]");
         desk.sequence.set(sequence);
-        assert_eq!(
-            deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some(reason))
-        );
+        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(reason));
         assert!(desk.events.borrow().is_empty());
         assert!(desk.restores.borrow().is_empty());
     }
@@ -597,10 +595,7 @@ fn clipboard_failures_while_waiting_for_focus_keep_their_exact_reason() {
             desk.after_focus_wait = Some(|desk| desk.sequence.set(Some(18)));
         }
         desk.fronts.replace(vec![7, 42]);
-        assert_eq!(
-            deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some(reason))
-        );
+        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(reason));
         assert!(desk.events.borrow().is_empty());
     }
 }
@@ -620,7 +615,7 @@ fn expiry_during_final_target_queries_prevents_injection_even_when_the_target_is
     };
     assert_eq!(
         deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-        copied(Some("paste-expired"))
+        copied("paste-expired")
     );
     assert!(desk.events.borrow().is_empty());
 }
@@ -647,7 +642,7 @@ fn suspension_during_clipboard_io_or_before_remembering_does_not_refresh_deliver
         let ticket = take_ticket(&mut pending, token).unwrap_or_else(|| panic!("ticket"));
         assert_eq!(
             deliver_ticket(&desk, &ticket, "[@synthetic]", true),
-            copied(Some("paste-expired")),
+            copied("paste-expired"),
             "{phase}"
         );
         assert_eq!(ticket.written, started);
@@ -666,7 +661,7 @@ fn a_ticket_requires_its_window_and_the_single_copy_dismissal() {
         desk.window.set(window);
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some("target-changed"))
+            copied("target-changed")
         );
         assert!(desk.posts.borrow().is_empty());
     }
@@ -688,7 +683,7 @@ fn partial_send_input_releases_every_key_left_down_by_the_inserted_prefix() {
         if inserted == 4 {
             assert!(matches!(delivered, Delivered::Pasted { .. }));
         } else {
-            assert_eq!(delivered, copied(None), "prefix {inserted}");
+            assert_eq!(delivered, copied("paste-unavailable"), "prefix {inserted}");
         }
         assert_eq!(*desk.events.borrow(), expected, "prefix {inserted}");
         assert!(!desk.control_down.get(), "Control left down by prefix {inserted}");
@@ -701,7 +696,10 @@ fn a_failed_v_key_up_is_retried_after_control_is_released() {
     use PasteEvent::*;
     let desk = Fake::new("[@synthetic]");
     desk.input_results.replace(VecDeque::from([2, 0, 1]));
-    assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+    assert_eq!(
+        deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+        copied("paste-unavailable")
+    );
     assert_eq!(
         *desk.input_requests.borrow(),
         [
@@ -729,7 +727,7 @@ fn blocked_key_ups_are_retained_warned_and_recovered_before_any_later_paste() {
             .extend(std::iter::repeat_n(0, 3 * releases));
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some("key-release-failed"))
+            copied("key-release-failed")
         );
         assert!(desk.control_down.get());
         assert_eq!(desk.v_down.get(), prefix == 2);
@@ -744,7 +742,7 @@ fn blocked_key_ups_are_retained_warned_and_recovered_before_any_later_paste() {
             .extend(std::iter::repeat_n(0, 3 * releases));
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some("key-release-failed"))
+            copied("key-release-failed")
         );
         assert_eq!(desk.posts.borrow().len(), 1);
         assert_eq!(desk.input_requests.borrow().len() - requests, 3 * releases);
@@ -753,7 +751,7 @@ fn blocked_key_ups_are_retained_warned_and_recovered_before_any_later_paste() {
         // The next copy-only delivery still releases the retained keys.
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", false),
-            copied(Some("paste-off"))
+            copied("paste-off")
         );
         assert!(!desk.keys_unreleased());
         assert!(!desk.control_down.get());
@@ -774,7 +772,7 @@ fn recovery_retains_only_the_key_up_that_windows_has_not_accepted() {
     desk.input_results.replace(VecDeque::from([2, 0, 1, 0, 0]));
     assert_eq!(
         deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-        copied(Some("key-release-failed"))
+        copied("key-release-failed")
     );
     assert!(desk.v_down.get());
     assert!(!desk.control_down.get());
@@ -782,7 +780,7 @@ fn recovery_retains_only_the_key_up_that_windows_has_not_accepted() {
     let requests = desk.input_requests.borrow().len();
     assert_eq!(
         deliver_ticket(&desk, &ticket(), "[@synthetic]", false),
-        copied(Some("paste-off"))
+        copied("paste-off")
     );
     assert_eq!(&desk.input_requests.borrow()[requests..], [vec![VUp]]);
     assert!(!desk.keys_unreleased());
@@ -814,11 +812,11 @@ fn recovery_rechecks_the_ticket_after_lock_and_retry_waits_before_new_key_downs(
         desk.input_results.replace(VecDeque::from([0, 1]));
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some(if index == 2 {
+            copied(if index == 2 {
                 "clipboard-changed"
             } else {
                 "target-changed"
-            }))
+            })
         );
         assert_eq!(
             *desk.input_requests.borrow(),
@@ -839,7 +837,7 @@ fn an_expired_delivery_can_release_pending_keys_but_cannot_inject_a_new_paste() 
     ticket.written -= LATE;
     assert_eq!(
         deliver_ticket(&desk, &ticket, "[@synthetic]", true),
-        copied(Some("paste-expired"))
+        copied("paste-expired")
     );
     assert!(desk.posts.borrow().is_empty());
     assert_eq!(*desk.input_requests.borrow(), [vec![PasteEvent::ControlUp]]);
@@ -857,7 +855,7 @@ fn suspend_aware_expiry_precedes_focus_restoration_and_is_rechecked_after_querie
     });
     assert_eq!(
         deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-        copied(Some("paste-expired"))
+        copied("paste-expired")
     );
     assert!(desk.restores.borrow().is_empty());
     assert!(desk.events.borrow().is_empty());
@@ -876,7 +874,7 @@ fn suspend_aware_expiry_precedes_focus_restoration_and_is_rechecked_after_querie
         }
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some("paste-expired"))
+            copied("paste-expired")
         );
         assert!(desk.events.borrow().is_empty());
     }
@@ -889,7 +887,7 @@ fn closed_hidden_and_minimised_windows_cannot_be_restored_or_pasted_into() {
         desk.restorable.set(false);
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some("target-changed"))
+            copied("target-changed")
         );
         assert!(desk.posts.borrow().is_empty());
         assert!(desk.events.borrow().is_empty());
@@ -917,9 +915,9 @@ fn password_check_timeout_and_provider_error_copy_without_pasting() {
             ..Fake::new("[@synthetic]")
         };
         let expected = if password == Some(true) {
-            copied(Some("secure-field"))
+            copied("secure-field")
         } else {
-            copied(None)
+            copied("paste-unavailable")
         };
         assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), expected);
         assert!(desk.posts.borrow().is_empty());
@@ -949,11 +947,11 @@ fn a_password_query_cannot_outlive_its_window_generation_or_clipboard_proof() {
         };
         assert_eq!(
             deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
-            copied(Some(if index == 2 {
+            copied(if index == 2 {
                 "clipboard-changed"
             } else {
                 "target-changed"
-            }))
+            })
         );
         assert!(desk.posts.borrow().is_empty());
         assert_eq!(desk.clipboard_reads.get(), 0);
@@ -1054,7 +1052,10 @@ fn timed_out_query_workers_keep_their_slots_and_never_queue_busy_requests() {
             password: checked,
             ..Fake::new("[@synthetic]")
         };
-        assert_eq!(deliver_ticket(&desk, &ticket(), "[@synthetic]", true), copied(None));
+        assert_eq!(
+            deliver_ticket(&desk, &ticket(), "[@synthetic]", true),
+            copied("paste-unavailable")
+        );
         assert!(desk.posts.borrow().is_empty());
     }
     let _ = release_name.send(());
@@ -1121,7 +1122,10 @@ fn a_stuck_password_provider_in_app_a_does_not_stop_app_b_from_pasting() {
         password_queries: Some(queries.clone()),
         ..Fake::new("[@synthetic]")
     };
-    assert_eq!(deliver_ticket(&a, &ticket(), "[@synthetic]", true), copied(None));
+    assert_eq!(
+        deliver_ticket(&a, &ticket(), "[@synthetic]", true),
+        copied("paste-unavailable")
+    );
     assert!(a.posts.borrow().is_empty());
 
     let b = Fake {
@@ -1148,7 +1152,10 @@ fn a_stuck_password_provider_in_app_a_does_not_stop_app_b_from_pasting() {
     );
     assert_eq!(*b.posts.borrow(), [(84, 0x09)]);
     assert!(queries.0.lock().is_ok_and(|active| active.contains(&42)));
-    assert_eq!(deliver_ticket(&a, &ticket(), "[@synthetic]", true), copied(None));
+    assert_eq!(
+        deliver_ticket(&a, &ticket(), "[@synthetic]", true),
+        copied("paste-unavailable")
+    );
     assert!(a.posts.borrow().is_empty());
     // Release only for test cleanup, after proving B pasted while A was stuck.
     let _ = release_a.send(());
@@ -1226,7 +1233,7 @@ fn windows_terminals_copy_with_a_reason() {
     let desk = Fake::new("[@synthetic]");
     assert_eq!(
         deliver(&desk, Some(&writer("WindowsTerminal.exe")), "[@synthetic]", true),
-        copied(Some("terminal"))
+        copied("terminal")
     );
     assert!(desk.posts.borrow().is_empty());
 }
@@ -1237,7 +1244,7 @@ fn terminals_and_missing_permission_copy_with_a_reason_and_ask_once_per_copy() {
     let desk = Fake::new("[@synthetic]");
     assert_eq!(
         deliver(&desk, Some(&writer("cmd.exe")), "[@synthetic]", true),
-        copied(Some("terminal"))
+        copied("terminal")
     );
     let desk = Fake {
         may_post: false,
@@ -1245,7 +1252,7 @@ fn terminals_and_missing_permission_copy_with_a_reason_and_ask_once_per_copy() {
     };
     assert_eq!(
         deliver(&desk, Some(&writer("winword.exe")), "[@synthetic]", true),
-        copied(Some("no-permission"))
+        copied("no-permission")
     );
     assert_eq!(desk.asked.get(), 1);
     assert!(desk.posts.borrow().is_empty());

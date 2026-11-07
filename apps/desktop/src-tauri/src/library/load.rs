@@ -169,6 +169,14 @@ mod tests {
         let status = super::super::status::status(&library);
         assert_eq!(status.references, 1);
         assert_eq!(status.warnings, 1);
+        assert_eq!(
+            status
+                .reading
+                .iter()
+                .map(|notice| notice.code.as_str())
+                .collect::<Vec<_>>(),
+            ["syntax"]
+        );
         let file = library.file.as_ref().unwrap_or_else(|| panic!("engine file"));
         let query = serde_json::from_value(serde_json::json!({"text":"sleep","interpret_locators":false}))
             .unwrap_or_else(|e| panic!("{e}"));

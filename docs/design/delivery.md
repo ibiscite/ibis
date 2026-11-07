@@ -25,13 +25,12 @@
 - A notice's words start exactly where the status words start, from one shared measure (`--status-text-start`), whatever the dot or the button around it.
 - A notice is one line ending in an ellipsis, with short names ("Removed Vale 2021", first author and year as on the tile). An Undo offer has a quiet **Undo ⌘Z** right beside its words; it lasts 8 s, pauses on hover and focus, and ⌘Z does the same while it shows. A remark needing nothing (tip, milestone, the size after ⌘+, why Enter did nothing) is words alone, and leaves when you type. Screen readers hear both through the status role.
 
-Every "copied, not pasted" sentence ends with its fix, with full stops, and the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). These are the exact words; a test compares them with `copiedNoticeText`.
+Every "copied, not pasted" sentence says why, then ends with its fix, with full stops; the fix is usually "Press ⌘V to paste." (Ctrl+V on Windows and Linux). Every copy has a reason: none is a bare "Copied." These are the exact words; a test compares them with `copiedNoticeText`.
 
 | Reason | Code | Words |
 | --- | --- | --- |
-| No reason given | — | Copied. Press ⌘V to paste. |
-| Pasting off | `paste-off` | Copied. Press ⌘V to paste. |
-| Paste check unavailable | `paste-unavailable` | Copied. Press ⌘V to paste. |
+| Pasting off | `paste-off` | Copied. Pasting is off in Settings. Press ⌘V to paste. |
+| Paste check unavailable or too slow | `paste-unavailable` | Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste. |
 | No paste on this system | `unsupported-system` | Copied. Ibis can’t paste on this system yet. Press ⌘V to paste. |
 | No app to paste into | `no-target` | Copied. There was no app to paste into. Press ⌘V to paste. |
 | Unapproved app | `unknown-app` | Copied. Automatic paste is not approved for this app. Press ⌘V to paste. |
@@ -48,8 +47,8 @@ Every "copied, not pasted" sentence ends with its fix, with full stops, and the 
 | A field that hides typing | `secure-field` | Copied. This field hides what you type. Press ⌘V to paste. |
 | Secure Event Input on | `secure-input` | Copied. Secure typing is on, possibly in another app. Press ⌘V to paste. |
 | Administrator app (Windows) | `elevated-app` | Copied. Not pasted into an administrator app. Press ⌘V to paste. |
-| Windows keys stuck | `key-release-failed` | Copied. Press and release Ctrl and V to paste. |
+| Windows keys stuck | `key-release-failed` | Copied. Ibis couldn’t release the keys it pressed. Press and release Ctrl and V to paste. |
 | Selected text never shown | `selection-not-shown` | Copied. Ibis replaces only text it showed you. Press ⌘V to replace it. |
 | Old citation not selected | `citation-not-selected` | Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V. |
 
-Never call the destination a password field. The right paste key is shown per system.
+Never call the destination a password field. A field that hides typing is named only when its subrole says so (a web password field included); secure typing alone says "possibly in another app". The right paste key is shown per system.

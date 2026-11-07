@@ -60,6 +60,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | Loaded | "Zotero · 1,204 references" or "thesis.bib · 1,204 references" |
 | Changed while open | "… · updated 2 minutes ago" (only when references changed) |
 | Reloading | "… · reloading…", count kept; rows and the citation stay until it ends |
+| Entries skipped or to check | "damaged.bib · 3 references · 4 entries skipped · 1 to check", look dot; the hover text and the library menu's heading say why and where: "4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (lines 21 and 25). Check line 15." |
 | Problem, old copy kept | Warning dot, never the stop red, since the old copy is still searched; "Zotero not updated · 2 h", then one fix button with its key ("Open Zotero ⌘O", "Find thesis.bib…") |
 
 - Counts include bibliographic records only. Background work shows a small progress ring before the words.

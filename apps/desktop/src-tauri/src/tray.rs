@@ -364,6 +364,7 @@ mod tests {
             references: 12,
             source_counts: Default::default(),
             warnings,
+            reading: Vec::new(),
             error: error.map(String::from),
             problem: None,
             error_reason: None,

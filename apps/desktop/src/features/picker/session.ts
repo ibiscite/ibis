@@ -329,6 +329,13 @@ export function reduceSession(s: SessionState, event: SessionEvent): [SessionSta
     case "delivered": {
       if (f.phase !== "notice") return [s, []];
       if (event.delivered && f.id === s.lastSuccessfulCopy) s = { ...s, lastOutcome: noticeTitle({ delivered: readDelivered(event.delivered) }) };
+      // A change Ibis only copied left the old citation in the document: it is
+      // still the one Change Last Citation replaces, now with the new choice.
+      const last = f.appId === null ? undefined : s.lastCitations.get(f.appId);
+      if (last && f.replaces !== null && f.id === s.lastSuccessfulCopy && event.delivered?.outcome === "copied"
+        && event.delivered.reason === "citation-not-selected") {
+        s = { ...s, lastCitations: new Map(s.lastCitations).set(f.appId!, { ...last, text: f.replaces }) };
+      }
       const permissionRefused = event.delivered?.outcome === "copied"
         && (event.delivered.reason === "no-permission" || event.delivered.reason === "accessibility-required");
       // Only a refusal this citation still owns is a detour; a newer opening is not.

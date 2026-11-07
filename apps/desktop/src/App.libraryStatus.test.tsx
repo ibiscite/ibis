@@ -11,7 +11,7 @@ const hour = 3_600_000;
 const library = (overrides: Partial<LibraryStatus> = {}): LibraryStatus => ({
   source_generation: "1", source_is_requested: true, revision: "1", state: "loaded", has_snapshot: true, zotero: true, snapshot_zotero: true,
   zotero_libraries: ["user"], name: "Zotero library", snapshot_name: "Zotero library",
-  references: 12, source_counts: { "zotero:user": 12 }, warnings: 0, error: null, problem: null,
+  references: 12, source_counts: { "zotero:user": 12 }, warnings: 0, reading: [], error: null, problem: null,
   note: null, settings_notice: null, stale: false, checked_at: Date.now() - 2 * hour, updated_at: null, ...overrides,
 });
 const stale = (overrides: Partial<LibraryStatus> = {}) => library({ state: "error", stale: true,
@@ -128,7 +128,7 @@ test.each(["virtual", "Enter", " "])("%s activation reloads missing, empty and r
 test.each([
   ["empty library", { references: 0 }, "thesis.bib · no references"],
   ["unreadable without a snapshot", { state: "error", has_snapshot: false, references: 0, problem: "unreadable", error: "The library file could not be read" }, "thesis.bib · not opened"],
-  ["damaged file with usable references", { warnings: 1 }, "thesis.bib · 12 references · 1 reading notice"],
+  ["damaged file with usable references", { warnings: 1, reading: [{ code: "syntax", line: 4, key: null }] }, "thesis.bib · 12 references · 1 entry skipped"],
 ] satisfies [string, Partial<LibraryStatus>, string][])("Library remains a named footer button with Reload in %s", async (_, overrides, expected) => {
   const reload = vi.fn(() => null);
   const choose = vi.fn(() => null);

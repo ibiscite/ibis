@@ -1571,7 +1571,8 @@ JOURNEY_DOCUMENT = "As shown in invented journey, sleep matters.\n"
 JOURNEY_PASTED = "As shown in (Example, 2026), sleep matters.\n"
 JOURNEY_COPIED = "[@journey2026]"
 JOURNEY_PASTED_CITATION = "(Example, 2026)"  # The plain text of TextEdit's formatted copy.
-COPIED_HINT = "Copied. Press \u2318V to paste."
+# The safe copy when the last check before pasting cannot finish in time.
+COPIED_HINT = "Copied. Ibis couldn\u2019t confirm where the text would go. Press \u2318V to paste."
 JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
 PASTED_NOTICE = "Pasted into TextEdit"
 TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
@@ -2251,8 +2252,8 @@ def smoke_main(args):
                 with recording("action", "fixture-damaged"):
                     library.write_text((Path(__file__).resolve().parent.parent / "fixtures/bibtex/damaged.bib").read_text(encoding="utf-8"), encoding="utf-8")
                 launch("damaged")
-                wait_for(lambda: library.name in strings(snapshot()) and "reading notice" in strings(snapshot()),
-                         "damaged library starts with a reading notice")
+                wait_for(lambda: library.name in strings(snapshot()) and "4 entries skipped" in strings(snapshot()),
+                         "damaged library starts by saying it skipped 4 entries")
                 query("good2", "Loads after the damage")
                 stop()
             check("damaged startup library warns and keeps valid records searchable", damaged)
@@ -4348,7 +4349,7 @@ class ContractTests(unittest.TestCase):
         for nodes in ([{"value": f"\u2068{name}\u2069 · no references"}],
                       [{"value": name}, {"value": " · "}, {"value": "no references"}],
                       [{"value": "no references"}, {"value": " · "}, {"value": name}],
-                      [{"value": "no references · 2 reading notices"}],
+                      [{"value": "no references · 2 entries skipped"}],
                       [{"value": f"\u2068{name}\u2069 · no references. \u2068checked just now, 12:00 PM\u2069"}]):
             with self.subTest(nodes=nodes):
                 self.assertTrue(shows_empty_library({"nodes": nodes}))

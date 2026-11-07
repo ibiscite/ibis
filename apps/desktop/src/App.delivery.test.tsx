@@ -65,9 +65,9 @@ test.each([
   ["sleep and wake", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired. Press ⌘V to paste."],
   ["lock and unlock", (h: Harness) => { h.lifecycle.epoch += 2; }, "Copied. The paste expired. Press ⌘V to paste."],
   ["long delay", (h: Harness) => { h.lifecycle.elapsed += 1500; }, "Copied. The paste expired. Press ⌘V to paste."],
-  ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Press ⌘V to paste."],
-  ["AX unavailable", (h: Harness) => { h.target.focusAvailable = false; }, "Copied. Press ⌘V to paste."],
-  ["AX timeout", (h: Harness) => { h.target.focusTimedOut = true; }, "Copied. Press ⌘V to paste."],
+  ["safety check unavailable", (h: Harness) => { h.lifecycle.available = false; }, "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."],
+  ["AX unavailable", (h: Harness) => { h.target.focusAvailable = false; }, "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."],
+  ["AX timeout", (h: Harness) => { h.target.focusTimedOut = true; }, "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste."],
   ["foreign nonactivating panel holds keyboard focus", (h: Harness) => { h.target.focusedPid = 99; }, "Copied. The target app or window changed. Press ⌘V to paste."],
   ["clipboard changed", (h: Harness) => { h.clipboard.sequence += 1; }, "Copied. The clipboard changed since. Copy the citation again."],
   ["another window", (h: Harness) => { h.target.window = 200; }, "Copied. The target app or window changed. Press ⌘V to paste."],
@@ -94,7 +94,7 @@ test("unproven macOS focus copies with an unavailable reason", async () => {
   await enter();
   await finishCopy(harness);
   await finishDelivery(harness);
-  expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
+  expectReceipt(harness, "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.", "[@a]");
   expect(harness.clipboard.text).toBe("[@a]");
   expect(harness.document.pastes).toEqual([]);
 });
@@ -107,7 +107,7 @@ test("a foreign panel present at capture is unavailable evidence, not a changed 
   await finishDelivery(harness);
   expect(harness.document.pastes).toEqual([]);
   expect(harness.clipboard.text).toBe("[@a]");
-  expectReceipt(harness, "Copied. Press ⌘V to paste.", "[@a]");
+  expectReceipt(harness, "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.", "[@a]");
 });
 
 test("opening an attached Save sheet keeps the document identity but refuses paste into the new surface", async () => {
@@ -322,7 +322,7 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   expect(harness.document.pastes).toHaveLength(when === "before paste" ? 0 : 1);
   expect(harness.copy.calls).toHaveLength(1);
   expect(harness.delivery.calls).toHaveLength(1);
-  expectReceipt(harness, when === "before paste" ? "Copied. Press ⌘V to paste." : "Pasted into Example Writer", "[@a]");
+  expectReceipt(harness, when === "before paste" ? "Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste." : "Pasted into Example Writer", "[@a]");
 });
 
 test.each(["different text", "identical text"])("an old notice cannot steal a newer copy's proof (%s)", async (variant) => {
@@ -670,6 +670,28 @@ test("with nothing selected the changed citation is copied, the document is unto
   expect(harness.document.text).toBe("Draft: [@a] ends.");
   expect(harness.clipboard.text).toBe("[@a, p. 3]");
   expectReceipt(harness, "Copied. Ibis replaces a citation only when it is selected. Select it, then press ⌘V.", "[@a, p. 3]");
+});
+
+test("after a change that was only copied, selecting the old citation and changing again replaces it", async () => {
+  const harness = await pastedOnce();
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await finishCopy(harness);
+  await finishDelivery(harness);
+  expect(harness.document.text).toBe("Draft: [@a] ends.");
+  // The old citation is still the one in the document: select it and try again.
+  harness.document.selection = [7, 11];
+  await act(async () => { await harness.reopen(); });
+  await changeLast();
+  await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
+  await enter();
+  await act(async () => { harness.copy.pending.at(-1)!.complete(); });
+  await act(async () => { harness.delivery.pending.at(-1)!.complete(); });
+  await act(async () => { harness.notice.pending.at(-1)!.complete(); });
+  expect(harness.document.text).toBe("Draft: [@a, p. 3] ends.");
+  expectReceipt(harness, "Pasted into Example Writer", "[@a, p. 3]");
 });
 
 test("the shortcut alone never reopens the last citation", async () => {
