@@ -52,7 +52,10 @@ export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
   const commandLine = COMMAND_LINE.map((file) => `[${file}](${base}/${file})`).join(" · ");
   const list = changes(generated);
-  const upgrade = /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
+  const upgrade = /^v0\.3\./.test(tag)
+    // Before 1.0, settings may reset (maintainer, 2026-11-07); the notes say so.
+    ? "\n**Good to know:** Format choices made in an earlier version start fresh; choose them again.\n"
+    : /^v0\.2\./.test(tag) ? "\n**macOS shortcut:** the default is now Command+Shift+Y. Ibis keeps every explicitly stored shortcut, including Control+Command+R. To keep that old chord, set `\"shortcut\": \"Control+Command+R\"`. To use the new default, remove the `shortcut` setting and restart Ibis. Windows and Linux keep Ctrl+Shift+Y.\n" : "";
   return `Ibis ${tag.replace(/^v/, "")}: press a shortcut in any app, find a reference, and copy its citation.
 
 ## Download

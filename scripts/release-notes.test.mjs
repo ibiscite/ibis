@@ -83,6 +83,14 @@ test("0.2 upgrade notes explain the new default and preserve explicitly stored s
   for (const tag of ["v0.1.1", "v0.3.0"]) assert.doesNotMatch(releaseNotes(tag, generated), /macOS shortcut/);
 });
 
+test("0.3 notes say format choices from an earlier version start fresh", () => {
+  // The maintainer, 2026-11-07: before 1.0 settings may reset, and the notes say so.
+  for (const tag of ["v0.3.0", "v0.3.1"]) {
+    assert.match(releaseNotes(tag, generated), /\*\*Good to know:\*\* Format choices made in an earlier version start fresh; choose them again\./);
+  }
+  for (const tag of ["v0.2.1", "v0.4.0"]) assert.doesNotMatch(releaseNotes(tag, generated), /start fresh/);
+});
+
 test("lists each change once, even when two commits or PR references repeat it", () => {
   const repeated = `### Bug Fixes
 
