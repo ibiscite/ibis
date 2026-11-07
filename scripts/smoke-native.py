@@ -1810,10 +1810,17 @@ def _journey_main(args):
         prime_clipboard(native)
         native.key("Return")
         notices = set()
+        facts = report["terminal"] = {"clipboard": None, "picker_seen": False, "notice_seen": False}
         def copied():
-            strings = native.ibis_strings() if app.poll() is None else []
-            notices.update(text for text in strings if text.startswith(("Copied", "Pasted")))
-            return native.clipboard() == JOURNEY_COPIED and TERMINAL_NOTICE in notices
+            if app.poll() is None:
+                onscreen = native.helper("picker", app.pid)["onscreen"]
+                facts["picker_seen"] |= "Ibis" in onscreen
+                facts["notice_seen"] |= "Ibis notice" in onscreen
+                notices.update(text for text in native.ibis_strings() if text.startswith(("Copied", "Pasted")))
+            clipboard = native.clipboard()
+            facts["clipboard"] = ("expected" if clipboard == JOURNEY_COPIED else "sentinel"
+                                  if clipboard == CLIPBOARD_SENTINEL else "other")
+            return facts["clipboard"] == "expected" and TERMINAL_NOTICE in notices
         try:
             wait_for(copied, "a copy and the terminal reason", timeout=15)
         except AssertionError:
