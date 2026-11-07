@@ -18,6 +18,11 @@ export const columns = {
  * edge and is never narrower than it. */
 export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]', trigger: '.citation-field .ui-popup-button[aria-expanded="true"]' } as const;
 
+/** [C9] Action menus fit their labels until the window limits their width,
+ * scrolling or not: a scroll bar never takes its width from a label. Format
+ * pop-ups deliberately keep a narrow column with cut samples. */
+export const menuLabels = { label: ".menu-popover .menu-label", outside: ".toolbar-menu-popover" } as const;
+
 /** [C19] Rows of one form share both edges: every control's drawn fill. */
 export const forms = { form: ".citation-details", controls: ".citation-field .ui-popup-button, .citation-field input" } as const;
 
@@ -76,6 +81,14 @@ export function geometry(root: ParentNode = document): string[] {
     const pushed = width - lead(menu, true) <= 8 + tolerance && lead(menu) < lead(button);
     if (Math.abs(lead(menu) - lead(button)) > tolerance && !pushed) failures.push(`[C21] ${name(popover)}: starts ${lead(menu).toFixed(1)}, its button ${lead(button).toFixed(1)}`);
     if (menu.width + tolerance < button.width) failures.push(`[C21] ${name(popover)}: ${menu.width.toFixed(1)} wide, narrower than its button (${button.width.toFixed(1)})`);
+  }
+
+  for (const label of root.querySelectorAll<HTMLElement>(menuLabels.label)) {
+    if (!visible(label) || label.closest(menuLabels.outside)) continue;
+    const menu = label.closest(".menu-popover")!;
+    const menuWidth = menu.getBoundingClientRect().width, maximum = parseFloat(getComputedStyle(menu).maxWidth);
+    if (menuWidth + tolerance < maximum && label.scrollWidth > label.clientWidth)
+      failures.push(`[C9] ${name(label)}: cut by ${label.scrollWidth - label.clientWidth}px while its menu is ${menuWidth.toFixed(1)} wide, below its maximum (${maximum.toFixed(1)})`);
   }
 
   for (const form of root.querySelectorAll(forms.form)) {
