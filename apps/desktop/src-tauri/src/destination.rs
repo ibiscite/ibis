@@ -145,7 +145,12 @@ fn keep_copy(path: &Path, name: &str) -> Copy {
     // Only an interrupted copy leaves this name behind.
     let _ = fs::remove_file(&partial);
     let made = fs::read(path).and_then(|bytes| {
-        let mut file = fs::OpenOptions::new().write(true).create_new(true).open(&partial)?;
+        let mut options = fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        // Private before any byte is written, as the settings themselves are.
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        let mut file = options.open(&partial)?;
         file.write_all(&bytes)?;
         file.sync_all()?;
         fs::hard_link(&partial, &copy)
@@ -679,6 +684,14 @@ mod tests {
         memory.note_earlier_settings(&settings);
         assert!(memory.says_earlier_formats());
         assert_eq!(fs::read(directory.path().join("settings.json.earlier"))?, earlier);
+        #[cfg(unix)]
+        assert_eq!(
+            std::os::unix::fs::PermissionsExt::mode(
+                &fs::metadata(directory.path().join("settings.json.earlier"))?.permissions()
+            ) & 0o777,
+            0o600,
+            "only its owner can read it"
+        );
         // Any chosen default answers it, Pandoc's included, which is stored as none.
         memory.answer_earlier_formats();
         assert!(!memory.says_earlier_formats());
