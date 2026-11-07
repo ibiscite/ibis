@@ -33,7 +33,7 @@ fn fitted(area: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
 /// The work area Settings opens in, as logical (x, y, width, height): the
 /// picker's screen, else the main one. Settings is both sized for and centred
 /// in it, so the two never disagree about the screen. An empty area is unknown.
-fn work_area<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<(f64, f64, f64, f64)> {
+pub(crate) fn work_area(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let picker = app
         .get_webview_window("main")
         .and_then(|window| window.current_monitor().ok().flatten());
@@ -162,7 +162,7 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
-    let area = work_area(app);
+    let area = R::work_area(app);
     let (size, min) = fitted(area.map(|(_, _, width, height)| (width, height)));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
