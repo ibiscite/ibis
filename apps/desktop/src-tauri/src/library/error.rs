@@ -54,7 +54,8 @@ impl LoadError {
     }
     pub(super) fn with_snapshot_context(self, has_references: bool, zotero: bool) -> String {
         if self.retains(has_references, zotero) {
-            words("app-library-kept", &[("error", &self.to_string())])
+            // A reason is a whole sentence; here it leads into the rest.
+            words("app-library-kept", &[("error", self.to_string().trim_end_matches('.'))])
         } else {
             self.to_string()
         }

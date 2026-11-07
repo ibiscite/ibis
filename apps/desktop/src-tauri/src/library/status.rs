@@ -228,7 +228,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             result.stale = true;
             result
                 .error
-                .get_or_insert_with(|| words("app-library-not-refreshed", &[]));
+                .get_or_insert_with(|| refresh_failure(info.refresh_error, info.refresh_reason));
         }
     }
     if result.stale && library.error.is_some() && !source_is_requested {
@@ -239,6 +239,19 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         });
     }
     result
+}
+
+/// Why a watched refresh failed, in the engine's words when it gave a reason,
+/// with the references kept.
+fn refresh_failure(
+    code: Option<ibis_core::contract::ErrorCode>,
+    reason: Option<ibis_core::contract::ErrorReason>,
+) -> String {
+    match (code, reason) {
+        (Some(code), Some(reason)) => LoadError::file_refresh(ibis_core::contract::EngineError::because(code, reason))
+            .with_snapshot_context(true, false),
+        _ => words("app-library-not-refreshed", &[]),
+    }
 }
 
 /// A time for the interface, which shows it relative to its own clock.
@@ -258,6 +271,19 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn a_watched_refresh_that_fails_says_why_and_keeps_the_references() {
+        use ibis_core::contract::{ErrorCode, ErrorReason};
+        assert_eq!(
+            super::refresh_failure(Some(ErrorCode::BadInput), Some(ErrorReason::UnknownFormat)),
+            "This file is not in a format Ibis reads: BibTeX, BibLaTeX, CSL-JSON, RIS or CSV; keeping the last loaded references"
+        );
+        assert_eq!(
+            super::refresh_failure(Some(ErrorCode::SourceUnavailable), None),
+            "The library could not be refreshed; keeping the last loaded references."
+        );
+    }
 
     #[test]
     fn an_unknown_file_open_publishes_a_refusal_without_an_empty_snapshot() -> Result<(), Box<dyn std::error::Error>> {
