@@ -10,7 +10,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
   const ports: SessionPorts = { pickerPresentation: vi.fn(async () => 0), copyFileCitation: vi.fn(async () => ({ text: "canonical citation", warnings: [] })),
     hidePicker: vi.fn(async () => true), showCopiedNotice: vi.fn(async () => ({ outcome: "pasted" as const, app: "Example Writer" })),
     output: () => ({ opening: 0, choice: 0, delivery: 0 }), pinned: () => false, consume: vi.fn(), refresh: vi.fn(), askFormat: vi.fn(), reportHide: vi.fn(),
-    search: vi.fn(async () => ({ revision: "synthetic", results: [] })), ...overrides };
+    search: vi.fn(async () => ({ revision: "synthetic", results: [] })), previewFileCitation: vi.fn(async () => { throw new Error("not asked"); }), ...overrides };
   controller.connect(ports);
   const chosen = [testStates[1]!.results[0]!];
   const ready = () => {

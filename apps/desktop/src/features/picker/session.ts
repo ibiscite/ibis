@@ -8,6 +8,7 @@ import { choiceKey, idKey, type CitationReference } from "./choice";
 import type { OutputId } from "../../format/outputs";
 import { closestMatchWarnings } from "./rows";
 import { initialSearch, reduceSearch, type SearchEffect, type SearchEvent, type SearchState } from "./search";
+import { initialPreview, reducePreview, type PreviewEffect, type PreviewEvent, type PreviewState } from "./preview";
 
 export type OutputToken = { opening: number; choice: number; delivery: number };
 type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: string };
@@ -53,6 +54,8 @@ export type SessionState = {
   visibilityEvents: number;
   /** The search for the current query and its shown answer. */
   search: SearchState;
+  /** What Enter would paste for the chosen references. */
+  preview: PreviewState;
   pendingCopy: Pending | null; flights: Flight[]; activeCopy: number | null; nextCopy: number; lastSuccessfulCopy: number;
   copied: Copied | null; copyError: string | null; lastOutcome: string | null;
   shelfCopied: ShelfCopied | null; copyNotice: Copied | null; removed: RemovedReference | null;
@@ -60,6 +63,7 @@ export type SessionState = {
 type Completion = { id: number; session: number };
 export type SessionEvent =
   | SearchEvent
+  | PreviewEvent
   | { type: "view"; session: number; interaction: number; view: SessionView }
   | { type: "project-observed"; output: OutputToken; version: string | null; clearReplacement: boolean }
   | { type: "query"; value: string }
@@ -92,13 +96,14 @@ export type SessionEffect =
   | { type: "consume"; output: OutputToken }
   | { type: "read-presentation"; visibility: number }
   | { type: "refresh" | "ask-format" }
-  | SearchEffect;
+  | SearchEffect
+  | PreviewEffect;
 
 export function initialSession(query = "", copied: Copied | null = null): SessionState {
   return { query, interpretLocators: true, active: 0, selected: new Map(), selectionChanged: false, fromDocument: false, lastCitations: new Map(), changing: null,
     opened: 0, session: 0, presentation: null, visibility: 0, interaction: 0, context: 0, viewInteraction: -1, view: null,
     presentationSubscribed: false, readingPresentation: false, retryPresentation: false,
-    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch,
+    hiddenAt: null, selectAll: 0, permissionDetour: false, shown: false, visibilityEvents: 0, search: initialSearch, preview: initialPreview,
     pendingCopy: null, flights: [], activeCopy: null, nextCopy: 0, lastSuccessfulCopy: 0, copied, shelfCopied: null, copyNotice: copied, removed: null, copyError: null, lastOutcome: null };
 }
 export const sessionQueryKey = (state: SessionState) => JSON.stringify([state.query, state.interpretLocators]);
@@ -174,6 +179,10 @@ function advance(s: SessionState): [SessionState, SessionEffect[]] {
 
 export function reduceSession(s: SessionState, event: SessionEvent): [SessionState, SessionEffect[]] {
   switch (event.type) {
+    case "preview-inputs": case "previewed": case "preview-failed": {
+      const step = reducePreview(s.preview, event, s.session, s.opened);
+      return step ? [{ ...s, preview: step.preview }, step.effects] : [s, []];
+    }
     case "search-inputs": case "searched": case "search-failed": case "announce": {
       const step = reduceSearch(s.search, event, s.session);
       if (!step) return [s, []];
