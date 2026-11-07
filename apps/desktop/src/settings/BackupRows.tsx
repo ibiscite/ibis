@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BackupProblem, System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
+import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
 import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
 import { listedOutput, outputName } from "../format/outputs";
@@ -126,7 +127,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
 
   return (
     <Group id="another-computer" title={text("backup-title")}>
-      <Row id="backup-settings" label={text("backup-label")} description={text("backup-description")}
+      <Row id="backup-settings" label={text("backup-label")} description={text("backup-description", { platform: currentPlatform() })}
         problem={problem?.row === "backup" ? text(problem.id) : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
         {saved && <span role="status" className="ui-settings-description">{text("backup-saved", { file: saved })}</span>}

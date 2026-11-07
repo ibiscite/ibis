@@ -1,3 +1,4 @@
+import { currentPlatform } from "../platform";
 import type { InterfaceMessages, MessageId } from "../i18n";
 
 export const PAGES = ["general", "look", "citations", "shortcuts", "about"] as const;
@@ -26,5 +27,6 @@ export const ROWS: readonly { id: string; page: Page; label: MessageId; descript
 /** Search and rendering read the same descriptions. */
 export function rowDetails(id: string, text: InterfaceMessages["text"]) {
   const row = ROWS.find((row) => row.id === id)!;
-  return { label: text(row.label), description: row.description ? text(row.description) : undefined };
+  const platform = currentPlatform();
+  return { label: text(row.label, { platform }), description: row.description ? text(row.description, { platform }) : undefined };
 }

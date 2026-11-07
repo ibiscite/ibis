@@ -140,7 +140,16 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         .focused(true)
         // A system alert leaves Settings without the keyboard; the click that
         // returns to it must also reach the control under the pointer.
-        .accept_first_mouse(true);
+        .accept_first_mouse(true)
+        // Shown once its page has loaded, so it never opens as an empty white
+        // surface (in Dark too).
+        .visible(false)
+        .on_page_load(|window, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Finished {
+                report(window.show(), NativeIssue::Show);
+                report(window.set_focus(), NativeIssue::Focus);
+            }
+        });
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
     {

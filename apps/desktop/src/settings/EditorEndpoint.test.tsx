@@ -16,7 +16,7 @@ function row(api: Partial<Parameters<typeof EditorEndpointRow>[0]["api"]> = {}) 
 
 test("it is off until switched on, then shows the address to paste and what it lets in", async () => {
   const api = row();
-  const toggle = await screen.findByRole("switch", { name: "Editor endpoint" });
+  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
   await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
   expect((toggle as HTMLInputElement).checked).toBe(false);
   expect(screen.queryByText(/127\.0\.0\.1/)).toBeNull();
@@ -31,7 +31,7 @@ test("it is off until switched on, then shows the address to paste and what it l
 
 test("a port another program holds is said, and the switch stays off", async () => {
   row({ setEditorEndpoint: vi.fn(async () => ({ on: false, url: null, problem: "port-in-use" as const })) });
-  const toggle = await screen.findByRole("switch", { name: "Editor endpoint" });
+  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
   await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
   fireEvent.click(toggle);
   await screen.findByText("Another program is using the endpoint’s port, so it is off.");
@@ -41,7 +41,7 @@ test("a port another program holds is said, and the switch stays off", async () 
 test("a slow first read cannot undo a newer switch", async () => {
   let release: (status: EndpointStatus) => void = () => {};
   const api = row({ editorEndpoint: vi.fn(() => new Promise<EndpointStatus>((resolve) => { release = resolve; })) });
-  const toggle = await screen.findByRole("switch", { name: "Editor endpoint" });
+  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
   // A failed first read leaves it usable; here the read is still out.
   expect((toggle as HTMLInputElement).disabled).toBe(true);
   await act(async () => { await api.setEditorEndpoint(true); });
@@ -52,7 +52,7 @@ test("a slow first read cannot undo a newer switch", async () => {
 
 test("a failure to change it says so", async () => {
   row({ setEditorEndpoint: vi.fn(async () => { throw new Error("no"); }) });
-  const toggle = await screen.findByRole("switch", { name: "Editor endpoint" });
+  const toggle = await screen.findByRole("switch", { name: "Cite from your editor" });
   await waitFor(() => expect((toggle as HTMLInputElement).disabled).toBe(false));
   fireEvent.click(toggle);
   await screen.findByText("The endpoint could not be changed. Try again.");
