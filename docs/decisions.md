@@ -78,5 +78,8 @@ the anchor older links use.
 ## 0039 Extending Ibis from outside
 [0039](decisions/0039-extending-ibis-from-outside.md): licence boundary, package names, `ibis-foo` plugins, the running app answers `ibis`.
 
+## 0040 One owner for shared settings
+[0040](decisions/0040-one-settings-owner.md): one engine owner orders every settings write by when it was asked for; formats per app move into `settings.json`.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.

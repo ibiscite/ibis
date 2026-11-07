@@ -11,6 +11,7 @@ pub mod mcp;
 
 pub mod outputs;
 
+pub mod settings;
 pub mod settings_backup;
 
 pub mod protocol;
