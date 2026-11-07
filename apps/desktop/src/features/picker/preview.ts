@@ -58,6 +58,21 @@ export type PreviewEffect = { type: "preview"; request: number; ask: PreviewAsk 
 
 export type PreviewStep = { preview: PreviewState; effects: (PreviewEffect | { type: "refresh" })[] };
 
+/** What a preview is made for: the output, the library version, the choice and the project context. */
+export const previewKey = (output: OutputId, version: number, choice: string, context: [number, number] | null | undefined) =>
+  `${output}\u0002${version}\u0002${choice}\u0002${JSON.stringify(context)}`;
+
+/** The preview's answer for `key`, if it is this choice's to use now. */
+export function ownedPreview(s: PreviewState, key: string, session: number, opened: number): PreviewResult | null {
+  const { result, request, started } = s;
+  if (result?.key !== key) return null;
+  // A failure says nothing about the next try: choosing the citation again or
+  // reopening prepares it afresh, and an earlier opening's failure is never shown.
+  const failed = result.value === "failed";
+  const reusable = !failed && (started === null || started.request === result.request);
+  return (result.request === request && !(failed && (result.session !== session || result.opened !== opened))) || reusable ? result : null;
+}
+
 const once = (session: number, key: string) => `${session}\u0002${key}`;
 
 /** Start the current request, stopping any other still out. */

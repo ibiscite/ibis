@@ -214,9 +214,7 @@ fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
         .extension()
         .and_then(|extension| extension.to_str())
         .is_some_and(|extension| {
-            ["bib", "bibtex", "biblatex", "json", "csljson"]
-                .iter()
-                .any(|allowed| extension.eq_ignore_ascii_case(allowed))
+            ibis_engine::library_file_extensions().any(|allowed| extension.eq_ignore_ascii_case(allowed))
         });
     if !path.is_file() || !supported {
         return Err(failed());

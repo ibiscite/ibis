@@ -157,6 +157,8 @@ pub enum ErrorReason {
     ZoteroNotFound,
     /// A closed read needs a private copy and there is no room for it.
     ZoteroNoSpace,
+    /// A CSV file's first row does not name the columns of Ibis's template.
+    CsvTemplate,
     /// Nothing has the key in what was read, and a library was too large to read whole.
     LibraryCutShort,
 }

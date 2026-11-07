@@ -81,11 +81,16 @@ impl PreparedFileReload {
 }
 
 pub(super) fn source_error(error: SourceError) -> EngineError {
+    if error == SourceError::CsvTemplate {
+        return EngineError::because(ErrorCode::BadInput, ibis_core::contract::ErrorReason::CsvTemplate);
+    }
     super::error(match error {
         SourceError::TooLarge => ErrorCode::ResourceLimit,
-        SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
-            ErrorCode::BadInput
-        }
+        SourceError::NotRegular
+        | SourceError::Unreadable
+        | SourceError::Incomplete
+        | SourceError::InvalidData
+        | SourceError::CsvTemplate => ErrorCode::BadInput,
         SourceError::Unavailable | SourceError::Changing | SourceError::WatchUnavailable => {
             ErrorCode::SourceUnavailable
         }

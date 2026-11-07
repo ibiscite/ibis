@@ -534,16 +534,20 @@ pub(super) fn code_sentence(code: ErrorCode) -> String {
     catalogue::code(code, Audience::Cli)
 }
 
-pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
+pub(super) fn file_failure(path: &Path, error: EngineError) -> String {
     format!(
         "cannot open {}: {}",
         field(&path.display().to_string()),
-        file_reason(path, code)
+        file_reason(path, error)
     )
 }
 
 /// Why a library file did not open, without naming it.
-pub(super) fn file_reason(path: &Path, code: ErrorCode) -> String {
+pub(super) fn file_reason(path: &Path, error: EngineError) -> String {
+    if let Some(reason) = error.reason {
+        return reason_sentence(reason);
+    }
+    let code = error.code;
     // The bounded read has already failed; looking again is bounded too, so a
     // stalled disk or a path just replaced by a pipe cannot hold the command.
     // Without an answer in time, the read's own reason stands.
@@ -552,7 +556,7 @@ pub(super) fn file_reason(path: &Path, code: ErrorCode) -> String {
     found.map_or_else(
         || match code {
             ErrorCode::BadInput => {
-                "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents.".into()
+                "it cannot be read, or it is not a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV library; check its permissions and contents.".into()
             }
             ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.".into(),
             ErrorCode::ResourceLimit => {

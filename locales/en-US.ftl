@@ -70,6 +70,10 @@ reason-zotero-not-found = No Zotero library was found on this computer.
 reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
     .cli = Free some space, or open Zotero.
     .app = Free some space, or open Zotero.
+reason-csv-template = The first row of this CSV file does not match Ibis’s template: it must name a type and a title column, and only columns the template lists.
+    .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+    .agent = Ask the person to rename the columns in the file’s first row to the template’s.
+    .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
 reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
     .cli = Split the library into smaller files and give each with --file.
     .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
@@ -155,7 +159,7 @@ cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
 cli-spelling-match = (spelling match)
-cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be BibTeX, BibLaTeX or CSL-JSON.
+cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be BibTeX, BibLaTeX, CSL-JSON, RIS or CSV in Ibis’s template.
 
 ## The app’s own sentence about a citation.
 

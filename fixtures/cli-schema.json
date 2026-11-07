@@ -250,6 +250,11 @@
                 "type": "string"
               },
               {
+                "const": "csv-template",
+                "description": "A CSV file's first row does not name the columns of Ibis's template.",
+                "type": "string"
+              },
+              {
                 "const": "library-cut-short",
                 "description": "Nothing has the key in what was read, and a library was too large to read whole.",
                 "type": "string"
@@ -362,7 +367,7 @@
               },
               {
                 "const": "file",
-                "description": "A BibTeX, BibLaTeX or CSL-JSON file.",
+                "description": "A BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file.",
                 "type": "string"
               },
               {
