@@ -25,8 +25,10 @@ export class PreferencePatchQueue {
   private patch: Patch = {};
   /** Which choice last set each field, so an equal value chosen again keeps its own fate. */
   private latest: Partial<Record<keyof PickerPreferences, number>> = {};
-  /** The picker's choices that failed to save, by the owner's receipt. */
+  /** The picker's choices that failed to save, by the owner's receipt, and the
+   * newest receipt the other window saved each field with: the later stands. */
   private failed: Partial<Record<keyof PickerPreferences, number>> = {};
+  private foreign: Partial<Record<keyof PickerPreferences, number>> = {};
   private revision = 0;
   /** Saves acknowledged so far: a read that started before one is older than it. */
   private acknowledged = 0;
@@ -106,7 +108,14 @@ export class PreferencePatchQueue {
         // Not saved. Settings shows what is saved; the picker keeps the choice
         // applied, unsaved, and never sends it again.
         if (this.policy.restoreOnFailure) this.acknowledge(fields, revision);
-        else for (const field of fields) if (this.latest[field] === revision) this.failed[field] = issued ?? 0;
+        else {
+          for (const field of fields) {
+            if (this.latest[field] !== revision) continue;
+            // The other window already saved this field after it: its value shows.
+            if ((this.foreign[field] ?? -Infinity) > (issued ?? 0)) { delete this.patch[field]; delete this.latest[field]; }
+            else this.failed[field] = issued ?? 0;
+          }
+        }
         throw error;
       } finally {
         own.completed = true;
@@ -150,6 +159,7 @@ export class PreferencePatchQueue {
       this.durable = null;
       // The other window saved these fields after a choice here that failed: its value shows.
       for (const field of (fields ?? Object.keys(this.failed)) as (keyof PickerPreferences)[]) {
+        this.foreign[field] = Math.max(this.foreign[field] ?? -Infinity, revision);
         const failed = this.failed[field];
         if (failed !== undefined && failed < revision) { delete this.failed[field]; delete this.patch[field]; delete this.latest[field]; }
       }

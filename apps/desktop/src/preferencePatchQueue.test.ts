@@ -320,3 +320,21 @@ test.each([false, true])("a failure that returns after the other window chose is
   expect(saved().preferences).toMatchObject({ larger_text: false, density: "compact" });
 });
 
+
+test("a picker failure that arrives after the other window saved that field shows the other window's value", async () => {
+  const { api, queue, events, saved } = fixture({ readAfterWrites: true });
+  await queue.load();
+  const failing = deferred<PickerSave>();
+  api.write.mockReturnValueOnce(failing.promise);
+  queue.change({ output: "cite" });
+  await vi.waitFor(() => expect(api.write).toHaveBeenCalledOnce());
+  // Settings saves the field after this choice, and says so before the failure comes back.
+  saved().preferences.output = "ieee";
+  const refreshed = queue.refresh(2, () => true, ["output"]);
+  failing.reject(new Error("synthetic save failure"));
+  await refreshed;
+  expect(events).toHaveBeenLastCalledWith({ type: "read", value: saved(), pendingOutput: false });
+  queue.change({ density: "compact" });
+  await queue.finishSaving();
+  expect(events).toHaveBeenLastCalledWith({ type: "saved", value: saved() });
+});
