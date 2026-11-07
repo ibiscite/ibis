@@ -392,12 +392,15 @@ pub(crate) async fn picker_preferences_saved<R: tauri::Runtime>(
 }
 
 /// Preference changes handed to the owner, by receipt, until their window asks
-/// how they went.
+/// how they went. A window that closes first never asks, so only the latest
+/// [`MAX_RECEIPTS`] are kept; the change itself is saved either way.
 #[derive(Default)]
 struct Receipts {
     next: u64,
-    submitted: std::collections::HashMap<u64, Submitted>,
+    submitted: std::collections::BTreeMap<u64, Submitted>,
 }
+
+const MAX_RECEIPTS: usize = 256;
 
 struct Submitted {
     saved: ibis_engine::settings::Pending<Result<settings::Settings, String>>,
@@ -427,6 +430,9 @@ impl SettingsFile {
             .owner
             .submit_on_file(move |path| save_preferences_at(path, preferences));
         receipts.submitted.insert(receipt, Submitted { saved, menu_bar });
+        while receipts.submitted.len() > MAX_RECEIPTS {
+            receipts.submitted.pop_first();
+        }
         Ok(receipt)
     }
 
@@ -561,6 +567,33 @@ mod tests {
             headers: Default::default(),
             invoke_key: tauri::test::INVOKE_KEY.into(),
         }
+    }
+
+    #[test]
+    fn unasked_receipts_are_bounded_and_their_changes_still_saved() {
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let receipts: Vec<u64> = (0..=MAX_RECEIPTS)
+            .map(|_| {
+                file.submit_preferences(PickerPreferencesPatch {
+                    density: Some(Density::Compact),
+                    ..Default::default()
+                })
+                .unwrap_or_else(|e| panic!("{e}"))
+            })
+            .collect();
+        assert!(
+            file.take_receipt(receipts[0]).is_err(),
+            "the oldest unasked receipt is dropped"
+        );
+        let last = file
+            .take_receipt(receipts[MAX_RECEIPTS])
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(last.saved.wait().is_some_and(|saved| saved.is_ok()));
+        assert_eq!(
+            read_preferences(&file.path).unwrap_or_else(|e| panic!("{e}")).density,
+            Density::Compact
+        );
     }
 
     #[test]
