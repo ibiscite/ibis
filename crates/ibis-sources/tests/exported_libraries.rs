@@ -453,3 +453,33 @@ fn the_record_limit_counts_every_record_the_file_holds() {
         [WarningCode::WorkLimit]
     );
 }
+
+#[test]
+fn equivalent_values_merge_and_a_bad_one_does_not_take_the_good_ones_with_it() {
+    let directory = tempfile::tempdir().unwrap();
+    let ris = |record: &str| {
+        let path = copy(
+            directory.path(),
+            "one.ris",
+            &format!("TY  - BOOK\nTI  - Invented\n{record}ER  - \n"),
+        );
+        ibis_sources::load_file(&path).unwrap()
+    };
+    let named = ris("AU  - Doe, Jane\nA1  - Doe,Jane\n");
+    assert_eq!(
+        citation_fields(&named)[0]["author"],
+        json!([{"family": "Doe", "given": "Jane"}])
+    );
+    // A text date's month takes part in the check against an exact date.
+    assert_eq!(
+        ris("PY  - 2026/07//Jul-Sep2026\nDA  - 2026/03/14/\n").warnings,
+        skipped(&[1])
+    );
+    assert_eq!(
+        citation_fields(&ris("SN  - 978 0 00 000000 2\n"))[0]["ISBN"],
+        "978 0 00 000000 2"
+    );
+    let mixed = ris("SN  - 978-0-00-000000-2\nSN  - invented\n");
+    assert_eq!(citation_fields(&mixed)[0]["ISBN"], "978-0-00-000000-2");
+    assert_eq!(mixed.warnings[0].code, WarningCode::Field);
+}

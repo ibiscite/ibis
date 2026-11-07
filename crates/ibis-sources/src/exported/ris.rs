@@ -192,12 +192,12 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     text(&mut csl, "title", one(book_title).ok()?);
 
     let names = |tags: &[&str]| -> Option<Value> {
-        // A name given twice is one person, in the order first given.
+        // A person given twice, however spaced, is one person, in the order first given.
         let mut seen = std::collections::HashSet::new();
         let people: Vec<Value> = all(tags)
             .into_iter()
-            .filter(|name| seen.insert(name.trim()))
             .filter_map(person)
+            .filter(|person| seen.insert(person.to_string()))
             .collect();
         (!people.is_empty()).then_some(Value::Array(people))
     };
@@ -324,6 +324,8 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
     let mut dropped = false;
     let mut year = None;
     let mut parts: Vec<Vec<Value>> = vec![];
+    // The parts each value states, a text date's known month and day included.
+    let mut stated: Vec<Vec<Value>> = vec![];
     let mut literal: Option<&str> = None;
     for &text in years.iter().chain(dates) {
         let mut pieces = text.split('/');
@@ -342,6 +344,10 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
         let month = pieces.next().filter(|month| !month.is_empty());
         let day = pieces.next().filter(|day| !day.is_empty());
         let other = pieces.collect::<Vec<_>>().join("/");
+        let known = [(month, day), (month, None), (None, None)]
+            .into_iter()
+            .find_map(|(month, day)| date_parts(written_year, month, day))?;
+        stated.push(known["date-parts"][0].as_array()?.clone());
         match date_parts(written_year, month, day) {
             Some(value) if other.trim().is_empty() => parts.push(value["date-parts"][0].as_array()?.clone()),
             // Text Ibis cannot split is kept as written, never guessed.
@@ -349,14 +355,15 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
             _ => literal = Some(text),
         }
     }
-    parts.sort_by_key(Vec::len);
-    let fullest = parts.last();
-    if parts
+    stated.sort_by_key(Vec::len);
+    if stated
         .iter()
-        .any(|shorter| !fullest.is_some_and(|fullest| fullest.starts_with(shorter)))
+        .any(|shorter| !stated.last().is_some_and(|fullest| fullest.starts_with(shorter)))
     {
         return None;
     }
+    parts.sort_by_key(Vec::len);
+    let fullest = parts.last();
     let issued = match (fullest, literal) {
         (Some(fullest), Some(text)) if fullest.len() == 1 => serde_json::json!({"literal": text}),
         (Some(fullest), _) => serde_json::json!({"date-parts": [fullest]}),

@@ -69,19 +69,26 @@ pub(crate) fn doi(text: &str) -> Option<String> {
 /// The ISBNs or ISSNs a cell gives, as written, and whether it held anything
 /// else; text such as `(Print)` beside a valid one is not a loss.
 pub(crate) fn serials(kind: Serial, values: &[&str]) -> (Option<String>, bool) {
-    let mut found = vec![];
+    let mut found: Vec<&str> = vec![];
+    let mut lost = false;
     for value in values {
-        let valid: Vec<_> = value
-            .split([',', ';', ' ', '(', ')'])
-            .filter(|token| kind.valid(token))
-            .collect();
-        if valid.is_empty() {
-            return (None, true);
+        let mut valid = vec![];
+        // A whole part first, so `978 0 00 000000 2` keeps its grouping spaces.
+        for part in value.split([',', ';', '(', ')']).map(str::trim) {
+            if kind.valid(part) {
+                valid.push(part);
+            } else {
+                valid.extend(part.split_whitespace().filter(|word| kind.valid(word)));
+            }
         }
-        found.extend(valid);
+        lost |= valid.is_empty();
+        for serial in valid {
+            if !found.contains(&serial) {
+                found.push(serial);
+            }
+        }
     }
-    found.dedup();
-    ((!found.is_empty()).then(|| found.join(", ")), false)
+    ((!found.is_empty()).then(|| found.join(", ")), lost)
 }
 
 #[derive(Clone, Copy)]
