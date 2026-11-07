@@ -18,7 +18,7 @@ const row = (filename, previous_filename = null) => ({ filename, previous_filena
 const pr = (files, expected = files.length) => classify("pull_request", expected, files);
 
 test("interface-only changes retain web checks without native jobs", () => {
-  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/libraryWords.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html"]) {
+  for (const path of ["apps/desktop/src/App.tsx", "apps/desktop/src/features/picker/PickerFooter.css", "apps/desktop/src/libraryWords.ts", "apps/desktop/src/icon.svg", "apps/desktop/index.html", "apps/desktop/notice.html", "apps/desktop/settings.html", "apps/desktop/canvas/parts.tsx", "apps/desktop/gallery/webkit.swift", "apps/desktop/vite.canvas.config.ts"]) {
     assert.deepEqual(pr([row(path), row("docs/design.md")]), interfaceOnly, path);
   }
 });
@@ -34,7 +34,7 @@ test("generated bindings always run native contract checks, including renames", 
 });
 
 test("changes inside the app skip the crates, and anything the crates read does not", () => {
-  for (const path of ["apps/desktop/src-tauri/src/lib.rs", "apps/desktop/src-tauri/tauri.conf.json", "apps/desktop/package.json", "apps/desktop/vite.config.ts", "apps/desktop/README.md"]) {
+  for (const path of ["apps/desktop/src-tauri/src/lib.rs", "apps/desktop/src-tauri/tauri.conf.json", "apps/desktop/package.json", "apps/desktop/vite.config.ts", "apps/desktop/README.md", "apps/desktop/other.html", "apps/desktop/canvas-old/x.ts"]) {
     assert.deepEqual(pr([row(path), row("apps/desktop/src/App.tsx")]), appOnly, path);
   }
   for (const path of ["crates/ibis-core/src/lib.rs", "fixtures/cases/a.json", "plugins/ibis/plugin.json", "Cargo.lock", "scripts/check.mjs", ".github/workflows/ci.yml"]) {
@@ -79,7 +79,7 @@ test("website-only changes keep web checks without native jobs", () => {
 
 test("only allowlisted documentation additions, edits and deletions take the fast path", () => {
   for (const status of ["added", "modified", "removed"]) {
-    for (const filename of ["README.md", "ROADMAP.md", "docs/design/menu.md", "website/README.md", "apps/desktop/src/ui/README.md", "LICENSE", ".github/ISSUE_TEMPLATE/bug_report.yml"]) {
+    for (const filename of ["README.md", "ROADMAP.md", "docs/design/menu.md", "website/README.md", "apps/desktop/src/ui/README.md", "LICENSE", ".github/ISSUE_TEMPLATE/bug_report.yml", ".github/workflows/preview.yml", ".github/workflows/release-counts.yml"]) {
       assert.deepEqual(pr([{ filename, status }]), docsOnly, `${status}: ${filename}`);
     }
   }
@@ -95,7 +95,7 @@ test("Markdown additions and deletions beside code and vendor assets require Rus
 });
 
 test("native, tooling and unknown changes stay conservative", () => {
-  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", ".github/workflows/release-counts.yml", "unknown/file", "docs/design-settings.json", "docs/design-settings.json.bak"]) {
+  for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", ".github/workflows/ci.yaml", ".github/workflows/nested/preview.yml", ".github/actions/setup/action.yml", "unknown/file", "docs/design-settings.json", "docs/design-settings.json.bak"]) {
     assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), full, path);
   }
   assert.deepEqual(pr([row("apps/desktop/src/unknown.rs")]), appOnly);
