@@ -1,4 +1,3 @@
-.locator-token { --locator-token-hit-size: var(--control-h); padding-inline-end: calc(var(--locator-token-hit-size) - var(--control-small-h)); display: inline-flex; align-items: center; min-inline-size: 0; max-inline-size: 50%; margin-inline-start: var(--space-1); }
+.locator-token { padding-inline-end: calc(var(--hit) - var(--control-small-h)); display: inline-flex; align-items: center; min-inline-size: 0; max-inline-size: 50%; margin-inline-start: var(--space-1); }
 .locator-token > bdi { min-inline-size: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.locator-token-remove { --ring-offset: calc(-1 * var(--ring-width)); }
-@media (pointer: coarse) { .locator-token { --locator-token-hit-size: var(--touch-target); } }
+.locator-token-remove { --ring-offset: var(--ring-inside); }

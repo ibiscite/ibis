@@ -2,7 +2,7 @@
    shrink, so no label, and no action at all, can move More off the last column.
    Quiet notes span a row of their own. */
 /* The leading column always keeps room for its fix (`--footer-fix`, measured). */
-.library-bar { --footer-status-min: max(14rem, calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)));
+.library-bar { --footer-status-min: max(var(--status-min), calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)));
   position: relative; display: grid; grid-template-columns: minmax(min(var(--footer-status-min), 100%), 1fr) minmax(0, auto) auto; }
 .library-bar[data-status-compact] { --footer-status-min: calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)); }
 .library-bar > :not(.enter-hints, .more, .ui-quiet-status, .library-action-error) { grid-column: 1; min-width: 0; }
@@ -13,7 +13,7 @@
 .library-bar[data-alt-compact][data-hints-compact] > .enter-hints { overflow: hidden; }
 .library-bar > .more { grid-area: 1 / 3; }
 .footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }
-.footer-status-size { flex: none; width: 14rem; }
+.footer-status-size { flex: none; width: var(--status-min); }
 .footer-status-minimum { flex: none; width: calc(var(--tile) + var(--row-gap)); }
 .footer-label-minimum { flex: none; width: 7rem; }
 .library-bar .footer-action .key-hint-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

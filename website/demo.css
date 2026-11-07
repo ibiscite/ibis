@@ -19,7 +19,7 @@
 .picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/var(--type-search-line) var(--font); letter-spacing: -.025em; }
 /* The static query wraps inside its reserved column at large text sizes. */
 .picker-query { overflow-wrap: anywhere; }
-.picker input:focus-visible { border-radius: var(--r-row); }
+.picker input:focus-visible { border-radius: var(--r-control); }
 .picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-body-size)/var(--type-body-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
@@ -32,9 +32,9 @@
 .picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
 .picker-meta { flex: none; margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--row-pad) var(--space-1); margin-inline: var(--inset); color: var(--text-secondary); font-size: var(--type-label-size); }
 .picker-results { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--row-spacing); padding: 0 var(--inset); margin: 0; flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
-.pick { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-comfortable); padding: var(--space-2) var(--row-pad); border-radius: var(--r-row); color: var(--text); cursor: pointer; }
+.pick { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-comfortable); padding: var(--space-2) var(--row-pad); border-radius: var(--r-control); color: var(--text); cursor: pointer; }
 .pick.is-selected { background: var(--selected); color: var(--selected-text); }
-.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
+.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-small); background: var(--fill-control); color: var(--text-secondary); }
 .pick.is-selected .tile { background: color-mix(in srgb, var(--selected-text) 22%, transparent); color: inherit; }
 .pick .tile.is-added { background: var(--scarlet); color: var(--on-scarlet); }
 .pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet); }
@@ -45,7 +45,7 @@
 .ref .sub { font-size: var(--type-body-size); line-height: var(--type-body-line); color: var(--text-secondary); }
 .is-selected .sub { color: var(--selected-text-secondary); }
 .ref-year { flex: none; font-size: var(--type-body-size); font-variant-numeric: tabular-nums; }
-.picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-control); border-radius: var(--r-row); }
+.picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-control); border-radius: var(--r-control); }
 .picker-citation { flex: 0 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr); align-items: center; gap: var(--row-gap); font: .8125rem/var(--type-body-line) var(--mono); }
 .picker-shelf[data-copied] .picker-citation { grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr) minmax(0, var(--tile)); }
 .picker-beak { min-width: 0; height: var(--space-5); background: var(--scarlet); mask: url("assets/ibis-quote-beak.svg") right / contain no-repeat; }
@@ -60,7 +60,7 @@
 /* Match KeyCaps and the app's filled, label-type kbd at every width. */
 .picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
 .picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
-.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
+.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
@@ -71,7 +71,7 @@
 .picker .picker-primary, .picker .picker-actions .picker-primary { background: var(--accent); color: var(--text-on-accent); }
 .picker-actions kbd[data-single] { padding-inline: 0; }
 .picker-actions kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
-.picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-key); }
+.picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-small); }
 .demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
 .picker-status:empty { display: none; }

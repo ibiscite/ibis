@@ -2,6 +2,7 @@ import type { RefObject } from "react";
 import { Popover } from "react-aria-components";
 import { useLayer } from "./layers";
 import "./PeekCard.css";
+import "./Overlay.css";
 
 /** Quick Look for one item: its full details in a card under it, without taking
  * focus, so typing carries on in the search. ⌘Y again or Esc closes it. */

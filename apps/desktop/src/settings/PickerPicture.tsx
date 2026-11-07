@@ -17,8 +17,8 @@ const ignore = () => undefined;
 const styles = (foundationStyles + buttonStyles + iconButtonStyles + optionStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 /** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
-export function PickerPicture({ density = "comfortable", appearance, split = false, rowsOnly = false, frame }: {
-  density?: Density; appearance?: string; split?: boolean; rowsOnly?: boolean; frame?: readonly [number, number];
+export function PickerPicture({ density = "comfortable", appearance, split = false, frame }: {
+  density?: Density; appearance?: string; split?: boolean; frame?: readonly [number, number];
 }) {
   const { text } = useInterfaceMessages();
   const record: SearchResult = {
@@ -28,24 +28,23 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
     container: text("look-sample-journal"), year: "2021", item_type: "article-journal", matched: [],
   };
   const html = renderToStaticMarkup(<>
-    {!rowsOnly && <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
+    <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} pinned={false} onTogglePin={ignore} />}
-    <div className="results-area"><ul id="results">{(rowsOnly ? ["look-sample-title", "look-sample-title-2"] as const : ["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
+      onFormatChange={ignore} pinned={false} onTogglePin={ignore} />
+    <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />
     )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
   const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
-  return <span className="ui-picker-picture" style={shape} data-rows={rowsOnly || undefined} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
-    <Snapshot html={html} density={density} scheme={scheme} bare={rowsOnly} />
+  return <span className="ui-picker-picture" style={shape} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+    <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;
 }
 
-/** `bare`: rows alone, drawn straight on the card that holds them, never on a window surface of their own. */
-function Snapshot({ html, density, scheme, dark = false, bare = false }: { html: string; density: Density; scheme?: "light" | "dark"; dark?: boolean; bare?: boolean }) {
+function Snapshot({ html, density, scheme, dark = false }: { html: string; density: Density; scheme?: "light" | "dark"; dark?: boolean }) {
   const host = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
     if (!host.current) return;
@@ -56,7 +55,7 @@ function Snapshot({ html, density, scheme, dark = false, bare = false }: { html:
   }, [html]);
   return <span className="ui-picker-picture-mask" data-dark={dark || undefined} style={{ colorScheme: scheme }}>
     <span className="ui-picker-picture-content">
-      <div ref={host} style={{ colorScheme: scheme, ...bare && { background: "transparent" } }} data-platform="macos" data-density={density} inert />
+      <div ref={host} style={{ colorScheme: scheme }} data-platform="macos" data-density={density} inert />
     </span>
   </span>;
 }

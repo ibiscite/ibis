@@ -1,6 +1,6 @@
 /* Key caps are filled, never outlined boxes (PowerToys, Raycast, GNOME): a
    20 px cap on the button fill; contrast modes give it an edge. */
-kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-key); margin-inline-start: var(--space-1); }
+kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; display: inline-block; min-width: var(--key); height: var(--key); line-height: calc(var(--key) - 2 * var(--border-width)); padding: 0 var(--space-1); text-align: center; background: var(--fill-control); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); margin-inline-start: var(--space-1); }
 @media (prefers-contrast: no-preference) and (forced-colors: none) {
   kbd { border-color: transparent; font-weight: var(--strong); }
 }

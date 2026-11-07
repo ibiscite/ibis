@@ -4,29 +4,25 @@
 :root[data-platform="macos"] .toolbar-menu-button::after {
   content: ""; position: absolute; inset: calc(-1 * (var(--space-1) / 2 + var(--border-width))) calc(-1 * var(--border-width));
 }
-/* Keep a useful minimum while filtering; longer labels may use the viewport. */
-.toolbar-menu-popover { width: max-content; min-width: min(300px, calc(100vw - 16px)); max-width: calc(100vw - 16px); }
+/* One narrow column, the same while filtering: a label and a short sample cut
+   with "…", never the window's width. */
+.toolbar-menu-popover { width: min(20rem, calc(100vw - 2 * var(--inset))); min-width: 0; max-width: calc(100vw - 2 * var(--inset)); }
 .toolbar-menu-heading { flex: none; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-menu-filter { flex: none; }
-/* One quiet line: the example sizes the menu and is cut only at the window's
-   edge, never to a column, and never breaks a key apart. */
+/* One quiet line after the label, cut with "…" at the menu's edge. */
 .toolbar-menu-sample { margin-inline-start: auto; padding-inline-start: var(--space-4); min-width: 0; overflow: hidden; color: var(--text-secondary); font: var(--type-label-size) var(--mono); text-overflow: ellipsis; white-space: nowrap; text-align: end; }
-/* The label names the choice, so it never gives way to its example. */
-.toolbar-menu .menu-label { flex-shrink: 0; max-width: 100%; }
-/* A quiet detail after the label, such as a style's full title. */
-.toolbar-menu-detail { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--text-secondary); text-overflow: ellipsis; white-space: nowrap; }
-.menu-item:has(> .toolbar-menu-detail) > .menu-label { flex-grow: 0; }
-.menu-item[data-focused] .toolbar-menu-detail { color: inherit; }
-.toolbar-menu-sample[data-prose] { font-family: var(--font); white-space: normal; overflow-wrap: break-word; }
+/* The label names the choice: it gives way to its sample last. */
+.toolbar-menu .menu-label { flex-shrink: 1; min-width: 50%; }
+.toolbar-menu-sample[data-prose] { font-family: var(--font); }
 /* Quiet notes: for the menu, for a section, or under a label for why it is
    unavailable. None ever sets the menu's width. */
-.toolbar-menu-note { flex: none; contain: inline-size; margin: 0; padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
+.toolbar-menu-note { flex: none; contain: inline-size; margin: 0; padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 .menu-item:has(> .toolbar-menu-sample[data-note]) { flex-wrap: wrap; row-gap: 0; }
-.toolbar-menu-sample[data-note] { contain: inline-size; flex: 1 0 100%; max-width: none; margin: 0; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); font-family: var(--font); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: break-word; }
+.toolbar-menu-sample[data-note] { contain: inline-size; flex: 1 0 100%; max-width: none; margin: 0; padding-inline-start: calc(var(--icon-small) + var(--space-2)); font-family: var(--font); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: break-word; }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }
 .toolbar-menu-filter input {
-  box-sizing: border-box; width: 100%; min-height: 30px; border: 0; border-radius: var(--menu-item-radius);
-  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--menu-item-pad); background: var(--surface-field); color: var(--text); font: inherit;
+  box-sizing: border-box; width: 100%; min-height: var(--action-h); border: 0; border-radius: var(--r-control);
+  padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); background: var(--surface-field); color: var(--text); font: inherit;
 }
 /* A text field shows its caret, not a ring, like the search box. */
 .toolbar-menu-filter input:focus-visible { outline: 0; box-shadow: none; }
@@ -36,14 +32,14 @@
 @media (pointer: coarse) {
   .toolbar-menu-filter input { min-height: var(--touch-target); }
   .toolbar-menu-control, .toolbar-menu-control .toolbar-menu-button,
-  :root[data-platform="macos"] .toolbar-menu-button { min-width: 2.75rem; min-height: 2.75rem; }
+  :root[data-platform="macos"] .toolbar-menu-button { min-width: var(--touch-target); min-height: var(--touch-target); }
   :root[data-platform="macos"] .toolbar-menu-button::after { inset: 0; }
 }
 /* [C21] A form-row pop-up's menu keeps its button's width, as an inspector's
    pop-ups do on the Mac, so its example sits on a second line, whole and
    wrapping, never cut. */
 .toolbar-menu-popover[data-anchor="field"] .menu-item:has(> .toolbar-menu-sample:not(:empty)) { flex-wrap: wrap; row-gap: 0; }
-.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--menu-check-width) + var(--menu-item-gap)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
+.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--icon-small) + var(--space-2)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
 /* In the search bar the format pop-up is quiet like the × and pin beside it: no
    plate at rest, its chevrons say it opens; the plate shows on hover and while open. */
 .search-bar .ui-popup-button.ui-button[data-variant] { background: transparent; }

@@ -1,4 +1,4 @@
-.empty-state { color: var(--text-secondary); text-align: center; padding: 2rem 1rem; }
+.empty-state { color: var(--text-secondary); text-align: center; padding: var(--space-8) var(--space-4); }
 .empty-state p:first-child { color: var(--text); font-weight: var(--strong); }
 /* [C11] The hint and no-matches screens sit in the middle of the middle area, as choice screens do. */
 main .picker-content .results-area:has(> .empty-template) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
@@ -16,7 +16,7 @@ main .picker-content .results-area:has(.empty-opening) { display: flex; flex-dir
 .empty-opening { flex: none; width: 100%; max-width: 33.75rem; margin: auto; padding: var(--inset); text-align: center; }
 .opening-mark { width: 2.5rem; height: 2.5rem; margin: 0 auto var(--space-3); animation: opening-breathe calc(8 * var(--dur-panel)) var(--ease) infinite alternate; }
 .opening-title { margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
-.opening-line { margin: .375rem 0 0; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
+.opening-line { margin: var(--space-1) 0 0; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
 .opening-progress { width: 10rem; max-width: 100%; margin: var(--space-4) auto 0; }
 @keyframes opening-breathe { from { opacity: .65; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
