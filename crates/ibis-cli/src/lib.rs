@@ -935,11 +935,11 @@ fn open_libraries(
             .dispatch(Method::Libraries, &params, &cancel)
             .map_err(|error| Failure::explained(error, message(error)))
             .map_err(|mut failure| {
-            if chosen.is_none() {
-                failure.unnamed = Some(human::file_reason(&path, failure.error));
-            }
-            failure
-        })?;
+                if chosen.is_none() {
+                    failure.unnamed = Some(human::file_reason(&path, failure.error));
+                }
+                failure
+            })?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {

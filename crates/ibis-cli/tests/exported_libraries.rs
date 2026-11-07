@@ -23,7 +23,11 @@ fn run(args: &[&str]) -> (u8, String, String) {
         &mut errors,
         ibis::OutputMode::Plain,
     );
-    (code, String::from_utf8(output).unwrap(), String::from_utf8(errors).unwrap())
+    (
+        code,
+        String::from_utf8(output).unwrap(),
+        String::from_utf8(errors).unwrap(),
+    )
 }
 
 fn call(engine: &Engine, method: Method, params: Value) -> Result<Value, Value> {
@@ -73,7 +77,13 @@ fn ris_and_csv_references_format_and_key_output_refuses_them() {
     let entry = cite(&engine, &found(&engine, "only a number"), "bibliography-only", apa());
     assert!(entry["text"].as_str().unwrap().contains("e1234"), "{entry}");
     // A person searching sees each reference without a key.
-    let (code, text, _) = run(&["ibis", "search", "tides", "--file", fixture("ris/library.ris").to_str().unwrap()]);
+    let (code, text, _) = run(&[
+        "ibis",
+        "search",
+        "tides",
+        "--file",
+        fixture("ris/library.ris").to_str().unwrap(),
+    ]);
     assert_eq!(code, 0);
     assert!(text.contains("Invented tides of the northern lake"), "{text}");
 }
@@ -85,12 +95,20 @@ fn skipped_records_are_listed_with_their_lines() {
     let listed = call(&engine, Method::Libraries, json!({"action":"list"})).unwrap();
     let library = &listed["libraries"][0];
     assert_eq!(library["objects"], 2);
-    let lines: Vec<_> = library["warnings"].as_array().unwrap().iter().map(|w| w["line"].clone()).collect();
+    let lines: Vec<_> = library["warnings"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|w| w["line"].clone())
+        .collect();
     assert_eq!(lines, [7, 11, 16, 22, 31]);
     let (code, text, errors) = run(&["ibis", "libraries", "--file", path.to_str().unwrap()]);
     assert_eq!(code, 1, "{text}{errors}");
     let said = format!("{text}{errors}");
-    assert!(said.contains("line 31: an entry could not be read, so Ibis skips it"), "{said}");
+    assert!(
+        said.contains("line 31: an entry could not be read, so Ibis skips it"),
+        "{said}"
+    );
 }
 
 #[test]
@@ -106,7 +124,13 @@ fn a_csv_with_a_missing_column_says_what_to_change() {
 
 #[test]
 fn empty_and_missing_files() {
-    let (code, text, errors) = run(&["ibis", "search", "x", "--file", fixture("ris/empty.ris").to_str().unwrap()]);
+    let (code, text, errors) = run(&[
+        "ibis",
+        "search",
+        "x",
+        "--file",
+        fixture("ris/empty.ris").to_str().unwrap(),
+    ]);
     assert_eq!(code, 0, "{text}{errors}");
     let directory = tempfile::tempdir().unwrap();
     let missing = directory.path().join("missing.ris");

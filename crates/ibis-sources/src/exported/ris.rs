@@ -185,7 +185,11 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     let mut csl = BTreeMap::new();
     let mut dropped = false;
     csl.insert("type".into(), Value::String(kind.into()));
-    let book_title = if group == Group::Book { &["TI", "T1", "CT", "BT"][..] } else { &["TI", "T1", "CT"] };
+    let book_title = if group == Group::Book {
+        &["TI", "T1", "CT", "BT"][..]
+    } else {
+        &["TI", "T1", "CT"]
+    };
     text(&mut csl, "title", one(book_title).ok()?);
 
     let names = |tags: &[&str]| -> Option<Value> {
@@ -224,7 +228,11 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
         Group::Article => {
             text(&mut csl, "container-title", containers);
             // Never expanded: an abbreviation stays the short title.
-            text(&mut csl, "container-title-short", all(&["J2", "JO", "JA"]).first().copied());
+            text(
+                &mut csl,
+                "container-title-short",
+                all(&["J2", "JO", "JA"]).first().copied(),
+            );
         }
         Group::Part => {
             text(&mut csl, "container-title", one(&["T2", "BT"]).ok()?);
@@ -339,13 +347,18 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
             None => chosen = Some(value),
             Some(current) if current == &value => {}
             Some(current) => {
-                let (Some(old), Some(new)) = (year_of(current), year_of(&value)) else { return None };
+                let (Some(old), Some(new)) = (year_of(current), year_of(&value)) else {
+                    return None;
+                };
                 if old != new {
                     return None;
                 }
                 let detail = |value: &Value| value["date-parts"][0].as_array().map_or(0, Vec::len);
-                let (shorter, longer) =
-                    if detail(current) <= detail(&value) { (current, &value) } else { (&value, current) };
+                let (shorter, longer) = if detail(current) <= detail(&value) {
+                    (current, &value)
+                } else {
+                    (&value, current)
+                };
                 // A fuller date must extend the other, never contradict it.
                 if !longer["date-parts"][0]
                     .as_array()

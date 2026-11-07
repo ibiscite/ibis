@@ -22,6 +22,8 @@ pub mod rpc;
 
 mod service;
 pub use ibis_sources::identity;
+/// The file names a library chooser offers, and whether a dropped file is one.
+pub use ibis_sources::{library_file_extensions, names_a_library};
 pub use service::*;
 
 /// The most references one citation or bibliography can hold.

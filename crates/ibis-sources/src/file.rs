@@ -58,23 +58,43 @@ pub(crate) enum Format {
     Csv,
 }
 
+/// Each format with the file names it goes by: the one place a format is named.
+/// Front ends take their chooser and drop lists from here. EndNote online saves
+/// RIS as `.txt`, but that name alone does not say a file is a library.
+const NAMES: [(Format, &[&str]); 4] = [
+    (Format::Bibtex, &["bib", "bibtex", "biblatex"]),
+    (Format::CslJson, &["json", "csljson"]),
+    (Format::Ris, &["ris", "txt"]),
+    (Format::Csv, &["csv"]),
+];
+
 impl Format {
+    /// By name first: BibTeX comments may start with a JSON-looking bracket.
+    /// A file with another name is RIS when it starts as RIS, else BibTeX.
     pub(crate) fn of(path: &Path, text: &str) -> Self {
-        let named = |names: &[&str]| {
+        let named = NAMES.iter().find(|(_, names)| {
             path.extension()
                 .is_some_and(|extension| names.iter().any(|name| extension.eq_ignore_ascii_case(name)))
-        };
-        // Select JSON by suffix: BibTeX comments may start with a JSON-looking bracket.
-        if named(&["json", "csljson"]) {
-            Self::CslJson
-        } else if named(&["csv"]) {
-            Self::Csv
-        } else if named(&["ris", "txt"]) || crate::exported::ris::looks_like_ris(text) {
-            Self::Ris
-        } else {
-            Self::Bibtex
+        });
+        match named {
+            Some((format, _)) => *format,
+            None if crate::exported::ris::looks_like_ris(text) => Self::Ris,
+            None => Self::Bibtex,
         }
     }
+}
+
+/// Every file name ending a library file chooser offers.
+pub fn library_file_extensions() -> impl Iterator<Item = &'static str> {
+    NAMES.iter().flat_map(|(_, names)| names.iter().copied())
+}
+
+/// Whether a file's name alone says it is a library, as a dropped file's must.
+pub fn names_a_library(path: &Path) -> bool {
+    path.extension().is_some_and(|extension| {
+        !extension.eq_ignore_ascii_case("txt")
+            && library_file_extensions().any(|name| extension.eq_ignore_ascii_case(name))
+    })
 }
 
 pub fn read_library_file(path: &Path) -> Result<String, SourceError> {

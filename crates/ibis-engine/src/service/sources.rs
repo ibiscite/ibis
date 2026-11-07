@@ -90,9 +90,7 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
         | SourceError::Unreadable
         | SourceError::Incomplete
         | SourceError::InvalidData
-        | SourceError::CsvTemplate => {
-            ErrorCode::BadInput
-        }
+        | SourceError::CsvTemplate => ErrorCode::BadInput,
         SourceError::Unavailable | SourceError::Changing | SourceError::WatchUnavailable => {
             ErrorCode::SourceUnavailable
         }

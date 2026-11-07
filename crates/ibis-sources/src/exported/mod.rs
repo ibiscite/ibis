@@ -57,9 +57,11 @@ pub(crate) fn date_parts(year: &str, month: Option<&str>, day: Option<&str>) -> 
 /// The DOI as written when it is one; `None` drops it with a warning.
 pub(crate) fn doi(text: &str) -> Option<String> {
     match ibis_core::identifier::parse_query(text)? {
-        ibis_core::identifier::Identifier::Doi(canonical) => {
-            Some(if text.trim().starts_with("10.") { text.trim().to_owned() } else { canonical })
-        }
+        ibis_core::identifier::Identifier::Doi(canonical) => Some(if text.trim().starts_with("10.") {
+            text.trim().to_owned()
+        } else {
+            canonical
+        }),
         _ => None,
     }
 }
@@ -121,7 +123,11 @@ impl<'a> Records<'a> {
             csl: csl.into(),
             citation_keys: vec![],
             aliases: vec![],
-            warnings: if uncertain { vec![CitationWarningCode::SourceField] } else { vec![] },
+            warnings: if uncertain {
+                vec![CitationWarningCode::SourceField]
+            } else {
+                vec![]
+            },
             identifiers: vec![],
         };
         self.parsed.push_record(record, self.previous);

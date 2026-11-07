@@ -40,7 +40,11 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
     }
     let first = text.lines().next().unwrap_or_default();
     // A spreadsheet set to a comma decimal separates cells with semicolons.
-    let separator = if first.matches(';').count() > first.matches(',').count() { ';' } else { ',' };
+    let separator = if first.matches(';').count() > first.matches(',').count() {
+        ';'
+    } else {
+        ','
+    };
     let mut rows = Rows {
         rest: text,
         line: 1,
@@ -187,6 +191,13 @@ impl Iterator for Rows<'_> {
             }
         }
         self.rest = &self.rest[end..];
-        Some((start, if state == Cell::Quoted || broken { Err(()) } else { Ok(cells) }))
+        Some((
+            start,
+            if state == Cell::Quoted || broken {
+                Err(())
+            } else {
+                Ok(cells)
+            },
+        ))
     }
 }

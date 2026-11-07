@@ -288,11 +288,9 @@ mod tests {
                 LoadError::FileRefresh(error),
                 LoadError::Zotero(error),
             ]);
-            loads.extend(
-                reasons
-                    .iter()
-                    .flat_map(|&reason| [LoadError::Zotero, LoadError::File].map(|load| load(EngineError::because(code, reason)))),
-            );
+            loads.extend(reasons.iter().flat_map(|&reason| {
+                [LoadError::Zotero, LoadError::File].map(|load| load(EngineError::because(code, reason)))
+            }));
         }
         let mut used: BTreeSet<&str> = loads.iter().map(|error| error.words_id()).collect();
         used.extend([
