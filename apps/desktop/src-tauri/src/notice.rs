@@ -460,6 +460,8 @@ fn create(app: &AppHandle, showing: u64) -> Option<()> {
         dismiss_after(app, showing, shown_for.unwrap_or(SHOWN_FOR));
     });
     let window = checked(builder.build(), NativeIssue::Notice)?;
+    #[cfg(target_os = "linux")]
+    crate::desktop_theme::reapply(app);
     #[cfg(target_os = "macos")]
     macos::configure(app, &window, showing);
     // Clicks pass through, including its transparent margins, so it never

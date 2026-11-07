@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
@@ -1081,6 +1081,21 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
   await new Promise((resolve) => setTimeout(resolve, 2100));
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
+});
+
+test("searching for the update check scrolls About to the button under the version", async () => {
+  const { api } = fakeApi({ granted: true });
+  // Layout is not available in jsdom: the button's box sits 600 px down the page.
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.classList.contains("ui-about-check") ? 600 : 0, height: 0 } as DOMRect;
+  });
+  onTestFinished(() => boxes.mockRestore());
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: "check for updates" } });
+  fireEvent.click(await screen.findByRole("option", { name: /^Check for updates, / }));
+  const main = await screen.findByRole("main", { name: "About Ibis" });
+  await waitFor(() => expect(main.scrollTop).toBe(600));
+  expect(screen.getByRole("button", { name: "Check for Updates" }).closest(".ui-about-check")!.hasAttribute("data-highlighted")).toBe(true);
 });
 
 test("search results are sidebar rows, and Enter opens the first", async () => {

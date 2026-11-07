@@ -15,6 +15,20 @@ fn prefers_dark(portal: Option<bool>, gtk_theme: Option<&str>, theme_name: Optio
     portal.unwrap_or(false) || gtk_theme.is_some_and(dark) || theme_name.is_some_and(dark)
 }
 
+/// What the desktop asked for at start. Tao reads the portal again for each new
+/// window and resets GTK's prefer-dark from it alone, so the answer is applied
+/// again after every window Ibis builds (`reapply`).
+#[cfg(target_os = "linux")]
+static DARK: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// After building a window: the desktop's dark preference again, if it had one.
+#[cfg(target_os = "linux")]
+pub(crate) fn reapply<R: tauri::Runtime>(app: &tauri::AppHandle<R>) {
+    if DARK.load(std::sync::atomic::Ordering::SeqCst) {
+        app.set_theme(Some(tauri::Theme::Dark));
+    }
+}
+
 /// Read at start, off the main thread and bounded, so a missing portal never
 /// delays the first window.
 #[cfg(target_os = "linux")]
@@ -30,6 +44,7 @@ pub(crate) fn follow(app: &tauri::AppHandle) {
                     .and_then(|settings| gtk::prelude::GtkSettingsExt::gtk_theme_name(&settings))
                     .map(|name| name.to_string());
                 if prefers_dark(portal, theme.as_deref(), name.as_deref()) {
+                    DARK.store(true, std::sync::atomic::Ordering::SeqCst);
                     handle.set_theme(Some(tauri::Theme::Dark));
                 }
             }),
