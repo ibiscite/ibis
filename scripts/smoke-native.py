@@ -1617,6 +1617,10 @@ class MacOS:
     def settings(identifier):
         return Path.home() / "Library/Application Support" / identifier / "settings.json"
 
+    @staticmethod
+    def data_folders(identifier):
+        return ()
+
     def __init__(self, folder):
         if not shutil.which("swiftc"):
             raise Unavailable("The macOS journey needs swiftc (Xcode Command Line Tools)", "native-driver")
@@ -1766,11 +1770,18 @@ class Windows:
     def settings(identifier):
         return Path(os.environ["APPDATA"]) / identifier / "settings.json"
 
+    @staticmethod
+    def data_folders(identifier):
+        return (Path(os.environ["LOCALAPPDATA"]) / identifier,)  # WebView2's data.
+
     def __init__(self, folder):
         import ctypes
         from ctypes import wintypes
-        if not shutil.which("pwsh"):
-            raise Unavailable("The Windows journey needs PowerShell 7 (pwsh)", "native-driver")
+        # PowerShell 7 when installed, else the Windows PowerShell every Windows has.
+        self.powershell = shutil.which("pwsh") or str(Path(os.environ.get("SystemRoot", r"C:\Windows"))
+                                                       / "System32/WindowsPowerShell/v1.0/powershell.exe")
+        if not Path(self.powershell).is_file():
+            raise Unavailable("The Windows journey needs PowerShell", "native-driver")
         self.helper_path = Path(__file__).resolve().parent / "windows-journey.ps1"
         self.ctypes, self.wintypes = ctypes, wintypes
         user32 = self.user32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -1797,8 +1808,16 @@ class Windows:
                 (kernel32.GlobalAlloc, [UINT, ctypes.c_size_t], wintypes.HGLOBAL),
                 (kernel32.GlobalLock, [wintypes.HGLOBAL], ctypes.c_void_p),
                 (kernel32.GlobalUnlock, [wintypes.HGLOBAL], wintypes.BOOL),
-                (kernel32.GlobalFree, [wintypes.HGLOBAL], wintypes.HGLOBAL)):
+                (kernel32.GlobalFree, [wintypes.HGLOBAL], wintypes.HGLOBAL),
+                (user32.OpenInputDesktop, [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD], wintypes.HANDLE),
+                (user32.CloseDesktop, [wintypes.HANDLE], wintypes.BOOL)):
             function.argtypes, function.restype = arguments, result
+        # A locked, signed-out or disconnected session has no desktop to send
+        # keys to or bring windows forward on (as over ssh without /IT).
+        desktop = user32.OpenInputDesktop(0, False, 0x0100)  # DESKTOP_SWITCHDESKTOP
+        if not desktop:
+            raise Unavailable("Run the journey in a signed-in, unlocked Windows session", "native-session")
+        user32.CloseDesktop(desktop)
 
         class KEYBDINPUT(ctypes.Structure):
             _fields_ = [("wVk", wintypes.WORD), ("wScan", wintypes.WORD), ("dwFlags", wintypes.DWORD),
@@ -1893,7 +1912,7 @@ class Windows:
     # Ibis, through UI Automation.
     def snapshot(self):
         try:
-            result = subprocess.run(["pwsh", "-NoProfile", "-NonInteractive", "-File", str(self.helper_path),
+            result = subprocess.run([self.powershell, "-NoProfile", "-NonInteractive", "-File", str(self.helper_path),
                                      "snapshot", str(self.app.pid)], capture_output=True, timeout=30,
                                     creationflags=subprocess.CREATE_NO_WINDOW)
             answer = json.loads(result.stdout.decode("utf-8"))
@@ -1914,7 +1933,19 @@ class Windows:
                             "system_focus_is_ibis": bool(front) and self.owner(front) == self.app.pid
                                                     and self.title(front) == "Ibis",
                             "value_matches": value is None or value in shot["values"]}
-        return all(self.last_picker.values()) and self.foreground() == front
+        ready = all(self.last_picker.values()) and self.foreground() == front
+        self.last_picker["foreground"] = self.describe(front)  # A fixed kind, never a title.
+        return ready
+
+    def describe(self, window):
+        if not window:
+            return "none"
+        if self.owner(window) == self.app.pid:
+            return {"Ibis": "ibis-picker", NOTICE_TITLE: "ibis-notice"}.get(self.title(window), "ibis-other")
+        if window == self.window:
+            return "notepad"
+        return {"ConsoleWindowClass": "console", "CASCADIA_HOSTING_WINDOW_CLASS": "windows-terminal",
+                "Shell_TrayWnd": "taskbar"}.get(self.kind(window), "other")
 
     def picker_onscreen(self):
         return "Ibis" in self.owned_titles()
@@ -2108,11 +2139,18 @@ def _journey_main(args):
     system = platform.system()
     report = {"platform": system, "scenario": "native-journey", "status": "failed", "checks": []}
     native = app = owned_settings = temporary = log = None
+    created = []
     exit_code = 1
 
     def passed(name):
         report["checks"].append({"name": name, "status": "passed"})
         print(f"PASS {name}", flush=True)
+
+    def remove_created():
+        for path in created:
+            # WebView2's helpers can hold its files for a moment after Ibis exits.
+            wait_for(lambda: shutil.rmtree(path, ignore_errors=True) or not path.exists(),
+                     "the journey's own Ibis folders are removed", timeout=15, interval=.5)
 
     try:
         driver = {"Darwin": MacOS, "Windows": Windows}.get(system)
@@ -2129,6 +2167,9 @@ def _journey_main(args):
         document.write_bytes(JOURNEY_DOCUMENT.encode())  # LF on every system
         settings = driver.settings(args.identifier)
         owned_settings = claim_settings(settings)
+        # Folders this run creates are removed with all Ibis wrote in them,
+        # so the next run on the same account starts clean too.
+        created = [path for path in (settings.parent, *driver.data_folders(args.identifier)) if not path.exists()]
         settings.parent.mkdir(parents=True, exist_ok=True)
         settings.write_bytes(JOURNEY_SETTINGS)
         native = observe_native(driver(folder))
@@ -2245,7 +2286,7 @@ def _journey_main(args):
     finally:
         for cleanup in (app.stop if app else None, log.close if log else None, native.close if native else None,
                         (lambda: clean_settings(owned_settings)) if owned_settings else None,
-                        temporary.cleanup if temporary else None):
+                        remove_created, temporary.cleanup if temporary else None):
             try:
                 if cleanup:
                     cleanup()
