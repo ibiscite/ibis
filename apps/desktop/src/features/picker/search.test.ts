@@ -44,7 +44,7 @@ test("a late reply to an older query never replaces the newer one's results", ()
   expect(state.search.announcement).toBe("");
 });
 
-test("a failed search shows its error alone, and the query asked again searches again", () => {
+test("returning to a failed query retries it and replaces the error with fresh results", () => {
   const failed = run([
     { type: "search-inputs", inputs: inputs("garcia") },
     { type: "searched", seq: 1, reply: reply("a") },
@@ -53,10 +53,17 @@ test("a failed search shows its error alone, and the query asked again searches 
   ]).state;
   expect(failed.search.results).toEqual([]);
   expect(failed.search.error).toBeTruthy();
-  const again = run([{ type: "search-inputs", inputs: inputs("garcia") }], failed);
-  expect(searches(again.effects)).toEqual([{ type: "search", seq: 3, query: "garcia", interpretLocators: true, recent: false }]);
+  const pending = run([{ type: "search-inputs", inputs: inputs("okafora") }], failed).state;
+  const again = run([{ type: "search-inputs", inputs: inputs("okafor") }], pending);
+  expect(searches(again.effects)).toEqual([{ type: "search", seq: 4, query: "okafor", interpretLocators: true, recent: false }]);
   // The error stays until that search answers.
   expect(again.state.search.error).toBeTruthy();
+  const recovered = run([
+    { type: "searched", seq: 4, reply: reply("recovered") },
+    { type: "searched", seq: 3, reply: reply("stale") },
+  ], again.state).state;
+  expect(recovered.search.results.map((r) => r.id.key)).toEqual(["recovered"]);
+  expect(recovered.search.error).toBeNull();
 });
 
 test("typing back to an answered query adopts its answer and retires the newer search still out", () => {

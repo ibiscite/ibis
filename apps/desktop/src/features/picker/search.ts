@@ -65,10 +65,10 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
     case "search-inputs": {
       const { inputs } = event;
       if (sameInputs(s.inputs, inputs) && s.session === session) return null;
-      // Settled results can be adopted by a new opening; an unfinished request
-      // is asked again, and its old answer cannot land in the new one.
+      // Successful settled results can be adopted by a new opening; a failed
+      // or unfinished request is asked again, and its old answer cannot land.
       // Adopting retires any newer request still out, so its answer cannot land over this one.
-      if (s.settled && sameInputs(s.settled.inputs, inputs)) {
+      if (s.settled && s.error === null && sameInputs(s.settled.inputs, inputs)) {
         return { search: { ...s, inputs, session, seq: s.seq + 1, settled: { inputs, session } }, firstRow: false, effects: [] };
       }
       const seq = s.seq + 1;
