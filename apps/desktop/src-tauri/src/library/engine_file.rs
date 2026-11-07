@@ -276,7 +276,7 @@ impl FileLibrary {
     }
 
     /// Hand `use_it` exactly what was shown, or refuse: the list, the library
-    /// or the style changed since. Same commit barrier as a citation.
+    /// or the style changed since. Checked like a citation's copy.
     pub(crate) fn commit_session_bibliography<T>(
         &self,
         ids: &[ItemRef],
@@ -290,15 +290,19 @@ impl FileLibrary {
         if citation.result().content_hash.as_str() != hash {
             return Err(CommandError::SnapshotChanged);
         }
-        self.engine
-            .commit_citation(&citation, &citation.result().content_hash, use_it)
+        let copied = self
+            .engine
+            .recite(&citation, &Cancellation::default())
             .map_err(|error| match error {
                 ibis_engine::CitationCommitError::Engine(_) => {
                     CommandError::from("The bibliography could not be copied. Try again.")
                 }
                 _ => CommandError::SnapshotChanged,
-            })?
-            .map_err(CommandError::from)
+            })?;
+        let content = copied
+            .copy_content(citation.items().len())
+            .ok_or(CommandError::SnapshotChanged)?;
+        use_it(content).map_err(CommandError::from)
     }
 
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
@@ -324,7 +328,7 @@ impl FileLibrary {
         before_read();
         let source_path = engine
             .open_file_observed(path, &Cancellation::default())
-            .map_err(file_load_error)?;
+            .map_err(super::LoadError::file)?;
         let mut file = Self::from_engine(engine);
         file.source_path = Some(source_path);
         Ok(file)
@@ -349,7 +353,7 @@ impl FileLibrary {
         profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<Self, super::LoadError> {
-        let engine = Engine::new().map_err(super::LoadError::EngineZotero)?;
+        let engine = Engine::new().map_err(super::LoadError::Zotero)?;
         Self::open_zotero_with(engine, chosen, profile, cancel)
     }
 
@@ -392,7 +396,7 @@ impl FileLibrary {
         let loaded: Vec<_> = self
             .engine
             .libraries()
-            .map_err(super::LoadError::EngineZotero)?
+            .map_err(super::LoadError::Zotero)?
             .libraries
             .iter()
             .filter_map(|library| library.zotero)
@@ -402,8 +406,8 @@ impl FileLibrary {
         let request = json!({"action":"open-zotero","libraries":libraries,"profile":profile,"reload":force && same});
         self.engine
             .dispatch(Method::Libraries, &request, cancel)
-            .map_err(super::LoadError::EngineZotero)?;
-        let info = self.engine.libraries().map_err(super::LoadError::EngineZotero)?;
+            .map_err(super::LoadError::Zotero)?;
+        let info = self.engine.libraries().map_err(super::LoadError::Zotero)?;
         let failure = info.libraries.iter().find_map(|info| {
             info.refresh_error.map(|code| ibis_core::contract::EngineError {
                 code,
@@ -411,7 +415,7 @@ impl FileLibrary {
             })
         });
         if let Some(failure) = failure {
-            return Err(super::LoadError::EngineZotero(failure));
+            return Err(super::LoadError::Zotero(failure));
         }
         // Empty libraries change the choice even when the object fingerprint stays equal.
         Ok(same)
@@ -440,7 +444,9 @@ impl FileLibrary {
         path: &Path,
         cancel: &Cancellation,
     ) -> Result<ibis_engine::PreparedFileReload, super::LoadError> {
-        self.engine.prepare_file_reload(path, cancel).map_err(file_reload_error)
+        self.engine
+            .prepare_file_reload(path, cancel)
+            .map_err(super::LoadError::file_refresh)
     }
 
     pub(super) fn accept_reload(&self, reload: ibis_engine::PreparedFileReload) -> Result<(), super::LoadError> {
@@ -448,7 +454,7 @@ impl FileLibrary {
             // The caller holds the current request, so a newer accepted read
             // (usually the watcher's) retired this one: the library is fresh.
             Err(error) if error.code == ibis_core::contract::ErrorCode::Cancelled => Ok(()),
-            result => result.map_err(file_reload_error),
+            result => result.map_err(super::LoadError::file_refresh),
         }
     }
 
@@ -471,15 +477,14 @@ impl FileLibrary {
             .map_err(|_| super::LoadError::Stopped)?
             .libraries
             .iter()
-            .find_map(|info| info.refresh_error)
+            .find_map(|info| {
+                info.refresh_error.map(|code| ibis_core::contract::EngineError {
+                    code,
+                    reason: info.refresh_reason,
+                })
+            })
         {
-            return Err(super::LoadError::Source(
-                if error == ibis_core::contract::ErrorCode::SourceUnavailable {
-                    ibis_core::source::SourceError::Unavailable
-                } else {
-                    ibis_core::source::SourceError::Incomplete
-                },
-            ));
+            return Err(super::LoadError::file_refresh(error));
         }
         Ok(())
     }
@@ -972,51 +977,87 @@ impl FileLibrary {
             *prepared = None;
         }
     }
+    /// Cite the shown citation again for a copy. This can wait for the
+    /// formatter, so it holds no lock and its caller keeps it off the main thread.
+    pub(crate) fn recite(&self, ticket: &str, hash: &str) -> Result<Recited, CommandError> {
+        let citation = {
+            let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+            let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+            if current != ticket || citation.result().content_hash.as_str() != hash {
+                return Err(CommandError::SnapshotChanged);
+            }
+            Arc::clone(citation)
+        };
+        let result = self
+            .engine
+            .recite(&citation, &Cancellation::default())
+            .map_err(|error| match error {
+                ibis_engine::CitationCommitError::Engine(_) => {
+                    CommandError::from("The citation could not be copied. Try again.")
+                }
+                _ => CommandError::SnapshotChanged,
+            })?;
+        Ok(Recited {
+            ticket: ticket.to_owned(),
+            hash: hash.to_owned(),
+            citation,
+            result,
+        })
+    }
+
+    /// Hand `write` what `recite` confirmed, while that preview is still the
+    /// shown one; a newer preview or another library refuses it.
+    pub(crate) fn copy_recited(
+        &self,
+        recited: &Recited,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+    ) -> Result<crate::copy::Copied, CommandError> {
+        let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
+        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
+        if current != &recited.ticket || !Arc::ptr_eq(citation, &recited.citation) {
+            return Err(CommandError::SnapshotChanged);
+        }
+        let copied = &recited.result;
+        write(
+            copied
+                .copy_content(citation.items().len())
+                .ok_or(CommandError::SnapshotChanged)?,
+        )?;
+        Ok(crate::copy::Copied {
+            summary: Some(crate::copy::ReceiptSummary::citation(copied)),
+            text: copied.text.clone(),
+            warnings: citation_warnings_named(citation),
+            delivery: None,
+            cited: citation.items(),
+        })
+    }
+
+    /// Both steps of a copy at once.
+    #[cfg(test)]
     pub(crate) fn copy(
         &self,
         ticket: &str,
         hash: &str,
         write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
     ) -> Result<crate::copy::Copied, CommandError> {
-        let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
-        let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
-        if current != ticket || citation.result().content_hash.as_str() != hash {
-            return Err(CommandError::SnapshotChanged);
-        }
-        self.engine
-            .commit_citation(citation, &citation.result().content_hash, write)
-            .map_err(|error| match error {
-                ibis_engine::CitationCommitError::Engine(_) => {
-                    CommandError::from("The citation could not be copied. Try again.")
-                }
-                _ => CommandError::SnapshotChanged,
-            })??;
-        Ok(crate::copy::Copied {
-            summary: Some(crate::copy::ReceiptSummary::citation(citation.result())),
-            text: citation.result().text.clone(),
-            warnings: citation_warnings_named(citation),
-            delivery: None,
-            cited: citation.items(),
-        })
+        self.copy_recited(&self.recite(ticket, hash)?, write)
     }
 }
 
-pub(super) fn file_load_error(error: ibis_core::contract::EngineError) -> super::LoadError {
-    match error.code {
-        ibis_core::contract::ErrorCode::BadInput => super::LoadError::InvalidData,
-        ibis_core::contract::ErrorCode::SourceUnavailable => ibis_core::source::SourceError::Unavailable.into(),
-        ibis_core::contract::ErrorCode::ResourceLimit => ibis_core::source::SourceError::TooLarge.into(),
-        ibis_core::contract::ErrorCode::Cancelled => super::LoadError::Stopped,
-        _ => ibis_core::source::SourceError::Unreadable.into(),
-    }
+/// A shown citation, cited again for a copy.
+pub(crate) struct Recited {
+    ticket: String,
+    hash: String,
+    citation: Arc<PreparedCitation>,
+    result: CitationResult,
 }
 
-fn file_reload_error(error: ibis_core::contract::EngineError) -> super::LoadError {
-    use ibis_core::{contract::ErrorCode, source::SourceError};
-    match error.code {
-        ErrorCode::BadInput => SourceError::Incomplete.into(),
-        ErrorCode::ResourceLimit => SourceError::LoadLimit.into(),
-        _ => file_load_error(error),
+impl Recited {
+    pub(crate) fn ticket(&self) -> &str {
+        &self.ticket
+    }
+    pub(crate) fn content_hash(&self) -> &str {
+        &self.hash
     }
 }
 

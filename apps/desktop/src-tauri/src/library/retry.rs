@@ -115,9 +115,6 @@ mod tests {
 
     use ibis_core::settings::ZoteroLibrary;
 
-    use ibis_core::source::SourceError;
-    use ibis_core::zotero::api::{TransportError, ZoteroError};
-
     use crate::library::error::{LoadError, ZOTERO_OFFLINE};
     use crate::library::load::Loaded;
     use crate::library::state::{begin_open, candidate, install_loaded};
@@ -149,7 +146,7 @@ mod tests {
         let (old, _) = begin_check_with(&library, &requests, |_| true).unwrap_or_else(|| panic!("open"));
         let newer = Source::File(PathBuf::from("synthetic-local.bib"));
         let (request, _, _) = begin_open(&library, &requests, newer.clone()).unwrap_or_else(|| panic!("newer choice"));
-        assert!(install_loaded(&library, &requests, old, Err(SourceError::Unavailable.into())).is_none());
+        assert!(install_loaded(&library, &requests, old, Err(LoadError::FILE_UNAVAILABLE)).is_none());
         let visible = install_loaded(
             &library,
             &requests,
@@ -179,7 +176,7 @@ mod tests {
         });
         let requests = LoadRequests::default();
         // A supervised read can time out before the engine publishes a failure.
-        install_loaded(&library, &requests, 0, Err(SourceError::Unavailable.into())).ok_or("failed read")?;
+        install_loaded(&library, &requests, 0, Err(LoadError::FILE_UNAVAILABLE)).ok_or("failed read")?;
         let (request, checked) = begin_check(&library, &requests).ok_or("the next opening must retry")?;
         assert!(
             status(&*library.lock().map_err(|_| "library")?).error.is_some(),
@@ -273,7 +270,7 @@ mod tests {
         let (choice, _, _) = begin_open(&library, &requests, PathBuf::from("synthetic.bib"))
             .unwrap_or_else(|| panic!("the choice starts"));
         assert!(install_loaded(&library, &requests, stale, Err(ZOTERO_OFFLINE)).is_none());
-        let failed = install_loaded(&library, &requests, choice, Err(SourceError::Unavailable.into()))
+        let failed = install_loaded(&library, &requests, choice, Err(LoadError::FILE_UNAVAILABLE))
             .unwrap_or_else(|| panic!("the choice is current"));
         assert_eq!(
             failed.error.as_deref(),
@@ -310,7 +307,7 @@ mod tests {
         // A failed file choice over a loaded Zotero library stays visible.
         let mut over_zotero = candidate(zotero, "");
         over_zotero.requested = Some(file.clone());
-        over_zotero.error = Some(SourceError::Unavailable.into());
+        over_zotero.error = Some(LoadError::FILE_UNAVAILABLE);
         assert_eq!(zotero_to_check(&over_zotero), None);
 
         assert!(
@@ -414,7 +411,7 @@ mod tests {
             begin_focus_retry(&library, &requests).is_none(),
             "opening is already in progress"
         );
-        install_loaded(&library, &requests, request, Err(SourceError::Unavailable.into()));
+        install_loaded(&library, &requests, request, Err(LoadError::FILE_UNAVAILABLE));
         let before = requests.0.load(Ordering::SeqCst);
         assert!(
             begin_focus_retry(&library, &requests).is_none(),
@@ -425,7 +422,7 @@ mod tests {
             library
                 .lock()
                 .ok()
-                .is_some_and(|l| l.error == Some(LoadError::Source(SourceError::Unavailable)))
+                .is_some_and(|l| l.error == Some(LoadError::FILE_UNAVAILABLE))
         );
         assert!(
             begin_focus_retry(&Mutex::new(Library::default()), &requests).is_none(),
@@ -464,7 +461,9 @@ mod tests {
             &library,
             &requests,
             unready,
-            Err(LoadError::Zotero(ZoteroError::Transport(TransportError::TimedOut))),
+            Err(LoadError::Zotero(
+                ibis_core::contract::ErrorCode::SourceUnavailable.into(),
+            )),
         );
         assert_eq!(
             requests.0.load(Ordering::SeqCst),

@@ -2076,7 +2076,6 @@ dependencies = [
  "ibis",
  "ibis-core",
  "ibis-engine",
- "ibis-zotero-local",
  "image",
  "objc2-app-kit",
  "objc2-core-foundation",

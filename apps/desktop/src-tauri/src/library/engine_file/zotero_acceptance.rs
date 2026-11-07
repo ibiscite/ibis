@@ -11,7 +11,6 @@ use std::{
 };
 
 fn opened(server: &fixture::Server) -> Result<FileLibrary, Box<dyn std::error::Error>> {
-    assert_ne!(server.port, ibis_zotero_local::DEFAULT_PORT);
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
     engine
         .dispatch(
@@ -307,7 +306,7 @@ fn zotero_that_turns_sharing_on_opens_with_no_change_to_the_choice() -> Result<(
     server.sharing_off.store(true, Ordering::Relaxed);
     let chosen: ZoteroLibraries = ZoteroLibrary::User.into();
     let open = || {
-        let engine = Engine::with_zotero_port(server.port).map_err(LoadError::EngineZotero)?;
+        let engine = Engine::with_zotero_port(server.port).map_err(LoadError::Zotero)?;
         FileLibrary::open_zotero_with(engine, &chosen, None, &Cancellation::default())
     };
     let refused = open().err().ok_or("sharing is off")?;

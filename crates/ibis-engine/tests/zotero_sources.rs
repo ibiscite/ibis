@@ -4,7 +4,7 @@ mod fixture;
 use ibis_core::contract::{ErrorCode, ErrorReason, GoldenCase};
 use ibis_engine::{Cancellation, CitationCommitError, Engine, Method, request::ZoteroLibrary};
 use serde_json::json;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 #[test]
 fn copy_waits_for_a_coherent_read_after_a_detected_switch_and_old_previews_stay_retired() {
     let server = fixture::Server::new();
@@ -29,14 +29,7 @@ fn copy_waits_for_a_coherent_read_after_a_detected_switch_and_old_previews_stay_
         )
     });
     server.wait_for_payload();
-    let wrote = AtomicBool::new(false);
-    assert!(
-        engine
-            .commit_citation(&prepared, &prepared.result().content_hash, |_| wrote
-                .store(true, Ordering::Relaxed))
-            .is_err()
-    );
-    assert!(!wrote.load(Ordering::Relaxed));
+    assert!(engine.recite(&prepared, &cancel).is_err());
     assert_eq!(
         engine.prepare_citation(&case.request, &cancel).unwrap_err().code,
         ErrorCode::SourceUnavailable
@@ -45,18 +38,11 @@ fn copy_waits_for_a_coherent_read_after_a_detected_switch_and_old_previews_stay_
     refresh.join().unwrap().unwrap();
     assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
     assert!(matches!(
-        engine.commit_citation(&prepared, &prepared.result().content_hash, |_| ()),
+        engine.recite(&prepared, &cancel),
         Err(CitationCommitError::PreviewChanged)
     ));
     let current = engine.prepare_citation(&case.request, &cancel).unwrap();
-    assert_eq!(
-        engine
-            .commit_citation(&current, &current.result().content_hash, |content| content
-                .text
-                .to_owned())
-            .unwrap(),
-        "[@Synthetic2026]"
-    );
+    assert_eq!(engine.recite(&current, &cancel).unwrap().text, "[@Synthetic2026]");
 }
 
 #[test]

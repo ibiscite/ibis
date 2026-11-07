@@ -107,7 +107,7 @@ fn a_stuck_read_releases_the_load_worker_on_cancellation_or_deadline() {
             Some(Err(if superseded {
                 LoadError::Stopped
             } else {
-                ibis_core::source::SourceError::Unavailable.into()
+                LoadError::FILE_UNAVAILABLE
             }))
         );
     }

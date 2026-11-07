@@ -137,7 +137,10 @@ fn unrelated_json_reports_a_format_error_in_library_status() -> Result<(), Box<d
     let requests = LoadRequests::default();
     let (request, _, _) = begin_open(&library, &requests, Source::File(path.clone())).ok_or("begin")?;
     let error = FileLibrary::open(&path).err().ok_or("unrelated JSON opened")?;
-    assert_eq!(error, super::super::LoadError::InvalidData);
+    assert_eq!(
+        error,
+        super::super::LoadError::File(ibis_core::contract::ErrorCode::BadInput.into())
+    );
     let status = install(&library, &requests, request, Err(error)).ok_or("status")?;
     assert!(!status.has_snapshot);
     assert_eq!(
@@ -266,7 +269,7 @@ fn a_coherent_engine_update_clears_only_its_own_failed_reload() -> Result<(), Bo
         "successful publication must clear the current source's reload error"
     );
     state.requested = Some(Source::File(directory.path().join("other-missing.bib")));
-    state.error = Some(ibis_core::source::SourceError::Unavailable.into());
+    state.error = Some(super::super::LoadError::FILE_UNAVAILABLE);
     assert!(crate::library::tasks::engine_changed(&mut state, &file));
     assert!(
         state.error.is_some(),
@@ -302,7 +305,7 @@ fn repeated_reloads_and_failed_choices_emit_one_engine_notification() -> Result<
             &library,
             &requests,
             request,
-            Err(ibis_core::source::SourceError::Unavailable.into()),
+            Err(super::super::LoadError::FILE_UNAVAILABLE),
         )
         .ok_or("failed choice")?;
         if let Some(events) = file.observe_once().map_err(|_| "observer")? {
