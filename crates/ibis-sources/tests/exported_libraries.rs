@@ -452,6 +452,8 @@ fn the_record_limit_counts_every_record_the_file_holds() {
         loaded.warnings.iter().map(|w| w.code).collect::<Vec<_>>(),
         [WarningCode::WorkLimit]
     );
+    // A key past the limit is said to be possibly unread.
+    assert!(loaded.cut_short);
 }
 
 #[test]

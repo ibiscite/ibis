@@ -100,6 +100,10 @@ pub struct LoadedLibrary {
     pub kind: LibraryKind,
     pub snapshot: Snapshot,
     pub warnings: Vec<SourceWarning>,
+    /// The read stopped at a limit and left later records unread, so a key
+    /// that is not found may be among them. A limit that only skipped one
+    /// record or its attachments does not count.
+    pub cut_short: bool,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,
     best_attachments: BTreeMap<ItemRef, zotero_source::AttachmentKind>,
 }
@@ -131,6 +135,8 @@ struct ParsedLibrary {
     reused: Vec<usize>,
     warnings: Vec<SourceWarning>,
     attachments: Vec<(ItemRef, String, Option<usize>)>,
+    /// Records after a limit were left unread: `LoadedLibrary::cut_short`.
+    cut_short: bool,
 }
 
 impl ParsedLibrary {

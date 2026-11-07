@@ -84,7 +84,8 @@ fn help_speaks_plainly() {
 fn a_limit_nothing_could_fill_is_refused_the_same_way_at_either_end() {
     let lab = Lab::new("limit");
     let file = lab.file("refs.bib", BIB);
-    for limit in ["0", "1001"] {
+    // A negative number reaches the same check instead of clap's `-- -1` tip.
+    for limit in ["0", "1001", "-1"] {
         let (code, stdout, stderr) = lab.run(&["search", "lantern", "--file", &file, "--limit", limit]);
         assert_eq!((code, stdout.as_str()), (2, ""), "{limit}");
         assert!(stderr.contains("from 1 to 1000"), "{stderr}");
@@ -110,6 +111,7 @@ fn a_file_with_no_entries_is_not_called_a_failed_search() {
     let (code, stdout, _) = lab.run(&["search", "shopping", "--file", &file]);
     assert_eq!(code, 0);
     assert!(stdout.contains("holds any references"), "{stdout}");
+    assert!(stdout.contains("open another library with --file"), "{stdout}");
 }
 
 #[test]
@@ -194,6 +196,14 @@ fn doctor_reads_as_sentences() {
     let file = lab.file("refs.bib", BIB);
     let (_, stdout, _) = lab.run(&["doctor", "--file", &file]);
     assert!(!stdout.contains("ms since Unix epoch"), "{stdout}");
+    // It counts the bundled citation styles, which `cite --style` accepts.
+    let styles: usize = stdout
+        .split(" citation styles")
+        .next()
+        .and_then(|head| head.rsplit(' ').next())
+        .and_then(|count| count.parse().ok())
+        .unwrap_or_default();
+    assert!(styles > 1000, "{stdout}");
     // The next step works for a file, Zotero and the app's libraries alike.
     assert!(
         stdout.contains("See them with ibis libraries and the same library options."),
@@ -210,4 +220,58 @@ fn a_link_to_nothing_is_missing_rather_than_busy() {
     let (code, _, stderr) = lab.run(&["search", "x", "--file", link.to_str().unwrap()]);
     assert_eq!(code, 5);
     assert!(stderr.contains("there is no file at that path"), "{stderr}");
+}
+
+#[test]
+fn a_key_past_the_part_ibis_could_read_says_the_library_was_cut_short() {
+    let lab = Lab::new("cut-short");
+    let entries: String = (0..=200_000)
+        .map(|i| format!("@misc{{k{i}, title={{T {i}}}}}\n"))
+        .collect();
+    let file = lab.file("large.bib", &entries);
+    let (code, _, stderr) = lab.run(&["cite", "k200000", "--style", "apa", "--file", &file]);
+    assert_eq!(code, 4, "{stderr}");
+    assert!(stderr.contains("too large to read in full"), "{stderr}");
+    assert!(stderr.contains("Split the library"), "{stderr}");
+}
+
+#[test]
+fn a_spelling_match_says_so_and_an_exact_one_does_not() {
+    let lab = Lab::new("spelling");
+    let file = lab.file(
+        "refs.bib",
+        "@book{vale2024, title={Lanterns on the Tidal Marsh}, year=2024}\n",
+    );
+    let (code, stdout, _) = lab.run(&["search", "lanters", "--file", &file]);
+    assert_eq!(code, 0);
+    assert!(
+        stdout.contains("Lanterns on the Tidal Marsh (spelling match)"),
+        "{stdout}"
+    );
+    let (_, stdout, _) = lab.run(&["search", "lanterns", "--file", &file]);
+    assert!(!stdout.contains("spelling match"), "{stdout}");
+}
+
+#[test]
+fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
+    let lab = Lab::new("not-cut-short");
+    // Too many attachment links warn `work-limit`, yet the reference is read.
+    let files: Vec<_> = (0..300).map(|i| format!("f{i}.pdf")).collect();
+    let file = lab.file(
+        "refs.bib",
+        &format!("@misc{{kept, title={{T}}, file={{{}}}}}\n", files.join(";")),
+    );
+    // Comments past the record cap leave no reference unread either, even one
+    // that quotes an entry as an example.
+    let comments = format!(
+        "@misc{{kept, title={{T}}}}\n{}@comment{{An example: @book{{dummy, title={{X}}}}}}\n",
+        "@comment{padding}\n".repeat(200_000)
+    );
+    let padded = lab.file("padded.bib", &comments);
+    for file in [file, padded] {
+        let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
+        assert_eq!(code, 4, "{stderr}");
+        assert!(stderr.contains("no reference has the citation key"), "{stderr}");
+        assert!(!stderr.contains("too large"), "{stderr}");
+    }
 }

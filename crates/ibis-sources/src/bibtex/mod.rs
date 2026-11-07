@@ -85,10 +85,17 @@ pub(crate) fn load_with_budget(
             line: None,
             key: None,
         });
+        result.cut_short = true;
         return result;
     }
     let (mut blocks, limited) = split_blocks(text);
     if limited {
+        // Comments past the cap leave no reference unread; when the first
+        // unread block is not known, assume the worst.
+        result.cut_short = blocks.get(crate::MAX_LIBRARY_RECORDS).is_none_or(|first| {
+            let unread = first.text.as_ptr() as usize - text.as_ptr() as usize;
+            lexer::has_entry(&text[unread..])
+        });
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
@@ -118,6 +125,7 @@ pub(crate) fn load_with_budget(
             result
                 .warnings
                 .push(warn(WarningCode::WorkLimit, None, LOAD_LIMIT.into()));
+            result.cut_short = true;
             return result;
         }
         match block.kind.as_str() {
@@ -200,6 +208,7 @@ pub(crate) fn load_with_budget(
         }
         if budget.exhausted() {
             result.warnings.push(warn(WarningCode::WorkLimit, LOAD_LIMIT));
+            result.cut_short = true;
             break;
         }
         match outcome {

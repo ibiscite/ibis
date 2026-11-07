@@ -329,6 +329,7 @@ fn parse_with_budget(
         Format::Csv => exported::csv::load(&library, text, previous)?,
         Format::Bibtex => bibtex::load_with_budget(&library, text, budget, previous),
     };
+    let parsed_cut_short = parsed.cut_short;
     let mut objects: Vec<_> = parsed.records.into_iter().map(LibraryObject::Record).collect();
     let mut warnings = parsed.warnings;
     let mut attachment_paths = BTreeMap::new();
@@ -352,6 +353,7 @@ fn parse_with_budget(
         kind: crate::LibraryKind::File,
         snapshot,
         warnings,
+        cut_short: parsed_cut_short,
         attachment_paths,
         best_attachments: Default::default(),
     })

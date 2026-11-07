@@ -160,6 +160,8 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
         {why && <span className="result-why">{say("picker-matched-in", { field: why })}</span>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}
         {r.partial && <span className="result-why">{say("picker-closest-match")}</span>}
+        {/* The engine decides a word matched only with a spelling change; the row says so. */}
+        {r.typo && !r.partial && <span className="result-why">{say("picker-spelling-match")}</span>}
         {project && <span className="result-project">{project}</span>}
         {/* The type in words; the tile's icon is decorative. */}
         {rowWords.itemType(r.item_type) && <span className="visually-hidden">{rowWords.itemType(r.item_type)}</span>}
