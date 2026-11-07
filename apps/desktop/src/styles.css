@@ -35,7 +35,7 @@ main > footer { grid-area: footer; }
   margin-inline: calc(var(--lead) - calc((1.5rem - var(--icon)) / 2)) calc(var(--lead-gap) - var(--space-1) - calc((1.5rem - var(--icon)) / 2));
 }
 /* The search glyph is centred over the tile column and the query starts where
-   row titles start (docs/design.md, "Two columns"). */
+   row titles start (docs/design/foundations.md, "Two columns"). */
 /* No icon: the query starts at the leading inset; nothing is reserved. */
 .pin-button { flex: none; }
 .search-bar > svg { margin-inline: var(--lead) calc(var(--lead-gap) - var(--space-1)); }
@@ -44,7 +44,7 @@ main > footer { grid-area: footer; }
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
 .search-bar .pin-button { margin-inline-start: auto; }
 /* Controls fill the field's height, so their gap to the window's top and side is
-   one --inset and their corners nest in the window's (docs/design.md, Corners). */
+   one --inset and their corners nest in the window's (docs/design/foundations.md, Corners). */
 .search-bar .ui-popup-button.ui-button[data-variant] { min-height: var(--field-h); border-radius: var(--r-row); }
 .search-bar .pin-button.ui-button[data-variant] { --icon-button-size: var(--field-h); border-radius: var(--r-row); }
 #search::placeholder { color: var(--text-placeholder); }
@@ -70,7 +70,7 @@ main > footer { grid-area: footer; }
 [role="option"] { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid transparent; }
 [role="option"] + [role="option"] { margin-top: var(--row-spacing); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
-/* The leading tile (docs/design.md, "List and row"): the type icon on a quiet
+/* The leading tile (docs/design/picker.md, "List and row"): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
    the same place, so the row never reflows; a row in the citation keeps a
    scarlet tile with a white check, the only scarlet on the row. Fills only, no

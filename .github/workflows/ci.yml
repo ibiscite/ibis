@@ -156,7 +156,7 @@ jobs:
         working-directory: apps/desktop
     steps:
       # Checkout and install always run: the script tests below need the
-      # interface and some read Markdown (docs/design.md), so they run even on
+      # interface and some read Markdown (docs/design/), so they run even on
       # a documentation-only change.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

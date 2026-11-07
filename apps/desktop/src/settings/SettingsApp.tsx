@@ -49,7 +49,7 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 }
 
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
- * rows (docs/design.md, "Settings"). Every change applies at once. */
+ * rows (docs/design/settings.md). Every change applies at once. */
 /** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
 const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".settings-page-title")?.offsetHeight ?? 0;
 

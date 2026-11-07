@@ -4,7 +4,7 @@ Agents prepare releases and choose versions and timing; each stable release publ
 
 ## Releases
 
-Versions follow [Semantic Versioning](https://semver.org/). Before 1.0, `0.N.0` ships milestone `0.N`, and `0.N.1`, `0.N.2`, ... add fixes and small features. To request a milestone version, put `Release-As: 0.N.0` in a commit body on `main`. Never edit versions by hand. Data formats have schema versions; before 1.0 they may change without migrations ([decisions](docs/decisions.md#0016-settings-with-0018-0020-0022-0023-and-0027)).
+Versions follow [Semantic Versioning](https://semver.org/). Before 1.0, `0.N.0` ships milestone `0.N`, and `0.N.1`, `0.N.2`, ... add fixes and small features. To request a milestone version, put `Release-As: 0.N.0` in a commit body on `main`. Never edit versions by hand. Data formats have schema versions; before 1.0 they may change without migrations ([decisions](docs/decisions/0016-settings.md)).
 
 | Entry | Title | Tag | GitHub flag |
 | --- | --- | --- | --- |

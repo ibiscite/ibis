@@ -112,7 +112,7 @@ pub const APPS: &[App] = &[
     app(Macos, "com.microsoft.outlook", "Microsoft Outlook", FORMATTED, Normal),
     app(Windows, "outlook.exe", "Microsoft Outlook", FORMATTED, Normal),
     app(Macos, "com.apple.mail", "Mail", FORMATTED, Normal),
-    // App metadata and on-device reports; provenance is in docs/decisions.md.
+    // App metadata and on-device reports; provenance is in decision 0031 (docs/decisions/).
     app(Macos, "com.anthropic.claudefordesktop", "Claude", None, Normal),
     app(Macos, "com.openai.codex", "ChatGPT", None, Normal),
     app(Macos, "com.openai.chat", "ChatGPT Classic", None, Normal),

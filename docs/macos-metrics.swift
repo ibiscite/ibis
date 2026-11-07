@@ -1,5 +1,5 @@
 // Prints the Mac's own design values (colours, type, control sizes, menus, sidebar rows, window chrome) as JSON.
-// Run on a Mac: swift docs/macos-metrics.swift > /tmp/macos-metrics.json (see docs/design.md, "Exact macOS values")
+// Run on a Mac: swift docs/macos-metrics.swift > /tmp/macos-metrics.json (see docs/design/foundations.md, "Exact macOS values")
 // Reads only system values; no files, no network, no personal data.
 import AppKit
 

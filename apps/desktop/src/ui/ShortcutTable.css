@@ -1,5 +1,5 @@
 /* Settings › Shortcuts uses the grouped cards of every other Settings page
-   (docs/design.md, Settings): a small secondary heading over each group, then
+   (docs/design/settings.md): a small secondary heading over each group, then
    one card of rows with the action at the start and its keys at the end. Only
    the opening-shortcut recorder edits a key, so every listed key is plain
    secondary text; the keys sheet (a key list) keeps caps. */

@@ -136,11 +136,11 @@ test("the copy reasons are exactly the ones Rust sends, and each has its words",
   expect(Object.keys(copiedNoticeText.reasons).sort()).toEqual([...COPY_REASONS].sort());
 });
 
-test("every reason reads as docs/design.md's Notices table says, ending with its fix", async () => {
+test("every reason reads as the Notices table in docs/design/delivery.md says, ending with its fix", async () => {
   const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  const design = readFileSync(new FileURL("../../../docs/design.md", import.meta.url), "utf8");
-  const section = design.slice(design.indexOf("### Notices"), design.indexOf("### Window behaviour"));
+  const design = readFileSync(new FileURL("../../../docs/design/delivery.md", import.meta.url), "utf8");
+  const section = design.slice(design.indexOf("## Notices"));
   const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
   const table = Object.fromEntries(rows.filter(([, code]) => code !== "—").map(([, code, words]) => [code!.replaceAll("`", ""), words]));
   expect(table).toEqual(copiedNoticeText.reasons);

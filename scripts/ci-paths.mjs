@@ -8,7 +8,7 @@ const validPath = (path) => typeof path === "string" && path.length > 0 && !/[\x
 // Markdown beside code or vendored assets can be pinned by Rust tests.
 // Only known documentation locations may bypass them.
 const documentation = (path) => !path.split("/").includes("vendor") && (
-  (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md"))
+  (path.endsWith(".md") && (!path.includes("/") || path.startsWith("docs/") || path === "website/README.md" || path === "apps/desktop/src/ui/README.md"))
   || path === "LICENSE" || path.startsWith(".github/ISSUE_TEMPLATE/")
 );
 // Generated bindings are also a native contract, checked by Rust tests.
