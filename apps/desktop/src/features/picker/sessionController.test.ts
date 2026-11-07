@@ -24,6 +24,7 @@ function setup(overrides: Partial<SessionPorts> = {}) {
     controller.dispatch({ type: "picker-inputs", inputs: { ...inputs! } });
     controller.dispatch({ type: "search-inputs", inputs: search.inputs! });
     controller.dispatch({ type: "preview-inputs", inputs: preview.inputs! });
+    controller.dispatch({ type: "committed" });
   };
   ready();
   const enter = () => controller.dispatch({ type: "enter", choice: choiceKey(chosen) });

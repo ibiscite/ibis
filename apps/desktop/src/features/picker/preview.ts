@@ -34,6 +34,8 @@ export type PreviewState = {
   request: number; key: string | null;
   /** The request last sent to the engine, with its opening: only it may answer. */
   started: { request: number; session: number; key: string; retryKey: string } | null;
+  /** The request whose native preview was started last: it retired every earlier ticket. */
+  lastStarted: number;
   result: PreviewResult | null;
   /** A retry key whose preview met a newer snapshot: not asked again until the snapshot changes. */
   staleKey: string | null;
@@ -44,7 +46,7 @@ export type PreviewState = {
 };
 
 export const initialPreview: PreviewState = {
-  inputs: null, session: -1, request: 0, key: null, started: null, result: null, staleKey: null, askedAgain: null, waiting: null,
+  inputs: null, session: -1, request: 0, key: null, started: null, lastStarted: -1, result: null, staleKey: null, askedAgain: null, waiting: null,
 };
 
 export type PreviewFailure = { kind: "loading" | "cancelled" | "stale" | "failed"; problem?: string };
@@ -64,12 +66,12 @@ export const previewKey = (output: OutputId, version: number, choice: string, co
 
 /** The preview's answer for `key`, if it is this choice's to use now. */
 export function ownedPreview(s: PreviewState, key: string, session: number, opened: number): PreviewResult | null {
-  const { result, request, started } = s;
+  const { result, request, lastStarted } = s;
   if (result?.key !== key) return null;
   // A failure says nothing about the next try: choosing the citation again or
   // reopening prepares it afresh, and an earlier opening's failure is never shown.
   const failed = result.value === "failed";
-  const reusable = !failed && (started === null || started.request === result.request);
+  const reusable = !failed && lastStarted === result.request;
   return (result.request === request && !(failed && (result.session !== session || result.opened !== opened))) || reusable ? result : null;
 }
 
@@ -77,7 +79,7 @@ const once = (session: number, key: string) => `${session}\u0002${key}`;
 
 /** Start the current request, stopping any other still out. */
 function start(s: PreviewState, inputs: PreviewInputs, session: number): PreviewStep {
-  return { preview: { ...s, started: { request: s.request, session, key: inputs.key, retryKey: inputs.retryKey } },
+  return { preview: { ...s, started: { request: s.request, session, key: inputs.key, retryKey: inputs.retryKey }, lastStarted: s.request },
     effects: [{ type: "preview", request: s.request, ask: inputs.ask! }] };
 }
 
@@ -105,9 +107,9 @@ export function reducePreview(s: PreviewState, event: PreviewEvent, session: num
       const stop: PreviewStep["effects"] = s.started ? [{ type: "stop-preview" }] : [];
       // An empty search or reconciliation asks for nothing and keeps the settled preview.
       if (!inputs.ask) return { preview: { ...next, started: null }, effects: stop };
-      // Back to a key whose preview nothing newer replaced: adopt it without asking.
-      if (s.result && !failed && s.result.key === inputs.key && (s.started === null || s.started.request === s.result.request)) {
-        return { preview: { ...next, result: { ...s.result, request: next.request } }, effects: [] };
+      // Back to a key whose ticket no newer native preview retired: adopt it without asking.
+      if (s.result && !failed && s.result.key === inputs.key && s.lastStarted === s.result.request) {
+        return { preview: { ...next, result: { ...s.result, request: next.request }, lastStarted: next.request }, effects: [] };
       }
       if (survives) return { preview: next, effects: [] };
       if (s.staleKey === inputs.retryKey) {
