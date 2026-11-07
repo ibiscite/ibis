@@ -117,7 +117,8 @@ function signIn(platform: Platform) {
 /** Choice screens [C12]: first run, no library, and a library that cannot be opened. */
 export const setupText = {
   sourcesTitle: say("setup-sources-title"),
-  sourcesLine: say("setup-sources-line"),
+  /** Linux copies rather than pastes, so it says so. */
+  sourcesLine: (platform: Platform) => say("setup-sources-line", { platform }),
   returnHint: (shortcut: string) => say("setup-return-hint", { shortcut }),
   shortcutUnavailable: say("setup-shortcut-unavailable"),
   noShortcut: say("setup-no-shortcut"),

@@ -520,7 +520,11 @@ operation-failures-app-choices = Ibis needs your paste choice for this app becau
 operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
 setup-sources-title = Where do your references live?
-setup-sources-line = Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+setup-sources-line =
+    { $platform ->
+        [linux] Ibis finds a reference and copies its citation for you to paste where you’re typing. It only reads your library, never changes it.
+       *[other] Ibis finds a reference and pastes its citation where you’re typing. It only reads your library, never changes it.
+    }
 setup-return-hint = After this, open Ibis from any app with { $shortcut }.
 setup-shortcut-unavailable = The shortcut is unavailable. Open Ibis from the menu bar or tray.
 setup-no-shortcut = No shortcut is set.
