@@ -1595,7 +1595,7 @@ class MacOS:
         if not self.helper("trusted")["accessibility"]:
             raise Unavailable("Give this terminal Accessibility access in System Settings > Privacy & Security", "accessibility-driver")
         self.app = None  # The Ibis process, set by the journey.
-        self.last_picker = None
+        self.last_picker = self.last_shown = None
 
     def helper(self, *arguments):
         result = subprocess.run([str(self.helper_path), *map(str, arguments)], capture_output=True, text=True, timeout=20)
@@ -1632,6 +1632,13 @@ class MacOS:
 
     def ibis_strings(self):
         return self.helper("strings", self.app.pid)["strings"]
+
+    def ibis_shows(self, text):
+        """Whether Ibis shows text, also when highlighting splits it into pieces."""
+        strings = self.ibis_strings()
+        self.last_shown = {"strings": len(strings), "whole": text in strings,
+                           "pieces": [word in " ".join(strings) for word in text.split()]}
+        return text in strings or text in "".join(strings) or text in " ".join(strings)
 
     def clipboard(self, *, timeout=20):
         return subprocess.run(["pbpaste"], capture_output=True, text=True, check=True, timeout=timeout).stdout
@@ -1761,7 +1768,7 @@ def _journey_main(args):
 
         native.key(args.shortcut)
         wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the shortcut opens Ibis with the selection as its search")
-        wait_for(lambda: JOURNEY_TITLE in native.ibis_strings(), "the invented reference is found")
+        wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found")
         passed("the shortcut opens the picker from TextEdit and searches the selection")
         native.key("Return")
         seen = {"pasted": False, "notices": set()}
@@ -1799,7 +1806,7 @@ def _journey_main(args):
         native.key("super+a")
         native.text(JOURNEY_QUERY)
         wait_for(lambda: native.ibis_focused(JOURNEY_QUERY), "the search holds the typed query")
-        wait_for(lambda: JOURNEY_TITLE in native.ibis_strings(), "the invented reference is found again")
+        wait_for(lambda: native.ibis_shows(JOURNEY_TITLE), "the invented reference is found again")
         prime_clipboard(native)
         native.key("Return")
         notices = set()
@@ -1825,6 +1832,7 @@ def _journey_main(args):
         report["reason"] = str(error) if isinstance(error, AssertionError) else type(error).__name__
         if native:
             report["last_picker"] = native.last_picker  # Booleans and a role name only.
+            report["last_shown"] = native.last_shown
             report["app_running"] = bool(app) and app.poll() is None
     finally:
         def stop_collector():

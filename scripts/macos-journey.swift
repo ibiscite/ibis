@@ -58,7 +58,7 @@ func textArea(_ app: AXUIElement) -> AXUIElement? {
 func strings(_ app: AXUIElement) -> [String: Any] {
     var titles: [String] = [], found: [String] = []
     var stack: [AXUIElement] = []
-    for window in elements(app, kAXWindowsAttribute) {
+    for window in elements(app, kAXWindowsAttribute).reversed() {
         titles.append(string(window, kAXTitleAttribute))
         stack.append(window)
     }
@@ -69,7 +69,9 @@ func strings(_ app: AXUIElement) -> [String: Any] {
             let text = string(item, name)
             if !text.isEmpty { found.append(text) }
         }
-        stack.append(contentsOf: elements(item, kAXChildrenAttribute))
+        // Reversed, so strings come out in reading order and a title split by
+        // match highlighting reads back joined.
+        stack.append(contentsOf: elements(item, kAXChildrenAttribute).reversed())
     }
     return ["windows": titles, "strings": found, "complete": seen < 4000]
 }
