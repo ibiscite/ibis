@@ -59,8 +59,21 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   the embedded app on X11 with one display and the default keyboard layout.
   It checks shortcut/focus, typing, exact Pandoc clipboard text, hide/reopen,
   live settings preservation, file reload and recovery, plus first-run output
-  persistence. Its 100k launch/memory measurements are diagnostics. It does
-  not read a delivered citation from an editor. Require passed `smoke.json`.
+  persistence. Its 100k launch/memory measurements are diagnostics. After
+  Enter copies, it checks the notice's reason, pastes with Shift+Insert into
+  the xterm editor as a person would, and reads back exactly the citation.
+  Require passed `smoke.json`.
+- **Native journey (macOS):** `bash scripts/hands-on-macos.sh --journey` on
+  the maintainer's Mac installs the newest nightly, isolates its profile and
+  runs `smoke-native.py --journey`: Ibis starts with invented references, the
+  shortcut opens it from TextEdit with the selected words as the search,
+  Enter pastes, and TextEdit's text, read through Accessibility, must be
+  exactly the expected sentence, once. Then a Terminal collector must get no
+  keystrokes, the clipboard the exact key and the notice its terminal reason.
+  It fails on a wrong or missing citation and exits 2 when this terminal lacks
+  Accessibility access or TextEdit is open. CI runs the same command on the
+  debug build (Desktop job, macOS); there Ibis's paste permission is the
+  runner's. Windows and Ubuntu desktops are checked by hand.
 - **Windows paste smoke:** Preview runs a low-level paste check that starts an
   empty Notepad document, sends one Ctrl+V and reads its focused text. This
   bypasses the picker and citation preparation. Explicit OS denial of
@@ -190,7 +203,7 @@ Windows 11 or native GNOME/KDE Wayland coverage.
 
 ## Evidence from every native or agent run
 
-Both existing `scripts/smoke-native.py` entry points now write one
+Every `scripts/smoke-native.py` entry point writes one
 `OUTPUT/evidence-RUN_ID/manifest.json` per invocation, including failure,
 timeout, interruption and unavailable capability. Exit codes remain 0 (pass),
 1 (failure, including evidence I/O) and 2 (unavailable); unavailable never

@@ -6,6 +6,10 @@
 # exit. An explicit opt-in Zotero check shows your own library in the picker.
 # Only answers and typed notes go to a fresh ~/Desktop/ibis-test-*/results.txt
 # and the clipboard. Keep notes free of library content, private names and paths.
+# From a checkout, `bash scripts/hands-on-macos.sh --journey` instead runs the
+# automated journey (scripts/smoke-native.py --journey) on the newest nightly:
+# it types into Ibis and opens TextEdit and Terminal, so leave the Mac alone
+# for a minute. Quit TextEdit first.
 set -euo pipefail
 set +x
 umask 077
@@ -202,6 +206,8 @@ seed_settings() {
     if [ "$had_profile" = 1 ]; then mv "$settings" "$profile_stage/original" || return 1; fi
     mkdir "$settings" || return 1
   fi
+  # The journey writes and removes its own settings in the isolated profile.
+  [ "${1:-}" != empty ] || return 0
   for name in settings.json settings.json.bak; do
     regular_destination "$settings/$name" || return 1
     cp "$dir/synthetic-settings.json" "$settings/$name" || return 1
@@ -244,8 +250,18 @@ summon() { echo "Press Command+Shift+Y (or click the Ibis menu bar icon and choo
 
 # Main: never source or run the installer in automated tests.
 [ "$(uname -s)" = Darwin ] || { fail "This check is for macOS."; exit 1; }
+journey=0
+case "${1:-}" in
+  "") ;;
+  --journey)
+    journey=1
+    scripts=$(cd "$(dirname "$0")" && pwd)
+    [ -f "$scripts/smoke-native.py" ] || { fail "Run the journey from a checkout: bash scripts/hands-on-macos.sh --journey"; exit 1; }
+    ;;
+  *) fail "Usage: hands-on-macos.sh [--journey]"; exit 1 ;;
+esac
 choose_assets
-exec 3</dev/tty
+[ "$journey" = 1 ] || exec 3</dev/tty
 no_links "$HOME/Desktop"
 dir=$(mktemp -d "$HOME/Desktop/ibis-test-$(date +%Y%m%d-%H%M%S).XXXXXX")
 no_links "$dir"
@@ -311,6 +327,28 @@ mv "$stage/new.app" "$app"
 codesign --verify --deep --strict "$app"
 swapping=0
 echo "Installed Ibis Nightly $version."
+
+if [ "$journey" = 1 ]; then
+  say "3/3 The journey: summon, search, paste into TextEdit, then a terminal gets a copy"
+  seed_settings empty
+  status=0
+  regular_destination "$dir/journey.log"
+  python3 "$scripts/smoke-native.py" --journey --app "$app" --identifier com.ibiscite.ibis.nightly \
+    --output "$dir/journey" 2>&1 | tee "$dir/journey.log" || status=$?
+  restore_profile
+  case "$status" in 0) outcome=passed ;; 2) outcome=unavailable ;; *) outcome=failed ;; esac
+  regular_destination "$dir/results.txt"
+  {
+    echo "Ibis journey, $(date -u +%Y-%m-%dT%H:%MZ)"
+    echo "macOS $(sw_vers -productVersion), $system, Ibis Nightly $version: $outcome"
+    grep '^PASS ' "$dir/journey.log" || true
+    sed -n 's/^  "reason": \(.*\),*$/reason: \1/p' "$dir/journey/journey.json" 2>/dev/null || true
+  } > results.txt
+  pbcopy < results.txt
+  cat results.txt
+  echo "The result is on your clipboard and in $dir/results.txt; the evidence is in $dir/journey."
+  exit "$status"
+fi
 
 say "3/4 The command line"
 bin/ibis --version
