@@ -455,7 +455,8 @@ fn every_answer_is_bounded() {
     let (_dir, engine) = library("synthetic.json", &json!(records).to_string());
     let hits = tool(&engine, "search", json!({"query":"bound","limit":mcp::MAX_HITS}));
     assert_eq!(hits["isError"], false);
-    assert!(hits["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
+    // The bound is on the whole result: the answer goes as text and as structured content.
+    assert!(hits.to_string().len() <= mcp::MAX_ANSWER);
     let first = &hits["structuredContent"]["hits"][0];
     // Date text is cut where every front end cuts it.
     assert_eq!(
@@ -467,7 +468,25 @@ fn every_answer_is_bounded() {
         mcp::MAX_HITS
     );
     let shown = tool(&engine, "show", json!({"ref":"bound0"}));
-    assert!(shown["content"][0]["text"].as_str().unwrap().len() <= mcp::MAX_ANSWER);
+    assert!(shown.to_string().len() <= mcp::MAX_ANSWER);
+
+    // Twenty long names each: the hits that fit the bound as data alone
+    // would not fit it sent twice, as text and as structured content.
+    let names: Vec<Value> = (0..mcp::MAX_LIST)
+        .map(|index| json!({"family": format!("{index}{}", "n".repeat(1_000))}))
+        .collect();
+    let records: Vec<Value> = (0..mcp::MAX_HITS)
+        .map(|index| json!({"id": format!("long{index}"), "type": "book", "title": "Invented long", "author": names}))
+        .collect();
+    let (_dir, engine) = library("long.json", &json!(records).to_string());
+    let hits = tool(
+        &engine,
+        "search",
+        json!({"query":"invented long","limit":mcp::MAX_HITS}),
+    );
+    assert_eq!(hits["isError"], false);
+    assert!(hits.to_string().len() <= mcp::MAX_ANSWER, "{}", hits.to_string().len());
+    assert_eq!(hits["structuredContent"]["complete"], false);
 }
 
 #[test]

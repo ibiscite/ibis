@@ -324,3 +324,44 @@ fn zotero_that_turns_sharing_on_opens_with_no_change_to_the_choice() -> Result<(
     assert_eq!(LibraryProblem::from(refused), LibraryProblem::ZoteroAccessOff);
     Ok(())
 }
+
+#[test]
+fn a_copy_waiting_for_its_commit_is_refused_by_a_newer_preview_or_a_zotero_read()
+-> Result<(), Box<dyn std::error::Error>> {
+    let server = fixture::Server::new();
+    let bridge = Arc::new(opened(&server)?);
+    let shown = bridge
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
+        .map_err(|e| e.to_string())?;
+    // A preview asked for after the copy was re-cited, even one that then fails.
+    let recited = bridge
+        .recite(&shown.ticket, &shown.content_hash)
+        .map_err(|e| e.to_string())?;
+    let _newer = bridge.reserve_preview();
+    assert!(
+        bridge
+            .copy_recited(&recited, |_| panic!("a superseded copy must not write"))
+            .is_err()
+    );
+
+    // A full Zotero read that begins between re-citing and writing.
+    let shown = bridge
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
+        .map_err(|e| e.to_string())?;
+    let recited = bridge
+        .recite(&shown.ticket, &shown.content_hash)
+        .map_err(|e| e.to_string())?;
+    server.instance.store(2, Ordering::SeqCst);
+    server.pause.store(true, Ordering::SeqCst);
+    let reloading = Arc::clone(&bridge);
+    let worker = std::thread::spawn(move || reloading.reload());
+    server.wait_for_payload();
+    let refused = bridge.copy_recited(&recited, |_| panic!("an uncertain Zotero must not write"));
+    server.pause.store(false, Ordering::SeqCst);
+    worker
+        .join()
+        .map_err(|_| "reload worker")?
+        .map_err(|_| "coherent reload")?;
+    assert!(refused.is_err());
+    Ok(())
+}

@@ -1,7 +1,7 @@
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
 import type { SearchResult } from "../../api";
-import type { FilePreview } from "../../bindings";
+import type { FilePreview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
 import { render, renderRuns } from "../../format/markup";
 import { citationDetailsText, pickerText } from "../../messages";
@@ -38,7 +38,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ deliverable = true, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ deliverable = true, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
@@ -60,6 +60,8 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   keys: boolean;
   shown: FormattedCitation | "failed" | "stale" | null | undefined;
   outputWarnings: readonly string[];
+  /** The engine's notices about the shown citation. */
+  outputNotices?: readonly Notice[];
   problem?: string;
   focusable: boolean;
   fallbackFocusRef?: RefObject<HTMLElement | null>;
@@ -107,8 +109,12 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   const partialWarnings = copied ? [...copied.closestMatches ?? []] : closestMatchWarnings(references);
   const currentWarnings = copied ? copied.warnings.slice(0, copied.warnings.length - partialWarnings.length) : outputWarnings;
   const warnings = [...currentWarnings, ...partialWarnings];
-  const entryNotice = style && writesEntries(style) ? pickerText.entryOnly(outputName(style)) : null;
-  const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice && pickerText.entryOnlyShort,
+  // What depends on the whole document: a note style's full first note, from the
+  // engine's notice about the citation shown (an editor's output included), or
+  // a numbered style's entry.
+  const entryNotice = outputNotices.includes("full-first-note") ? { short: pickerText.firstNoteShort, text: pickerText.firstNote }
+    : style && writesEntries(style) ? { short: pickerText.entryOnlyShort, text: pickerText.entryOnly(outputName(style)) } : null;
+  const statusLabel = [warnings.length > 0 && pickerText.warningCount(warnings.length), entryNotice?.short,
     partialWarnings.length > 0 && pickerText.closestMatches].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });
   const inspecting = (reference: CitationReference) => panel?.kind === "reference" && panel.reference === idKey(reference.id);
@@ -258,7 +264,7 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
               {warnings.length > 0 && <span>{pickerText.warningCount(warnings.length)}</span>}
-              {entryNotice && <span>{pickerText.entryOnlyShort}</span>}
+              {entryNotice && <span>{entryNotice.short}</span>}
             </>}</Button>}
           {!copied && !detailsOpen && (shown === "failed" || shown === "stale") && <Button variant="quiet" aria-expanded={false}
             onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{pickerText.details}</Button>}

@@ -19,6 +19,19 @@ impl Home {
         };
         folder.join("com.ibiscite.ibis/settings.json")
     }
+    /// What a person at a terminal reads.
+    fn plain(&self, args: &[&str]) -> String {
+        let root = self.0.path();
+        let result = Command::new(env!("CARGO_BIN_EXE_ibis"))
+            .args(args)
+            .env("HOME", root)
+            .env("USERPROFILE", root)
+            .env("APPDATA", root.join("AppData"))
+            .env("XDG_CONFIG_HOME", root.join("config"))
+            .output()
+            .unwrap();
+        String::from_utf8(result.stdout).unwrap()
+    }
     fn run(&self, args: &[&str]) -> (i32, Value, String) {
         let root = self.0.path();
         let result = Command::new(env!("CARGO_BIN_EXE_ibis"))
@@ -83,6 +96,13 @@ fn project_format_and_bibliography_work_without_inheriting_gui_selection() {
     let (code, listed, _) = home.run(&["projects", "list"]);
     assert_eq!(code, 0, "{listed}");
     assert_eq!(listed["data"]["projects"].as_array().unwrap().len(), 1);
+    // The list names each project's bibliography file, as its help says.
+    assert!(home.plain(&["projects", "list"]).trim_end().ends_with("\trefs.bib"));
+    assert_eq!(home.run(&["projects", "create", "Loose", "--format", "pandoc"]).0, 0);
+    assert!(
+        home.plain(&["projects", "list"])
+            .contains("\tLoose\tPandoc\tno .bib file")
+    );
     assert_eq!(home.run(&["projects", "remove", id]).0, 0);
     assert_ne!(
         home.run(&["cite", "vale2024", "--project", id, "--file", bib.to_str().unwrap()])

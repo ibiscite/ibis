@@ -95,6 +95,10 @@ pub(crate) struct FilePreview {
     /// names a different work.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) project_refusal: Option<String>,
+    /// What the engine says about this citation that is no warning, such as a
+    /// full first note; the web view words each from the catalogue.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub(crate) notices: Vec<Notice>,
 }
 /// One answer from an engine's `libraries` method, by its field.
 fn engine_list<T: serde::de::DeserializeOwned>(
@@ -843,6 +847,7 @@ impl FileLibrary {
                 .collect(),
             problem: None,
             project_refusal: None,
+            notices: result.notices.clone(),
         };
         *slot = Some((preview.ticket.clone(), Arc::new(citation), original_output));
         Ok(preview)
@@ -978,15 +983,14 @@ impl FileLibrary {
             }
             Arc::clone(citation)
         };
-        let result = self
-            .engine
-            .recite(&citation, &Cancellation::default())
-            .map_err(|error| match error {
-                ibis_engine::CitationCommitError::Engine(_) => {
-                    CommandError::from("The citation could not be copied. Try again.")
-                }
-                _ => CommandError::SnapshotChanged,
-            })?;
+        // A newer preview cancels this one's work, a copy's included.
+        let cancel = self.preview_cancellation(ticket.parse().map_err(|_| CommandError::SnapshotChanged)?)?;
+        let result = self.engine.recite(&citation, &cancel).map_err(|error| match error {
+            ibis_engine::CitationCommitError::Engine(_) => {
+                CommandError::from("The citation could not be copied. Try again.")
+            }
+            _ => CommandError::SnapshotChanged,
+        })?;
         Ok(Recited {
             ticket: ticket.to_owned(),
             hash: hash.to_owned(),
@@ -1007,6 +1011,15 @@ impl FileLibrary {
         if current != &recited.ticket || !Arc::ptr_eq(citation, &recited.citation) {
             return Err(CommandError::SnapshotChanged);
         }
+        // A preview asked for since, even one that failed, retires this copy.
+        let latest = self.latest_preview.lock().map_err(|_| CommandError::SnapshotChanged)?.0;
+        if latest.to_string() != recited.ticket {
+            return Err(CommandError::SnapshotChanged);
+        }
+        // Zotero may have begun a full read while the copy waited for this thread.
+        self.engine
+            .still_current(citation)
+            .map_err(|_| CommandError::SnapshotChanged)?;
         let copied = &recited.result;
         write(
             copied

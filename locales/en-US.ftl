@@ -147,10 +147,17 @@ cli-options-refused = Cannot cite { $reference } with { $options } in { $output 
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
+cli-project-without-bibliography = no .bib file
+cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 
 ## The app’s own sentence about a citation.
 
 app-loss = This output cannot fully show { $what }{ $target }.
+app-tray-open = Open Ibis
+app-tray-open-shortcut = Open Ibis ({ $shortcut })
+app-saved-title = Save References Cited Since Opening
+app-saved-file = Cited since opening
+app-saved-page = References cited since opening
 
 ## The app’s interface.
 
@@ -556,8 +563,8 @@ setup-try-again = Try Again
 setup-try-again-help = Read the library again
 setup-another = Use Another Library
 setup-another-help = Zotero or another library file
-session-menu = Cited Since Ibis Opened…
-session-title = Cited since Ibis opened
+session-menu = Cited Since Opening…
+session-title = Cited since opening
 session-about = What you copied with Ibis since it opened, or since you reset this list, in every app. Ibis can’t see your document, so check this against it.
 session-empty = Nothing yet. References you copy appear here.
 session-close = Close
@@ -662,6 +669,8 @@ picker-preview-refused = This citation could not be prepared. Close and reopen I
 picker-preview-style-error = Couldn’t format in { $style }. Choose another style, or copy keys.
 picker-entry-only = { $style } numbers depend on your whole document, so Ibis copies the reference entry instead.
 picker-entry-only-short = Reference entry
+picker-first-note = Later notes to the same work are shortened, and which note comes first depends on your whole document, so Ibis copies the full first note.
+picker-first-note-short = Full first note
 picker-shelf-stale = The library changed. Reading it again…
 picker-all-chosen = Show all { $n } selected references
 picker-dismiss = Dismiss
@@ -785,3 +794,13 @@ update-title = Updating Ibis
 update-downloading = Downloading
 update-installing = Checking and installing
 update-failed = The update could not be installed. Use Check for Updates in Settings › About to try again later.
+library-entries-to-check =
+    { $count ->
+        [one] 1 entry to check
+       *[other] { $count } entries to check
+    }
+library-more-not-listed =
+    { $count ->
+        [one] 1 more is not listed.
+       *[other] { $count } more are not listed.
+    }

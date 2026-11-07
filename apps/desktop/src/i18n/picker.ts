@@ -202,6 +202,8 @@ export const PICKER_IDS = [
   "picker-preview-style-error",
   "picker-entry-only",
   "picker-entry-only-short",
+  "picker-first-note",
+  "picker-first-note-short",
   "picker-shelf-stale",
   "picker-all-chosen",
   "picker-dismiss",
@@ -325,6 +327,8 @@ export const PICKER_IDS = [
   "update-downloading",
   "update-installing",
   "update-failed",
+  "library-entries-to-check",
+  "library-more-not-listed",
 ] as const;
 
 /** The variables those messages take, each passed by messages.ts. */

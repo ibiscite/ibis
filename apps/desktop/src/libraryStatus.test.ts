@@ -91,7 +91,7 @@ test("a damaged library says what it skipped and where to look, in words", () =>
   expect(detail(damaged)).toEqual(["damaged.bib · 3 references · 4 entries skipped · 1 to check",
     `checked 3 hours ago, ${clockAt(3)} · 4 entries skipped: 2 use the key good1 (lines 3 and 9), 2 could not be read (lines 21 and 25). Check line 15.`]);
   // More notices than the engine details: the count stays honest.
-  expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 reading problems");
+  expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 entries to check");
 });
 
 test("the age leaves once the update is no longer news", () => {

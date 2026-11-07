@@ -74,7 +74,7 @@ forgets its command fails loudly. `ibis settings` alone lists its own commands t
 | `call METHOD --params JSON` or `--stdin` | Any engine method with raw JSON parameters. |
 | `serve --stdio` | A JSON-RPC 2.0 server for programs ([below](#json-rpc-server)). |
 | `mcp` | A Model Context Protocol server for AI agents ([below](#ai-agents-mcp)). |
-| `doctor` | An offline health report on the named sources and settings file ([terminal kit](../crates/ibis-cli/README.md#offline-diagnosis)). |
+| `doctor` | An offline check of the named libraries and the settings file ([terminal kit](../crates/ibis-cli/README.md#offline-diagnosis)). |
 | `completions bash\|zsh\|fish` | Shell completions ([terminal kit](../crates/ibis-cli/README.md#shell-completions)). |
 | `toggle [--app PATH]` | Show or hide the desktop picker. |
 | `settings export [FILE] [--force]` | Back up the app's settings for another computer, to FILE or stdout; never replaces FILE without `--force`. Paste approvals and window places are left out. |
@@ -181,7 +181,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `--app PATH` | The Ibis app to start when it is not running |
 
-**`ibis doctor`**: Report source health offline, without writing or sending anything
+**`ibis doctor`**: Check your libraries and settings offline, without writing or sending anything
 
 | Option | Does |
 | --- | --- |

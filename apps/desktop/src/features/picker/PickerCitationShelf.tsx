@@ -48,6 +48,7 @@ export function PickerCitationShelf({
   }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}
     onChangeReference={changeReference} onSubmit={copyChosen} copyProblem={state.copyError} inspector={inspector} referenceLibrary={(r) => libraryOf(r.source ?? "")} style={style} keys={style === null}
     shown={showCitations ? displayedOutput : undefined} outputWarnings={shown && typeof shown === "object" ? shown.warnings : []}
+    outputNotices={shown && typeof shown === "object" ? shown.notices : undefined}
     problem={previewProblem} copied={showCitations ? state.shelfCopied : null} focusable={selected.size > 0} fallbackFocusRef={input}
     source={source.kind === "zotero" ? { ...sourceAction, label: pickerText.showInZotero } : sourceAction} onOpenSource={(reference) => sourceState.openReference(reference.id)} />;
 }
