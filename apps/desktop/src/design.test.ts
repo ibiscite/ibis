@@ -66,6 +66,9 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
     breaks: ({ property, value }) => !property.startsWith("--") && colour.test(value), planted: ".planted { color: #123456; }" },
   { says: "type sizes come from tokens", applies: (file) => parts(file),
     breaks: ({ property, value }) => /^font(-size)?$/.test(property) && length.test(value), planted: ".planted { font-size: 13px; }" },
+  { says: "literal type scale sizes are at least 12 px at normal text size",
+    breaks: ({ property, value }) => /^--type-(base|[\w-]+-size)$/.test(property) && /^\d*\.?\d+rem$/.test(value) && parseFloat(value) < .75,
+    planted: ":root { --type-label-size: .7rem; }" },
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
     breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
@@ -79,6 +82,9 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
     planted: ".planted { scrollbar-width: thin; }" },
   { says: "only tokens.css sets a colour scheme", applies: app,
     breaks: ({ property }) => property === "color-scheme", planted: ".planted { color-scheme: dark; }" },
+  { says: "the focus ring is shared across platforms",
+    breaks: ({ property, selector }) => property === "--ring" && /\[data-(platform|system)\s*[~|^$*]?=/.test(selector),
+    planted: ':root[data-platform="windows"] { --ring: var(--text); }' },
   { says: "a one-sided edge is a divider, never a state", applies: (file) => !file.startsWith("website/"),
     breaks: ({ property, value }) => /^border-(inline|block)-(start|end)(-color)?$/.test(property) && /solid/.test(value)
       && !/--separator|--stroke-field|transparent|currentcolor|CanvasText|ButtonText/i.test(value),
@@ -141,7 +147,7 @@ test("the motion tokens stay within 280 ms", () => {
 });
 
 /** The cascade fixes a shared part needs, read from the parsed rules: each was a bug when missing. */
-const required: [file: string, selector: string, property: string, value: string][] = [
+const required: [file: string, selector: string, property: string, value: string, condition?: string][] = [
   // A keyboard-focused choice keeps its fill and outranks the global ring, whatever loads after it.
   ["ui/ChoiceList.css", ".choice-screen .choice-row[data-focus-visible]", "box-shadow", "none"],
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],
@@ -159,10 +165,28 @@ const required: [file: string, selector: string, property: string, value: string
   ["tokens.css", ":root[data-system=\"macos\"]", "--titlebar-height", "var(--touch-target)"],
   // The focus ring is solid accent text, so it keeps 3:1 on every surface.
   ["tokens.css", ":root", "--ring", "var(--accent-text)"],
+  ["styles.css", ":focus-visible:not(.ui-button, .menu-item)", "outline", "var(--ring-width) solid var(--ring)"],
+  ["tokens.css", ":root, :root[data-platform]", "--ring", "CanvasText", "forced-colors: active"],
+  // The short frame at enlarged text drops hints while More stays reachable.
+  ["styles.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
+  ["styles.css", ".library-bar > .more", "display", "flex", "(max-height: 400px) (max-width: 20em)"],
 ];
 
-test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value) => {
-  expect(all.some((d) => d.file === file && d.selector === selector && d.style.getPropertyValue(property).trim() === value)).toBe(true);
+test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value, condition) => {
+  expect(all.some((d) => d.file === file && d.selector === selector && d.style.getPropertyValue(property).trim() === value
+    && (!condition || d.conditions.includes(condition)))).toBe(true);
+});
+
+test("scroll fades give way to the three accessibility preferences in both web views", () => {
+  const edge = ".scroll-area[data-more-above][data-more-below]";
+  for (const property of ["mask-image", "-webkit-mask-image"]) {
+    const fades = all.filter((d) => d.file === "ui/ScrollArea.css" && d.property === property
+      && d.selector.split(",").some((selector) => selector.trim() === edge));
+    expect(fades.find((d) => !d.conditions.trim())?.value).toMatch(/^linear-gradient\(/);
+    for (const preference of ["prefers-contrast: more", "prefers-reduced-transparency: reduce", "forced-colors: active"]) {
+      expect(fades.find((d) => d.conditions.includes(preference))?.value, `${property}: ${preference}`).toBe("none");
+    }
+  }
 });
 
 const channel = (value: number) => value <= .03928 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4;
