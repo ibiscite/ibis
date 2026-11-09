@@ -250,9 +250,9 @@ jobs:
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
 
-      # hdiutil on hosted macOS runners intermittently fails with "Resource
-      # busy" while creating the disk image; a second attempt reuses the
-      # compiled app and normally succeeds. Other failures are not retried.
+      # On Windows retry a gateway failure fetching a pinned NSIS tool.
+      # On macOS hdiutil can fail with "Resource busy" when creating the disk
+      # image. A second attempt reuses the compiled app and normally succeeds.
       - name: Build the packages
         id: native_build
         working-directory: apps/desktop
@@ -260,6 +260,7 @@ jobs:
           TARGET: ${{ matrix.target }}
           CONFIG: ${{ steps.identity.outputs.config }}
         run: |
+          if [ "$RUNNER_OS" = Windows ]; then exec bash ../../scripts/build-windows-packages.sh; fi
           build() { pnpm tauri build --ci --target "$TARGET" ${CONFIG:+--config "$CONFIG"} -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
           if ! build; then
             if [ "$RUNNER_OS" = macOS ] && grep -q 'hdiutil: create failed - Resource busy' build.log; then
