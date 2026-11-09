@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.3.1](https://github.com/ibiscite/ibis/compare/v0.3.0...v0.3.1) (2026-11-09)
+
+
+### Features
+
+* design pass 2: one scale for corners, space and layers ([#1763](https://github.com/ibiscite/ibis/issues/1763)) ([2c179b4](https://github.com/ibiscite/ibis/commit/2c179b45ee69f864a9090b3396efafc66478dec2))
+* read RIS files and a CSV template as libraries ([#1755](https://github.com/ibiscite/ibis/issues/1755)) ([443d7ac](https://github.com/ibiscite/ibis/commit/443d7ac9da2533dd0a2b8eef0789d1dd6fb878cd))
+
+
+### Bug Fixes
+
+* answer the Linux retest's CLI, search and AppImage findings ([#1765](https://github.com/ibiscite/ibis/issues/1765)) ([572de6a](https://github.com/ibiscite/ibis/commit/572de6affaa67788836addb39632f281282f570c))
+* **ci:** use the reachable Ubuntu package mirror ([#1772](https://github.com/ibiscite/ibis/issues/1772)) ([2f8bf73](https://github.com/ibiscite/ibis/commit/2f8bf7371ec506061a9da6ed8eb62711dfbc7363))
+* one finished look across light, dark and the smallest window ([#1745](https://github.com/ibiscite/ibis/issues/1745)) ([4ff54b9](https://github.com/ibiscite/ibis/commit/4ff54b98af8ddca7c1ea43921df2625b27c05cdb))
+* refuse a file Ibis cannot read instead of opening it as empty ([#1767](https://github.com/ibiscite/ibis/issues/1767)) ([bf276c1](https://github.com/ibiscite/ibis/commit/bf276c178f0d6e51e2095dc20e95b58a151e1c17))
+* retry a failed search when its query comes back ([#1768](https://github.com/ibiscite/ibis/issues/1768)) ([dd1e98d](https://github.com/ibiscite/ibis/commit/dd1e98d91bb7fee3a7cfb43b59900ccfc02867be))
+* shared runners report the 100k open and refresh times ([#1747](https://github.com/ibiscite/ibis/issues/1747)) ([f792e20](https://github.com/ibiscite/ibis/commit/f792e203b788ebac358461ddec61e68e09f05a8e))
+* the picker session waits for the screen and rests while hidden ([#1764](https://github.com/ibiscite/ibis/issues/1764)) ([24ddcca](https://github.com/ibiscite/ibis/commit/24ddcca70c40875244b3922fddbaff762fb15a4f))
+* the update check answers in a native prompt, not Settings ([#1760](https://github.com/ibiscite/ibis/issues/1760)) ([8edcf09](https://github.com/ibiscite/ibis/commit/8edcf0990a8084c9c64cbfbfadbf7c41ae01a999))
+* word native library errors from the catalogue ([#1744](https://github.com/ibiscite/ibis/issues/1744)) ([32c275e](https://github.com/ibiscite/ibis/commit/32c275e0e8a23c2bf9e8fc0e8d4684590669430d))
+
+
+### Documentation
+
+* build so each change touches as few places as possible ([#1754](https://github.com/ibiscite/ibis/issues/1754)) ([9afb313](https://github.com/ibiscite/ibis/commit/9afb313fadd843e74e77f4eccb7e28d26a4fab4c))
+* Zotero-style citations come first in 0.4 ([#1752](https://github.com/ibiscite/ibis/issues/1752)) ([633bf73](https://github.com/ibiscite/ibis/commit/633bf73cba857d15d7cbe7a4e122efbfbc133360))
+
 ## [0.3.0](https://github.com/ibiscite/ibis/compare/v0.2.7...v0.3.0) (2026-11-07)
 
 
