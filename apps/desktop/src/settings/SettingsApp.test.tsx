@@ -1069,14 +1069,17 @@ test("a physical default-position key still offers the logical default", async (
 });
 
 
-test("seven pages and search find common words, reveal and briefly tint their cause", async () => {
+test("search finds theme by one Appearance name, then reveals and briefly tints the setting", async () => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   expect(screen.getAllByRole("option").map((x) => x.textContent)).toEqual(["General", "Appearance", "Citations", "Shortcuts", "About Ibis"]);
   const search = screen.getByRole("searchbox", { name: "Search Settings" });
-  fireEvent.change(search, { target: { value: "dark" } });
-  fireEvent.click(await screen.findByRole("option", { name: "Appearance, Appearance" }));
+  fireEvent.change(search, { target: { value: "theme" } });
+  const results = await screen.findByRole("listbox", { name: "Search results" });
+  const appearance = within(results).getByRole("option", { name: "Appearance" });
+  expect(within(results).getAllByRole("option")).toEqual([appearance]);
+  fireEvent.click(appearance);
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
   await act(() => vi.advanceTimersByTimeAsync(2000));
@@ -1092,7 +1095,7 @@ test("searching for the update check scrolls About to the button under the versi
   onTestFinished(() => boxes.mockRestore());
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: "check for updates" } });
-  fireEvent.click(await screen.findByRole("option", { name: /^Check for updates, / }));
+  fireEvent.click(await screen.findByRole("option", { name: "Check for updates, About Ibis" }));
   const main = await screen.findByRole("main", { name: "About Ibis" });
   await waitFor(() => expect(main.scrollTop).toBe(600));
   expect(screen.getByRole("button", { name: "Check for Updates" }).closest(".ui-about-check")!.hasAttribute("data-highlighted")).toBe(true);
@@ -1105,7 +1108,7 @@ test("search results are sidebar rows, and Enter opens the first", async () => {
   fireEvent.change(search, { target: { value: "a" } });
   const results = await screen.findByRole("listbox", { name: "Search results" });
   expect(within(results).queryAllByRole("button")).toEqual([]);
-  const row = within(results).getByRole("option", { name: "Appearance, Appearance" });
+  const row = within(results).getByRole("option", { name: "Appearance" });
   expect(row.classList.contains("ui-side-navigation-item")).toBe(true);
   expect(row.querySelector('.ui-side-navigation-tile[data-page="look"] svg')).not.toBeNull();
   fireEvent.keyDown(search, { key: "Enter", isComposing: true });
@@ -1496,13 +1499,13 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 
 test.each([
-  ["no remembered format.", "Default format", "Citations", "default-format"],
+  ["no remembered format.", "Default format, Citations", "Citations", "default-format"],
   ["Follow the system", "Appearance", "Appearance", "appearance"],
-])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
+])("search includes the displayed description %s and reveals its row", async (query, name, page, id) => {
   const { api } = fakeApi({ granted: true });
   render(<SettingsApp api={api} initialPage="general" />);
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
-  fireEvent.click(await screen.findByRole("option", { name: `${label}, ${page}` }));
+  fireEvent.click(await screen.findByRole("option", { name }));
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
   await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
 });
