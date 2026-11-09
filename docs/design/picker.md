@@ -95,7 +95,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ## Window behaviour
 
 - **Opening**: on the focused window's display, at its last place there (first time: centred, top in the upper third), with a short fade and focus in search. A search from under a minute ago returns selected, unless Esc or Clear cleared it: an explicit clear sticks. Text typed while opening is kept. The window is current in its first frame.
-- **Dropping a file**: one `.bib`, `.biblatex` or CSL-JSON file dropped on the picker becomes the library, and the footer shows its name and count. Anything else leaves the library alone and says what Ibis accepts until the next good drop or opening.
+- **Dropping a file**: one `.bib`, `.biblatex`, CSL-JSON, `.ris` or `.csv` file dropped on the picker (a `.txt` RIS export only through Choose Library) becomes the library, and the footer shows its name and count. Anything else leaves the library alone and says what Ibis accepts until the next good drop or opening.
 - **Moving and resizing**: drag the empty header; snap to centre, upper third and corners. Settings › Advanced › **Where Ibis opens** offers Centre and the four corners; **Reset Window Position** restores the default.
 - **Other windows**: a command that hands the screen to another window has one effect however it was reached, and Esc then belongs to that window. Settings always closes the picker, even a pinned one, which would otherwise float above it; the pin stays for the next opening. An opened source hides an unpinned picker; pinned, it stays beside. A file chooser belongs to the picker, which stays behind it.
 - **Clicking outside** hides Ibis and the click reaches its target, unless pinned or a dialog, drag or file chooser is open.

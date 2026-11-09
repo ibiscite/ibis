@@ -2,7 +2,7 @@
    it, and takes no clicks. */
 .ui-held-key {
   position: fixed; z-index: var(--z-overlay); pointer-events: none;
-  border-radius: var(--r-key); background: var(--surface-overlay); box-shadow: var(--shadow-overlay);
+  border-radius: var(--r-small);
 }
 .ui-held-key[data-side="above"] { translate: -50% calc(-100% - var(--space-1)); }
 .ui-held-key[data-side="below"] { translate: -50% var(--space-1); }

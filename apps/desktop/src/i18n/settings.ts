@@ -77,8 +77,6 @@ export const SETTINGS_IDS = [
   "look-light",
   "look-dark",
   "look-accent",
-  "look-density-compact",
-  "look-density-comfortable",
   "look-accent-system",
   "look-accent-ibis",
   "look-accent-words",

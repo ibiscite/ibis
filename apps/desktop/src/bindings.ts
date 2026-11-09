@@ -205,8 +205,8 @@ export const commands = {
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
-	 * Settings' "Check now", which the tray's "Check for Updates…" opens and runs,
-	 * so a result always shows in place. An update found still opens the offer.
+	 * Settings' Check for Updates, in About: the result shows beside the button.
+	 * An update found still opens the offer.
 	 */
 	checkForUpdates: () => __TAURI_INVOKE<CheckResult>("check_for_updates"),
 	openAboutLink: (link: AboutLink) => __TAURI_INVOKE<void>("open_about_link", { link }),
@@ -603,7 +603,7 @@ export type NoticeMessage = {
 export type OutputQuestion = "browser" | "editor";
 
 /** Where Settings opens. */
-export type Page = "general" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "paste" | "updates";
+export type Page = "general" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "paste";
 
 /** Whether Ibis may paste, and where the person turns that on. */
 export type PastePermission = {
@@ -858,6 +858,11 @@ export type SearchResult = {
 	sample?: boolean;
 	source: string;
 	title: string;
+	/**
+	 * A word matched only with one spelling change, as the engine decided.
+	 * Sent only when true.
+	 */
+	typo?: boolean;
 	/** The year, or the source's own date text: `RecordSummary::year`. */
 	year: string | null;
 };

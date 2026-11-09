@@ -45,7 +45,7 @@ Some Linux desktops, including GNOME without a tray extension, show no tray icon
 
 ## First use
 
-1. Press the shortcut and choose your library: **Zotero**, or a **BibTeX, BibLaTeX or CSL-JSON file**. **Look for libraries on this computer** checks, only when you ask, for a running Zotero and for `.bib` files in your Documents, Desktop and Downloads folders.
+1. Press the shortcut and choose your library: **Zotero**, or a **BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file** ([which files](docs/compatibility.md#library-files)). **Look for libraries on this computer** checks, only when you ask, for a running Zotero and for `.bib` files in your Documents, Desktop and Downloads folders.
 2. Search by author, title, year, journal, citation key or keywords. You can combine words from different fields. Use the arrow keys to pick a reference.
 3. Press **Enter**. On a Mac this pastes into your document; if permission is needed, follow the guide in **Settings > General > Pasting**. On Windows and Linux, or when pasting is unavailable, Ibis copies the citation and you paste it yourself.
 

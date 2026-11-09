@@ -146,6 +146,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     send({ type: "picker-inputs", inputs: { fallback: preferences.format, remembersLast, preferencesReady: preferences.ready, library, settledLibrary,
       statusFailed, showCitations, version: checkVersion } });
   }, [send, preferences.format, remembersLast, preferences.ready, library, settledLibrary, statusFailed, showCitations, checkVersion]);
+  // Last of App's layout effects: every input above has reached the session,
+  // so an Enter waiting on an engine answer may copy now.
+  useLayoutEffect(() => { send({ type: "committed" }); });
   useLibrarySetup(library, setFailures, send, focusHome);
   const { clearNotice } = project;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.

@@ -777,6 +777,21 @@
           "description": "A closed read needs a private copy and there is no room for it.",
           "type": "string",
           "const": "zotero-no-space"
+        },
+        {
+          "description": "A CSV file's first row does not name the columns of Ibis's template.",
+          "type": "string",
+          "const": "csv-template"
+        },
+        {
+          "description": "Nothing has the key in what was read, and a library was too large to read whole.",
+          "type": "string",
+          "const": "library-cut-short"
+        },
+        {
+          "description": "Neither the file's name nor its contents identify a supported library format.",
+          "type": "string",
+          "const": "unknown-format"
         }
       ]
     },

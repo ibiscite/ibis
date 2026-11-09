@@ -177,8 +177,41 @@ pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
     }
 }
 
-/// Settings' "Check now", which the tray's "Check for Updates…" opens and runs,
-/// so a result always shows in place. An update found still opens the offer.
+/// The tray's and menu bar's "Check for Updates…": check now and answer in one
+/// native prompt, never by opening Settings. An update found is the offer
+/// (install now or later); otherwise the prompt says what the check found.
+pub(crate) fn check_from_menu(app: &AppHandle) {
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let said = if available(&app) {
+            menu_answer(check(&app, true).await)
+        } else {
+            Some("about-unavailable")
+        };
+        if let Some(id) = said {
+            // A menu click leaves Ibis inactive; the prompt must come to the front.
+            #[cfg(target_os = "macos")]
+            crate::panel::activate_for_dialog(&app);
+            tell(
+                &app,
+                &ibis_engine::catalogue::text(id, None, &[]).unwrap_or_else(|| id.to_owned()),
+            );
+        }
+    });
+}
+
+/// What the menu's check says, by catalogue id; an offer speaks for itself.
+fn menu_answer(result: super::CheckResult) -> Option<&'static str> {
+    match result {
+        super::CheckResult::Offered => None,
+        super::CheckResult::Newest => Some("about-check-newest"),
+        super::CheckResult::NotRun => Some("about-check-busy"),
+        super::CheckResult::Failed => Some("about-check-failed"),
+    }
+}
+
+/// Settings' Check for Updates, in About: the result shows beside the button.
+/// An update found still opens the offer.
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) async fn check_for_updates(app: AppHandle) -> super::CheckResult {
@@ -192,6 +225,21 @@ pub(crate) async fn check_for_updates(app: AppHandle) -> super::CheckResult {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_menu_check_answers_every_outcome_in_its_prompt_and_an_offer_alone() {
+        use super::super::CheckResult;
+        assert_eq!(menu_answer(CheckResult::Offered), None, "the offer is the prompt");
+        for (result, id) in [
+            (CheckResult::Newest, "about-check-newest"),
+            (CheckResult::NotRun, "about-check-busy"),
+            (CheckResult::Failed, "about-check-failed"),
+        ] {
+            assert_eq!(menu_answer(result), Some(id));
+            let said = ibis_engine::catalogue::text(id, None, &[]);
+            assert!(said.is_some_and(|text| !text.is_empty()), "{id} is in the catalogue");
+        }
+    }
 
     #[test]
     fn tray_click_keeps_its_intent_after_a_queued_repaint() -> Result<(), Box<dyn std::error::Error>> {

@@ -42,16 +42,11 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
             if hits.is_empty() {
-                return Some(
-                    match holdings {
-                        Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
-                        Holdings::Empty => {
-                            "No open library holds any references. A file must be BibTeX, BibLaTeX or CSL-JSON."
-                        }
-                        Holdings::References => "No references found.",
-                    }
-                    .into(),
-                );
+                return match holdings {
+                    Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
+                    Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
+                    Holdings::References => Some("No references found.".into()),
+                };
             }
             let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
             // Closest matches are said to be so, never shown as full matches.
@@ -243,8 +238,15 @@ pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
 fn search_row(hit: &Value) -> Option<String> {
     let record = hit.pointer("/item/object/data")?;
     let summary = record_summary(record.get("csl")?);
+    // The engine decides a word matched only with a spelling change; the row says so.
+    let spelling = (hit.get("typo").and_then(Value::as_bool) == Some(true)
+        && hit.get("partial").and_then(Value::as_bool) != Some(true))
+    .then(|| catalogue::text("cli-spelling-match", None, &[]))
+    .flatten()
+    .map(|label| format!(" {label}"))
+    .unwrap_or_default();
     Some(format!(
-        "{}\t{}\t{}\t{}",
+        "{}\t{}\t{}\t{}{spelling}",
         field(citation_key(record)?),
         if summary.authors.is_empty() {
             "—".into()
@@ -535,16 +537,20 @@ pub(super) fn code_sentence(code: ErrorCode) -> String {
     catalogue::code(code, Audience::Cli)
 }
 
-pub(super) fn file_failure(path: &Path, code: ErrorCode) -> String {
+pub(super) fn file_failure(path: &Path, error: EngineError) -> String {
     format!(
         "cannot open {}: {}",
         field(&path.display().to_string()),
-        file_reason(path, code)
+        file_reason(path, error)
     )
 }
 
 /// Why a library file did not open, without naming it.
-pub(super) fn file_reason(path: &Path, code: ErrorCode) -> String {
+pub(super) fn file_reason(path: &Path, error: EngineError) -> String {
+    if let Some(reason) = error.reason {
+        return reason_sentence(reason);
+    }
+    let code = error.code;
     // The bounded read has already failed; looking again is bounded too, so a
     // stalled disk or a path just replaced by a pipe cannot hold the command.
     // Without an answer in time, the read's own reason stands.
@@ -553,7 +559,7 @@ pub(super) fn file_reason(path: &Path, code: ErrorCode) -> String {
     found.map_or_else(
         || match code {
             ErrorCode::BadInput => {
-                "it cannot be read, or it is not a BibTeX, BibLaTeX or CSL-JSON library; check its permissions and contents.".into()
+                catalogue::text("cli-file-unreadable", None, &[]).unwrap_or_default()
             }
             ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.".into(),
             ErrorCode::ResourceLimit => {
@@ -622,6 +628,9 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
             format!(
                 "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
             )
+        }
+        (_, Some(reason @ ErrorReason::LibraryCutShort)) => {
+            format!("cannot find '{shown}': {}", reason_sentence(reason))
         }
         (_, Some(ErrorReason::AmbiguousKey)) => {
             format!("several references use the citation key '{shown}'; give each one its own key in your library.")

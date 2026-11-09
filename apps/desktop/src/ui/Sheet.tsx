@@ -3,6 +3,7 @@ import { IconButton } from "./IconButton";
 import { useLayer } from "./layers";
 import { useScrollEdges } from "./ScrollArea";
 import "./Overlay.css";
+import "./SettingsGroup.css";
 import "./Sheet.css";
 
 const FOCUSABLE = "button:not([disabled]), input:not([disabled]), [tabindex='0']";
@@ -64,12 +65,13 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
 
 /** A list of things in a sheet, one per row. */
 export function SheetList({ label, children }: { label: string; children: ReactNode }) {
-  return <ul className="ui-sheet-list" aria-label={label}>{children}</ul>;
+  return <ul className="ui-settings-card ui-sheet-list" aria-label={label}>{children}</ul>;
 }
 
-/** One row of a sheet's list: what it is first, then its buttons. */
+/** One row of a sheet's list, drawn as a Settings row on a grouped card: what
+ * it is first, then its buttons. */
 export function SheetRow({ children }: { children: ReactNode }) {
-  return <li className="ui-sheet-row">{children}</li>;
+  return <li className="ui-settings-row ui-sheet-row">{children}</li>;
 }
 
 /** A part of a sheet's body under a divider, named by its heading. */

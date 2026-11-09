@@ -9,7 +9,8 @@ const inputs = (query: string, overrides: Partial<SearchInputs> = {}): SearchInp
   ({ queryKey: JSON.stringify([query, true]), query, interpretLocators: true, library, version: 0, recent: undefined, app: null, ...overrides });
 
 /** Run events through the session, keeping every effect it asks for. */
-function run(events: SessionEvent[], start: SessionState = initialSession()) {
+/** Run events through a picker on screen, keeping every effect it asks for. */
+function run(events: SessionEvent[], start: SessionState = { ...initialSession(), resting: false }) {
   let state = start;
   const effects: SessionEffect[] = [];
   for (const event of events) {
@@ -43,7 +44,7 @@ test("a late reply to an older query never replaces the newer one's results", ()
   expect(state.search.announcement).toBe("");
 });
 
-test("a failed search shows its error alone, and the query asked again searches again", () => {
+test("returning to a failed query retries it and replaces the error with fresh results", () => {
   const failed = run([
     { type: "search-inputs", inputs: inputs("garcia") },
     { type: "searched", seq: 1, reply: reply("a") },
@@ -52,10 +53,17 @@ test("a failed search shows its error alone, and the query asked again searches 
   ]).state;
   expect(failed.search.results).toEqual([]);
   expect(failed.search.error).toBeTruthy();
-  const again = run([{ type: "search-inputs", inputs: inputs("garcia") }], failed);
-  expect(searches(again.effects)).toEqual([{ type: "search", seq: 3, query: "garcia", interpretLocators: true, recent: false }]);
+  const pending = run([{ type: "search-inputs", inputs: inputs("okafora") }], failed).state;
+  const again = run([{ type: "search-inputs", inputs: inputs("okafor") }], pending);
+  expect(searches(again.effects)).toEqual([{ type: "search", seq: 4, query: "okafor", interpretLocators: true, recent: false }]);
   // The error stays until that search answers.
   expect(again.state.search.error).toBeTruthy();
+  const recovered = run([
+    { type: "searched", seq: 4, reply: reply("recovered") },
+    { type: "searched", seq: 3, reply: reply("stale") },
+  ], again.state).state;
+  expect(recovered.search.results.map((r) => r.id.key)).toEqual(["recovered"]);
+  expect(recovered.search.error).toBeNull();
 });
 
 test("typing back to an answered query adopts its answer and retires the newer search still out", () => {
@@ -107,4 +115,26 @@ test("a reply from a newer snapshot reads the library status again", () => {
     { type: "searched", seq: 1, reply: { revision: "2", results: [] } },
   ]);
   expect(effects).toContainEqual({ type: "refresh" });
+});
+
+test("a hidden picker searches nothing until it is shown again", () => {
+  const hidden = run([{ type: "shown", now: 1, presentation: 1 }, { type: "hidden", now: 10 }, { type: "search-inputs", inputs: inputs("garcia") }]);
+  expect(searches(hidden.effects)).toHaveLength(0);
+  const shown = run([{ type: "shown", now: 20, presentation: 2 }, { type: "search-inputs", inputs: inputs("garcia") }], hidden.state);
+  expect(searches(shown.effects)).toHaveLength(1);
+});
+
+test("a picker that starts hidden searches nothing until it is shown", () => {
+  const hidden = run([{ type: "visibility-read", visible: false, events: 0 }, { type: "search-inputs", inputs: inputs("garcia") }]);
+  expect(searches(hidden.effects)).toHaveLength(0);
+  const shown = run([{ type: "preparing", now: 10 }, { type: "shown", now: 20, presentation: 1 }, { type: "search-inputs", inputs: inputs("garcia") }], hidden.state);
+  expect(searches(shown.effects)).toHaveLength(1);
+});
+
+test("a picker read as visible at startup asks for the search it held back, and its answer shows", () => {
+  const unknown = run([{ type: "search-inputs", inputs: inputs("garcia") }], initialSession());
+  expect(searches(unknown.effects)).toHaveLength(0);
+  const woken = run([{ type: "visibility-read", visible: true, events: 0 }], unknown.state);
+  expect(searches(woken.effects)).toEqual([{ type: "search", seq: 1, query: "garcia", interpretLocators: true, recent: false }]);
+  expect(run([{ type: "searched", seq: 1, reply: reply("a") }], woken.state).state.search.results.map((r) => r.id.key)).toEqual(["a"]);
 });

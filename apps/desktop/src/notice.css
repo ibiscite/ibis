@@ -44,5 +44,8 @@
 @media (prefers-reduced-transparency: reduce) {
   .copied-notice { background: var(--surface); }
 }
-/* An opaque native surface still contains the same inset card. */
+/* An opaque native surface still contains the same inset card. Without a
+   compositor nothing fades, so the card is drawn at once: an animation that
+   never runs must not leave it invisible (a blank toast on plain X11). */
 :root.notice-window[data-surface="opaque"] body { background: var(--surface); }
+:root.notice-window[data-surface="opaque"] .copied-notice { opacity: 1; animation: none; }

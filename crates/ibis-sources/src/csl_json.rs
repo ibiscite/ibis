@@ -220,6 +220,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         return Err(SourceError::InvalidData);
     }
     if limited {
+        result.cut_short = true;
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
@@ -331,7 +332,7 @@ fn numeric_id(value: f64) -> Option<String> {
     Some(result)
 }
 
-fn valid_type(value: &str) -> bool {
+pub(crate) fn valid_type(value: &str) -> bool {
     matches!(
         value,
         "article"

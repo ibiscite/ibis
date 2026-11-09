@@ -57,12 +57,13 @@ test.each(["", "研究_memory_".repeat(1_000)])("unusual keys stay literal and d
   expect(getByRole("option").getAttribute("aria-selected")).toBe("true");
 });
 
-test("a closest match says so on its own row, and its name reads with pauses", () => {
-  const { getAllByRole } = render(<ResultList results={[{ ...rows[0]!, partial: true, year: "2021", authors: "Müller" }, rows[1]!]} active={0} selected={new Map()} density="comfortable"
+test("a closest or spelling match says so on its own row, and its name reads with pauses", () => {
+  const { getAllByRole } = render(<ResultList results={[{ ...rows[0]!, partial: true, year: "2021", authors: "Müller" }, rows[1]!, { ...rows[2]!, typo: true }]} active={0} selected={new Map()} density="comfortable"
     libraryOf={() => null} onMouseMove={() => undefined} onChoose={vi.fn()} onToggle={vi.fn()} />);
-  const [closest, exact] = getAllByRole("option");
+  const [closest, exact, spelled] = getAllByRole("option");
   expect(closest!.textContent).toContain("Closest match");
-  expect(exact!.textContent).not.toContain("Closest match");
+  expect(exact!.textContent).not.toMatch(/Closest match|Spelling match/);
+  expect(spelled!.textContent).toContain("Spelling match");
   expect(closest!.textContent).toMatch(/2021, Müller/);
 });
 

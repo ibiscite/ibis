@@ -51,6 +51,39 @@ pub(crate) struct RawEntry<'s> {
     pub macro_epoch: usize,
 }
 
+/// Whether `src` holds an entry header outside directives. An unfinished
+/// directive leaves the answer unknown until the loader recovers its blocks.
+pub(crate) fn has_entry(src: &str) -> Option<bool> {
+    let bytes = src.as_bytes();
+    let mut i = 0;
+    while let Some(offset) = src[i..].find('@') {
+        let start = i + offset + 1;
+        let mut j = start;
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || matches!(bytes[j], b'_' | b'}')) {
+            j += 1;
+        }
+        let kind = &src[start..j];
+        let mut k = j;
+        while k < bytes.len() && bytes[k].is_ascii_whitespace() {
+            k += 1;
+        }
+        let opens = k < bytes.len() && matches!(bytes[k], b'{' | b'(');
+        let ignored = ["comment", "preamble", "string"]
+            .iter()
+            .any(|other| kind.eq_ignore_ascii_case(other));
+        if !opens || kind.is_empty() {
+            i = start;
+        } else if !ignored {
+            return Some(true);
+        } else {
+            // An example inside a comment is not an entry, so the whole block
+            // is skipped. One that never closes leaves the rest unknown.
+            i = find_close(bytes, k)? + 1;
+        }
+    }
+    Some(false)
+}
+
 /// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
 pub(crate) fn split_blocks(src: &str) -> (Vec<Block<'_>>, bool) {
     let bytes = src.as_bytes();

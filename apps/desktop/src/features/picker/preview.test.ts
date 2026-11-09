@@ -13,7 +13,7 @@ const prepared = (text: string): Prepared => ({ markup: [text], text, html: "", 
 const previewed = (request: number, text: string): SessionEvent => ({ type: "previewed", request, preview: filePreview(text), value: prepared(text) });
 const shown = { type: "shown", now: 1, presentation: 1 } as const;
 
-function run(events: SessionEvent[], start: SessionState = initialSession()) {
+function run(events: SessionEvent[], start: SessionState = { ...initialSession(), resting: false }) {
   let state = start;
   const effects: SessionEffect[] = [];
   for (const event of events) {
@@ -104,4 +104,23 @@ test("a preview from an older snapshot reads the library again and is not asked 
   expect(stale.state.preview.result?.value).toBe("stale");
   const changed = run([{ type: "preview-inputs", inputs: inputs("a2", { retryKey: "retry-a-new-snapshot" }) }], stale.state);
   expect(asks(changed.effects)).toHaveLength(1);
+});
+
+test("going back to a choice after an empty result asks again when a newer preview retired its ticket", () => {
+  const { effects } = run([
+    shown,
+    { type: "preview-inputs", inputs: inputs("a") }, previewed(1, "Garcia 2020"),
+    // B's native preview retires A's ticket, even though nothing answers it.
+    { type: "preview-inputs", inputs: inputs("b") },
+    { type: "preview-inputs", inputs: inputs("no results", { ask: null }) },
+    { type: "preview-inputs", inputs: inputs("a") },
+  ]);
+  expect(asks(effects).map((effect) => effect.ask.selection[0]?.cite)).toEqual(["a", "b", "a"]);
+});
+
+test("a hidden picker asks the engine nothing, stops the preview still out, and asks again once shown", () => {
+  const hidden = run([shown, { type: "preview-inputs", inputs: inputs("a") }, { type: "hidden", now: 10 }, { type: "preview-inputs", inputs: inputs("b") }]);
+  expect(hidden.effects.map((effect) => effect.type)).toEqual(["preview", "stop-preview"]);
+  const again = run([{ type: "preparing", now: 20 }, shown, { type: "preview-inputs", inputs: inputs("b") }], hidden.state);
+  expect(asks(again.effects)).toHaveLength(1);
 });

@@ -3,6 +3,7 @@ import { keyFromAria } from "../keys";
 import { currentPlatform } from "../platform";
 import { KeyCaps } from "./KeyCaps";
 import "./HeldKeys.css";
+import "./Overlay.css";
 
 export const HOLD_MS = 1000;
 
@@ -51,7 +52,7 @@ export function HeldKeys() {
     if (flip.some(Boolean)) setShown(shown.map((badge, i) => flip[i] ? { ...badge, side: "below" } : badge));
   }, [shown]);
   return <>{shown.map(({ key, x, top, bottom, side }, i) => (
-    <span className="ui-held-key" key={`${key}-${x}-${top}`} ref={(node) => { badges.current[i] = node; }} aria-hidden="true"
+    <span className="ui-held-key ui-overlay" key={`${key}-${x}-${top}`} ref={(node) => { badges.current[i] = node; }} aria-hidden="true"
       data-side={side} style={{ left: x, top: side === "above" ? top : bottom }}><KeyCaps accelerator={key} /></span>
   ))}</>;
 }

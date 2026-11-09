@@ -38,13 +38,11 @@ const LOGIN_PROBLEMS = {
   refused: "general-login-refused", unreadable: "general-login-unreadable",
 } as const satisfies Record<LoginItemProblem, MessageId>;
 
-/** A page asked for by name; "paste" is General, scrolled to pasting, and
- * "updates" is About, running Check now. */
+/** A page asked for by name; "paste" is General, scrolled to pasting. */
 const PAGE_TILES: Record<Page, ReactNode> = { general: <PageIcon name="general" />, look: <PageIcon name="look" />, citations: <PageIcon name="citations" />, shortcuts: <PageIcon name="shortcuts" />, about: <PageIcon name="about" /> };
 
 export function pageOf(name: string | null): { page: Page; focus: "paste" | null } {
   if (name === "paste") return { page: "general", focus: "paste" };
-  if (name === "updates") return { page: "about", focus: null };
   return { page: PAGES.includes(name as Page) ? name as Page : "general", focus: null };
 }
 
@@ -82,8 +80,6 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: opened to check, once; a later ask arrives as a page event.
-  useEffect(() => { if (initialPage === "updates") checkNow(); }, []);
   const [shortcut, setShortcut] = useState<ShortcutStatus | null>(null);
   const [shortcutProblem, setShortcutProblem] = useState<ShortcutProblem | null>(null);
   const [shortcutUndo, setShortcutUndo] = useState<string | null>(null);
@@ -104,7 +100,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [checking, setChecking] = useState(false);
   const manualCheck = useRef(0);
   const checkRunning = useRef(false);
-  /** The one update check a person asks for: the button, and the tray through this page. */
+  /** About's Check for Updates; the tray and menu bar check natively (updater/setting.rs). */
   const checkNow = useCallback(() => {
     if (checkRunning.current) return;
     checkRunning.current = true;
@@ -261,7 +257,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); if (name === "updates") checkNow(); });
+    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
@@ -283,7 +279,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem, clearShortcutUndo, checkNow]);
+  }, [api, queue, readProblem, clearShortcutUndo]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -352,7 +348,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   useEffect(() => {
     if (!highlighted || !preferences || !pageRef.current) return;
-    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr");
+    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr, .ui-about-check");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top - underTitle(pageRef.current);
   }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
@@ -476,21 +472,25 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
         {page === "about" && (
           <>
+            {/* One leading edge for the whole page: the icon and its words form one
+                card, and every group, link and line below starts where row labels do. */}
             <div id="about-ibis" className="ui-about-hero">
               <AboutDelight dip={dip} enabled={about?.fun ?? false} onClick={() => clickAbout.current()} />
-              <p className="ui-about-name">{name}</p>
-              <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
-                {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
-              </Button>
-              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
-              <p className="ui-about-mission">{text("about-mission")}</p>
-              <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
-              {/* Under the version, as Mac apps place it; its outcome replaces the line under it. */}
-              {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
-                <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
-                <p className="ui-about-check-result" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
-              </div>}
+              <div className="ui-about-text">
+                <p className="ui-about-name">{name}</p>
+                <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
+                  {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
+                </Button>
+                {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
+                <p className="ui-about-mission">{text("about-mission")}</p>
+                <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
+                {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
+                {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
+                  <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
+                  <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
+                  {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+                </div>}
+              </div>
             </div>
             <Group id="about-updates" title={text("about-updates")}>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>

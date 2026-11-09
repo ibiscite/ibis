@@ -20,6 +20,23 @@ const status = () => screen.getByRole("status", { name: "Library status" });
 const footer = () => document.querySelector("footer")!;
 const openKey = () => fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", ctrlKey: true });
 
+test("an unknown file is a failed open with a chooser listing RIS and CSV", async () => {
+  const reason = "This file is not in a format Ibis reads: BibTeX, BibLaTeX, CSL-JSON, RIS or CSV.";
+  const choose = vi.fn(() => null);
+  backend({ library_status: () => library({ state: "error", has_snapshot: false, zotero: false, snapshot_zotero: false,
+    name: "notes.xyz", snapshot_name: null, references: 0, problem: "unreadable", error: reason }), choose_library: choose });
+  render(<App />);
+  expect(await screen.findByRole("heading", { name: /Can’t read notes.xyz/ })).toBeTruthy();
+  expect(document.body.textContent).toContain(reason);
+  expect(document.body.textContent).not.toContain("No references in");
+  fireEvent.click(screen.getByRole("option", { name: /^Use Another Library/ }));
+  const file = await screen.findByRole("option", { name: /^Choose a Library File/ });
+  expect(file.textContent).toContain("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
+  fireEvent.click(file);
+  await waitFor(() => expect(choose).toHaveBeenCalledOnce());
+  expect(document.body.textContent).not.toContain("No references in");
+});
+
 test.each([
   ["loaded", {}, "thesis.bib · 12 references"],
   ["missing with retained references", { state: "error", stale: true, problem: "missing", error: "the library file is unavailable; keeping the last loaded references" }, "thesis.bib moved"],

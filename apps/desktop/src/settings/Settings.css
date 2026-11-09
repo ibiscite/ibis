@@ -24,22 +24,22 @@
 .paste-guide-art {
   display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
   justify-self: start; min-width: 0; width: 100%; max-width: 16rem; box-sizing: border-box;
-  border-radius: var(--r-row); background: var(--surface-grouped);
+  border-radius: var(--r-control); background: var(--surface-grouped);
 }
 .paste-guide-pane { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .paste-guide-row {
   display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);
-  border-radius: var(--r-tile); background: var(--surface); box-shadow: var(--shadow-card);
+  border-radius: var(--r-small); background: var(--surface); box-shadow: var(--shadow-card);
   font-size: var(--type-body-size); font-weight: 500;
 }
-.paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-key); background: center / cover no-repeat; }
+.paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-small); background: center / cover no-repeat; }
 .paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-guide-switch {
   position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);
   transition: background-color var(--dur-panel) var(--ease);
 }
 .paste-guide-switch > span {
-  position: absolute; top: 1px; inset-inline-start: 1px; width: 13px; height: 13px; border-radius: 50%;
+  position: absolute; top: var(--border-width); inset-inline-start: var(--border-width); width: 13px; height: 13px; border-radius: var(--r-full);
   background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-panel) var(--ease);
 }
 .paste-guide-switch[data-on] { background: var(--accent); }

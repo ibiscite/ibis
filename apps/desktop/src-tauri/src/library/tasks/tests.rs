@@ -277,25 +277,20 @@ fn a_dropped_file_of_any_other_kind_is_not_a_library() {
 #[test]
 fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
     let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
-    for (extension, contents) in [
-        ("bib", "@misc{synthetic,title={Example reference}}"),
-        ("bibtex", "@misc{synthetic,title={Example reference}}"),
-        ("biblatex", "@misc{synthetic,title={Example reference}}"),
-        (
-            "json",
-            r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
-        ),
-        (
-            "csljson",
-            r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#,
-        ),
-    ] {
-        assert!(
-            LIBRARY_FILE_EXTENSIONS.contains(&extension),
-            "chooser hides .{extension}"
-        );
+    let bibtex = "@misc{synthetic,title={Example reference}}";
+    let csl = r#"[{"id":"synthetic","type":"book","title":"Example reference"}]"#;
+    let ris = "TY  - BOOK\nTI  - Example reference\nER  - \n";
+    for extension in ibis_engine::library_file_extensions() {
+        let contents = match extension {
+            "bib" | "bibtex" | "biblatex" => bibtex,
+            "json" | "csljson" => csl,
+            "ris" | "txt" => ris,
+            "csv" => "type,title\nbook,Example reference\n",
+            other => panic!("give .{other} a sample library here"),
+        };
         let path = directory.path().join(format!("synthetic.{extension}"));
-        assert!(accepts_library_file(&path), "drop hides .{extension}");
+        // A dropped `.txt` is too likely to be notes to replace the library.
+        assert_eq!(accepts_library_file(&path), extension != "txt", "drop and .{extension}");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
         let file = super::super::engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
         let reply = file

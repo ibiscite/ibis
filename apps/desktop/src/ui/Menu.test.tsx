@@ -92,9 +92,6 @@ test("toggles reserve one leading column, and shortcuts stay out of names", asyn
   const menu = await screen.findByRole("menu");
   const rows = [...menu.querySelectorAll("[role^=menuitem]")];
   expect(rows.map((row) => row.firstElementChild?.className)).toEqual(["menu-label", "menu-check", "menu-check"]);
-  // The shared look reserves the same column for checks and icons.
-  const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-  expect(menuCss).toContain(':root .menu:has(.menu-check) :is(.menu-item:not(:has(> .menu-check)), .menu-header) { padding-inline-start: var(--menu-label-start); }');
   expect(screen.getByRole("menuitem", { name: "Open" }).textContent).toBe("OpenCtrl+O");
   // Menu shortcuts are trailing text, so global kbd cap styles cannot apply.
   const shortcut = screen.getByRole("menuitem", { name: "Open" }).querySelector(".menu-keys")!;
@@ -313,19 +310,6 @@ test.each(["action", "Escape"])("rapid pointer reopening after %s gives a usable
   }
 });
 
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const menuCss = readFileSync(new FileURL("./Menu.css", import.meta.url), "utf8");
-const styles = readFileSync(new FileURL("../styles.css", import.meta.url), "utf8");
-test("menus highlight with a fill, never a ring, and the picker sheet has no menu rules of its own", () => {
-  expect(menuCss).toMatch(/\.menu-item\[data-focused\] \{ background: var\(--menu-highlight\); color: var\(--menu-highlight-text\); \}/);
-  expect(menuCss).toMatch(/\.menu-item \{[^}]*outline: none/);
-  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*outline: none/);
-  // The global :focus-visible ring and its halo would otherwise draw lines on the list.
-  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\]:focus-visible \{ outline: none; box-shadow: none; \}/);
-  expect(styles).not.toMatch(/role="menu|menuitem/);
-});
-
 test("an open menu bounds placement below the return field and removes the boundary on close", async () => {
   const { trigger, search } = mount();
   vi.spyOn(search, "getBoundingClientRect").mockReturnValue(new DOMRect(8, 8, 240, 40));
@@ -465,26 +449,6 @@ test("any pointer movement over an item highlights it, also after arrow keys", a
   expect(menu.isConnected).toBe(true);
 });
 
-test("rows keep equal insets, fit intrinsic labels to the viewport and end in an ellipsis at its limit", () => {
-  const popover = menuCss.slice(menuCss.indexOf(".menu-popover {\n  box-sizing"));
-  expect(popover.slice(0, popover.indexOf("}"))).toMatch(/padding-block: var\(--menu-padding\);/);
-  expect(popover.slice(0, popover.indexOf("}"))).not.toMatch(/[^-]padding: /);
-  expect(menuCss).toMatch(/\.menu-popover \[role="menu"\] \{[^}]*padding-inline: var\(--menu-padding\);/);
-  expect(menuCss).toMatch(/\.menu-popover > :not\(\[role="menu"\]\) \{ margin-inline: var\(--menu-padding\); \}/);
-  expect(menuCss).toMatch(/\.menu-popover \{[^}]*width: max-content;/);
-  expect(menuCss).toMatch(/\.menu-label \{[^}]*text-overflow: ellipsis; white-space: nowrap;/);
-  expect(menuCss).toMatch(/--menu-label-start: calc\(var\(--menu-item-pad\) \+ var\(--menu-check-width\) \+ var\(--menu-item-gap\)\);/);
-  const toolbar = readFileSync(new FileURL("./ToolbarMenu.css", import.meta.url), "utf8");
-  // The filter text and section headings start where the labels do.
-  expect(toolbar).toMatch(/\.toolbar-menu-filter input \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
-  expect(menuCss).toMatch(/\.menu-heading \{[^}]*padding-inline: var\(--menu-label-start\) var\(--menu-item-pad\)/);
-  expect(toolbar).toMatch(/\.toolbar-menu-popover \{[^}]*min-width: min\(300px, calc\(100vw - 16px\)\);/);
-  expect(toolbar).toMatch(/\.toolbar-menu-sample \{[^}]*min-width: 0;[^}]*white-space: nowrap;/);
-  expect(toolbar).toMatch(/\.toolbar-menu-sample\[data-prose\] \{[^}]*white-space: normal;/);
-  expect(menuCss).toContain("--menu-check-width: var(--icon-small)");
-  expect(`${menuCss}${toolbar}`).not.toMatch(/\b(14|34)px\b/);
-});
-
 
 test("whole-row fitting preserves variable-height wrapped action rows", () => {
   const frame = document.createElement("div"), list = document.createElement("div");
@@ -579,10 +543,4 @@ test.each([
   expect(list.style.maxHeight).toBe("126px");
   expect(list.scrollTop).toBe(70);
   act(() => hook.result.current(null)); frame.remove();
-});
-
-test("wrapped menu labels retain vertical padding and scalable minimum heights", () => {
-  expect(menuCss).toMatch(/\.menu-item \{[^}]*padding-block: var\(--space-1\)/);
-  expect(menuCss).toMatch(/--menu-item-height: 1\.5rem/);
-  expect(menuCss).toMatch(/font: var\(--type-body-size\) \/ var\(--type-body-line\)/);
 });

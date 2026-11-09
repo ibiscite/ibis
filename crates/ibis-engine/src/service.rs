@@ -63,6 +63,10 @@ pub struct LibraryInfo {
     #[serde(skip)]
     #[schemars(skip)]
     pub duplicate_keys: std::collections::BTreeSet<String>,
+    /// The read stopped at a limit, so a key past it selects nothing.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub cut_short: bool,
 }
 impl LibraryInfo {
     fn clean(id: LibraryId, kind: LibraryKind, objects: usize) -> Self {
@@ -79,6 +83,7 @@ impl LibraryInfo {
             watch_warning: None,
             zotero: None,
             duplicate_keys: Default::default(),
+            cut_short: false,
         }
     }
 }
@@ -831,6 +836,8 @@ fn select<'a>(
             let found = matches.next().ok_or_else(|| {
                 if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
+                } else if libraries.values().any(|library| library.cut_short) {
+                    EngineError::because(ErrorCode::NotFound, ErrorReason::LibraryCutShort)
                 } else {
                     error(ErrorCode::NotFound)
                 }

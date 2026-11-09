@@ -9,13 +9,13 @@
 - **Opening a library**: nothing for 400 ms, then the mark, "Opening example.bib…", "Reading your library. Zotero can stay closed." and a thin progress bar. Rows kept from before stay instead.
 - **No library**: "Where do your references live?" with the welcome grid; nothing is searched until Find is chosen.
 - **Zotero found**: Ibis still asks. When Zotero is running or its library is on this computer, the welcome screen keeps every start and highlights Zotero, so Enter takes it. Only that look happens first; no library is read until it is chosen.
-- **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a .bib or CSL-JSON file into this window."
+- **Empty library** (a successful load with zero references): "No references in thesis.bib", "Choose a library with references.", then **Use Zotero**, **Choose a Library File…**, and for a file **Open <file> ⌘O**; below, "Or drag a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file into this window." A file Ibis cannot read is never called empty: it is a failed open (below).
 - **Could not open, nothing kept**: the title names the library and the fix, and the line under it says why in the backend’s words, never the title again; **Use Another Library** shows the no-library screen. Every row has a help line, the source row too ("Ibis carries on by itself once it’s open", "See the file in its own app"). A failure with references kept stays a notice above them.
 
 | Problem | Title | Rows |
 | --- | --- | --- |
 | `missing` | Can’t find thesis.bib | Find thesis.bib, Use Another Library |
-| `unreadable`, `other` | Can’t read thesis.bib / Can’t open thesis.bib | Try Again, Use Another Library |
+| `unreadable`, `other` | thesis.bib could not be opened / Can’t open thesis.bib | Try Again, Use Another Library |
 | `zotero_closed` | Open Zotero to read your library ("Ibis usually reads it with Zotero closed, but not this time.") | Open Zotero (accented), Use Another Library |
 | `zotero_missing` | Ibis can’t find Zotero’s library | Use Another Library, Try Again |
 | `zotero_access_off` | Zotero isn’t sharing your library | Open Zotero, Use Another Library |

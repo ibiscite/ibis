@@ -5,6 +5,8 @@
 # without words or words without a code. People’s words, not the engine’s
 # (design principle 12), and typographic apostrophes.
 
+-library-formats = BibTeX, BibLaTeX, CSL-JSON, RIS or CSV
+
 ## Engine errors: what went wrong, by code.
 
 error-usage = The command is not valid.
@@ -70,6 +72,18 @@ reason-zotero-not-found = No Zotero library was found on this computer.
 reason-zotero-no-space = There is not enough free space to read Zotero while it is closed.
     .cli = Free some space, or open Zotero.
     .app = Free some space, or open Zotero.
+reason-csv-template = The first row of this CSV file does not match Ibis’s template: it must name a type and a title column, and only columns the template lists.
+    .cli = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+    .agent = Ask the person to rename the columns in the file’s first row to the template’s.
+    .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
+reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
+    .cli = Split the library into smaller files and give each with --file.
+    .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
+    .app = Split the library into smaller files.
+reason-unknown-format = This file is not in a format Ibis reads: { -library-formats }.
+    .cli = Choose another file with --file.
+    .agent = Ask the person to choose another file.
+    .app = Choose another file.
 
 ## A reference a citation could not include. { $reference } names it.
 
@@ -193,6 +207,13 @@ cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
+cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
+cli-spelling-match = (spelling match)
+cli-no-references = No open library holds any references. Add references to it, or open another library with --file or --zotero. A file must be { -library-formats }. For CSV, use Ibis’s template.
+cli-file-help = Open a { -library-formats } file; repeat for several libraries
+cli-file-unreadable = It cannot be read, or it is not a { -library-formats } library; check its permissions and contents.
+app-file-dialog-title = Choose a library
+app-file-dialog-formats = { -library-formats }
 
 ## The app’s own sentence about a citation.
 
@@ -406,8 +427,6 @@ look-system = System
 look-light = Light
 look-dark = Dark
 look-accent = Accent
-look-density-compact = Title and authors on one line
-look-density-comfortable = Title, then authors and journal
 look-accent-system =
     { $platform ->
         [macos] Follow the Mac
@@ -494,8 +513,8 @@ undo-removed = Removed { $reference }
 choice-use-zotero = Use Zotero
 choice-zotero-help = Your Zotero library, open or closed
 choice-library-file = Choose a Library File…
-choice-library-file-help = BibTeX, BibLaTeX or CSL-JSON
-choice-drop-file = Or drag a .bib or CSL-JSON file into this window.
+choice-library-file-help = { -library-formats }
+choice-drop-file = Or drag a { -library-formats } file into this window.
 shelf-references = { $count } references
 keys-title = Keyboard Shortcuts
 keys-close = Close
@@ -579,7 +598,7 @@ operation-failures-row-context = The reference menu could not open. Use Enter to
 operation-failures-status = Ibis could not check your library. Choose the file again.
 operation-failures-shortcut = Ibis could not check the shortcut. Open Ibis from the menu bar or tray.
 operation-failures-choose = The file chooser did not open. Try again.
-operation-failures-drop-refused = Ibis opens one .bib, .biblatex or CSL-JSON file at a time.
+operation-failures-drop-refused = Ibis opens one { -library-formats } file at a time.
 operation-failures-zotero = Ibis could not start reading Zotero. Try again.
 operation-failures-samples = Ibis could not change the sample library. Try again.
 operation-failures-zotero-groups = Ibis could not list your Zotero groups. Check that Zotero is open, then try again.
@@ -782,6 +801,7 @@ picker-paste-into = Paste into { $app } · { $output }
 picker-last-outcome = Last outcome. { $outcome }
 picker-closest-matches = Closest matches
 picker-closest-match = Closest match
+picker-spelling-match = Spelling match
 picker-closest-match-warning = “{ $title }” is a closest match: only some search words matched.
 picker-no-matches = No matching references
 picker-no-matches-hint = Try a surname, year or fewer words.

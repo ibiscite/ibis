@@ -5,7 +5,7 @@
 /* Rows are exactly --row-height and --row-spacing apart in every list of
    options (C4); the clear border (an edge only in increased contrast) is
    taken from the side padding so titles stay aligned. */
-[role="option"]:where(:not(.ui-side-navigation-item)) { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-row); border: var(--border-width) solid transparent; }
+[role="option"]:where(:not(.ui-side-navigation-item)) { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-control); border: var(--border-width) solid transparent; }
 [role="option"]:where(:not(.ui-side-navigation-item)) + [role="option"]:where(:not(.ui-side-navigation-item)) { margin-top: var(--row-spacing); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
 /* The leading tile (docs/design/picker.md, "List and row"): the type icon on a quiet
@@ -14,9 +14,9 @@
    scarlet tile with a white check, the only scarlet on the row. Fills only, no
    rings (rule 8). Compact rows draw a 24 px tile without a fill whose control
    still covers 32 px. */
-.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-tile); background: var(--fill-control); color: var(--text-secondary); }
+.result-tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); border-radius: var(--r-small); background: var(--fill-control); color: var(--text-secondary); }
 .result-tile .type-icon { width: var(--icon); height: var(--icon); }
-.result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-tile); opacity: 0; }
+.result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-small); opacity: 0; }
 [data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
 [data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
 [data-active] .result-tile { color: inherit; }
@@ -27,8 +27,8 @@
   [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
 }
 @media (pointer: coarse) {
-  [role="option"]:where(:not(.ui-side-navigation-item)) { min-height: max(var(--row-height), 2.75rem); }
-  .result-tile .tile-button { width: 2.75rem; height: 2.75rem; }
+  [role="option"]:where(:not(.ui-side-navigation-item)) { min-height: max(var(--row-height), var(--touch-target)); }
+  .result-tile .tile-button { width: var(--touch-target); height: var(--touch-target); }
 }
 [data-active] .result-tile { background: var(--on-selected-fill); }
 /* A resting result shows its type as a glyph alone: the plate appears only where the
@@ -84,7 +84,7 @@
    so titles still start where the search text does; its control covers 32 px. */
 :root[data-density="compact"] { --row-height: var(--row-compact); }
 :root[data-density="compact"] [role="option"]:where(:not(.ui-side-navigation-item)):not([data-citation-selected]) .result-tile { background: transparent; }
-:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - 1.5rem) / 2); }
+:root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - var(--control-small-h)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 /* Rows that tell similar references apart (#492). Comfortable rows show
    shortened authors and the container on one line; Compact puts the first
@@ -101,7 +101,7 @@
 }
 @media (prefers-contrast: more) {
   /* The 3 px edge comes out of the side padding, so the text stays put. */
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - 3px); }
+  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - var(--ring-width) - var(--border-width)); }
   /* The tile carries the citation state as an inverted square with its check. */
   [role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
 }

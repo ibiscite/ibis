@@ -30,7 +30,7 @@ use biblatex::Bibliography;
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
-use lexer::{RawEntry, parse_entry, parse_string, split_blocks};
+use lexer::{Block, RawEntry, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
 /// Why an entry was skipped or one of its fields needs checking: a fixed
@@ -53,6 +53,27 @@ impl Problem {
             field: field.map(str::to_owned),
         }
     }
+}
+
+/// Recognize entries with the loader's scanner, including parenthesized and
+/// damaged blocks, without treating directives or their contents as entries.
+pub(crate) fn has_entry_block(text: &str) -> bool {
+    lexer::has_entry(text).unwrap_or_else(|| {
+        let (blocks, limited) = split_blocks(text);
+        blocks
+            .iter()
+            .any(|block| !matches!(block.kind.as_str(), "comment" | "preamble" | "string"))
+            || limited && has_unread_entry(text, &blocks)
+    })
+}
+
+fn has_unread_entry(text: &str, blocks: &[Block<'_>]) -> bool {
+    // Comments past the cap leave no reference unread. If recovery cannot
+    // locate the unread tail or tell what it holds, assume it may have entries.
+    blocks.get(crate::MAX_LIBRARY_RECORDS).is_none_or(|first| {
+        let unread = first.text.as_ptr() as usize - text.as_ptr() as usize;
+        lexer::has_entry(&text[unread..]).unwrap_or(true)
+    })
 }
 
 #[cfg(test)]
@@ -107,10 +128,12 @@ pub(crate) fn load_with_budget(
             cause: None,
             field: None,
         });
+        result.cut_short = true;
         return result;
     }
     let (mut blocks, limited) = split_blocks(text);
     if limited {
+        result.cut_short = has_unread_entry(text, &blocks);
         result.warnings.push(SourceWarning {
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
@@ -139,6 +162,7 @@ pub(crate) fn load_with_budget(
         let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field.as_deref());
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result.warnings.push(warn(WarningCode::WorkLimit));
+            result.cut_short = true;
             return result;
         }
         match block.kind.as_str() {
@@ -212,6 +236,7 @@ pub(crate) fn load_with_budget(
             result
                 .warnings
                 .push(SourceWarning::at(WarningCode::WorkLimit, Some(entry.line)));
+            result.cut_short = true;
             break;
         }
         match outcome {

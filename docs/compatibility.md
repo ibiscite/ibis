@@ -49,6 +49,14 @@ on Debian/Ubuntu, or run `APPIMAGE_EXTRACT_AND_RUN=1 ./Ibis-Linux.AppImage`.
 CI checks that the extracted AppImage starts and stays up; it does not run the
 full picker smoke test through that fallback.
 
+**AppImage stops with `Couldn't open libGLESv2.so.2`:** the AppImage uses
+your system's graphics libraries instead of carrying its own, because they must
+match your graphics drivers. Desktop installs usually have them; a minimal
+system may not. On Debian and Ubuntu, install them with
+`sudo apt install libgles2 libegl1`; other distributions ship them in their
+Mesa or libglvnd packages. The `.deb` needs no extra step: installing it
+brings in WebKitGTK and what WebKitGTK uses.
+
 **NixOS:** run the AppImage with `appimage-run` (`nix-shell -p appimage-run`,
 or set `programs.appimage.enable = true;` and `programs.appimage.binfmt = true;`
 in your configuration). The command line archive holds a static binary that
@@ -149,6 +157,72 @@ letter (for example on a Cyrillic layout), the shortcut uses the letter's US-key
 place and the picker says so. Non-English keyboard coverage remains
 incomplete. Avoid Ctrl+Alt combinations on Windows because many layouts use
 them as AltGr.
+
+## Library files
+
+Ibis reads a library file and never writes to it. When the file changes, Ibis
+reads it again; a record it cannot read is skipped and named by its line.
+
+| File | Gives | Notes |
+| --- | --- | --- |
+| BibTeX or BibLaTeX (`.bib`, `.bibtex`, `.biblatex`) | Keys and formatted citations | |
+| CSL-JSON (`.json`, `.csljson`) | Formatted citations; keys where a record has `citation-key` | |
+| RIS (`.ris`, or `.txt` from EndNote online) | Formatted citations only | RIS has no citation keys, and Ibis never invents one. |
+| CSV in [the template](#csv-template) (`.csv`) | Formatted citations only | For references kept in a spreadsheet. |
+
+### RIS from a reference manager
+
+None of these keep a RIS file current by itself, so export again after changes
+and save over the old file; Ibis then reads it again. A reference keeps its
+place in your recent citations as long as its citation details stay the same.
+
+| Where your references are | How to get a RIS file |
+| --- | --- |
+| Zotero | Not needed: choose Zotero in Ibis. |
+| JabRef | Not needed: open its `.bib` file in Ibis. |
+| EndNote | Choose the RefMan (RIS) Export output style, then File › Export. |
+| EndNote online | Format › Export References, then RefMan (RIS) Export. It saves a `.txt`, which Ibis reads. |
+| Citavi and Citavi Web | Export the project or a selection as RIS. |
+| Mendeley Reference Manager | Select the references, then Export and RIS. |
+| RefWorks | Export References, then RIS Format. |
+| Paperpile | Export, then RIS. |
+| Web of Science, Scopus, ProQuest, EBSCOhost, Google Scholar | Each portal's export or "save to RIS" for the chosen records. Scopus conference papers (`CONF`) are skipped for now. |
+| PubMed | Its citation manager download is `.nbib`, which is not RIS; Ibis refuses it. Add the records to a reference manager first. |
+
+Ibis reads the type, title, people (authors, and editors, series editors and
+translators where the type has them), dates, periodical or book title, volume,
+issue, pages, article number, edition, publisher and place, ISBN or ISSN, DOI,
+URL, short title and language. It does not read notes, attached files, keywords,
+abstracts or database IDs. A record is skipped when its type is not one Ibis
+knows, or when it gives two different titles, years or page ranges.
+
+### CSV template
+
+The first row names the columns, in any order and in any case. `type` and
+`title` are required; any others may be left out. A first row that names a
+column the template does not have, or names one twice, refuses the file and
+says so. Save the spreadsheet as CSV in UTF-8; cells may be separated by commas
+or, as spreadsheets set to a comma decimal save them, by semicolons.
+
+| Column | Holds |
+| --- | --- |
+| `type` | A [CSL type](https://docs.citationstyles.org/en/stable/specification.html#appendix-iii-types), such as `book`, `chapter`, `article-journal` or `report`. |
+| `title` | The title. |
+| `author`, `editor` | People separated by `;`, each as `Family, Given` or written whole, such as an organisation. |
+| `issued` | `2026`, `2026-03` or `2026-03-14`; anything else is kept as written. |
+| `container-title` | The journal, book or site the work appears in. |
+| `collection-title` | The series. |
+| `volume`, `issue`, `page`, `number`, `edition` | As written, such as `101-118` for pages. |
+| `publisher`, `publisher-place` | The publisher and its city. |
+| `DOI`, `ISBN`, `ISSN`, `URL` | Identifiers; a cell that is not a DOI is left out with a warning. |
+
+```csv
+type,title,author,issued,container-title,volume,page,DOI
+article-journal,Invented tides,"Doe, Jane; Roe, Rafael",2026-03-14,Journal of Invented Studies,12,101-118,10.0000/invented.1
+```
+
+A row with more or fewer cells than the first row, no type, a type CSL does not
+have, no title, or a quote it never closes is skipped and named by its line.
 
 ## Writing apps
 

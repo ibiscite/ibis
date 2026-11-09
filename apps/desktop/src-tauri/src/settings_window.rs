@@ -14,6 +14,35 @@ const TITLE: &str = "Ibis Settings";
 /// The design canvas's size (docs/design/settings.md).
 const SIZE: (f64, f64) = (920.0, 560.0);
 const MIN_SIZE: (f64, f64) = (800.0, 400.0);
+/// Room kept round the window, for its frame and title bar, on a small screen.
+const MARGIN: f64 = 32.0;
+
+/// Settings' size and minimum on a screen whose work area is `area` in logical
+/// pixels: the design size where it fits, never larger than the screen (a 1440
+/// × 900 display at GDK_SCALE=2 is 720 × 450), so no control is ever off it.
+/// An unknown or empty area (displays changing) keeps the design size.
+fn fitted(area: Option<(f64, f64)>) -> ((f64, f64), (f64, f64)) {
+    let Some((width, height)) = area.filter(|&(width, height)| width >= 1.0 && height >= 1.0) else {
+        return (SIZE, MIN_SIZE);
+    };
+    let room = ((width - 2.0 * MARGIN).max(1.0), (height - 2.0 * MARGIN).max(1.0));
+    let size = (SIZE.0.min(room.0), SIZE.1.min(room.1));
+    (size, (MIN_SIZE.0.min(size.0), MIN_SIZE.1.min(size.1)))
+}
+
+/// The work area Settings opens in, as logical (x, y, width, height): the
+/// picker's screen, else the main one. Settings is both sized for and centred
+/// in it, so the two never disagree about the screen. An empty area is unknown.
+pub(crate) fn work_area(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+    let picker = app
+        .get_webview_window("main")
+        .and_then(|window| window.current_monitor().ok().flatten());
+    let monitor = picker.or_else(|| app.primary_monitor().ok().flatten())?;
+    let area = monitor.work_area();
+    let origin = area.position.to_logical::<f64>(monitor.scale_factor());
+    let size = area.size.to_logical::<f64>(monitor.scale_factor());
+    (size.width >= 1.0 && size.height >= 1.0).then_some((origin.x, origin.y, size.width, size.height))
+}
 
 /// Where Settings opens.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
@@ -28,8 +57,6 @@ pub(crate) enum Page {
     Shortcuts,
     Citations,
     About,
-    /// About, running Check now: the tray's update check shows its result there.
-    Updates,
 }
 
 impl Page {
@@ -43,7 +70,6 @@ impl Page {
             Page::Shortcuts => "shortcuts",
             Page::Citations => "citations",
             Page::About => "about",
-            Page::Updates => "updates",
         }
     }
 }
@@ -133,11 +159,12 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
         return;
     }
     let url = format!("settings.html?page={}", page.unwrap_or(Page::General).name());
+    let area = R::work_area(app);
+    let (size, min) = fitted(area.map(|(_, _, width, height)| (width, height)));
     let mut builder = WebviewWindowBuilder::new(app, LABEL, WebviewUrl::App(url.into()))
         .title(TITLE)
-        .inner_size(SIZE.0, SIZE.1)
-        .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
-        .center()
+        .inner_size(size.0, size.1)
+        .min_inner_size(min.0, min.1)
         .maximizable(false)
         .focused(true)
         // A system alert leaves Settings without the keyboard; the click that
@@ -154,6 +181,10 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
                 report(window.set_focus(), NativeIssue::Focus);
             }
         });
+    builder = match area {
+        Some((x, y, width, height)) => builder.position(x + (width - size.0) / 2.0, y + (height - size.1) / 2.0),
+        None => builder.center(),
+    };
     FIRST_SHOW.begin();
     // The sidebar runs under the traffic lights, as in System Settings.
     #[cfg(target_os = "macos")]
@@ -174,7 +205,10 @@ pub(crate) fn present<R: PickerHideUi>(app: &AppHandle<R>, page: Option<Page>, p
     {
         builder = builder.additional_browser_args(&args);
     }
-    match checked(builder.build(), NativeIssue::Window) {
+    let built = checked(builder.build(), NativeIssue::Window);
+    #[cfg(target_os = "linux")]
+    crate::desktop_theme::reapply(app);
+    match built {
         Some(window) => {
             report(window.set_focus(), NativeIssue::Focus);
             yield_to_window(app, presentation, Takeover::Covered);
@@ -319,6 +353,32 @@ mod tests {
     }
 
     #[test]
+    fn settings_fits_a_small_or_scaled_screen_and_keeps_its_size_elsewhere() {
+        assert_eq!(
+            fitted(None),
+            (SIZE, MIN_SIZE),
+            "an unknown screen keeps the design size"
+        );
+        assert_eq!(fitted(Some((1440.0, 900.0))), (SIZE, MIN_SIZE));
+        // 1440 × 900 at GDK_SCALE=2: every control stays on the screen.
+        let (size, min) = fitted(Some((720.0, 450.0)));
+        assert!(
+            size.0 + 2.0 * MARGIN <= 720.0 && size.1 + 2.0 * MARGIN <= 450.0,
+            "{size:?}"
+        );
+        assert!(min.0 <= size.0 && min.1 <= size.1, "{min:?} fits within {size:?}");
+        assert!(
+            fitted(Some((10.0, 10.0))).0.0 > 0.0,
+            "a tiny screen still gets a window"
+        );
+        assert_eq!(
+            fitted(Some((0.0, 0.0))),
+            (SIZE, MIN_SIZE),
+            "an empty area while displays change is unknown"
+        );
+    }
+
+    #[test]
     fn each_page_has_the_name_the_page_reads() {
         for (page, name) in [
             (Page::General, "general"),
@@ -329,7 +389,6 @@ mod tests {
             (Page::Shortcuts, "shortcuts"),
             (Page::Citations, "citations"),
             (Page::About, "about"),
-            (Page::Updates, "updates"),
         ] {
             assert_eq!(page.name(), name);
             assert_eq!(serde_json::to_value(page).ok(), Some(serde_json::json!(name)));

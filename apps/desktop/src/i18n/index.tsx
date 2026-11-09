@@ -61,6 +61,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   const ids = new Set<string>();
   for (const entry of syntax.body) {
     if (entry.type === "Comment" || entry.type === "GroupComment" || entry.type === "ResourceComment") continue;
+    if (entry.type === "Term") continue;
     if (entry.type !== "Message" || !entry.value || ids.has(entry.id.name)) throw invalid();
     // The engine's and the command line's words are checked by their own tests.
     if (RUST.test(entry.id.name)) continue;

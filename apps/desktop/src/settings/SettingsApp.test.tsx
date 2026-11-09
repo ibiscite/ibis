@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
 import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
@@ -353,7 +353,6 @@ test("a window size that cannot be read says so and offers no choice", async () 
 test("pages are opened by name, and the paste guide is General's pasting group", () => {
   expect(pageOf("paste")).toEqual({ page: "general", focus: "paste" });
   expect(pageOf("about")).toEqual({ page: "about", focus: null });
-  expect(pageOf("updates")).toEqual({ page: "about", focus: null });
   expect(pageOf("shortcuts")).toEqual({ page: "shortcuts", focus: null });
   expect(pageOf("unknown")).toEqual({ page: "general", focus: null });
   expect(pageOf(null)).toEqual({ page: "general", focus: null });
@@ -1084,6 +1083,21 @@ test("seven pages and search find common words, reveal and briefly tint their ca
   expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
 });
 
+test("searching for the update check scrolls About to the button under the version", async () => {
+  const { api } = fakeApi({ granted: true });
+  // Layout is not available in jsdom: the button's box sits 600 px down the page.
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.classList.contains("ui-about-check") ? 600 : 0, height: 0 } as DOMRect;
+  });
+  onTestFinished(() => boxes.mockRestore());
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: "check for updates" } });
+  fireEvent.click(await screen.findByRole("option", { name: /^Check for updates, / }));
+  const main = await screen.findByRole("main", { name: "About Ibis" });
+  await waitFor(() => expect(main.scrollTop).toBe(600));
+  expect(screen.getByRole("button", { name: "Check for Updates" }).closest(".ui-about-check")!.hasAttribute("data-highlighted")).toBe(true);
+});
+
 test("search results are sidebar rows, and Enter opens the first", async () => {
   const { api } = fakeApi({ granted: true });
   const { container } = render(<SettingsApp api={api} initialPage="general" />);
@@ -1641,20 +1655,6 @@ test.each([
   fireEvent.click(await screen.findByRole("button", { name: "Check for Updates" }));
   await screen.findByRole("button", { name: "Check for Updates" });
   expect(await screen.findByText(said, { selector: ":not(.visually-hidden)" })).toBeTruthy();
-});
-
-test("the tray's update check opens About, checks once and says its result in place", async () => {
-  const { api, state } = fakeApi();
-  let finish!: (result: "newest") => void;
-  const check = vi.spyOn(api, "checkForUpdates").mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
-  render(<SettingsApp api={api} initialPage="updates" />);
-  await waitFor(() => expect(check).toHaveBeenCalledOnce());
-  await act(async () => { for (const handler of state.pages) handler("updates"); });
-  expect(check).toHaveBeenCalledOnce();
-  await act(async () => { finish("newest"); });
-  expect(await screen.findByText("You have the newest version.", { selector: ":not(.visually-hidden)" })).toBeTruthy();
-  await act(async () => { for (const handler of state.pages) handler("updates"); });
-  expect(check).toHaveBeenCalledTimes(2);
 });
 
 test("a check that ends on another page says its result back on About", async () => {

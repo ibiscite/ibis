@@ -54,7 +54,8 @@ impl LoadError {
     }
     pub(super) fn with_snapshot_context(self, has_references: bool, zotero: bool) -> String {
         if self.retains(has_references, zotero) {
-            words("app-library-kept", &[("error", &self.to_string())])
+            // A reason is a whole sentence; here it leads into the rest.
+            words("app-library-kept", &[("error", self.to_string().trim_end_matches('.'))])
         } else {
             self.to_string()
         }
@@ -67,6 +68,8 @@ impl LoadError {
         match self {
             LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
                 (_, ErrorCode::SourceUnavailable) => "app-library-file-unavailable",
+                _ if error.reason == Some(ErrorReason::CsvTemplate) => "reason-csv-template",
+                _ if error.reason == Some(ErrorReason::UnknownFormat) => "reason-unknown-format",
                 (LoadError::File(_), ErrorCode::BadInput) => "app-library-file-invalid",
                 (LoadError::File(_), ErrorCode::ResourceLimit) => "app-library-file-too-large",
                 (_, ErrorCode::BadInput) => "app-library-file-unfinished",
@@ -287,11 +290,9 @@ mod tests {
                 LoadError::FileRefresh(error),
                 LoadError::Zotero(error),
             ]);
-            loads.extend(
-                reasons
-                    .iter()
-                    .map(|&reason| LoadError::Zotero(EngineError::because(code, reason))),
-            );
+            loads.extend(reasons.iter().flat_map(|&reason| {
+                [LoadError::Zotero, LoadError::File].map(|load| load(EngineError::because(code, reason)))
+            }));
         }
         let mut used: BTreeSet<&str> = loads.iter().map(|error| error.words_id()).collect();
         used.extend([
@@ -312,8 +313,10 @@ mod tests {
             .filter_map(|line| line.split_once(" =").map(|(id, _)| id))
             .filter(|id| id.starts_with("app-library-") || id.starts_with("app-command-"))
             .collect();
+        // A reason the engine words for everyone is the catalogue's `reason-` message.
+        let own: BTreeSet<&str> = used.iter().copied().filter(|id| !id.starts_with("reason-")).collect();
         assert_eq!(
-            catalogue, used,
+            catalogue, own,
             "the catalogue's library and command words and the app's differ"
         );
         for id in used {

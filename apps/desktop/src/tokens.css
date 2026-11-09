@@ -10,7 +10,7 @@
    from them or from Apple's own values, so one change restyles every part. */
 :root {
   --unit: .25rem;        /* the spacing grid (4 pt) */
-  --radius: 8px;         /* a control's corner; cards, menus and floors follow */
+  --radius: 8px;         /* a control's corner; the two other corners follow */
   --type-base: .8125rem; /* body text (13 pt); every text style steps from it */
   --ibis: #c23a1c; --ibis-dark: #f2552f; /* Ibis red, light and dark (brand/settings.json) */
 }
@@ -30,6 +30,10 @@
   --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2);
+  /* A control's hit area: 32 px, 44 px under a coarse pointer. */
+  --hit: var(--control-h);
+  /* The narrowest a status line (library, project) shrinks before it wraps. */
+  --status-min: 14rem;
   /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
   --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
@@ -44,11 +48,14 @@
   --page-w: 34rem; --thumb-w: 4rem;
   --paper: #ffffff; --paper-ink: #2b2b2b; --paper-ink-secondary: #6e6e73;
 
-  /* Corners. The window's is the Mac's own (it matches the native mask [C15]);
-     the rest scale with --radius, with floors for surfaces and text-sized marks. */
-  --r-win: 16px; --r-control: var(--radius); --r-card: calc(1.25 * var(--radius)); --r-menu: calc(1.5 * var(--radius));
-  --r-full: 999px; --r-icon: 22.5%;
-  --r-floor: calc(.75 * var(--radius)); --r-floor-mark: calc(.5 * var(--radius)); --corner-inset: var(--space-2); --menu-pad: 5px;
+  /* Corners: three steps from --radius, plus the window's (the Mac's own, matching
+     the native mask [C15]), a capsule and the app icon's. Nested shapes are
+     concentric: a shape --space-2 inside a --r-large one takes --r-control, a mark
+     a few pixels inside a control takes --r-small.
+       window 16 -8-> row, field, control 8 -2-> segment, key cap 6
+       menu, card, sheet 12 -4-> menu item 8     row 8 -> tile 6 */
+  --r-small: calc(.75 * var(--radius)); --r-control: var(--radius); --r-large: calc(1.5 * var(--radius));
+  --r-win: 16px; --r-full: 999px; --r-icon: 22.5%;
 
   /* Type: size / line, as macOS text styles step from body (1 pt = .0625rem).
      Nothing is smaller than 12 px. */
@@ -81,11 +88,13 @@
 
   /* Focus: one ring, keyboard only. */
   --ring-width: 2px; --ring-offset: 1px;
+  /* A ring drawn inside a control that sits flush with its neighbours. */
+  --ring-inside: calc(-1 * var(--ring-width));
 
   /* Colour: Apple's semantic ladders as measured from AppKit on macOS 27.2
      (docs/design/foundations.md, "Exact macOS values"), raised only where Ibis's floors need it.
      System colours sit underneath for webviews without light-dark(). */
-  --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas;
+  --surface: Canvas; --surface-overlay: Canvas;
   --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --text-disabled: GrayText;
   --separator: GrayText; --stroke-field: transparent;
   --accent: Highlight; --accent-text: var(--accent); --text-on-accent: HighlightText;
@@ -117,19 +126,22 @@
   /* Settings: a grouped form beside a sidebar. Groups are Apple's tertiary fill,
      a step above the sidebar's quaternary, so they separate by fill, not by their edge. */
   --surface-grouped: var(--fill-3);
-  --titlebar-height: 2.75rem;
+  /* Only macOS draws its window buttons over the content (settings_window.rs). */
+  --titlebar-height: 0px;
   --sidebar-width: min(12.5rem, 26%);
   --page-general: #8e8e93; --page-look: #ff9f0a; --page-citations: #0a84ff; --page-shortcuts: #5e5ce6; --page-about: var(--page-general);
   --highlight: var(--accent-wash);
   /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
   --preview-window-w: 45rem; --preview-window-h: 30rem;
-  --preview-window: .21; --preview-rows: .74;
+  --preview-window: .21;
   /* The bird: the app icon names Ibis; the depth mark greets. */
   --mark-app: 6rem; --mark-greeting: 3.5rem;
 
 }
 
 @media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
+@media (pointer: coarse) { :root { --hit: var(--touch-target); } }
+:root[data-system="macos"] { --titlebar-height: var(--touch-target); }
 
 /* The canvas's light and dark values. */
 @supports (color: light-dark(white, black)) {
@@ -146,7 +158,9 @@
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
     :root {
       --surface: light-dark(#ffffff, #1e1e1e);
-      --surface-overlay: light-dark(#ffffff, #282828); --sheet: var(--surface-overlay);
+      /* The raised layer for everything that floats: a step off the window in
+         either mode, as a Mac menu is, never the window's own white or black. */
+      --surface-overlay: light-dark(#f6f6f7, #2c2c2e);
       --text: light-dark(rgb(0 0 0 / 84.7%), rgb(255 255 255 / 84.7%));
       /* Darker than Apple's 50% in light: without vibrancy behind text it fell to 3.8:1 on the glass. */
       --text-secondary: light-dark(rgb(0 0 0 / 60%), rgb(255 255 255 / 54.9%));
@@ -194,8 +208,7 @@
   @media (prefers-contrast: no-preference) and (forced-colors: none) and (prefers-reduced-transparency: no-preference) {
     :root[data-platform="macos"][data-native-appearance="vibrancy"]:not(.notice-window),
     :root[data-platform="macos"][data-native-appearance="liquid-glass"]:not(.notice-window) {
-      --surface-overlay: light-dark(rgb(250 250 252 / 92%), rgb(44 44 48 / 92%));
-      --sheet: light-dark(rgb(250 250 252 / 96%), rgb(44 44 48 / 96%));
+      --surface-overlay: light-dark(rgb(246 246 247 / 92%), rgb(44 44 46 / 92%));
       --blur: blur(40px) saturate(1.6);
     }
   }
@@ -205,7 +218,7 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   :root, :root[data-platform] {
     --shadow-card: none; --shadow-overlay: none; --shadow-toast: none; --shadow-thumb: none;
-    --surface: Canvas; --surface-overlay: Canvas; --sheet: Canvas; --surface-grouped: Canvas;
+    --surface: Canvas; --surface-overlay: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
     --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
@@ -251,26 +264,13 @@
 :root[data-appearance="dark"] { color-scheme: dark; }
 :root.settings-window[data-larger-text="true"] { font-size: calc(100% * var(--larger-text-scale)); }
 
-/* Layer 3: components. Nested corners are concentric: a shape near its
-   container's edge keeps the same gap on every side, and its radius is the
-   container's minus that gap, never below the floor; neighbours share a radius.
-     window 16 -8-> row, field, shelf, footer action 8 -4-> key cap 4
-     menu 12 -5-> menu item 7     control 8 -2-> segment 6     row 8 -12-> tile 6
-     band 8 -8-> band control 6 (a small control S inside a --r-row band such as
-     the shelf: --r-row minus S is 0, so it rests on the floor) */
+/* Layer 3: components, derived from the layers above. */
 :root {
-  --r-row: max(var(--r-floor), calc(var(--r-win) - var(--corner-inset)));
-  --r-tile: var(--r-floor);
-  --r-band-control: max(var(--r-floor), calc(var(--r-row) - var(--inset)));
-  --r-mi: max(var(--r-floor), calc(var(--r-menu) - var(--menu-pad)));
-  --r-seg: max(var(--r-floor-mark), calc(var(--r-control) - 2px));
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
-  --r-key: max(var(--r-floor-mark), calc(var(--r-row) - var(--key-gap)));
-  --r-toast: 18px;
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
   --inspector-width: 18rem; --inspector-column: 15rem;
   /* One Settings row, in every group and the shortcuts list. */
-  --settings-row-h: 2.75rem; --settings-row-pad: var(--space-4);
+  --settings-row-h: var(--touch-target); --settings-row-pad: var(--space-4);
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);

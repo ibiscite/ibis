@@ -68,7 +68,7 @@ fn command() -> Command {
         .action(ArgAction::Append)
         .help_heading(LIBRARIES)
         .display_order(1000)
-        .help("Open a BibTeX, BibLaTeX or CSL-JSON file; repeat for several libraries");
+        .help(ibis_engine::catalogue::text("cli-file-help", None, &[]).unwrap_or_default());
     let group = Arg::new("zotero-group")
         .long("zotero-group")
         .value_name("GROUP_ID")
@@ -137,6 +137,8 @@ fn command() -> Command {
                         .long("limit")
                         .value_name("N")
                         .value_parser(search_limit)
+                        // `-1` reaches the parser, which says what a limit may be.
+                        .allow_negative_numbers(true)
                         .default_value("10")
                         .help("Return at most N results, from 1 to 1000"),
                 ),
@@ -922,23 +924,24 @@ fn open_libraries(
         let before = engine.libraries()?.libraries;
         let chosen = chosen_in(&path);
         // A path the app chose is never shown: agents read these messages too.
-        explain(
-            engine.dispatch(Method::Libraries, &params, &cancel),
-            |EngineError { code, .. }| match chosen {
-                Some(app) => format!(
-                    "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
-                    human::file_reason(&path, code),
-                    app_libraries::NAME_ONE
-                ),
-                None => human::file_failure(&path, code),
-            },
-        )
-        .map_err(|mut failure| {
-            if chosen.is_none() {
-                failure.unnamed = Some(human::file_reason(&path, failure.error.code));
-            }
-            failure
-        })?;
+        // The file is named even when the engine gives a reason: several may be open.
+        let message = |error| match chosen {
+            Some(app) => format!(
+                "cannot open the library chosen in {app}: {} Choose it again there, or {}.",
+                human::file_reason(&path, error),
+                app_libraries::NAME_ONE
+            ),
+            None => human::file_failure(&path, error),
+        };
+        engine
+            .dispatch(Method::Libraries, &params, &cancel)
+            .map_err(|error| Failure::explained(error, message(error)))
+            .map_err(|mut failure| {
+                if chosen.is_none() {
+                    failure.unnamed = Some(human::file_reason(&path, failure.error));
+                }
+                failure
+            })?;
         // Library ids are digests, never locations; people see the path they gave.
         for library in engine.libraries()?.libraries {
             if !before.iter().any(|old| old.id == library.id) {

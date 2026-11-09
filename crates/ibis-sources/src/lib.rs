@@ -2,6 +2,7 @@
 mod attachments;
 mod bibtex;
 mod csl_json;
+mod exported;
 mod file;
 pub mod identity;
 pub mod project;
@@ -16,8 +17,9 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 pub use file::{
-    MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, load_file, load_file_snapshot,
-    original_entry, reload_file, reload_file_reusing, reload_file_snapshot_reusing,
+    MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, library_file_extensions, load_file,
+    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing,
+    reload_file_snapshot_reusing,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size
@@ -145,7 +147,7 @@ pub enum WarningCause {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum LibraryKind {
-    /// A BibTeX, BibLaTeX or CSL-JSON file.
+    /// A BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file.
     File,
     Zotero,
     /// Data handed to the engine whole, with no source behind it.
@@ -188,6 +190,10 @@ pub struct LoadedLibrary {
     pub kind: LibraryKind,
     pub snapshot: Snapshot,
     pub warnings: Vec<SourceWarning>,
+    /// The read stopped at a limit and left later records unread, so a key
+    /// that is not found may be among them. A limit that only skipped one
+    /// record or its attachments does not count.
+    pub cut_short: bool,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,
     best_attachments: BTreeMap<ItemRef, zotero_source::AttachmentKind>,
 }
@@ -219,6 +225,8 @@ struct ParsedLibrary {
     reused: Vec<usize>,
     warnings: Vec<SourceWarning>,
     attachments: Vec<(ItemRef, String, Option<usize>)>,
+    /// Records after a limit were left unread: `LoadedLibrary::cut_short`.
+    cut_short: bool,
 }
 
 impl ParsedLibrary {

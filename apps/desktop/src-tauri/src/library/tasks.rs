@@ -602,18 +602,9 @@ pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadErr
     source.setting()
 }
 
-// Extensions recognised by ibis-sources (including CSL-JSON's alternate suffix).
-const LIBRARY_FILE_EXTENSIONS: &[&str] = &["bib", "bibtex", "biblatex", "json", "csljson"];
-
 /// Whether a dropped file's name says it is a library.
 pub(crate) fn accepts_library_file(path: &std::path::Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| {
-            LIBRARY_FILE_EXTENSIONS
-                .iter()
-                .any(|known| known.eq_ignore_ascii_case(extension))
-        })
+    ibis_engine::names_a_library(path)
 }
 
 /// Show the system file dialog and open the chosen library. Cancelling
@@ -633,8 +624,11 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     let mut dialog = app
         .dialog()
         .file()
-        .set_title("Choose a library")
-        .add_filter("BibTeX, BibLaTeX and CSL-JSON", LIBRARY_FILE_EXTENSIONS);
+        .set_title(ibis_engine::catalogue::text("app-file-dialog-title", None, &[]).unwrap_or_default())
+        .add_filter(
+            ibis_engine::catalogue::text("app-file-dialog-formats", None, &[]).unwrap_or_default(),
+            &ibis_engine::library_file_extensions().collect::<Vec<_>>(),
+        );
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);
     }
