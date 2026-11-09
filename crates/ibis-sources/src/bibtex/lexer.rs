@@ -75,10 +75,7 @@ pub(crate) fn has_entry(src: &str) -> Option<bool> {
         } else {
             // An example inside a comment is not an entry, so the whole block
             // is skipped. One that never closes leaves the rest unknown.
-            match find_close(bytes, k) {
-                Some(end) => i = end + 1,
-                None => return None,
-            }
+            i = find_close(bytes, k)? + 1;
         }
     }
     Some(false)
