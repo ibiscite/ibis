@@ -27,7 +27,7 @@ from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from native_test_settings import clean_settings, settings_exist
-from native_evidence import (ACTIVE, BundleError, Evidence, collect_metadata, failure,
+from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_PANDOC, collect_metadata, failure,
                              load_bundle, observe_native, recording, unavailable)
 
 
@@ -154,7 +154,7 @@ TREE_SETTLE_SECONDS = 10
 MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
 # ATK_ROLE_PUSH_BUTTON_MENU is how AT-SPI exposes a button with aria-haspopup.
-# Both Library and More use the same native HTML button/MenuTrigger contract.
+# Library, More and the format pop-up use the same native HTML button contract.
 MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu", "combobox"}
 MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
 
@@ -1230,7 +1230,7 @@ class Linux:
         # The footer and its menu used to share "Library"; activating the region
         # could hit Find instead. Bind menu actions to their actual widget role,
         # also avoiding a same-named menu left in the accessibility tree.
-        roles = MENU_BUTTON_ROLES if name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
+        roles = MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -1409,9 +1409,6 @@ def quit_normally(native, app):
     return round(10 - remaining(), 3)
 
 
-NO_MATCH = "zzqx no such reference"
-
-
 def first_run_preferences_main(args):
     return evidence_main(args, _first_run_preferences_main, "first-run-preferences")
 
@@ -1483,19 +1480,25 @@ def _first_run_preferences_main(args):
         launch("relaunch", with_library=True)
         wait_for(lambda: visible_text("3 references"), "synthetic references after relaunch")
         wait_for(lambda: picker_ready(typing=True), "restarted native search focus")
-        # The writing question needs a library chosen in the app; Copy as sets the same preference.
-        # The header has no stable native identifier; keep its action in the accessible name.
-        # With no match there is no footer copy action to invoke accidentally.
-        type_query(native, snapshot, NO_MATCH, "ctrl+a")
-        wait_for(lambda: visible_text("No matching references"), "no highlighted result to copy")
-        native.click("Copy as Pandoc")
-        wait_for(lambda: bool(named(snapshot(), "Typst")), "Copy as lists Typst")
+        type_query(native, snapshot, "smoke000000", "ctrl+a")
+        wait_for_query(snapshot, "smoke000000", "Ibis smoke reference 000000", report, settled=True)
+
+        def distinct_format_and_copy():
+            current = snapshot()
+            controls = [node.get("name") for node in current["nodes"]
+                        if node.get("role", "").lower().replace(" ", "") in MENU_BUTTON_ROLES]
+            return current["visible"] and current["foreground"] and controls.count(FORMAT_PANDOC) == controls.count("Copy as Pandoc") == 1
+
+        wait_for(distinct_format_and_copy, "citation format and copy have distinct accessible names")
+        passed("citation format and copy have distinct accessible names")
+        native.click(FORMAT_PANDOC)
+        wait_for(lambda: bool(named(snapshot(), "Typst")), "citation format lists Typst")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
         # "LaTeX \cite" names only that menu item; "Pandoc" is also the header's visible text.
-        wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "Copy as filter leaves only Typst")
+        wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "citation format filter leaves only Typst")
         native.key("Down")
         native.key("Return")
         wait_for(lambda: saved_typst(settings), "Typst preferences saved before copying")
@@ -3407,15 +3410,16 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == "Copy as Pandoc":
-                self.assertEqual(native.query, NO_MATCH, "Format selection needs no highlighted result")
+            elif name == FORMAT_PANDOC:
+                self.assertEqual(native.query, "smoke000000", "Format selection keeps the highlighted result")
+                self.assertGreaterEqual(clock[0], native.query_ready_at)
                 native.format_filter = ""
             else:
                 raise AssertionError(f"No invokable accessibility control {name!r}")
 
         def key(chord):
             if chord == "Return" and native.format_filter is not None:
-                actions.append(("Return in Copy as", len(launches)))
+                actions.append(("Return in Citation format", len(launches)))
                 actions.append((native.format_filter, len(launches)))
                 choose(native.format_filter)
                 native.format_filter = None
@@ -3440,11 +3444,14 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += ["Copy as Pandoc", "3 references"]
+                names += [FORMAT_PANDOC, "3 references"]
                 if native.format_filter is not None:
                     names += ["Typst"]
-                names += ["No matching references"] if native.query == NO_MATCH else [
-                    "Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results", "Ibis smoke reference 000001"]
+                if native.query:
+                    names += ["Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results",
+                              f"Ibis smoke reference {native.query.removeprefix('smoke')}"]
+                if failure == "duplicate-format-name":
+                    names += [FORMAT_PANDOC]
             result_focus = failure == "active-result-reopen" and native.reopened
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
@@ -3522,9 +3529,9 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in ("Copy as Pandoc", "Typst")], [("Copy as Pandoc", 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in (FORMAT_PANDOC, "Typst")], [(FORMAT_PANDOC, 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
-        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Copy as", 2)], "Typst was not picked from the filter")
+        self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Citation format", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
 
     def test_first_run_bundle_replays_actions_and_failed_invariants(self):
@@ -3622,7 +3629,7 @@ class ContractTests(unittest.TestCase):
 
     def test_first_run_preferences_failures_cannot_pass_during_cleanup(self):
         for failure in ("wrong-format", "duplicate", "malformed", "wrong-schema", "non-json", "oversized",
-                        "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup"):
+                        "late-driver", "late-wait", "nonzero-quit", "stuck-quit", "uncertain-quit", "wrong-copy", "cleanup", "duplicate-format-name"):
             with self.subTest(failure=failure):
                 result, report, _launches, _actions = self.preference_probe(failure)
                 self.assertEqual((result, report["status"]), (1, "failed"))

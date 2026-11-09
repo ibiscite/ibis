@@ -39,6 +39,7 @@ has its own page; read only the one your change touches:
 11. **One next action.** Every screen has one clear next action, and every failure says why and what to do.
 12. **People's words, not the engine's** (maintainer, 2026-11-05). Name things by what the person already has: "thesis.bib", "your Zotero library", "cited since opening". Engine words (session, project bibliography, context, scope, source health) never reach the interface, and the command line's human output uses the same words. Where a citation goes is read from the footer alone: the action names the app and format, the status names the library and any linked `.bib`; no other strip of selectors.
 13. **One of each, defined once** (maintainer, 2026-11-07, design pass 2). Three corners, one space scale, one raised layer for everything that floats, one scroll bar, one picture for every visual choice; a sheet is drawn with Settings' cards and rows. A part reads these and never names a second value for them; a screen that looks different is a missing part or token, not a local fix.
+14. **Name controls by their job.** A setting and the action it changes have distinct accessible names. Add a group name when it gives context. A live status names the subject of its updates.
 
 ## Where Ibis departs from macOS
 
