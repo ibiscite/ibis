@@ -231,9 +231,10 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
     for info in sources {
         if ibis_engine::health::classify(info).1 == "refresh-failed" {
             result.stale = true;
-            result
-                .error
-                .get_or_insert_with(|| refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
+            if result.error.is_none() {
+                result.kept_references = references > 0;
+                result.error = Some(refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
+            }
         }
     }
     if result.stale && library.error.is_some() && !source_is_requested {
@@ -465,6 +466,35 @@ mod tests {
                 (records.as_str().into(), 2)
             ])
         );
+        Ok(())
+    }
+
+    #[test]
+    fn a_failed_automatic_refresh_reports_retained_references_in_the_tray() -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("invented.bib");
+        let bib = "@book{invented,title={An Invented Almanac}}";
+        std::fs::write(&path, bib)?;
+        let library = load_library(path.clone(), false).map_err(|error| error.to_string())?;
+        let file = library.file.as_ref().ok_or("file")?;
+        let loaded = status(&library);
+
+        std::fs::remove_file(&path)?;
+        assert!(file.reload().is_err());
+        let missing = status(&library);
+        assert!(missing.stale);
+        assert_eq!(missing.references, 1);
+        assert_eq!(missing.revision, loaded.revision);
+        assert!(library_line(&missing).starts_with("invented.bib: 1 references, not updated:"));
+
+        std::fs::write(&path, bib)?;
+        file.reload().map_err(|error| error.to_string())?;
+        let restored = status(&library);
+        assert!(!restored.stale);
+        assert!(restored.problem.is_none());
+        assert!(restored.error.is_none());
+        assert_eq!(library_line(&restored), "invented.bib: 1 references");
+        assert_eq!(restored.revision, loaded.revision);
         Ok(())
     }
 
