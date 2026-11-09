@@ -74,6 +74,51 @@ fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
         assert!(output.stderr.starts_with(b"ibis: "), "{:?}", output.stderr);
     }
 }
+
+#[test]
+fn a_search_query_after_the_end_of_options_is_not_a_json_flag() -> Result<(), Box<dyn std::error::Error>> {
+    let file = "--file=../../fixtures/bibtex/fidelity.bib";
+    let human = ibis(&["search", file, "--", "--json"]);
+    assert!(human.status.success());
+    assert!(human.stderr.is_empty());
+    assert_eq!(std::str::from_utf8(&human.stdout)?, "No references found.\n");
+
+    let machine = ibis(&["search", file, "--json", "--", "--json"]);
+    assert!(machine.status.success());
+    assert!(machine.stderr.is_empty());
+    let value: Value = serde_json::from_slice(&machine.stdout)?;
+    assert_eq!(value["ibis"], 1);
+    assert_eq!(value["ok"], true);
+    assert_eq!(value["data"]["hits"], json!([]));
+    Ok(())
+}
+
+#[test]
+fn help_and_usage_errors_respect_the_end_of_options() -> Result<(), Box<dyn std::error::Error>> {
+    let plain_usage = ibis(&["search", "--limit", "bad", "--", "--json"]);
+    let json_usage = ibis(&["search", "--limit", "bad", "--json", "--", "--json"]);
+    assert_eq!(plain_usage.status.code(), Some(2));
+    assert_eq!(json_usage.status.code(), Some(2));
+    assert!(plain_usage.stdout.is_empty());
+    assert!(plain_usage.stderr.starts_with(b"ibis: "));
+    assert_eq!(plain_usage.stderr, json_usage.stderr);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&json_usage.stdout)?,
+        json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+    );
+
+    let plain_help = ibis(&["search", "--help", "--", "--json"]);
+    let json_help = ibis(&["search", "--help", "--json", "--", "--json"]);
+    assert!(plain_help.status.success() && json_help.status.success());
+    let help = std::str::from_utf8(&plain_help.stdout)?;
+    assert!(help.contains("Usage: ibis search"), "{help}");
+    assert_eq!(
+        serde_json::from_slice::<Value>(&json_help.stdout)?,
+        json!({"ibis":1,"ok":true,"data":{"help":help}})
+    );
+    Ok(())
+}
+
 #[test]
 fn schema_matches_the_published_contract() {
     let expected: Value = serde_json::from_str(include_str!("../../../fixtures/cli-schema.json"))
