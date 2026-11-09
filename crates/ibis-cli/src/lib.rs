@@ -7,6 +7,7 @@ use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},
     path::{Path, PathBuf},
+    time::Duration,
 };
 mod app_libraries;
 mod completions;
@@ -688,6 +689,10 @@ fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id
 /// docs/architecture.md allows, so a stalled disk cannot hold a command. A
 /// one-shot command leaves at most one such call behind before it exits.
 pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    bounded_for(Duration::from_secs(2), operation)
+}
+
+fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
     let (sender, receiver) = std::sync::mpsc::channel();
     std::thread::Builder::new()
         .name("ibis-bounded-io".into())
@@ -695,7 +700,7 @@ pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 
             let _ = sender.send(operation());
         })
         .ok()?;
-    receiver.recv_timeout(std::time::Duration::from_secs(2)).ok()
+    receiver.recv_timeout(timeout).ok()
 }
 
 struct Failure {
@@ -1560,10 +1565,9 @@ mod tests {
     #[test]
     fn a_stalled_wait_gives_up_at_its_deadline() {
         assert_eq!(bounded(|| 7), Some(7));
-        let started = std::time::Instant::now();
-        let stalled = bounded(|| std::thread::sleep(std::time::Duration::from_secs(30)));
-        assert_eq!(stalled, None);
-        assert!(started.elapsed() < std::time::Duration::from_secs(5));
+        let (release, held) = std::sync::mpsc::channel::<()>();
+        assert!(bounded_for(Duration::ZERO, move || held.recv_timeout(Duration::from_secs(5))).is_none());
+        drop(release);
     }
 
     #[test]
