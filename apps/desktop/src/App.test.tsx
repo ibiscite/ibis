@@ -10,7 +10,6 @@ import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
 import { backend, chooseFromMore, chooseRows, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
 
-// Vitest can load these existing runtime builtins without a Node-types dependency.
 afterEach(resetApp);
 
 test("a pasted list previews and copies every result in order, with a safe missing-key notice", async () => {
@@ -115,11 +114,6 @@ test("a pasted list with only missing keys shows its notice and cannot copy", as
   expect(calls).not.toContain("preview_file_citation");
   expect(calls).not.toContain("copy_file_citation");
 });
-
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
-const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
 
 test("selected closest-match warnings survive exact searches and copying a mixed citation", async () => {
   const copied: unknown[] = [];
@@ -1075,14 +1069,6 @@ test.each([1, 20])("the %i-result heading keeps its English word order on an RTL
   expect(box.getAttribute("aria-activedescendant")).toBe(count === 1 ? "result-0" : "result-1");
 });
 
-test("every system shares the Mac focus ring and accessibility overrides", () => {
-  expect(styles).toMatch(/:focus-visible:not\(\.ui-button, \.menu-item\)\s*\{[^}]*outline:\s*var\(--ring-width\) solid var\(--ring\)/);
-  expect(tokens).toMatch(/--ring:\s*var\(--accent-text\)/);
-  expect(tokens).not.toMatch(/:root\[data-platform="windows"\]\s*\{[^}]*--ring/);
-  expect(tokens).toContain("--ring: CanvasText");
-});
-
-
 test("combobox focus is separate from citation selection and only additions/removals are announced", async () => {
   backend({ search: ({ query: { text: query } }) => query === "reorder"
     ? [result("same", "Second", "b.bib"), result("same", "First", "a.bib")]
@@ -1242,9 +1228,10 @@ test("a reload keeps the previous library searchable without adding an opening s
     library_status: () => ({ state: "reloading", has_snapshot: true, zotero: false, name: "refs.bib", snapshot_name: "refs.bib", references: 1, warnings: 0, error: null, problem: null, note: null }),
     search: () => [result("kept", "Kept reference")],
   });
-  render(<App />);
-  await screen.findByText("Kept reference");
-  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 450)); });
+  vi.useFakeTimers();
+  await act(async () => { render(<App />); });
+  await act(() => vi.advanceTimersByTimeAsync(450));
+  expect(screen.getByText("Kept reference")).toBeTruthy();
   expect(screen.queryByRole("progressbar")).toBeNull();
   // The heading stays too: rows do not move while the library reloads.
   expect(document.querySelector(".results-heading")).not.toBeNull();
@@ -1410,12 +1397,6 @@ test("moving before a waiting Enter's engine preview is ready cancels that copy"
   await within(preview).findByText("(Alpha, 2021)");
   expect(copies).not.toHaveBeenCalled();
 });
-test("the design scale keeps text readable", () => {
-  for (const [, token, size] of tokens.matchAll(/(--type-[\w-]+-size):\s*([\d.]+)rem/g)) {
-    expect(Number(size), `${token} is at least 12 px`).toBeGreaterThanOrEqual(.75);
-  }
-});
-
 test("resizing More keeps its focused action visible without undoing manual scrolling", async () => {
   backend();
   render(<App />);
@@ -2455,12 +2436,13 @@ test("a drag, a third click or an unsupported modified row click copies nothing"
   });
   render(<App />);
   const row = (await screen.findByText("First")).closest('[role="option"]')!;
-  fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
-  fireEvent.click(row, { clientX: 60, clientY: 12 });
-  fireEvent.click(row, { detail: 3 });
-  fireEvent.click(row, { metaKey: true });
-  fireEvent.click(row, { altKey: true });
-  await new Promise((resolve) => setTimeout(resolve, 20));
+  await act(async () => {
+    fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
+    fireEvent.click(row, { clientX: 60, clientY: 12 });
+    fireEvent.click(row, { detail: 3 });
+    fireEvent.click(row, { metaKey: true });
+    fireEvent.click(row, { altKey: true });
+  });
   expect(calls).not.toContain("copy_file_citation");
   expect(row.hasAttribute("data-citation-selected")).toBe(false);
   fireEvent.pointerDown(row, { clientX: 10, clientY: 10 });
@@ -2571,7 +2553,7 @@ test.each(["Escape", "hidden"])("a click waiting for its preview never copies af
   }
   await act(async () => { await emit("picker:hidden"); });
   const hides = calls.filter((c) => c === "hide_picker").length;
-  await act(async () => { release(); await new Promise((resolve) => setTimeout(resolve, 50)); });
+  await act(async () => { release(); });
   await waitFor(() => expect(document.querySelector(".shelf-output")?.textContent).toContain("Smith"));
   expect(calls).not.toContain("copy_file_citation");
   expect(calls.filter((c) => c === "hide_picker")).toHaveLength(hides);

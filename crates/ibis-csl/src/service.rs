@@ -6,6 +6,9 @@ use std::sync::{Arc, Condvar, Mutex, Weak, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
+#[cfg(test)]
+const TEST_GATE_LIMIT: std::time::Duration = std::time::Duration::from_secs(5);
+
 #[derive(Clone, Default)]
 pub struct CancellationToken {
     cancelled: Arc<AtomicBool>,
@@ -74,6 +77,8 @@ struct Shared {
     state: Mutex<State>,
     wake: Condvar,
     stopping: Arc<AtomicBool>,
+    #[cfg(test)]
+    format_gate: Mutex<Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>>,
 }
 pub(crate) struct Service {
     shared: Arc<Shared>,
@@ -119,6 +124,9 @@ impl Service {
         &self.limits
     }
     pub(crate) fn submit(&self, prepared: Prepared) -> Result<FormatTask, FormatError> {
+        self.submit_with_clock(prepared, Instant::now)
+    }
+    fn submit_with_clock(&self, prepared: Prepared, now: impl FnOnce() -> Instant) -> Result<FormatTask, FormatError> {
         let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
         if self.shared.stopping.load(Ordering::Acquire) {
             return Err(FormatError::Runtime);
@@ -134,7 +142,7 @@ impl Service {
         state.queue.push_back(Job {
             prepared,
             cancellation: cancellation.clone(),
-            deadline: Instant::now() + self.limits.timeout,
+            deadline: now() + self.limits.timeout,
             reply,
         });
         state.outstanding += 1;
@@ -207,7 +215,14 @@ fn worker(shared: &Shared, limits: &Limits) {
         let result = match control.error() {
             Some(error) => Err(error),
             None if job.prepared.empty => Ok(crate::output::refused(&job.prepared)),
-            None => Session::format(&mut session, &job.prepared, limits, &control),
+            None => {
+                #[cfg(test)]
+                if let Some((entered, release)) = shared.format_gate.lock().ok().and_then(|mut gate| gate.take()) {
+                    let _ = entered.send(());
+                    let _ = release.recv_timeout(TEST_GATE_LIMIT);
+                }
+                Session::format(&mut session, &job.prepared, limits, &control)
+            }
         };
         if result.is_err() {
             session = None;
@@ -224,7 +239,6 @@ mod tests {
     use super::*;
     use ibis_core::contract::{ItemOutcome, Notice};
     use serde_json::json;
-    use std::time::Duration;
     pub(super) fn queued_service(limits: Limits) -> Service {
         Service {
             shared: Arc::default(),
@@ -236,6 +250,12 @@ mod tests {
         let items:Vec<_>=(0..count).map(|index|json!({"id":format!("ibis-{index}"),"type":"book","title":format!("Synthetic {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
         let cites: Vec<_> = (0..count).map(|index| json!({"id":format!("ibis-{index}")})).collect();
         Prepared {json:json!({"style":"apa","items":items,"cites":cites,"bibliography":bibliography,"keep_order":false,"locale":null}).to_string(),xml:crate::catalog::resolve("apa").unwrap().xml.clone(),language:"en-US".into(),outcomes:(0..count).map(|item|ItemOutcome::Rendered {item}).collect(),losses:vec![],notices:vec![Notice::YearSuffixWithheld],warnings:vec![],empty:false}
+    }
+    fn hold_next_format(service: &Service) -> (mpsc::Receiver<()>, mpsc::Sender<()>) {
+        let (entered, running) = mpsc::channel();
+        let (release, held) = mpsc::channel();
+        *service.shared.format_gate.lock().unwrap() = Some((entered, held));
+        (running, release)
     }
     #[test]
     fn cancelling_queued_request_frees_its_slot_and_worker_recovers() {
@@ -256,18 +276,11 @@ mod tests {
     fn running_request_cancels_and_restarts_then_next_request_succeeds() {
         let service = Service::new(Limits::default()).unwrap();
         service.submit(prepared(1, false)).unwrap().wait().unwrap();
-        let task = service.submit(prepared(100, true)).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !service.shared.state.lock().unwrap().queue.is_empty() && Instant::now() < deadline {
-            thread::yield_now();
-        }
-        thread::sleep(Duration::from_millis(20));
-        assert!(service.shared.state.lock().unwrap().queue.is_empty());
-        assert!(matches!(
-            task.receiver.as_ref().unwrap().try_recv(),
-            Err(mpsc::TryRecvError::Empty)
-        ));
+        let (running, release) = hold_next_format(&service);
+        let task = service.submit(prepared(1, true)).unwrap();
+        running.recv_timeout(TEST_GATE_LIMIT).unwrap();
         task.cancel();
+        release.send(()).unwrap();
         assert_eq!(task.wait(), Err(FormatError::Cancelled));
         assert!(
             service
@@ -282,14 +295,22 @@ mod tests {
     #[test]
     fn shutdown_cancels_running_and_queued_requests() {
         let service = Service::new(Limits::default()).unwrap();
-        let running = service.submit(prepared(100, true)).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(2);
-        while !service.shared.state.lock().unwrap().queue.is_empty() && Instant::now() < deadline {
-            thread::yield_now();
-        }
-        assert!(service.shared.state.lock().unwrap().queue.is_empty());
+        let (entered, release) = hold_next_format(&service);
+        let running = service.submit(prepared(1, true)).unwrap();
+        entered.recv_timeout(TEST_GATE_LIMIT).unwrap();
         let queued = service.submit(prepared(1, false)).unwrap();
-        drop(service);
+        let shared = service.shared.clone();
+        let shutdown = thread::spawn(move || drop(service));
+        {
+            let state = shared.state.lock().unwrap();
+            let (_state, _) = shared
+                .wake
+                .wait_timeout_while(state, TEST_GATE_LIMIT, |_| !shared.stopping.load(Ordering::Acquire))
+                .unwrap();
+            assert!(shared.stopping.load(Ordering::Acquire));
+        }
+        release.send(()).unwrap();
+        shutdown.join().unwrap();
         assert_eq!(running.wait(), Err(FormatError::Cancelled));
         assert_eq!(queued.wait(), Err(FormatError::Cancelled));
     }
@@ -340,12 +361,14 @@ mod waiting_tests {
     }
     #[test]
     fn queued_deadline_includes_time_waiting_for_worker() {
+        let timeout = Duration::from_secs(1);
         let mut service = queued_service(Limits {
-            timeout: Duration::from_millis(10),
+            timeout,
             ..Limits::default()
         });
-        let mut task = service.submit(empty_job()).unwrap();
-        thread::sleep(Duration::from_millis(20));
+        let mut task = service
+            .submit_with_clock(empty_job(), || Instant::now() - timeout)
+            .unwrap();
         service.start_worker().unwrap();
         assert_eq!(
             task.receiver
