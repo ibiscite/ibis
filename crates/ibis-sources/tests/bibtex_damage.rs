@@ -193,7 +193,7 @@ fn unbalanced_day_is_reported_before_date_normalization() {
         (r#"@article(k,title={Safe},year=2024,month=3,day="x}")"#, 1),
         (
             "@string(bad=\"x}\")\n@xdata(p,year=2024,month=3,day=bad)\n@article{k,title={Safe},xdata={p}}",
-            3,
+            2,
         ),
     ] {
         let loaded = load(source);
@@ -209,9 +209,13 @@ fn unbalanced_day_is_reported_before_date_normalization() {
 
 #[test]
 fn cached_malformed_parents_and_macros_keep_each_consumers_warning() {
-    for (definition, fields) in [
-        (r#"@xdata(p,title="x}",publisher={Synthetic Press})"#, "xdata={p}"),
-        (r#"@string(bad="x}")"#, "title=bad,publisher={Synthetic Press}"),
+    for (definition, fields, lines) in [
+        (
+            r#"@xdata(p,title="x}",publisher={Synthetic Press})"#,
+            "xdata={p}",
+            [1, 1],
+        ),
+        (r#"@string(bad="x}")"#, "title=bad,publisher={Synthetic Press}", [2, 3]),
     ] {
         let source = format!(
             "{definition}\n@article(a,{fields},year=2024)\n@article(b,{fields},year=2024)\n\
@@ -221,7 +225,7 @@ fn cached_malformed_parents_and_macros_keep_each_consumers_warning() {
         let loaded = load(&source);
         assert_eq!(keys(&loaded), ["a", "b", "safe"], "{:?}", loaded.warnings);
         assert_eq!(loaded.warnings.len(), 2, "{:?}", loaded.warnings);
-        for (index, key, line) in [(0, "a", 2), (1, "b", 3)] {
+        for (index, (key, line)) in ["a", "b"].into_iter().zip(lines).enumerate() {
             assert_eq!(text(&loaded, key, "title"), None);
             assert!(csl(&loaded, key).get("author").is_none());
             assert_eq!(year(&loaded, key), Some(2024));
@@ -274,7 +278,7 @@ fn expanded_and_inherited_values_cannot_escape_known_or_unknown_fields() {
             assert_eq!(text(&loaded, "neighbor", "title"), Some("Retained"));
             assert_eq!(loaded.warnings.len(), 1, "{field}: {:?}", loaded.warnings);
             assert_eq!(loaded.warnings[0].code, WarningCode::Field);
-            assert_eq!(loaded.warnings[0].line, Some(3));
+            assert_eq!(loaded.warnings[0].line, Some(2));
         }
     }
 }

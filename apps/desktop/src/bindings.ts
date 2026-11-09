@@ -763,6 +763,8 @@ export type ReadingNotice = {
 	/** The repeated key, for `duplicate-key` only: the person's own data. */
 	key: string | null;
 	line: number | null;
+	/** Why, in the engine's words, naming the field to fix when known. */
+	why?: string | null;
 };
 
 export type ReceiptSummary = {

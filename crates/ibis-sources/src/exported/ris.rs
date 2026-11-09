@@ -6,8 +6,8 @@ use std::collections::BTreeMap;
 use ibis_core::contract::{LibraryId, Snapshot};
 use serde_json::Value;
 
-use super::{Records, Serial, date_parts, doi, person, serials};
-use crate::{ParsedLibrary, SourceError, WarningCode};
+use super::{RecordProblem, Records, Serial, date_parts, doi, person, serials};
+use crate::{ParsedLibrary, SourceError, WarningCause, WarningCode};
 
 /// Whether the text starts as RIS does, with a `TY` line.
 pub(crate) fn looks_like_ris(text: &str) -> bool {
@@ -45,7 +45,7 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
                 found = true;
                 stray = false;
                 if let Some((start, _)) = open.take() {
-                    records.warn(WarningCode::Syntax, start);
+                    records.skip(start, (WarningCause::NotClosed, None));
                 }
                 if !records.start(number) {
                     return Ok(records.parsed);
@@ -55,27 +55,27 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
             ("ER", Some(_)) => {
                 let Some((start, fields)) = open.take() else { continue };
                 match csl(&fields) {
-                    Some((csl, dropped)) => {
+                    Ok((csl, dropped)) => {
                         if dropped {
                             records.warn(WarningCode::Field, start);
                         }
                         records.push(csl, start, dropped);
                     }
-                    None => records.warn(WarningCode::Syntax, start),
+                    Err(problem) => records.skip(start, problem),
                 }
             }
             (_, Some((_, fields))) => fields.push((tag, value.to_owned())),
             // Fields with no `TY` before them: a record that lost its start.
             (_, None) => {
                 if !stray {
-                    records.warn(WarningCode::Syntax, number);
+                    records.skip(number, (WarningCause::NoStart, None));
                 }
                 stray = true;
             }
         }
     }
     if let Some((start, _)) = open {
-        records.warn(WarningCode::Syntax, start);
+        records.skip(start, (WarningCause::NotClosed, None));
     }
     if !found && !text.trim().is_empty() {
         return Err(SourceError::InvalidData);
@@ -160,10 +160,12 @@ fn kind(ty: &str) -> Option<(&'static str, Group)> {
     })
 }
 
-/// A record's CSL data, and whether a field was dropped; `None` refuses it.
-fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
+const CONFLICTING: RecordProblem = (WarningCause::Conflicting, None);
+
+/// A record's CSL data, and whether a field was dropped.
+fn csl(fields: &[(&str, String)]) -> Result<(BTreeMap<String, Value>, bool), RecordProblem> {
     if fields.iter().any(|(tag, _)| tag.is_empty()) {
-        return None;
+        return Err((WarningCause::UnexpectedText, None));
     }
     let all = |tags: &[&str]| -> Vec<&str> {
         fields
@@ -173,14 +175,15 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
             .collect()
     };
     // One value, the same however often it is given; two different ones refuse.
-    let one = |tags: &[&str]| -> Result<Option<&str>, ()> {
+    let one = |tags: &[&str]| -> Result<Option<&str>, RecordProblem> {
         let values = all(tags);
         match values.first() {
-            Some(first) if values.iter().any(|value| !value.eq_ignore_ascii_case(first)) => Err(()),
+            Some(first) if values.iter().any(|value| !value.eq_ignore_ascii_case(first)) => Err(CONFLICTING),
             first => Ok(first.copied()),
         }
     };
-    let (kind, group) = kind(one(&["TY"]).ok()??)?;
+    let kind_tag = one(&["TY"])?.ok_or((WarningCause::MissingField, Some("TY")))?;
+    let (kind, group) = kind(kind_tag).ok_or((WarningCause::UnknownType, None))?;
     let mut csl = BTreeMap::new();
     let mut dropped = false;
     csl.insert("type".into(), Value::String(kind.into()));
@@ -189,7 +192,7 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     } else {
         &["TI", "T1", "CT"]
     };
-    text(&mut csl, "title", one(book_title).ok()?);
+    text(&mut csl, "title", one(book_title)?);
 
     let names = |tags: &[&str]| -> Option<Value> {
         // A person given twice, however spaced, is one person, in the order first given.
@@ -223,7 +226,7 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
         (None, lost) => dropped |= lost,
     }
 
-    let containers = one(&["T2", "JF"]).ok()?;
+    let containers = one(&["T2", "JF"])?;
     match group {
         Group::Article => {
             text(&mut csl, "container-title", containers);
@@ -235,23 +238,23 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
             );
         }
         Group::Part => {
-            text(&mut csl, "container-title", one(&["T2", "BT"]).ok()?);
-            text(&mut csl, "collection-title", one(&["T3"]).ok()?);
+            text(&mut csl, "container-title", one(&["T2", "BT"])?);
+            text(&mut csl, "collection-title", one(&["T3"])?);
         }
-        Group::Book => text(&mut csl, "collection-title", one(&["T2", "T3"]).ok()?),
+        Group::Book => text(&mut csl, "collection-title", one(&["T2", "T3"])?),
         Group::Web => text(&mut csl, "container-title", containers),
         Group::Other => {}
     }
 
-    let start = one(&["SP"]).ok()?;
-    let end = one(&["EP"]).ok()?;
+    let start = one(&["SP"])?;
+    let end = one(&["EP"])?;
     match (start, end) {
         (Some(pages), None) if group == Group::Book => text(&mut csl, "number-of-pages", Some(pages)),
         (Some(start), None) => text(&mut csl, "page", Some(start)),
         (Some(start), Some(end)) => {
             let page = match start.split_once(['-', '–', '—']) {
                 // A whole range given twice must agree with its end.
-                Some((first, written)) if !same_end(first.trim(), written.trim(), end) => return None,
+                Some((first, written)) if !same_end(first.trim(), written.trim(), end) => return Err(CONFLICTING),
                 Some(_) => start.to_owned(),
                 None => format!("{start}-{end}"),
             };
@@ -259,7 +262,7 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
         }
         (None, end) => dropped |= end.is_some(),
     }
-    text(&mut csl, "number", one(&["C7"]).ok()?);
+    text(&mut csl, "number", one(&["C7"])?);
     for (field, tag) in [
         ("volume", "VL"),
         ("issue", "IS"),
@@ -271,7 +274,7 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     ] {
         match one(&[tag]) {
             Ok(value) => text(&mut csl, field, value),
-            Err(()) => dropped = true,
+            Err(_) => dropped = true,
         }
     }
     let serial = match group {
@@ -296,7 +299,7 @@ fn csl(fields: &[(&str, String)]) -> Option<(BTreeMap<String, Value>, bool)> {
     // Exports list file links beside web addresses; only a public one is kept.
     let public = all(&["UR"]).into_iter().find(|url| ibis_core::citable::public_url(url));
     text(&mut csl, "URL", public);
-    Some((csl, dropped))
+    Ok((csl, dropped))
 }
 
 /// Whether `end` is the end of `first`–`written`, which may be abbreviated
@@ -318,9 +321,10 @@ fn text(csl: &mut BTreeMap<String, Value>, field: &str, value: Option<&str>) {
 
 /// `issued` from `PY`/`Y1` and `DA`, and whether a value was dropped. Every
 /// value must give the same year, and fuller dates must extend shorter ones;
-/// otherwise the record is refused (`None`). Exact parts win over text kept as
+/// otherwise the record is refused. Exact parts win over text kept as
 /// written unless they give only the year.
-fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
+fn date(years: &[&str], dates: &[&str]) -> Result<(Option<Value>, bool), RecordProblem> {
+    const INVALID_DATE: RecordProblem = (WarningCause::Date, None);
     let mut dropped = false;
     let mut year = None;
     let mut parts: Vec<Vec<Value>> = vec![];
@@ -339,19 +343,22 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
             .replace(written_year)
             .is_some_and(|earlier| earlier != written_year)
         {
-            return None;
+            return Err(CONFLICTING);
         }
         let month = pieces.next().filter(|month| !month.is_empty());
         let day = pieces.next().filter(|day| !day.is_empty());
         let other = pieces.collect::<Vec<_>>().join("/");
         let known = [(month, day), (month, None), (None, None)]
             .into_iter()
-            .find_map(|(month, day)| date_parts(written_year, month, day))?;
-        stated.push(known["date-parts"][0].as_array()?.clone());
+            .find_map(|(month, day)| date_parts(written_year, month, day))
+            .ok_or(INVALID_DATE)?;
+        stated.push(known["date-parts"][0].as_array().ok_or(INVALID_DATE)?.clone());
         match date_parts(written_year, month, day) {
-            Some(value) if other.trim().is_empty() => parts.push(value["date-parts"][0].as_array()?.clone()),
+            Some(value) if other.trim().is_empty() => {
+                parts.push(value["date-parts"][0].as_array().ok_or(INVALID_DATE)?.clone());
+            }
             // Text Ibis cannot split is kept as written, never guessed.
-            _ if literal.is_some_and(|earlier| earlier != text) => return None,
+            _ if literal.is_some_and(|earlier| earlier != text) => return Err(CONFLICTING),
             _ => literal = Some(text),
         }
     }
@@ -360,7 +367,7 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
         .iter()
         .any(|shorter| !stated.last().is_some_and(|fullest| fullest.starts_with(shorter)))
     {
-        return None;
+        return Err(CONFLICTING);
     }
     parts.sort_by_key(Vec::len);
     let fullest = parts.last();
@@ -368,7 +375,7 @@ fn date(years: &[&str], dates: &[&str]) -> Option<(Option<Value>, bool)> {
         (Some(fullest), Some(text)) if fullest.len() == 1 => serde_json::json!({"literal": text}),
         (Some(fullest), _) => serde_json::json!({"date-parts": [fullest]}),
         (None, Some(text)) => serde_json::json!({"literal": text}),
-        (None, None) => return Some((None, dropped)),
+        (None, None) => return Ok((None, dropped)),
     };
-    Some((Some(issued), dropped))
+    Ok((Some(issued), dropped))
 }

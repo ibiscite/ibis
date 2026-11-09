@@ -6,10 +6,13 @@ use std::collections::{BTreeMap, HashSet};
 use ibis_core::contract::{CitationWarningCode, Fingerprint, ItemRef, LibraryId, Record, Snapshot};
 use serde_json::{Value, json};
 
-use crate::{ParsedLibrary, SourceWarning, WarningCode};
+use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 
 pub(crate) mod csv;
 pub(crate) mod ris;
+
+/// A skipped row or record, with a fixed format field when one can be named.
+type RecordProblem = (WarningCause, Option<&'static str>);
 
 /// One person as written: `Family, Given` (or `Family, Given, Suffix`) only when
 /// that is clear, otherwise the whole name as a literal. CJK names are never split.
@@ -167,11 +170,13 @@ impl<'a> Records<'a> {
     }
 
     pub(crate) fn warn(&mut self, code: WarningCode, line: usize) {
-        self.parsed.warnings.push(SourceWarning {
-            code,
-            line: Some(line),
-            key: None,
-        });
+        self.parsed.warnings.push(SourceWarning::at(code, Some(line)));
+    }
+
+    fn skip(&mut self, line: usize, (cause, field): RecordProblem) {
+        self.parsed
+            .warnings
+            .push(SourceWarning::at(WarningCode::Syntax, Some(line)).because(cause, field));
     }
 
     /// Adds the record that starts at `line` unless one with the same citation

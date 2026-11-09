@@ -2,6 +2,8 @@
 //! protected capitalization, italics, truncated author lists, organizations,
 //! date ranges and uncertainty, and proper language tags.
 
+use super::Problem;
+use crate::WarningCause;
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 
@@ -18,7 +20,7 @@ pub(crate) fn convert(
     kind: &str,
     entry: &Entry,
     own_fields: &HashMap<String, String>,
-    problems: &mut Vec<String>,
+    problems: &mut Vec<Problem>,
 ) -> Record {
     // TeX commands that are not understood are kept as written and reported.
     let unknown = RefCell::new(BTreeSet::new());
@@ -126,7 +128,8 @@ pub(crate) fn convert(
         Ok(people) => names(people, own_fields.get("author").map(String::as_str)),
         Err(RetrievalError::Missing(_)) => Vec::new(),
         Err(err) => {
-            problems.push(format!("authors could not be read: {err}"));
+            let _ = err;
+            problems.push(Problem::new(WarningCause::Names, Some("author")));
             Vec::new()
         }
     };
@@ -147,18 +150,16 @@ pub(crate) fn convert(
                     EditorType::Director => "director",
                     EditorType::Organizer => "organizer",
                     EditorType::Collaborator => "contributor",
-                    other => {
-                        problems.push(format!(
-                            "editor role `{}` has no CSL equivalent; those names are exported as contributors",
-                            editor_role_name(other)
-                        ));
+                    _ => {
+                        // The editor groups do not retain their original field names.
+                        problems.push(Problem::new(WarningCause::Role, None));
                         "contributor"
                     }
                 };
                 other_names.entry(csl_role.to_string()).or_default().extend(converted);
             }
         }
-        Err(err) => problems.push(format!("editors could not be read: {err}")),
+        Err(_) => problems.push(Problem::new(WarningCause::Names, None)),
     }
     let roles: [(&str, &str); 7] = [
         ("translator", "translator"),
@@ -173,9 +174,7 @@ pub(crate) fn convert(
         match entry.get_as::<Vec<biblatex::Person>>(field) {
             Ok(people) => {
                 if csl_role == "contributor" {
-                    problems.push(format!(
-                        "role `{field}` has no CSL equivalent; those names are exported as contributors"
-                    ));
+                    problems.push(Problem::new(WarningCause::Role, Some(field)));
                 }
                 other_names
                     .entry(csl_role.to_string())
@@ -183,7 +182,7 @@ pub(crate) fn convert(
                     .extend(names(people, own_fields.get(field).map(String::as_str)));
             }
             Err(RetrievalError::Missing(_)) => {}
-            Err(err) => problems.push(format!("`{field}` could not be read: {err}")),
+            Err(_) => problems.push(Problem::new(WarningCause::Names, Some(field))),
         }
     }
 
@@ -260,7 +259,7 @@ pub(crate) fn convert(
     // text, before any parser can consume a backslash or apply typography.
     let doi = own_fields.get("doi").map(|doi| decode_url(doi));
     if doi.as_deref().is_some_and(|doi| doi.contains('\\')) {
-        problems.push("DOI contains an unsupported escape; it is kept as written".into());
+        problems.push(Problem::new(WarningCause::Identifier, Some("doi")));
     }
     let url = own_fields
         .get("url")
@@ -277,7 +276,7 @@ pub(crate) fn convert(
             .get("howpublished")
             .is_some_and(|value| !value.trim().is_empty())
     {
-        problems.push("howpublished could not be represented as a URL".into());
+        problems.push(Problem::new(WarningCause::Link, Some("howpublished")));
     }
     let abstract_text = text("abstract");
     let keywords: Vec<String> = text("keywords")
@@ -291,12 +290,7 @@ pub(crate) fn convert(
         .unwrap_or_default();
     let unknown = unknown.into_inner();
     if !unknown.is_empty() {
-        let list = unknown
-            .iter()
-            .map(|c| format!("`\\{c}`"))
-            .collect::<Vec<_>>()
-            .join(", ");
-        problems.push(format!("TeX command {list} is not understood; it is kept as written"));
+        problems.push(Problem::new(WarningCause::TexCommand, None));
     }
 
     let mut csl: BTreeMap<String, Value> = variables
@@ -410,13 +404,6 @@ pub(super) fn days_in_month(year: i32, month: u8) -> u8 {
 
 // ---------- Names ----------
 
-fn editor_role_name(role: &EditorType) -> String {
-    match role {
-        EditorType::Unknown(name) => name.clone(),
-        other => format!("{other:?}").to_lowercase(),
-    }
-}
-
 /// Convert parsed people, using the raw field to recognize names written in
 /// braces (organizations) and the "and others" marker.
 fn names(people: Vec<biblatex::Person>, raw: Option<&str>) -> Vec<Name> {
@@ -512,12 +499,12 @@ fn wholly_braced(name: &str) -> bool {
 
 // ---------- Dates ----------
 
-fn issued(entry: &Entry, problems: &mut Vec<String>) -> Option<Value> {
+fn issued(entry: &Entry, problems: &mut Vec<Problem>) -> Option<Value> {
     date_value(entry, "date", problems, || entry.date())
 }
 
 /// Further CSL date variables: access date, original date, event date.
-fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Value> {
+fn other_dates(entry: &Entry, problems: &mut Vec<Problem>) -> BTreeMap<String, Value> {
     let sources = [
         ("accessed", date_value(entry, "urldate", problems, || entry.url_date())),
         (
@@ -538,7 +525,7 @@ fn other_dates(entry: &Entry, problems: &mut Vec<String>) -> BTreeMap<String, Va
 fn date_value(
     entry: &Entry,
     field: &str,
-    problems: &mut Vec<String>,
+    problems: &mut Vec<Problem>,
     read: impl FnOnce() -> Result<PermissiveType<biblatex::Date>, RetrievalError>,
 ) -> Option<Value> {
     let year_field = format!("{}year", field.strip_suffix("date")?);
@@ -573,7 +560,7 @@ fn unconsumed_year_text(raw: &str) -> bool {
 fn numeric_date_value(
     entry: &Entry,
     field: &str,
-    problems: &mut Vec<String>,
+    problems: &mut Vec<Problem>,
     read: impl FnOnce() -> Result<PermissiveType<biblatex::Date>, RetrievalError>,
 ) -> Option<Issued> {
     let guarded = entry
@@ -593,7 +580,7 @@ fn numeric_date_value(
                 .strip_prefix(['+', '-'])
                 .is_some_and(|rest| rest.starts_with(char::is_whitespace))
             {
-                problems.push(format!("`{year_field}` has whitespace after its sign; no date is used"));
+                problems.push(Problem::new(WarningCause::Date, Some(&year_field)));
                 return Some(PermissiveType::Chunks(year.to_vec()));
             }
             let month_field = format!("{prefix}month");
@@ -601,9 +588,7 @@ fn numeric_date_value(
             if !unsafe_date_parts(&month, entry.get(&format!("{prefix}day")).is_some()) {
                 return None;
             }
-            problems.push(format!(
-                "`{month_field}` could not be read safely; month and day are ignored"
-            ));
+            problems.push(Problem::new(WarningCause::Date, Some(&month_field)));
             // The separate-year parser preserves signs, short years and eras;
             // the explicit-date fallback below has different syntax and semantics.
             Some(
@@ -624,30 +609,20 @@ fn numeric_date_value(
                 month: d.month.map(|m| m + 1),
                 day: d.day.map(|day| day + 1),
             };
-            let raw = entry
-                .get(field)
-                .map(|c| c.format_verbatim())
-                .unwrap_or_else(|| "year".to_string());
             let (start, end) = match date.value {
                 DateValue::At(d) => (to_partial(d), None),
                 DateValue::Between(a, b) => (to_partial(a), Some(to_partial(b))),
                 DateValue::Before(d) => {
-                    problems.push(format!(
-                        "date `{raw}` has no start; CSL cannot express that, so only its end is used"
-                    ));
+                    problems.push(Problem::new(WarningCause::Date, Some(field)));
                     (to_partial(d), None)
                 }
                 DateValue::After(d) => {
-                    problems.push(format!(
-                        "date `{raw}` has no end; CSL cannot express that, so only its start is used"
-                    ));
+                    problems.push(Problem::new(WarningCause::Date, Some(field)));
                     (to_partial(d), None)
                 }
             };
             if date.uncertain {
-                problems.push(format!(
-                    "date `{raw}` is marked uncertain; CSL cannot express that, so it is used without the mark"
-                ));
+                problems.push(Problem::new(WarningCause::Date, Some(field)));
             }
             Some(Issued {
                 start,
@@ -660,10 +635,7 @@ fn numeric_date_value(
             match lenient_date(&raw) {
                 Some((date, complete)) => {
                     if !complete {
-                        problems.push(format!(
-                            "date `{raw}` is not a valid date; only {} is used",
-                            describe(date)
-                        ));
+                        problems.push(Problem::new(WarningCause::Date, Some(field)));
                     }
                     Some(Issued {
                         start: date,
@@ -672,14 +644,15 @@ fn numeric_date_value(
                     })
                 }
                 None => {
-                    problems.push(format!("date `{raw}` could not be read; no date is used"));
+                    problems.push(Problem::new(WarningCause::Date, Some(field)));
                     None
                 }
             }
         }
         Err(RetrievalError::Missing(_)) => None,
         Err(err) => {
-            problems.push(format!("`{field}` could not be read: {err}"));
+            let _ = err;
+            problems.push(Problem::new(WarningCause::Date, Some(field)));
             None
         }
     }
@@ -777,23 +750,15 @@ fn lenient_date(text: &str) -> Option<(PartialDate, bool)> {
     Some((date, rest_is_date && expected == given))
 }
 
-fn describe(date: PartialDate) -> String {
-    match (date.month, date.day) {
-        (Some(m), Some(d)) => format!("{:04}-{m:02}-{d:02}", date.year),
-        (Some(m), None) => format!("{:04}-{m:02}", date.year),
-        _ => format!("the year {}", date.year),
-    }
-}
-
 // ---------- Language ----------
 
 /// BCP 47 tag from `langid`, its legacy `hyphenation` alias, or `language`.
 /// Unknown names are reported and become `und`, never implicit English.
-fn language_tag(entry: &Entry, problems: &mut Vec<String>) -> Option<String> {
-    let raw = ["langid", "hyphenation", "language"]
-        .iter()
-        .filter_map(|f| entry.get(f).map(|c| clean(&c.format_verbatim())))
-        .find(|s| !s.is_empty())?;
+fn language_tag(entry: &Entry, problems: &mut Vec<Problem>) -> Option<String> {
+    let (field, raw) = ["langid", "hyphenation", "language"].into_iter().find_map(|field| {
+        let value = clean(&entry.get(field)?.format_verbatim());
+        (!value.is_empty()).then_some((field, value))
+    })?;
     let lower = raw.to_ascii_lowercase();
     if let Some(tag) = babel_to_bcp47(&lower) {
         return Some(tag.to_string());
@@ -808,9 +773,7 @@ fn language_tag(entry: &Entry, problems: &mut Vec<String>) -> Option<String> {
     if looks_like_tag {
         return Some(raw);
     }
-    problems.push(format!(
-        "language `{raw}` is not recognized; it is treated as undetermined"
-    ));
+    problems.push(Problem::new(WarningCause::Language, Some(field)));
     Some("und".into())
 }
 

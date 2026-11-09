@@ -1,6 +1,8 @@
 //! Publication dates for one resolved BibTeX entry: `date`, `year`, `month`
 //! and `day` merged across inheritance into the fields the converter reads.
 
+use super::Problem;
+use crate::WarningCause;
 use biblatex::{Chunk, Date, DateValue, Spanned};
 
 use super::convert::days_in_month;
@@ -22,7 +24,7 @@ pub(super) const DATE_PARTS: [&str; 4] = ["date", "year", "month", "day"];
 pub(super) fn merge_dates(
     sources: &[Vec<(String, String)>],
     check: bool,
-    problems: &mut Vec<String>,
+    problems: &mut Vec<Problem>,
 ) -> Vec<(String, String)> {
     let field = |source: &Vec<(String, String)>, n: &str| {
         source.iter().find(|(f, _)| f == n).map(|(_, v)| v.trim().to_string())
@@ -55,9 +57,8 @@ pub(super) fn merge_dates(
                 numeric.flatten()
             };
             let day = match day {
-                Some(day) if check => {
-                    let missing = if year.is_none() { "year" } else { "month number" };
-                    problems.push(format!("`day` `{day}` has no {missing}; it is ignored"));
+                Some(_) if check => {
+                    problems.push(Problem::new(WarningCause::Date, Some("day")));
                     None
                 }
                 day => day,
@@ -76,7 +77,7 @@ fn compose(
     month: Option<String>,
     day: Option<String>,
     check: bool,
-    problems: &mut Vec<String>,
+    problems: &mut Vec<Problem>,
 ) -> Vec<(String, String)> {
     if !check {
         if let Some(day) = day {
@@ -89,14 +90,14 @@ fn compose(
     }
     let day = day.and_then(|text| {
         let Some(m) = month.as_deref().and_then(|m| m.parse::<u8>().ok()) else {
-            problems.push(format!("`day` `{text}` has no month; it is ignored"));
+            problems.push(Problem::new(WarningCause::Date, Some("day")));
             return None;
         };
         let last = days_in_month(astronomical_year(&year), m);
         let digits: String = text.chars().filter(|c| !matches!(c, '{' | '}')).collect();
         let day = digits.trim().parse::<u8>().ok().filter(|d| (1..=last).contains(d));
         if day.is_none() {
-            problems.push(format!("`day` `{text}` is not a day of that month; it is ignored"));
+            problems.push(Problem::new(WarningCause::Date, Some("day")));
         }
         day
     });

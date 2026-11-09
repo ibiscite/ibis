@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 use ibis_core::contract::{LibraryId, Snapshot};
 use serde_json::Value;
 
-use super::{Records, Serial, date_parts, doi, person, serials};
-use crate::{ParsedLibrary, SourceError, WarningCode};
+use super::{RecordProblem, Records, Serial, date_parts, doi, person, serials};
+use crate::{ParsedLibrary, SourceError, WarningCause, WarningCode};
 
 /// The template's columns, each a CSL variable. `type` and `title` are required.
 pub(crate) const COLUMNS: [&str; 18] = [
@@ -78,25 +78,27 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
         if !records.start(line) {
             break;
         }
-        let Ok(cells) = row else {
-            records.warn(WarningCode::Syntax, line);
-            continue;
-        };
-        match (cells.len() == columns.len()).then(|| csl(&columns, &cells)).flatten() {
-            Some((csl, dropped)) => {
+        let parsed = row.map_err(|cause| (cause, None)).and_then(|cells| {
+            if cells.len() != columns.len() {
+                return Err((WarningCause::WrongCells, None));
+            }
+            csl(&columns, &cells)
+        });
+        match parsed {
+            Ok((csl, dropped)) => {
                 if dropped {
                     records.warn(WarningCode::Field, line);
                 }
                 records.push(csl, line, dropped);
             }
-            None => records.warn(WarningCode::Syntax, line),
+            Err(problem) => records.skip(line, problem),
         }
     }
     Ok(records.parsed)
 }
 
-/// One row's CSL data, and whether a cell was dropped; `None` skips the row.
-fn csl(columns: &[&str], cells: &[String]) -> Option<(BTreeMap<String, Value>, bool)> {
+/// One row's CSL data, and whether a cell was dropped.
+fn csl(columns: &[&str], cells: &[String]) -> Result<(BTreeMap<String, Value>, bool), RecordProblem> {
     let mut csl = BTreeMap::new();
     let mut dropped = false;
     for (&column, cell) in columns.iter().zip(cells) {
@@ -106,7 +108,7 @@ fn csl(columns: &[&str], cells: &[String]) -> Option<(BTreeMap<String, Value>, b
         }
         let value = match column {
             "type" if crate::csl_json::valid_type(cell) => Value::String(cell.into()),
-            "type" => return None,
+            "type" => return Err((WarningCause::UnknownType, None)),
             "author" | "editor" => Value::Array(cell.split(';').filter_map(person).collect()),
             "issued" => {
                 let mut parts = cell.splitn(3, '-');
@@ -134,7 +136,12 @@ fn csl(columns: &[&str], cells: &[String]) -> Option<(BTreeMap<String, Value>, b
         };
         csl.insert(column.to_owned(), value);
     }
-    (csl.contains_key("type") && csl.contains_key("title")).then_some((csl, dropped))
+    for required in ["type", "title"] {
+        if !csl.contains_key(required) {
+            return Err((WarningCause::MissingField, Some(required)));
+        }
+    }
+    Ok((csl, dropped))
 }
 
 /// RFC 4180 rows with the line each starts on. A quoted cell may hold the
@@ -154,7 +161,7 @@ enum Cell {
 }
 
 impl Iterator for Rows<'_> {
-    type Item = (usize, Result<Vec<String>, ()>);
+    type Item = (usize, Result<Vec<String>, WarningCause>);
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.rest.is_empty() {
@@ -207,8 +214,10 @@ impl Iterator for Rows<'_> {
         self.rest = &self.rest[end..];
         Some((
             start,
-            if state == Cell::Quoted || broken {
-                Err(())
+            if state == Cell::Quoted {
+                Err(WarningCause::NotClosed)
+            } else if broken {
+                Err(WarningCause::UnexpectedText)
             } else {
                 Ok(cells)
             },

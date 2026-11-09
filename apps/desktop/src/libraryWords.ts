@@ -102,6 +102,17 @@ function lines(found: readonly (number | null)[]) {
 }
 const at = (found: readonly (number | null)[]) => { const where = lines(found); return where ? ` ${say("library-where", { lines: where })}` : ""; };
 
+type Notice = { line: number | null; why?: string | null };
+/** "line 21: it has no citation key; line 25: it never closes", from the
+ * engine's words for each notice, or just the lines when it gives none. */
+function explained(found: readonly Notice[]) {
+  if (!found.some(({ why }) => why)) return lines(found.map(({ line }) => line));
+  const shown = found.slice(0, 3).map(({ line, why }) =>
+    line === null ? why ?? "" : why ? say("library-line-why", { line: numbers.format(line), why }) : say("library-line", { line: numbers.format(line) }));
+  return [...shown, ...found.length > 3 ? [say("library-and-more", { count: found.length - 3 })] : []].join("; ");
+}
+const because = (found: readonly Notice[]) => { const where = explained(found); return where ? ` ${say("library-where", { lines: where })}` : ""; };
+
 const otherNotices = {
   "work-limit": "library-work-limit",
   "cloud-synced-directory": "library-cloud-synced",
@@ -116,16 +127,16 @@ function readingDetail(status: Reading) {
   if (notices.length === 0) return null;
   const repeated = new Map<string, (number | null)[]>();
   for (const { code, key, line } of notices) if (code === "duplicate-key") repeated.set(key ?? "", [...repeated.get(key ?? "") ?? [], line]);
-  const unreadable = notices.filter(({ code }) => code === "syntax").map(({ line }) => line);
+  const unreadable = notices.filter(({ code }) => code === "syntax");
   const skipped = notices.filter(({ code }) => skips(code)).length;
   const keys = [...repeated];
   const reasons = [
     ...keys.slice(0, 3).map(([key, found]) => say("library-key-users", { count: found.length, key: isolate(key) }) + at(found)),
     ...keys.length > 3 ? [say("library-others-share", { count: keys.slice(3).reduce((sum, [, found]) => sum + found.length, 0) })] : [],
-    ...unreadable.length > 0 ? [say("library-could-not-read", { skipped, count: unreadable.length }) + at(unreadable)] : [],
+    ...unreadable.length > 0 ? [say("library-could-not-read", { skipped, count: unreadable.length }) + because(unreadable)] : [],
   ];
-  const check = notices.filter(({ code }) => !skips(code) && !isOtherNotice(code)).map(({ line }) => line);
-  const checkLines = lines(check);
+  const check = notices.filter(({ code }) => !skips(code) && !isOtherNotice(code));
+  const checkLines = explained(check);
   const sentences = [
     skipped > 0 ? say("library-skipped-because", { skipped, reasons: reasons.join(", ") }) : null,
     check.length > 0 ? checkLines ? say("library-check", { lines: checkLines }) : say("library-check-library") : null,

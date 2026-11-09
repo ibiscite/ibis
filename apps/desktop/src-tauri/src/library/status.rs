@@ -78,6 +78,9 @@ pub(crate) struct ReadingNotice {
     pub(crate) line: Option<u32>,
     /// The repeated key, for `duplicate-key` only: the person's own data.
     pub(crate) key: Option<String>,
+    /// Why, in the engine's words, naming the field to fix when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) why: Option<String>,
 }
 
 /// A library failure grouped by what the person can do about it.
@@ -192,6 +195,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
                     code: serde_json::to_value(warning.code).ok()?.as_str()?.to_owned(),
                     line: warning.line.and_then(|line| u32::try_from(line).ok()),
                     key: warning.key.clone(),
+                    why: ibis_engine::catalogue::cause(warning),
                 })
             })
             .collect(),

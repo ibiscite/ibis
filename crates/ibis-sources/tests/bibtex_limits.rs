@@ -307,8 +307,8 @@ fn caching_a_silent_parent_expansion_keeps_its_later_warning() {
     );
     assert_eq!(records(&loaded).len(), 4);
     assert_eq!(loaded.warnings.len(), 3, "{:?}", loaded.warnings);
-    for line in [3, 5, 6] {
-        assert_eq!(warned_at(&loaded, WarningCode::Field, line), 1, "line {line}");
+    for (line, warnings) in [(3, 1), (4, 2)] {
+        assert_eq!(warned_at(&loaded, WarningCode::Field, line), warnings, "line {line}");
     }
 }
 

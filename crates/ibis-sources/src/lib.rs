@@ -51,6 +51,98 @@ pub struct SourceWarning {
     /// own data and is shown only to them; no other warning carries source text.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// Why the record was skipped or needs checking, as a fixed code.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cause: Option<WarningCause>,
+    /// The field to fix, named from the source format's vocabulary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub field: Option<String>,
+}
+
+impl SourceWarning {
+    pub fn at(code: WarningCode, line: Option<usize>) -> Self {
+        Self {
+            code,
+            line,
+            key: None,
+            cause: None,
+            field: None,
+        }
+    }
+
+    /// Supply a field only after recognizing it in the format's vocabulary.
+    /// Omit names the format does not define, even if they have valid syntax.
+    pub fn because(mut self, cause: WarningCause, field: Option<&str>) -> Self {
+        self.cause = Some(cause);
+        self.field = field
+            .map(str::trim)
+            .filter(|name| {
+                !name.is_empty()
+                    && name.len() <= 64
+                    && name
+                        .bytes()
+                        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'-' | b'_' | b'.'))
+            })
+            .map(str::to_ascii_lowercase);
+        self
+    }
+}
+
+/// Why a record was skipped (the first group) or a field needs checking (the
+/// second). Each has one sentence in `locales/en-US.ftl` (`cause-…`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum WarningCause {
+    /// The entry or record never ends.
+    NotClosed,
+    /// A BibTeX entry has no citation key.
+    NoKey,
+    /// A field has no `=` or no value.
+    MissingValue,
+    /// A field's braces or quotes do not pair up.
+    Unbalanced,
+    /// Text the format does not allow, where an entry's parts belong.
+    UnexpectedText,
+    /// A type Ibis does not know.
+    UnknownType,
+    /// Repeated values or values that disagree.
+    Conflicting,
+    /// A CSV row with more or fewer cells than its header.
+    WrongCells,
+    /// A required field is empty.
+    MissingField,
+    /// RIS fields before any `TY` line.
+    NoStart,
+    /// An `@string` definition could not be read.
+    StringDefinition,
+    /// The entry could not be read at all.
+    Unreadable,
+    /// A field uses an abbreviation (`@string`) that is not defined.
+    Abbreviation,
+    /// A date could not be read in full.
+    Date,
+    /// A list of names could not be read.
+    Names,
+    /// A role CSL has no word for.
+    Role,
+    /// A link that is private or not a web address.
+    Link,
+    /// A cross-reference or inherited entry that is missing or loops.
+    Inheritance,
+    /// A chain of linked entries reached the resolver's work limit.
+    InheritanceLimit,
+    /// A field too large to read.
+    TooLarge,
+    /// An identifier (DOI, ISBN, ISSN) that is not valid.
+    Identifier,
+    /// A language Ibis does not recognise.
+    Language,
+    /// A TeX command Ibis does not understand, kept as written.
+    TexCommand,
+    /// A field the format does not have.
+    UnknownField,
+    /// A value that could not be read as its field expects.
+    Value,
 }
 
 /// What a library is. Front ends read this, never the library's id.

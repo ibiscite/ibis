@@ -4,7 +4,7 @@ use ibis_core::{
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
-pub use ibis_sources::{LibraryKind, SourceCapability};
+pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
