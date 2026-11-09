@@ -1,6 +1,149 @@
 use ibis_core::contract::{Availability, LibraryObject};
 
 #[test]
+fn an_editor_role_warning_does_not_guess_the_source_field() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_sources::WarningCause;
+
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("refs.bib");
+    std::fs::write(
+        &path,
+        "@book{one,title={Invented reference},editora={Sample, Reader},editoratype={invented-role}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert!(loaded.warnings.iter().any(|warning| {
+        warning.cause == Some(WarningCause::Role) && warning.line == Some(1) && warning.field.is_none()
+    }));
+    assert!(
+        matches!(&loaded.snapshot.objects()[0].object, LibraryObject::Record(record)
+        if record.csl.get("contributor").and_then(serde_json::Value::as_array).is_some_and(|people| people.len() == 1))
+    );
+    Ok(())
+}
+use ibis_sources::{WarningCause, WarningCode};
+
+#[test]
+fn cached_macro_warnings_under_a_long_field_name_do_not_stop_the_read() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented.bib");
+    let field = "x".repeat(16 * 1024);
+    let macros = std::iter::repeat_n("brokenmacro", 2048).collect::<Vec<_>>().join(" # ");
+    std::fs::write(
+        &path,
+        format!(
+            "@string{{brokenmacro=undefined}}\n\
+             @book{{warm,title={{Warm}} # brokenmacro}}\n\
+             @book{{many,title={{Many warnings}},{field}={macros}}}\n\
+             @book{{tail,title={{Still visible}}}}"
+        ),
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert!(!loaded.cut_short);
+    assert_eq!(loaded.snapshot.objects().len(), 3);
+    assert!(
+        !loaded
+            .warnings
+            .iter()
+            .any(|warning| warning.code == WarningCode::WorkLimit)
+    );
+    assert!(loaded.warnings.iter().any(|warning| {
+        warning.line == Some(3) && warning.cause == Some(WarningCause::Abbreviation) && warning.field.is_none()
+    }));
+    Ok(())
+}
+
+#[test]
+fn bibtex_diagnostics_name_only_known_fields() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{one,title={Visible} # missing,invented-private-field=missing}\n\
+         @book{two,invented-private-field}\n\
+         @book{three,TiTle}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    for (line, cause, field) in [
+        (1, WarningCause::Abbreviation, Some("title")),
+        (1, WarningCause::Abbreviation, None),
+        (2, WarningCause::MissingValue, None),
+        (3, WarningCause::MissingValue, Some("title")),
+    ] {
+        assert!(
+            loaded.warnings.iter().any(|warning| {
+                warning.line == Some(line) && warning.cause == Some(cause) && warning.field.as_deref() == field
+            }),
+            "{line}, {cause:?}, {field:?}: {:?}",
+            loaded.warnings
+        );
+    }
+    assert!(!serde_json::to_string(&loaded.warnings)?.contains("invented-private-field"));
+    Ok(())
+}
+
+#[test]
+fn inherited_bibtex_warnings_point_to_the_entry_with_the_problem() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{child,title={Visible},xdata={parent}}\n\
+         @xdata{parent,title=missing,xdata={nested}}\n\
+         @xdata{nested,xdata={unknown}}\n\
+         @book{other,title={Another},crossref={anchor}}\n\
+         @book{anchor,title={Root},xdata={absent}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    assert_eq!(loaded.snapshot.objects().len(), 3);
+    assert!(loaded.snapshot.objects().iter().any(|entry| matches!(&entry.object,
+        LibraryObject::Record(record) if record.csl.get("title").and_then(serde_json::Value::as_str) == Some("Visible"))));
+    for (line, cause, field) in [
+        (2, WarningCause::Abbreviation, "title"),
+        (3, WarningCause::Inheritance, "xdata"),
+        (5, WarningCause::Inheritance, "xdata"),
+    ] {
+        assert!(
+            loaded.warnings.iter().any(|warning| {
+                warning.line == Some(line) && warning.cause == Some(cause) && warning.field.as_deref() == Some(field)
+            }),
+            "{line}, {cause:?}, {field}: {:?}",
+            loaded.warnings
+        );
+    }
+    assert!(
+        !loaded
+            .warnings
+            .iter()
+            .any(|warning| matches!(warning.line, Some(1 | 4)))
+    );
+    Ok(())
+}
+
+#[test]
+fn invalid_bibtex_language_names_point_to_the_alias_actually_used() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{a,title={A},language={invented-language}}\n\
+         @book{b,title={B},hyphenation={invented-language}}\n\
+         @book{c,title={C},langid={french},hyphenation={invented-language},language={invented-language}}",
+    )?;
+    let loaded = ibis_sources::load_file(&path)?;
+    let language_warnings: Vec<_> = loaded
+        .warnings
+        .iter()
+        .filter(|warning| warning.cause == Some(WarningCause::Language))
+        .map(|warning| (warning.line, warning.field.as_deref()))
+        .collect();
+    assert_eq!(
+        language_warnings,
+        [(Some(1), Some("language")), (Some(2), Some("hyphenation"))]
+    );
+    Ok(())
+}
+
+#[test]
 fn unknown_file_names_require_reference_entry_blocks() -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
     let mut outcomes = Vec::new();

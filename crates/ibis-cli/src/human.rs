@@ -346,9 +346,15 @@ fn warning_line(warning: &Value) -> String {
         }
         _ => "something in the library needs checking".into(),
     };
+    // Why, from the engine's words for the warning's cause, when it gives one.
+    let why = serde_json::from_value::<ibis_engine::SourceWarning>(warning.clone())
+        .ok()
+        .and_then(|warning| catalogue::cause(&warning))
+        .map(|cause| format!(" ({cause})"))
+        .unwrap_or_default();
     match warning.get("line").and_then(Value::as_u64) {
-        Some(line) => format!("  line {line}: {what}"),
-        None => format!("  {what}"),
+        Some(line) => format!("  line {line}: {what}{why}"),
+        None => format!("  {what}{why}"),
     }
 }
 

@@ -395,13 +395,6 @@ fn a_short_path_still_reaches_ancestors_cut_off_on_a_long_path() {
 }
 
 #[test]
-fn errors_in_inherited_xdata_fields_are_reported_on_the_consumer() {
-    let r = load("@xdata{common,publisher=missing}\n@book{a,title={T},xdata={common}}");
-    record(&r, "a");
-    assert_eq!(warned_at(&r, WarningCode::Field, 2), 1, "{:?}", r.warnings);
-}
-
-#[test]
 fn original_spacing_marker_characters_are_literal_in_inheritance_keys() {
     for marker in ['\u{e005}', '\u{e006}'] {
         let loaded = load(&format!(

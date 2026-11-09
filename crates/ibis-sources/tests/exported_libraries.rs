@@ -7,7 +7,7 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use ibis_core::contract::{ItemRef, LibraryObject, Record};
-use ibis_sources::{LoadedLibrary, SourceError, SourceWarning, SourceWatch, WarningCode};
+use ibis_sources::{LoadedLibrary, SourceError, SourceWarning, SourceWatch, WarningCause, WarningCode};
 use serde_json::{Value, json};
 
 fn fixture(name: &str) -> PathBuf {
@@ -53,15 +53,8 @@ fn ids(library: &LoadedLibrary) -> Vec<ItemRef> {
     ids
 }
 
-fn skipped(lines: &[usize]) -> Vec<SourceWarning> {
-    lines
-        .iter()
-        .map(|line| SourceWarning {
-            code: WarningCode::Syntax,
-            line: Some(*line),
-            key: None,
-        })
-        .collect()
+fn skipped(line: usize, cause: WarningCause, field: Option<&str>) -> SourceWarning {
+    SourceWarning::at(WarningCode::Syntax, Some(line)).because(cause, field)
 }
 
 fn copy(directory: &Path, name: &str, text: &str) -> PathBuf {
@@ -138,7 +131,16 @@ fn damaged_ris_records_are_skipped_with_their_lines() {
     assert_eq!(titles, ["A good invented record", "A second good invented record"]);
     // Unknown type, two titles, dates that disagree, fields with no TY line,
     // and the record the export never finished.
-    assert_eq!(loaded.warnings, skipped(&[7, 11, 16, 22, 31]));
+    assert_eq!(
+        loaded.warnings,
+        [
+            skipped(7, WarningCause::UnknownType, None),
+            skipped(11, WarningCause::Conflicting, None),
+            skipped(16, WarningCause::Conflicting, None),
+            skipped(22, WarningCause::NoStart, None),
+            skipped(31, WarningCause::NotClosed, None),
+        ]
+    );
     // A reload of the same bytes is the same library: an unfinished last record
     // is skipped, not mistaken for a file still being written.
     let reloaded = ibis_sources::reload_file(&path).unwrap();
@@ -280,7 +282,15 @@ fn csv_rows_that_do_not_fit_the_template_are_skipped_with_their_lines() {
         .collect();
     assert_eq!(titles, ["A good invented row", "A second good invented row"]);
     // One cell too many, no type, a type CSL lacks, and an unclosed quote.
-    assert_eq!(loaded.warnings, skipped(&[3, 4, 5, 8]));
+    assert_eq!(
+        loaded.warnings,
+        [
+            skipped(3, WarningCause::WrongCells, None),
+            skipped(4, WarningCause::MissingField, Some("type")),
+            skipped(5, WarningCause::UnknownType, None),
+            skipped(8, WarningCause::NotClosed, None),
+        ]
+    );
 }
 
 #[test]
@@ -357,7 +367,7 @@ fn a_ris_file_changed_while_open_updates_and_keeps_unchanged_identities() {
     std::fs::write(&path, format!("{one}TY  - BOOK\nTI  - Unfinished")).unwrap();
     let third = next().unwrap();
     assert_eq!(ids(&third), ids(&first));
-    assert_eq!(third.warnings, skipped(&[4]));
+    assert_eq!(third.warnings, [skipped(4, WarningCause::NotClosed, None)]);
 }
 
 #[test]
@@ -374,7 +384,10 @@ fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
     let field = |record: &str, name: &str| citation_fields(&read(record))[0][name].clone();
     // An abbreviated range agrees with its full end; another end refuses the record.
     assert_eq!(field("SP  - 1654–6\nEP  - 1656\n", "page"), "1654–6");
-    assert_eq!(read("SP  - 1654–6\nEP  - 1660\n").warnings, skipped(&[1]));
+    assert_eq!(
+        read("SP  - 1654–6\nEP  - 1660\n").warnings,
+        [skipped(1, WarningCause::Conflicting, None)]
+    );
     // A file link beside a web address: only the web address is kept.
     assert_eq!(
         field("UR  - file:///invented.pdf\nUR  - https://example.org/a\n", "URL"),
@@ -437,7 +450,10 @@ fn a_quote_inside_an_unquoted_cell_skips_the_row() {
         "quote.csv",
         "type,title\nbook,Unclosed \"quote\nbook,Invented\n",
     );
-    assert_eq!(ibis_sources::load_file(&path).unwrap().warnings, skipped(&[2]));
+    assert_eq!(
+        ibis_sources::load_file(&path).unwrap().warnings,
+        [skipped(2, WarningCause::UnexpectedText, None)]
+    );
 }
 
 #[test]
@@ -475,7 +491,7 @@ fn equivalent_values_merge_and_a_bad_one_does_not_take_the_good_ones_with_it() {
     // A text date's month takes part in the check against an exact date.
     assert_eq!(
         ris("PY  - 2026/07//Jul-Sep2026\nDA  - 2026/03/14/\n").warnings,
-        skipped(&[1])
+        [skipped(1, WarningCause::Conflicting, None)]
     );
     assert_eq!(
         citation_fields(&ris("SN  - 978 0 00 000000 2\n"))[0]["ISBN"],

@@ -396,8 +396,26 @@
           "SourceWarning": {
             "additionalProperties": false,
             "properties": {
+              "cause": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/WarningCause"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "Why the record was skipped or needs checking, as a fixed code."
+              },
               "code": {
                 "$ref": "#/$defs/WarningCode"
+              },
+              "field": {
+                "description": "The field to fix, named from the source format's vocabulary.",
+                "type": [
+                  "string",
+                  "null"
+                ]
               },
               "key": {
                 "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only to them; no other warning carries source text.",
@@ -419,6 +437,136 @@
               "code"
             ],
             "type": "object"
+          },
+          "WarningCause": {
+            "description": "Why a record was skipped (the first group) or a field needs checking (the\nsecond). Each has one sentence in `locales/en-US.ftl` (`cause-…`).",
+            "oneOf": [
+              {
+                "const": "not-closed",
+                "description": "The entry or record never ends.",
+                "type": "string"
+              },
+              {
+                "const": "no-key",
+                "description": "A BibTeX entry has no citation key.",
+                "type": "string"
+              },
+              {
+                "const": "missing-value",
+                "description": "A field has no `=` or no value.",
+                "type": "string"
+              },
+              {
+                "const": "unbalanced",
+                "description": "A field's braces or quotes do not pair up.",
+                "type": "string"
+              },
+              {
+                "const": "unexpected-text",
+                "description": "Text the format does not allow, where an entry's parts belong.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-type",
+                "description": "A type Ibis does not know.",
+                "type": "string"
+              },
+              {
+                "const": "conflicting",
+                "description": "Repeated values or values that disagree.",
+                "type": "string"
+              },
+              {
+                "const": "wrong-cells",
+                "description": "A CSV row with more or fewer cells than its header.",
+                "type": "string"
+              },
+              {
+                "const": "missing-field",
+                "description": "A required field is empty.",
+                "type": "string"
+              },
+              {
+                "const": "no-start",
+                "description": "RIS fields before any `TY` line.",
+                "type": "string"
+              },
+              {
+                "const": "string-definition",
+                "description": "An `@string` definition could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "unreadable",
+                "description": "The entry could not be read at all.",
+                "type": "string"
+              },
+              {
+                "const": "abbreviation",
+                "description": "A field uses an abbreviation (`@string`) that is not defined.",
+                "type": "string"
+              },
+              {
+                "const": "date",
+                "description": "A date could not be read in full.",
+                "type": "string"
+              },
+              {
+                "const": "names",
+                "description": "A list of names could not be read.",
+                "type": "string"
+              },
+              {
+                "const": "role",
+                "description": "A role CSL has no word for.",
+                "type": "string"
+              },
+              {
+                "const": "link",
+                "description": "A link that is private or not a web address.",
+                "type": "string"
+              },
+              {
+                "const": "inheritance",
+                "description": "A cross-reference or inherited entry that is missing or loops.",
+                "type": "string"
+              },
+              {
+                "const": "inheritance-limit",
+                "description": "A chain of linked entries reached the resolver's work limit.",
+                "type": "string"
+              },
+              {
+                "const": "too-large",
+                "description": "A field too large to read.",
+                "type": "string"
+              },
+              {
+                "const": "identifier",
+                "description": "An identifier (DOI, ISBN, ISSN) that is not valid.",
+                "type": "string"
+              },
+              {
+                "const": "language",
+                "description": "A language Ibis does not recognise.",
+                "type": "string"
+              },
+              {
+                "const": "tex-command",
+                "description": "A TeX command Ibis does not understand, kept as written.",
+                "type": "string"
+              },
+              {
+                "const": "unknown-field",
+                "description": "A field the format does not have.",
+                "type": "string"
+              },
+              {
+                "const": "value",
+                "description": "A value that could not be read as its field expects.",
+                "type": "string"
+              }
+            ]
           },
           "WarningCode": {
             "description": "Safe source diagnostics contain a location and fixed code, never payloads.",

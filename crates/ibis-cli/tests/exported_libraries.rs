@@ -106,6 +106,12 @@ fn skipped_records_are_listed_with_their_lines() {
     assert_eq!(code, 1, "{text}{errors}");
     let said = format!("{text}{errors}");
     assert!(
+        said.contains(
+            "line 16: an entry could not be read, so Ibis skips it (it has repeated or conflicting field values)"
+        ),
+        "{said}"
+    );
+    assert!(
         said.contains("line 31: an entry could not be read, so Ibis skips it"),
         "{said}"
     );

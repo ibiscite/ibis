@@ -1197,6 +1197,8 @@ mod tests {
                 code: ibis_sources::WarningCode::Field,
                 line: None,
                 key: None,
+                cause: None,
+                field: None,
             };
             MAX_WARNING_DETAILS + 1
         ];
