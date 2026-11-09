@@ -55,6 +55,55 @@ test("the first keystroke does not flash No matching references before its reply
   expect(screenState().noMatches).toBe(true);
 });
 
+test("returning to an answered query announces its count even when a later search was pending", async () => {
+  const next = deferred<unknown>();
+  const calls = backend({ search: ({ query }) => query.text === "gra" ? next.promise : query.text ? rows.slice(0, 1) : [] });
+  await act(async () => { render(<App />); });
+  await type("gr");
+  await act(() => vi.advanceTimersByTimeAsync(300));
+  const status = screen.getByRole("status", { name: "Search results" });
+  expect(status.textContent).toBe("1 result");
+  await type("gra");
+  expect(status.textContent).toBe("");
+  const searches = calls.filter((call) => call === "search").length;
+  await type("gr");
+  expect(calls.filter((call) => call === "search")).toHaveLength(searches);
+  expect(screen.getByText("1 result", { selector: "bdi" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Gradient methods/ })).toBeTruthy();
+  await act(async () => { next.resolve(rows); });
+  await act(() => vi.advanceTimersByTimeAsync(299));
+  expect(status.textContent).toBe("");
+  await act(() => vi.advanceTimersByTimeAsync(1));
+  expect(status.textContent).toBe("1 result");
+  expect(screen.queryByRole("option", { name: /Graphs and spectra/ })).toBeNull();
+});
+
+test.each([0, 400])("reopening after %d ms hidden announces the answer it keeps", async (hiddenFor) => {
+  const library = { state: "loaded", has_snapshot: true, references: 2 };
+  const refresh = deferred<typeof library>();
+  let reads = 0;
+  const calls = backend({
+    search: ({ query }) => query.text ? rows : [],
+    library_status: () => reads++ === 0 ? library : refresh.promise,
+  });
+  await act(async () => { render(<App />); });
+  await type("gr");
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  const status = screen.getByRole("status", { name: "Search results" });
+  const searches = calls.filter((call) => call === "search").length;
+  await act(async () => { await emit("picker:hidden"); });
+  await act(() => vi.advanceTimersByTimeAsync(hiddenFor));
+  expect(status.textContent).toBe("");
+  await act(async () => { await emit("picker:shown", 2); });
+  expect(calls.filter((call) => call === "search")).toHaveLength(searches);
+  expect(screen.getAllByRole("option")).toHaveLength(2);
+  await act(() => vi.advanceTimersByTimeAsync(200));
+  expect(status.textContent).toBe("");
+  await act(() => vi.advanceTimersByTimeAsync(100));
+  expect(status.textContent).toBe("2 results");
+  await act(async () => { refresh.resolve(library); });
+});
+
 test("the footer action pressed while a search runs copies the new top result, not the shown one", async () => {
   const next = deferred<unknown>();
   const copies: unknown[] = [];
