@@ -258,6 +258,7 @@ app-command-snapshot-changed = library snapshot changed
 app-command-library-loading = library is loading
 app-command-cancelled = cancelled
 app-command-shared-citation-key = the citation key `{ $key }` belongs to more than one reference
+app-command-citation-too-large = This citation has too much text. Shorten its fields or remove references.
 app-command-not-prepared = The citation could not be prepared. Try again.
 app-command-source-not-opened = The source could not be opened. Try again.
 

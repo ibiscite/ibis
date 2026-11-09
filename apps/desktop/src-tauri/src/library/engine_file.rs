@@ -689,27 +689,22 @@ impl FileLibrary {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
         let cancel = self.preview_cancellation(reservation)?;
-        // Bound native field input before parsing or constructing rich text. Use
-        // the engine's existing aggregate budget, including each run's overhead.
-        let bytes = items.iter().fold(0_usize, |bytes, item| {
-            let fields = [
-                item.page_input.as_deref(),
-                item.locator.as_ref().map(|locator| locator.value.as_str()),
-            ];
-            let bytes = fields
-                .into_iter()
-                .flatten()
-                .fold(bytes, |sum, text| sum.saturating_add(text.len()));
-            [item.prefix.as_deref(), item.suffix.as_deref()]
-                .into_iter()
-                .flatten()
-                .filter(|text| !text.is_empty())
-                .fold(bytes, |sum, text| sum.saturating_add(text.len()).saturating_add(16))
-        });
+        // Bound raw native field input before parsing or constructing rich text.
+        // The engine owns its own rich-text accounting and validation.
+        let bytes = items
+            .iter()
+            .flat_map(|item| {
+                [
+                    item.page_input.as_deref(),
+                    item.locator.as_ref().map(|locator| locator.value.as_str()),
+                    item.prefix.as_deref(),
+                    item.suffix.as_deref(),
+                ]
+            })
+            .flatten()
+            .fold(0_usize, |sum, text| sum.saturating_add(text.len()));
         if items.len() > ibis_core::syntax::MAX_CITATION_ITEMS || bytes > ibis_core::syntax::MAX_CITATION_BYTES {
-            return Err(CommandError::from(
-                "This citation has too much text. Shorten its fields or remove references.",
-            ));
+            return Err(CommandError::failed("app-command-citation-too-large"));
         }
         let literal = |text: Option<String>| {
             text.filter(|text| !text.is_empty())

@@ -696,7 +696,7 @@ fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() 
 fn oversized_reference_text_is_refused_before_formatting_without_echoing_it() -> Result<(), Box<dyn std::error::Error>>
 {
     let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
-    let text = "x".repeat(ibis_core::syntax::MAX_CITATION_BYTES / 2);
+    let text = "x".repeat(ibis_core::syntax::MAX_CITATION_BYTES / 2 + 1);
     let selection = || {
         serde_json::from_value(json!({
             "id": {"library": LibraryId::digest(b"invented"), "key": "invented"},
