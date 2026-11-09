@@ -152,14 +152,14 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
         for (name, value) in fields {
             // Test the vocabulary before parsing its payload. In particular,
             // unknown/custom values may have arbitrary depth or private paths.
-            if !known_field(&name) {
+            let Some(kind) = field_kind(&name) else {
                 result
                     .warnings
-                    .push(because(WarningCode::Field, WarningCause::UnknownField, &name));
+                    .push(warning(WarningCode::Field).because(WarningCause::UnknownField, None));
                 continue;
-            }
+            };
             match serde_json::from_str::<Value>(value.get()) {
-                Ok(value) if valid_field(&name, &value) => {
+                Ok(value) if valid_field(kind, &value) => {
                     csl.insert(name, value);
                 }
                 _ => result
@@ -254,9 +254,6 @@ fn object_fields(text: &str) -> serde_json::Result<BTreeMap<String, &serde_json:
     Ok(result)
 }
 
-fn known_field(name: &str) -> bool {
-    field_kind(name).is_some()
-}
 #[derive(Clone, Copy)]
 enum FieldKind {
     Text,
@@ -466,16 +463,15 @@ fn field_kind(name: &str) -> Option<FieldKind> {
         _ => None,
     }
 }
-fn valid_field(name: &str, value: &Value) -> bool {
-    match field_kind(name) {
-        Some(FieldKind::Text) => value.is_string(),
-        Some(FieldKind::Number) => value.is_string() || value.is_number(),
-        Some(FieldKind::Strings) => value
+fn valid_field(kind: FieldKind, value: &Value) -> bool {
+    match kind {
+        FieldKind::Text => value.is_string(),
+        FieldKind::Number => value.is_string() || value.is_number(),
+        FieldKind::Strings => value
             .as_array()
             .is_some_and(|values| values.iter().all(Value::is_string)),
-        Some(FieldKind::Names) => value.as_array().is_some_and(|values| values.iter().all(valid_name)),
-        Some(FieldKind::Date) => valid_date(value),
-        None => false,
+        FieldKind::Names => value.as_array().is_some_and(|values| values.iter().all(valid_name)),
+        FieldKind::Date => valid_date(value),
     }
 }
 
@@ -563,6 +559,26 @@ fn item_spans(text: &str) -> Vec<(usize, usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn warnings_name_only_known_csl_fields() -> Result<(), SourceError> {
+        let parsed = load_str(
+            &LibraryId::digest(b"invented-csl"),
+            r#"[
+    {"id":"a","type":"book","title":"Invented book","invented-private-tag":true,"publisher":false}
+]"#,
+        )?;
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(
+            parsed.warnings,
+            [
+                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::UnknownField, None),
+                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::Value, Some("publisher")),
+            ]
+        );
+        Ok(())
+    }
+
     #[test]
     fn item_locations_keep_repeated_strings_nested_arrays_and_escapes() {
         let text = "[\n {\"id\":\"x\",\"title\":\"[, \\\" ]\"},\n {\"id\":\"x\",\"names\":[[1,2]]}\n]";

@@ -411,7 +411,7 @@
                 "$ref": "#/$defs/WarningCode"
               },
               "field": {
-                "description": "The field to fix, by its name in the source: letters, digits, `-`, `_`\nor `.`, at most 64 of them, so it never carries a value.",
+                "description": "The field to fix, named from the source format's vocabulary.",
                 "type": [
                   "string",
                   "null"
@@ -473,7 +473,7 @@
               },
               {
                 "const": "conflicting",
-                "description": "Two different values for one field.",
+                "description": "Repeated values or values that disagree.",
                 "type": "string"
               },
               {
@@ -529,6 +529,11 @@
               {
                 "const": "inheritance",
                 "description": "A cross-reference or inherited entry that is missing or loops.",
+                "type": "string"
+              },
+              {
+                "const": "inheritance-limit",
+                "description": "A chain of linked entries reached the resolver's work limit.",
                 "type": "string"
               },
               {

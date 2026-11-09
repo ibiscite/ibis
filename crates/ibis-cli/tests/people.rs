@@ -299,6 +299,23 @@ fn damaged_library_diagnostics_do_not_echo_unknown_field_names() {
 }
 
 #[test]
+fn a_long_bibtex_inheritance_chain_reports_the_read_limit() {
+    let lab = Lab::new("inheritance-limit");
+    let mut bib = String::from("@book{one,title={Invented reference},xdata={p0}}\n");
+    for index in 0..20 {
+        bib.push_str(&format!("@xdata{{p{index},xdata={{p{}}}}}\n", index + 1));
+    }
+    bib.push_str("@xdata{p20,publisher={Invented press}}\n");
+    let file = lab.file("refs.bib", &bib);
+    let (code, human, _) = lab.run(&["libraries", "--file", &file]);
+    assert_eq!(code, 1, "{human}");
+    assert!(
+        human.contains("xdata reaches Ibis’s limit for reading linked entries"),
+        "{human}"
+    );
+}
+
+#[test]
 fn a_key_past_the_part_ibis_could_read_says_the_library_was_cut_short() {
     let lab = Lab::new("cut-short");
     let entries: String = (0..=200_000)

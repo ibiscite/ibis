@@ -35,24 +35,121 @@ use resolve::Resolver;
 
 /// Why an entry was skipped or one of its fields needs checking: a fixed
 /// cause and the field's name, never the entry's own text.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize)]
 pub(crate) struct Problem {
     pub cause: WarningCause,
-    pub field: Option<String>,
+    pub field: Option<&'static str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub line: Option<usize>,
 }
 
 impl Problem {
     /// What keeping it costs the load budget.
     pub(crate) fn size(&self) -> usize {
-        self.field.as_ref().map_or(0, String::len).saturating_add(16)
+        self.field.map_or(0, str::len).saturating_add(16)
     }
 
     pub(crate) fn new(cause: WarningCause, field: Option<&str>) -> Self {
         Self {
             cause,
-            field: field.map(str::to_owned),
+            field: field.and_then(diagnostic_field),
+            line: None,
         }
     }
+}
+
+/// Only known BibTeX/BibLaTeX names can leave the parser in a diagnostic.
+/// Returning a static name also keeps repeated warnings allocation-free.
+fn diagnostic_field(name: &str) -> Option<&'static str> {
+    const FIELDS: &[&str] = &[
+        "abstract",
+        "address",
+        "afterword",
+        "annotator",
+        "archiveprefix",
+        "author",
+        "bookauthor",
+        "booksubtitle",
+        "booktitle",
+        "booktitleaddon",
+        "chapter",
+        "commentator",
+        "crossref",
+        "date",
+        "day",
+        "doi",
+        "edition",
+        "editor",
+        "editora",
+        "editorb",
+        "editorc",
+        "editortype",
+        "editoratype",
+        "editorbtype",
+        "editorctype",
+        "endyear",
+        "entrysubtype",
+        "eprint",
+        "eprintclass",
+        "eprinttype",
+        "eventdate",
+        "eventday",
+        "eventmonth",
+        "eventtitle",
+        "eventyear",
+        "file",
+        "foreword",
+        "howpublished",
+        "hyphenation",
+        "institution",
+        "introduction",
+        "isbn",
+        "issn",
+        "issue",
+        "journal",
+        "journalsubtitle",
+        "journaltitle",
+        "journaltitleaddon",
+        "keywords",
+        "langid",
+        "language",
+        "location",
+        "mainsubtitle",
+        "maintitle",
+        "maintitleaddon",
+        "month",
+        "note",
+        "number",
+        "organization",
+        "origdate",
+        "origday",
+        "origmonth",
+        "origyear",
+        "pages",
+        "pagetotal",
+        "pmcid",
+        "pmid",
+        "publisher",
+        "school",
+        "series",
+        "shorttitle",
+        "subtitle",
+        "title",
+        "titleaddon",
+        "translator",
+        "type",
+        "url",
+        "urldate",
+        "urlday",
+        "urlmonth",
+        "urlyear",
+        "version",
+        "volume",
+        "xdata",
+        "xref",
+        "year",
+    ];
+    FIELDS.iter().copied().find(|field| name.eq_ignore_ascii_case(field))
 }
 
 /// Recognize entries with the loader's scanner, including parenthesized and
@@ -159,7 +256,7 @@ pub(crate) fn load_with_budget(
     };
     for block in &blocks {
         let warn = |code| SourceWarning::at(code, Some(block.line));
-        let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field.as_deref());
+        let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field);
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result.warnings.push(warn(WarningCode::WorkLimit));
             result.cut_short = true;
@@ -221,13 +318,13 @@ pub(crate) fn load_with_budget(
             CAUGHT_PARSER_PANICS.with(|count| count.set(count.get() + 1));
         }
         let warn = |code, problem: &Problem| {
-            SourceWarning::at(code, Some(entry.line)).because(problem.cause, problem.field.as_deref())
+            SourceWarning::at(code, problem.line.or(Some(entry.line))).because(problem.cause, problem.field)
         };
         if let Ok(Ok((_, _, problems))) = &outcome {
             budget.charge(
                 problems
                     .iter()
-                    .map(|problem| problem.field.as_ref().map_or(0, String::len).saturating_add(16))
+                    .map(Problem::size)
                     .sum::<usize>()
                     .saturating_add(problems.len().saturating_mul(entry.key.len())),
             );

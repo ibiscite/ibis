@@ -54,8 +54,7 @@ pub struct SourceWarning {
     /// Why the record was skipped or needs checking, as a fixed code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cause: Option<WarningCause>,
-    /// The field to fix, by its name in the source: letters, digits, `-`, `_`
-    /// or `.`, at most 64 of them, so it never carries a value.
+    /// The field to fix, named from the source format's vocabulary.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub field: Option<String>,
 }
@@ -71,7 +70,8 @@ impl SourceWarning {
         }
     }
 
-    /// Says why, and which field when one is known and is a plain name.
+    /// Supply a field only after recognizing it in the format's vocabulary.
+    /// Omit names the format does not define, even if they have valid syntax.
     pub fn because(mut self, cause: WarningCause, field: Option<&str>) -> Self {
         self.cause = Some(cause);
         self.field = field
@@ -105,7 +105,7 @@ pub enum WarningCause {
     UnexpectedText,
     /// A type Ibis does not know.
     UnknownType,
-    /// Two different values for one field.
+    /// Repeated values or values that disagree.
     Conflicting,
     /// A CSV row with more or fewer cells than its header.
     WrongCells,
@@ -129,6 +129,8 @@ pub enum WarningCause {
     Link,
     /// A cross-reference or inherited entry that is missing or loops.
     Inheritance,
+    /// A chain of linked entries reached the resolver's work limit.
+    InheritanceLimit,
     /// A field too large to read.
     TooLarge,
     /// An identifier (DOI, ISBN, ISSN) that is not valid.

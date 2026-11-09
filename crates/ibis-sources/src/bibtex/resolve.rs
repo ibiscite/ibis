@@ -218,8 +218,18 @@ pub(super) const MONTHS: [(&str, &str); 12] = [
     ("dec", "December"),
 ];
 
-/// Ordered field list of one entry after inheritance: (name, value).
-type Fields = Rc<Vec<(String, String)>>;
+#[derive(Clone)]
+#[cfg_attr(test, derive(Debug, PartialEq, Eq))]
+struct EffectiveField {
+    name: String,
+    value: String,
+    line: usize,
+    /// The original field if crossref mapped it to a different name.
+    renamed_from: Option<&'static str>,
+}
+
+/// Ordered field list of one entry after inheritance.
+type Fields = Rc<Vec<EffectiveField>>;
 type Memo = HashMap<(usize, usize), Fields>;
 
 /// Everything needed to resolve entries from one file.
@@ -312,30 +322,36 @@ impl<'a, 's> Resolver<'a, 's> {
             problems: Vec::new(),
         };
         let fields = self.effective(i, MAX_DEPTH, &mut walk);
+        let entry = &self.entries[i];
         let mut problems = walk.problems;
         // The completed root belongs to this walk. Release its memo before
         // taking the fields; cached parent snapshots keep their own ownership.
         drop(walk.memo);
         let fields: Vec<_> = Rc::unwrap_or_clone(fields)
             .into_iter()
-            .take_while(|(name, value)| {
+            .take_while(|field| {
                 self.budget.charge(
-                    name.len()
-                        .saturating_add(value.len())
+                    field
+                        .name
+                        .len()
+                        .saturating_add(field.value.len())
                         .saturating_mul(8)
                         .saturating_add(256),
                 )
             })
-            .filter(|(name, value)| {
-                if let Err(cause) = validate_field_structure(value) {
-                    problems.push(Problem::new(cause, Some(name)));
+            .filter(|field| {
+                if let Err(cause) = validate_field_structure(&field.value) {
+                    let mut problem = Problem::new(cause, Some(&field.name));
+                    problem.field = field.renamed_from.or(problem.field);
+                    problem.line = (field.line != entry.line).then_some(field.line);
+                    problems.push(problem);
                     false
                 } else {
                     true
                 }
             })
+            .map(|field| (field.name, field.value))
             .collect();
-        let entry = &self.entries[i];
         if !self
             .budget
             .charge(entry.kind.len().saturating_add(entry.key.len()).saturating_mul(4))
@@ -362,7 +378,7 @@ impl<'a, 's> Resolver<'a, 's> {
         source.push_str("}\n");
         // The same problem can be found many times; report each one once.
         let mut unique = HashSet::new();
-        problems.retain(|p| self.budget.charge(p.size().saturating_mul(4)) && unique.insert(p.clone()));
+        problems.retain(|p| self.budget.charge(p.size().saturating_mul(4)) && unique.insert(*p));
         Resolved {
             source,
             fields: fields.into_iter().collect(),
@@ -381,6 +397,11 @@ impl<'a, 's> Resolver<'a, 's> {
         }
         let entry = &self.entries[idx];
         let root = walk.path.first().copied() == Some(idx);
+        let origin = (!root).then_some(entry.line);
+        let problem_at_entry = |cause, field: &str| Problem {
+            line: origin,
+            ..Problem::new(cause, Some(field))
+        };
         if !root {
             let cached = self.parent_cache.borrow().get(&(idx, remaining)).cloned();
             if let Some(cached) = cached {
@@ -405,7 +426,7 @@ impl<'a, 's> Resolver<'a, 's> {
         // Problems in the entry itself, or in an `@xdata` helper it uses
         // (helpers are not loaded on their own), are reported.
         let report = root || entry.kind == "xdata";
-        let mut own: Vec<(String, String)> = Vec::new();
+        let mut own: Vec<EffectiveField> = Vec::new();
         let mut own_positions: HashMap<&str, usize> = HashMap::new();
         let mut xdata_keys = Vec::new();
         let mut crossref_key = None;
@@ -433,11 +454,16 @@ impl<'a, 's> Resolver<'a, 's> {
             ) {
                 return Rc::default();
             }
-            // Abbreviation problems are cached without a field; this one used it.
-            walk.problems.extend(field_problems.into_iter().map(|mut problem| {
-                problem.field.get_or_insert_with(|| field.name.clone());
-                problem
-            }));
+            if !field_problems.is_empty() {
+                // A cached abbreviation problem gets its location from this
+                // use. Attaching a static name costs no heap allocation.
+                let field = super::diagnostic_field(&field.name);
+                walk.problems.extend(field_problems.into_iter().map(|problem| Problem {
+                    field: problem.field.or(field),
+                    line: origin,
+                    ..problem
+                }));
+            }
             match field.name.as_str() {
                 "xdata" => xdata_keys.extend(
                     super::convert::literal_value(&value)
@@ -452,12 +478,17 @@ impl<'a, 's> Resolver<'a, 's> {
                         let existing = &mut own[position];
                         if root {
                             walk.problems
-                                .push(Problem::new(WarningCause::Conflicting, Some(&field.name)));
+                                .push(problem_at_entry(WarningCause::Conflicting, &field.name));
                         }
-                        existing.1 = value;
+                        existing.value = value;
                     } else {
                         own_positions.insert(field.name.as_str(), own.len());
-                        own.push((field.name.clone(), value));
+                        own.push(EffectiveField {
+                            name: field.name.clone(),
+                            value,
+                            line: entry.line,
+                            renamed_from: None,
+                        });
                     }
                 }
             }
@@ -465,17 +496,17 @@ impl<'a, 's> Resolver<'a, 's> {
 
         // Date normalization can consume components before the final field guard.
         // Check selected, fully expanded values, retaining last-value precedence.
-        own.retain(|(name, value)| {
-            if !DATE_PARTS.contains(&name.as_str()) {
+        own.retain(|field| {
+            if !DATE_PARTS.contains(&field.name.as_str()) {
                 return true;
             }
-            if !self.budget.charge(value.len()) {
+            if !self.budget.charge(field.value.len()) {
                 return false;
             }
-            let Err(cause) = validate_field_structure(value) else {
+            let Err(cause) = validate_field_structure(&field.value) else {
                 return true;
             };
-            walk.problems.push(Problem::new(cause, Some(name)));
+            walk.problems.push(problem_at_entry(cause, &field.name));
             false
         });
 
@@ -506,22 +537,24 @@ impl<'a, 's> Resolver<'a, 's> {
                 return Rc::default();
             }
             let Some(t) = self.find(target) else {
-                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
+                walk.problems.push(problem_at_entry(WarningCause::Inheritance, link));
                 continue;
             };
             if !seen_targets.insert(t) {
                 continue;
             }
             if walk.path.contains(&t) {
-                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
+                walk.problems.push(problem_at_entry(WarningCause::Inheritance, link));
                 continue;
             }
             if remaining == 0 {
-                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
+                walk.problems
+                    .push(problem_at_entry(WarningCause::InheritanceLimit, link));
                 continue;
             }
             if walk.evaluations >= MAX_EVALUATIONS {
-                walk.problems.push(Problem::new(WarningCause::Inheritance, Some(link)));
+                walk.problems
+                    .push(problem_at_entry(WarningCause::InheritanceLimit, link));
                 break;
             }
             walk.path.push(t);
@@ -534,7 +567,7 @@ impl<'a, 's> Resolver<'a, 's> {
         // Precedence, highest first: the entry's own fields, then its `xdata`
         // parents with later ones overriding earlier ones (as in Biber), then
         // its `crossref` parent. Each source only fills fields still missing.
-        let mut sources: Vec<Vec<(String, String)>> = vec![own];
+        let mut sources = vec![own];
         let (crossref, xdata): (Vec<_>, Vec<_>) = parents.into_iter().partition(|(_, kind)| kind.is_some());
         for (inherited, crossref_kind) in xdata.into_iter().rev().chain(crossref) {
             if !self.budget.charge(inherited.len().saturating_mul(32)) {
@@ -542,38 +575,72 @@ impl<'a, 's> Resolver<'a, 's> {
             }
             let mapped = inherited
                 .iter()
-                .filter(|(name, _)| !NOT_INHERITED.contains(&name.as_str()))
-                .take_while(|(name, value)| {
+                .filter(|field| !NOT_INHERITED.contains(&field.name.as_str()))
+                .take_while(|field| {
                     self.budget
-                        .charge(name.len().saturating_add(value.len()).saturating_mul(4))
+                        .charge(field.name.len().saturating_add(field.value.len()).saturating_mul(4))
                 })
-                .flat_map(|(name, value)| {
+                .flat_map(|field| {
                     let targets = match crossref_kind {
-                        Some(parent_kind) => crossref_targets(parent_kind, &entry.kind, name),
-                        None => vec![name.as_str()],
+                        Some(parent_kind) => crossref_targets(parent_kind, &entry.kind, &field.name),
+                        None => vec![field.name.as_str()],
                     };
-                    targets.into_iter().map(move |t| (t.to_string(), value.clone()))
+                    targets.into_iter().map(move |name| EffectiveField {
+                        name: name.to_string(),
+                        value: field.value.clone(),
+                        line: field.line,
+                        renamed_from: field.renamed_from.or_else(|| {
+                            if name == field.name {
+                                None
+                            } else {
+                                super::diagnostic_field(&field.name)
+                            }
+                        }),
+                    })
                 })
                 .collect();
             sources.push(mapped);
         }
-        let mut merged: Vec<(String, String)> = Vec::new();
+        let mut merged = Vec::new();
         let mut merged_names = HashSet::new();
         for source in &sources {
-            for (name, value) in source {
+            for field in source {
                 if !self.budget.charge(
-                    name.len()
+                    field
+                        .name
+                        .len()
                         .saturating_mul(4)
-                        .saturating_add(value.len().saturating_mul(8)),
+                        .saturating_add(field.value.len().saturating_mul(8)),
                 ) {
                     return Rc::default();
                 }
-                if !DATE_PARTS.contains(&name.as_str()) && merged_names.insert(name.as_str()) {
-                    merged.push((name.clone(), value.clone()));
+                if !DATE_PARTS.contains(&field.name.as_str()) && merged_names.insert(field.name.as_str()) {
+                    merged.push(field.clone());
                 }
             }
         }
-        merged.extend(merge_dates(&sources, root, &mut walk.problems));
+        // The component values were checked at their own entry. The date
+        // composer can combine components from more than one source.
+        let date_sources: Vec<_> = sources
+            .into_iter()
+            .map(|source| {
+                source
+                    .into_iter()
+                    .filter(|field| DATE_PARTS.contains(&field.name.as_str()))
+                    .map(|field| (field.name, field.value))
+                    .collect()
+            })
+            .collect();
+        merged.extend(
+            merge_dates(&date_sources, root, &mut walk.problems)
+                .into_iter()
+                .map(|(name, value)| EffectiveField {
+                    name,
+                    value,
+                    line: entry.line,
+                    renamed_from: None,
+                }),
+        );
         let fields: Fields = Rc::new(merged);
         if !self.budget.exhausted() {
             walk.memo.insert((idx, remaining), Rc::clone(&fields));
@@ -599,13 +666,12 @@ impl<'a, 's> Resolver<'a, 's> {
             return;
         }
         let bytes = memo.values().fold(256usize, |n, fields| {
-            let allocation = fields
-                .capacity()
-                .saturating_mul(std::mem::size_of::<(String, String)>());
+            let allocation = fields.capacity().saturating_mul(std::mem::size_of::<EffectiveField>());
             fields
                 .iter()
-                .fold(n.saturating_add(256).saturating_add(allocation), |n, (name, value)| {
-                    n.saturating_add(name.capacity()).saturating_add(value.capacity())
+                .fold(n.saturating_add(256).saturating_add(allocation), |n, field| {
+                    n.saturating_add(field.name.capacity())
+                        .saturating_add(field.value.capacity())
                 })
         });
         if bytes <= available {
@@ -737,7 +803,7 @@ impl<'a, 's> Resolver<'a, 's> {
             x.too_large |= expanded.too_large;
             x.too_complex |= expanded.too_complex;
             if report {
-                problems.extend(cached.problems.iter().cloned());
+                problems.extend(cached.problems.iter().copied());
             }
         } else {
             self.expand_macro_uncached(field, name, epoch, problems, report, x);
@@ -1160,7 +1226,7 @@ mod tests {
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "a57eca124a5734348f670bd0f20bd94ab6b39e3afda9caa21fbe43b8d6796bd1",
+                "0a40c563f092cc77eeda30f26fd9f8a27d77015e5b1c7d50a7e1f9dabaa43686",
             ),
         ];
         let mut mismatches = Vec::new();
@@ -1349,7 +1415,12 @@ mod tests {
         let mut memo = Memo::new();
         memo.insert(
             (0, 0),
-            Rc::new(vec![(String::new(), String::with_capacity(MAX_PARENT_CACHE_BYTES))]),
+            Rc::new(vec![EffectiveField {
+                name: String::new(),
+                value: String::with_capacity(MAX_PARENT_CACHE_BYTES),
+                line: 1,
+                renamed_from: None,
+            }]),
         );
         resolver.cache_parent((0, 0), &memo);
         assert!(resolver.parent_cache.borrow().is_empty());
@@ -1467,7 +1538,13 @@ mod tests {
                 assert!(!result.source.contains("emph"), "{field}");
                 assert!(result.source.contains("year = {2024}"));
                 assert_eq!(result.problems.len(), 1);
-                assert_eq!(result.problems[0], Problem::new(WarningCause::TooLarge, Some(field)));
+                assert_eq!(
+                    result.problems[0],
+                    Problem {
+                        line: Some(2),
+                        ..Problem::new(WarningCause::TooLarge, Some(field))
+                    }
+                );
             }
         }
         let result = resolve(
@@ -1476,7 +1553,8 @@ mod tests {
         );
         assert_eq!(result.fields.get("title").map(String::as_str), Some("Safe"));
         assert!(!result.fields.contains_key("booktitle"));
-        assert_eq!(result.problems[0].field.as_deref(), Some("booktitle"));
+        assert_eq!(result.problems[0].field, Some("title"));
+        assert_eq!(result.problems[0].line, Some(1));
     }
 
     #[test]
@@ -1538,20 +1616,47 @@ mod tests {
         assert!(result.source.contains("year = {2024}"));
         assert_eq!(
             result.problems,
-            [Problem::new(WarningCause::Unbalanced, Some("booktitle"))]
+            [Problem {
+                line: Some(1),
+                ..Problem::new(WarningCause::Unbalanced, Some("title"))
+            }]
+        );
+    }
+
+    #[test]
+    fn a_malformed_inherited_field_keeps_its_precedence_and_its_source_line() {
+        let result = resolve(
+            "@string(broken=\"}\")\n\
+             @xdata{fallback,title={Lower priority}}\n\
+             @xdata{parent,title=broken}\n\
+             @book{child,xdata={fallback,parent}}",
+            "child",
+        );
+        assert!(!result.fields.contains_key("title"));
+        assert_eq!(
+            result.problems,
+            [Problem {
+                line: Some(3),
+                ..Problem::new(WarningCause::Unbalanced, Some("title"))
+            }]
         );
     }
 
     #[test]
     fn output_is_one_flat_entry_without_links() {
-        for src in [
-            "@book{a,title={A},crossref={a}}",
-            "@book{a,title={A},crossref={b}}\n@book{b,title={B},crossref={a}}",
+        for (src, line) in [
+            ("@book{a,title={A},crossref={a}}", None),
+            (
+                "@book{a,title={A},crossref={b}}\n@book{b,title={B},crossref={a}}",
+                Some(2),
+            ),
         ] {
             let r = resolve(src, "a");
             assert!(
-                r.problems
-                    .contains(&Problem::new(WarningCause::Inheritance, Some("crossref"))),
+                r.problems.contains(&Problem {
+                    line,
+                    ..Problem::new(WarningCause::Inheritance, Some("crossref"))
+                }),
                 "{src}: {:?}",
                 r.problems
             );

@@ -150,16 +150,16 @@ pub(crate) fn convert(
                     EditorType::Director => "director",
                     EditorType::Organizer => "organizer",
                     EditorType::Collaborator => "contributor",
-                    other => {
-                        let _ = other;
-                        problems.push(Problem::new(WarningCause::Role, Some("editortype")));
+                    _ => {
+                        // The editor groups do not retain their original field names.
+                        problems.push(Problem::new(WarningCause::Role, None));
                         "contributor"
                     }
                 };
                 other_names.entry(csl_role.to_string()).or_default().extend(converted);
             }
         }
-        Err(_) => problems.push(Problem::new(WarningCause::Names, Some("editor"))),
+        Err(_) => problems.push(Problem::new(WarningCause::Names, None)),
     }
     let roles: [(&str, &str); 7] = [
         ("translator", "translator"),
@@ -755,10 +755,10 @@ fn lenient_date(text: &str) -> Option<(PartialDate, bool)> {
 /// BCP 47 tag from `langid`, its legacy `hyphenation` alias, or `language`.
 /// Unknown names are reported and become `und`, never implicit English.
 fn language_tag(entry: &Entry, problems: &mut Vec<Problem>) -> Option<String> {
-    let raw = ["langid", "hyphenation", "language"]
-        .iter()
-        .filter_map(|f| entry.get(f).map(|c| clean(&c.format_verbatim())))
-        .find(|s| !s.is_empty())?;
+    let (field, raw) = ["langid", "hyphenation", "language"].into_iter().find_map(|field| {
+        let value = clean(&entry.get(field)?.format_verbatim());
+        (!value.is_empty()).then_some((field, value))
+    })?;
     let lower = raw.to_ascii_lowercase();
     if let Some(tag) = babel_to_bcp47(&lower) {
         return Some(tag.to_string());
@@ -773,7 +773,7 @@ fn language_tag(entry: &Entry, problems: &mut Vec<Problem>) -> Option<String> {
     if looks_like_tag {
         return Some(raw);
     }
-    problems.push(Problem::new(WarningCause::Language, Some("langid")));
+    problems.push(Problem::new(WarningCause::Language, Some(field)));
     Some("und".into())
 }
 
