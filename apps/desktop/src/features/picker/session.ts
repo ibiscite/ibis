@@ -258,6 +258,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
       return step ? [{ ...s, preview: step.preview }, step.effects] : [s, []];
     }
     case "search-inputs": case "searched": case "search-failed": case "announce": {
+      if (event.type === "announce" && s.resting) return [s, []];
       const step = reduceSearch(s.search, event, s.session);
       if (!step) return [s, []];
       const next = { ...s, search: step.search };
