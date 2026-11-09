@@ -111,7 +111,11 @@ fn help_and_usage_errors_respect_the_end_of_options() -> Result<(), Box<dyn std:
     let json_help = ibis(&["search", "--help", "--json", "--", "--json"]);
     assert!(plain_help.status.success() && json_help.status.success());
     let help = std::str::from_utf8(&plain_help.stdout)?;
-    assert!(help.contains("Usage: ibis search"), "{help}");
+    assert!(
+        help.lines()
+            .any(|line| line.starts_with("Usage: ") && line.ends_with(" search [OPTIONS] <WORDS>")),
+        "{help}"
+    );
     assert_eq!(
         serde_json::from_slice::<Value>(&json_help.stdout)?,
         json!({"ibis":1,"ok":true,"data":{"help":help}})
