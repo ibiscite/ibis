@@ -10,6 +10,7 @@ fn unknown_file_names_require_reference_entry_blocks() -> Result<(), Box<dyn std
             "Invented notes without references.",
             "",
             "@COMMENT{A note with @book{hidden,title={Not an entry}}}\n@PREAMBLE{\"Invented\"}\n@STRING{press={Invented Press}}",
+            "@comment{An unclosed invented note",
         ] {
             std::fs::write(&path, text)?;
             outcomes.push((name, ibis_sources::load_file(&path).err()));
@@ -46,6 +47,17 @@ fn unknown_file_names_still_load_bibtex_and_ris() -> Result<(), Box<dyn std::err
             assert!(original.contains("Invented book"));
         }
     }
+    Ok(())
+}
+
+#[test]
+fn a_backup_with_an_entry_past_the_read_limit_is_reported_as_cut_short() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("refs.bak");
+    let mut text = "@comment{Invented note}\n".repeat(ibis_sources::MAX_LIBRARY_RECORDS + 1);
+    text.push_str("@book{one,title={Invented book}}");
+    std::fs::write(&path, text)?;
+    assert!(ibis_sources::load_file(&path)?.cut_short);
     Ok(())
 }
 
