@@ -502,20 +502,25 @@ mod tests {
     fn a_failed_choice_does_not_hide_failure_or_recovery_of_the_retained_file() -> Result<(), Box<dyn std::error::Error>>
     {
         let directory = tempfile::tempdir()?;
-        let path = directory.path().join("retained.bib");
-        std::fs::write(&path, "@misc{retained}")?;
+        let path = directory.path().join("retained.json");
+        let original = r#"[{"id":"retained","type":"book","title":"Invented almanac"}]"#;
+        std::fs::write(&path, original)?;
         let library = Mutex::new(load_library(path.clone(), false).map_err(|e| e.to_string())?);
         let requests = LoadRequests::default();
-        let (request, _, _) = begin_open(&library, &requests, directory.path().join("missing.bib")).ok_or("open")?;
-        let rejected = install(&library, &requests, request, Err(LoadError::FILE_UNAVAILABLE)).ok_or("install")?;
+        let replacement = directory.path().join("missing.bib");
+        let (request, _, _) = begin_open(&library, &requests, replacement.clone()).ok_or("open")?;
+        let rejected = install(&library, &requests, request, load_library(replacement, false)).ok_or("install")?;
+        assert_eq!(rejected.error_reason, Some(LoadError::FILE_UNAVAILABLE));
         let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
-        std::fs::remove_file(&path)?;
-        assert!(file.reload().is_err());
+        std::fs::write(&path, "[{")?;
+        assert_eq!(file.reload(), Err(crate::library::error::REFRESH_INCOMPLETE));
         let failed = status(&*library.lock().map_err(|_| "library")?);
         assert!(failed.stale, "the references being searched are now stale too");
+        assert_eq!(failed.name.as_deref(), Some("missing.bib"));
         assert_eq!(failed.error, rejected.error, "keep the failed choice visible");
         assert!(failed.note.is_some(), "also report the retained source's failure");
-        std::fs::write(&path, "@misc{retained}")?;
+        assert_eq!(library_line(&failed), "retained.json: 1 references, not updated");
+        std::fs::write(&path, original)?;
         file.reload().map_err(|e| e.to_string())?;
         let recovered = status(&*library.lock().map_err(|_| "library")?);
         assert!(!recovered.stale);
