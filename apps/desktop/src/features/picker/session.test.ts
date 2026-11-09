@@ -129,6 +129,57 @@ test("a stale checked copy cannot consume the one-time output a fresh Enter is w
     .toMatchObject([{ type: "copy", id: 2, ticket: "fresh-checked" }]);
 });
 
+test.each(["suffix", "order"] as const)("returning to the same %s copies its fresh receipt instead of joining a retired copy", (field) => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send(s.view());
+  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
+  const edit = (changed: boolean) => field === "suffix"
+    ? s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { suffix: changed ? "for review" : "" } })
+    : s.send({ type: "keep-order", value: changed });
+  edit(true);
+  s.send(s.view({ shown: { ...prepared, fileTicket: "middle" } }));
+  edit(false);
+  s.send(s.view({ shown: { ...prepared, fileTicket: "fresh", fileHash: "fresh-hash" } }));
+  expect(s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) }))
+    .toMatchObject([{ type: "copy", id: 2, ticket: "fresh", hash: "fresh-hash" }]);
+  s.complete(1);
+  expect(s.effects).toEqual([]);
+  expect(s.state.activeCopy).toBe(2);
+  s.complete(2, { pinned: true });
+  expect(s.state.copied?.text).toBe(prepared.text);
+});
+
+test.each([false, true])("a citation draft keeps every field through a short reopen or permission detour (%s)", (permission) => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { prefix: "see", suffix: "for review" } });
+  s.send({ type: "keep-order", value: true });
+  s.send(s.view());
+  const references = [...s.state.selected.values()];
+  if (permission) {
+    s.send({ type: "enter", choice: choiceKey(references) });
+    s.complete(1);
+    s.send({ type: "hid", id: 1, session: 0 });
+    s.send({ type: "delivered", id: 1, session: 0, delivered: { outcome: "copied", reason: "no-permission" } });
+  }
+  s.send({ type: "hidden", now: 10 });
+  s.send({ type: "shown", now: permission ? 120_000 : 20, presentation: 2 });
+  expect([...s.state.selected.values()]).toEqual(references);
+  expect(s.state.keepOrder).toBe(true);
+});
+
+test("a minute away abandons the citation's fields and order choice", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { prefix: "see", suffix: "for review" } });
+  s.send({ type: "keep-order", value: true });
+  s.send({ type: "hidden", now: 10 });
+  s.send({ type: "shown", now: 60_011, presentation: 2 });
+  expect(s.state.selected.size).toBe(0);
+  expect(s.state.keepOrder).toBe(false);
+});
+
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
   const c = { ...b, id: { library: "synthetic", key: "third" }, key: "third" };
@@ -607,15 +658,21 @@ const withLast = () => {
   return s;
 };
 
-test("Change Last reopens the app's last citation with its pages and options, and clears the search", () => {
-  const s = withLast();
+test("Change Last restores fields and order after a successful copy consumes the draft", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { form: "year-only", prefix: "see", suffix: "for review" } });
+  s.send({ type: "keep-order", value: true });
+  copyOnce(s, 1, "(2020, p. 12)");
+  expect(s.state.keepOrder).toBe(false);
   expect(s.state.selected.size).toBe(0);
   s.send({ type: "query", value: "something" });
   s.send(s.view({ appId: "example.writer" }));
   s.send({ type: "change-last" });
   expect(s.state).toMatchObject({ query: "", changing: ["(2020, p. 12)"] });
   const [reference] = [...s.state.selected.values()];
-  expect(reference).toMatchObject({ locator: a.locator, form: "year-only" });
+  expect(reference).toMatchObject({ locator: a.locator, form: "year-only", prefix: "see", suffix: "for review" });
+  expect(s.state.keepOrder).toBe(true);
 });
 
 test("only the changed citation's copy carries the text it may replace", () => {

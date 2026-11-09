@@ -103,8 +103,9 @@ export function previewFileCitation(
   expectedRevision: string,
   signal?: AbortSignal,
   context?: [number, number] | null,
+  keepOrder = false,
 ) {
-  const intent = { page: searchPage, request: ++previewRequest, cancel: false, context: context ?? null };
+  const intent = { page: searchPage, request: ++previewRequest, cancel: false, context: context ?? null, keep_order: keepOrder };
   const pending = commands.previewFileCitation(items, output, expectedRevision, intent);
   const cancel = () => { void commands.previewFileCitation([], output, expectedRevision, { ...intent, cancel: true }).catch(() => {}); };
   signal?.addEventListener("abort", cancel, { once: true });

@@ -7,6 +7,7 @@ use crate::library::engine_file::FileLibrary;
 fn preview_aborts_stop_only_the_named_engine_request_in_any_delivery_order() {
     let requests = PreviewRequests::default();
     let intent = |request, cancel| PreviewIntent {
+        keep_order: false,
         page: 1,
         request,
         cancel,

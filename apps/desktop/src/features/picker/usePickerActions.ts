@@ -85,7 +85,7 @@ export function usePickerActions({
   const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
+    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form, prefix: prepared.prefix, suffix: prepared.suffix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")
@@ -105,5 +105,5 @@ export function usePickerActions({
     focusHome();
   };
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
-  return { bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  return { keepOrder: { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) }, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

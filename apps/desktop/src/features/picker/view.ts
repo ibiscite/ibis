@@ -70,7 +70,7 @@ export function deriveView(s: SessionState): SessionView | null {
   const chosen = s.selected.size > 0 || status.ready ? shownChoice : [];
   const format = destinationFormat(d, o.fallback);
   const output = styleOf(format) ?? format;
-  const key = previewKey(output, o.version, choiceKey(shownChoice), d.destination?.context_version ?? null);
+  const key = previewKey(output, o.version, choiceKey(shownChoice), d.destination?.context_version ?? null, s.keepOrder);
   const preview = ownedPreview(s.preview, key, s.session, s.opened);
   return {
     appId: d.destination?.app_id ?? null, writingProjectId: d.destination?.writing_project?.id ?? null, projectVersion: projectVersion(d),

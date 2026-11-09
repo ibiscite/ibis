@@ -78,7 +78,9 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     }}>
     {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
       onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
-      onFormChange={(form) => onChange(reference, { form })} onSubmit={onSubmit} />}
+      onFormChange={(form) => onChange(reference, { form })}
+      prefix={reference.prefix ?? ""} suffix={reference.suffix ?? ""}
+      onPrefixChange={(prefix) => onChange(reference, { prefix })} onSuffixChange={(suffix) => onChange(reference, { suffix })} onSubmit={onSubmit} />}
     {/* What Enter will paste, in full, right under the fields that change it. */}
     {citation && <section aria-label={say("picker-full-citation")} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
     {problem}
