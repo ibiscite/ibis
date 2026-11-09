@@ -66,9 +66,19 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
     : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
   const byline = reference ? [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ") : undefined;
+  const actions = reference && <div className="inspector-actions"><hr />
+    {pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
+      <span>{reading ? say("reader-hide") : say("reader-show")}</span>
+    </Button>}
+    {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
+      <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
+    </Button>}
+    <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
+      <span>{say("key-remove-from-citation")}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
+    </Button></div>;
   return <Inspector ref={ref} id={id} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose}
-    reading={reading && pdf !== null}
+    footer={actions} reading={reading && pdf !== null}
     document={reading && pdf && reference && onChange ? <Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
       onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "page-editor" } : null })} onClose={() => setReading(false)} /> : undefined}
     onKeyDown={(event) => {
@@ -85,16 +95,5 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     {citation && <section aria-label={say("picker-full-citation")} tabIndex={0} className="inspector-citation" data-keys={keys || undefined}><bdi dir="auto">{citation.markup.length && !keys ? render(citation.markup) : citation.text}</bdi></section>}
     {problem}
     {[...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="inspector-citation">{note}</p>)}
-    {/* The actions stay in view at the bottom while the details above them scroll. */}
-    {reference && <div className="inspector-actions"><hr />
-    {pdf && onChange && <Button variant="quiet" className="inspector-action" aria-expanded={reading} onPress={() => setReading(!reading)}>
-      <span>{reading ? say("reader-hide") : say("reader-show")}</span>
-    </Button>}
-    {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
-      <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
-    </Button>}
-    <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
-      <span>{say("key-remove-from-citation")}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
-    </Button></div>}
   </Inspector>;
 }
