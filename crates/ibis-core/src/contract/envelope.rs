@@ -161,6 +161,8 @@ pub enum ErrorReason {
     CsvTemplate,
     /// Nothing has the key in what was read, and a library was too large to read whole.
     LibraryCutShort,
+    /// Neither the file's name nor its contents identify a supported library format.
+    UnknownFormat,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use ibis_core::settings::ZoteroLibrary;
+use ibis_engine::LibraryKind;
 use serde::Serialize;
 
 use super::LoadError;
@@ -228,7 +229,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             result.stale = true;
             result
                 .error
-                .get_or_insert_with(|| words("app-library-not-refreshed", &[]));
+                .get_or_insert_with(|| refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
         }
     }
     if result.stale && library.error.is_some() && !source_is_requested {
@@ -239,6 +240,22 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         });
     }
     result
+}
+
+/// Why a watched refresh failed, in the engine's words when it gave a reason,
+/// with the references kept.
+fn refresh_failure(
+    kind: LibraryKind,
+    code: Option<ibis_core::contract::ErrorCode>,
+    reason: Option<ibis_core::contract::ErrorReason>,
+) -> String {
+    use ibis_core::contract::EngineError;
+    match (kind, code, reason) {
+        (LibraryKind::File, Some(code), Some(reason)) => {
+            LoadError::file_refresh(EngineError::because(code, reason)).with_snapshot_context(true, false)
+        }
+        _ => words("app-library-not-refreshed", &[]),
+    }
 }
 
 /// A time for the interface, which shows it relative to its own clock.
@@ -258,6 +275,60 @@ mod tests {
     use crate::library::load::load_library;
     use crate::library::state::{LoadRequests, begin_open, candidate, install};
     use crate::tray::library_line;
+
+    #[test]
+    fn a_watched_refresh_that_fails_says_why_and_keeps_the_references() {
+        use ibis_core::contract::{ErrorCode, ErrorReason};
+        assert_eq!(
+            super::refresh_failure(
+                LibraryKind::File,
+                Some(ErrorCode::BadInput),
+                Some(ErrorReason::UnknownFormat)
+            ),
+            "This file is not in a format Ibis reads: BibTeX, BibLaTeX, CSL-JSON, RIS or CSV; keeping the last loaded references"
+        );
+        assert_eq!(
+            super::refresh_failure(LibraryKind::File, Some(ErrorCode::SourceUnavailable), None),
+            "The library could not be refreshed; keeping the last loaded references."
+        );
+        assert_eq!(
+            super::refresh_failure(
+                LibraryKind::Zotero,
+                Some(ErrorCode::SourceUnavailable),
+                Some(ErrorReason::ZoteroSharingOff)
+            ),
+            "The library could not be refreshed; keeping the last loaded references."
+        );
+    }
+
+    #[test]
+    fn an_unknown_file_open_publishes_a_refusal_without_an_empty_snapshot() -> Result<(), Box<dyn std::error::Error>> {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason};
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("notes.xyz");
+        std::fs::write(&path, "Invented notes without references.")?;
+        let library = Mutex::new(Library::default());
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, path.clone()).ok_or("begin file open")?;
+        let opened = install(&library, &requests, request, load_library(path, false)).ok_or("install refusal")?;
+        assert!(matches!(opened.state, LibraryState::Error));
+        assert!(!opened.has_snapshot);
+        assert_eq!(opened.name.as_deref(), Some("notes.xyz"));
+        assert_eq!(opened.references, 0);
+        assert_eq!(opened.problem, Some(LibraryProblem::Unreadable));
+        assert_eq!(
+            opened.error_reason,
+            Some(LoadError::File(EngineError::because(
+                ErrorCode::BadInput,
+                ErrorReason::UnknownFormat,
+            )))
+        );
+        assert_eq!(
+            opened.error.as_deref(),
+            Some("This file is not in a format Ibis reads: BibTeX, BibLaTeX, CSL-JSON, RIS or CSV.")
+        );
+        Ok(())
+    }
 
     #[test]
     fn source_identity_distinguishes_an_empty_reload_from_a_same_named_switch() -> Result<(), Box<dyn std::error::Error>>

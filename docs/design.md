@@ -31,7 +31,7 @@ has its own page; read only the one your change touches:
 3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the footer, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
 5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch.
-6. **Say what happened.** Every action ends in a visible result: copied, pasted, or why not. Colour is never the only signal. Nothing asks "are you sure?"; destructive actions apply at once with an 8 s Undo [D16].
+6. **Say what happened.** Every action ends in a visible result: copied, pasted, or why not. A refused library file is a failed open with a way to choose another; only a successful read can say the library is empty. Colour is never the only signal. Nothing asks "are you sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Calm motion.** Movement explains where something came from and stops under Reduce Motion.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. Exceptions: picture choices (see **Selection is a fill** in [components](../apps/desktop/src/ui/README.md)) and a dragged library file, which rings the whole content area.
 9. **Great defaults, then choice.** Most people never open Settings; no setting exists because a choice was hard.

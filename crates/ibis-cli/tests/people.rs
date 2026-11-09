@@ -115,6 +115,32 @@ fn a_file_with_no_entries_is_not_called_a_failed_search() {
 }
 
 #[test]
+fn an_unknown_file_is_refused_with_supported_formats_and_a_next_step() {
+    let lab = Lab::new("unknown-format");
+    let file = lab.file("notes.xyz", "Invented notes without references.\n");
+    let (code, stdout, stderr) = lab.run(&["search", "x", "--file", &file]);
+    assert_eq!((code, stdout.as_str()), (3, ""), "{stderr}");
+    for words in [
+        "notes.xyz",
+        "not in a format Ibis reads",
+        "BibTeX",
+        "BibLaTeX",
+        "CSL-JSON",
+        "RIS",
+        "CSV",
+        "Choose another file",
+    ] {
+        assert!(stderr.contains(words), "{stderr}");
+    }
+    assert!(!stderr.contains("holds any references"), "{stderr}");
+    let (code, stdout, _) = lab.run(&["search", "x", "--file", &file, "--json"]);
+    assert_eq!(code, 3);
+    let response: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(response["error"]["code"], "bad-input");
+    assert_eq!(response["error"]["reason"], "unknown-format");
+}
+
+#[test]
 fn a_library_of_skipped_entries_is_not_called_empty() {
     let lab = Lab::new("skipped");
     let file = lab.file(

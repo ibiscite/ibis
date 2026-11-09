@@ -347,7 +347,7 @@ test.each([false, true])("C12 zero-reference choices offer Zotero and a file, ne
       perform={async (_action, run) => { await run(); }} autoFocus={focus} empty={empty} />} />);
   expect(screen.getAllByRole("option").map((row) => row.querySelector(".result-title")?.textContent))
     .toEqual(["Use Zotero", "Choose a Library File…"]);
-  expect(screen.getByText("Or drag a .bib or CSL-JSON file into this window.")).toBeTruthy();
+  expect(screen.getByText("Or drag a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file into this window.")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Clear Search" })).toBeNull();
 });
 

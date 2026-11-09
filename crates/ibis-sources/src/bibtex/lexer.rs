@@ -48,17 +48,15 @@ pub(crate) struct RawEntry<'s> {
     pub macro_epoch: usize,
 }
 
-/// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
-/// Whether `src` may hold a reference entry: `@type{` or `@type(` for any type
-/// but a comment, preamble or `@string`, whose bodies are skipped. One pass,
-/// nothing allocated.
-pub(crate) fn has_entry(src: &str) -> bool {
+/// Whether `src` holds an entry header outside directives. An unfinished
+/// directive leaves the answer unknown until the loader recovers its blocks.
+pub(crate) fn has_entry(src: &str) -> Option<bool> {
     let bytes = src.as_bytes();
     let mut i = 0;
     while let Some(offset) = src[i..].find('@') {
         let start = i + offset + 1;
         let mut j = start;
-        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
+        while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || matches!(bytes[j], b'_' | b'}')) {
             j += 1;
         }
         let kind = &src[start..j];
@@ -73,19 +71,17 @@ pub(crate) fn has_entry(src: &str) -> bool {
         if !opens || kind.is_empty() {
             i = start;
         } else if !ignored {
-            return true;
+            return Some(true);
         } else {
             // An example inside a comment is not an entry, so the whole block
             // is skipped. One that never closes leaves the rest unknown.
-            match find_close(bytes, k) {
-                Some(end) => i = end + 1,
-                None => return true,
-            }
+            i = find_close(bytes, k)? + 1;
         }
     }
-    false
+    Some(false)
 }
 
+/// Find all top-level blocks. Text between blocks is a comment, as in BibTeX.
 pub(crate) fn split_blocks(src: &str) -> (Vec<Block<'_>>, bool) {
     let bytes = src.as_bytes();
     let mut blocks = Vec::new();

@@ -12,6 +12,13 @@ test("the bundled interface default is English, independent of browser language 
   expect(Object.isFrozen(englishMessages)).toBe(true);
 });
 
+test("interface messages resolve a shared Fluent term", () => {
+  const source = english + "\n-library-formats-test = BibTeX, BibLaTeX, CSL-JSON, RIS or CSV\n";
+  const messages = createInterfaceMessages(source.replace(/^choice-library-file-help =.*$/m,
+    "choice-library-file-help = { -library-formats-test }"));
+  expect(messages.text("choice-library-file-help")).toBe("BibTeX, BibLaTeX, CSL-JSON, RIS or CSV");
+});
+
 test.each([
   "", english.replace(/^settings-general =.*$/m, ""),
   english + "\nbroken = {\n", english + "\nsettings-general = Duplicate\n",
@@ -20,6 +27,8 @@ test.each([
   english.replace(/^shortcuts-open =.*$/m, ""),
   english.replace(/^about-check =.*$/m, "about-check = { missing-message }"),
   english.replace(/^shortcuts-picker-conflict =.*$/m, "shortcuts-picker-conflict = { $unexpected }"),
+  english.replace(/^-library-formats =.*$/m, ""),
+  english + "\n-library-formats = Duplicate\n",
 ])("missing or invalid bundled resources refuse the whole message owner", (source) => {
   expect(() => createInterfaceMessages(source)).toThrow("Invalid interface messages");
 });

@@ -621,10 +621,14 @@ pub(crate) fn choose_library_file(app: &AppHandle) {
     let generation = app.state::<crate::picker::PickerGeneration>().current();
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(app);
-    let mut dialog = app.dialog().file().set_title("Choose a library").add_filter(
-        "BibTeX, BibLaTeX, CSL-JSON, RIS and CSV",
-        &ibis_engine::library_file_extensions().collect::<Vec<_>>(),
-    );
+    let mut dialog = app
+        .dialog()
+        .file()
+        .set_title(ibis_engine::catalogue::text("app-file-dialog-title", None, &[]).unwrap_or_default())
+        .add_filter(
+            ibis_engine::catalogue::text("app-file-dialog-formats", None, &[]).unwrap_or_default(),
+            &ibis_engine::library_file_extensions().collect::<Vec<_>>(),
+        );
     if let Some(window) = app.get_webview_window("main") {
         dialog = dialog.set_parent(&window);
     }

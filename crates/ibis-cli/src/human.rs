@@ -42,14 +42,11 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
             if hits.is_empty() {
-                return Some(
-                    match holdings {
-                        Holdings::NoLibrary => "No library is open; add --file <library> or --zotero.",
-                        Holdings::Empty => return catalogue::text("cli-no-references", None, &[]),
-                        Holdings::References => "No references found.",
-                    }
-                    .into(),
-                );
+                return match holdings {
+                    Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
+                    Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
+                    Holdings::References => Some("No references found.".into()),
+                };
             }
             let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
             // Closest matches are said to be so, never shown as full matches.
@@ -556,7 +553,7 @@ pub(super) fn file_reason(path: &Path, error: EngineError) -> String {
     found.map_or_else(
         || match code {
             ErrorCode::BadInput => {
-                "it cannot be read, or it is not a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV library; check its permissions and contents.".into()
+                catalogue::text("cli-file-unreadable", None, &[]).unwrap_or_default()
             }
             ErrorCode::SourceUnavailable => "it is being written or cannot be read right now; try again in a moment.".into(),
             ErrorCode::ResourceLimit => {

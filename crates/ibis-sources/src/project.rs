@@ -41,6 +41,7 @@ impl From<SourceError> for ProjectProblem {
             SourceError::TooLarge => Self::TooLarge,
             SourceError::Unreadable => Self::NotUtf8,
             SourceError::Changing => Self::Changing,
+            SourceError::UnknownFormat => Self::NotBibtex,
             _ => Self::Unavailable,
         }
     }
@@ -287,11 +288,11 @@ fn doi(record: &Record) -> Option<String> {
 }
 
 fn observed_text(path: &Path) -> Result<Arc<String>, ProjectProblem> {
-    if file::Format::of(path, "") != file::Format::Bibtex {
+    if file::Format::named(path).is_some_and(|format| format != file::Format::Bibtex) {
         return Err(ProjectProblem::NotBibtex);
     }
     let observation = file::stable_observation(path).map_err(ProjectProblem::from)?;
-    if file::Format::of(path, &observation.text()) != file::Format::Bibtex {
+    if file::Format::of(path, &observation.text()) != Ok(file::Format::Bibtex) {
         return Err(ProjectProblem::NotBibtex);
     }
     Ok(observation.text())

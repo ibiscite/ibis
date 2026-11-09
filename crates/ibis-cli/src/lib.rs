@@ -68,7 +68,7 @@ fn command() -> Command {
         .action(ArgAction::Append)
         .help_heading(LIBRARIES)
         .display_order(1000)
-        .help("Open a BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file; repeat for several libraries");
+        .help(ibis_engine::catalogue::text("cli-file-help", None, &[]).unwrap_or_default());
     let group = Arg::new("zotero-group")
         .long("zotero-group")
         .value_name("GROUP_ID")
