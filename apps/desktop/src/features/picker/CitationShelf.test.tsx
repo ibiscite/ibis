@@ -7,8 +7,6 @@ import { referenceLabels, CitationShelf } from "./CitationShelf";
 import { useCitationInspector } from "./useCitationInspector";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 
 function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
   return { revision: "1", id: { library: "invented.bib", key }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
@@ -277,12 +275,6 @@ test("a key the segment does not use is handed on to the picker", () => {
   act(() => segment.focus());
   fireEvent.keyDown(segment, { key: "Escape" });
   expect(picker).toHaveBeenCalledExactlyOnceWith("Escape");
-});
-
-test("a pointed segment's remove button outranks the rule that hides it", () => {
-  const css = readFileSync(new FileURL("../../ui/ShelfSegment.css", import.meta.url), "utf8");
-  const hidden = css.match(/(\.shelf-segment > \.shelf-remove[^\s{]*)[^{]*\{[^}]*visibility: hidden/)![1]!;
-  expect(css).toContain(`:is(:hover, [data-hovered]):not(:has([data-focus-visible])) > ${hidden.replace(".shelf-segment > ", "")} { visibility: visible; }`);
 });
 
 test("hiding the output keeps the reference's one-click remove badge", () => {

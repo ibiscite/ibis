@@ -469,7 +469,10 @@ fn unavailable_reads_wait_for_events_instead_of_polling() {
     std::fs::remove_file(&path).unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(next(&rx).err(), Some(SourceError::Unavailable));
     drop(watch);
-    assert!(rx.recv_timeout(Duration::from_millis(900)).is_err());
+    assert!(matches!(
+        rx.recv_timeout(Duration::from_secs(10)),
+        Err(mpsc::RecvTimeoutError::Disconnected)
+    ));
 }
 
 #[cfg(windows)]

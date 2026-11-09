@@ -144,8 +144,9 @@ fn closed() -> SettingsError {
 mod tests {
     use super::*;
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
     use std::time::Duration;
+
+    const CHANNEL_LIMIT: Duration = Duration::from_secs(5);
 
     fn owner() -> (tempfile::TempDir, Owner) {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("temporary folder: {error}"));
@@ -211,22 +212,28 @@ mod tests {
     #[test]
     fn a_later_choice_lands_after_a_slow_earlier_one() {
         let (_directory, owner) = owner();
-        let started = Arc::new(AtomicBool::new(false));
-        let running = started.clone();
+        let (started, running) = mpsc::channel();
+        let (release, held) = mpsc::channel();
         // The earlier choice is still being applied when the later one is asked for.
         let earlier = owner.submit(move |s: &mut Settings| -> Result<(), SettingsError> {
-            running.store(true, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(50));
+            started
+                .send(())
+                .unwrap_or_else(|error| panic!("the test is waiting for the earlier choice: {error}"));
+            held.recv_timeout(CHANNEL_LIMIT)
+                .unwrap_or_else(|error| panic!("the test releases the earlier choice: {error}"));
             s.density = Some(settings::Density::Compact);
             Ok(())
         });
-        while !started.load(Ordering::SeqCst) {
-            std::thread::yield_now();
-        }
+        running
+            .recv_timeout(CHANNEL_LIMIT)
+            .unwrap_or_else(|error| panic!("the earlier choice starts: {error}"));
         let later = owner.submit(|s: &mut Settings| -> Result<(), SettingsError> {
             s.density = Some(settings::Density::Comfortable);
             Ok(())
         });
+        release
+            .send(())
+            .unwrap_or_else(|error| panic!("the earlier choice is held: {error}"));
         assert!(earlier.wait().is_some_and(|saved| saved.is_ok()));
         assert!(later.wait().is_some_and(|saved| saved.is_ok()));
         assert_eq!(
@@ -266,29 +273,52 @@ mod tests {
     #[test]
     fn a_change_in_turn_waits_for_earlier_ones_and_holds_back_later_ones() {
         let (_directory, owner) = owner();
-        let owner = Arc::new(owner);
-        let started = Arc::new(AtomicBool::new(false));
-        let running = started.clone();
+        let (release_earlier, earlier_held) = mpsc::channel();
         let earlier = owner.submit(move |s: &mut Settings| -> Result<(), SettingsError> {
-            running.store(true, Ordering::SeqCst);
-            std::thread::sleep(Duration::from_millis(30));
+            earlier_held
+                .recv_timeout(CHANNEL_LIMIT)
+                .unwrap_or_else(|error| panic!("the test releases the earlier choice: {error}"));
             s.density = Some(settings::Density::Compact);
             Ok(())
         });
-        while !started.load(Ordering::SeqCst) {
-            std::thread::yield_now();
-        }
-        // Borrowed state, read in its turn: the earlier change is already saved.
-        let seen = std::cell::Cell::new(None);
-        let (saved, ()) = owner
-            .change(|s| {
-                seen.set(s.density);
-                s.density = Some(settings::Density::Comfortable);
-                Ok::<_, SettingsError>(())
-            })
-            .unwrap_or_else(|error| panic!("{error}"));
-        assert_eq!(seen.get(), Some(settings::Density::Compact));
-        assert_eq!(saved.density, Some(settings::Density::Comfortable));
+        std::thread::scope(|scope| {
+            let (entered, in_turn) = mpsc::channel();
+            let (release_turn, turn_held) = mpsc::channel();
+            let owner = &owner;
+            let turn = scope.spawn(move || {
+                // Borrowed state, read in its turn: the earlier change is already saved.
+                let seen = std::cell::Cell::new(None);
+                let (saved, ()) = owner
+                    .change(|s| {
+                        seen.set(s.density);
+                        entered
+                            .send(())
+                            .unwrap_or_else(|error| panic!("the test is waiting for the turn: {error}"));
+                        turn_held
+                            .recv_timeout(CHANNEL_LIMIT)
+                            .unwrap_or_else(|error| panic!("the test releases the turn: {error}"));
+                        s.density = Some(settings::Density::Comfortable);
+                        Ok::<_, SettingsError>(())
+                    })
+                    .unwrap_or_else(|error| panic!("{error}"));
+                (seen.get(), saved.density)
+            });
+            release_earlier
+                .send(())
+                .unwrap_or_else(|error| panic!("the earlier choice is held: {error}"));
+            in_turn
+                .recv_timeout(CHANNEL_LIMIT)
+                .unwrap_or_else(|error| panic!("the next turn starts: {error}"));
+            let later = owner.submit_on_file(|path| settings::load(path).settings.density);
+            release_turn
+                .send(())
+                .unwrap_or_else(|error| panic!("the turn is held: {error}"));
+            assert_eq!(
+                turn.join().unwrap_or_else(|_| panic!("the turn panicked")),
+                (Some(settings::Density::Compact), Some(settings::Density::Comfortable))
+            );
+            assert_eq!(later.wait().flatten(), Some(settings::Density::Comfortable));
+        });
         assert!(earlier.wait().is_some_and(|saved| saved.is_ok()));
         // A turn that panics releases the queue.
         let unwound = std::panic::catch_unwind(AssertUnwindSafe(|| owner.in_turn(|_| panic!("a broken change"))));
