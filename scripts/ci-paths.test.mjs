@@ -129,7 +129,7 @@ test("Node and shell script changes run script tests on every system without bui
   assert.deepEqual(pr([row("scripts/land.sh"), row("apps/desktop/src/App.tsx")]), { ...interfaceOnly, scripts: true });
   assert.deepEqual(pr([row("scripts/land.sh"), row("apps/desktop/src-tauri/src/lib.rs")]), { ...appOnly, scripts: true });
   // The native jobs run these, and CI's own scripts and check.mjs decide what runs.
-  for (const path of ["scripts/ci-paths.mjs", "scripts/ci-changes.sh", "scripts/ci-linux-webview.sh", "scripts/check.mjs", "scripts/gen.mjs", "docs/cli.md", "scripts/smoke-native.py", "scripts/check-offline.ps1", "scripts/update-gtk-probe.c", "scripts/update-macos.js", "scripts/lib/helper.mjs"]) {
+  for (const path of ["scripts/ci-paths.mjs", "scripts/ci-changes.sh", "scripts/ci-ubuntu-deps.sh", "scripts/check.mjs", "scripts/gen.mjs", "docs/cli.md", "scripts/smoke-native.py", "scripts/check-offline.ps1", "scripts/update-gtk-probe.c", "scripts/update-macos.js", "scripts/lib/helper.mjs"]) {
     assert.deepEqual(pr([row(path)]), full, path);
   }
   assert.deepEqual(pr([row("scripts/land.sh", "scripts/smoke-native.py")]), full, "both sides of a rename");

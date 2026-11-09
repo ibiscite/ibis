@@ -209,10 +209,7 @@ jobs:
           GIT_CONFIG_KEY_0: safe.directory
           GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: |
-          # The workflow policy test reads ci.yml with PyYAML (Ubuntu's own package).
-          if ! python3 -c 'import yaml' 2>/dev/null; then
-            apt-get update -qq && apt-get install -y -qq --no-install-recommends python3-yaml
-          fi
+          bash scripts/ci-ubuntu-deps.sh web
           node scripts/check.mjs --script-tests
 
       - name: Type check and test the interface
@@ -275,7 +272,7 @@ jobs:
       - name: Install system WebView libraries (Linux)
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
         working-directory: .
-        run: scripts/ci-linux-webview.sh
+        run: scripts/ci-ubuntu-deps.sh desktop
 
       - name: Check generated brand assets (Linux)
         if: env.NATIVE == 'true' && runner.os == 'Linux'
