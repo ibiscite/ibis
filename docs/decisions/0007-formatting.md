@@ -47,3 +47,9 @@ language, which is the request's, else the style's, and never the interface's or
 the operating system's. An unknown language is refused rather than approximated,
 except that a bare language means its main dialect, as upstream's `locales.json`
 defines it.
+
+2026-11-10 (#19): the credit for styles is the Citation Style Language project's
+and each style's own. `styles` with an `id` returns that style's authors,
+contributors, licence and documentation links as its `<info>` gives them, a
+dependent style's own rather than its parent's; emails stay in the file.
+`ibis styles --about [ID]` shows it, and the app's About view will use the same.

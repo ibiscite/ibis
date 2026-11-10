@@ -247,7 +247,7 @@ on raw item data; #1197 integrates both providers, and #1200 gates full parity.
 Advanced mixed citation editing remains in 0.4; unsupported intents are refused
 explicitly rather than approximated. The 0.2 release still requires all sources and the picker. Engine `cite` routes
 `OutputSpec::Csl` to the shared bounded formatter on the same immutable snapshot;
-`styles` pages through every bundled style. Human CLI citation/bibliography options,
+`styles` pages through every bundled style, or with an `id` gives one style and its credits. Human CLI citation/bibliography options,
 canonical JSON requests and stdio use those same results. RPC cancellation reaches
 the formatter task, and exhaustion remains a typed resource-limit error.
 

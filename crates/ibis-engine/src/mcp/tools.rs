@@ -738,6 +738,7 @@ fn styles(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
         query,
         limit: number("limit", 25, Some(MAX_STYLES))?,
         offset: number("offset", 0, None)?,
+        id: None,
     })?;
     serde_json::to_value(page).map_err(|_| EngineError::new(ErrorCode::Internal).into())
 }

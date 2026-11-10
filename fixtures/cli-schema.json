@@ -3424,6 +3424,14 @@
         "additionalProperties": false,
         "description": "A page of the style list: the curated styles first, then the rest by id.",
         "properties": {
+          "id": {
+            "default": null,
+            "description": "One style by id, with who made it and its licence, instead of a page.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "limit": {
             "default": 100,
             "format": "uint",
@@ -3451,7 +3459,8 @@
       },
       "result": {
         "$defs": {
-          "LocaleInfo": {
+          "LocaleEntry": {
+            "description": "One language styles can be written in.",
             "properties": {
               "english": {
                 "type": "string"
@@ -3470,7 +3479,95 @@
             ],
             "type": "object"
           },
-          "StyleInfo": {
+          "Person": {
+            "description": "Someone a style names as its author or contributor. Their email stays in the\nfile: a credit needs only the name and the page they chose to give.",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "uri": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "type": "object"
+          },
+          "Release": {
+            "description": "Which upstream release a part of the bundle was built from.",
+            "properties": {
+              "commit": {
+                "type": "string"
+              },
+              "repo": {
+                "type": "string"
+              },
+              "tag": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "repo",
+              "tag",
+              "commit"
+            ],
+            "type": "object"
+          },
+          "StyleCredits": {
+            "description": "What a style's own `<info>` says about who made it and on what terms,\nfor the \"About citation styles\" view. A dependent style's are its own.",
+            "properties": {
+              "authors": {
+                "items": {
+                  "$ref": "#/$defs/Person"
+                },
+                "type": "array"
+              },
+              "contributors": {
+                "items": {
+                  "$ref": "#/$defs/Person"
+                },
+                "type": "array"
+              },
+              "documentation": {
+                "description": "Web pages documenting the rules the style follows.",
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "license": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "rights": {
+                "description": "The licence sentence and the address of the licence.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "summary": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "authors",
+              "contributors",
+              "documentation"
+            ],
+            "type": "object"
+          },
+          "StyleEntry": {
+            "description": "One entry in the style list.",
             "properties": {
               "curated": {
                 "description": "One of the styles offered first.",
@@ -3510,7 +3607,7 @@
                 "type": "string"
               },
               "updated": {
-                "description": "The style's own last-changed date: its only version marker.",
+                "description": "The style's own last-changed date, `YYYY-MM-DD`: its only version marker.",
                 "type": "string"
               }
             },
@@ -3518,51 +3615,43 @@
               "id",
               "title",
               "updated",
-              "curated",
-              "fields"
-            ],
-            "type": "object"
-          },
-          "UpstreamRelease": {
-            "properties": {
-              "commit": {
-                "type": "string"
-              },
-              "repo": {
-                "type": "string"
-              },
-              "tag": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "repo",
-              "tag",
-              "commit"
+              "fields",
+              "curated"
             ],
             "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "credits": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/StyleCredits"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The style a request named by id: who made it and on what terms."
+          },
           "locales": {
             "description": "Every language a style can be written in.",
             "items": {
-              "$ref": "#/$defs/LocaleInfo"
+              "$ref": "#/$defs/LocaleEntry"
             },
             "type": "array"
           },
           "locales_release": {
-            "$ref": "#/$defs/UpstreamRelease"
+            "$ref": "#/$defs/Release"
           },
           "styles": {
             "items": {
-              "$ref": "#/$defs/StyleInfo"
+              "$ref": "#/$defs/StyleEntry"
             },
             "type": "array"
           },
           "styles_release": {
-            "$ref": "#/$defs/UpstreamRelease",
+            "$ref": "#/$defs/Release",
             "description": "Styles change only with an Ibis release; these say which release."
           },
           "total": {

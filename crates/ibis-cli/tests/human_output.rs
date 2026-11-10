@@ -377,6 +377,16 @@ fn libraries_name_the_file_people_gave() -> Result<(), Box<dyn std::error::Error
     assert!(text.lines().any(|line| line == "de-DE\tGerman (Germany)"), "{text}");
     let (_, text, _) = run(engine()?, &["ibis", "styles", "invented", "nothing"])?;
     assert_eq!(text, "No style matches those words.\n");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "--about"])?;
+    assert!(
+        text.starts_with("Citation styles and locales come unchanged from the Citation Style Language project"),
+        "{text}"
+    );
+    assert!(text.contains("CC BY-SA 3.0"), "{text}");
+    let (_, text, _) = run(engine()?, &["ibis", "styles", "--about", "apa"])?;
+    assert!(text.starts_with("apa\tAPA (7th edition)\nUpdated 2"), "{text}");
+    assert!(text.lines().any(|line| line.starts_with("Authors: ")), "{text}");
+    assert!(!text.contains('@'), "no email: {text}");
     Ok(())
 }
 

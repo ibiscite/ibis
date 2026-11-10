@@ -2,13 +2,16 @@
 //! The pinned Zotero processor has no filesystem, network or native-input API.
 
 mod catalog;
+mod credits;
 mod input;
 mod locale;
 mod output;
 mod runtime;
 mod service;
 
-pub use catalog::{Curated, LocaleEntry, Release, StyleEntry, StylePage, curated, files, styles};
+pub use catalog::{
+    Curated, LocaleEntry, Person, Release, StyleCredits, StyleEntry, StylePage, curated, files, style_credits, styles,
+};
 use ibis_core::contract::{CitationForm, CitationRequest, CitationResult, OutputSpec, Snapshot};
 pub use service::{CancellationToken, FormatTask};
 use std::sync::Arc;

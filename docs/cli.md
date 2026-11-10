@@ -150,6 +150,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--limit N` | Return at most N styles, up to 20000 |
 | `--offset N` | Skip the first N styles |
 | `--locales` | List citation languages instead of styles |
+| `--about ID` | Credit the Citation Style Language project, or with a style id, that style's authors and licence |
 
 **`ibis outputs`**: List the outputs cite writes: key syntaxes, then the common styles
 

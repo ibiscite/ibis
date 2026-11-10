@@ -44,7 +44,7 @@ fn cite(engine: &Engine, id: &ItemRef, style: &str, locale: Option<&str>) -> Res
 }
 
 /// A journal style in another language, found in the data: the list is upstream's.
-fn german_journal(engine: &Engine) -> ibis_engine::StyleInfo {
+fn german_journal(engine: &Engine) -> ibis_csl::StyleEntry {
     let all = engine
         .styles(&StylesRequest {
             limit: 20_000,
@@ -173,6 +173,58 @@ fn the_list_is_paged_searched_and_bounded() {
             ErrorCode::BadInput
         );
     }
+}
+
+#[test]
+fn one_style_by_id_comes_with_its_own_credits() {
+    let (engine, _) = engine();
+    let cancel = Cancellation::default();
+    let apa = engine
+        .dispatch(Method::Styles, &json!({"id":"apa"}), &cancel)
+        .unwrap()
+        .data;
+    assert_eq!(apa["total"], 1);
+    assert_eq!(apa["styles"][0]["id"], "apa");
+    assert!(!apa["credits"]["authors"].as_array().unwrap().is_empty());
+    assert_eq!(
+        apa["credits"]["license"],
+        "http://creativecommons.org/licenses/by-sa/3.0/"
+    );
+    assert!(apa["styles_release"]["tag"].as_str().unwrap().starts_with('v'));
+    // A dependent style is credited as itself and names the rules it uses.
+    let journal = german_journal(&engine);
+    let credits = engine
+        .dispatch(Method::Styles, &json!({"id":journal.id}), &cancel)
+        .unwrap()
+        .data;
+    assert_eq!(credits["styles"][0]["parent"].as_str(), journal.parent.as_deref());
+    // An old id is credited under its new one; a page has no credits.
+    let renamed = engine
+        .dispatch(Method::Styles, &json!({"id":"aaa"}), &cancel)
+        .unwrap()
+        .data;
+    assert_eq!(renamed["styles"][0]["id"], "american-anthropological-association");
+    assert!(
+        engine
+            .dispatch(Method::Styles, &json!({}), &cancel)
+            .unwrap()
+            .data
+            .get("credits")
+            .is_none()
+    );
+    assert_eq!(
+        engine
+            .dispatch(Method::Styles, &json!({"id":"invented-style"}), &cancel)
+            .unwrap_err(),
+        EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownStyle)
+    );
+    assert_eq!(
+        engine
+            .dispatch(Method::Styles, &json!({"id":"apa","query":"apa"}), &cancel)
+            .unwrap_err()
+            .code,
+        ErrorCode::BadInput
+    );
 }
 
 #[test]

@@ -136,6 +136,9 @@ pub struct StylesRequest {
     pub limit: usize,
     #[serde(default)]
     pub offset: usize,
+    /// One style by id, with who made it and its licence, instead of a page.
+    #[serde(default)]
+    pub id: Option<String>,
 }
 impl Default for StylesRequest {
     fn default() -> Self {
@@ -143,6 +146,7 @@ impl Default for StylesRequest {
             query: None,
             limit: default_styles_limit(),
             offset: 0,
+            id: None,
         }
     }
 }

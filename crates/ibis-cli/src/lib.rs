@@ -324,7 +324,7 @@ fn command() -> Command {
                 .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
-                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales")
+                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales\n  ibis styles --about apa")
                 .arg(
                     Arg::new("query")
                         .value_name("WORDS")
@@ -352,6 +352,15 @@ fn command() -> Command {
                         .long("locales")
                         .action(ArgAction::SetTrue)
                         .help("List citation languages instead of styles"),
+                )
+                .arg(
+                    Arg::new("about")
+                        .long("about")
+                        .value_name("ID")
+                        .num_args(0..=1)
+                        .default_missing_value("")
+                        .conflicts_with_all(["query", "locales"])
+                        .help(ibis_engine::catalogue::text("cli-styles-about", None, &[]).unwrap_or_default()),
                 ),
             Method::Outputs => subcommand
                 .about("List the outputs cite writes: key syntaxes, then the common styles")
@@ -1271,11 +1280,16 @@ fn run_method<R: BufRead>(
                 .flatten()
                 .map(String::as_str)
                 .collect();
-            json!({
-                "query": (!words.is_empty()).then(|| words.join(" ")),
-                "limit": args.get_one::<usize>("limit").copied().unwrap_or(100),
-                "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
-            })
+            match args.get_one::<String>("about").map(String::as_str) {
+                // The credit for every style needs only the releases.
+                Some("") => json!({"limit": 1}),
+                Some(id) => json!({"id": id}),
+                None => json!({
+                    "query": (!words.is_empty()).then(|| words.join(" ")),
+                    "limit": args.get_one::<usize>("limit").copied().unwrap_or(100),
+                    "offset": args.get_one::<usize>("offset").copied().unwrap_or(0),
+                }),
+            }
         }
         Method::Outputs => json!({}),
         Method::Schema => {
@@ -1323,6 +1337,9 @@ fn run_method<R: BufRead>(
     )?;
     if method == Method::Styles && args.get_flag("locales") && !matches.get_flag("json") {
         return Ok(Execution::Result(human::locale_list(result), None));
+    }
+    if method == Method::Styles && args.contains_id("about") && !matches.get_flag("json") {
+        return Ok(Execution::Result(human::style_credits(result), None));
     }
     Ok(Execution::Result(
         human::with_summary(result, method, matches.get_flag("json"), holdings(), &names),
