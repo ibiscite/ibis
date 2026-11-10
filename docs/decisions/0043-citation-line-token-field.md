@@ -1,4 +1,4 @@
-# 0042 The citation line is a token field
+# 0043 The citation line is a token field
 
 2026-11-10 (#1762). The maintainer chose this from three options
 (`.local/design-review/shelf-inspector/options.md`):

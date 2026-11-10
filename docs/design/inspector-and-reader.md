@@ -4,7 +4,7 @@ The regions that unfold beside the list ([the model](../design.md#the-model), de
 
 ## Citation details
 
-[C23] One reference's citation details are a popover on its token (decision 0042), as Zotero's bubbles open theirs: they belong to this citation and are forgotten after the paste.
+[C23] One reference's citation details are a popover on its token (decision 0043), as Zotero's bubbles open theirs: they belong to this citation and are forgotten after the paste.
 
 - **Where**: above the token, anchored to it, with its arrow on the token, growing from it in the shared overlay material and staying inside the window, `--inspector-width` wide. Where the list can scroll, the highlighted result moves clear of it. It is not modal: Search, the list, the line and the footer stay live.
 - **Only this citation's details**, on one label column, with no actions: Open the source, Show in Zotero and the rest act on the reference, so they live in More and on its result row; Remove is the token's ×; moves are ⇧← ⇧→ and More.
