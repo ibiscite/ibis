@@ -62,6 +62,9 @@ pub struct SyntaxCapabilities {
     pub narrative: Option<&'static str>,
     /// It writes each reference's whole record, not a citation of it.
     pub exports_records: bool,
+    /// It names Zotero items rather than citation keys, so it writes only
+    /// references the engine read from Zotero (`syntax::scannable`).
+    pub zotero_items: bool,
     pub forms: &'static [CitationForm],
     pub single_item_forms: &'static [CitationForm],
     pub locator: FieldSupport,
@@ -109,6 +112,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
@@ -127,6 +131,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: Some("bare"),
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative, YearOnly],
         single_item_forms: &[Narrative],
         locator: Native,
@@ -144,6 +149,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: Some("autocite"),
         narrative: Some("textcite"),
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
@@ -161,6 +167,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: Some("parencite"),
         narrative: Some("textcite"),
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, YearOnly],
         single_item_forms: &[YearOnly],
         locator: Native,
@@ -178,6 +185,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: Some("textcite"),
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative],
         single_item_forms: &[],
         locator: Native,
@@ -195,6 +203,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
         single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
         locator: SingleItem,
@@ -217,6 +226,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: Some("cite"),
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -234,6 +244,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, CitationForm::AuthorOnly, YearOnly, CitationForm::Full],
         single_item_forms: &[],
         // ConTeXt sorts a citation's keys, and its texts follow the sorted order.
@@ -257,6 +268,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[
             Normal,
             Narrative,
@@ -286,6 +298,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative, CitationForm::AuthorOnly, YearOnly],
         single_item_forms: &[Narrative, CitationForm::AuthorOnly, YearOnly],
         locator: Native,
@@ -308,6 +321,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal, Narrative],
         single_item_forms: &[],
         locator: Unsupported,
@@ -325,6 +339,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -342,6 +357,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -359,6 +375,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -376,6 +393,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: SingleItem,
@@ -393,6 +411,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -410,6 +429,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -427,6 +447,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: true,
+        zotero_items: false,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Unsupported,
@@ -446,6 +467,7 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         command: None,
         narrative: None,
         exports_records: false,
+        zotero_items: true,
         forms: &[Normal],
         single_item_forms: &[],
         locator: Native,
@@ -492,7 +514,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     }
     let mut caps = capabilities(&request.output)?;
     // Markers name Zotero items, which only the engine can vouch for.
-    if caps.syntax == KeySyntax::ScannableCite {
+    if caps.zotero_items {
         return Err(CitationError::UnsupportedOutput);
     }
     // Narrative is its own command in some syntaxes (BibLaTeX's `\textcite`):

@@ -462,12 +462,13 @@ fn cite_output() -> Value {
     })
 }
 
-/// Every output the engine lists, but those that export whole records: those
-/// would hand an agent notes and fields it is never shown.
+/// Every output the engine lists, but those that export whole records, which
+/// would hand an agent notes and fields it is never shown, and Zotero's scan
+/// markers, which are for a person's own Word or LibreOffice document.
 fn format_ids() -> Vec<&'static str> {
     outputs::outputs()
         .iter()
-        .filter(|output| !output.exports_records)
+        .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect()
 }

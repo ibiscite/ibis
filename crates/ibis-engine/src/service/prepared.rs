@@ -60,10 +60,12 @@ impl PreparedCitation {
             conflicts,
         }
     }
-    /// Record exports do not emit citation keys even though they share the
-    /// key-output request family; their target needs no project bibliography.
+    /// Record exports and Zotero's markers emit no citation keys even though
+    /// they share the key-output request family; their target needs no
+    /// project bibliography.
     pub fn uses_citation_keys(&self) -> bool {
-        ibis_core::syntax::capabilities(&self.request.output).is_ok_and(|capabilities| !capabilities.exports_records)
+        ibis_core::syntax::capabilities(&self.request.output)
+            .is_ok_and(|capabilities| !capabilities.exports_records && !capabilities.zotero_items)
     }
     /// Check exactly the emitted keys and record fields that made this receipt,
     /// even if a later source snapshot has renamed or replaced a reference.

@@ -168,7 +168,7 @@ fn marker<'a>(
 /// `zu:0:KEY` for the personal library, `zg:GROUP:KEY` for a group: never
 /// the numeric user ID, which a document should not carry.
 fn identifier(origin: Option<ZoteroOrigin>, key: &str) -> Result<String, CitationError> {
-    // Zotero's item keys: eight of its 32 letters and digits.
+    // Zotero's item keys: eight of its 33 letters and digits (no 0, 1 or O).
     let valid = key.len() == 8
         && key
             .bytes()
@@ -209,7 +209,11 @@ fn label(record: &Record) -> String {
         .filter(|part| !part.is_empty())
         .collect();
     // A leading `-` would ask Zotero to leave the author out.
-    parts.join(", ").trim_start_matches('-').trim().to_owned()
+    parts
+        .join(", ")
+        .trim_start_matches(|ch: char| ch == '-' || ch.is_whitespace())
+        .trim_end()
+        .to_owned()
 }
 
 /// Plain text with at most one italic and one bold span, written `*so*` and
@@ -230,7 +234,12 @@ fn affix(runs: &RichText) -> Result<String, CitationError> {
         }
     }
     let count = |pick: fn(&(bool, bool, String)) -> bool| spans.iter().filter(|span| pick(span)).count();
-    if count(|span| span.0) > 1 || count(|span| span.1) > 1 {
+    // Italic touching bold would read `*a***b**`, which Scan cannot split.
+    let styled = |span: &(bool, bool, String)| span.0 || span.1;
+    if count(|span| span.0) > 1
+        || count(|span| span.1) > 1
+        || spans.windows(2).any(|pair| styled(&pair[0]) && styled(&pair[1]))
+    {
         return Err(CitationError::InvalidRichText);
     }
     let text: String = spans
@@ -295,6 +304,11 @@ mod tests {
                 json!({"type":"legal_case","title":"Invented v. Example"}),
             ),
             record(PERSONAL, "lowercase", json!({"type":"book","title":"Invented"})),
+            record(
+                PERSONAL,
+                "DASHED23",
+                json!({"type":"book","title":"Invented","author":[{"literal":"- -Dashed"}]}),
+            ),
         ])
         .unwrap()
     }
@@ -409,6 +423,10 @@ mod tests {
                 json!({"suffix":[{"text":"2","script":"superscript"}]}),
                 CitationError::InvalidRichText,
             ),
+            (
+                json!({"suffix":[{"text":"a","italic":true},{"text":"b","bold":true}]}),
+                CitationError::InvalidRichText,
+            ),
             (json!({"form":"narrative"}), CitationError::UnsupportedForm),
             (json!({"expected_cite":"0".repeat(64)}), CitationError::ChangedItem),
         ] {
@@ -442,6 +460,11 @@ mod tests {
                 "normal"
             ),
             [CitationError::UnsupportedForm]
+        );
+        // A name that starts like a dash never asks Zotero to drop the author.
+        assert_eq!(
+            text(vec![item(PERSONAL, "DASHED23", json!({}))]),
+            "{ | Dashed | | | zu:0:DASHED23 }"
         );
         assert_eq!(
             text(vec![item(PERSONAL, "LEGAL234", json!({}))]),
