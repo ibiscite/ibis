@@ -65,30 +65,29 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
         }} />
     </div>}
     <div className="citation-field">
-      <ToolbarMenu buttonRef={typeButton} returnFocusRef={locatorRef} placement="bottom start" label={say("citation-details-locator-type")} value={termName(term)} selectedKey={term}
-        filterLabel={say("citation-details-locator-filter")} button={{ className: "citation-locator-type", label: say("citation-details-locator-type"), content: termName(term), quiet: true }}
-        sections={[{ id: "terms", items: LOCATOR_TERMS.map((option) => ({ id: option, label: termName(option) })) }]}
-        onAction={(key) => {
-          const chosen = LOCATOR_TERMS.find((option) => option === key);
-          if (!chosen) return;
-          setEmptyTerm(chosen);
-          if (locator) onLocatorChange({ ...locator, label: chosen });
-        }} />
-      <TextField className="citation-locator-value" aria-label={termName(term)} value={locator?.value ?? ""}
-        onChange={(value) => onLocatorChange(value.trim() ? { label: term, value } : null)}>
-        <Input ref={locatorRef} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder", { type: termName(term) })} onKeyDown={submit} />
-        <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
-      </TextField>
+      <span className="citation-label" aria-hidden="true">{say("citation-details-locator")}</span>
+      <div className="citation-locator">
+        <ToolbarMenu buttonRef={typeButton} returnFocusRef={locatorRef} placement="bottom start" label={say("citation-details-locator-type")} value={termName(term)} selectedKey={term}
+          filterLabel={say("citation-details-locator-filter")} sections={[{ id: "terms", items: LOCATOR_TERMS.map((option) => ({ id: option, label: termName(option) })) }]}
+          onAction={(key) => {
+            const chosen = LOCATOR_TERMS.find((option) => option === key);
+            if (!chosen) return;
+            setEmptyTerm(chosen);
+            if (locator) onLocatorChange({ ...locator, label: chosen });
+          }} />
+        <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { label: term, value } : null)}>
+          <Input ref={locatorRef} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
+          <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
+        </TextField>
+      </div>
     </div>
-    <div className="citation-field citation-affixes">
-      <TextField className="citation-affix" value={prefix} onChange={onPrefixChange}>
-        <Label className="citation-label">{say("citation-details-prefix")}</Label>
-        <Input onKeyDown={submit} />
-      </TextField>
-      <TextField className="citation-affix" value={suffix} onChange={onSuffixChange}>
-        <Label className="citation-label">{say("citation-details-suffix")}</Label>
-        <Input onKeyDown={submit} />
-      </TextField>
-    </div>
+    <TextField className="citation-field" value={prefix} onChange={onPrefixChange}>
+      <Label className="citation-label">{say("citation-details-prefix")}</Label>
+      <Input onKeyDown={submit} />
+    </TextField>
+    <TextField className="citation-field" value={suffix} onChange={onSuffixChange}>
+      <Label className="citation-label">{say("citation-details-suffix")}</Label>
+      <Input onKeyDown={submit} />
+    </TextField>
   </div>;
 }

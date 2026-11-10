@@ -230,12 +230,13 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     const at = new Map(nodes.map((node) => [node.dataset.reference!, node.getBoundingClientRect().left]));
     const { order: before, at: was } = placed.current;
     placed.current = { order, at };
-    if (order === before || matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
-    const duration = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-2")) || 180;
+    // The motion tokens answer Reduce Motion: there the slide takes no time.
+    const motion = getComputedStyle(document.documentElement), duration = parseFloat(motion.getPropertyValue("--dur-2"));
+    if (order === before || !duration) return;
     for (const node of nodes) {
       const from = was.get(node.dataset.reference!), to = at.get(node.dataset.reference!)!;
       if (from !== undefined && Math.abs(from - to) > 1 && typeof node.animate === "function") {
-        node.animate([{ translate: `${from - to}px 0` }, { translate: "0 0" }], { duration, easing: "cubic-bezier(.2, .9, .3, 1)" });
+        node.animate([{ translate: `${from - to}px 0` }, { translate: "0 0" }], { duration, easing: motion.getPropertyValue("--ease-spring").trim() || "ease-out" });
       }
     }
   });

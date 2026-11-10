@@ -1,34 +1,29 @@
 /* Citation tokens (decision 0042). The band sets its controls' corner and fills
    (--band-control-*). Each capsule keeps its own room, so neither it nor its
-   ring ever covers the brackets and separators beside it. Motion reads the shared motion tokens; Reduce
-   Motion only cross-fades. */
+   ring ever covers the brackets and separators beside it. Motion reads the shared
+   motion tokens, which answer Reduce Motion themselves. */
 .citation-token { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); }
 /* With several, none takes more than a third of the line, so every reference
    keeps a handle on it; the line is their container (CitationShelf.css). */
-:has(> .citation-token ~ .citation-token) > .citation-token { max-width: 33cqi; }
-.citation-token-button.ui-button[data-variant] { --token-pad: var(--space-1); justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; margin-inline: calc(var(--space-1) / 2); padding: 0 var(--token-pad); border-width: 0; border-radius: var(--band-control-radius, var(--r-small)); color: var(--text); white-space: nowrap; background: var(--band-control-rest, var(--fill-4)); transition: background-color var(--dur-1, 120ms) var(--ease-out, ease-out), scale var(--dur-1, 120ms) var(--ease-out, ease-out); }
+:has(> .citation-token ~ .citation-token) > .citation-token { max-width: calc(100cqi / 3); }
+.citation-token-button.ui-button[data-variant] { --token-pad: var(--space-1); justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; margin-inline: calc(var(--space-1) / 2); padding: 0 var(--token-pad); border-width: 0; border-radius: var(--band-control-radius); color: var(--text); white-space: nowrap; background: var(--fill-4); transition: background-color var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out); }
 .citation-token-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 .citation-token-button.ui-button { --ring-offset: var(--ring-inside); }
 .citation-token-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .citation-token-handle { flex: none; color: var(--text-secondary); font-size: var(--type-label-size); }
 .citation-token-opens { flex: none; width: var(--space-3); height: var(--space-3); color: var(--text-tertiary); }
-.citation-token-button.ui-button[data-variant][aria-expanded="true"] { background: var(--band-control-pressed, var(--fill-control-pressed)); }
-.citation-token-button.ui-button[data-variant][data-pressed] { scale: var(--press-scale, .97); }
+.citation-token-button.ui-button[data-variant][aria-expanded="true"] { background: var(--band-control-pressed); }
+.citation-token-button.ui-button[data-variant][data-pressed] { scale: var(--press-scale); }
 @media (hover: hover) {
-  .citation-token:is(:hover, [data-hovered]) > .citation-token-button:not([aria-expanded="true"]) { background: var(--band-control-hover, var(--fill-control-hover)); }
+  .citation-token:is(:hover, [data-hovered]) > .citation-token-button:not([aria-expanded="true"]) { background: var(--band-control-hover); }
   .citation-token:is(:hover, [data-hovered]) .citation-token-opens { color: var(--text-secondary); }
 }
 /* A token settles in when it is added or put back by Undo. */
-.citation-token { transition: opacity var(--dur-2, 180ms) var(--ease-out, ease-out), scale var(--dur-2, 180ms) var(--ease-spring, cubic-bezier(.2, .9, .3, 1)); }
-@starting-style { .citation-token { opacity: 0; scale: .92; } }
+.citation-token { transition: opacity var(--dur-2) var(--ease-out), scale var(--dur-2) var(--ease-spring); }
+@starting-style { .citation-token { opacity: 0; scale: var(--press-scale); } }
 @media (pointer: coarse) {
   .citation-token-button.ui-button[data-variant] { min-width: var(--touch-target); }
   .citation-token-button.ui-button[data-size="small"]::after { inset-block: calc((var(--touch-target) - var(--control-small-h)) / -2); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .citation-token { transition: opacity var(--dur-1, 100ms) linear; }
-  @starting-style { .citation-token { scale: 1; } }
-  .citation-token-button.ui-button[data-variant][data-pressed] { scale: 1; }
 }
 @media (forced-colors: active) {
   .citation-token-button.ui-button[data-variant] { border: var(--border-width) solid ButtonText; }

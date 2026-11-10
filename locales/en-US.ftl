@@ -619,6 +619,7 @@ locator-title-locator = Title
 locator-verse = Verse
 locator-version = Version
 locator-volume = Volume
+citation-details-locator = Locator
 citation-details-locator-type = Locator type
 citation-details-locator-filter = Find a type
 citation-details-locator-placeholder = Add a value

@@ -46,6 +46,7 @@ export const PICKER_IDS = [
   "locator-verse",
   "locator-version",
   "locator-volume",
+  "citation-details-locator",
   "citation-details-locator-type",
   "citation-details-locator-filter",
   "citation-details-locator-placeholder",

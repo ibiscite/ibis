@@ -1,24 +1,19 @@
 /* An anchored popover (decision 0042): the menus' material and corner, an arrow on
-   what it is about, and growth from that point. Reduce Motion only cross-fades. */
-.ui-popover { box-sizing: border-box; display: flex; inline-size: min(22rem, calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
+   what it is about, and growth from that point. The motion tokens answer Reduce
+   Motion: --press-scale is 1 there, so it only fades. */
+.ui-popover { box-sizing: border-box; display: flex; inline-size: min(var(--inspector-width), calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
 .ui-popover-dialog { flex: 1; min-block-size: 0; overflow: auto; padding: var(--space-3) var(--space-4); outline: none; }
 .ui-popover-arrow svg { display: block; fill: var(--surface-overlay); }
 .ui-popover-arrow[data-placement="bottom"] svg { transform: rotate(180deg); }
 .ui-popover[data-placement="top"] { transform-origin: var(--trigger-anchor-point, bottom center); }
 .ui-popover[data-placement="bottom"] { transform-origin: var(--trigger-anchor-point, top center); }
-.ui-popover[data-entering] { animation: ui-popover-grow var(--dur-2, 180ms) var(--ease-out, ease-out); }
-.ui-popover[data-exiting] { animation: ui-popover-grow var(--dur-1, 120ms) var(--ease-in, ease-in) reverse; }
-@keyframes ui-popover-grow { from { opacity: 0; scale: .94; } }
-@media (prefers-reduced-motion: reduce) {
-  .ui-popover[data-entering], .ui-popover[data-exiting] { animation-name: ui-popover-fade; animation-duration: var(--dur-1, 100ms); }
-  @keyframes ui-popover-fade { from { opacity: 0; } }
-}
+.ui-popover[data-entering] { animation: ui-popover-grow var(--dur-2) var(--ease-out); }
+.ui-popover[data-exiting] { animation: ui-popover-grow var(--dur-1) var(--ease-in) reverse; }
+@keyframes ui-popover-grow { from { opacity: 0; scale: var(--press-scale); } }
 /* Its parts: a heading with a quiet byline, the body's own rows, then a row of
    actions, each with its keys, under a hairline. */
 .ui-popover-body { display: flex; flex-direction: column; gap: var(--space-2); }
 .ui-popover-heading h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--strong) var(--type-title-size) / var(--type-title-line) var(--font); }
 .ui-popover-heading p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .ui-popover-note { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
-.ui-popover-actions { display: flex; flex-wrap: wrap; gap: var(--space-1); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }
-.ui-popover-action.ui-button { gap: var(--space-2); }
-.ui-popover-action.ui-button:last-child { margin-inline-start: auto; }
+.ui-popover-actions { display: flex; flex-direction: column; padding-block-start: var(--space-1); border-block-start: var(--border-width) solid var(--separator); }

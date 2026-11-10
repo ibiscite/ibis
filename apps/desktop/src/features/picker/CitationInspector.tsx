@@ -1,4 +1,4 @@
-import { useEffect, useState, type Ref, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { Reader } from "../reader/Reader";
 import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
@@ -91,13 +91,24 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
         onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} onClose={() => setReading(false)} />}
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
+  // The highlighted result stays in view above the details when the list can scroll it there.
+  const body = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const popover = body.current?.closest(".ui-popover")?.getBoundingClientRect();
+    const row = document.querySelector<HTMLElement>('#results [role="option"][aria-selected="true"]');
+    const list = row?.closest<HTMLElement>(".scroll-area, [data-scroll]") ?? row?.parentElement?.parentElement;
+    if (!popover || !row || !list) return;
+    const overlap = row.getBoundingClientRect().bottom - popover.top;
+    const room = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    if (overlap > 0 && room >= overlap) list.scrollTop += overlap;
+  }, []);
   const action = (label: string, keys: string, onPress: () => void, isDisabled = false, className = "") =>
-    <Button variant="quiet" size="small" className={`ui-popover-action ${className}`} isDisabled={isDisabled} aria-keyshortcuts={keys} onPress={onPress}>
+    <Button variant="quiet" className={`inspector-action ${className}`} isDisabled={isDisabled} aria-keyshortcuts={keys} onPress={onPress}>
       <span>{label}</span><span className="inspector-keys" aria-hidden="true">{keyLabel(keys, mac)}</span>
     </Button>;
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     className="citation-popover">
-    <section ref={ref} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
+    <section ref={(node) => { body.current = node; if (typeof ref === "function") ref(node); else if (ref) ref.current = node; }} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
       <header className="ui-popover-heading">
         <h2><bdi dir="auto">{reference ? reference.title || heading : heading}</bdi></h2>
         {byline && <p><bdi dir="auto">{byline}</bdi></p>}
@@ -110,11 +121,11 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
           {action(say("key-move-left"), "Shift+ArrowLeft", () => onMove("left"), !moves.left)}
           {action(say("key-move-right"), "Shift+ArrowRight", () => onMove("right"), !moves.right)}
         </>}
-        {pdf && onChange && <Button variant="quiet" size="small" className="ui-popover-action" onPress={() => setReading(true)}><span>{say("reader-show")}</span></Button>}
-        {source && <Button variant="quiet" size="small" className="ui-popover-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
+        {pdf && onChange && <Button variant="quiet" className="inspector-action" onPress={() => setReading(true)}><span>{say("reader-show")}</span></Button>}
+        {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
           <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, mac)}</span>}
         </Button>}
-        {selected && action(say("key-remove-from-citation"), "Backspace", () => onRemove(reference), false, "citation-popover-remove")}
+        {selected && action(say("key-remove-from-citation"), "Backspace", () => onRemove(reference))}
       </div>}
     </section>
   </Popover>;
