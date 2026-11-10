@@ -298,7 +298,7 @@ case "$2" in
   *event=merge_group*) echo "$QUEUE_RUNS" ;;
   *event=pull_request*) echo "$PR_RUNS" ;;
   */compare/*) echo "$COMPARE" ;;
-  */pulls/*) echo "$PR_HEAD" ;;
+  */pulls/*) echo "\${PR_BRANCH:-feature} $PR_HEAD" ;;
   *) exit 44 ;;
 esac
 `, { mode: 0o755 });
@@ -331,6 +331,8 @@ test("a queue entry runs what it changes, or nothing beside the run of the same 
   }
   assert.deepEqual(entry(crate, { PR_RUNS: "false" }), full);
   assert.deepEqual(entry(docs, { PR_RUNS: "false", BASE_SHA: "f".repeat(40) }), full, "an unreadable base runs everything");
+  // A release's pull request run checked nothing, so the queue never reuses it.
+  assert.deepEqual(entry(docs, { PR_BRANCH: "release-please--branches--main--components--ibis" }), docsOnly);
 });
 
 test("main reuses the queue's run of its commit unless its caches' inputs changed", { skip: process.platform === "win32" }, (t) => {
@@ -342,17 +344,17 @@ test("main reuses the queue's run of its commit unless its caches' inputs change
   assert.deepEqual(push(crate, { QUEUE_RUNS: "true", BASE_SHA: "f".repeat(40) }), full);
 });
 
-test("Release Please's own updates wait for the release; anyone else's run is checked", { skip: process.platform === "win32" }, (t) => {
+test("Release Please's own updates leave the check to the queue; anyone else's run is checked", { skip: process.platform === "win32" }, (t) => {
   const run = changesFixture(t);
   const release = { EVENT: "pull_request", HEAD_REF: "release-please--branches--main--components--ibis", REPO: "example/ibis", PR: "7", EXPECTED: "1", EXPECTED_REFS: `${"a".repeat(40)}:${"b".repeat(40)}`, SCENARIO: "valid", METADATA: JSON.stringify(row("Cargo.toml")) };
   const waiting = run(["github"], { ...release, ACTOR: "ibis-release[bot]" });
-  assert.equal(waiting.status, 1);
-  assert.match(waiting.stdout, /::error::.*gh workflow run ci\.yml --ref release-please--branches--main--components--ibis/);
-  assert.equal(waiting.output, "", "no decisions, so nothing runs and CI result fails");
+  assert.equal(waiting.status, 0);
+  assert.match(waiting.stdout, /::notice::.*merge queue checks it/);
+  assert.equal(waiting.output, "core=false\ninterface=false\nnative=false\nproven=false\nscripts=false\nweb=false\n", "nothing runs here, and CI result passes");
   for (const actor of ["diyanko", "ibis-release", ""]) {
     const checked = run(["github"], { ...release, ACTOR: actor });
     assert.equal(checked.status, 0, actor);
     assert.match(checked.output, /^native=true$/m, actor);
   }
-  assert.equal(run(["github"], { ...release, HEAD_REF: "feature", ACTOR: "ibis-release[bot]" }).status, 0);
+  assert.match(run(["github"], { ...release, HEAD_REF: "feature", ACTOR: "ibis-release[bot]" }).output, /^native=true$/m);
 });

@@ -346,7 +346,8 @@ inputs (`Cargo.lock`, manifests, toolchain, pnpm lockfile, `ci.yml`) changed, so
 that it saves new caches; a daily run on main runs everything, for what changes
 with time and so that caches do not expire. A reused run counts only when GitHub
 reports a passing run of the identical tree. Release Please's own updates to its
-pull request run nothing ([RELEASING.md](../RELEASING.md#how-a-release-is-built)).
+pull request run nothing there; its queue entry never reuses that run and runs
+every check ([RELEASING.md](../RELEASING.md#how-a-release-is-built)).
 `node scripts/check.mjs` makes the same choice locally, and `--plan` prints it for
 `scripts/land.sh`, which compiles and type checks what the change selects and
 leaves test suites to CI.

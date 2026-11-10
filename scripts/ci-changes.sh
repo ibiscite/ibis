@@ -8,8 +8,9 @@
 # its two commits. Failed reads, changed refs or a partial list enable every check.
 # A run is `proven` only when GitHub says a passing CI run checked the same tree.
 #
-# Release Please's own updates to its pull request run nothing: that pull
-# request is checked once, when someone prepares the release (RELEASING.md).
+# Release Please's own updates to its pull request run nothing here: the
+# merge queue checks the release with main, on the commit that lands and is
+# tagged, and never reuses this run for it (RELEASING.md).
 set -eo pipefail
 unset FILES DIFF PROVEN
 passed() { # passed EVENT SHA: a successful CI run of EVENT for exactly SHA
@@ -18,8 +19,9 @@ passed() { # passed EVENT SHA: a successful CI run of EVENT for exactly SHA
 case "$EVENT" in
   pull_request)
     if [[ "$HEAD_REF" == release-please--* && "$ACTOR" == "ibis-release[bot]" ]]; then
-      echo "::error::Release Please updated this pull request, so CI waits until the release is prepared. Then run: gh workflow run ci.yml --ref $HEAD_REF"
-      exit 1
+      echo "::notice::Release Please updated this pull request. The merge queue checks it with main before it lands."
+      printf '%s\n' core=false interface=false native=false proven=false scripts=false web=false | tee -a "$GITHUB_OUTPUT"
+      exit 0
     fi
     if before=$(gh api "repos/$REPO/pulls/$PR" --jq '.head.sha + ":" + .base.sha') && [ "$before" = "$EXPECTED_REFS" ] &&
       gh api --paginate "repos/$REPO/pulls/$PR/files" --jq '.[] | {filename, previous_filename, status} | @json' > "$RUNNER_TEMP/changed-files.ndjson" &&
@@ -35,10 +37,12 @@ case "$EVENT" in
     # Main points at a commit the queue already checked.
     if [ "$EVENT" = push ] && passed merge_group "$HEAD_SHA"; then export PROVEN=true; fi
     # A queue entry that is exactly its pull request's head, already on top of
-    # this base, holds the tree that pull request's passing run checked.
+    # this base, holds the tree that pull request's passing run checked. A
+    # release's pull request run checked nothing, so its entry runs in full.
     pr=$(sed -nE 's|^(refs/heads/)?gh-readonly-queue/main/pr-([0-9]+)-[0-9a-f]{40}$|\2|p' <<<"$HEAD_REF")
     if [ "$EVENT" = merge_group ] && [ -n "$pr" ] &&
-      head=$(gh api "repos/$REPO/pulls/$pr" --jq .head.sha) && [[ "$head" =~ ^[0-9a-f]{40}$ ]] &&
+      pull=$(gh api "repos/$REPO/pulls/$pr" --jq '.head.ref + " " + .head.sha') &&
+      read -r branch head <<<"$pull" && [[ "$branch" != release-please--* ]] && [[ "$head" =~ ^[0-9a-f]{40}$ ]] &&
       [[ "$(gh api "repos/$REPO/compare/$BASE_SHA...$head" --jq .status)" =~ ^(ahead|identical)$ ]] &&
       git fetch -q --no-tags --depth=1 origin "$head" &&
       [ "$(git rev-parse "$head^{tree}")" = "$(git rev-parse "$HEAD_SHA^{tree}")" ] &&
