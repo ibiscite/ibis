@@ -3,7 +3,7 @@
    Motion: --press-scale is 1 there, so it only fades. */
 .ui-popover { box-sizing: border-box; display: flex; inline-size: min(var(--inspector-width), calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
 .ui-popover-dialog { flex: 1; min-block-size: 0; overflow: auto; padding: var(--space-3) var(--space-4); outline: none; }
-.ui-popover-arrow svg { display: block; fill: var(--surface-overlay); }
+.ui-popover-arrow svg { display: block; }
 .ui-popover-arrow[data-placement="bottom"] svg { transform: rotate(180deg); }
 .ui-popover[data-placement="top"] { transform-origin: var(--trigger-anchor-point, bottom center); }
 .ui-popover[data-placement="bottom"] { transform-origin: var(--trigger-anchor-point, top center); }

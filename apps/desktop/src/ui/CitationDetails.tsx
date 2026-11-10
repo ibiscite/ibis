@@ -45,6 +45,9 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   onSubmit?: () => void;
 }) {
   const typeButton = useRef<HTMLButtonElement>(null);
+  // A pick or Esc in the type menu returns to the value, where typing continues.
+  const ownField = useRef<HTMLInputElement>(null);
+  const field = locatorRef ?? ownField;
   // A cleared field keeps its type, so a new value never changes what it means.
   const [term, setTerm] = useState<LocatorTerm>(locator?.label ?? "page");
   useEffect(() => { if (locator) setTerm(locator.label); }, [locator]);
@@ -64,7 +67,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   return <div className="citation-details">
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{say("citation-details-form")}</span>
-      {offered.length > 1 && current ? <Segmented label={say("citation-details-form")} value={current} options={offered} onChange={onFormChange} />
+      {offered.length > 1 ? <Segmented label={say("citation-details-form")} value={current} options={offered} onChange={onFormChange} />
         : <p className="citation-note">{offered.length ? offered[0]!.label : [...reasons][0] ?? say("citation-details-none")}</p>}
     </div>
     {/* What the others are, quietly, where they are looked for. */}
@@ -74,7 +77,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{say("citation-details-page")}</span>
       <div className="citation-locator">
-        <ToolbarMenu buttonRef={typeButton} returnFocusRef={locatorRef} placement="bottom start" label={say("citation-details-locator-type")} value={termName(term)} selectedKey={term}
+        <ToolbarMenu buttonRef={typeButton} returnFocusRef={field} placement="bottom start" label={say("citation-details-locator-type")} value={termName(term)} selectedKey={term}
           filterLabel={say("citation-details-locator-filter")} button={{ className: "citation-locator-type", label: `${say("citation-details-locator-type")}: ${termName(term)}`, content: termShort(term), quiet: true }}
           sections={[{ id: "terms", items: LOCATOR_TERMS.map((option) => ({ id: option, label: termName(option), sample: termShort(option) })) }]}
           onAction={(key) => {
@@ -84,7 +87,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
             if (locator) onLocatorChange({ ...locator, label: chosen });
           }} />
         <TextField aria-label={termName(term)} value={locator?.value ?? ""} onChange={(value) => onLocatorChange(value.trim() ? { label: term, value } : null)}>
-          <Input ref={locatorRef} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
+          <Input ref={field} autoFocus={autoFocus} placeholder={term === "page" ? say("citation-details-page-placeholder") : say("citation-details-locator-placeholder")} onKeyDown={submit} />
           <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
         </TextField>
       </div>

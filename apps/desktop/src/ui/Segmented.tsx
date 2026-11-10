@@ -4,7 +4,8 @@ import "./Segmented.css";
 /** A few exclusive choices side by side, such as row density. Arrow keys move
  * the choice, as in a native segmented control. */
 export function Segmented<T extends string>({ label, value, options, onChange }: {
-  label: string; value: T;
+  /** Null when none is chosen yet. */
+  label: string; value: T | null;
   options: readonly { value: T; label: string; isDisabled?: boolean }[];
   onChange: (value: T) => void;
 }) {
