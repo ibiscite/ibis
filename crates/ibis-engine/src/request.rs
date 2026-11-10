@@ -108,6 +108,43 @@ pub struct KeyCitationRequest {
     pub output_locale: Option<String>,
 }
 
+/// CSL-JSON records sent with the request, cited or exported without a
+/// library: nothing is opened, read or remembered. A record that is not valid
+/// CSL-JSON, or two with one `id`, refuse the whole request rather than leave
+/// a record out.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecordsRequest {
+    /// CSL-JSON items, each with an `id` and a `type`. A `citation-key` is what
+    /// key outputs write; a record without one formats but has no key.
+    #[schemars(length(min = 1, max = 1000))]
+    pub records: Vec<Value>,
+    pub output: OutputSpec,
+    #[serde(default)]
+    pub form: CitationForm,
+    #[serde(default)]
+    pub output_locale: Option<String>,
+    /// The records to cite, by `id`, in order, with what goes with each.
+    /// Omitted, every record is cited in the order sent.
+    #[serde(default)]
+    pub items: Option<Vec<RecordItem>>,
+}
+
+/// One record to cite, by its `id` (a number id as its digits).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RecordItem {
+    pub id: String,
+    #[serde(default)]
+    pub locator: Option<Locator>,
+    #[serde(default)]
+    pub prefix: RichText,
+    #[serde(default)]
+    pub suffix: RichText,
+    #[serde(default)]
+    pub suppress_author: bool,
+}
+
 /// Exact keys to look for in one project `.bib`, which stays out of the search
 /// libraries. Reading it never writes to it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -177,6 +214,7 @@ pub fn request_schema(method: Method) -> Value {
         Method::Search => schema_for!(SearchRequest),
         Method::Show => schema_for!(ShowRequest),
         Method::Cite => schema_for!(CitationRequest),
+        Method::Records => schema_for!(RecordsRequest),
         Method::Project => schema_for!(ProjectRequest),
         Method::Entry => schema_for!(EntryRequest),
         Method::Styles => schema_for!(StylesRequest),

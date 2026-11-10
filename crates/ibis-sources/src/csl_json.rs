@@ -5,6 +5,41 @@ use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Re
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+/// CSL-JSON records a caller sent, read by the same rules as a CSL-JSON file
+/// but never touching one: a `file` field is dropped unread, so no path or
+/// `file:` URL is ever probed. Each warning's `line` is the record's place in
+/// the list, counted from one. Private links are removed as they are for files.
+pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<RequestRecords, SourceError> {
+    // One record a line, after one opening line: each record's line is its place plus one.
+    let mut text = String::from("[\n");
+    for (index, record) in records.iter().enumerate() {
+        if index > 0 {
+            text.push_str(",\n");
+        }
+        text.push_str(&serde_json::to_string(record).map_err(|_| SourceError::InvalidData)?);
+    }
+    text.push_str("\n]");
+    let parsed = load_str(library, &text)?;
+    Ok(RequestRecords {
+        records: parsed.records,
+        warnings: parsed
+            .warnings
+            .into_iter()
+            .map(|warning| SourceWarning {
+                line: warning.line.map(|line| line.saturating_sub(1)),
+                ..warning
+            })
+            .collect(),
+    })
+}
+
+/// What [`request_records`] read: the records it kept and why any were not.
+#[derive(Debug, Clone, Default)]
+pub struct RequestRecords {
+    pub records: Vec<Record>,
+    pub warnings: Vec<SourceWarning>,
+}
+
 pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary, SourceError> {
     use serde_json::value::RawValue;
     if text.trim().is_empty() {

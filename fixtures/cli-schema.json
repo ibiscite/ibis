@@ -263,6 +263,16 @@
                 "const": "unknown-format",
                 "description": "Neither the file's name nor its contents identify a supported library format.",
                 "type": "string"
+              },
+              {
+                "const": "duplicate-record",
+                "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+                "type": "string"
+              },
+              {
+                "const": "rejected-record",
+                "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+                "type": "string"
               }
             ]
           },
@@ -3037,6 +3047,838 @@
       }
     },
     {
+      "method": "records",
+      "params": {
+        "$defs": {
+          "CitationForm": {
+            "enum": [
+              "normal",
+              "narrative",
+              "author-only",
+              "year-only",
+              "full",
+              "bibliography-only"
+            ],
+            "type": "string"
+          },
+          "KeySyntax": {
+            "enum": [
+              "pandoc",
+              "biblatex",
+              "natbib",
+              "latex",
+              "context",
+              "typst",
+              "org-cite",
+              "myst",
+              "multi-markdown",
+              "ascii-doc",
+              "jupyter",
+              "jekyll-scholar",
+              "scannable-cite",
+              "keys",
+              "csl-json",
+              "cayw-json"
+            ],
+            "type": "string"
+          },
+          "Locator": {
+            "additionalProperties": false,
+            "properties": {
+              "term": {
+                "$ref": "#/$defs/LocatorTerm"
+              },
+              "value": {
+                "description": "Literal range or pinpointer, never interpreted as markup.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "term",
+              "value"
+            ],
+            "type": "object"
+          },
+          "LocatorTerm": {
+            "description": "CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.\nhttps://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json",
+            "enum": [
+              "act",
+              "appendix",
+              "article-locator",
+              "book",
+              "canon",
+              "chapter",
+              "column",
+              "elocation",
+              "equation",
+              "figure",
+              "folio",
+              "issue",
+              "line",
+              "note",
+              "opus",
+              "page",
+              "paragraph",
+              "part",
+              "rule",
+              "scene",
+              "section",
+              "sub-verbo",
+              "supplement",
+              "table",
+              "timestamp",
+              "title-locator",
+              "verse",
+              "version",
+              "volume"
+            ],
+            "type": "string"
+          },
+          "OutputSpec": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "default": null,
+                    "description": "A command name for syntaxes that support it; engines validate its grammar.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "syntax": {
+                    "$ref": "#/$defs/KeySyntax"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "syntax"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "csl",
+                    "type": "string"
+                  },
+                  "style": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "style"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
+                "properties": {
+                  "kind": {
+                    "const": "preset",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "RecordItem": {
+            "additionalProperties": false,
+            "description": "One record to cite, by its `id` (a number id as its digits).",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "locator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Locator"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "prefix": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/TextRun"
+                },
+                "type": "array"
+              },
+              "suffix": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/TextRun"
+                },
+                "type": "array"
+              },
+              "suppress_author": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "id"
+            ],
+            "type": "object"
+          },
+          "Script": {
+            "enum": [
+              "normal",
+              "subscript",
+              "superscript"
+            ],
+            "type": "string"
+          },
+          "TextRun": {
+            "additionalProperties": false,
+            "description": "Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.",
+            "properties": {
+              "bold": {
+                "default": false,
+                "type": "boolean"
+              },
+              "italic": {
+                "default": false,
+                "type": "boolean"
+              },
+              "script": {
+                "$ref": "#/$defs/Script",
+                "default": "normal"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "description": "CSL-JSON records sent with the request, cited or exported without a\nlibrary: nothing is opened, read or remembered. A record that is not valid\nCSL-JSON, or two with one `id`, refuse the whole request rather than leave\na record out.",
+        "properties": {
+          "form": {
+            "$ref": "#/$defs/CitationForm",
+            "default": "normal"
+          },
+          "items": {
+            "default": null,
+            "description": "The records to cite, by `id`, in order, with what goes with each.\nOmitted, every record is cited in the order sent.",
+            "items": {
+              "$ref": "#/$defs/RecordItem"
+            },
+            "type": [
+              "array",
+              "null"
+            ]
+          },
+          "output": {
+            "$ref": "#/$defs/OutputSpec"
+          },
+          "output_locale": {
+            "default": null,
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "records": {
+            "description": "CSL-JSON items, each with an `id` and a `type`. A `citation-key` is what\nkey outputs write; a record without one formats but has no key.",
+            "items": true,
+            "maxItems": 1000,
+            "minItems": 1,
+            "type": "array"
+          }
+        },
+        "required": [
+          "records",
+          "output"
+        ],
+        "title": "RecordsRequest",
+        "type": "object"
+      },
+      "result": {
+        "$defs": {
+          "AppId": {
+            "additionalProperties": false,
+            "description": "An app as the platform names it: a bundle ID on macOS, an executable name\non Windows. Never a window title or document name.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "system": {
+                "$ref": "#/$defs/System"
+              }
+            },
+            "required": [
+              "system",
+              "id"
+            ],
+            "type": "object"
+          },
+          "CitationError": {
+            "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+            "enum": [
+              "empty-selection",
+              "too-many-items",
+              "invalid-locator",
+              "invalid-rich-text",
+              "output-too-large",
+              "unsupported-form",
+              "missing-item",
+              "changed-item",
+              "missing-key",
+              "ambiguous-key",
+              "conflicting-key",
+              "invalid-key",
+              "unsupported-output",
+              "invalid-locale",
+              "cancelled",
+              "formatter-unavailable",
+              "annotation-mismatch",
+              "not-citable"
+            ],
+            "type": "string"
+          },
+          "CitationWarning": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "$ref": "#/$defs/CitationWarningCode"
+              },
+              "item": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "item",
+              "code"
+            ],
+            "type": "object"
+          },
+          "CitationWarningCode": {
+            "description": "Fixed codes only; source diagnostics never include field text or locations.",
+            "enum": [
+              "source-field",
+              "sentence-case-expected"
+            ],
+            "type": "string"
+          },
+          "CopyReason": {
+            "description": "Why a citation was copied instead of pasted.",
+            "oneOf": [
+              {
+                "enum": [
+                  "paste-off",
+                  "unsupported-system",
+                  "no-target",
+                  "copy-only",
+                  "target-changed",
+                  "clipboard-changed",
+                  "paste-expired",
+                  "secure-field",
+                  "elevated-app",
+                  "terminal",
+                  "remote-desktop",
+                  "virtual-machine",
+                  "nonstandard-shortcut",
+                  "no-permission"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "unknown-app",
+                "description": "An unrecognised app has no explicit paste approval.",
+                "type": "string"
+              },
+              {
+                "const": "secure-input",
+                "description": "System-wide secure typing is enabled, possibly by another app.",
+                "type": "string"
+              },
+              {
+                "const": "paste-unavailable",
+                "description": "The final paste check was unavailable or could not finish in time.",
+                "type": "string"
+              },
+              {
+                "const": "accessibility-required",
+                "description": "macOS Accessibility trust is required for the identity-only focus proof.",
+                "type": "string"
+              },
+              {
+                "const": "selection-not-shown",
+                "description": "A paste would replace selected text the search never showed.",
+                "type": "string"
+              },
+              {
+                "const": "citation-not-selected",
+                "description": "A changed citation replaces only the old citation, selected.",
+                "type": "string"
+              }
+            ]
+          },
+          "Decision": {
+            "oneOf": [
+              {
+                "properties": {
+                  "action": {
+                    "const": "paste",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "copy",
+                    "type": "string"
+                  },
+                  "reason": {
+                    "$ref": "#/$defs/CopyReason"
+                  }
+                },
+                "required": [
+                  "action",
+                  "reason"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Destination": {
+            "additionalProperties": false,
+            "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+            "properties": {
+              "app": {
+                "$ref": "#/$defs/AppId"
+              },
+              "delivery": {
+                "$ref": "#/$defs/Decision"
+              },
+              "name": {
+                "description": "The app's name, when Ibis knows it.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "output": {
+                "$ref": "#/$defs/OutputSpec"
+              },
+              "output_question": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/OutputQuestion"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The app keeps `output` until a person answers this question in Ibis."
+              }
+            },
+            "required": [
+              "app",
+              "output",
+              "delivery"
+            ],
+            "type": "object"
+          },
+          "DisplayNode": {
+            "additionalProperties": false,
+            "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+            "properties": {
+              "content": {
+                "items": {
+                  "$ref": "#/$defs/DisplayRun"
+                },
+                "type": "array"
+              },
+              "item": {
+                "format": "uint",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "content"
+            ],
+            "type": "object"
+          },
+          "DisplayRun": {
+            "additionalProperties": false,
+            "description": "Output-only passive presentation. The smaller request TextRun contract stays\nindependent of the additional styles a citation processor may produce.",
+            "properties": {
+              "bold": {
+                "default": false,
+                "type": "boolean"
+              },
+              "italic": {
+                "default": false,
+                "type": "boolean"
+              },
+              "script": {
+                "$ref": "#/$defs/Script",
+                "default": "normal"
+              },
+              "small_caps": {
+                "type": "boolean"
+              },
+              "text": {
+                "type": "string"
+              },
+              "underline": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
+          },
+          "DisplayTree": {
+            "additionalProperties": false,
+            "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+            "properties": {
+              "nodes": {
+                "items": {
+                  "$ref": "#/$defs/DisplayNode"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "nodes"
+            ],
+            "type": "object"
+          },
+          "Fingerprint": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "ItemOutcome": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "item": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "outcome": {
+                    "const": "rendered",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "item"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "error": {
+                    "$ref": "#/$defs/CitationError"
+                  },
+                  "item": {
+                    "format": "uint",
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "outcome": {
+                    "const": "refused",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "outcome",
+                  "item",
+                  "error"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "KeySyntax": {
+            "enum": [
+              "pandoc",
+              "biblatex",
+              "natbib",
+              "latex",
+              "context",
+              "typst",
+              "org-cite",
+              "myst",
+              "multi-markdown",
+              "ascii-doc",
+              "jupyter",
+              "jekyll-scholar",
+              "scannable-cite",
+              "keys",
+              "csl-json",
+              "cayw-json"
+            ],
+            "type": "string"
+          },
+          "Loss": {
+            "additionalProperties": false,
+            "properties": {
+              "field": {
+                "$ref": "#/$defs/LossField"
+              },
+              "item": {
+                "description": "Zero-based request index; None describes a request-wide loss.",
+                "format": "uint",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "reason": {
+                "$ref": "#/$defs/LossReason"
+              }
+            },
+            "required": [
+              "field",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "LossField": {
+            "enum": [
+              "locator",
+              "prefix",
+              "suffix",
+              "author-suppression",
+              "rich-text",
+              "order"
+            ],
+            "type": "string"
+          },
+          "LossReason": {
+            "enum": [
+              "unsupported",
+              "flattened"
+            ],
+            "type": "string"
+          },
+          "Notice": {
+            "enum": [
+              "needs-document-context",
+              "reference-entry",
+              "full-first-note",
+              "year-suffix-withheld",
+              "input-language-unsupported"
+            ],
+            "type": "string"
+          },
+          "OutputQuestion": {
+            "description": "An app ID that cannot tell Ibis which output its document needs.",
+            "enum": [
+              "browser",
+              "editor"
+            ],
+            "type": "string"
+          },
+          "OutputSpec": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "default": null,
+                    "description": "A command name for syntaxes that support it; engines validate its grammar.",
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  },
+                  "kind": {
+                    "const": "key",
+                    "type": "string"
+                  },
+                  "syntax": {
+                    "$ref": "#/$defs/KeySyntax"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "syntax"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "csl",
+                    "type": "string"
+                  },
+                  "style": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "style"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "description": "An output by its id in the engine's `outputs` list: a key syntax or a\ncommon style. The engine writes it as that entry's own output.",
+                "properties": {
+                  "kind": {
+                    "const": "preset",
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "name"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "Script": {
+            "enum": [
+              "normal",
+              "subscript",
+              "superscript"
+            ],
+            "type": "string"
+          },
+          "System": {
+            "description": "The operating system an app ID belongs to.",
+            "enum": [
+              "macos",
+              "windows",
+              "linux"
+            ],
+            "type": "string"
+          }
+        },
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "content_hash": {
+            "$ref": "#/$defs/Fingerprint",
+            "description": "Digest of the exact clipboard representations, including their presence."
+          },
+          "destination": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Destination"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The app this citation was made for, when a caller named one."
+          },
+          "display": {
+            "$ref": "#/$defs/DisplayTree"
+          },
+          "html": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "language": {
+            "description": "The language a formatted citation is written in, whatever the interface\nuses. Key syntaxes have none: the destination's processor decides.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "losses": {
+            "items": {
+              "$ref": "#/$defs/Loss"
+            },
+            "type": "array"
+          },
+          "notices": {
+            "items": {
+              "$ref": "#/$defs/Notice"
+            },
+            "type": "array"
+          },
+          "outcomes": {
+            "description": "Exactly one outcome per request item, addressed by its zero-based index.",
+            "items": {
+              "$ref": "#/$defs/ItemOutcome"
+            },
+            "type": "array"
+          },
+          "rtf": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/$defs/CitationWarning"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "text",
+          "display",
+          "outcomes",
+          "losses",
+          "notices",
+          "content_hash"
+        ],
+        "title": "CitationResult",
+        "type": "object"
+      }
+    },
+    {
       "method": "project",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3781,6 +4623,7 @@
               "search",
               "show",
               "cite",
+              "records",
               "project",
               "entry",
               "styles",
@@ -3824,6 +4667,7 @@
               "search",
               "show",
               "cite",
+              "records",
               "project",
               "entry",
               "styles",

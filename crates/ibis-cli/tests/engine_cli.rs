@@ -54,7 +54,11 @@ fn file_flags_after_the_subcommand_keep_readable_errors() {
 
 #[test]
 fn every_method_is_listed_and_json_usage_errors_are_envelopes() {
-    for method in ibis_engine::Method::ALL {
+    // `records` is `cite --records` on the command line.
+    for method in ibis_engine::Method::ALL
+        .into_iter()
+        .filter(|method| *method != ibis_engine::Method::Records)
+    {
         let help = ibis(&[method.as_str(), "--help"]);
         assert!(help.status.success(), "{}", method.as_str());
     }

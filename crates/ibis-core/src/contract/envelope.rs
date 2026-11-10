@@ -163,6 +163,10 @@ pub enum ErrorReason {
     LibraryCutShort,
     /// Neither the file's name nor its contents identify a supported library format.
     UnknownFormat,
+    /// Two records a request sends share an `id`, `1` and `"1"` included.
+    DuplicateRecord,
+    /// A record a request sends was not valid CSL-JSON, so none is cited.
+    RejectedRecord,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

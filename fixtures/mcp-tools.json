@@ -166,7 +166,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings. To cite CSL-JSON you were given instead, pass it as `records`.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -260,14 +260,19 @@
           "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own.",
           "type": "string"
         },
+        "records": {
+          "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read.",
+          "items": {
+            "type": "object"
+          },
+          "minItems": 1,
+          "type": "array"
+        },
         "style": {
           "description": "Any style id from the styles tool, instead of format.",
           "type": "string"
         }
       },
-      "required": [
-        "items"
-      ],
       "type": "object"
     },
     "name": "cite",

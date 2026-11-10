@@ -115,6 +115,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `KEY…` | Citation keys, in the order they appear in the citation |
 | `--request` | Read the whole request from stdin as JSON; see: ibis schema cite |
+| `--records` | Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records |
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
 | `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
@@ -353,6 +354,38 @@ Styles that need a whole document return a full reference entry with that
 explanation. An output Ibis cannot write correctly is an explicit per-item
 `unsupported-output` refusal.
 
+### Records you send
+
+`ibis cite --records` cites the CSL-JSON array on stdin, with no library: nothing is
+opened, changed or remembered, and no temporary file is needed.
+
+```sh
+ibis cite --records --format apa < refs.json
+ibis cite --records --style apa --bibliography < refs.json
+```
+
+It cites every record, in the order sent, and takes `--format`, `--style`, `--form`,
+`--bibliography` and `--locale` as `cite` does. The `records` method (`ibis call
+records`, `serve --stdio`, and MCP's `cite` with `records`) also takes `items`, the
+records to cite by `id` with a locator, prefix and suffix each; `ibis schema records`
+lists every field.
+
+- Each record needs an `id` and a CSL `type`. Only `citation-key` is a key: a record
+  without one formats in a style, and a key output refuses it with `missing-key`.
+- A record that isn't valid CSL-JSON refuses the whole request (`bad-input`,
+  `rejected-record`), and stderr names it, so no record is left out unseen. Two
+  records with one `id`, `1` and `"1"` included, give `duplicate-record`.
+- A `file` field is dropped unread: a path or `file:` URL is never looked at. Links
+  with a login and local links are removed, as they are from library files. Fields
+  outside CSL are dropped.
+- At most 1,000 records, 512 KiB of them, nested at most 16 deep; beyond that is
+  `resource-limit`.
+
+Input is one UTF-8 JSON value read to the end of stdin, at most 1 MiB. stdout holds
+only the citation, or the envelope with `--json`; reasons go to stderr. Over
+`serve --stdio`, a request can be cancelled with `$/cancelRequest` and answers
+`cancelled`, and the next request is unaffected.
+
 ### A project's own bibliography
 
 `ibis project thesis.bib vale2024lanterns fen2023clouds` says, for each exact key, one of: In
@@ -448,6 +481,12 @@ notifications, honours `$/cancelRequest` and writes nothing else to stdout. Erro
 JSON-RPC errors whose `data.code` is the `error.code` above. Requests run in order
 behind a queue of eight; a long request delays the ones after it.
 
+Every method `ibis schema` lists is served; there is no narrower profile. Each reply is
+written whole or not at all, so a reader never sees half a message. A frame over 1 MiB
+can't be read past, so the server answers with a parse error and stops; JSON it can't
+parse in a whole frame gets a parse error and the next frame is read. At the end of
+stdin the server answers what it has read, then exits.
+
 ## AI agents (MCP)
 
 `ibis mcp` serves the Model Context Protocol over stdio with four read-only tools:
@@ -456,7 +495,7 @@ behind a queue of eight; a long request delays the ones after it.
 | --- | --- | --- |
 | `search` | `query`, `limit` (1 to 25, default 10) | Short `hits`, each with a `ref`. `complete` is false when more references match. |
 | `show` | `ref` | One reference's fields. |
-| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `format` (an id from `ibis outputs`; CSL-JSON is left out because it would carry whole records) or any `style` (`apa` without either), `form`, and `for_app`, the [ID above](#output-for-an-app) | The citation `text`, with `notices`, `losses` and `warnings`. |
+| `cite` | `items`, each a `ref` with any `locator`, `prefix`, `suffix` or `omit_author`, then `format` (an id from `ibis outputs`; CSL-JSON is left out because it would carry whole records) or any `style` (`apa` without either), `form`, and `for_app`, the [ID above](#output-for-an-app). Or `records` instead of `items`: CSL-JSON objects to cite without the library, [as above](#records-you-send) | The citation `text`, with `notices`, `losses` and `warnings`. |
 | `styles` | nothing | The style ids `cite` accepts. |
 
 A `ref` is the citation key, or an `id:` string when no key selects that record alone,

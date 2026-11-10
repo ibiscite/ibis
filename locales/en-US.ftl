@@ -84,6 +84,12 @@ reason-unknown-format = This file is not in a format Ibis reads: { -library-form
     .cli = Choose another file with --file.
     .agent = Ask the person to choose another file.
     .app = Choose another file.
+reason-duplicate-record = Two records sent with the request have the same id, counting 1 and "1" as one, so Ibis cannot tell which is meant.
+    .cli = Give each record its own id.
+    .agent = Give each record its own id.
+reason-rejected-record = A record sent with the request is not valid CSL-JSON, so Ibis cites none rather than leave it out.
+    .cli = Each record needs an id and a CSL type; fix or remove it.
+    .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
 
 ## A reference a citation could not include. { $reference } names it.
 

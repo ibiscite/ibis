@@ -120,9 +120,11 @@ fn command() -> Command {
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
             ),
     );
-    for method in Method::ALL {
+    // `records` is `cite --records` here, and `ibis call records`.
+    for method in Method::ALL.into_iter().filter(|method| *method != Method::Records) {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
+            Method::Records => subcommand,
             Method::Libraries => subcommand.about("List the libraries and their warnings"),
             Method::Search => subcommand
                 .about("Find references")
@@ -174,8 +176,8 @@ fn command() -> Command {
                         .value_name("KEY")
                         .help("Citation keys, in the order they appear in the citation")
                         .num_args(1..)
-                        .required_unless_present("request")
-                        .conflicts_with("request"),
+                        .required_unless_present_any(["request", "records"])
+                        .conflicts_with_all(["request", "records"]),
                 )
                 .arg(
                     Arg::new("request")
@@ -196,6 +198,21 @@ fn command() -> Command {
                             "omit-author",
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
+                )
+                .arg(
+                    Arg::new("records")
+                        .long("records")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all([
+                            "request",
+                            "project",
+                            "for-app",
+                            "locator",
+                            "prefix",
+                            "suffix",
+                            "omit-author",
+                        ])
+                        .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )
                 .arg(
                     Arg::new("format")
@@ -890,6 +907,20 @@ fn open_libraries(
             "--app-libraries is not available here; name the libraries to read.",
         ));
     }
+    // Records sent on stdin are cited with no library: none is opened.
+    if matches
+        .subcommand_matches("cite")
+        .is_some_and(|cite| cite.get_flag("records"))
+    {
+        return if named || asked {
+            Err(Failure::new(
+                ErrorCode::Usage,
+                "--records cites only the records on stdin; leave out the library options.",
+            ))
+        } else {
+            Ok(names)
+        };
+    }
     // `call` of search, show or cite reads what those commands would read.
     let called = matches
         .subcommand_matches("call")
@@ -1049,6 +1080,7 @@ fn run_method<R: BufRead>(
         _ => human::Holdings::NoLibrary,
     };
     let params = match method {
+        Method::Records => return Err(EngineError::new(ErrorCode::Usage).into()),
         Method::Libraries => json!({"action":"list"}),
         Method::Search => {
             let query = args.get_one::<String>("query").map_or("", String::as_str);
@@ -1106,6 +1138,37 @@ fn run_method<R: BufRead>(
                     code => human::code_sentence(code),
                 },
             )?;
+            return Ok(Execution::Result(result, Some(citing)));
+        }
+        Method::Cite if args.get_flag("records") => {
+            const RECORDS_HELP: &str = "stdin must hold one JSON array of CSL-JSON records; see: ibis schema records";
+            let records = explain(stdin_json(input), |_| RECORDS_HELP.into())?;
+            let Value::Array(list) = &records else {
+                return Err(Failure::new(ErrorCode::BadInput, RECORDS_HELP));
+            };
+            let output = chosen_output(args)?;
+            let form = chosen_form(args, &output)?;
+            let params = json!({
+                "records": records,
+                "output": output,
+                "form": form,
+                "output_locale": args.get_one::<String>("locale"),
+            });
+            let result = engine
+                .dispatch(Method::Records, &params, &cancel)
+                .map_err(|error| records_failure(error, list))?;
+            let citing = human::Citing {
+                labels: list
+                    .iter()
+                    .map(|record| match &record["id"] {
+                        Value::String(id) => id.clone(),
+                        id => id.to_string(),
+                    })
+                    .collect(),
+                flags: vec![],
+                output: output_name(&output),
+                form,
+            };
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
@@ -1338,6 +1401,48 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         output: output_name(&request.output),
         form: request.form,
     })
+}
+/// The output `--style` or `--format` names, or the default.
+fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
+    Ok(
+        match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
+            (Some(style), _) => OutputSpec::Csl { style: style.clone() },
+            (None, format) => ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+                .map(|output| output.output.clone())
+                .ok_or_else(|| EngineError::new(ErrorCode::Internal))?,
+        },
+    )
+}
+/// The form `--form` or `--bibliography` asks for; a bibliography needs a style.
+fn chosen_form(args: &ArgMatches, output: &OutputSpec) -> Result<CitationForm, Failure> {
+    if args.get_flag("bibliography") {
+        if !matches!(output, OutputSpec::Csl { .. }) {
+            return Err(Failure::new(
+                ErrorCode::Usage,
+                "--bibliography needs a style: give --style, or a --format that is a style.",
+            ));
+        }
+        return Ok(CitationForm::BibliographyOnly);
+    }
+    serde_json::from_value(json!(
+        args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
+    ))
+    .map_err(|_| Failure::from(EngineError::new(ErrorCode::Usage)))
+}
+/// Why records on stdin were refused, naming the first record at fault.
+fn records_failure(error: EngineError, records: &[Value]) -> Failure {
+    let mut sentence = error
+        .reason
+        .map_or_else(|| human::code_sentence(error.code), human::reason_sentence);
+    if error.reason == Some(ErrorReason::RejectedRecord)
+        && let Some(warning) = Engine::record_problems(records)
+            .into_iter()
+            .find(|warning| warning.line.is_some())
+    {
+        let why = ibis_engine::catalogue::cause(&warning).unwrap_or_default();
+        sentence = format!("{sentence}\nrecord {}: {why}", warning.line.unwrap_or_default());
+    }
+    Failure::explained(error, sentence)
 }
 /// An output's one name from the engine's list; a style outside it is named by its id.
 fn output_name(output: &OutputSpec) -> String {

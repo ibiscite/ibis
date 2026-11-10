@@ -792,6 +792,16 @@
           "description": "Neither the file's name nor its contents identify a supported library format.",
           "type": "string",
           "const": "unknown-format"
+        },
+        {
+          "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+          "type": "string",
+          "const": "duplicate-record"
+        },
+        {
+          "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+          "type": "string",
+          "const": "rejected-record"
         }
       ]
     },
