@@ -151,11 +151,6 @@ export function styleNotes({ changed, added, removed }, since) {
   return `${lines.join("\n")}\n`;
 }
 
-/** The release notes' part on styles when no comparison could be made. */
-export function uncomparedNotes(since) {
-  return `**Citation styles**\n\nOutput could not be compared with ${since}: check the citations you depend on.\n`;
-}
-
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const SWEEP_FILES = ["crates/ibis-csl/examples/style_sweep.rs", "crates/ibis-csl/tests/sweep-items.json"];
 
@@ -251,8 +246,7 @@ function release(oldRef, out) {
     writeFileSync(join(out, "notes.md"), styleNotes(result, since));
     return result;
   }
-  // Without a comparison the notes say so, and the release waits for a person.
-  writeFileSync(join(out, "notes.md"), uncomparedNotes(since));
+  // Without a comparison there are no notes: the release waits for a sweep that builds.
   writeFileSync(join(out, "report.md"), `No sweep builds against both ${since} and this release.\n`);
   console.error(`::error::No sweep builds against both ${since} and this release.`);
   return { newFailures: ["(no comparison)"] };

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { lint } from "./pr-lint.mjs";
-import { compareSweeps, pinTitle, pullRequestBody, readSweep, report, styleNotes, uncomparedNotes } from "./style-sweep.mjs";
+import { compareSweeps, pinTitle, pullRequestBody, readSweep, report, styleNotes } from "./style-sweep.mjs";
 
 const output = (text) => ({ citations: [text], bibliography: `${text}.` });
 const sweep = (entries) => new Map(Object.entries(entries));
@@ -92,6 +92,3 @@ test("the pull request body puts the handoff first and keeps each diff whole wit
   assert.match(body, /The diffs of \d+ more styles are in the full report\./);
 });
 
-test("release notes never claim a change they could not compare", () => {
-  assert.equal(uncomparedNotes("v0.3.1"), "**Citation styles**\n\nOutput could not be compared with v0.3.1: check the citations you depend on.\n");
-});
