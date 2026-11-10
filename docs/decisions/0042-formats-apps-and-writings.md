@@ -8,6 +8,8 @@
 2. **This app's format, if you changed the format while in it.** Ibis remembers that without asking. The header says "MLA · for Word", and the menu offers to go back to your usual format.
 3. **Your format:** the one you chose at first run or in Settings. It applies everywhere else.
 
+Your format applies to apps of its own kind (maintainer, 2026-11-10): a style in word processors and apps Ibis does not know, a key syntax in Markdown, LaTeX and Typst apps. So it is two values, shown in Settings as "In documents: APA" and "In Markdown and LaTeX: Pandoc keys", the second only once it differs from the suggestion or once you have cited in such an app. An app of the other kind gets its kind's suggestion until you change the format there, which sets that app's format.
+
 The header always shows the format in use and, when it isn't your usual one, why ("for Word", "Thesis"). Someone who never changes anything never sees app formats or writings, except one "New writing…" item at the end of the format menu. A new install suggests a sensible first format for the kind of app (a word processor, Markdown, LaTeX), and the suggestion becomes the app's format only when the person pastes with it.
 
 **Inside Zotero, Ibis finds instead of citing.** Enter opens the PDF, or shows the item when there's no PDF. Other keys show the item or copy a citation. The footer says which.

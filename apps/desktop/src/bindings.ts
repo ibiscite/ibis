@@ -333,6 +333,15 @@ export type Copied = {
 	warnings: string[];
 };
 
+/**
+ * Why a citation was copied: the engine's decision before pasting, or a
+ * paste that failed once it began.
+ */
+export type CopiedReason = CopyReason | DeliveryFailure;
+
+/** Why a citation was copied instead of pasted. */
+export type CopyReason = "paste-off" | "unsupported-system" | "no-target" | "copy-only" | "target-changed" | "clipboard-changed" | "paste-expired" | "secure-field" | "elevated-app" | "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | "no-permission" | "unknown-app" | "secure-input" | "paste-unavailable" | "accessibility-required" | "selection-not-shown" | "citation-not-selected";
+
 export type DelightFact = "touch" | "scarlet" | "mummies" | "national" | "flight";
 
 export type DelightStatus = "paste-tip" | "library100" | "library1000" | "library10000";
@@ -354,12 +363,12 @@ export type Delivered = {
 	outcome: "pasted";
 } | {
 	outcome: "copied";
-	/**
-	 * Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
-	 * `key-release-failed`. Every copy says why (docs/design/delivery.md).
-	 */
-	reason: string;
+	/** Why Ibis did not paste. Every copy says why (docs/design/delivery.md). */
+	reason: CopiedReason;
 };
+
+/** A paste that began and could not finish. */
+export type DeliveryFailure = "key-release-failed";
 
 /** How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable";

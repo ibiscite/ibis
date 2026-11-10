@@ -176,11 +176,19 @@ pub fn read_field(term: LocatorTerm, text: &str) -> Result<Locator, FieldError> 
     let takes_text = LABELS
         .iter()
         .any(|label| label.term == term && label.value == Value::Text);
-    if !takes_text && let Some((label, rest)) = find_label(trimmed) {
-        if rest.trim().is_empty() {
+    if !takes_text {
+        if let Some((label, rest)) = find_label(trimmed) {
+            if rest.trim().is_empty() {
+                return Err(FieldError::MissingValue(label.term));
+            }
+            return parse(trimmed).ok_or(FieldError::InvalidValue(label.term));
+        }
+        // A label that needs a space after it (`s.v.`, `sub verbo`) still names
+        // its type when written alone, and still needs its value.
+        let spaced = format!("{trimmed} ");
+        if let Some((label, _)) = find_label(&spaced).filter(|(_, rest)| rest.trim().is_empty()) {
             return Err(FieldError::MissingValue(label.term));
         }
-        return parse(trimmed).ok_or(FieldError::InvalidValue(label.term));
     }
     Ok(Locator {
         term,
@@ -533,6 +541,13 @@ mod tests {
         }
         assert_eq!(page("chap."), Err(FieldError::MissingValue(LocatorTerm::Chapter)));
         assert_eq!(page("§"), Err(FieldError::MissingValue(LocatorTerm::Section)));
+        for alone in ["s.v.", "S.V.", "s.vv.", "sub verbo", "sub verbis"] {
+            assert_eq!(
+                page(alone),
+                Err(FieldError::MissingValue(LocatorTerm::SubVerbo)),
+                "{alone:?}"
+            );
+        }
         for value in [
             "pp. \"\"",
             "pp. 12 appendix",

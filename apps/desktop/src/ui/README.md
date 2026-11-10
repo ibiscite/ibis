@@ -4,7 +4,7 @@ The rules for each shared part, beside its code. The principles are in [design](
 
 Each component in `apps/desktop/src/ui/` wraps one React Aria component (decision 0021), owns one stylesheet that reads tokens only, and is the only way a screen draws that part. A screen needing a new control adds it to `ui/` with its line here first. Shared rules every window uses live in `ui/Foundation.css`.
 
-**States.** Hover (`@media (hover: hover)` only) never moves or resizes anything. Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
+**States.** Hover (`@media (hover: hover)` only) never moves or resizes anything; a press gives a little (`--press-scale`) and springs back, as in [Motion](../../../../docs/design/foundations.md#motion). Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
 
 | | Pointer over it | Chosen or current | Keyboard focus |
 | --- | --- | --- | --- |
@@ -39,7 +39,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Inspector (`ui/Inspector`, `CitationDetails`) | See [Inspector](../../../../docs/design/inspector-and-reader.md#inspector). |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See [Footer](../../../../docs/design/picker.md#footer). A status line is words, never a filled band. |
 | Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See [Notices](../../../../docs/design/delivery.md#notices). |
-| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
+| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. Without room the phase drops whole, never cut to a stub. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See [First run and choice screens](../../../../docs/design/choice-screens.md). |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |
