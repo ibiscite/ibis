@@ -280,7 +280,10 @@ fn prepare_with_style(
         || if request.items.is_empty() {
             entry(request.form)
         } else {
-            request.items.iter().all(|pick| entry(pick.form.unwrap_or(request.form)))
+            request
+                .items
+                .iter()
+                .all(|pick| entry(pick.form.unwrap_or(request.form)))
         };
     let mut items = Vec::new();
     let mut cites = Vec::new();

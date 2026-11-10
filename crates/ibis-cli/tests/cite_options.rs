@@ -187,7 +187,17 @@ fn flags_print_what_each_output_shows_and_report_what_it_cannot() -> Result {
     assert_eq!(from_request, text);
     // The name alone has no place for a page, and says so instead of dropping it.
     let (code, json_text, _) = run(
-        &["cite", "--style", "apa", "--form", "author-only", "taylor2026", "--locator", "12", "--json"],
+        &[
+            "cite",
+            "--style",
+            "apa",
+            "--form",
+            "author-only",
+            "taylor2026",
+            "--locator",
+            "12",
+            "--json",
+        ],
         b"",
     )?;
     let envelope: Value = serde_json::from_str(&json_text)?;
@@ -199,7 +209,8 @@ fn flags_print_what_each_output_shows_and_report_what_it_cannot() -> Result {
     );
     // One reference asking for its full entry gets it, as the whole citation's form does.
     let (_, entry, _) = run(&["cite", "--style", "apa", "--form", "full", "taylor2026"], b"")?;
-    let request = json!({"items": [picked("taylor2026", &json!({"form":"full"}))?], "output": {"kind":"csl","style":"apa"}});
+    let request =
+        json!({"items": [picked("taylor2026", &json!({"form":"full"}))?], "output": {"kind":"csl","style":"apa"}});
     let (code, from_request, _) = run(&["cite", "--request"], &serde_json::to_vec(&request)?)?;
     assert_eq!((code, from_request.as_str()), (0, entry.as_str()));
     assert!(entry.starts_with("Taylor, A. (2026)."), "{entry}");
