@@ -819,6 +819,7 @@ picker-type-to-find = Type to find a reference
 picker-type-to-find-hint = Search by title, author, year, citation key or DOI.
 picker-more = More
 picker-change-last-citation = Change Last Citation
+picker-forget-recent = Forget Recent Citations
 picker-change-citation = Change Citation · { $format }
 picker-keep-open = Keep Window Open
 picker-keep-open-menu = Keep Window Open

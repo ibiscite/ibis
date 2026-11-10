@@ -64,7 +64,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         </MenuSubmenu>
         {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={say("picker-copy-only-here", { app: actions.copyOnlyHere.app })} onAction={actions.copyOnlyHere.choose} />}
         {actions.sessionReferences && <MenuItem id="session-references" label={say("session-menu")} onAction={actions.sessionReferences} />}
-        {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
+        {actions.forgetRecent && <MenuItem id="forget-recent" label={say("picker-forget-recent")} onAction={actions.forgetRecent} />}
       </MenuSection>
       <MenuSection id="view-toggles">
         <MenuItem id="pin" label={say("picker-keep-open-menu")} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
