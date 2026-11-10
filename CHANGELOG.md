@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.3.2](https://github.com/ibiscite/ibis/compare/v0.3.1...v0.3.2) (2026-11-10)
+
+
+### Features
+
+* add citation prefixes, suffixes and Keep My Order ([#1789](https://github.com/ibiscite/ibis/issues/1789)) ([373026b](https://github.com/ibiscite/ibis/commit/373026b40c084992b9b242f8d77583fd2f677f68))
+* say why a damaged entry was skipped and which field to fix ([#1769](https://github.com/ibiscite/ibis/issues/1769)) ([40a5091](https://github.com/ibiscite/ibis/commit/40a50916efb5515f0c1741857d78302bb28e2d50))
+
+
+### Bug Fixes
+
+* announce the count for reused search results ([#1777](https://github.com/ibiscite/ibis/issues/1777)) ([6da5581](https://github.com/ibiscite/ibis/commit/6da558149fcd3a3d1392215c46d1a16601ce1117))
+* keep library recovery messages with the right file ([#1785](https://github.com/ibiscite/ibis/issues/1785)) ([2f0e9f7](https://github.com/ibiscite/ibis/commit/2f0e9f780cf7290d8d8837a0a53ec3fecbc52620))
+* make MCP search references work in show and cite ([#1776](https://github.com/ibiscite/ibis/issues/1776)) ([8f7a220](https://github.com/ibiscite/ibis/commit/8f7a220e85dbee356755a0bd566c33abe8c3cf63))
+* refuse the native journey while another Ibis is running ([#1792](https://github.com/ibiscite/ibis/issues/1792)) ([8f5a01b](https://github.com/ibiscite/ibis/commit/8f5a01ba81b6ad74203554eb1cca7e9402defe59))
+* report a locator a citation leaves out, in every style branch ([#1791](https://github.com/ibiscite/ibis/issues/1791)) ([5b0f56e](https://github.com/ibiscite/ibis/commit/5b0f56e9dbbe68b8b7ac9b6baddb3a9c247759d2))
+* report locators when a citation style cannot print them ([#1782](https://github.com/ibiscite/ibis/issues/1782)) ([d766e2b](https://github.com/ibiscite/ibis/commit/d766e2bb0c7c2a3b5cad18bedc29ef2af4049b5a))
+* retry Windows packaging after a Tauri download times out ([#1780](https://github.com/ibiscite/ibis/issues/1780)) ([62071c1](https://github.com/ibiscite/ibis/commit/62071c1b5051e741d5644f6b8ef2198abce39efc))
+* say a cited key belongs to a damaged entry, not to nothing ([#1796](https://github.com/ibiscite/ibis/issues/1796)) ([61b7476](https://github.com/ibiscite/ibis/commit/61b7476e0f8fd18173feeeeb4f99dab7a97d16c5))
+* treat --json after -- as a positional argument ([#1781](https://github.com/ibiscite/ibis/issues/1781)) ([3ba1f45](https://github.com/ibiscite/ibis/commit/3ba1f4503669c1a3efbc40bf96a425800d65141a))
+
+
+### Documentation
+
+* a control lives where its choice lasts ([#1793](https://github.com/ibiscite/ibis/issues/1793)) ([3da8fa0](https://github.com/ibiscite/ibis/commit/3da8fa07a39d4fc4474129f1598dff4f1ac7186d))
+* keep moving while checks run; one review round per change ([#1774](https://github.com/ibiscite/ibis/issues/1774)) ([d7b7958](https://github.com/ibiscite/ibis/commit/d7b7958bf10ad8c2ad365e7f4e40dc57fa26f525))
+* one format, optional writings, finding inside Zotero ([#1794](https://github.com/ibiscite/ibis/issues/1794)) ([e3cb471](https://github.com/ibiscite/ibis/commit/e3cb471280e394e78e96cee56b72751158dd494f))
+* release twice a week; agents make design calls ([#1783](https://github.com/ibiscite/ibis/issues/1783)) ([517e28f](https://github.com/ibiscite/ibis/commit/517e28f9b9dbaca9f03f07d49341fb2128ebd220))
+* Sol reviews major work only; redesign drifted parts ([#1788](https://github.com/ibiscite/ibis/issues/1788)) ([ce1d096](https://github.com/ibiscite/ibis/commit/ce1d09616c2887767e231eef4665db29975ee191))
+
 ## [0.3.1](https://github.com/ibiscite/ibis/compare/v0.3.0...v0.3.1) (2026-11-09)
 
 
