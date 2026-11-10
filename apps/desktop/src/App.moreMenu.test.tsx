@@ -49,7 +49,7 @@ test("with a result ready to copy, the citation format is a distinct named contr
   expect(button.tabIndex).toBe(0);
   expect(typeof button.onclick).toBe("function");
   act(() => button.click());
-  const filter = await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  const filter = await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "Typst" } });
   await screen.findByRole("option", { name: "Typst" });
   fireEvent.keyDown(filter, { key: "ArrowDown" });

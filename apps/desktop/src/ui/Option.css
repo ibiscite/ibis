@@ -18,7 +18,7 @@
 .result-tile .type-icon { width: var(--icon); height: var(--icon); }
 .result-tile .tile-button { position: absolute; inset: 50% auto auto 50%; transform: translate(-50%, -50%); width: var(--control-h); height: var(--control-h); border-radius: var(--r-small); opacity: 0; }
 [data-active] .tile-button, [data-citation-selected] .tile-button { opacity: 1; }
-[data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
+:is([data-active], [data-citation-selected]) .result-tile .type-icon { opacity: 0; }
 [data-active] .result-tile { color: inherit; }
 @media (hover: hover) {
   [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered] .tile-button { opacity: 1; }

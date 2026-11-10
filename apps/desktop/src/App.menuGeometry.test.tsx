@@ -101,7 +101,7 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
     if (layer === "More") fireEvent.keyDown(search, { key: "k", ctrlKey: true });
     else fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
     const menu = await screen.findByRole("dialog");
-    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }
   await toggleKeepOpen();

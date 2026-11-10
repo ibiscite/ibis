@@ -1465,7 +1465,7 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   fireEvent.keyDown(box, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.pointerDown(document.querySelector(".ui-palette-scrim")!);
+  fireEvent.click(within(screen.getByRole("dialog", { name: "Actions" })).getByRole("button", { name: "Back" }));
   expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   expect(screen.getByRole("button", { name: /^More/ }).getAttribute("aria-keyshortcuts")).toBe("Control+K");
 });
@@ -2527,7 +2527,7 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   const sheet = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   // No citation was pasted into this app yet, so there is none to change: as More, the sheet omits it.
   expect(sheet.textContent).not.toContain("Edit the citation you just pasted");
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });
 
@@ -2621,7 +2621,7 @@ test("the keys sheet names what Enter does from the same answer as the footer", 
     fireEvent.keyDown(box, { key: "/", ctrlKey: true });
     const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     const row = within(dialog).getAllByRole("row").find((candidate) => candidate.textContent?.endsWith("Enter") && !candidate.textContent.includes("Shift"))?.firstElementChild?.textContent;
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     return row;
   };
@@ -2644,7 +2644,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   fireEvent.keyDown(box, { key: "/", ctrlKey: true });
   const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   expect(dialog.getAttribute("aria-modal")).toBe("true");
-  const close = within(dialog).getByRole("button", { name: "Close" });
+  const close = within(dialog).getByRole("button", { name: "Back" });
   expect(document.activeElement).toBe(dialog);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));
@@ -3341,7 +3341,7 @@ test.each(["p", "З"])("the keep-open shortcut toggles from Format and leaves it
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  const filter = screen.getByRole("combobox", { name: /^Search (formats|actions)$/ });
   fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1));
   expect(screen.getByRole("dialog")).toBeTruthy();
@@ -3356,7 +3356,7 @@ test.each([
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
   // Let a wrongly queued command finish; another key must not cancel the probe.
   await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
   expect(calls).not.toContain("set_pinned");
@@ -3412,7 +3412,7 @@ test("engine citation styles are reachable and save their choice without copying
   backend({ picker_preferences_saved: saved });
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  const filter = screen.getByRole("combobox", { name: /^Search (formats|actions)$/ });
   fireEvent.keyDown(filter, { key: "End" });
   // The last of the engine's common styles, whichever it is.
   const last = OUTPUTS.at(-1)!;
@@ -3432,7 +3432,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   fireEvent.change(search, { target: { value: "sleep" } });
   const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
-  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  const filter = screen.getByRole("combobox", { name: /^Search (formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "APA" } });
   fireEvent.compositionStart(filter);
   for (const key of ["Enter", "Escape", "k"]) fireEvent.keyDown(filter, { key, ctrlKey: key === "k", isComposing: true });
@@ -3445,7 +3445,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   expect(search.value).toBe("sleep");
   expect(calls).not.toContain("hide_picker");
   fireEvent.click(trigger);
-  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "k", ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "k", ctrlKey: true });
   expect(await screen.findByRole("dialog", { name: "Actions" })).toBeTruthy();
   expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
 });
@@ -3457,7 +3457,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   fireEvent.change(search, { target: { value: "sleep" } });
   const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
-  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  const filter = screen.getByRole("combobox", { name: /^Search (formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "Typst" } });
   fireEvent.keyDown(filter, { key: "k", ctrlKey: true });
   const more = await screen.findByRole("dialog", { name: "Actions" });
@@ -3473,7 +3473,7 @@ test.each(["k", "/"])("hiding the picker closes what Format's Ctrl+%s left open"
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key, ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key, ctrlKey: true });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("menu")).toBeNull();

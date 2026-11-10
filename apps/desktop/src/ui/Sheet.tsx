@@ -1,26 +1,27 @@
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
-import { IconButton } from "./IconButton";
 import { useLayer } from "./layers";
+import { ViewFrame } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
-import "./Overlay.css";
 import "./SettingsGroup.css";
 import "./Sheet.css";
 
-const FOCUSABLE = "button:not([disabled]), input:not([disabled]), [tabindex='0']";
+const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), [tabindex='0']";
 
-/** A modal sheet over a dimmed picker: a title with ×, one padded body that alone
- * scrolls, and an optional row of actions under it. Esc, a hide, a click on the
- * backdrop or × close it; Tab stays inside, and a control that disappears or is
- * disabled hands the keyboard back to the sheet, so no key acts behind it. */
+/** A sheet: a view of the window (ui/ViewFrame), as the palette is. Its name in
+ * the header's chip, one body that alone scrolls, and the footer as its action
+ * bar: leading actions, trailing actions with the primary last, then Back with
+ * Esc. Esc, a hide or Back close it; Tab stays inside, and a control that
+ * disappears or is disabled hands the keyboard back to the sheet, so no key acts
+ * behind it. */
 export function Sheet({ title, closeLabel, description, actions, leadingActions, busy, onClose, children }: {
   title: string; closeLabel: string;
-  /** One quiet sentence under the title that says what the sheet is for; it describes the dialog. */
+  /** One quiet sentence at the top of the body that says what the sheet is for; it describes the dialog. */
   description?: ReactNode;
-  /** Buttons on the trailing edge of the bottom row; the primary goes last. */
+  /** Buttons on the trailing edge of the footer, before Back; the primary goes last. */
   actions?: ReactNode;
-  /** Buttons on the leading edge of the bottom row. */
+  /** Buttons on the leading edge of the footer. */
   leadingActions?: ReactNode;
   busy?: boolean;
   onClose: () => void;
@@ -37,32 +38,24 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
     const focused = document.activeElement;
     if (!dialog.current?.contains(focused) || (focused as HTMLButtonElement).disabled) dialog.current?.focus();
   });
-  return <div className="ui-sheet-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={description ? aboutId : undefined}
-      // Clicking plain text inside keeps focus here, so Escape still closes it.
-      tabIndex={-1} className="ui-overlay ui-sheet"
-      onKeyDown={(event) => {
-        if (event.key !== "Tab") return;
-        const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
-        const at = focusable.indexOf(document.activeElement as HTMLElement);
-        event.preventDefault();
-        focusable[at < 0 ? event.shiftKey ? focusable.length - 1 : 0 : (at + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
-      }}>
-      <div className="ui-sheet-heading">
-        <h2 id={titleId}>{title}</h2>
-        <IconButton aria-label={closeLabel} title={closeLabel} aria-keyshortcuts="Escape" onPress={onClose} />
-      </div>
-      <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
+  return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: onClose }}
+    role="dialog" aria-modal="true" aria-describedby={description ? aboutId : undefined}
+    // Clicking plain text inside keeps focus here, so Escape still closes it.
+    tabIndex={-1} actions={actions} leadingActions={leadingActions}
+    onKeyDown={(event) => {
+      if (event.key !== "Tab") return;
+      const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
+      const at = focusable.indexOf(document.activeElement as HTMLElement);
+      event.preventDefault();
+      focusable[at < 0 ? event.shiftKey ? focusable.length - 1 : 0 : (at + (event.shiftKey ? -1 : 1) + focusable.length) % focusable.length]?.focus();
+    }}>
+    <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
+      <div className="ui-sheet-content">
         {description && <p id={aboutId} className="ui-sheet-note">{description}</p>}
         {children}
       </div>
-      {(actions || leadingActions) && <div className="ui-sheet-actions">
-        {leadingActions}
-        <span className="ui-sheet-spacer" />
-        {actions}
-      </div>}
     </div>
-  </div>;
+  </ViewFrame>;
 }
 
 /** A list of things in a sheet, one per row. */

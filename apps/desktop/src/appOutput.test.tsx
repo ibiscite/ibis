@@ -76,7 +76,7 @@ test.each(["Escape", "Tab"])("%s uses the default for this paste and asks again 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByRole("dialog");
   expect(copies).toEqual([]);
-  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(prepared(copies[0]).request.output).toBe("pandoc");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -91,7 +91,7 @@ test.each(["query", "hidden", "reopened", "command"])("a %s change cancels the c
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByRole("dialog");
   if (change === "query") fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "another" } });
-  else if (change === "command") fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "k", ctrlKey: true });
+  else if (change === "command") fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "k", ctrlKey: true });
   else await act(async () => { await emit(change === "hidden" ? "picker:hidden" : "picker:shown"); });
   if (change !== "command") {
     const item = screen.queryByRole("option", { name: "APA" });
@@ -198,7 +198,7 @@ test.each(["More", "Keyboard Shortcuts"])("opening %s cancels a dismissed questi
   await screen.findByText("First");
   await waitFor(() => expect(calls).toContain("preview_file_citation"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
-  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   if (overlay === "More") fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   else fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
@@ -252,7 +252,7 @@ test.each([
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await screen.findByRole("option", { name: "APA" });
   expect(copies).toEqual([]);
-  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   await waitFor(() => expect(copies).toHaveLength(1));
   expect(prepared(copies[0]).request).toMatchObject({ output: format });
 });
@@ -281,7 +281,7 @@ test("a pick that cannot be saved says it is for this paste, then the saved form
   expect((await screen.findByText(/could not save the choice for this app/)).getAttribute("role")).toBe("alert");
   openFormats();
   expect(screen.getByText("Typst applies to this paste only. Pick a format to remember it for this app.")).toBeTruthy();
-  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ output: "typst" }));
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await copy(previews, copies);
@@ -328,7 +328,7 @@ test("the menu says why the next paste uses its format and where a pick goes", a
     openFormats();
     const menu = await screen.findByRole("dialog");
     expect(screen.getByText(note).id).toBe(menu.getAttribute("aria-describedby"));
-    fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+    fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   };
   await says("APA · Example Word", "Suggested for Example Word. Your pick is remembered for this app.");
@@ -348,7 +348,7 @@ test("an unreadable per-app file says defaults apply and offers the app's own pa
   openFormats();
   expect(await screen.findByRole("option", { name: "Copy Only" })).toBeTruthy();
   expect(screen.getByRole("option", { name: "Paste into Example Word from Now On" })).toBeTruthy();
-  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   expect(calls).not.toContain("remember_app_output");
 });
 

@@ -1,0 +1,37 @@
+/* A view of the window (ui/ViewFrame.tsx): the picker's content swaps out and the view
+   fills the window edge to edge, in the picker's own geometry: the search bar's
+   header (the back chevron on the tile column, the view's name, then its search
+   starting on the title column), one body, and the footer's band. No card, border,
+   corner or shadow of its own: it is the window, as the picker is. */
+:root[data-view] main { visibility: hidden; }
+.ui-view {
+  position: fixed; inset: 0; z-index: var(--z-modal); display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line);
+}
+.ui-view:focus { outline: none; }
+.ui-view-head {
+  flex: none; display: flex; align-items: center; min-height: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
+  padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);
+}
+/* The chevron centres on the tile column, where the bird sits; the name follows so
+   the field after it starts no earlier than the title column. */
+.ui-view-head > .ui-view-back.ui-button[data-variant] {
+  flex: none; --icon-button-size: var(--field-h); border-radius: var(--r-control);
+  margin-inline: calc(var(--row-pad) + (var(--tile) - var(--field-h)) / 2) calc((var(--tile) - var(--field-h)) / 2 + var(--row-gap));
+}
+.ui-view-title { flex: none; margin: 0 var(--space-3) 0 0; padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); color: var(--text); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+/* A view's search is the picker's: frameless and large. */
+.ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
+.ui-view .ui-view-field:focus-visible { outline: none; box-shadow: none; }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-view .ui-view-field:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
+}
+.ui-view-body { flex: 1; display: flex; min-width: 0; min-height: 0; }
+/* The footer's band: status words on the title column, actions at the end, then Back. */
+.ui-view-foot {
+  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--footer-h);
+  padding-block: var(--inset); padding-inline: calc(var(--inset) + var(--row-pad) + var(--title-start)) var(--inset);
+  border-block-start: var(--border-width) solid var(--separator); font-size: var(--type-label-size); line-height: var(--type-label-line);
+}
+.ui-view-status { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+.ui-view-back-hint.ui-button[data-variant] { color: var(--text-secondary); }

@@ -4,6 +4,7 @@ export const PICKER_IDS = [
   "palette-run",
   "palette-recent",
   "palette-citation",
+  "palette-library",
   "palette-ibis",
   "palette-peek",
   "palette-actions-title",

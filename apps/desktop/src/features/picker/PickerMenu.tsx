@@ -48,24 +48,24 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const sections: (PaletteSection & { items: Action[] })[] = [
     // The footer's status already names the library under More; the group's name
     // says it again only for screen readers, with the last outcome first.
-    { id: "library", label: lastOutcome ?? undefined, name: [lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ") || undefined, items: [
-      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys }) : [],
+    { id: "library", label: say("palette-library"), name: [lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ") || undefined, items: [
+      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys, detail: lastOutcome ?? undefined }) : [],
       ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
       ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library" />, ...keyed("chooseSource") }),
     ] },
     // The bibliography keys are checked against, named by its state.
     { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
-      ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), project.copyEntry) : [],
-      ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), project.choose) : [],
-      ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), project.stop) : [],
+      ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), project.copyEntry, { icon: <Icon name="file" /> }) : [],
+      ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), project.choose, { icon: <Icon name="book" /> }) : [],
+      ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), project.stop, { icon: <Icon name="close" /> }) : [],
     ] },
     { id: "citation", label: say("palette-citation"), items: [
       ...action("format", say("picker-change-format"), actions.format, { icon: <Icon name="swap" />, ...keyed("format") }),
-      ...action("peek", say("palette-peek"), actions.peek, { icon: <Icon name="find" />, ...keyed("peek") }),
+      ...action("peek", say("palette-peek"), actions.peek, { icon: <Icon name="look" />, ...keyed("peek") }),
       ...action("change-last", say("picker-change-last-citation"), actions.changeLast, { icon: <Icon name="write" />, ...keyed("changeLast") }),
-      ...keepOrder ? action("keep-order", say("picker-keep-my-order"), keepOrder.toggle, { checked: keepOrder.checked }) : [],
+      ...keepOrder ? action("keep-order", say("picker-keep-my-order"), keepOrder.toggle, { checked: keepOrder.checked, icon: <Icon name="chevrons" /> }) : [],
       ...action("session-references", say("session-menu"), actions.sessionReferences, { icon: <Icon name="citations" /> }),
-      ...action("forget-recent", say("picker-forget-recent"), actions.forgetRecent),
+      ...action("forget-recent", say("picker-forget-recent"), actions.forgetRecent, { icon: <Icon name="retry" /> }),
     ] },
     { id: "ibis", label: say("palette-ibis"), items: [
       ...action("pin", say("picker-keep-open-menu"), actions.pin, { checked: pinned, icon: <Icon name="pin" />, ...keyed("pin") }),

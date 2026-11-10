@@ -147,7 +147,7 @@ test("an unknown app without a proven target only copies and never asks for appr
 test("dismissing the unknown-app question or picking a format never grants paste", async () => {
   const h = await open();
   await enter();
-  await act(async () => { fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" }); });
+  await act(async () => { fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" }); });
   expect(h.copy.calls).toHaveLength(0);
   await enter();
   await act(async () => { fireEvent.click(screen.getByRole("option", { name: "Pandoc" })); });

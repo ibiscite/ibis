@@ -4,10 +4,10 @@ import { composing } from "../composition";
 import { Icon } from "../icons";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
-import { KeyHint } from "./KeyCaps";
+import { Button } from "./Button";
+import { ViewFrame, leaveView } from "./ViewFrame";
 import { say } from "../i18n";
 import { useLayer } from "./layers";
-import "./Overlay.css";
 import "./Palette.css";
 
 /** One row: a name, a quiet detail only when it tells rows apart, its keys, and
@@ -37,14 +37,14 @@ export function filterPalette(sections: readonly PaletteSection[], query: string
 
 /** The palette: one searchable view of the window for every choice that isn't
  * search itself (the format, every action), as Raycast's action panel. It
- * unfolds over the picker, takes keys from its first frame, and Esc, its own
+ * takes the picker's place (ui/ViewFrame), takes keys from its first frame, and Esc, its own
  * key or a pick closes it. ↑ ↓ move, Enter runs the highlighted row. An
  * optional preview shows what the highlighted row would do. */
 export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial }: {
   id: string;
   /** The palette's name, also the token before the field ("Format", "Actions"). */
   title: string;
-  /** Whose choice this is ("for Word", "Thesis"); quiet, after the title. */
+  /** Whose choice this is ("For Word", "Default format"), in the footer's status place. */
   subtitle?: string | null;
   /** Why the choice stands as it does, read with the palette and shown under the preview. */
   description?: string;
@@ -69,7 +69,8 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const current = items.find((item) => item.id === highlight) ?? items[0];
   const listId = useId(), titleId = useId(), descriptionId = useId();
   const optionId = (item: PaletteItem) => `${id}-${item.id}`;
-  const field = useRef<HTMLInputElement>(null);
+  const field = useRef<HTMLInputElement>(null), frame = useRef<HTMLDivElement>(null);
+  const leave = () => { if (frame.current) leaveView(frame.current); };
   const mac = currentPlatform() === "macos";
   // Esc, a click outside or Back hands the keyboard back to whatever had it.
   const opener = useRef<Element | null>(null);
@@ -78,6 +79,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const acted = useRef(false);
   const dismiss = () => {
     if (acted.current) return;
+    leave();
     const back = opener.current;
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
@@ -91,6 +93,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled || acted.current) return;
     acted.current = true;
+    leave();
     onAction(item.id);
   };
   const move = (step: number) => {
@@ -106,55 +109,43 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
     else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
     // Tab leaves the palette for Search, as Tab leaves a menu.
-    else if (event.key === "Tab") { event.preventDefault(); acted.current = true; onClose("tab"); }
+    else if (event.key === "Tab") { event.preventDefault(); acted.current = true; leave(); onClose("tab"); }
   };
-  return <div className="ui-palette-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
-    <div className="ui-overlay ui-palette" role="dialog" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} data-preview={preview ? "" : undefined}
-      onKeyDown={keyDown}
-      // A press anywhere but the field leaves the keyboard in the field; clicks still act.
-      onMouseDown={(event) => { if (event.target !== field.current) event.preventDefault(); }}>
-      <div className="ui-palette-head">
-        <span id={titleId} className="ui-palette-title">{title}</span>
-        {subtitle && <span className="ui-palette-subtitle">{subtitle}</span>}
-        <input ref={field} className="ui-palette-field" type="text" role="combobox" aria-label={placeholder} placeholder={placeholder}
-          aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={current ? optionId(current) : undefined}
-          autoComplete="off" spellCheck={false} value={query}
-          onChange={(event) => { setQuery(event.target.value); setHighlight(undefined); }}
-          />
-      </div>
-      <div className="ui-palette-body">
-        <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
-          {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
-            {section.label && <div className="ui-palette-heading" aria-hidden="true">{section.label}</div>}
-            <ul role="group" aria-label={section.name ?? section.label ?? title}>
-              {section.items.map((item) => <li key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
-                aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
-                aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
-                onPointerMove={() => { if (highlight !== item.id) setHighlight(item.id); }}
-                onClick={() => run(item)}>
-                <span className="ui-palette-lead" aria-hidden="true">{item.back ? "↩" : item.checked ? <Icon name="check" /> : item.icon}</span>
-                <span className="ui-palette-label">{item.label}</span>
-                {item.detail && <span className="ui-palette-detail">{item.detail}</span>}
-                {item.keys && <span className="ui-palette-keys" aria-hidden="true">{keyLabel(item.keys, mac)}</span>}
-              </li>)}
-            </ul>
-          </li>)}
-          {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
-        </ul>
-        {preview && <div className="ui-palette-preview">
-          <div aria-live="polite">{current && preview(current)}</div>
-          {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
-        </div>}
-        {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}
-      </div>
-      <div className="ui-palette-foot">
-        {current && !current.disabled && <button type="button" className="ui-palette-action" tabIndex={-1} onClick={() => run(current)}>
-          <KeyHint label={actionLabel(current)} keys="Enter" primary />
-        </button>}
-        <button type="button" className="ui-palette-back" tabIndex={-1} onClick={dismiss}>
-          <KeyHint label={say("palette-back")} keys="Escape" />
-        </button>
-      </div>
+  return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={description ? descriptionId : undefined}
+    back={{ label: say("palette-back"), onBack: dismiss }} status={subtitle} frameRef={frame}
+    onKeyDown={keyDown}
+    // A press anywhere but the field leaves the keyboard in the field; clicks still act.
+    onMouseDown={(event) => { if (event.target !== field.current) event.preventDefault(); }}
+    search={<input ref={field} className="ui-view-field" type="text" role="combobox" aria-label={placeholder} placeholder={placeholder}
+      aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={current ? optionId(current) : undefined}
+      autoComplete="off" spellCheck={false} value={query}
+      onChange={(event) => { setQuery(event.target.value); setHighlight(undefined); }} />}
+    actions={current && !current.disabled ? <Button variant="action" size="small" className="ui-palette-action" excludeFromTabOrder onPress={() => run(current)}
+      label={actionLabel(current)} keys="Enter" /> : undefined}>
+    <div className="ui-palette" data-preview={preview ? "" : undefined}>
+      <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
+        {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
+          {section.label && <div className="ui-palette-heading" aria-hidden="true">{section.label}</div>}
+          <ul role="group" aria-label={section.name ?? section.label ?? title}>
+            {section.items.map((item) => <li key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
+              aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
+              aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
+              onPointerMove={() => { if (highlight !== item.id) setHighlight(item.id); }}
+              onClick={() => run(item)}>
+              <span className="ui-palette-lead" aria-hidden="true">{item.back ? <Icon name="back" /> : item.checked ? <Icon name="check" /> : item.icon}</span>
+              <span className="ui-palette-label">{item.label}</span>
+              {item.detail && <span className="ui-palette-detail">{item.detail}</span>}
+              {item.keys && <span className="ui-palette-keys" aria-hidden="true">{keyLabel(item.keys, mac)}</span>}
+            </li>)}
+          </ul>
+        </li>)}
+        {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
+      </ul>
+      {preview && <div className="ui-palette-preview">
+        <div aria-live="polite">{current && preview(current)}</div>
+        {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
+      </div>}
+      {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}
     </div>
-  </div>;
+  </ViewFrame>;
 }

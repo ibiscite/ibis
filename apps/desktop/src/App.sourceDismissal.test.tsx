@@ -50,8 +50,8 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
   await screen.findByText("Selected invented reference");
   const trigger = within(search().closest("header")!).getByRole("button", { name: /^Citation format / });
   fireEvent.click(trigger);
-  await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ })));
+  await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ });
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ })));
   press("o", { ctrlKey: true, altKey });
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
   expect(atOpen).toEqual([{ menu: null, focus: search() }]);
