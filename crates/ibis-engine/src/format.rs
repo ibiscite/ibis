@@ -13,16 +13,20 @@ use ibis_core::destination::{AppId, OutputClass, OutputQuestion, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
 use ibis_core::settings::Settings;
 
-/// The kind of `app`, and what is suggested for it when nothing is chosen.
-fn kind(app: Option<&AppId>) -> (FormatKind, &'static str) {
+/// The kind of `app`, what is suggested for it when nothing is chosen, and
+/// whether Ibis knows its kind; an app it does not counts as documents.
+fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
     let entry = app.and_then(lookup);
     match (
         entry.and_then(|entry| entry.output),
         entry.and_then(|entry| entry.output_question),
     ) {
-        (Some(OutputClass::Key(syntax)), _) => (FormatKind::Keys, key_id(syntax)),
-        (None, Some(OutputQuestion::Editor)) => (FormatKind::Keys, outputs::DEFAULT),
-        _ => (FormatKind::Documents, outputs::DEFAULT_STYLE),
+        (Some(OutputClass::Key(syntax)), _) => (FormatKind::Keys, key_id(syntax), true),
+        (Some(OutputClass::Formatted), _) | (None, Some(OutputQuestion::Browser)) => {
+            (FormatKind::Documents, outputs::DEFAULT_STYLE, true)
+        }
+        (None, Some(OutputQuestion::Editor)) => (FormatKind::Keys, outputs::DEFAULT, true),
+        (None, None) => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
     }
 }
 
@@ -48,19 +52,13 @@ fn choice(entry: &outputs::OutputInfo, from: FormatFrom, kind: FormatKind) -> Fo
 
 /// The format for a citation into `app` (none when no app was captured).
 pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
-    let (kind, suggestion) = kind(app);
+    let (kind, suggestion, _) = kind(app);
     if let Some(project) = app.and_then(|app| writing_for(settings, app)) {
-        // A writing's format holds in any kind of app: the person chose it there.
-        return FormatChoice {
-            id: outputs::named(&project.output).map(|entry| entry.id.clone()),
-            output: project.output.clone(),
-            from: FormatFrom::Writing,
-            kind,
-            writing: Some(WritingName {
-                id: project.id.clone(),
-                name: project.name.clone(),
-            }),
+        let writing = WritingName {
+            id: project.id.clone(),
+            name: project.name.clone(),
         };
+        return for_writing(&project.output, writing, app);
     }
     // This app's format was chosen in it, so it holds whatever its kind.
     if let Some(entry) = app.and_then(|app| settings.app_output(app)).and_then(outputs::find) {
@@ -77,20 +75,37 @@ pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
     choice(entry, FormatFrom::Suggestion, kind)
 }
 
-/// As [`choose`], with `yours` standing in for your format of its own kind:
-/// what a request names (the CLI's `--format` or `--style`, MCP's `format` or
-/// `style`). A writing or the app's own format still wins, as in the app.
+/// The answer when a writing is chosen, also one that holds only for this
+/// session: its format, in any kind of app, since the person chose it there.
+pub fn for_writing(output: &OutputSpec, writing: WritingName, app: Option<&AppId>) -> FormatChoice {
+    FormatChoice {
+        id: outputs::named(output).map(|entry| entry.id.clone()),
+        output: output.clone(),
+        from: FormatFrom::Writing,
+        kind: kind(app).0,
+        writing: Some(writing),
+    }
+}
+
+/// As [`choose`], with `yours` standing in for your format: what a request
+/// names (the CLI's `--format` or `--style`, MCP's `format` or `style`). A
+/// writing or the app's own format still wins, as in the app. For an app of
+/// a known kind it must be of that kind, as your format is; an app Ibis does
+/// not know takes it whatever its kind, so nothing named is lost there.
 pub fn choose_with(settings: &Settings, app: Option<&AppId>, yours: Option<&OutputSpec>) -> FormatChoice {
     let chosen = choose(settings, app);
+    let known = kind(app).2;
     match yours {
         Some(output)
-            if matches!(chosen.from, FormatFrom::Yours | FormatFrom::Suggestion) && kind_of(output) == chosen.kind =>
+            if matches!(chosen.from, FormatFrom::Yours | FormatFrom::Suggestion)
+                && (!known || kind_of(output) == chosen.kind) =>
         {
             FormatChoice {
                 id: outputs::named(output).map(|entry| entry.id.clone()),
                 output: output.clone(),
                 from: FormatFrom::Yours,
-                ..chosen
+                kind: kind_of(output),
+                writing: None,
             }
         }
         _ => chosen,

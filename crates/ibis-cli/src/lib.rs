@@ -851,7 +851,7 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
         // for_app reads the formats chosen in the app, as `cite --for-app` does.
         let session = match settings_backup::settings_file(false) {
             Ok((_, path)) => session.with_formats(path),
-            Err(_) => session,
+            Err(failure) => session.without_formats(failure.refusal()),
         };
         return Ok(Execution::Stdio(
             match ibis_engine::mcp::serve(engine, session, input, output) {

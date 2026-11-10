@@ -360,10 +360,22 @@ pub(crate) fn picker_destination(
     };
     let context = crate::writing_projects::destination_context(&app, last.as_ref().map(|(id, _, _)| id))?;
     let context_version = Some(context.version);
+    let settings = settings::load(&settings_file.path).settings;
+    let captured = last.as_ref().map(|(id, _, _)| id);
+    // The writing this picker reports, also one chosen only for this session.
+    let format = match &context.active {
+        Some(project) => ibis_engine::format::for_writing(
+            project.output.spec(),
+            ibis_engine::format::WritingName {
+                id: project.id.clone(),
+                name: project.name.clone(),
+            },
+            captured,
+        ),
+        None => ibis_engine::format::choose(&settings, captured),
+    };
     let writing_project = context.active.map(|project| project.view());
     let writing_context = editor.current().is_none().then_some(context.edit);
-    let settings = settings::load(&settings_file.path).settings;
-    let format = ibis_engine::format::choose(&settings, last.as_ref().map(|(id, _, _)| id));
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
             app: None,

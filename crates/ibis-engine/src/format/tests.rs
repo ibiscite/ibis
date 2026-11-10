@@ -1,4 +1,5 @@
 use super::*;
+use ibis_core::contract::KeySyntax;
 use ibis_core::destination::System::{Macos, Windows};
 use ibis_core::settings::writing_projects::WritingProject;
 
@@ -117,4 +118,46 @@ fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() {
     // Another app keeps its own answer.
     let pages = app(Macos, "com.apple.iwork.pages");
     assert_eq!(said(&settings, Some(&pages)), ("apa".into(), FormatFrom::Suggestion));
+}
+
+#[test]
+fn a_named_format_stands_in_for_yours_and_an_unknown_app_keeps_it_whatever_its_kind() {
+    let settings = Settings::default();
+    let typst = OutputSpec::Key {
+        syntax: KeySyntax::Typst,
+        command: None,
+    };
+    let named = |target: AppId| {
+        let chosen = choose_with(&settings, Some(&target), Some(&typst));
+        (chosen.id.unwrap_or_default(), chosen.from)
+    };
+    assert_eq!(named(app(Macos, "md.obsidian")), ("typst".into(), FormatFrom::Yours));
+    // Nothing named is lost where Ibis cannot tell the app's kind.
+    assert_eq!(
+        named(app(Macos, "org.example.invented")),
+        ("typst".into(), FormatFrom::Yours)
+    );
+    assert_eq!(named(app(Windows, "notepad.exe")), ("typst".into(), FormatFrom::Yours));
+    // A word processor's documents stay formatted, as with your format.
+    assert_eq!(
+        named(app(Macos, "com.microsoft.word")),
+        ("apa".into(), FormatFrom::Suggestion)
+    );
+}
+
+#[test]
+fn a_writing_chosen_for_this_session_answers_without_a_captured_app() {
+    let typst = OutputSpec::Key {
+        syntax: KeySyntax::Typst,
+        command: None,
+    };
+    let writing = WritingName {
+        id: "session".into(),
+        name: "Invented notes".into(),
+    };
+    let chosen = for_writing(&typst, writing.clone(), None);
+    assert_eq!(
+        (chosen.id.as_deref(), chosen.from, chosen.writing),
+        (Some("typst"), FormatFrom::Writing, Some(writing))
+    );
 }

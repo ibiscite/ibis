@@ -2,6 +2,7 @@
 //! words an agent chooses it by, its schemas and the function that answers it.
 //! To add a tool, add an entry. Failures are tool errors the agent can read:
 //! a fixed error code, then what to change, with nothing from the library.
+use super::Formats;
 use super::view;
 use crate::catalogue::Audience;
 use crate::outputs;
@@ -15,7 +16,6 @@ use ibis_core::destination::{System, destination};
 use serde_json::{Map, Value, json};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::Path;
 
 /// Search results returned to an agent at most.
 pub const MAX_HITS: usize = 25;
@@ -43,8 +43,8 @@ pub(super) struct Tool {
     answer: Answer,
 }
 
-/// A tool's work: the engine, the app's settings file for formats, and the arguments.
-type Answer = fn(&Engine, Option<&Path>, &Map<String, Value>) -> Result<Value, Refusal>;
+/// A tool's work: the engine, where the app's formats are read, and the arguments.
+type Answer = fn(&Engine, &Formats, &Map<String, Value>) -> Result<Value, Refusal>;
 
 pub(super) const TOOLS: [Tool; 4] = [
     Tool {
@@ -137,7 +137,7 @@ const UNREADABLE_FORMATS: &str = "The Ibis app's settings cannot be read, so the
 pub(super) fn call(
     engine: &Engine,
     problem: Option<&Refusal>,
-    formats: Option<&Path>,
+    formats: &Formats,
     tool: &Tool,
     arguments: &Value,
 ) -> Value {
@@ -166,7 +166,7 @@ pub(super) fn call(
 fn answer(
     engine: &Engine,
     problem: Option<&Refusal>,
-    formats: Option<&Path>,
+    formats: &Formats,
     tool: &Tool,
     arguments: &Value,
 ) -> Result<(String, Value), Refusal> {
@@ -285,7 +285,7 @@ fn search_output() -> Value {
     })
 }
 
-fn search(engine: &Engine, _: Option<&Path>, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     let query = arguments
         .get("query")
         .and_then(Value::as_str)
@@ -395,7 +395,7 @@ fn show_output() -> Value {
     shown
 }
 
-fn show(engine: &Engine, _: Option<&Path>, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn show(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     let shown = selected(engine, arguments)?;
     match &shown.object {
         LibraryObject::Record(record) => {
@@ -485,7 +485,7 @@ fn format_ids() -> Vec<&'static str> {
         .collect()
 }
 
-fn cite(engine: &Engine, formats: Option<&Path>, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     let items = arguments
         .get("items")
         .and_then(Value::as_array)
@@ -521,14 +521,15 @@ fn cite(engine: &Engine, formats: Option<&Path>, arguments: &Map<String, Value>)
             // The app's own settings decide, as in the picker (decision 0042);
             // a format or style named here stands in for your usual one.
             let settings = match formats {
-                Some(path) => {
+                Formats::File(path) => {
                     let loaded = ibis_core::settings::load(path);
                     if loaded.problem.is_some() {
                         return Err(Refusal::new(ErrorCode::SourceUnavailable, UNREADABLE_FORMATS));
                     }
                     loaded.settings
                 }
-                None => ibis_core::settings::Settings::default(),
+                Formats::Unavailable(problem) => return Err(problem.clone()),
+                Formats::Defaults => ibis_core::settings::Settings::default(),
             };
             let named = (arguments.contains_key("format") || arguments.contains_key("style")).then_some(&output);
             Some(destination(app, System::HERE, |app| {
@@ -734,7 +735,7 @@ fn styles_output() -> Value {
     })
 }
 
-fn styles(engine: &Engine, _: Option<&Path>, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn styles(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     let number = |name: &str, default: usize, most: Option<usize>| match arguments.get(name) {
         None => Ok(default),
         Some(value) => value

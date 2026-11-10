@@ -103,6 +103,8 @@ fn style_and_format_stand_in_for_your_format_of_their_own_kind() -> Result {
         Ok(run(&args)?.1)
     };
     assert_eq!(cite("md.obsidian", &["--format", "typst"])?, "@taylor2026\n");
+    // An app Ibis cannot place keeps what was named, whatever its kind.
+    assert_eq!(cite("com.example.unknown", &["--format", "typst"])?, "@taylor2026\n");
     assert_eq!(
         cite("com.example.unknown", &["--style", "ieee"])?,
         "A. Taylor, Synthetic signals. Imaginary Press, 2026.\n"
