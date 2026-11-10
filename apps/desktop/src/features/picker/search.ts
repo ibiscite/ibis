@@ -65,14 +65,18 @@ export function reduceSearch(s: SearchState, event: SearchEvent, session: number
     case "search-inputs": {
       const { inputs } = event;
       if (sameInputs(s.inputs, inputs) && s.session === session) return null;
+      const seq = s.seq + 1;
+      const canSearch = searchable(inputs.library);
       // Successful settled results can be adopted by a new opening; a failed
       // or unfinished request is asked again, and its old answer cannot land.
       // Adopting retires any newer request still out, so its answer cannot land over this one.
       if (s.settled && s.error === null && sameInputs(s.settled.inputs, inputs)) {
-        return { search: { ...s, inputs, session, seq: s.seq + 1, settled: { inputs, session } }, firstRow: false, effects: [] };
+        // The old announcement timer belongs to the retired sequence. If its
+        // count is missing, announce this answer when typing next pauses.
+        const effects: SearchEffect[] = canSearch && !s.announcement ? [{ type: "announce-after", seq, ms: ANNOUNCE_AFTER }] : [];
+        return { search: { ...s, inputs, session, seq, settled: { inputs, session } }, firstRow: false, effects };
       }
-      const seq = s.seq + 1;
-      if (!searchable(inputs.library)) {
+      if (!canSearch) {
         return { search: { ...s, inputs, session, seq, settled: { inputs, session }, results: [], interpretation: null, list: null, unfiltered: null,
           resultsQuery: inputs.queryKey, error: null, announcement: "" }, firstRow: true, effects: [] };
       }

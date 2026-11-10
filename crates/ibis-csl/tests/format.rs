@@ -167,6 +167,57 @@ fn formats_canonical_text_html_rtf_and_numeric_fallback() {
     assert!(result.notices.contains(&Notice::ReferenceEntry));
     assert!(!result.text.contains("[1]"));
 }
+
+#[test]
+fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let (snapshot, mut request) = sample();
+    let formatter = Formatter::new().unwrap();
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "777".into(),
+    });
+    for (style, text, loses_locator) in [
+        ("ecology", "(Taylor 2026 p. 777)", false),
+        ("ecology-letters", "(Taylor 2026)", true),
+        ("ieee", "A. Taylor, Synthetic signals. Imaginary Press, 2026.", true),
+    ] {
+        request.output = OutputSpec::Csl { style: style.into() };
+        let result = formatter.format(&snapshot, &request).unwrap();
+        assert_eq!(result.text, text, "{style}");
+        assert!(result.copy_content(1).is_some(), "{style}");
+        let losses: Vec<_> = result
+            .losses
+            .iter()
+            .filter(|loss| loss.field == LossField::Locator)
+            .collect();
+        let expected = Loss {
+            item: Some(0),
+            field: LossField::Locator,
+            reason: LossReason::Unsupported,
+        };
+        assert_eq!(
+            losses.as_slice(),
+            loses_locator.then_some(&expected).as_slice(),
+            "{style}"
+        );
+    }
+    request.output = OutputSpec::Csl {
+        style: "ecology-letters".into(),
+    };
+    request.items[0].locator.as_mut().unwrap().value.clear();
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(
+        result.outcomes,
+        [ItemOutcome::Refused {
+            item: 0,
+            error: CitationError::InvalidLocator
+        }]
+    );
+    assert!(result.copy_content(1).is_none());
+    assert!(result.losses.is_empty());
+}
+
 #[test]
 fn malformed_and_empty_requests_refuse_without_source_details() {
     let _guard = FORMAT_TESTS.lock().unwrap();
