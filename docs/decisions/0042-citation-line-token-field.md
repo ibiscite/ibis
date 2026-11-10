@@ -9,13 +9,15 @@
 ## Decision
 
 - **One line.** The shelf's one line of real output is where a citation is
-  built. Each reference in it is a **token**: its own words from the output,
-  in a quiet capsule. The brackets and separators between tokens stay plain,
-  quieter text. Search stays plain.
+  built, and it stays exactly what Enter pastes [C7]. Each reference in it is a
+  **token**: its own words from the output on a soft fill, with an always-shown
+  quiet × that removes it with Undo. The brackets and separators between tokens
+  stay plain, quieter text. Search stays plain.
 - **Details in a popover.** A token's details are a popover that grows upward
-  from the token, never over the row being chosen. It holds the locator (type
-  and value), prefix, suffix and form, and the actions with their keys. Nothing
-  there outlives the paste.
+  from the token. It holds only this citation's details: the form as the real
+  outputs to choose from, the page with its type, and text before and after.
+  Actions on the reference (open its source, remove, move) live in More, on the
+  token's × and in the keys. Nothing there outlives the paste.
 - **[C19] narrowed.** It applies to the Reader and the warnings, which keep the
   side panel. One reference's citation details are no longer a panel.
 
@@ -26,15 +28,15 @@
   token longer than a third of the line, such as a note-style sentence, ends in
   "…". The popover names the reference in full.
 - **Sorting styles.** Moving a token turns Keep My Order on, so the move shows
-  in the output. While it is on in a style that would sort, the line says
-  "Your order" at its end, and pressing that turns it off. The line slides
-  rather than jumps when the order changes.
+  in the output, and the footer's status says so ("APA · your order"). The line
+  slides rather than jumps when the order changes. The line itself holds only
+  the citation.
 - **Distance from typing.**
   - ⌘↓ in Search goes to the last token, and ↓ or Esc goes back.
-  - On a token: ← → walk the tokens, ⇧← ⇧→ move one, ⌫ removes one, and
-    Space or ↑ opens its popover.
-  - Every one of these is also a popover button with its key, and a command
-    in More, so nothing exists only as a key or on hover.
+  - On a token: ← → walk the tokens, ⇧← ⇧→ move one, ⌫ removes one, ↓ or
+    Space opens its popover, and ↑ goes back to Search.
+  - Every one of these is also a command in More with its key, and Remove is
+    the token's visible ×, so nothing exists only as a key or on hover.
 
 ## Why
 
