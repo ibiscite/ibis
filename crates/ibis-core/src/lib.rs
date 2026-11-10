@@ -10,6 +10,7 @@ pub mod panic_guard;
 mod scan;
 pub mod search;
 pub mod settings;
+pub mod shorthand;
 pub mod source;
 pub mod summary;
 pub mod syntax;

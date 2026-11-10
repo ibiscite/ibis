@@ -6,8 +6,9 @@
 //! - a full label word joined to its value, as Zotero accepts: `page123`,
 //!   `chapter3`, `chap12` (short labels never join: `p53` is a protein);
 //! - a label and quoted text, for textual locators: `note "the epigraph"`;
-//! - plain page numbers after a comma: `garcia, 12-14`, never a four-digit
-//!   number, which is most likely a year.
+//! - plain page numbers at the end: after a comma (`garcia, 5`), or after a
+//!   space when they have two digits or more or are a range (`vale 417`,
+//!   `garcia 12-14`); never a four-digit number, which is most likely a year.
 //!
 //! Abbreviations that are also ordinary words (`no`, `art`, `para`, `n`, `op`)
 //! count only with a period. The caller shows what was read (`typed`) so the
@@ -216,7 +217,17 @@ pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
             continue;
         }
         let tail = &q[i..];
-        if let Some(locator) = read(tail, after_comma) {
+        // After a space a bare number is a page only when it looks like one:
+        // two digits or more, or a range (`vale 417`, never `modern art 3`).
+        // A label word just before it ("p 45", "decreto n 50") makes it that
+        // label's value, which the label rules above decide, never a bare page.
+        let last = search.rsplit(char::is_whitespace).next().unwrap_or(search);
+        let labelled = [format!("{last} 1"), format!("{last}. 1")]
+            .iter()
+            .any(|text| find_label(text).is_some_and(|(_, rest)| rest.trim() == "1"));
+        let bare =
+            (tail.chars().filter(|c| c.is_numeric()).count() >= 2 || tail.contains(['-', '–', '—'])) && !labelled;
+        if let Some(locator) = read(tail, after_comma || bare) {
             if continues_before(q, i, floor) {
                 return None;
             }
@@ -362,7 +373,7 @@ fn is_value(text: &str, kind: Value) -> bool {
     text.split([',', '&']).all(|item| is_range(item.trim(), kind))
 }
 
-/// Plain page numbers after a comma: no letters, and no four-digit numbers.
+/// Plain page numbers: no letters, and no four-digit numbers.
 fn is_plain_pages(text: &str) -> bool {
     !text.is_empty()
         && text.split([',', '&']).all(|item| {
@@ -635,7 +646,6 @@ mod tests {
         for query in [
             "smith 2020",
             "smith, 2020",
-            "garcia 12-14",
             "p 45",
             ", 12",
             "tumour suppressor p53",
