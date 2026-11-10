@@ -200,6 +200,11 @@
                 "type": "string"
               },
               {
+                "const": "damaged-entry",
+                "description": "The entry with this key is damaged, so it is skipped; the library's\nwarnings say where and why.",
+                "type": "string"
+              },
+              {
                 "const": "ambiguous-key",
                 "description": "Several references share the key.",
                 "type": "string"

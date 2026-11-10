@@ -5,7 +5,6 @@ import { IconButton } from "../src/ui/IconButton";
 import { StatusMark } from "../src/ui/StatusMark";
 import { Icon } from "../src/icons";
 import { iconPaths } from "../src/icon-paths";
-import { ChipGroup } from "../src/ui/ChipGroup";
 import { ChoiceList } from "../src/ui/ChoiceList";
 import { IbisMark } from "../src/ui/IbisMark";
 import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
@@ -47,8 +46,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /** Every shared part, drawn by its own component. A new part belongs here. */
 export function Parts() {
-  const fallback = useRef<HTMLDivElement>(null);
-  return <div className="canvas-parts" ref={fallback}>
+  return <div className="canvas-parts">
     {variants.map((variant) => <Section key={variant} title={`Button: ${variant}`}>
       {states.map((state) => <State key={state} name={state}>
         <Button variant={variant} isDisabled={state === "disabled"} render={(native) => <button {...native} {...{ [`data-${state}`]: state === "rest" ? undefined : true }} />}>Copy as Pandoc</Button>
@@ -77,7 +75,6 @@ export function Parts() {
       <State name="hint"><KeyHint label="More" keys="CmdOrCtrl+K" /></State>
     </Section>
     <Section title="Chips and source action">
-      <State name="chips"><ChipGroup label="Libraries" items={[{ id: "a", label: "invented.bib", textValue: "invented.bib", removeLabel: "Remove invented.bib" }, { id: "b", label: "Zotero", textValue: "Zotero", removeLabel: "Remove Zotero" }]} onRemove={ignore} fallbackFocusRef={fallback} /></State>
       <State name="source"><SourceAction label="Open invented.bib" keys="CmdOrCtrl+O" icon={null} file open={ignore} /></State>
     </Section>
     <Section title="Citation tokens">
