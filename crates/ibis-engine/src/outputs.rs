@@ -43,6 +43,10 @@ pub struct OutputInfo {
     /// style cannot number one citation alone.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub entries: bool,
+    /// It names Zotero items, so it writes only references read from Zotero
+    /// and refuses any other (Zotero's RTF/ODF Scan markers).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub zotero_items: bool,
 }
 
 #[derive(Debug, Clone, Serialize, JsonSchema)]
@@ -108,6 +112,7 @@ static OUTPUTS: LazyLock<Vec<OutputInfo>> = LazyLock::new(|| {
         forms: caps.citable_forms(),
         exports_records: caps.exports_records,
         entries: false,
+        zotero_items: caps.zotero_items,
     });
     // A style the bundle cannot describe is left out rather than listed
     // with forms it may not have; the key outputs never depend on it.
@@ -126,6 +131,7 @@ static OUTPUTS: LazyLock<Vec<OutputInfo>> = LazyLock::new(|| {
             forms: ibis_csl::style_forms(id).ok()?,
             exports_records: false,
             entries: ibis_csl::style_writes_entries(id).ok()?,
+            zotero_items: false,
         })
     });
     keys.chain(styles).collect()

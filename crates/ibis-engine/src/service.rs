@@ -561,14 +561,36 @@ impl Engine {
             }
             _ => request,
         };
+        let key_error = |failure| {
+            error(if failure == CitationError::OutputTooLarge {
+                ErrorCode::ResourceLimit
+            } else {
+                ErrorCode::BadInput
+            })
+        };
         let result = match &request.output {
-            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(|failure| {
-                error(if failure == CitationError::OutputTooLarge {
-                    ErrorCode::ResourceLimit
-                } else {
-                    ErrorCode::BadInput
+            OutputSpec::Key {
+                syntax: KeySyntax::ScannableCite,
+                ..
+            } => {
+                // Which Zotero library each reference came from is the engine's
+                // own record of what it read; an id names one library for good.
+                let state = self.state()?;
+                ibis_core::syntax::scannable::cite(snapshot, request, |library| {
+                    use ibis_core::syntax::scannable::ZoteroOrigin;
+                    state
+                        .libraries
+                        .get(library)
+                        .filter(|info| info.kind == LibraryKind::Zotero)
+                        .and_then(|info| info.zotero)
+                        .map(|zotero| match zotero {
+                            crate::request::ZoteroLibrary::Personal => ZoteroOrigin::Personal,
+                            crate::request::ZoteroLibrary::Group(id) => ZoteroOrigin::Group(id),
+                        })
                 })
-            })?,
+                .map_err(key_error)?
+            }
+            OutputSpec::Key { .. } => ibis_core::syntax::cite(snapshot, request).map_err(key_error)?,
             OutputSpec::Csl { .. } => self.formatted(snapshot, request, cancel)?,
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };

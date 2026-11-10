@@ -40,6 +40,12 @@ fn run(args: &[&str]) -> Result<(u8, String, String)> {
 fn format_takes_every_listed_id_and_writes_its_output() -> Result {
     for output in outputs::outputs() {
         let (code, text, errors) = run(&["cite", "key", "--format", &output.id, "--json"])?;
+        // Zotero's markers refuse a reference not read from Zotero, saying why.
+        if output.zotero_items {
+            assert_eq!(code, 1, "{}: {errors}", output.id);
+            assert!(text.contains("\"not-from-zotero\""), "{text}");
+            continue;
+        }
         assert_eq!(code, 0, "{}: {errors}", output.id);
         let envelope: Value = serde_json::from_str(&text)?;
         if let Some(example) = &output.example {

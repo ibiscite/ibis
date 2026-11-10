@@ -132,6 +132,10 @@ refusal-cancelled = The citation was cancelled.
 refusal-formatter-unavailable = The citation could not be written just now. Try again.
 refusal-annotation-mismatch = The annotation given for { $reference } belongs to another reference.
 refusal-not-citable = { $reference } is not a reference, such as a note, so it cannot be cited.
+refusal-not-from-zotero = { $reference } was not read from a Zotero library, so Zotero cannot find it.
+    .cli = Read your Zotero library with --zotero, or choose another output.
+    .agent = Use another format, or ask the person to cite it from their Zotero library.
+    .app = Cite it from your Zotero library, or choose another output.
 
 ## What a citation could not say in full.
 

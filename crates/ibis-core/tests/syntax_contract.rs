@@ -3,6 +3,12 @@
 use ibis_core::contract::*;
 use ibis_core::contract::{GoldenCase, OutputSpec};
 use ibis_core::syntax::{self, CAPABILITIES, Escaping};
+
+/// The outputs written from citation keys. Zotero's markers name Zotero items
+/// instead and have their own tests (`syntax::scannable`).
+fn key_path() -> impl Iterator<Item = &'static syntax::SyntaxCapabilities> {
+    CAPABILITIES.iter().filter(|caps| !caps.zotero_items)
+}
 use proptest::prelude::*;
 use serde_json::{Value, json};
 
@@ -96,7 +102,7 @@ fn key_golden_cases_render_exactly() -> Result<(), Box<dyn std::error::Error>> {
 #[test]
 fn capabilities_drive_forms_and_report_each_dropped_field() {
     let mut case = seed();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         case.request.output = output(caps);
         assert_eq!(syntax::capabilities(&case.request.output).unwrap(), caps);
         // A narrative citation in a command without one is written by its sibling.
@@ -495,7 +501,7 @@ fn prefix_support_matches_every_supported_output_and_form() {
         ..TextRun::default()
     }];
     let consumer_available = pandoc_available();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         case.request.output = output(caps);
         assert_eq!(caps.prefix.len(), caps.forms.len(), "{caps:?}");
         for &form in caps.forms {
@@ -583,7 +589,7 @@ fn default_consumers_preserve_literal_affix_text() {
             ..TextRun::default()
         }];
         case.request.items[0].suffix = case.request.items[0].prefix.clone();
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
                 continue;
             }
@@ -660,7 +666,7 @@ fn literal_punctuation_across_runs_cannot_create_smart_typography() {
             ..TextRun::default()
         })
         .collect();
-    for caps in &CAPABILITIES {
+    for caps in key_path() {
         if !matches!(caps.escaping, Escaping::Pandoc | Escaping::Latex) {
             continue;
         }
@@ -994,7 +1000,7 @@ fn control_characters_are_refused_in_every_affix_target() {
             text: format!("synthetic{control}text"),
             ..TextRun::default()
         }];
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             assert_eq!(
                 syntax::cite(&case.library, &case.request).unwrap().outcomes,
@@ -1078,7 +1084,7 @@ fn unusual_keys_are_preserved_or_explicitly_refused_for_each_target() {
     ] {
         let mut case = seed();
         let snapshot = changed(&case, |record| record.citation_keys[0].value = key.into());
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             if result.copy_content(1).is_none() {
@@ -1300,7 +1306,7 @@ proptest! {
         case.request.items[0].prefix = vec![TextRun { text: note.clone(), ..TextRun::default() }];
         case.request.items[0].suffix = case.request.items[0].prefix.clone();
         let available = pandoc_available();
-        for caps in &CAPABILITIES {
+        for caps in key_path() {
             case.request.output = output(caps);
             let result = syntax::cite(&snapshot, &case.request).unwrap();
             prop_assert!(result.content_matches_hash());
