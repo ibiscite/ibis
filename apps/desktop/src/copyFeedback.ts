@@ -2,7 +2,7 @@ import { iconPaths, iconStroke } from "./icon-paths";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
-import type { Delivered as WireDelivered } from "./bindings";
+import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
@@ -50,18 +50,18 @@ export type NoticePlatform = Platform;
 export const noticePlatform: (platform: string) => NoticePlatform = platformOf;
 
 /**
- * Every reason Ibis gives for copying instead of pasting: ibis-core's
- * `CopyReason`, plus the paste delivery's own "key-release-failed". A test
- * checks this list against the Rust source and the notice wording, so a
- * reason without words cannot ship.
+ * Every reason Ibis gives for copying instead of pasting, exactly the ones
+ * Rust sends: a reason added or removed there does not compile here, and a
+ * test checks each has its words.
  */
-export const COPY_REASONS = [
-  "paste-off", "unsupported-system", "no-target", "unknown-app", "copy-only", "target-changed", "clipboard-changed",
-  "paste-expired", "secure-field", "secure-input", "paste-unavailable", "elevated-app", "terminal", "remote-desktop",
-  "virtual-machine", "nonstandard-shortcut", "no-permission", "accessibility-required", "selection-not-shown", "citation-not-selected",
-  "key-release-failed",
-] as const;
-export type CopyReason = typeof COPY_REASONS[number];
+export const COPY_REASONS = Object.keys({
+  "paste-off": true, "unsupported-system": true, "no-target": true, "unknown-app": true, "copy-only": true,
+  "target-changed": true, "clipboard-changed": true, "paste-expired": true, "secure-field": true, "secure-input": true,
+  "paste-unavailable": true, "elevated-app": true, terminal: true, "remote-desktop": true, "virtual-machine": true,
+  "nonstandard-shortcut": true, "no-permission": true, "accessibility-required": true, "selection-not-shown": true,
+  "citation-not-selected": true, "key-release-failed": true,
+} as const satisfies Record<CopiedReason, true>) as readonly CopiedReason[];
+export type CopyReason = CopiedReason;
 /** What happened to a copy, with its reason checked: an unknown or missing reason does not compile. */
 export type Delivered = Exclude<WireDelivered, { outcome: "copied" }> | { outcome: "copied"; reason: CopyReason };
 /** What the card shows; the window applies the appearance itself (notice.ts). */
