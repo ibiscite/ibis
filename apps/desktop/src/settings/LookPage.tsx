@@ -45,7 +45,7 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
     <Row id="window-size" label={text("look-window-size")} {...feedback("window-size")}>
       <Segmented label={text("look-window-size")} value={size}
         options={(windowSize === "custom" ? ["small", "medium", "large", "custom"] as const : ["small", "medium", "large"] as const)
-          .map((value) => ({ value, label: text(`look-window-${value}`), isDisabled: windowSize === null || value === "custom" }))}
+          .map((value) => ({ value, label: text(`look-window-${value}`), isDisabled: windowSize === null }))}
         onChange={chooseWindowSize} />
       {windowSize === "custom" && <p className="ui-settings-note">{text("look-window-custom-note")}</p>}
     </Row>
