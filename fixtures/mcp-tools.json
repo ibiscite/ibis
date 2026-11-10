@@ -191,7 +191,7 @@
       "additionalProperties": false,
       "properties": {
         "for_app": {
-          "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; format or style apply when it has none of its own.",
+          "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app.",
           "type": "string"
         },
         "form": {
@@ -277,11 +277,11 @@
           "type": "array"
         },
         "keep_order": {
-          "description": "Keep the items' order where a style would sort them. Key syntaxes always keep it.",
+          "description": "Keep this order where a style would sort.",
           "type": "boolean"
         },
         "locale": {
-          "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own.",
+          "description": "A language for a style, such as de-DE, from the styles tool.",
           "type": "string"
         },
         "style": {
