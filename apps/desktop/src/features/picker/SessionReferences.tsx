@@ -65,20 +65,20 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     : (undo.reference ? say("session-undo-remove-named", { name: isolate(tileName(undo.reference)) }) : say("session-undo-remove"));
   const name = outputName(style);
   return <Sheet title={say("session-title")} closeLabel={say("session-close")} description={say("session-about")} onClose={onClose}
-    leadingActions={<>
-      {undoLabel && <Button label={undoLabel} onPress={() => edit({ kind: "undo" })} />}
-      {view && view.rows.length + view.absent > 0 && <Button label={say("session-reset")} onPress={() => edit({ kind: "reset" })} />}
-    </>}
-    actions={<>
-      <Button label={say("session-save")} isDisabled={!hash} onPress={() => deliver(async () => {
+    leadingActions={[
+      ...undoLabel ? [{ label: undoLabel, onPress: () => edit({ kind: "undo" }) }] : [],
+      ...view && view.rows.length + view.absent > 0 ? [{ label: say("session-reset"), onPress: () => edit({ kind: "reset" }) }] : [],
+    ]}
+    actions={[
+      { label: say("session-save"), disabled: !hash, onPress: () => deliver(async () => {
         const saved = await exportSessionBibliography(style, hash!);
         return saved === null ? null : say("session-saved", { name: isolate(saved) });
-      }, say("session-not-saved"))} />
-      <Button variant="primary" label={say("session-copy")} isDisabled={!hash} onPress={() => deliver(async () => {
+      }, say("session-not-saved")) },
+      { label: say("session-copy"), primary: true, disabled: !hash, onPress: () => deliver(async () => {
         await copySessionBibliography(style, hash!);
         return say("session-copied");
-      }, say("session-not-copied"))} />
-    </>}>
+      }, say("session-not-copied")) },
+    ]}>
     {view && view.rows.length === 0 && view.absent === 0 && <p>{say("session-empty")}</p>}
     {view && view.rows.length > 0 && <SheetList label={say("session-title")}>
       {view.rows.map((row) => <SheetRow key={idKey(row.id)}>

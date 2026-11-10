@@ -2,27 +2,33 @@ import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react
 import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
 import { useLayer } from "./layers";
+import { Button } from "./Button";
 import { ViewFrame } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
 import "./SettingsGroup.css";
 import "./Sheet.css";
 
+/** One of a sheet's footer actions. The primary one runs on Enter too, unless a control in the body has the keyboard. */
+export type SheetAction = { label: string; onPress: () => void; disabled?: boolean; primary?: boolean };
+const footerAction = (action: SheetAction) => <Button key={action.label} variant={action.primary ? "action" : "quiet"} size="small"
+  label={action.label} keys={action.primary ? "Enter" : undefined} isDisabled={action.disabled} onPress={action.onPress} />;
+
 const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), [tabindex='0']";
 
 /** A sheet: a view of the window (ui/ViewFrame), as the palette is. Its name in
  * the header's chip, one body that alone scrolls, and the footer as its action
- * bar: leading actions, trailing actions with the primary last, then Back with
- * Esc. Esc, a hide or Back close it; Tab stays inside, and a control that
+ * bar in the picker footer's words: leading actions, trailing actions with the
+ * primary last (with ↵), then Back with Esc, each plain text as the footer's are. Esc, a hide or Back close it; Tab stays inside, and a control that
  * disappears or is disabled hands the keyboard back to the sheet, so no key acts
  * behind it. */
 export function Sheet({ title, closeLabel, description, actions, leadingActions, busy, onClose, children }: {
   title: string; closeLabel: string;
   /** One quiet sentence at the top of the body that says what the sheet is for; it describes the dialog. */
   description?: ReactNode;
-  /** Buttons on the trailing edge of the footer, before Back; the primary goes last. */
-  actions?: ReactNode;
-  /** Buttons on the leading edge of the footer. */
-  leadingActions?: ReactNode;
+  /** Actions on the trailing edge of the footer, before Back; the primary goes last. */
+  actions?: readonly SheetAction[];
+  /** Actions on the leading edge of the footer. */
+  leadingActions?: readonly SheetAction[];
   busy?: boolean;
   onClose: () => void;
   children: ReactNode;
@@ -41,8 +47,13 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
   return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: onClose }}
     role="dialog" aria-modal="true" aria-describedby={description ? aboutId : undefined}
     // Clicking plain text inside keeps focus here, so Escape still closes it.
-    tabIndex={-1} actions={actions} leadingActions={leadingActions}
+    tabIndex={-1} actions={actions?.length ? actions.map(footerAction) : undefined} leadingActions={leadingActions?.length ? leadingActions.map(footerAction) : undefined}
     onKeyDown={(event) => {
+      if (event.key === "Enter" && (event.target === dialog.current || event.target === body.current)) {
+        const primary = actions?.find((action) => action.primary);
+        if (primary && !primary.disabled && !event.repeat) { event.preventDefault(); primary.onPress(); }
+        return;
+      }
       if (event.key !== "Tab") return;
       const focusable = [...(dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])];
       const at = focusable.indexOf(document.activeElement as HTMLElement);
