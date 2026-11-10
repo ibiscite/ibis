@@ -1,4 +1,4 @@
-# 0041 RIS and CSV libraries
+# 0043 RIS and CSV libraries
 
 2026-11-07 (#1531). RIS exports and a CSV file in Ibis's template are read as
 read-only libraries beside `.bib` and CSL-JSON, with the same lifecycle: open,
