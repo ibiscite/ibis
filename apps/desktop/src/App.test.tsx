@@ -2624,7 +2624,7 @@ test("footer actions copy and open shortcuts without using a keyboard shortcut",
   const sheet = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   // No citation was pasted into this app yet, so there is none to change: as More, the sheet omits it.
   expect(sheet.textContent).not.toContain("Edit the citation you just pasted");
-  fireEvent.click(screen.getByRole("button", { name: "Close" }));
+  fireEvent.click(screen.getByRole("button", { name: "Back" }));
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
 });
 
@@ -2719,7 +2719,7 @@ test("the keys sheet names what Enter does from the same answer as the footer", 
     fireEvent.keyDown(box, { key: "/", ctrlKey: true });
     const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     const row = within(dialog).getAllByRole("row").find((candidate) => candidate.textContent?.endsWith("Enter") && !candidate.textContent.includes("Shift"))?.firstElementChild?.textContent;
-    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Back" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     return row;
   };
@@ -2742,7 +2742,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
   fireEvent.keyDown(box, { key: "/", ctrlKey: true });
   const dialog = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
   expect(dialog.getAttribute("aria-modal")).toBe("true");
-  const close = within(dialog).getByRole("button", { name: "Close" });
+  const close = within(dialog).getByRole("button", { name: "Back" });
   expect(document.activeElement).toBe(dialog);
   // Each group's heading names where its keys work; each row is action, then keys.
   const groups = within(dialog).getAllByRole("rowgroup").filter((group) => group.tagName === "TBODY").map((group) => within(group).getAllByRole("row").map((row) => [...row.children].map((cell) => cell.textContent)));

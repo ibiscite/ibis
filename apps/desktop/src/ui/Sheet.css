@@ -1,15 +1,17 @@
-/* [C13] A sheet: content-sized, centred over a dimmed picker, with the menu's
-   corner, edge and shadow. The heading and actions stay; only the body scrolls,
-   and every part keeps the same side inset, so nothing touches the sheet's edge. */
-.ui-sheet-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); display: grid; place-items: center; padding: var(--inset); background: var(--scrim); }
+/* [C13] A sheet is a view of the window (option B, maintainer 2026-11-10), as the
+   palette is: the raised layer --inset from the window's edges, its title where
+   Search was, one body that alone scrolls, and the footer as its action bar. Every
+   part keeps the same side inset, so nothing touches the sheet's edge. */
+.ui-sheet-backdrop { position: fixed; inset: 0; z-index: var(--z-modal); padding: var(--inset); }
 .ui-sheet {
-  box-sizing: border-box; display: flex; flex-direction: column; width: min(42rem, 100%); max-height: 100%; min-width: 0; min-height: 0;
-  border-radius: var(--r-large);
+  box-sizing: border-box; display: flex; flex-direction: column; width: 100%; height: 100%; min-width: 0; min-height: 0;
+  border-radius: var(--r-large); overflow: hidden;
+  font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-sheet:focus { outline: none; }
-.ui-sheet-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); }
+.ui-sheet-heading { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: calc(var(--field-h) + 2 * var(--space-2)); padding-inline: var(--space-4); border-block-end: var(--border-width) solid var(--separator); }
 .ui-sheet-heading h2 { margin: 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
-.ui-sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--space-4) var(--space-4); }
+.ui-sheet-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--space-4) var(--space-4); }
 .ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
 .ui-sheet-body > :first-child { margin-block-start: 0; }
 .ui-sheet-body p { margin: var(--space-2) 0; }
@@ -17,9 +19,8 @@
 .ui-sheet-note { color: var(--text-secondary); }
 /* What will be copied or saved: kept as written and selectable, on a card. */
 .ui-sheet-body .ui-sheet-output { margin: 0; padding: var(--space-3) var(--settings-row-pad); white-space: pre-wrap; user-select: text; }
-/* With actions under it, the body leaves the bottom inset to them. */
-.ui-sheet-body:not(:last-child) { padding-block-end: 0; }
-.ui-sheet-actions { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); padding: var(--space-3) var(--space-4) var(--space-4); }
+.ui-sheet-actions { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: var(--footer-h); padding: var(--space-2) var(--space-3); border-block-start: var(--border-width) solid var(--separator); }
+.ui-sheet-back.ui-button[data-variant] { color: var(--text-secondary); }
 .ui-sheet-spacer { flex: 1; }
 .ui-sheet-list { display: flex; flex-direction: column; margin: var(--space-3) 0; padding: 0; list-style: none; }
 /* What the row is about takes the room; its buttons keep theirs. */

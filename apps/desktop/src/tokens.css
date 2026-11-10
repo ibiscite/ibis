@@ -119,7 +119,6 @@
   --on-selected-fill: color-mix(in srgb, var(--selected-text) 22%, transparent);
   --status-ok-wash: color-mix(in srgb, var(--status-ok) 9%, transparent);
   --status-ok-fill: color-mix(in srgb, var(--status-ok) 14%, transparent);
-  --scrim: rgb(0 0 0 / 30%);
   --scrollbar-thumb: var(--text-tertiary);
   --scroll-fade: 14px;
 
@@ -151,7 +150,6 @@
     --accent: #007aff; --accent-text: light-dark(#0068da, #419cff);
     --selected: light-dark(#0064e1, #0059d1); --selected-text: #fff; --text-on-accent: var(--selected-text);
     --selected-text-secondary: var(--selected-text);
-    --scrim: light-dark(rgb(0 0 0 / 20%), rgb(0 0 0 / 40%));
   }
 }
 @supports (color: light-dark(white, black)) {
@@ -221,7 +219,7 @@
     --surface: Canvas; --surface-overlay: Canvas; --surface-grouped: Canvas;
     --text: CanvasText; --text-secondary: CanvasText; --text-tertiary: CanvasText; --separator: CanvasText; --stroke-field: CanvasText;
     --selected: Highlight; --selected-text: HighlightText; --selected-text-secondary: currentColor;
-    --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText; --scrim: Canvas;
+    --ring: CanvasText; --ring-offset: 2px; --scrollbar-thumb: CanvasText;
     --scarlet: CanvasText; --on-scarlet: Canvas;
     --status-ok: CanvasText; --status-warning: CanvasText; --status-error: CanvasText;
   }

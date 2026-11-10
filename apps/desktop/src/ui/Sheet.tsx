@@ -1,7 +1,8 @@
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
 import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
-import { IconButton } from "./IconButton";
+import { Button } from "./Button";
+import { KeyHint } from "./KeyCaps";
 import { useLayer } from "./layers";
 import { useScrollEdges } from "./ScrollArea";
 import "./Overlay.css";
@@ -10,8 +11,10 @@ import "./Sheet.css";
 
 const FOCUSABLE = "button:not([disabled]), input:not([disabled]), [tabindex='0']";
 
-/** A modal sheet over a dimmed picker: a title with ×, one padded body that alone
- * scrolls, and an optional row of actions under it. Esc, a hide, a click on the
+/** A sheet is a view of the window (maintainer, 2026-11-10, option B): it takes
+ * the picker's place, --inset from its edges, with its title where Search was,
+ * one body that alone scrolls, and the footer as its action bar, ending in Back
+ * with Esc. Esc, a hide, a click on the
  * backdrop or × close it; Tab stays inside, and a control that disappears or is
  * disabled hands the keyboard back to the sheet, so no key acts behind it. */
 export function Sheet({ title, closeLabel, description, actions, leadingActions, busy, onClose, children }: {
@@ -50,17 +53,20 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
       }}>
       <div className="ui-sheet-heading">
         <h2 id={titleId}>{title}</h2>
-        <IconButton aria-label={closeLabel} title={closeLabel} aria-keyshortcuts="Escape" onPress={onClose} />
       </div>
       <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
         {description && <p id={aboutId} className="ui-sheet-note">{description}</p>}
         {children}
       </div>
-      {(actions || leadingActions) && <div className="ui-sheet-actions">
+      {/* The view's action bar, as the picker's footer: its actions, then Back with Esc. */}
+      <div className="ui-sheet-actions">
         {leadingActions}
         <span className="ui-sheet-spacer" />
         {actions}
-      </div>}
+        <Button variant="quiet" size="small" className="ui-sheet-back" aria-keyshortcuts="Escape" onPress={onClose}>
+          <KeyHint label={closeLabel} keys="Escape" hidden />
+        </Button>
+      </div>
     </div>
   </div>;
 }
