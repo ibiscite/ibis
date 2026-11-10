@@ -367,7 +367,7 @@ changing them needs the same review as the workflow.
 | Node and shell scripts (not `ci-*` or `check.mjs`) | Those, plus the script tests on Windows (and macOS in the queue), without building the app | 5 minutes |
 | Interface, including the canvas, its gallery and the app's HTML pages | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
 | Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
-| Crates, fixtures, Python and CI scripts, `ci.yml`, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
+| Crates, fixtures, Python and CI scripts, `ci.yml`, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows, each in its own job beside the app | 13 minutes |
 
 The crates' full tests run on macOS only in the merge queue and on main: from 2026-10-25 to 2026-11-02,
 in 200 failed runs, macOS failed alone twice, while Windows found real bugs in the
