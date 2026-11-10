@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseForm, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest } from "./testing/app";
+import { backend, chooseForm, chooseFromMore, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -102,7 +102,7 @@ test("explicit arrows still reveal another result while a built citation is refu
   expect(document.activeElement).toBe(search);
 });
 
-test("removing a middle reference and Undo restore its position and page through the real picker", async () => {
+test("removing a middle reference and Undo restore its position and fields", async () => {
   backend({ search: () => [result("a", "First work"), result("b", "Second work"), result("c", "Third work")] });
   render(<App />);
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
@@ -117,6 +117,8 @@ test("removing a middle reference and Undo restore its position and page through
   const order = names();
   fireEvent.click(within(list).getByRole("menuitemradio", { name: "Smith 2020 · b" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "iv–vi" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Prefix" }), { target: { value: "see" } });
+  fireEvent.change(screen.getByRole("textbox", { name: "Suffix" }), { target: { value: "for details" } });
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
   expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
   expect(screen.getByRole("button", { name: "2 references" })).toBeTruthy();
@@ -125,6 +127,70 @@ test("removing a middle reference and Undo restore its position and page through
   expect(names()).toEqual(order);
   fireEvent.click(within(list).getByRole("menuitemradio", { name: "Smith 2020 · b" }));
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("iv–vi");
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Prefix" }).value).toBe("see");
+  expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Suffix" }).value).toBe("for details");
+});
+
+test.each(["Prefix", "Suffix"] as const)("a late %s preview cannot replace the newest text or the receipt Enter copies", async (field) => {
+  const previews = new Map<string, (preview: ReturnType<typeof receipt>) => void>();
+  const copied: string[] = [];
+  backend({
+    search: () => [result("a", "Invented work")],
+    preview_file_citation: ({ items }) => {
+      const text = field === "Prefix" ? items[0]?.prefix : items[0]?.suffix;
+      if (!text) return receipt("Original citation");
+      return new Promise((resolve) => { previews.set(text, resolve); });
+    },
+    copy_file_citation: (args) => {
+      const { preview } = prepared(args);
+      copied.push(preview.text);
+      return { text: preview.text, warnings: [] };
+    },
+  });
+  render(<App />);
+  await openCitationDetails();
+  const input = screen.getByRole("textbox", { name: field });
+  fireEvent.change(input, { target: { value: "earlier" } });
+  await waitFor(() => expect(previews.has("earlier")).toBe(true));
+  fireEvent.change(input, { target: { value: "later" } });
+  await waitFor(() => expect(previews.has("later")).toBe(true));
+  expect(document.querySelector(".shelf-leading")?.getAttribute("draggable")).toBeNull();
+  fireEvent.keyDown(input, { key: "Enter" });
+  expect(copied).toEqual([]);
+  await act(async () => { previews.get("later")!(receipt("New citation, later")); });
+  await waitFor(() => expect(copied).toEqual(["New citation, later"]));
+  await act(async () => { previews.get("earlier")!(receipt("Old citation, earlier")); });
+  expect(copied).toEqual(["New citation, later"]);
+  expect(screen.queryByText("Old citation, earlier")).toBeNull();
+});
+
+test("Keep My Order changes the engine preview and survives a short reopen", async () => {
+  const copied: string[] = [];
+  backend({
+    picker_preferences: () => ({ output: "apa", density: "comfortable", larger_text: false, paste: true, menu_bar: true }),
+    search: () => [result("z", "Zulu work"), result("a", "Alpha work")],
+    preview_file_citation: ({ items, intent }) => {
+      const keys = items.map(({ id }) => id.key);
+      const order = intent.keep_order ? keys : [...keys].sort();
+      return receipt(order.join("; "));
+    },
+    copy_file_citation: (args) => {
+      const { preview } = prepared(args);
+      copied.push(preview.text);
+      return { text: preview.text, warnings: [] };
+    },
+  });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Zulu work"), { ctrlKey: true });
+  fireEvent.click(screen.getByText("Alpha work"), { ctrlKey: true });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("a; z"));
+  await chooseFromMore("Keep My Order", "menuitemcheckbox");
+  expect(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }).getAttribute("aria-checked")).toBe("true");
+  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
+  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("z; a"));
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
+  await waitFor(() => expect(copied).toEqual(["z; a"]));
 });
 
 test("closing and reopening while Page has focus returns to Search and retains the edited reference", async () => {

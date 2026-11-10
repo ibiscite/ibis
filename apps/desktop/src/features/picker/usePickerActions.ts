@@ -19,7 +19,7 @@ import type { CitationInspectorState } from "./useCitationInspector";
 
 export function usePickerActions({
   api, pickerSession, menus, libraryState, searchState, destination, shown, inspector, offered, canPaste, shortcut,
-  perform, dismissChooser, toggle,
+  perform, dismissChooser, toggle, writesStyle,
 }: {
   api: PickerApi;
   pickerSession: ReturnType<typeof usePickerSession>;
@@ -36,6 +36,8 @@ export function usePickerActions({
   inspector: CitationInspectorState;
   dismissChooser: () => void;
   toggle: (result?: SearchResult) => void;
+  /** The output being written is a style, which may sort. */
+  writesStyle: boolean;
 }) {
   const { session, state, send, cancelCopy } = pickerSession;
   const { pinned, focusHome, leaveOverlays } = menus;
@@ -85,7 +87,7 @@ export function usePickerActions({
   const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form }]);
+    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form, prefix: prepared.prefix, suffix: prepared.suffix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")
@@ -105,5 +107,7 @@ export function usePickerActions({
     focusHome();
   };
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
-  return { bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  // Keys outputs always keep the order, so only a style offers the choice.
+  const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
+  return { keepOrder, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

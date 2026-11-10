@@ -8,7 +8,7 @@ import { PeekCard } from "./ui/PeekCard";
 import { fullStop, say } from "./i18n";
 import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
-import { styleOf } from "./format/outputs";
+import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
@@ -185,6 +185,8 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     // The footer names what Enter copies now, or after the running search.
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
+    // A waiting editor's output replaces the picker's.
+    writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({

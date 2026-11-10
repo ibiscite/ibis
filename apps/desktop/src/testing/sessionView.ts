@@ -39,7 +39,7 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
     writing_context: null, context_version: version,
   };
   const shownChoice = selected ? [...state.selected.values()] : chosen.length > 1 ? chosen : chosen.map((r) => ({ ...r, locator }));
-  const key = previewKey(styleOf(v.format) ?? v.format, 0, choiceKey(shownChoice), version);
+  const key = previewKey(styleOf(v.format) ?? v.format, 0, choiceKey(shownChoice), version, state.keepOrder);
   const ask = shownChoice.length ? { selection: shownChoice.map((r) => ({ id: r.id, cite: r.cite ?? "", locator: (r as CitationReference).locator ?? null })), output: styleOf(v.format) ?? v.format, revision: library.revision } : null;
   const previewInputs = { key, retryKey: key, ask, contextReady: true };
   const preview = v.shown === null ? { ...initialPreview, session: state.session }

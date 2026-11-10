@@ -4,7 +4,7 @@ use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
 use ibis_core::{
     contract::{
         CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot,
+        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
     },
     settings::{ZoteroLibraries, ZoteroLibrary},
 };
@@ -43,6 +43,9 @@ pub(crate) struct FileSelection {
     /// Raw Page editor text, mutually exclusive with a captured locator.
     pub(crate) page_input: Option<String>,
     pub(crate) form: Option<ReferenceForm>,
+    /// Literal text; only the engine escapes and formats it.
+    pub(crate) prefix: Option<String>,
+    pub(crate) suffix: Option<String>,
 }
 /// A formatted bibliography, shown before it is copied. The picker's own
 /// citation receipt is untouched.
@@ -670,7 +673,7 @@ impl FileLibrary {
         items: Vec<FileSelection>,
         output: &str,
     ) -> Result<FilePreview, CommandError> {
-        self.preview_for(reservation, items, crate::output::spec(output), None)
+        self.preview_for(reservation, items, crate::output::spec(output), false, None)
     }
 
     /// As [`Self::preview`], with a waiting editor's output in place of the
@@ -680,11 +683,38 @@ impl FileLibrary {
         reservation: u64,
         items: Vec<FileSelection>,
         output: &OutputSpec,
+        keep_order: bool,
         editor: Option<&crate::editor_endpoint::EditorRequest>,
     ) -> Result<FilePreview, CommandError> {
         // A late-starting worker stops before building a request. A running
         // worker shares this token with the engine and QuickJS interrupt handler.
         let cancel = self.preview_cancellation(reservation)?;
+        // Bound raw native field input before parsing or constructing rich text.
+        // The engine owns its own rich-text accounting and validation.
+        let bytes = items
+            .iter()
+            .flat_map(|item| {
+                [
+                    item.page_input.as_deref(),
+                    item.locator.as_ref().map(|locator| locator.value.as_str()),
+                    item.prefix.as_deref(),
+                    item.suffix.as_deref(),
+                ]
+            })
+            .flatten()
+            .fold(0_usize, |sum, text| sum.saturating_add(text.len()));
+        if items.len() > ibis_core::syntax::MAX_CITATION_ITEMS || bytes > ibis_core::syntax::MAX_CITATION_BYTES {
+            return Err(CommandError::failed("app-command-citation-too-large"));
+        }
+        let literal = |text: Option<String>| {
+            text.filter(|text| !text.is_empty())
+                .into_iter()
+                .map(|text| TextRun {
+                    text,
+                    ..TextRun::default()
+                })
+                .collect()
+        };
         // The engine writes each form in the output's own way, a narrative
         // BibLaTeX citation as \textcite included; the picker only asks.
         let mut original_output = output.clone();
@@ -725,8 +755,8 @@ impl FileLibrary {
                     },
                     suppress_author: false,
                     locator,
-                    prefix: vec![],
-                    suffix: vec![],
+                    prefix: literal(item.prefix),
+                    suffix: literal(item.suffix),
                     annotation: None,
                     expected_annotation_cite: None,
                 })
@@ -734,7 +764,7 @@ impl FileLibrary {
             .collect::<Result<_, CommandError>>()?;
         let mut request = CitationRequest {
             items,
-            keep_order: matches!(output, OutputSpec::Key { .. }),
+            keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
             output: output.clone(),
             form: CitationForm::Normal,
             input_language: None,
@@ -743,7 +773,7 @@ impl FileLibrary {
         if let Some(editor) = editor {
             request.output = editor.output.clone();
             request.form = editor.form;
-            request.keep_order = matches!(editor.output, OutputSpec::Key { .. });
+            request.keep_order = keep_order || matches!(editor.output, OutputSpec::Key { .. });
             original_output = editor.output.clone();
         }
         let citation = self
