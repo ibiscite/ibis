@@ -127,9 +127,10 @@ pub struct SearchResult {
     pub hits: Vec<SearchHit>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<PastedList>,
-    /// The locator read off the end of the query, when one was asked for and found.
+    /// What was read around the query when asked for: a signal off its start
+    /// (`see`) and a locator off its end (`417`), with what remains to search.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub locator: Option<ibis_core::locator::TrailingLocator>,
+    pub shorthand: Option<ibis_core::shorthand::Shorthand>,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -407,11 +408,12 @@ impl Engine {
             .index
             .pasted_list(&request.query, request.libraries.as_deref(), &|| cancel.is_cancelled())
             .ok_or_else(|| error(ErrorCode::Cancelled))?;
-        // Exact lists win before locator parsing or closest-match search.
-        let locator = (request.interpret_locator && pasted.is_none())
-            .then(|| ibis_core::locator::parse_trailing(&request.query))
+        // Exact lists win before reading what is typed around the search
+        // (`see vale 417`) or closest-match search.
+        let shorthand = (request.interpret_locator && pasted.is_none())
+            .then(|| ibis_core::shorthand::read(&request.query))
             .flatten();
-        let query = locator
+        let query = shorthand
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
         let (hits, list) = match pasted {
@@ -441,12 +443,12 @@ impl Engine {
             #[serde(skip_serializing_if = "Option::is_none")]
             list: Option<&'a PastedList>,
             #[serde(skip_serializing_if = "Option::is_none")]
-            locator: Option<&'a ibis_core::locator::TrailingLocator>,
+            shorthand: Option<&'a ibis_core::shorthand::Shorthand>,
         }
         let view = SearchView {
             snapshot: state.index.snapshot().fingerprints(),
             list: list.as_ref(),
-            locator: locator.as_ref(),
+            shorthand: shorthand.as_ref(),
             hits: hits
                 .iter()
                 .map(|hit| HitView {
@@ -474,7 +476,7 @@ impl Engine {
                     partial: hit.partial,
                 })
                 .collect(),
-            locator,
+            shorthand,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {

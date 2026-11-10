@@ -512,14 +512,17 @@ fn quoted_page_search_preserves_canonical_text_through_preview_and_copy() -> Res
             None,
             &Cancellation::default(),
         )?;
-        let read = reply.interpretation.ok_or("missing quoted page")?;
-        assert_eq!(read.locator.label, LocatorTerm::Page);
-        assert_eq!(read.locator.value, value);
+        let read = reply
+            .interpretation
+            .and_then(|read| read.locator)
+            .ok_or("missing quoted page")?;
+        assert_eq!(read.label, LocatorTerm::Page);
+        assert_eq!(read.value, value);
         assert_eq!(reply.results.len(), 1);
         let row = &reply.results[0];
         for output in ["pandoc", "typst", "autocite", "apa"] {
             let mut request = case.request.clone();
-            request.items[0].locator = Some(read.locator.clone().into());
+            request.items[0].locator = Some(read.clone().into());
             request.output = crate::output::spec(output).clone();
             request.keep_order = matches!(request.output, OutputSpec::Key { .. });
             let expected = file
@@ -531,7 +534,7 @@ fn quoted_page_search_preserves_canonical_text_through_preview_and_copy() -> Res
                 .preview(
                     file.reserve_preview(),
                     vec![serde_json::from_value(
-                        json!({"id":row.id,"cite":row.cite,"locator":read.locator}),
+                        json!({"id":row.id,"cite":row.cite,"locator":read}),
                     )?],
                     output,
                 )
@@ -581,15 +584,16 @@ fn picker_search_preserves_unicode_page_intent_through_preview_and_copy() -> Res
         )?;
         let interpretation = reply.interpretation.ok_or("picker lost page intent")?;
         assert_eq!(interpretation.search, "Taylor");
-        assert_eq!(interpretation.typed, format!("pp. {value}"));
-        assert_eq!(interpretation.locator.value, value);
+        assert_eq!(interpretation.typed, Some(format!("pp. {value}")));
+        let locator = interpretation.locator.ok_or("picker lost page")?;
+        assert_eq!(locator.value, value);
         assert_eq!(reply.results.len(), 1);
         let row = &reply.results[0];
         let preview = file
             .preview(
                 file.reserve_preview(),
                 vec![serde_json::from_value(
-                    json!({"id":row.id,"cite":row.cite,"locator":interpretation.locator}),
+                    json!({"id":row.id,"cite":row.cite,"locator":locator}),
                 )?],
                 "pandoc",
             )
@@ -667,13 +671,19 @@ fn picker_rows_list_the_engines_search_hits_in_order() -> Result<(), Box<dyn std
                 let interpretation = picker.interpretation.map(|read| {
                     (
                         read.search,
+                        read.prefix,
                         read.typed,
-                        ibis_core::contract::Locator::from(read.locator),
+                        read.locator.map(ibis_core::contract::Locator::from),
                     )
                 });
                 assert_eq!(
                     interpretation,
-                    reply.locator.map(|read| (read.search, read.typed, read.locator)),
+                    reply.shorthand.map(|read| (
+                        read.search,
+                        read.prefix,
+                        read.locator.as_ref().map(|locator| locator.typed.clone()),
+                        read.locator.map(|locator| locator.locator)
+                    )),
                     "{}: {text}",
                     case.name
                 );
