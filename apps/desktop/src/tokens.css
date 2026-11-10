@@ -69,9 +69,16 @@
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: ui-monospace, "SF Mono", "Cascadia Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;
 
-  /* Motion: feedback and panels. No bounce. */
-  --dur: 120ms; --dur-panel: 200ms;
-  --ease: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
+  /* Motion (docs/design/foundations.md, "Motion"): three steps. --dur-1 answers a
+     touch (hover, press, a check drawing); --dur-2 brings something in (a menu
+     growing from its button, a line appearing); --dur-3 moves a region (a sheet,
+     a panel). Entrances ease out, exits ease in, and something that follows the
+     pointer or the keys settles on a spring with no overshoot. */
+  --dur-1: 120ms; --dur-2: 180ms; --dur-3: 240ms;
+  --ease-out: cubic-bezier(.2, .8, .2, 1); --ease-in: cubic-bezier(.4, 0, 1, 1);
+  --ease-spring: linear(0, .25 7%, .54 16%, .77 27%, .9 39%, .97 53%, .995 70%, 1);
+  /* A pressed control gives a little, as a key does. */
+  --press-scale: .97;
 
   /* Layers. */
   --z-chrome: 1; --z-overlay: 10; --z-modal: 30;
@@ -138,7 +145,8 @@
 
 }
 
-@media (prefers-reduced-motion: reduce) { :root { --dur: 100ms; --dur-panel: 1ms; } }
+/* Reduce Motion: feedback becomes a short fade, and anything that moves ends at once. */
+@media (prefers-reduced-motion: reduce) { :root { --dur-1: 100ms; --dur-2: 1ms; --dur-3: 1ms; --press-scale: 1; } }
 @media (pointer: coarse) { :root { --hit: var(--touch-target); } }
 :root[data-system="macos"] { --titlebar-height: var(--touch-target); }
 

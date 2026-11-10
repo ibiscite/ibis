@@ -9,3 +9,24 @@
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-overlay { border: var(--border-width) solid CanvasText; }
 }
+
+/* Everything that floats grows from what opened it, in --dur-2, and takes keys
+   from its first frame; it closes at once, so nothing waits on its exit. A
+   pop-up unfolds from the edge next to its button (React Aria's placement); a
+   clip, not a scale, so the box React Aria measures to place it never changes.
+   Reduce Motion fades it in instead. */
+.ui-overlay { animation: ui-overlay-in var(--dur-2) var(--ease-out); }
+.ui-overlay[data-placement="bottom"] { animation-name: ui-overlay-down; }
+.ui-overlay[data-placement="top"] { animation-name: ui-overlay-up; }
+@keyframes ui-overlay-in { from { opacity: 0; } }
+/* Leaving is instant: React Aria waits for a running animation before it
+   unmounts, so an overlay dismissed mid-entrance must stop animating at once. */
+.ui-overlay[data-exiting] { animation: none; }
+@keyframes ui-overlay-down { from { opacity: 0; clip-path: inset(0 0 70% 0 round var(--r-large)); } to { clip-path: inset(0 0 0 0 round var(--r-large)); } }
+@keyframes ui-overlay-up { from { opacity: 0; clip-path: inset(70% 0 0 0 round var(--r-large)); } to { clip-path: inset(0 0 0 0 round var(--r-large)); } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-overlay { animation: ui-overlay-fade var(--dur-1) linear; }
+  .ui-overlay[data-placement="bottom"] { animation-name: ui-overlay-fade; }
+  .ui-overlay[data-placement="top"] { animation-name: ui-overlay-fade; }
+}
+@keyframes ui-overlay-fade { from { opacity: 0; } }

@@ -30,6 +30,6 @@
 /* About sits at the foot of the sidebar. */
 .ui-side-navigation-item[data-gap-before] { margin-block-start: auto; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 1px CanvasText; }
+  .ui-side-navigation-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; box-shadow: inset 0 0 0 var(--border-width) CanvasText; }
   .ui-side-navigation-item[aria-current="page"] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
 }

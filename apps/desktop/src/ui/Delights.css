@@ -22,19 +22,19 @@
   :root:not([data-appearance="light"]) .ui-about-icon [data-icon="dark"] { display: block; }
 }
 /* The bird dips its beak on its tile, turning at the foot of its neck in the artwork's own units. */
-.ui-about-icon [data-dip] svg > g > g { transform-origin: 36px 80px; animation: ibis-peck var(--dur-panel) var(--ease); }
+.ui-about-icon [data-dip] svg > g > g { transform-origin: 36px 80px; animation: ibis-peck var(--dur-2) var(--ease-out); }
 @media (prefers-reduced-motion: reduce) { .ui-about-icon [data-dip] svg > g > g { animation: none; } }
 /* Every line takes the same two lines of room, so a new fact never moves the page. */
 .ui-about-line { box-sizing: content-box; margin: 0; min-block-size: calc(2 * var(--type-label-line)); text-wrap: pretty; }
 /* A found line reads in the text colour: secondary ink on the tint over a card falls below 4.5:1. */
 .ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted] { background: var(--highlight); border-radius: var(--r-small); color: var(--text); }
-.ui-about-line > [data-said] { display: block; animation: about-said var(--dur-panel) var(--ease); }
+.ui-about-line > [data-said] { display: block; animation: about-said var(--dur-2) var(--ease-out); }
 @keyframes about-said { from { opacity: 0; } }
 .ui-about-links { display: flex; flex-wrap: wrap; gap: var(--space-1); margin-inline-start: calc(var(--settings-row-pad) - var(--space-2)); }
 .ui-about-free { margin: 0; padding-inline: var(--settings-row-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-quiet-status { color: var(--text-secondary); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .ui-quiet-status { min-width: 0; flex: 0 1 auto; overflow-wrap: anywhere; }
-[data-empty-action] .footer-action { animation: ibis-refusal var(--dur-panel) var(--ease); }
+[data-empty-action] .footer-action { animation: ibis-refusal var(--dur-2) var(--ease-out); }
 @keyframes ibis-refusal { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(calc(-1 * var(--space-1))); } 75% { transform: translateX(var(--space-1)); } }
 @media (prefers-reduced-motion: reduce) {
   [data-empty-action] .footer-action { animation: none; }

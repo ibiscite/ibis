@@ -15,7 +15,7 @@
 .update-card { --progress-track: var(--fill-control-pressed); display: flex; flex: 1; align-items: center; gap: calc((var(--tile) - var(--icon-small)) / 2 + var(--row-gap)); min-width: 0; min-height: var(--control-small-h); }
 .update-ring { position: relative; flex: none; width: var(--icon-small); height: var(--icon-small); margin-inline-start: calc((var(--tile) - var(--icon-small)) / 2); border-radius: var(--r-full); box-shadow: inset 0 0 0 var(--border-width) var(--progress-track); }
 .update-ring > svg:first-child { position: absolute; inset: 0; width: 100%; height: 100%; rotate: -90deg; }
-.update-ring-fill { --progress: 0; fill: none; stroke-width: 2.5; stroke: var(--progress-fill); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--progress)); transform-box: fill-box; transform-origin: center; transition: stroke-dashoffset var(--dur-panel) var(--ease); }
+.update-ring-fill { --progress: 0; fill: none; stroke-width: 2.5; stroke: var(--progress-fill); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--progress)); transform-box: fill-box; transform-origin: center; transition: stroke-dashoffset var(--dur-2) var(--ease-out); }
 .update-card[data-indeterminate] .update-ring-fill { stroke-dashoffset: 72; animation: update-turn 1s linear infinite; }
 @keyframes update-turn { to { rotate: 360deg; } }
 .update-text { display: flex; gap: var(--space-2); min-width: 0; overflow: hidden; white-space: nowrap; }

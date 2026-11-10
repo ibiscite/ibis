@@ -5,12 +5,12 @@
 .ui-switch-track {
   position: relative; box-sizing: border-box; width: var(--switch-w); height: var(--switch-h); border-radius: var(--r-full);
   background: var(--fill-control-pressed); border: var(--border-width) solid var(--stroke-field);
-  transition: background-color var(--dur) var(--ease);
+  transition: background-color var(--dur-1) var(--ease-out);
 }
 .ui-switch-thumb {
   position: absolute; top: 1px; inset-inline-start: 1px; width: var(--switch-thumb-w); height: var(--switch-thumb-h); border-radius: var(--r-full);
   background: var(--thumb); box-shadow: var(--shadow-thumb);
-  transition: transform var(--dur) var(--ease);
+  transition: transform var(--dur-1) var(--ease-out);
 }
 .ui-switch[data-selected] .ui-switch-track { background: var(--accent); }
 .ui-switch[data-selected] .ui-switch-thumb { background: var(--text-on-accent); transform: translateX(var(--switch-travel)); }
