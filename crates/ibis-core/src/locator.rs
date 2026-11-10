@@ -213,7 +213,8 @@ pub fn parse_trailing(query: &str) -> Option<TrailingLocator> {
         let search = q[..i].trim_end();
         let after_comma = search.ends_with(',');
         let search = search.trim_end_matches(',').trim_end();
-        if search.is_empty() {
+        // Never start inside a range that did not read whole (`2019 - 21`).
+        if search.is_empty() || search.ends_with(['-', '–', '—']) {
             continue;
         }
         let tail = &q[i..];
@@ -666,6 +667,8 @@ mod tests {
             "agenda para 2030",
             "cartas para mi",
             "decreto n 50",
+            "Taylor 2019 - 21",
+            "Taylor p 1 - 2 - 34",
             "smith p civil",
             "people v. mill",
             "smith p iiii",
