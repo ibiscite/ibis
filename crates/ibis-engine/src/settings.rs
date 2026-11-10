@@ -2,11 +2,17 @@
 //! whole, in the order it was asked for, and one worker applies them one at a
 //! time, each as the core transaction: the cross-process lock, a fresh read,
 //! the change, validation and an atomic write.
+//!
+//! An edit to the file from outside, by hand or by the command line, is read
+//! in the same queue and reported once, so it never races a change here
+//! (decision 0042). A file that cannot be read is reported as it is and never
+//! written (0016): every transaction refuses it.
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
 use std::sync::mpsc::{self, Receiver, Sender};
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
+use std::time::Duration;
 
 use ibis_core::settings;
 pub use ibis_core::settings::{Loaded, Settings, SettingsError};
@@ -16,9 +22,21 @@ type Job = Box<dyn FnOnce(&Path) + Send>;
 /// Owns the writes to one settings file in this process.
 pub struct Owner {
     path: PathBuf,
-    jobs: Mutex<Option<Sender<Job>>>,
+    /// Shared with a watch, which sends into the same queue until it closes.
+    jobs: Arc<Mutex<Option<Sender<Job>>>>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    /// The file's bytes after the last job, so an event for a write made here
+    /// is recognised and not reported as an outside edit.
+    seen: Arc<Mutex<Option<Vec<u8>>>>,
 }
+
+/// Watching a settings file; dropping it stops.
+pub struct Watching {
+    _watcher: notify::RecommendedWatcher,
+}
+
+/// Events from one save arrive together; one read follows them.
+const SETTLE: Duration = Duration::from_millis(150);
 
 /// The outcome of a submitted change, once it has run.
 #[must_use = "a change's outcome says whether it was saved"]
@@ -35,20 +53,75 @@ impl Owner {
     pub fn open(path: PathBuf) -> Self {
         let (sender, jobs) = mpsc::channel::<Job>();
         let file = path.clone();
+        let seen = Arc::new(Mutex::new(std::fs::read(&path).ok()));
+        let after = Arc::clone(&seen);
         let worker = std::thread::Builder::new()
             .name("ibis-settings".into())
             .spawn(move || {
                 for job in jobs {
                     // A change that panics fails alone; the ones after it still run.
                     let _ = catch_unwind(AssertUnwindSafe(|| job(&file)));
+                    if let Ok(mut seen) = after.lock() {
+                        *seen = std::fs::read(&file).ok();
+                    }
                 }
             })
             .ok();
         Owner {
             path,
-            jobs: Mutex::new(worker.as_ref().map(|_| sender)),
+            jobs: Arc::new(Mutex::new(worker.as_ref().map(|_| sender))),
             worker: Mutex::new(worker),
+            seen,
         }
+    }
+
+    /// Report each edit made to the file from outside this owner, read in turn
+    /// with the changes made here: what was read, with any problem, so an
+    /// unreadable file is shown rather than replaced. Writes made here, and a
+    /// save that leaves the bytes as they were, report nothing. `None` when
+    /// the folder cannot be watched; the file is then read when it is used.
+    pub fn watch(&self, edited: impl Fn(Loaded) + Send + Sync + 'static) -> Option<Watching> {
+        use notify::Watcher;
+        let folder = self.path.parent()?.to_path_buf();
+        let name = self.path.file_name()?.to_owned();
+        let jobs = Arc::clone(&self.jobs);
+        let (signal, events) = mpsc::sync_channel::<()>(1);
+        let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
+            // Atomic saves rename a sibling over the file, so any event naming it counts.
+            if event.is_ok_and(|event| event.paths.iter().any(|path| path.file_name() == Some(&name))) {
+                let _ = signal.try_send(());
+            }
+        })
+        .ok()?;
+        watcher.watch(&folder, notify::RecursiveMode::NonRecursive).ok()?;
+        let seen = Arc::clone(&self.seen);
+        let edited = Arc::new(edited);
+        std::thread::Builder::new()
+            .name("ibis-settings-watch".into())
+            .spawn(move || {
+                while events.recv().is_ok() {
+                    // Let the rest of this save land, then read once.
+                    while events.recv_timeout(SETTLE).is_ok() {}
+                    let (seen, edited) = (Arc::clone(&seen), Arc::clone(&edited));
+                    let job: Job = Box::new(move |path| {
+                        let bytes = std::fs::read(path).ok();
+                        let new = seen.lock().is_ok_and(|seen| *seen != bytes);
+                        if new {
+                            edited(settings::load(path));
+                        }
+                    });
+                    // Once the owner closed, nothing more is read.
+                    let sent = jobs
+                        .lock()
+                        .ok()
+                        .and_then(|jobs| jobs.as_ref().map(|jobs| jobs.send(job).is_ok()));
+                    if sent != Some(true) {
+                        return;
+                    }
+                }
+            })
+            .ok()?;
+        Some(Watching { _watcher: watcher })
     }
 
     pub fn path(&self) -> &Path {
@@ -159,6 +232,68 @@ mod tests {
             s.density = Some(density);
             Ok(())
         })
+    }
+
+    /// The next edit the watch reports, within a bound so a lost event fails.
+    fn next(edits: &mpsc::Receiver<Loaded>) -> Loaded {
+        edits
+            .recv_timeout(CHANNEL_LIMIT)
+            .unwrap_or_else(|error| panic!("no edit reported: {error}"))
+    }
+
+    #[test]
+    fn an_outside_edit_is_reported_once_and_a_write_here_is_not() {
+        let (directory, owner) = owner();
+        let path = directory.path().join("settings.json");
+        density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
+        let (sender, edits) = mpsc::channel();
+        let _watching = owner
+            .watch(move |loaded| {
+                let _ = sender.send(loaded);
+            })
+            .unwrap_or_else(|| panic!("the temporary folder can be watched"));
+        // A write here is followed by an outside edit; only the edit is reported.
+        density(&owner, settings::Density::Comfortable).unwrap_or_else(|error| panic!("{error}"));
+        let mut edited = owner.read().settings;
+        edited.larger_text = Some(true);
+        std::fs::write(&path, serde_json::to_vec(&edited).unwrap_or_default())
+            .unwrap_or_else(|error| panic!("{error}"));
+        let reported = next(&edits);
+        assert!(reported.problem.is_none());
+        assert_eq!(
+            (reported.settings.larger_text, reported.settings.density),
+            (Some(true), Some(settings::Density::Comfortable))
+        );
+        // A later change here starts from the edit, so neither is lost.
+        density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(owner.read().settings.larger_text, Some(true));
+    }
+
+    #[test]
+    fn an_unreadable_edit_is_reported_and_the_file_is_never_written() {
+        let (directory, owner) = owner();
+        let path = directory.path().join("settings.json");
+        density(&owner, settings::Density::Compact).unwrap_or_else(|error| panic!("{error}"));
+        let (sender, edits) = mpsc::channel();
+        let _watching = owner
+            .watch(move |loaded| {
+                let _ = sender.send(loaded);
+            })
+            .unwrap_or_else(|| panic!("the temporary folder can be watched"));
+        std::fs::write(&path, b"{ invented half-typed").unwrap_or_else(|error| panic!("{error}"));
+        assert!(next(&edits).problem.is_some());
+        assert!(density(&owner, settings::Density::Comfortable).is_err());
+        assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ invented half-typed");
+        // Fixing the file is reported too, and changes work again.
+        let fixed = Settings {
+            density: Some(settings::Density::Comfortable),
+            ..Settings::default()
+        };
+        std::fs::write(&path, serde_json::to_vec(&fixed).unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));
+        let reported = next(&edits);
+        assert!(reported.problem.is_none());
+        assert_eq!(reported.settings.density, Some(settings::Density::Comfortable));
+        owner.close();
     }
 
     #[test]

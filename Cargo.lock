@@ -2150,6 +2150,7 @@ dependencies = [
  "ibis-core",
  "ibis-csl",
  "ibis-sources",
+ "notify",
  "schemars 1.2.3",
  "serde",
  "serde_json",

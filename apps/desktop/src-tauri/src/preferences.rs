@@ -125,6 +125,51 @@ impl SettingsFile {
         release
     }
 
+    /// Apply edits made to the file outside Ibis while it runs (decision 0042):
+    /// the windows show them as they show a change made in Settings, and a
+    /// file that cannot be used is shown in the notice and never written.
+    pub(crate) fn watch<R: tauri::Runtime>(&self, app: AppHandle<R>) -> Option<ibis_engine::settings::Watching> {
+        let file = self.clone();
+        self.owner.watch(move |loaded| {
+            crate::library::refresh_settings_notice(&app, &file);
+            if loaded.problem.is_some() {
+                return;
+            }
+            let Some(revision) = file.next_receipt() else { return };
+            file.surprises
+                .store(loaded.settings.small_surprises.unwrap_or(true), Ordering::SeqCst);
+            let preferences = PickerPreferences::from_settings(&loaded.settings);
+            if let Some(sizing) = app.try_state::<crate::sizing::Sizing>() {
+                sizing.set_larger_text(preferences.larger_text);
+            }
+            crate::tray::show_in_menu_bar(&app, preferences.menu_bar, revision);
+            // Every field, since any of them may have been edited.
+            let fields = serde_json::to_value(preferences)
+                .ok()
+                .and_then(|value| value.as_object().map(|fields| fields.keys().cloned().collect()))
+                .unwrap_or_default();
+            let change = PreferenceChange {
+                revision,
+                fields,
+                preferences,
+            };
+            for window in ["main", "settings"] {
+                crate::diagnostics::report(
+                    app.emit_to(window, "preferences:changed", change.clone()),
+                    crate::diagnostics::NativeIssue::PickerEvent,
+                );
+            }
+        })
+    }
+
+    /// A receipt after every one handed out, for a change made outside Ibis.
+    fn next_receipt(&self) -> Option<u64> {
+        let mut receipts = self.receipts.lock().ok()?;
+        let receipt = receipts.next.checked_add(1).filter(|value| *value < 1 << 53)?;
+        receipts.next = receipt;
+        Some(receipt)
+    }
+
     /// The Zotero profile chosen for reading while Zotero is closed.
     pub(crate) fn zotero_profile(&self) -> Option<String> {
         settings::load(&self.path).settings.zotero_profile

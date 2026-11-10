@@ -285,6 +285,9 @@ fn main() {
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));
+            // Edits to settings.json apply while Ibis runs; kept for the app's life.
+            let watching = app.state::<SettingsFile>().watch(app.handle().clone());
+            app.manage(std::sync::Mutex::new(watching));
             let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
             session_references::manage(app.handle(), &settings_path, remember);
             app.state::<sizing::Sizing>().load(&loaded.settings);
