@@ -1582,6 +1582,8 @@ JOURNEY_SETTINGS = b'{"schema_version": 2, "update_checks": false}'
 PASTED_NOTICE = "Pasted into TextEdit"
 TERMINAL_NOTICE = "Copied. Not pasted into a terminal. Press ⌘V to paste."
 COLLECTOR_TITLE = "ibis-journey-collector"
+# Every Ibis answers the same shortcut, and the first one's picker takes the keys.
+ANOTHER_IBIS = "Quit every Ibis, the installed one included, before the journey; it answers the same shortcut"
 # The Windows collector: a console program that records every key it gets
 # and stops cleanly when the stop file appears, so its window closes.
 WINDOWS_COLLECTOR_SCRIPT = f"""import ctypes, msvcrt, os, sys, time
@@ -1616,6 +1618,8 @@ class MacOS:
     def preflight():
         if running("TextEdit"):
             raise Unavailable("Quit TextEdit before the journey; it opens its own invented document", "native-session")
+        if running("ibis-desktop"):
+            raise Unavailable(ANOTHER_IBIS, "disposable-settings")
 
     @staticmethod
     def settings(identifier):
@@ -1769,6 +1773,10 @@ class Windows:
                                text=True, timeout=30).stdout
         if "notepad.exe" in tasks.lower():
             raise Unavailable("Close Notepad before the journey; it opens its own invented document", "native-session")
+        tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq ibis-desktop.exe", "/NH"], capture_output=True,
+                               text=True, timeout=30).stdout
+        if "ibis-desktop.exe" in tasks.lower():
+            raise Unavailable(ANOTHER_IBIS, "disposable-settings")
 
     @staticmethod
     def settings(identifier):
@@ -2084,8 +2092,6 @@ class MacApp:
         environment = {"IBIS_LIBRARY": str(library), "IBIS_MAC_PASTE_DIAGNOSTICS": "1"}
         if self.bundle:
             self.marker = f"{path.resolve()}/Contents/MacOS/"
-            if self.running():
-                raise Unavailable("Quit Ibis before the journey", "disposable-settings")
             subprocess.run(["open", "-n", "--env", f"IBIS_LIBRARY={library}", str(path)], check=True, timeout=30)
             self.process = None
             wait_for(lambda: self.running(), "Ibis started through LaunchServices")
@@ -3087,6 +3093,23 @@ class ContractTests(unittest.TestCase):
         self.assertTrue(result["worker_timed_out"] and result["facts_valid"])
         self.assertEqual(result["facts"], facts)
         self.assertNotIn("PRIVATE", json.dumps(result))
+
+    def test_the_journey_refuses_while_another_ibis_runs(self):
+        # An installed Ibis answers the journey's shortcut first, so its picker
+        # would take the keys and the run would time out on Ibis's focus (#1786).
+        def processes(names):
+            def run(argv, **_options):
+                listed = argv[-1] if argv[0] == "pgrep" else argv[2].removeprefix("IMAGENAME eq ")
+                found = listed in names
+                return Mock(returncode=0 if found else 1, stdout=f"{listed} 1 Console" if found else "INFO: none")
+            return patch("subprocess.run", side_effect=run)
+        for driver, ibis in ((MacOS, "ibis-desktop"), (Windows, "ibis-desktop.exe")):
+            with self.subTest(driver.__name__):
+                with processes({ibis}), self.assertRaises(Unavailable) as refused:
+                    driver.preflight()
+                self.assertEqual((str(refused.exception), refused.exception.code), (ANOTHER_IBIS, "disposable-settings"))
+                with processes(set()):
+                    driver.preflight()
 
     def test_linux_census_commands_are_available_and_separately_time_bounded(self):
         with patch("shutil.which", return_value=None), patch("subprocess.run") as command:

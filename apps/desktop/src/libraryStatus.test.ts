@@ -97,6 +97,14 @@ test("a damaged library says what it skipped, why, and which field to fix", () =
   expect(line(file({ ...damaged, warnings: 300 }))).toBe("damaged.bib · 3 references · 300 entries to check");
 });
 
+test("a missing replacement file cannot make the retained library sound moved", () => {
+  const failed = file({ state: "error", name: "missing.bib", source_is_requested: false, stale: true,
+    problem: "missing", error: "The library file is unavailable" });
+  expect(line(failed)).toBe("thesis.bib not updated · 3 h");
+  expect(detail(failed)).toEqual(["thesis.bib · 1,204 references",
+    `last read 3 hours ago, ${clockAt(3)} · The library could not be opened: missing.bib. The library file is unavailable. Choose it again or reconnect the drive.`]);
+});
+
 test("the age leaves once the update is no longer news", () => {
   expect(libraryMessages.age(file({ updated_at: now - recentUpdate + 1 }), now)).toBe("updated 10 minutes ago");
   expect(libraryMessages.age(file({ updated_at: now - recentUpdate - 1 }), now)).toBeNull();
