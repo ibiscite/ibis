@@ -739,7 +739,6 @@
       "result": {
         "$defs": {
           "Annotation": {
-            "additionalProperties": false,
             "properties": {
               "comment": {
                 "type": "string"
@@ -779,7 +778,6 @@
             "type": "object"
           },
           "Attachment": {
-            "additionalProperties": false,
             "properties": {
               "availability": {
                 "$ref": "#/$defs/Availability"
@@ -836,7 +834,6 @@
             "type": "string"
           },
           "CitationKey": {
-            "additionalProperties": false,
             "properties": {
               "source": {
                 "$ref": "#/$defs/CitationKeySource"
@@ -874,7 +871,6 @@
             ]
           },
           "Collection": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -911,7 +907,6 @@
             "type": "string"
           },
           "Fingerprints": {
-            "additionalProperties": false,
             "properties": {
               "cite": {
                 "$ref": "#/$defs/Fingerprint"
@@ -1024,7 +1019,6 @@
           "LibraryObject": {
             "oneOf": [
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Record"
@@ -1041,7 +1035,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Attachment"
@@ -1058,7 +1051,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Note"
@@ -1075,7 +1067,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Annotation"
@@ -1092,7 +1083,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Collection"
@@ -1109,7 +1099,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Tag"
@@ -1126,7 +1115,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/SavedSearch"
@@ -1220,7 +1208,6 @@
             ]
           },
           "Note": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -1261,7 +1248,6 @@
             "type": "object"
           },
           "Record": {
-            "additionalProperties": false,
             "properties": {
               "added_at": {
                 "description": "Source-added metadata; affects recents/display, never citation meaning.",
@@ -1314,7 +1300,6 @@
             "type": "object"
           },
           "SavedSearch": {
-            "additionalProperties": false,
             "properties": {
               "conditions": {
                 "description": "Source conditions are data only; this contract never executes them.",
@@ -1338,7 +1323,6 @@
             "type": "object"
           },
           "SearchCondition": {
-            "additionalProperties": false,
             "properties": {
               "field": {
                 "type": "string"
@@ -1392,7 +1376,6 @@
             "type": "object"
           },
           "SnapshotObject": {
-            "additionalProperties": false,
             "properties": {
               "fingerprints": {
                 "$ref": "#/$defs/Fingerprints"
@@ -1408,7 +1391,6 @@
             "type": "object"
           },
           "Tag": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -1577,7 +1559,6 @@
       "result": {
         "$defs": {
           "Annotation": {
-            "additionalProperties": false,
             "properties": {
               "comment": {
                 "type": "string"
@@ -1617,7 +1598,6 @@
             "type": "object"
           },
           "Attachment": {
-            "additionalProperties": false,
             "properties": {
               "availability": {
                 "$ref": "#/$defs/Availability"
@@ -1674,7 +1654,6 @@
             "type": "string"
           },
           "CitationKey": {
-            "additionalProperties": false,
             "properties": {
               "source": {
                 "$ref": "#/$defs/CitationKeySource"
@@ -1712,7 +1691,6 @@
             ]
           },
           "Collection": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -1749,7 +1727,6 @@
             "type": "string"
           },
           "Fingerprints": {
-            "additionalProperties": false,
             "properties": {
               "cite": {
                 "$ref": "#/$defs/Fingerprint"
@@ -1862,7 +1839,6 @@
           "LibraryObject": {
             "oneOf": [
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Record"
@@ -1879,7 +1855,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Attachment"
@@ -1896,7 +1871,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Note"
@@ -1913,7 +1887,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Annotation"
@@ -1930,7 +1903,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Collection"
@@ -1947,7 +1919,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/Tag"
@@ -1964,7 +1935,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "properties": {
                   "data": {
                     "$ref": "#/$defs/SavedSearch"
@@ -1983,7 +1953,6 @@
             ]
           },
           "Note": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -2010,7 +1979,6 @@
             "type": "object"
           },
           "Record": {
-            "additionalProperties": false,
             "properties": {
               "added_at": {
                 "description": "Source-added metadata; affects recents/display, never citation meaning.",
@@ -2063,7 +2031,6 @@
             "type": "object"
           },
           "SavedSearch": {
-            "additionalProperties": false,
             "properties": {
               "conditions": {
                 "description": "Source conditions are data only; this contract never executes them.",
@@ -2087,7 +2054,6 @@
             "type": "object"
           },
           "SearchCondition": {
-            "additionalProperties": false,
             "properties": {
               "field": {
                 "type": "string"
@@ -2107,7 +2073,6 @@
             "type": "object"
           },
           "Tag": {
-            "additionalProperties": false,
             "properties": {
               "id": {
                 "$ref": "#/$defs/ItemRef"
@@ -2131,7 +2096,6 @@
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
         "properties": {
           "fingerprints": {
             "$ref": "#/$defs/Fingerprints"
