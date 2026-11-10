@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { lint } from "./pr-lint.mjs";
-import { compareSweeps, pinTitle, readSweep, report, styleNotes } from "./style-sweep.mjs";
+import { compareSweeps, pinTitle, pullRequestBody, readSweep, report, styleNotes, uncomparedNotes } from "./style-sweep.mjs";
 
 const output = (text) => ({ citations: [text], bibliography: `${text}.` });
 const sweep = (entries) => new Map(Object.entries(entries));
@@ -69,4 +69,29 @@ test("the release notes name each style whose output changed, or say none did", 
   const notes = styleNotes(compareSweeps(previous, next, []), "v0.3.1");
   assert.match(notes, /^\*\*Citation styles\*\*\n\n- Output changed since v0\.3\.1 in 1 style: `moved`\n- New: `fresh`\n- Removed or renamed[^\n]*: `gone`\n$/);
   assert.equal(styleNotes(compareSweeps(previous, previous, []), "v0.3.1"), "**Citation styles**\n\nEvery style writes what it wrote in v0.3.1.\n");
+});
+
+test("upstream text cannot close the diff's code block or start an unprefixed line", () => {
+  const previous = sweep({ tricky: output("x") });
+  const next = sweep({ tricky: { citations: ["line one\n```\n# Injected heading"], bibliography: "x." } });
+  const text = report(compareSweeps(previous, next, []), previous, next);
+  assert.match(text, /\n````diff\n/);
+  assert.match(text, /\n\+ line one\n\+ ```\n\+ # Injected heading\n````\n/);
+});
+
+test("the pull request body puts the handoff first and keeps each diff whole within its limit", () => {
+  const styles = Array.from({ length: 20 }, (_, index) => `s${index}`);
+  const previous = new Map(styles.map((style) => [style, output("x")]));
+  const next = new Map(styles.map((style) => [style, output("y".repeat(5_000))]));
+  const result = compareSweeps(previous, next, []);
+  const body = pullRequestBody(result, previous, next, "https://example.org/run/1");
+  assert.ok(body.startsWith("## Handoff\n"));
+  assert.match(body, /Full report: https:\/\/example\.org\/run\/1/);
+  assert.ok(body.length < 60_000, `${body.length}`);
+  assert.equal(body.match(/<details>/g).length, body.match(/<\/details>/g).length);
+  assert.match(body, /The diffs of \d+ more styles are in the full report\./);
+});
+
+test("release notes never claim a change they could not compare", () => {
+  assert.equal(uncomparedNotes("v0.3.1"), "**Citation styles**\n\nOutput could not be compared with v0.3.1: check the citations you depend on.\n");
 });

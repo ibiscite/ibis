@@ -51,6 +51,7 @@ jobs:
           # Read-only, for the GitHub API's newest citeproc-js commit.
           GH_TOKEN: ${{ github.token }}
           OUT: ${{ runner.temp }}/styles
+          STYLE_SWEEP_RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           status=0
           node scripts/style-sweep.mjs weekly "$OUT" || status=$?
@@ -93,6 +94,8 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.sha }}
+          # Full history, so the branch's own commits can be told from main's.
+          fetch-depth: 0
 
       - name: Download the new snapshot
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -105,8 +108,6 @@ jobs:
           GH_TOKEN: ${{ steps.app.outputs.token }}
           APP: ${{ steps.app.outputs.app-slug }}
           REPO: ${{ github.repository }}
-          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          FAILED: ${{ needs.sweep.outputs.failed }}
           STYLES: ${{ runner.temp }}/styles
         run: |
           set -euo pipefail
@@ -117,22 +118,32 @@ jobs:
           unexpected=$(git status --porcelain | grep -v ' crates/ibis-csl/vendor/' || true)
           [ -z "$unexpected" ] || { echo "::error::Unexpected changes: $unexpected"; exit 1; }
           title=$(head -n 1 "$STYLES/title.txt")
+          bot="${APP}[bot]"
           id=$(gh api "users/${APP}%5Bbot%5D" --jq .id)
-          git -c user.name="${APP}[bot]" -c user.email="${id}+${APP}[bot]@users.noreply.github.com" \
-            commit -q -a -m "$title" -m "Built by the Citation styles workflow: $RUN"
-          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" HEAD:refs/heads/styles/newest
-          {
-            [ "$FAILED" != true ] || printf '**This run found new failures; fix or list them before merging.**\n\n'
-            # A pull request body holds 65,536 characters; the run keeps the whole report.
-            head -c 50000 "$STYLES/report.md"
-            printf '\n\nFull report: %s\n\n' "$RUN"
-            printf '## Handoff\n\nReview the changed output above against the upstream changes, report style or engine bugs upstream, add any style that now fails to `crates/ibis-csl/tests/sweep-exceptions.json` with its upstream report, then merge on green. A newer weekly run replaces this branch.\n'
-          } > body.md
+          remote="https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git"
+          # The branch is replaced only while it holds nothing but this
+          # workflow's own commit: a person's or agent's work on it is kept.
+          old=$(git ls-remote "$remote" refs/heads/styles/newest | cut -f1)
+          if [ -n "$old" ]; then
+            git fetch -q "$remote" "$old"
+            others=$(git log --format='%an' "${GITHUB_SHA}..${old}" | grep -vxF "$bot" || true)
+            if [ -n "$others" ]; then
+              echo "::error::styles/newest has commits by others; merge or close its pull request, then run this again."
+              exit 1
+            fi
+          fi
           pr=$(gh pr list --repo "$REPO" --head styles/newest --state open --json number --jq '.[0].number // empty')
+          # A reviewed head that is waiting to merge must not merge unreviewed changes.
+          if [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
+            gh pr merge "$pr" --repo "$REPO" --disable-auto
+          fi
+          git -c user.name="$bot" -c user.email="${id}+${bot}@users.noreply.github.com" \
+            commit -q -a -m "$title" -m "Built by the Citation styles workflow."
+          git push -q --force-with-lease="refs/heads/styles/newest:${old}" "$remote" HEAD:refs/heads/styles/newest
           if [ -n "$pr" ]; then
-            gh pr edit "$pr" --repo "$REPO" --title "$title" --body-file body.md
+            gh pr edit "$pr" --repo "$REPO" --title "$title" --body-file "$STYLES/body.md"
           else
-            gh pr create --repo "$REPO" --base main --head styles/newest --title "$title" --body-file body.md
+            gh pr create --repo "$REPO" --base main --head styles/newest --title "$title" --body-file "$STYLES/body.md"
           fi
 
   result:

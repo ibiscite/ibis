@@ -68,7 +68,31 @@ const list = (styles) => {
   return styles.length > MAX_LISTED ? `${shown} and ${styles.length - MAX_LISTED} more` : shown;
 };
 
-export function report({ removed, added, changed, newFailures, fixed, suspicious = [] }, previous, next) {
+/** A code fence no run of backticks in `text` can close. */
+export function fence(text) {
+  const longest = Math.max(0, ...[...text.matchAll(/`+/g)].map(([run]) => run.length));
+  return "`".repeat(Math.max(3, longest + 1));
+}
+
+/** One style's changed parts as a diff, every line prefixed, inside a fence of its own. */
+function details(style, before, after) {
+  const shown = (output) => parts(output).map((part) => (typeof part === "string" ? part : JSON.stringify(part)));
+  const [old, updated] = [shown(before), shown(after)];
+  const prefixed = (mark, text) => String(text).split("\n").map((line) => `${mark} ${line}`);
+  const diff = [];
+  for (const [index, line] of updated.entries()) {
+    if (old[index] !== line) diff.push(...prefixed("-", old[index]), ...prefixed("+", line));
+  }
+  const body = diff.join("\n");
+  const marks = fence(body);
+  return ["", `<details><summary>${style}</summary>`, "", `${marks}diff`, body, marks, "", "</details>"].join("\n");
+}
+
+/**
+ * The comparison for a person. Each style's diff is whole or left out, so
+ * `limit` (characters) never cuts one open.
+ */
+export function report({ removed, added, changed, newFailures, fixed, suspicious = [] }, previous, next, limit = Infinity) {
   const lines = [`Output changed in ${changed.length} ${changed.length === 1 ? "style" : "styles"}.`];
   if (newFailures.length) lines.push("", `**New failures:** ${list(newFailures)}`);
   if (suspicious.length) lines.push("", `**Text that looks incomplete, to check by hand:** ${list(suspicious)}`);
@@ -76,18 +100,31 @@ export function report({ removed, added, changed, newFailures, fixed, suspicious
   if (added.length) lines.push("", `**Added:** ${list(added)}`);
   if (removed.length) lines.push("", `**Removed:** ${list(removed)}`);
   if (fixed.length) lines.push("", `**No longer failing, so remove from the exceptions:** ${list(fixed)}`);
+  let text = lines.join("\n");
+  let shown = 0;
   for (const style of changed.slice(0, 20)) {
-    lines.push("", `<details><summary>${style}</summary>`, "", "```diff");
-    const before = previous.get(style);
-    const after = next.get(style);
-    const shown = (output) => parts(output).map((part) => (typeof part === "string" ? part : JSON.stringify(part)));
-    const [old, updated] = [shown(before), shown(after)];
-    for (const [index, line] of updated.entries()) {
-      if (old[index] !== line) lines.push(`- ${old[index]}`, `+ ${line}`);
-    }
-    lines.push("```", "", "</details>");
+    const part = details(style, previous.get(style), next.get(style));
+    if (text.length + part.length > limit) break;
+    text += part;
+    shown += 1;
   }
-  return `${lines.join("\n")}\n`;
+  if (shown < Math.min(changed.length, 20)) text += `\n\nThe diffs of ${Math.min(changed.length, 20) - shown} more styles are in the full report.`;
+  return `${text}\n`;
+}
+
+/** The weekly pull request's description: what to do first, then the bounded report. */
+export function pullRequestBody(result, previous, next, run) {
+  const lines = [
+    "## Handoff",
+    "",
+    "Review the changed output against the upstream changes, report style or engine bugs upstream, add any style that now fails to `crates/ibis-csl/tests/sweep-exceptions.json` with its upstream report, then merge on green. A newer weekly run replaces this branch only while it holds nothing but the workflow's own commit; it turns auto-merge off before it does.",
+    "",
+  ];
+  if (result.newFailures.length) lines.push("**This run found new failures; fix or list them before merging.**", "");
+  if (run) lines.push(`Full report: ${run}`, "");
+  lines.push("## Output diff", "");
+  // A pull request body holds 65,536 characters.
+  return `${lines.join("\n")}\n${report(result, previous, next, 50_000)}`;
 }
 
 /** The pull request title for moved pins, short enough for the release notes. */
@@ -112,6 +149,11 @@ export function styleNotes({ changed, added, removed }, since) {
   if (added.length) lines.push(`- New: ${list(added)}`);
   if (removed.length) lines.push(`- Removed or renamed (old ids still work when upstream renamed them): ${list(removed)}`);
   return `${lines.join("\n")}\n`;
+}
+
+/** The release notes' part on styles when no comparison could be made. */
+export function uncomparedNotes(since) {
+  return `**Citation styles**\n\nOutput could not be compared with ${since}: check the citations you depend on.\n`;
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -152,7 +194,7 @@ function compareFiles(oldPath, newPath, reportPath) {
   const result = compareSweeps(previous, next, exceptions());
   writeFileSync(reportPath, report(result, previous, next));
   console.log(`${next.size} styles, ${result.changed.length} changed, ${result.newFailures.length} new failures`);
-  return result;
+  return { ...result, previous, next };
 }
 
 const target = () => process.env.CARGO_TARGET_DIR || join(root, "target");
@@ -168,35 +210,52 @@ function weekly(out) {
   if (!title) return compareFiles(join(out, "pinned.jsonl"), join(out, "pinned.jsonl"), join(out, "report.md"));
   render(root, join(out, "newest.jsonl"), target());
   const result = compareFiles(join(out, "pinned.jsonl"), join(out, "newest.jsonl"), join(out, "report.md"));
+  writeFileSync(join(out, "body.md"), pullRequestBody(result, result.previous, result.next, process.env.STYLE_SWEEP_RUN));
   writeFileSync(join(out, "title.txt"), `${title}\n`);
   return result;
+}
+
+/**
+ * Renders `ref` into `out` in a worktree of its own, with the sweep files from
+ * this checkout (`sweep` null) or from another commit. The worktree has its own
+ * target folder: one shared with this checkout would mix their builds.
+ */
+function renderAt(ref, sweep, out) {
+  const tree = mkdtempSync(join(tmpdir(), "ibis-style-sweep-"));
+  run("git", ["worktree", "add", "--quiet", "--detach", tree, ref], { cwd: root });
+  try {
+    if (sweep === null) for (const path of SWEEP_FILES) copyFileSync(join(root, path), join(tree, path));
+    else run("git", ["checkout", "--quiet", sweep, "--", ...SWEEP_FILES], { cwd: tree });
+    render(tree, out, join(tree, "target"));
+  } finally {
+    run("git", ["worktree", "remove", "--force", tree], { cwd: root });
+    rmSync(tree, { recursive: true, force: true });
+  }
 }
 
 function release(oldRef, out) {
   mkdirSync(out, { recursive: true });
   const since = capture("git", ["describe", "--tags", "--always", oldRef]);
-  const tree = mkdtempSync(join(tmpdir(), "ibis-style-sweep-"));
-  run("git", ["worktree", "add", "--quiet", "--detach", tree, oldRef], { cwd: root });
-  try {
-    // The same sweep on both sides, so only the engine and bundle can differ.
-    for (const path of SWEEP_FILES) copyFileSync(join(root, path), join(tree, path));
-    // A separate target folder: one shared with this checkout would mix their builds.
+  // The same sweep on both sides, so only the engine and bundle can differ:
+  // this checkout's, else the old release's when this one does not build there.
+  for (const sweep of [null, oldRef]) {
     try {
-      render(tree, join(out, "old.jsonl"), join(tree, "target"));
+      renderAt(oldRef, sweep, join(out, "old.jsonl"));
+      if (sweep === null) render(root, join(out, "new.jsonl"), target());
+      else renderAt("HEAD", sweep, join(out, "new.jsonl"));
     } catch {
-      // An older engine this sweep cannot build against renders with its own.
-      console.error(`::warning::This sweep does not build against ${since}; rendering it with its own sweep, so changed forms may be the sweep's.`);
-      run("git", ["checkout", "--quiet", "--", ...SWEEP_FILES], { cwd: tree });
-      render(tree, join(out, "old.jsonl"), join(tree, "target"));
+      console.error(`::warning::The ${sweep === null ? "current" : `${since}`} sweep does not build on both sides.`);
+      continue;
     }
-  } finally {
-    run("git", ["worktree", "remove", "--force", tree], { cwd: root });
-    rmSync(tree, { recursive: true, force: true });
+    const result = compareFiles(join(out, "old.jsonl"), join(out, "new.jsonl"), join(out, "report.md"));
+    writeFileSync(join(out, "notes.md"), styleNotes(result, since));
+    return result;
   }
-  render(root, join(out, "new.jsonl"), target());
-  const result = compareFiles(join(out, "old.jsonl"), join(out, "new.jsonl"), join(out, "report.md"));
-  writeFileSync(join(out, "notes.md"), styleNotes(result, since));
-  return result;
+  // Without a comparison the notes say so, and the release waits for a person.
+  writeFileSync(join(out, "notes.md"), uncomparedNotes(since));
+  writeFileSync(join(out, "report.md"), `No sweep builds against both ${since} and this release.\n`);
+  console.error(`::error::No sweep builds against both ${since} and this release.`);
+  return { newFailures: ["(no comparison)"] };
 }
 
 function main() {
