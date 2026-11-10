@@ -574,11 +574,18 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         .collect::<Result<Vec<_>, _>>()?;
     let count = items.len();
     let keyed = matches!(output, OutputSpec::Key { .. });
+    // A ref that is a key was found by reading every library, so each one's
+    // health bears on the citation, not only the cited records' own.
+    let by_key = arguments["items"].as_array().into_iter().flatten().any(|item| {
+        item["ref"]
+            .as_str()
+            .is_some_and(|reference| matches!(view::parse(reference).0, ItemSelector::Key(_)))
+    });
     let Checked {
         value: result,
         source_health,
     } = engine
-        .prepare_citation(
+        .prepare_consulting(
             &CitationRequest {
                 items,
                 form,
@@ -587,6 +594,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
                 input_language: None,
                 output_locale: locale,
             },
+            by_key,
             &Cancellation::default(),
         )?
         .into_checked();

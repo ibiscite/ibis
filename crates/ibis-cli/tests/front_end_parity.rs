@@ -306,32 +306,51 @@ fn reading_methods_are_identical_through_every_front_end() -> Result {
 #[test]
 fn source_health_is_identical_through_every_front_end_and_mcp() -> Result {
     let dir = tempfile::tempdir()?;
-    let path = dir.path().join("invented-damaged.bib");
+    let clean = dir.path().join("invented-clean.bib");
+    let damaged = dir.path().join("invented-damaged.bib");
     std::fs::write(
-        &path,
-        "@book{lantern,title={Invented Lantern},author={Vale, Ada},year={2026}}\n@misc{broken,title={Missing brace}\n",
+        &clean,
+        "@book{lantern,title={Invented Lantern},author={Vale, Ada},year={2026}}\n",
+    )?;
+    std::fs::write(
+        &damaged,
+        "@misc{other,title={Invented Other}}\n@misc{broken,title={Missing brace}\n",
     )?;
     let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
     engine
-        .open_file_observed(&path, &Cancellation::default())
+        .open_file_observed(&clean, &Cancellation::default())
         .map_err(|_| "open")?;
-    let library = engine.libraries().map_err(|_| "libraries")?.libraries.remove(0).id;
+    let first = engine.libraries().map_err(|_| "libraries")?.libraries.remove(0).id;
+    engine
+        .open_file_observed(&damaged, &Cancellation::default())
+        .map_err(|_| "open")?;
+    let library = engine
+        .libraries()
+        .map_err(|_| "libraries")?
+        .libraries
+        .into_iter()
+        .find(|library| library.id != first)
+        .ok_or("second library")?
+        .id;
     let warned = json!({"status":"findings","findings":[{"code":"source-warnings","library":library,"count":1}]});
+    let ok = json!({"status":"ok","findings":[]});
     let found = engine
         .dispatch(Method::Search, &json!({"query":"lantern"}), &Cancellation::default())
         .map_err(|_| "search")?;
     let item = found.data["hits"][0]["item"]["object"]["data"]["id"].clone();
     let cite = json!({"items":[{"item":item}],"output":{"kind":"key","syntax":"pandoc"}});
-    for (method, params) in [
-        (Method::Search, json!({"query":"lantern","limit":10})),
-        (Method::Show, json!({"item":{"by":"key","value":"lantern"}})),
-        (Method::Cite, cite),
-        (Method::Libraries, Value::Null),
+    // A key or a search reads every library; an item by id reads its own.
+    for (method, params, health) in [
+        (Method::Search, json!({"query":"lantern","limit":10}), &warned),
+        (Method::Show, json!({"item":{"by":"key","value":"lantern"}}), &warned),
+        (Method::Cite, cite, &ok),
+        (Method::Libraries, Value::Null, &warned),
     ] {
         let expected = call(FrontEnd::Engine, &engine, method, &params)?.ok_or("engine")?;
-        assert_eq!(expected["data"]["source_health"], warned, "{}", method.as_str());
+        assert_eq!(&expected["data"]["source_health"], health, "{}", method.as_str());
         same("damaged", &engine, method, &params, &expected)?;
     }
+    // MCP refs here are keys, found by reading every library.
     for (tool, arguments) in [
         ("search", json!({"query":"lantern"})),
         ("show", json!({"ref":"lantern"})),
