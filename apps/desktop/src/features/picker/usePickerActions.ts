@@ -4,7 +4,7 @@ import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
-import { isStyle, outputName } from "../../format/outputs";
+import { outputName } from "../../format/outputs";
 import { enterLabel, enterPastes } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
@@ -19,7 +19,7 @@ import type { CitationInspectorState } from "./useCitationInspector";
 
 export function usePickerActions({
   api, pickerSession, menus, libraryState, searchState, destination, shown, inspector, offered, canPaste, shortcut,
-  perform, dismissChooser, toggle,
+  perform, dismissChooser, toggle, writesStyle,
 }: {
   api: PickerApi;
   pickerSession: ReturnType<typeof usePickerSession>;
@@ -36,6 +36,8 @@ export function usePickerActions({
   inspector: CitationInspectorState;
   dismissChooser: () => void;
   toggle: (result?: SearchResult) => void;
+  /** The output being written is a style, which may sort. */
+  writesStyle: boolean;
 }) {
   const { session, state, send, cancelCopy } = pickerSession;
   const { pinned, focusHome, leaveOverlays } = menus;
@@ -106,6 +108,6 @@ export function usePickerActions({
   };
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
   // Keys outputs always keep the order, so only a style offers the choice.
-  const keepOrder = isStyle(format) ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
+  const keepOrder = writesStyle ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
   return { keepOrder, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }

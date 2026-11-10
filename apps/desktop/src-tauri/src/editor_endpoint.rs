@@ -513,6 +513,8 @@ pub(crate) fn copy_editor_endpoint(app: AppHandle) -> Result<(), String> {
 pub(crate) struct EditorWaiting {
     pub(crate) request: u32,
     pub(crate) format: String,
+    /// The editor asked for a style, which may sort its references.
+    pub(crate) style: bool,
 }
 
 /// `None` when no editor is waiting.
@@ -521,6 +523,7 @@ pub(crate) struct EditorWaiting {
 pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaiting> {
     pending.current().map(|request| EditorWaiting {
         request: request.id as u32,
+        style: matches!(request.output, OutputSpec::Csl { .. }),
         format: request.label,
     })
 }

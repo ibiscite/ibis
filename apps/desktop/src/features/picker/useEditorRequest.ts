@@ -7,6 +7,7 @@ import type { PickerApi } from "../../App";
 export function useEditorRequest(api: PickerApi) {
   const { editorRequest, onEditorRequest } = api;
   const [label, setLabel] = useState<string | null>(null);
+  const [style, setStyle] = useState(false);
   const [version, setVersion] = useState(0);
   const asked = useRef(0);
   const shown = useRef<number | null>(null);
@@ -20,6 +21,7 @@ export function useEditorRequest(api: PickerApi) {
       if (request === shown.current) return;
       shown.current = request;
       setLabel(next?.format ?? null);
+      setStyle(next?.style ?? false);
       setVersion((old) => old + 1);
     }, () => {});
   }, [editorRequest]);
@@ -32,5 +34,5 @@ export function useEditorRequest(api: PickerApi) {
       void unlisten?.then((stop) => stop());
     };
   }, [read, onEditorRequest]);
-  return { label, version };
+  return { label, version, style };
 }

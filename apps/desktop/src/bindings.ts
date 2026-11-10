@@ -389,6 +389,8 @@ export type DisplayRun = {
 export type EditorWaiting = {
 	format: string;
 	request: number;
+	/** The editor asked for a style, which may sort its references. */
+	style: boolean;
 };
 
 /** Why the endpoint could not listen. */
