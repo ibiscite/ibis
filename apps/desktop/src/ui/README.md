@@ -43,7 +43,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See [Notices](../../../../docs/design/delivery.md#notices). |
 | Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. Without room the phase drops whole, never cut to a stub. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See [First run and choice screens](../../../../docs/design/choice-screens.md). |
-| Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. |
+| Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. `size="small"` ends a Settings row with thumbnails; `.ui-picture-preview` is the one live picture over a group of choices. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |
 | Scroll area (`ui/ScrollArea`) | One drawn scroll bar everywhere (`ui/Foundation.css`): a `--scrollbar-thumb` capsule on a clear track, the same at every size and on every system; the side inset sits inside the bar; `--scroll-fade` only at an edge with more beyond it. |
 | File drag (`ui/FileDrag`) | A draggable file icon with button states. |

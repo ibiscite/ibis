@@ -142,7 +142,7 @@
   --highlight: var(--accent-wash);
   /* Previews: the real part at one size each. The window picture keeps Medium's shape. */
   --preview-window-w: 45rem; --preview-window-h: 30rem;
-  --preview-window: .21;
+  --preview-window: .21; --preview-thumb: .09; --preview-live: .42;
   /* The bird: the app icon names Ibis; the depth mark greets. */
   --mark-app: 6rem; --mark-greeting: 3.5rem;
 
