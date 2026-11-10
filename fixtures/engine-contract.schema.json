@@ -547,7 +547,7 @@
       ]
     },
     "Destination": {
-      "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+      "description": "What Ibis does for a named app: the format the engine chose for it from\nthe person's settings, and whether it pastes, with pasting on and\npermitted, as they are by default.",
       "type": "object",
       "properties": {
         "app": {
@@ -555,6 +555,10 @@
         },
         "delivery": {
           "$ref": "#/$defs/Decision"
+        },
+        "from": {
+          "description": "Which level chose `output`.",
+          "$ref": "#/$defs/FormatFrom"
         },
         "name": {
           "description": "The app's name, when Ibis knows it.",
@@ -576,12 +580,24 @@
               "type": "null"
             }
           ]
+        },
+        "writing": {
+          "description": "The writing that chose it, when one did.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/WritingName"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
       "required": [
         "app",
         "output",
+        "from",
         "delivery"
       ]
     },
@@ -851,6 +867,31 @@
       "required": [
         "cite",
         "full"
+      ]
+    },
+    "FormatFrom": {
+      "description": "Which level chose a citation's format (decision 0042); the engine decides.",
+      "oneOf": [
+        {
+          "description": "The writing chosen for this app.",
+          "type": "string",
+          "const": "writing"
+        },
+        {
+          "description": "The format this app was given when the person changed it there.",
+          "type": "string",
+          "const": "app"
+        },
+        {
+          "description": "Your format for this kind of app.",
+          "type": "string",
+          "const": "yours"
+        },
+        {
+          "description": "Nothing was chosen; the format suits the kind of app. The first\npaste with it says so, once.",
+          "type": "string",
+          "const": "suggestion"
+        }
       ]
     },
     "GoldenCase": {
@@ -1587,6 +1628,23 @@
       "additionalProperties": false,
       "required": [
         "text"
+      ]
+    },
+    "WritingName": {
+      "description": "The writing that chose a format.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name"
       ]
     }
   }

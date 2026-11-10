@@ -5,6 +5,7 @@ import { App } from "./App";
 import type { PickerDestination, WritingProjectsView } from "./api";
 import type { FilePreview } from "./bindings";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { noFormatChosen } from "./testing/format";
 
 afterEach(resetApp);
 
@@ -14,7 +15,7 @@ const pending = <T,>() => {
   return { promise, resolve };
 };
 const writingDestination = (name: string, format: "cite" | "typst", context: [number, number]): PickerDestination => ({
-  app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: "pandoc",
+  app: "Example Editor", app_id: "example.editor", app_identity: null, format: noFormatChosen, automatic: null, remembered: "pandoc",
   unreadable: false, can_paste: false, output_question: "editor", paste: null, paste_question: false, can_choose_paste: false,
   writing_project: { id: name, name, output: format, bibliography: "refs.bib" },
   writing_context: `opening-${context[0]}`, context_version: context,
@@ -89,7 +90,7 @@ test("leaving a writing project restores the app's output and copies a fresh pre
   let generation = 1;
   let selected: string | null = project.id;
   const view = (): WritingProjectsView => ({ projects: [project], selected, context: `opening-${generation}`, session_only: false });
-  const destination = (): PickerDestination => ({ app: "Example Editor", app_id: "example.editor", app_identity: null,
+  const destination = (): PickerDestination => ({ app: "Example Editor", app_id: "example.editor", app_identity: null, format: noFormatChosen,
     automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: "editor",
     paste: null, paste_question: false, can_choose_paste: false, writing_project: selected ? project : null,
     writing_context: `opening-${generation}`, context_version: [generation, 0] });

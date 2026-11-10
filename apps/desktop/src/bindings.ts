@@ -443,6 +443,23 @@ export type FormOption = {
 	reason: string | null;
 };
 
+/** The format a citation for one app uses, and why. */
+export type FormatChoice = {
+	from: FormatFrom;
+	/** Its id in the engine's `outputs` list, when it is listed there. */
+	id?: string | null;
+	kind: FormatKind;
+	/** The output written. */
+	output: OutputSpec;
+	writing?: WritingName | null;
+};
+
+/** Which level chose a citation's format (decision 0042); the engine decides. */
+export type FormatFrom = "writing" | "app" | "yours" | "suggestion";
+
+/** The kinds of app a format is chosen for. People never see the word. */
+export type FormatKind = "documents" | "keys";
+
 /** A `.bib` file found on this computer. */
 export type FoundFile = {
 	/** The name of the folder holding it, without the rest of its path. */
@@ -460,6 +477,8 @@ export type ItemRef = {
 	key: string;
 	library: LibraryId;
 };
+
+export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "cayw-json";
 
 /**
  * A library's opaque token. It says nothing about the library: its kind and
@@ -602,6 +621,19 @@ export type NoticeMessage = {
 /** An app ID that cannot tell Ibis which output its document needs. */
 export type OutputQuestion = "browser" | "editor";
 
+export type OutputSpec = {
+	/** A command name for syntaxes that support it; engines validate its grammar. */
+	command: string | null;
+	kind: "key";
+	syntax: KeySyntax;
+} | {
+	kind: "csl";
+	style: string;
+} | {
+	kind: "preset";
+	name: string;
+};
+
 /** Where Settings opens. */
 export type Page = "general" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "paste";
 
@@ -639,6 +671,11 @@ export type PickerDestination = {
 	/** The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean;
 	context_version?: [number, number] | null;
+	/**
+	 * The engine's answer: the format the next citation uses and which level
+	 * chose it (decision 0042). The picker shows it as it is.
+	 */
+	format: FormatChoice;
 	/** The app cannot identify document syntax; ask until an output is remembered. */
 	output_question: OutputQuestion | null;
 	/** The separate delivery choice; never inferred from a remembered format. */
@@ -961,6 +998,12 @@ export type UndoView = {
 
 /** Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
+
+/** The writing that chose a format. */
+export type WritingName = {
+	id: string;
+	name: string;
+};
 
 export type WritingProjectEdit = {
 	kind: "create";

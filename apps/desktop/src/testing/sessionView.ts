@@ -10,6 +10,7 @@ import { initialSearch, type SearchInputs } from "../features/picker/search";
 import type { SessionEvent, SessionState, SessionView } from "../features/picker/session";
 import { searchQuery, type PickerInputs } from "../features/picker/view";
 import { testStates } from "../test-fixtures";
+import { noFormatChosen } from "./format";
 
 /** Arranges `state` so that the session's view is `v`; send the event it returns to apply it. */
 export function arrangeView(state: SessionState, v: SessionView): [SessionState, SessionEvent] {
@@ -33,7 +34,7 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
   const version = v.projectVersion ? v.projectVersion.split(":").map(Number) as [number, number] : null;
   const app = v.appId ?? null;
   const destination: PickerDestination | null = app === null && !v.writingProjectId && !version ? null : {
-    app, app_id: app, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false,
+    app, app_id: app, app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false,
     output_question: v.shouldAsk ? "browser" : null, paste: null, paste_question: false, can_choose_paste: false,
     writing_project: v.writingProjectId ? { id: v.writingProjectId, name: v.writingProjectId, output: null, bibliography: "references.bib" } : null,
     writing_context: null, context_version: version,

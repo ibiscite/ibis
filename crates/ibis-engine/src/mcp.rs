@@ -95,6 +95,8 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
 pub struct Session {
     legacy: bool,
     library_problem: Option<Refusal>,
+    /// The app's settings file, read for the format each app uses.
+    formats: Option<std::path::PathBuf>,
 }
 
 impl Session {
@@ -104,7 +106,15 @@ impl Session {
         Self {
             legacy: false,
             library_problem: Some(problem),
+            formats: None,
         }
+    }
+
+    /// Choose `for_app` formats from the app's settings file, read at each call
+    /// so an edit applies at once (decision 0042).
+    pub fn with_formats(mut self, settings: std::path::PathBuf) -> Self {
+        self.formats = Some(settings);
+        self
     }
 }
 
@@ -220,7 +230,13 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
             let name = params.get("name").and_then(Value::as_str);
             let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             match tools::TOOLS.iter().find(|tool| Some(tool.name) == name) {
-                Some(tool) => tools::call(engine, session.library_problem.as_ref(), tool, &arguments),
+                Some(tool) => tools::call(
+                    engine,
+                    session.library_problem.as_ref(),
+                    session.formats.as_deref(),
+                    tool,
+                    &arguments,
+                ),
                 None => return Some(error(id, -32602, "Unknown tool")),
             }
         }

@@ -45,6 +45,9 @@ pub(crate) struct PickerDestination {
     /// The output the person chose to always use for this app.
     #[schemars(with = "Option<String>")]
     pub(crate) remembered: Option<OutputRef>,
+    /// The engine's answer: the format the next citation uses and which level
+    /// chose it (decision 0042). The picker shows it as it is.
+    pub(crate) format: ibis_engine::format::FormatChoice,
     /// This app needs a delivery choice after an unreadable per-app file; formats use defaults.
     pub(crate) unreadable: bool,
     /// The current paste policy permits an attempt; final delivery checks still apply.
@@ -359,6 +362,8 @@ pub(crate) fn picker_destination(
     let context_version = Some(context.version);
     let writing_project = context.active.map(|project| project.view());
     let writing_context = editor.current().is_none().then_some(context.edit);
+    let settings = settings::load(&settings_file.path).settings;
+    let format = ibis_engine::format::choose(&settings, last.as_ref().map(|(id, _, _)| id));
     let Some((id, name, app_identity)) = last else {
         return Ok(PickerDestination {
             app: None,
@@ -366,6 +371,7 @@ pub(crate) fn picker_destination(
             app_identity: None,
             automatic: None,
             remembered: None,
+            format,
             unreadable: false,
             can_paste: false,
             output_question: None,
@@ -377,7 +383,6 @@ pub(crate) fn picker_destination(
             writing_context,
         });
     };
-    let settings = settings::load(&settings_file.path).settings;
     let can_paste = crate::paste::intends_paste(&app, settings.paste.unwrap_or(true));
     let default = crate::output::stored(settings.output.as_deref());
     // An id this Ibis does not list reads as no choice.
@@ -395,6 +400,7 @@ pub(crate) fn picker_destination(
         app_identity,
         automatic: automatic(&id, default),
         remembered,
+        format,
         unreadable,
         can_paste,
         output_question: lookup(&id).and_then(|app| app.output_question),

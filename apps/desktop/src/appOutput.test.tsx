@@ -6,10 +6,11 @@ import type { PickerDestination } from "./api";
 import { isStyle, listedOutput } from "./format/outputs";
 import { OUTPUTS } from "./bindings";
 import { backend, prepared, receipt, resetApp, result, type PreviewRequest } from "./testing/app";
+import { noFormatChosen } from "./testing/format";
 
 afterEach(resetApp);
-const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", app_identity: null, automatic: "apa", remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
-const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
+const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", app_identity: null, format: noFormatChosen, automatic: "apa", remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
 const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
@@ -387,7 +388,7 @@ test("an unread destination says what applies and never points at paste choices 
 
 test("without a destination app format picks change the default", async () => {
   const saved: unknown[] = [];
-  const { remembered } = opened(() => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }), {
+  const { remembered } = opened(() => ({ app: null, app_id: null, app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }), {
     picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; },
   });
   await screen.findByText("First");

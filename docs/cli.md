@@ -118,9 +118,9 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
 | `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
-| `--nightly` | Read the writing project from Ibis Nightly's settings |
+| `--nightly` | Read the writing project or the app's formats from Ibis Nightly's settings |
 | `--strict-project` | Require a current complete bibliography read for project key citations |
-| `--for-app APP_ID` | Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own |
+| `--for-app APP_ID` | Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
 | `--locale LOCALE` | Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales |
@@ -426,16 +426,20 @@ Plain `cite` keeps its existing result shape.
 
 ### Output for an app
 
-`ibis cite KEY --for-app ID` gives what Ibis gives that app: `com.microsoft.Word` or
-`WINWORD.EXE` the formatted citation, `md.obsidian` Pandoc, `TeXShop` BibLaTeX. `ID` is a
-macOS bundle ID or a Windows executable, with or without its folder, on any system.
-A style named by `--style` or `--format` is the style a formatted app gets (APA without one). `--format` or `--style`
-is what an app with no output of its own gets; the table comes first, so `--format`
-does not change what Word gets.
+`ibis cite KEY --for-app ID` gives what Ibis gives that app, from the app's own
+settings ([decision 0042](decisions/0042-formats-apps-and-writings.md)): the writing chosen
+for it, else its own format, else your format of its kind, else a suggestion for the kind
+(`com.microsoft.Word` or `WINWORD.EXE` APA, `md.obsidian` Pandoc, `TeXShop` BibLaTeX).
+Your format is a style in word processors, mail, browsers and apps Ibis does not know,
+and a key syntax in Markdown, LaTeX and Typst apps and code editors; one of the other kind
+never applies. `ID` is a macOS bundle ID or a Windows executable, with or without its
+folder, on any system. `--format` or `--style` stands in for your format of its kind;
+`--nightly` reads Ibis Nightly's settings. Settings that cannot be read stop the command
+with the reason. MCP's `for_app` gives the same answer.
 
-The answer comes from the same table as the app, not from the choices remembered in
-it. `--json` adds `data.destination`: the app, its `name` when Ibis knows it, the
-`output`, `delivery` (`paste`, or `copy` and its `reason`, with pasting on and
+`--json` adds `data.destination`: the app, its `name` when Ibis knows it, the `output`,
+`from` (which level chose it: `writing`, `app`, `yours` or `suggestion`) and `writing`
+when one did, `delivery` (`paste`, or `copy` and its `reason`, with pasting on and
 permitted) and `output_question` for an app that asks which output a document needs.
 Plain output is the citation alone, with a note on stderr.
 

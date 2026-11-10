@@ -45,6 +45,24 @@ pub(crate) fn load() -> Result<AppLibraries, Failure> {
     Err(missing())
 }
 
+/// The app's settings, for the format it uses for each app (decision 0042):
+/// none yet means nothing is chosen, and settings that cannot be used as they
+/// are stop the command with their reason, never falling back.
+pub(crate) fn format_settings(nightly: bool) -> Result<settings::Settings, Failure> {
+    let (app, path) = crate::settings_backup::settings_file(nightly)?;
+    let loaded = settings::load(&path);
+    match &loaded.problem {
+        Some(problem) => Err(Failure::new(
+            problem_code(problem),
+            format!(
+                "cannot read the formats chosen in {app}: {}. Open {app} to repair its settings.",
+                problem_text(problem)
+            ),
+        )),
+        None => Ok(loaded.settings),
+    }
+}
+
 /// `None` when this app has no settings file at all, so the next app is tried.
 fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure> {
     let loaded = settings::load(path);

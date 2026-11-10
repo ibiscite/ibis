@@ -224,7 +224,8 @@ fn command() -> Command {
                         .help("Use this writing project's output and bibliography; list IDs with: ibis projects list"),
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
-                    .requires("project").help("Read the writing project from Ibis Nightly's settings"))
+                    .requires("from-app-settings").help("Read the writing project or the app's formats from Ibis Nightly's settings"))
+                .group(clap::ArgGroup::new("from-app-settings").args(["project", "for-app"]).multiple(false))
                 .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
                     .requires("project").help("Require a current complete bibliography read for project key citations"))
                 .arg(
@@ -233,7 +234,7 @@ fn command() -> Command {
                         .value_name("APP_ID")
                         .value_parser(clap::builder::NonEmptyStringValueParser::new())
                         .help_heading(OUTPUT)
-                        .help("Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own"),
+                        .help("Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format"),
                 )
                 .arg(
                     Arg::new("bibliography")
@@ -847,6 +848,11 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
                 ibis_engine::mcp::Session::without_libraries(failure.refusal())
             }
         };
+        // for_app reads the formats chosen in the app, as `cite --for-app` does.
+        let session = match settings_backup::settings_file(false) {
+            Ok((_, path)) => session.with_formats(path),
+            Err(_) => session,
+        };
         return Ok(Execution::Stdio(
             match ibis_engine::mcp::serve(engine, session, input, output) {
                 Ok(()) => 0,
@@ -1128,13 +1134,17 @@ fn run_method<R: BufRead>(
                     "--bibliography needs a style: give --style, or a --format that is a style.",
                 ));
             }
-            let destination = args.get_one::<String>("for-app").map(|app| {
-                let style = match &output {
-                    OutputSpec::Csl { style } => style.as_str(),
-                    _ => ibis_engine::outputs::DEFAULT_STYLE,
-                };
-                destination(app, System::HERE, &output, style)
-            });
+            let destination = match args.get_one::<String>("for-app") {
+                Some(app) => {
+                    // The app's own settings decide, as in the picker (decision 0042).
+                    let settings = app_libraries::format_settings(args.get_flag("nightly"))?;
+                    let named = (args.contains_id("style") || args.contains_id("format")).then_some(&output);
+                    Some(destination(app, System::HERE, |app| {
+                        ibis_engine::format::choose_with(&settings, Some(app), named)
+                    }))
+                }
+                None => None,
+            };
             let output = destination
                 .as_ref()
                 .map_or(output, |destination| destination.output.clone());
