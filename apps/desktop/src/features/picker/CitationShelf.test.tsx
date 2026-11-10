@@ -112,7 +112,7 @@ test("colliding keys from different libraries have distinct visible and screen-r
   fireEvent.click(within(menu).getByRole("menuitemradio", { name: "García 2021 · shared · Second library" }));
   expect(details("Citation details for Second invented work")).toBeTruthy();
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "42" } });
-  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "page-editor" } });
+  expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
 });
 
 test.each(["click", "Enter", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
@@ -227,7 +227,7 @@ test("Page retains typed input, canonical pages from search, and independent ref
   const page = screen.getByRole<HTMLInputElement>("textbox", { name: "Page" });
   expect(page.value).toBe("S.12");
   fireEvent.change(page, { target: { value: "pp. ١٢–١٥" } });
-  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "page-editor" } });
+  expect(change).toHaveBeenCalledWith(reference, { locator: { label: "page", value: "pp. ١٢–١٥", input: "editor" } });
   expect(document.activeElement).toBe(page);
   fireEvent.change(page, { target: { value: "" } });
   expect(change).toHaveBeenLastCalledWith(reference, { locator: null });

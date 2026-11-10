@@ -48,9 +48,9 @@ test("editing Page in a pasted list preserves every reference in preview and cop
     search: ({ query }) => query.text ? { revision: "1", results: [result("b", "Second"), result("a", "First")], list: { missing: [] } } : [],
     preview_file_citation: (request) => {
       previews.push(request);
-      const spans = request.items.flatMap(({ id, page_input }, item) => [
+      const spans = request.items.flatMap(({ id, locator_input }, item) => [
         ...(item ? [{ item: null, text: "; " }] : []),
-        { item, text: `@${id.key}${page_input ? `, p. ${page_input}` : ""}` },
+        { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
       return { ...receipt(spans.map((span) => span.text).join("")), spans };
     },
@@ -66,9 +66,9 @@ test("editing Page in a pasted list preserves every reference in preview and cop
   fireEvent.change(await screen.findByRole("textbox", { name: "Page" }), { target: { value: "42" } });
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
     { id: result("b", "").id, locator: null },
-    { id: result("a", "").id, locator: null, page_input: "42" },
+    { id: result("a", "").id, locator: null, locator_input: { label: "page", text: "42" } },
   ]));
-  expect(previews.at(-1)?.items[0]).not.toHaveProperty("page_input");
+  expect(previews.at(-1)?.items[0]).not.toHaveProperty("locator_input");
   const editedItems = previews.at(-1)!.items;
   closeCitationDetails();
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@b; @a, p. 42"));

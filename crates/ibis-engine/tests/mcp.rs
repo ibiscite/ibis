@@ -261,6 +261,20 @@ fn cite_formats_by_key_or_by_id() {
     );
     let by_id = tool(&engine, "cite", json!({"items":[{"ref":id}],"style":"apa"}));
     assert_eq!(by_id["structuredContent"]["text"], "(Author, 2025)");
+    // A style sorts the items unless the agent keeps their order.
+    let both = json!([{"ref":"demo2026"},{"ref":id}]);
+    let sorted = tool(&engine, "cite", json!({"items":both,"style":"apa"}));
+    assert_eq!(
+        sorted["structuredContent"]["text"],
+        "(Author, 2025; Researcher & Writer, 2026)"
+    );
+    let kept = tool(&engine, "cite", json!({"items":both,"style":"apa","keep_order":true}));
+    assert_eq!(
+        kept["structuredContent"]["text"],
+        "(Researcher & Writer, 2026; Author, 2025)"
+    );
+    let wrong = tool(&engine, "cite", json!({"items":both,"keep_order":"yes"}));
+    assert_eq!(wrong["isError"], true);
 }
 
 #[test]
@@ -323,6 +337,7 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
                 output: OutputSpec::Csl { style: "apa".into() },
                 form: CitationForm::BibliographyOnly,
                 output_locale: None,
+                keep_order: false,
             },
             &Cancellation::default(),
         )
