@@ -529,6 +529,9 @@ Raw command-line `search` and `show` JSON includes source records and is not the
 MCP privacy projection. The plugin stops when MCP is unavailable; it never falls
 back to those commands or reads the library files itself.
 
+The MCP Registry listing is prepared but not yet published; see
+[Listing `ibis mcp` in the MCP Registry](mcp-registry.md).
+
 Directory publication is separate from marketplace installation. See
 [Anthropic's publishing guide](https://claude.com/docs/directory/publish) and
 [OpenAI's desktop-only submission requirements](https://developers.openai.com/plugins/deploy/desktop-only).

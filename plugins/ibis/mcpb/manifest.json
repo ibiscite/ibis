@@ -1,0 +1,26 @@
+{
+  "manifest_version": "0.3",
+  "name": "ibis",
+  "display_name": "Ibis",
+  "version": "0.3.1",
+  "description": "Cite from your own reference library: search Zotero, BibTeX or CSL-JSON and format citations from real records, read-only and offline.",
+  "author": { "name": "Ibis contributors", "url": "https://github.com/ibiscite" },
+  "homepage": "https://ibiscite.org",
+  "documentation": "https://github.com/ibiscite/ibis/blob/main/docs/cli.md#ai-agents-mcp",
+  "support": "https://github.com/ibiscite/ibis/issues",
+  "repository": { "type": "git", "url": "https://github.com/ibiscite/ibis" },
+  "license": "AGPL-3.0-or-later",
+  "icon": "icon.png",
+  "keywords": ["citations", "references", "zotero", "bibtex", "csl"],
+  "privacy_policies": ["https://github.com/ibiscite/ibis/blob/main/PRIVACY.md"],
+  "server": {
+    "type": "binary",
+    "entry_point": "ibis",
+    "mcp_config": {
+      "command": "${__dirname}/ibis",
+      "args": ["mcp", "--app-libraries"],
+      "platform_overrides": { "win32": { "command": "${__dirname}/ibis.exe" } }
+    }
+  },
+  "compatibility": { "platforms": ["darwin", "win32", "linux"] }
+}
