@@ -7,7 +7,6 @@ import { AddGlyph, TypeIcon } from "../../icons";
 import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
 import { Option } from "../../ui/Option";
-import { useSelectionGlide } from "../../ui/selectionGlide";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
 import { projectText } from "./useProjectBibliography";
@@ -74,10 +73,8 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     latest.current.onContext?.(index, record);
   }, []);
   const handlers = useMemo<RowHandlers>(() => ({ onPointerDown, onClick, onTileClick, onContext: context }), [onPointerDown, onClick, onTileClick, context]);
-  const list = useRef<HTMLUListElement>(null);
-  useSelectionGlide(list, active, results);
   return (
-    <ul ref={list} id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
+    <ul id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
           density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers} />

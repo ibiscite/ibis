@@ -92,6 +92,9 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "tertiary ink stays on placeholders and resting glyphs, never words a person reads",
     breaks: ({ property, value, selector }) => property === "color" && value === "var(--text-tertiary)" && !/placeholder|-glyph|-icon|-remove/.test(selector),
     planted: ".planted-label { color: var(--text-tertiary); }" },
+  { says: "shadows and edges drawn as shadows take their lengths and colours from tokens", applies: parts,
+    breaks: ({ property, value }) => /^(box|text)-shadow$/.test(property) && (length.test(value) || colour.test(value)),
+    planted: ".planted { box-shadow: 0 2px 8px rgb(0 0 0 / 20%); }" },
   { says: "a one-shot movement takes the motion tokens; only a looping indicator keeps its own period", applies: parts,
     breaks: ({ property, value }) => /^(transition|animation)(-duration)?$/.test(property) && /(^|[\s,])(?!0m?s\b)\d*\.?\d+m?s\b/.test(value) && !/infinite/.test(value),
     planted: ".planted { transition: opacity 300ms ease; }" },
@@ -127,7 +130,7 @@ test("every movement has a Reduce Motion answer, nested groups included", () => 
 
 const defined = new Set(all.filter((d) => d.property.startsWith("--")).map((d) => d.property));
 // Set from script at run time: the native accent, how far a list can scroll and measured widths.
-const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|trigger-width|glide-from|preview-window-[wh]|progress)$|^--(native-accent|scroll-fade-)/;
+const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|trigger-width|preview-window-[wh]|progress)$|^--(native-accent|scroll-fade-)/;
 
 test("every token a stylesheet reads is defined, and every token is read", () => {
   const reads = all.flatMap((d) => [...d.value.matchAll(/var\((--[\w-]+)/g)].map((match) => [d.file, match[1]!] as const));

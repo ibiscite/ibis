@@ -139,13 +139,3 @@
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }
 .ui-option .result-authors { flex: 0 10 auto; }
 
-/* The selection glides (ui/selectionGlide.ts): a newly highlighted row's fill
-   wipes in from the side the highlight came from, on the spring, and the
-   words change colour with it. Reduce Motion shows the end state. */
-[role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-glide] { animation: ui-option-glide var(--dur-1) var(--ease-spring); }
-[data-active][data-glide] :is(.result-meta, .result-year, .result-why, .result-project, .result-first-author) { color: inherit; }
-@keyframes ui-option-glide {
-  from { color: var(--text); background: linear-gradient(var(--selected), var(--selected)) no-repeat 0 var(--glide-from, 0) / 100% 100%; }
-  to { color: var(--selected-text); background: linear-gradient(var(--selected), var(--selected)) no-repeat 0 0 / 100% 100%; }
-}
-@media (prefers-reduced-motion: reduce) { [role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-glide] { animation: none; } }
