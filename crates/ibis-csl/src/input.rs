@@ -196,15 +196,18 @@ fn refuses_form(
 /// The forms one reference can be cited in with this style, by the same rule
 /// that refuses the others.
 pub(crate) fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
-    let style = catalog::resolve(id)?;
-    Ok(CitationForm::ALL
+    Ok(forms_of(&*catalog::resolve(id)?))
+}
+
+pub(crate) fn forms_of(style: &catalog::Resolved) -> Vec<CitationForm> {
+    CitationForm::ALL
         .into_iter()
         .filter(|form| {
             let bibliography =
                 style.traits.numeric || matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
-            !refuses_form(&style, *form, bibliography, 1, false)
+            !refuses_form(style, *form, bibliography, 1, false)
         })
-        .collect())
+        .collect()
 }
 
 /// Whether this style's citations are reference entries: a numbered style

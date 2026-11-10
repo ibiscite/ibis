@@ -3589,6 +3589,10 @@
           "StyleEntry": {
             "description": "One entry in the style list.",
             "properties": {
+              "broken": {
+                "description": "Yours, but it cannot be used: citing with it is refused, never written\nby the bundled style of its id, until you fix or remove it.",
+                "type": "boolean"
+              },
               "bundled_updated": {
                 "description": "For a style of yours, the bundled style's date when it differs.",
                 "type": [
@@ -3648,7 +3652,8 @@
               "updated",
               "fields",
               "curated",
-              "yours"
+              "yours",
+              "broken"
             ],
             "type": "object"
           }

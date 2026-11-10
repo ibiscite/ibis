@@ -145,10 +145,13 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
                     );
                     if style.get("yours").and_then(Value::as_bool) == Some(true) {
                         let bundled = style.get("bundled_updated").and_then(Value::as_str).map(field);
+                        let broken = style.get("broken").and_then(Value::as_bool) == Some(true);
                         line.push('\t');
                         line.push_str(
                             &ibis_engine::catalogue::text(
-                                if bundled.is_some() {
+                                if broken {
+                                    "cli-styles-yours-broken"
+                                } else if bundled.is_some() {
                                     "cli-styles-yours-bundled"
                                 } else {
                                     "cli-styles-yours"

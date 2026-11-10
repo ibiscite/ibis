@@ -292,3 +292,70 @@ fn a_running_server_cites_with_your_style_as_it_is_now() {
     drop(stdin);
     child.wait().unwrap();
 }
+
+#[test]
+fn what_cannot_hold_styles_leaves_the_bundled_ones_working() {
+    let computer = Computer::new("not-a-folder");
+    // Something that is not a folder holds no styles of yours.
+    std::fs::create_dir_all(computer.styles().parent().unwrap()).unwrap();
+    std::fs::write(computer.styles(), "not a folder").unwrap();
+    assert_eq!(
+        computer.cite("apa", "normal"),
+        (0, "(Example, 2026)\n".into(), String::new())
+    );
+    assert_eq!(
+        computer.run(&["styles", "--remove", "apa"]).1,
+        "You have no style called apa.\n"
+    );
+}
+
+#[test]
+fn a_style_of_yours_that_cannot_be_used_is_listed_as_yours_and_kept_among_the_outputs() {
+    let computer = Computer::new("listed");
+    std::fs::create_dir_all(computer.styles()).unwrap();
+    std::fs::write(computer.styles().join("apa.csl"), "not a style").unwrap();
+    let (_, list, _) = computer.run(&["styles", "apa"]);
+    assert_eq!(
+        list.lines().next().unwrap(),
+        "apa\tapa\t\tyours; it cannot be used, so fix or remove it"
+    );
+    assert!(
+        !list.contains("APA (7th edition)"),
+        "the bundled one never stands in: {list}"
+    );
+    let (_, outputs, _) = computer.run(&["outputs", "--json"]);
+    let outputs: serde_json::Value = serde_json::from_str(&outputs).unwrap();
+    let apa = outputs["data"]["outputs"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|output| output["id"] == "apa")
+        .unwrap();
+    assert_eq!(apa["forms"], serde_json::json!([]), "{apa}");
+}
+
+#[test]
+fn a_common_style_whose_parent_is_yours_has_your_parents_forms() {
+    let computer = Computer::new("parent");
+    // Vancouver is a numbered style that borrows the rules of nlm-citation-sequence.
+    let (_, before, _) = computer.run(&["outputs", "--json"]);
+    let entries = |text: &str| {
+        let outputs: serde_json::Value = serde_json::from_str(text).unwrap();
+        outputs["data"]["outputs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|output| output["id"] == "vancouver-nlm")
+            .unwrap()["entries"]
+            .as_bool()
+            .unwrap_or(false)
+    };
+    assert!(entries(&before));
+    computer.run(&["styles", "--keep", "chicago-author-date"]);
+    let chicago = std::fs::read_to_string(computer.styles().join("chicago-author-date.csl")).unwrap();
+    let parent = chicago.replace("styles/chicago-author-date</id>", "styles/nlm-citation-sequence</id>");
+    std::fs::remove_file(computer.styles().join("chicago-author-date.csl")).unwrap();
+    let path = computer.file("parent.csl", &parent);
+    assert_eq!(computer.run(&["styles", "--add", &path]).0, 0);
+    assert!(!entries(&computer.run(&["outputs", "--json"]).1));
+}

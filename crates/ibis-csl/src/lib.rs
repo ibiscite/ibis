@@ -124,6 +124,13 @@ pub fn style_forms(id: &str) -> Result<Vec<CitationForm>, FormatError> {
     input::style_forms(id)
 }
 
+/// The forms of the bundled style `id`, and whether it writes reference
+/// entries, as if you had no styles of your own: what Ibis ships.
+pub fn bundled_style(id: &str) -> Result<(Vec<CitationForm>, bool), FormatError> {
+    let style = catalog::resolve_bundled(id)?;
+    Ok((input::forms_of(&style), style.traits.numeric))
+}
+
 /// Whether the style `id` writes reference entries, never in-text citations.
 pub fn style_writes_entries(id: &str) -> Result<bool, FormatError> {
     input::style_writes_entries(id)

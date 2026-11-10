@@ -61,15 +61,24 @@ pub(crate) fn ids() -> Result<Vec<String>, FormatError> {
     Ok(ids)
 }
 
+/// The names in your styles folder. No folder, or something that is not a
+/// folder, holds no styles. A folder that cannot be read may hold any of
+/// them, so every style is refused (`StylesFolder`) rather than guessed.
 fn listed(folder: &Path) -> Result<Vec<String>, FormatError> {
-    match fs::read_dir(folder) {
-        Ok(entries) => Ok(entries
-            .filter_map(Result::ok)
-            .filter_map(|entry| entry.file_name().into_string().ok())
-            .collect()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(vec![]),
-        Err(_) => Err(FormatError::InvalidStyle),
+    match fs::metadata(folder) {
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(vec![]),
+        Ok(metadata) if !metadata.is_dir() => return Ok(vec![]),
+        Err(_) => return Err(FormatError::StylesFolder),
+        Ok(_) => {}
     }
+    let entries = fs::read_dir(folder).map_err(|_| FormatError::StylesFolder)?;
+    entries
+        .map(|entry| {
+            entry
+                .map(|entry| entry.file_name().into_string().unwrap_or_default())
+                .map_err(|_| FormatError::StylesFolder)
+        })
+        .collect()
 }
 
 fn read_file(path: &Path) -> Result<String, FormatError> {

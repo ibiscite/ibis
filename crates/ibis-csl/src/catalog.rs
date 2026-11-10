@@ -100,6 +100,10 @@ pub struct StyleEntry {
     /// For a style of yours, the bundled style's date when it differs.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bundled_updated: Option<String>,
+    /// Yours, but it cannot be used: citing with it is refused, never written
+    /// by the bundled style of its id, until you fix or remove it.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub broken: bool,
 }
 
 /// What keeping a style did.
@@ -347,7 +351,7 @@ pub(crate) fn resolve(asked: &str) -> Result<Arc<Resolved>, FormatError> {
             }
         }
     }
-    let (resolved, parent, parent_own) = build(id, own.as_deref())?;
+    let (resolved, parent, parent_own) = build(id, own.as_deref(), true)?;
     let resolved = Arc::new(resolved);
     *LAST.lock().map_err(|_| FormatError::Runtime)? = Some(Last {
         asked: asked.to_owned(),
@@ -361,7 +365,8 @@ pub(crate) fn resolve(asked: &str) -> Result<Arc<Resolved>, FormatError> {
 
 /// The style `id` from `own`, a file of yours, or from the bundle; with the
 /// parent it named and your file for that parent, which the cache compares.
-fn build(id: &str, own: Option<&str>) -> Result<(Resolved, Option<String>, Option<String>), FormatError> {
+/// `yours` false reads the bundle alone, as if you had no styles.
+fn build(id: &str, own: Option<&str>, yours: bool) -> Result<(Resolved, Option<String>, Option<String>), FormatError> {
     let (_, rows, _) = sections()?;
     let bytes = unpack(rows)?;
     let rows: Vec<Lookup<'_>> = serde_json::from_slice(&bytes).map_err(|_| FormatError::Runtime)?;
@@ -386,7 +391,10 @@ fn build(id: &str, own: Option<&str>) -> Result<(Resolved, Option<String>, Optio
     };
     // The rules to run: this style's, or its parent's (yours first), which must
     // be an independent style other than this one.
-    let parent_own = parent.as_deref().map(crate::yours::read).transpose()?.flatten();
+    let parent_own = match parent.as_deref() {
+        Some(parent) if yours => crate::yours::read(parent)?,
+        _ => None,
+    };
     let (rules, xml, rules_locale, rules_yours): (String, Arc<str>, Option<String>, bool) = match (&parent, &parent_own)
     {
         (None, _) => match own {
@@ -460,8 +468,13 @@ pub(crate) fn candidate(xml: &str) -> Result<(String, Resolved), FormatError> {
         .id
         .filter(|id| crate::yours::valid_id(id))
         .ok_or(FormatError::InvalidStyle)?;
-    let (resolved, _, _) = build(&id, Some(xml))?;
+    let (resolved, _, _) = build(&id, Some(xml), true)?;
     Ok((id, resolved))
+}
+
+/// The bundled style `id`, as if you had no styles of your own.
+pub(crate) fn resolve_bundled(id: &str) -> Result<Resolved, FormatError> {
+    build(renamed(id)?, None, false).map(|(resolved, _, _)| resolved)
 }
 
 /// The bundled tag a request's language means: exact, or a language's main
@@ -595,6 +608,7 @@ fn entry(row: StyleRow, curated: &BTreeMap<&str, (usize, &str)>) -> StyleEntry {
         fields: row.fields,
         yours: false,
         bundled_updated: None,
+        broken: false,
     }
 }
 
@@ -607,32 +621,49 @@ fn plain(value: String) -> Option<String> {
     .then_some(value)
 }
 
-/// Your styles as the list shows them. A file that does not describe itself
-/// as the style its name says is left out of the list; using it is refused.
+/// Your styles as the list shows them, each in place of the bundled style of
+/// its id. A file that cannot be used is listed by its id, marked broken.
 fn your_entries(rows: &[StyleRow]) -> Result<Vec<StyleEntry>, FormatError> {
     let curated = curated()?;
     Ok(crate::yours::ids()?
         .into_iter()
-        .filter_map(|id| {
-            let xml = crate::yours::read(&id).ok()??;
-            let meta = crate::info::Metadata::read(&xml);
-            if meta.id.as_deref() != Some(id.as_str()) {
-                return None;
-            }
+        .map(|id| {
+            let bundled = rows.iter().find(|row| row.id == id).map(|row| row.updated.clone());
+            let curated = curated.iter().any(|style| style.id() == id);
+            let xml = crate::yours::read(&id).ok().flatten();
+            let usable = xml.as_deref().is_some_and(|xml| build(&id, Some(xml), true).is_ok());
+            let meta = xml
+                .map(|xml| crate::info::Metadata::read(&xml))
+                .filter(|meta| usable && meta.title.is_some());
+            let Some(meta) = meta else {
+                return StyleEntry {
+                    title: id.clone(),
+                    id,
+                    updated: String::new(),
+                    parent: None,
+                    default_locale: None,
+                    format: None,
+                    fields: vec![],
+                    curated,
+                    yours: true,
+                    bundled_updated: bundled,
+                    broken: true,
+                };
+            };
             let updated = meta.updated.unwrap_or_default();
-            let bundled = rows.iter().find(|row| row.id == id);
-            Some(StyleEntry {
-                curated: curated.iter().any(|style| style.id() == id),
-                title: meta.title?,
-                bundled_updated: bundled.map(|row| row.updated.clone()).filter(|date| *date != updated),
+            StyleEntry {
+                curated,
+                title: meta.title.unwrap_or_default(),
+                bundled_updated: bundled.filter(|date| *date != updated),
                 updated,
                 parent: meta.parent.and_then(plain),
                 default_locale: meta.default_locale.and_then(plain),
                 format: meta.format.and_then(plain),
                 fields: meta.fields.into_iter().filter_map(plain).collect(),
                 yours: true,
+                broken: false,
                 id,
-            })
+            }
         })
         .collect())
 }

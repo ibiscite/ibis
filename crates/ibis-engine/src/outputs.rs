@@ -123,9 +123,10 @@ static OUTPUTS: LazyLock<Vec<OutputInfo>> = LazyLock::new(|| {
                 .find(|(listed, _)| *listed == id)
                 .map(|(_, example)| (*example).to_owned()),
             output: OutputSpec::Csl { style: id.to_owned() },
-            forms: ibis_csl::style_forms(id).ok()?,
+            // What Ibis ships: names and membership never depend on your styles.
+            forms: ibis_csl::bundled_style(id).ok()?.0,
             exports_records: false,
-            entries: ibis_csl::style_writes_entries(id).ok()?,
+            entries: ibis_csl::bundled_style(id).ok()?.1,
         })
     });
     keys.chain(styles).collect()
@@ -138,18 +139,20 @@ pub fn outputs() -> &'static [OutputInfo] {
 
 /// The list as the `outputs` method returns it.
 pub fn list() -> OutputsResult {
-    // A common style you replaced with your own has your style's forms.
-    let yours = ibis_csl::your_style_ids();
+    // With styles of your own, a common style (or the parent it uses) may be
+    // yours: its forms are read as it is now. One that cannot be used is
+    // still listed, with no form, and refused when used.
+    let yours = !ibis_csl::your_style_ids().is_empty();
     OutputsResult {
         outputs: outputs()
             .iter()
-            .filter_map(|output| match &output.output {
-                OutputSpec::Csl { style } if yours.binary_search(style).is_ok() => Some(OutputInfo {
-                    forms: ibis_csl::style_forms(style).ok()?,
-                    entries: ibis_csl::style_writes_entries(style).ok()?,
+            .map(|output| match &output.output {
+                OutputSpec::Csl { style } if yours => OutputInfo {
+                    forms: ibis_csl::style_forms(style).unwrap_or_default(),
+                    entries: ibis_csl::style_writes_entries(style).unwrap_or(false),
                     ..output.clone()
-                }),
-                _ => Some(output.clone()),
+                },
+                _ => output.clone(),
             })
             .collect(),
         default: DEFAULT.to_owned(),
