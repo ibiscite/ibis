@@ -18,10 +18,11 @@
 .update-ring-fill { --progress: 0; fill: none; stroke-width: 2.5; stroke: var(--progress-fill); stroke-linecap: round; stroke-dasharray: 100; stroke-dashoffset: calc(100 - var(--progress)); transform-box: fill-box; transform-origin: center; transition: stroke-dashoffset var(--dur-2) var(--ease-out); }
 .update-card[data-indeterminate] .update-ring-fill { stroke-dashoffset: 72; animation: update-turn 1s linear infinite; }
 @keyframes update-turn { to { rotate: 360deg; } }
-.update-text { display: flex; gap: var(--space-2); min-width: 0; overflow: hidden; white-space: nowrap; }
-.update-text > strong { font-weight: 500; }
+/* One line: the phase drops whole onto a hidden second line when there is no
+   room, never cut to a stub; only the title itself ever ends in "…". */
+.update-text { display: flex; flex-wrap: wrap; column-gap: var(--space-2); min-width: 0; height: 1lh; overflow: hidden; white-space: nowrap; }
+.update-text > strong { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 500; }
 .update-text > span, .update-percent { flex: none; color: var(--text-secondary); }
-.update-text > span { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .update-percent { font-variant-numeric: tabular-nums; }
 
 /* Paused while the picker is hidden (App.tsx). */

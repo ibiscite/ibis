@@ -278,6 +278,7 @@ export const PICKER_IDS = [
   "picker-more",
   "picker-keep-my-order",
   "picker-change-last-citation",
+  "picker-forget-recent",
   "picker-change-citation",
   "picker-keep-open",
   "picker-keep-open-menu",

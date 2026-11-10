@@ -33,12 +33,16 @@ export const panes = { pane: ".inspector", top: ".search-bar", bottom: ".shelf" 
 /** Stacked parts never cover each other: each starts below the one before. */
 export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".peek-card section"] as const;
 
-/** [C12] A grid of choice cards: one height, and each glyph level with its title. */
+/** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
 export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
+/** [C8] A status is never cut to a stub ("Z…"): a line whose words end in "…"
+ * keeps at least --status-short of them, and the footer folds its hint labels
+ * before that. A part that drops whole (an update's phase) is not cut. */
+export const stubs = { line: ".library-bar .library-words, .update-text", words: ".library-source, .library-state, .library-age, .update-text > *" } as const;
 
 const tolerance = 1;
 
@@ -132,8 +136,10 @@ export function geometry(root: ParentNode = document): string[] {
 
   for (const grid of root.querySelectorAll(cards.grid)) {
     const shapes = [...grid.querySelectorAll(cards.card)].map((card) => {
-      const box = card.getBoundingClientRect(), glyph = card.querySelector(cards.glyph)?.getBoundingClientRect(), title = card.querySelector(cards.title)?.getBoundingClientRect();
-      return { card, height: box.height, glyph: glyph && title ? (glyph.top + glyph.height / 2) - (title.top + title.height / 2) : 0, top: glyph ? glyph.top - box.top : 0 };
+      const box = card.getBoundingClientRect(), glyph = card.querySelector(cards.glyph)?.getBoundingClientRect(), heading = card.querySelector(cards.title);
+      // Level with the title's first line: a title that wraps keeps its glyph beside its start.
+      const title = heading?.getBoundingClientRect(), line = heading ? Math.min(title!.height, parseFloat(getComputedStyle(heading).lineHeight) || title!.height) : 0;
+      return { card, height: box.height, glyph: glyph && title ? (glyph.top + glyph.height / 2) - (title.top + line / 2) : 0, top: glyph ? glyph.top - box.top : 0 };
     });
     for (const shape of shapes.slice(1)) {
       if (Math.abs(shape.height - shapes[0]!.height) > tolerance) failures.push(`[C12] ${name(shape.card)}: ${shape.height.toFixed(1)} tall, the first card ${shapes[0]!.height.toFixed(1)}`);
@@ -145,6 +151,15 @@ export function geometry(root: ParentNode = document): string[] {
   if (focused instanceof HTMLElement && focused.matches(rings.containers)) {
     const style = getComputedStyle(focused);
     if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) failures.push(`[D8] ${name(focused)}: draws a focus ring around itself`);
+  }
+  const short = (() => { const probe = document.createElement("span"); probe.style.cssText = "position:absolute;visibility:hidden;inline-size:var(--status-short)"; document.body.append(probe); const px = probe.getBoundingClientRect().width; probe.remove(); return px; })();
+  for (const line of root.querySelectorAll<HTMLElement>(stubs.line)) {
+    if (!visible(line) || line.closest(".visually-hidden")) continue;
+    // The first line only: a part that wrapped onto the hidden second line dropped whole.
+    const box = line.getBoundingClientRect(), lineHeight = parseFloat(getComputedStyle(line).lineHeight);
+    const bottom = Number.isFinite(lineHeight) ? box.top + lineHeight : box.bottom;
+    const cut = [...line.querySelectorAll<HTMLElement>(stubs.words)].some((words) => visible(words) && words.getBoundingClientRect().top < bottom - tolerance && words.scrollWidth > words.clientWidth + tolerance);
+    if (cut && line.clientWidth + tolerance < short) failures.push(`[C8] ${name(line)}: cut to ${line.clientWidth}px, under --status-short (${short.toFixed(0)}px)`);
   }
   return failures;
 }
