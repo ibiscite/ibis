@@ -535,6 +535,7 @@ impl ZoteroSource {
             snapshot,
             warnings,
             cut_short: false,
+            damaged_keys: Default::default(),
             attachment_paths: Default::default(),
             best_attachments: Default::default(),
         });

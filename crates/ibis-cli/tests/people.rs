@@ -253,8 +253,12 @@ fn a_damaged_entry_says_why_it_was_skipped_and_which_field_to_fix() {
     let lab = Lab::new("damage-causes");
     let damaged = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../fixtures/bibtex/damaged.bib");
     let file = damaged.to_str().unwrap();
-    let (code, stdout, _) = lab.run(&["libraries", "--file", file]);
+    let (code, stdout, stderr) = lab.run(&["libraries", "--file", file]);
     assert_eq!(code, 1, "{stdout}");
+    assert!(
+        !stderr.contains("see: ibis libraries"),
+        "it is already the list: {stderr}"
+    );
     assert!(
         stdout.contains("line 21: an entry could not be read, so Ibis skips it (it has no citation key)"),
         "{stdout}"
@@ -280,6 +284,20 @@ fn a_damaged_entry_says_why_it_was_skipped_and_which_field_to_fix() {
         "{warnings}"
     );
     assert!(!json.contains("notdefined"), "{json}");
+    // Its key still finds the reason, though no warning carries the key.
+    assert!(!json.contains("unclosed"), "{json}");
+    let (code, _, stderr) = lab.run(&["cite", "unclosed", "--file", file]);
+    assert_eq!(code, 4, "{stderr}");
+    assert!(
+        stderr.contains("the entry 'unclosed' on line 25 could not be read, so Ibis skips it (it never closes); fix it in your library."),
+        "{stderr}"
+    );
+    let (_, json, _) = lab.run(&["cite", "unclosed", "--file", file, "--json"]);
+    let error = &serde_json::from_str::<serde_json::Value>(&json).unwrap()["error"];
+    assert_eq!(
+        (&error["code"], &error["reason"]),
+        (&"not-found".into(), &"damaged-entry".into())
+    );
 }
 
 #[test]

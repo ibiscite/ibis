@@ -196,6 +196,10 @@ pub struct LoadedLibrary {
     /// that is not found may be among them. A limit that only skipped one
     /// record or its attachments does not count.
     pub cut_short: bool,
+    /// Each skipped entry whose header names a citation key, with its warning,
+    /// so a lookup can say why the key selects nothing. Warnings themselves
+    /// carry no source text beyond duplicate keys; this never serializes.
+    pub damaged_keys: BTreeMap<String, SourceWarning>,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,
     best_attachments: BTreeMap<ItemRef, zotero_source::AttachmentKind>,
 }
@@ -229,9 +233,21 @@ struct ParsedLibrary {
     attachments: Vec<(ItemRef, String, Option<usize>)>,
     /// Records after a limit were left unread: `LoadedLibrary::cut_short`.
     cut_short: bool,
+    /// `LoadedLibrary::damaged_keys`.
+    damaged_keys: BTreeMap<String, SourceWarning>,
 }
 
 impl ParsedLibrary {
+    /// Warn that an entry was skipped, remembering the key its header names.
+    fn skip(&mut self, key: Option<&str>, warning: SourceWarning) {
+        // A header without its comma can run on; real keys are short.
+        if let Some(key) = key.filter(|key| key.len() <= 1024) {
+            self.damaged_keys
+                .entry(key.to_owned())
+                .or_insert_with(|| warning.clone());
+        }
+        self.warnings.push(warning);
+    }
     fn push_record(&mut self, record: Record, previous: Option<&Snapshot>) {
         if let Some(position) = previous.and_then(|snapshot| snapshot.matching_record(&record)) {
             self.reused.push(position);
