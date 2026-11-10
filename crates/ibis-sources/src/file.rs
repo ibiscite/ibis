@@ -15,6 +15,7 @@ use ibis_core::contract::{Fingerprint, LibraryObject, Snapshot};
 use std::collections::BTreeMap;
 
 mod io;
+pub(crate) use io::needs_download;
 mod watch;
 
 pub const MAX_LIBRARY_BYTES: u64 = 64 * 1024 * 1024;
@@ -166,11 +167,7 @@ fn canonical_path(path: &Path) -> std::io::Result<PathBuf> {
 
 // Only call directly from a job already protected by the filesystem deadline.
 fn canonical_path_sync(path: &Path) -> std::io::Result<PathBuf> {
-    std::fs::canonicalize(path).map(compatible_path)
-}
-
-fn compatible_path(path: PathBuf) -> PathBuf {
-    path
+    std::fs::canonicalize(path)
 }
 
 // Canonicalize only the directory: editor replacement must keep selecting the
@@ -182,11 +179,9 @@ fn watched_path(path: &Path) -> std::io::Result<PathBuf> {
     let parent = canonical_path(parent).or_else(|_| std::path::absolute(parent))?;
     #[cfg(windows)]
     if matches!(path.components().next(), Some(std::path::Component::Prefix(prefix)) if prefix.kind().is_verbatim()) {
-        return Ok(compatible_path(
-            parent.join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?),
-        ));
+        return Ok(parent.join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?));
     }
-    Ok(compatible_path(parent).join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?))
+    Ok(parent.join(path.file_name().ok_or(std::io::ErrorKind::InvalidInput)?))
 }
 
 /// The exact bytes and source identity seen by a completed load. Pass this to
@@ -325,9 +320,7 @@ fn parse_with_budget(
     budget: bibtex::Budget,
     previous: Option<&Snapshot>,
 ) -> Result<LoadedLibrary, SourceError> {
-    let source = std::path::absolute(path)
-        .map(compatible_path)
-        .map_err(|_| SourceError::Unavailable)?;
+    let source = std::path::absolute(path).map_err(|_| SourceError::Unavailable)?;
     let library = crate::identity::library_id(crate::LibraryKind::File, &[source.as_os_str().as_encoded_bytes()]);
     let text = text.trim_start_matches('\u{feff}');
     let parsed = match Format::of(&source, text)? {
@@ -363,7 +356,6 @@ fn parse_with_budget(
         cut_short: parsed_cut_short,
         damaged_keys: parsed.damaged_keys,
         attachment_paths,
-        best_attachments: Default::default(),
     })
 }
 

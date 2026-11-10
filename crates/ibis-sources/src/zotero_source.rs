@@ -3,12 +3,12 @@ use crate::{
     LibraryKind, LoadedLibrary, SourceWarning, WarningCode,
     zotero::{self, MappingError, MappingWarning, ZoteroCreator, ZoteroItem},
 };
-use ibis_core::contract::{CitationKeySource, ErrorReason, ItemRef, LibraryId, LibraryObject, Snapshot};
+use ibis_core::contract::{CitationKeySource, ErrorReason, LibraryId, LibraryObject, Snapshot};
 use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries;
 pub use ibis_core::zotero::libraries::Group;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
-pub use ibis_zotero_local::live::{AttachmentKind, Library, LiveError};
+pub use ibis_zotero_local::live::{Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
 pub use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
 use ibis_zotero_local::{closed, discovery};
@@ -340,7 +340,7 @@ impl ZoteroSource {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
-            let mut mapped = self.map_items(
+            let mapped = self.map_items(
                 library_id(&profile, reader.library()),
                 reader.items().into_iter().map(|raw| ZoteroItem {
                     key: raw.key.clone(),
@@ -362,19 +362,6 @@ impl ZoteroSource {
                 warnings,
                 cancelled,
             )?;
-            let best_attachments = reader
-                .items()
-                .into_iter()
-                .filter_map(|raw| {
-                    let kind = raw.best_attachment?;
-                    let id = ItemRef {
-                        library: mapped.library.clone(),
-                        key: raw.key.clone(),
-                    };
-                    mapped.snapshot.get(&id).map(|_| (id, kind))
-                })
-                .collect();
-            Arc::make_mut(&mut mapped).best_attachments = best_attachments;
             loaded.push(mapped);
         }
         self.readers = readers;
@@ -537,7 +524,6 @@ impl ZoteroSource {
             cut_short: false,
             damaged_keys: Default::default(),
             attachment_paths: Default::default(),
-            best_attachments: Default::default(),
         });
         Ok(loaded)
     }
@@ -608,7 +594,7 @@ fn read_closed_at(
     cache: &Path,
     cancelled: Arc<dyn Fn() -> bool + Send + Sync>,
 ) -> Result<closed::ClosedSnapshot, ZoteroError> {
-    let reader = closed::ClosedReader::new(cache)?;
+    let reader = closed::ClosedReader::new(cache);
     reader.read_cancellable(data, cancelled).map_err(Into::into)
 }
 
@@ -740,7 +726,7 @@ fn here() -> Result<discovery::Discovery, ZoteroError> {
     };
     let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).ok_or(ZoteroError::Location)?;
     let roots = discovery::DiscoveryRoots::new(platform, home.into(), std::env::var_os("APPDATA").map(PathBuf::from));
-    Ok(discovery::discover(&roots, None))
+    Ok(discovery::discover(&roots))
 }
 
 #[cfg(test)]
@@ -767,7 +753,7 @@ mod tests {
         }
         std::fs::write(root.join("profiles.ini"), ini).unwrap();
         let roots = discovery::DiscoveryRoots::new(discovery::Platform::Linux, home.path().into(), None);
-        let found = discovery::discover(&roots, None);
+        let found = discovery::discover(&roots);
         (home, found)
     }
     #[test]
@@ -1847,10 +1833,7 @@ mod tests {
         let acquired = read_closed_at(data.path(), cache.path(), Arc::new(|| false)).unwrap();
         // A completed source load must release its cache lease for another
         // process/reader, rather than retaining it for the app's lifetime.
-        closed::ClosedReader::new(cache.path())
-            .unwrap()
-            .read(data.path())
-            .unwrap();
+        closed::ClosedReader::new(cache.path()).read(data.path()).unwrap();
         let mut closed = ZoteroSource::default();
         let closed_data = closed.publish_closed(&acquired, &|| false).unwrap().remove(0);
         let mut live = ZoteroSource::default();

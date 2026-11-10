@@ -28,6 +28,16 @@ pub use file::{
 // 64 MiB file cap is the real bound.
 pub const MAX_LIBRARY_RECORDS: usize = 200_000;
 
+/// Days in a month of the proleptic Gregorian calendar; months outside 1–12 have 31.
+pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
+    match month {
+        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 /// Safe source diagnostics contain a location and fixed code, never payloads.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
@@ -201,7 +211,6 @@ pub struct LoadedLibrary {
     /// carry no source text beyond duplicate keys; this never serializes.
     pub damaged_keys: BTreeMap<String, SourceWarning>,
     attachment_paths: BTreeMap<ItemRef, PathBuf>,
-    best_attachments: BTreeMap<ItemRef, zotero_source::AttachmentKind>,
 }
 impl std::fmt::Debug for LoadedLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -216,12 +225,6 @@ impl LoadedLibrary {
     /// Number of privately resolved attachment locations, without exporting them.
     pub fn local_attachment_count(&self) -> usize {
         self.attachment_paths.len()
-    }
-
-    /// Zotero's best-attachment classification, without locations or raw links.
-    /// Unknown or absent attachment metadata returns `None`.
-    pub fn best_attachment_kind(&self, record: &ItemRef) -> Option<zotero_source::AttachmentKind> {
-        self.best_attachments.get(record).copied()
     }
 }
 

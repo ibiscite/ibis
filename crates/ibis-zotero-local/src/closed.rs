@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex, MutexGuard, OnceLock, TryLockError};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use thiserror::Error;
@@ -177,23 +177,19 @@ private_debug!(
     ClosedWarning
 );
 
-/// One owner of the private copy root, initialized during the first read.
+/// Reads through a private copy root under `cache`, held only while a read runs.
 pub struct ClosedReader {
     cache: PathBuf,
-    store: OnceLock<private_copy::Store>,
-    initializing: Mutex<()>,
 }
 
 impl ClosedReader {
     /// `cache` must be an application cache/temporary parent, never library
     /// storage. On Windows it must be inside the current user Temp folder.
     /// Ibis creates and verifies its own child with backup exclusion.
-    pub fn new(cache: &Path) -> Result<Self, ClosedError> {
-        Ok(Self {
+    pub fn new(cache: &Path) -> Self {
+        Self {
             cache: cache.to_owned(),
-            store: OnceLock::new(),
-            initializing: Mutex::new(()),
-        })
+        }
     }
 
     pub fn read(&self, data: &Path) -> Result<ClosedSnapshot, ClosedError> {
@@ -213,14 +209,7 @@ impl ClosedReader {
 
     fn read_with_control(&self, data: &Path, control: &Control) -> Result<ClosedSnapshot, ClosedError> {
         control.check()?;
-        if self.store.get().is_none() {
-            let _permit = control.lock(&self.initializing, ClosedError::PrivateStorage)?;
-            if self.store.get().is_none() {
-                let store = private_copy::Store::open(&self.cache, control)?;
-                self.store.set(store).map_err(|_| ClosedError::PrivateStorage)?;
-            }
-        }
-        self.store.get().ok_or(ClosedError::PrivateStorage)?.read(data, control)
+        private_copy::Store::open(&self.cache, control)?.read(data, control)
     }
 }
 
@@ -244,17 +233,6 @@ impl Control {
             Err(ClosedError::TimedOut)
         } else {
             Ok(())
-        }
-    }
-
-    fn lock<'a, T>(&self, mutex: &'a Mutex<T>, poisoned: ClosedError) -> Result<MutexGuard<'a, T>, ClosedError> {
-        loop {
-            self.check()?;
-            match mutex.try_lock() {
-                Ok(permit) => return Ok(permit),
-                Err(TryLockError::Poisoned(_)) => return Err(poisoned),
-                Err(TryLockError::WouldBlock) => std::thread::sleep(Duration::from_millis(5)),
-            }
         }
     }
 }
