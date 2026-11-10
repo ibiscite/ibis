@@ -35,3 +35,5 @@
 }
 .ui-view-status { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ui-view-back-hint.ui-button[data-variant] { color: var(--text-secondary); }
+/* A leading text action starts its words, not its hover plate, on the title column, as the status words do. */
+.ui-view-status > .ui-button[data-size="small"]:first-child { margin-inline-start: calc(-1 * (var(--space-2) + var(--border-width))); }
