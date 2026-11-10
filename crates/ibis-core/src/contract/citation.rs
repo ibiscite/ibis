@@ -258,6 +258,10 @@ pub enum CitationError {
     FormatterUnavailable,
     AnnotationMismatch,
     NotCitable,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 impl CitationError {
@@ -286,8 +290,17 @@ impl CitationError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "outcome", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ItemOutcome {
-    Rendered { item: usize },
-    Refused { item: usize, error: CitationError },
+    Rendered {
+        item: usize,
+    },
+    Refused {
+        item: usize,
+        error: CitationError,
+    },
+    /// An outcome from a newer engine: never rendered, so never copied.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -299,6 +312,10 @@ pub enum LossField {
     AuthorSuppression,
     RichText,
     Order,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -306,6 +323,10 @@ pub enum LossField {
 pub enum LossReason {
     Unsupported,
     Flattened,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -325,6 +346,10 @@ pub enum Notice {
     FullFirstNote,
     YearSuffixWithheld,
     InputLanguageUnsupported,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 /// Fixed codes only; source diagnostics never include field text or locations.
@@ -333,6 +358,10 @@ pub enum Notice {
 pub enum CitationWarningCode {
     SourceField,
     SentenceCaseExpected,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -760,5 +789,50 @@ mod tests {
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","children":[]})).is_err());
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","script":"both"})).is_err());
         assert!(serde_json::from_value::<OutputSpec>(json!({"kind":"key","syntax":"invented"})).is_err());
+    }
+
+    #[test]
+    fn codes_from_a_newer_engine_parse_and_read_as_needing_review() {
+        let result = CitationResult::new(
+            "[@one]".into(),
+            None,
+            None,
+            DisplayTree::default(),
+            vec![ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }],
+            vec![],
+            vec![],
+        );
+        let mut wire = serde_json::to_value(&result).unwrap();
+        wire["outcomes"] = json!([
+            {"outcome":"refused","item":0,"error":"invented-refusal"},
+            {"outcome":"invented-outcome","item":1}
+        ]);
+        wire["losses"] = json!([{"item":null,"field":"invented-field","reason":"invented-reason"}]);
+        wire["notices"] = json!(["invented-notice"]);
+        wire["warnings"] = json!([{"item":0,"code":"invented-warning"}]);
+        let parsed: CitationResult = serde_json::from_value(wire).unwrap();
+        assert_eq!(
+            parsed.outcomes,
+            [
+                ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::Unknown
+                },
+                ItemOutcome::Unknown
+            ]
+        );
+        assert_eq!(
+            parsed.losses,
+            [Loss {
+                item: None,
+                field: LossField::Unknown,
+                reason: LossReason::Unknown
+            }]
+        );
+        assert_eq!(parsed.notices, [Notice::Unknown]);
+        assert_eq!(parsed.warnings[0].code, CitationWarningCode::Unknown);
+        // Nothing unknown is ever copied as a finished citation.
+        assert!(!parsed.is_complete());
+        assert!(parsed.copy_content(2).is_none());
     }
 }

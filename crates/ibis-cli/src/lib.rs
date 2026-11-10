@@ -99,6 +99,14 @@ fn command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print the versioned JSON envelope, including errors and findings"),
         )
+        .arg(
+            Arg::new("contract")
+                .long("contract")
+                .global(true)
+                .value_name("VERSION")
+                .value_parser([ibis_core::contract::CONTRACT_VERSION.to_string()])
+                .help("The JSON contract version your client expects; one this Ibis does not speak is refused"),
+        )
         .arg(file.clone());
     root = root.arg(
         Arg::new("zotero")

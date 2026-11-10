@@ -581,11 +581,11 @@ impl Engine {
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let data = match method {
             Method::Libraries => match if params.is_null() {
-                LibrariesRequest::List
+                LibrariesRequest::List {}
             } else {
                 parameters::<LibrariesRequest>(params)?
             } {
-                LibrariesRequest::List => value(self.libraries()?)?,
+                LibrariesRequest::List {} => value(self.libraries()?)?,
                 LibrariesRequest::OpenZotero {
                     libraries,
                     profile,
@@ -594,12 +594,12 @@ impl Engine {
                     self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
                     value(self.libraries()?)?
                 }
-                LibrariesRequest::ZoteroProfiles => value(LibrariesResult {
+                LibrariesRequest::ZoteroProfiles {} => value(LibrariesResult {
                     zotero_profiles: Some(self.zotero_profiles().unwrap_or_default()),
                     zotero_installed: Some(ibis_sources::zotero_source::installed()),
                     ..self.libraries()?
                 })?,
-                LibrariesRequest::ZoteroGroups => value(LibrariesResult {
+                LibrariesRequest::ZoteroGroups {} => value(LibrariesResult {
                     zotero_groups: Some(self.zotero_groups()?),
                     ..self.libraries()?
                 })?,
@@ -656,7 +656,19 @@ impl Engine {
                 let methods: Vec<_> = request
                     .method
                     .map_or_else(|| Method::ALL.to_vec(), |method| vec![method]);
-                Value::Array(methods.into_iter().map(|method|json!({"method":method,"params":request_schema(method),"result":response_schema(method)})).collect())
+                Value::Array(
+                    methods
+                        .into_iter()
+                        .map(|method| {
+                            json!({
+                                "method": method,
+                                "contract": ibis_core::contract::CONTRACT_VERSION,
+                                "params": request_schema(method),
+                                "result": response_schema(method),
+                            })
+                        })
+                        .collect(),
+                )
             }
             Method::Call => {
                 let request: CallRequest = parameters(params)?;

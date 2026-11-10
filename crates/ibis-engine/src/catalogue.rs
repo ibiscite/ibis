@@ -131,9 +131,16 @@ mod tests {
             .as_array()
             .cloned()
             .or_else(|| {
-                schema["oneOf"]
-                    .as_array()
-                    .map(|variants| variants.iter().map(|variant| variant["const"].clone()).collect())
+                // A code with an unlisted `Unknown` lists its values in one `oneOf` entry.
+                schema["oneOf"].as_array().map(|variants| {
+                    variants
+                        .iter()
+                        .flat_map(|variant| match variant["enum"].as_array() {
+                            Some(values) => values.clone(),
+                            None => vec![variant["const"].clone()],
+                        })
+                        .collect()
+                })
             })
             .unwrap_or_default();
         listed

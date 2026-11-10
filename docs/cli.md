@@ -90,6 +90,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `--json` | Print the versioned JSON envelope, including errors and findings |
+| `--contract VERSION` | The JSON contract version your client expects; one this Ibis does not speak is refused |
 | `--zotero` | Read the local Zotero personal library, open or closed |
 | `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named |
 
@@ -274,7 +275,12 @@ The envelope looks like this:
 {"ibis":1,"ok":false,"error":{"code":"not-found"}}
 ```
 
-- `ibis` is the envelope version. It changes only when the envelope itself changes.
+- `ibis` is the contract version, now 1. Pass `--contract 1` to say which one your
+  script expects: a version this Ibis doesn't speak is refused with the ones it does.
+  Within a version, results may gain fields and lists may gain codes, so ignore fields
+  you don't know and treat an unknown code as needing review. Anything else is a new
+  version ([decision 0028](decisions/0028-engine-first.md)). Requests are strict: a
+  field no method reads is `bad-input`.
 - `data` is the method's result, described by `ibis schema METHOD`; `cite --project`
   uses the wrapper described by `ibis projects schema`.
 - `error.code` is stable and is the thing to branch on. The sentence that explains it,

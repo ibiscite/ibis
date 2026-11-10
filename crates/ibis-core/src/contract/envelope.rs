@@ -4,17 +4,22 @@
 use schemars::{JsonSchema, Schema, SchemaGenerator, json_schema};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 
+/// The wire contract this engine speaks, the envelope's `ibis` field. It is
+/// separate from the package version and from what a citation means; the rules
+/// for changing it are in decision 0028.
+pub const CONTRACT_VERSION: u8 = 1;
+
 /// Literal wire constants keep contradictory envelopes unrepresentable.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Version;
 impl Serialize for Version {
     fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-        serializer.serialize_u8(1)
+        serializer.serialize_u8(CONTRACT_VERSION)
     }
 }
 impl<'de> Deserialize<'de> for Version {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-        if u8::deserialize(deserializer)? == 1 {
+        if u8::deserialize(deserializer)? == CONTRACT_VERSION {
             Ok(Self)
         } else {
             Err(de::Error::custom("unsupported ibis envelope version"))
@@ -26,7 +31,7 @@ impl JsonSchema for Version {
         "EnvelopeVersion".into()
     }
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        json_schema!({"type": "integer", "const": 1})
+        json_schema!({"type": "integer", "const": CONTRACT_VERSION})
     }
 }
 
@@ -165,8 +170,8 @@ pub enum ErrorReason {
     UnknownFormat,
 }
 
+/// Like every result, an error accepts fields it does not know (decision 0028).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct EngineError {
     pub code: ErrorCode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -306,7 +311,6 @@ mod tests {
             json!({"ibis":1,"ok":false,"data":[]}),
             json!({"ibis":1,"ok":true,"error":{"code":"internal"}}),
             json!({"ibis":1,"ok":true,"data":[],"error":{"code":"internal"}}),
-            json!({"ibis":1,"ok":false,"error":{"code":"bad-input","raw":"untrusted text"}}),
             json!({"ibis":1,"ok":false,"error":{"code":"unknown"}}),
             json!({"ibis":1,"ok":true}),
         ] {

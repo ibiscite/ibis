@@ -409,7 +409,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     for warning in warnings {
         let label = citing.label(warning.item);
         let kind = match warning.code {
-            CitationWarningCode::SourceField => "warning",
+            CitationWarningCode::SourceField | CitationWarningCode::Unknown => "warning",
             CitationWarningCode::SentenceCaseExpected => "note",
         };
         let said = catalogue::sentence("warning", warning.code, Audience::Cli, &[("reference", &label)]);
@@ -419,7 +419,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         .into_iter()
         .filter_map(|outcome| match outcome {
             ItemOutcome::Refused { item, error } => Some((item, error)),
-            ItemOutcome::Rendered { .. } => None,
+            ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })
         .collect();
     // The formatter refuses a whole citation it cannot print in full, so no one key is to blame.
@@ -446,7 +446,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
             .map(|item| format!(" for {}", citing.label(item)))
             .unwrap_or_default();
         let id = match loss.reason {
-            LossReason::Unsupported => "cli-loss-left-out",
+            LossReason::Unsupported | LossReason::Unknown => "cli-loss-left-out",
             LossReason::Flattened => "cli-loss-flattened",
         };
         lines.push(cli(id, &[("output", &output), ("what", &what), ("target", &target)]));

@@ -1,6 +1,7 @@
 {
   "data": [
     {
+      "contract": 1,
       "method": "libraries",
       "params": {
         "$defs": {
@@ -37,6 +38,7 @@
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "description": "Every action is a struct, even with no fields: serde refuses unknown fields\nonly in those, and an argument nothing reads must be refused, not ignored.",
         "oneOf": [
           {
             "additionalProperties": false,
@@ -684,6 +686,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "search",
       "params": {
         "$defs": {
@@ -855,11 +858,15 @@
           },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
-            "enum": [
-              "source-field",
-              "sentence-case-expected"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "source-field",
+                  "sentence-case-expected"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "Collection": {
             "additionalProperties": false,
@@ -1484,6 +1491,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "show",
       "params": {
         "$defs": {
@@ -1688,11 +1696,15 @@
           },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
-            "enum": [
-              "source-field",
-              "sentence-case-expected"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "source-field",
+                  "sentence-case-expected"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "Collection": {
             "additionalProperties": false,
@@ -2132,6 +2144,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "cite",
       "params": {
         "$defs": {
@@ -2497,27 +2510,31 @@
           },
           "CitationError": {
             "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
-            "enum": [
-              "empty-selection",
-              "too-many-items",
-              "invalid-locator",
-              "invalid-rich-text",
-              "output-too-large",
-              "unsupported-form",
-              "missing-item",
-              "changed-item",
-              "missing-key",
-              "ambiguous-key",
-              "conflicting-key",
-              "invalid-key",
-              "unsupported-output",
-              "invalid-locale",
-              "cancelled",
-              "formatter-unavailable",
-              "annotation-mismatch",
-              "not-citable"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "empty-selection",
+                  "too-many-items",
+                  "invalid-locator",
+                  "invalid-rich-text",
+                  "output-too-large",
+                  "unsupported-form",
+                  "missing-item",
+                  "changed-item",
+                  "missing-key",
+                  "ambiguous-key",
+                  "conflicting-key",
+                  "invalid-key",
+                  "unsupported-output",
+                  "invalid-locale",
+                  "cancelled",
+                  "formatter-unavailable",
+                  "annotation-mismatch",
+                  "not-citable"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "CitationWarning": {
             "additionalProperties": false,
@@ -2539,11 +2556,15 @@
           },
           "CitationWarningCode": {
             "description": "Fixed codes only; source diagnostics never include field text or locations.",
-            "enum": [
-              "source-field",
-              "sentence-case-expected"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "source-field",
+                  "sentence-case-expected"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "CopyReason": {
             "description": "Why a citation was copied instead of pasted.",
@@ -2838,32 +2859,44 @@
             "type": "object"
           },
           "LossField": {
-            "enum": [
-              "locator",
-              "prefix",
-              "suffix",
-              "author-suppression",
-              "rich-text",
-              "order"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "locator",
+                  "prefix",
+                  "suffix",
+                  "author-suppression",
+                  "rich-text",
+                  "order"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "LossReason": {
-            "enum": [
-              "unsupported",
-              "flattened"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "unsupported",
+                  "flattened"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "Notice": {
-            "enum": [
-              "needs-document-context",
-              "reference-entry",
-              "full-first-note",
-              "year-suffix-withheld",
-              "input-language-unsupported"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "needs-document-context",
+                  "reference-entry",
+                  "full-first-note",
+                  "year-suffix-withheld",
+                  "input-language-unsupported"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "OutputQuestion": {
             "description": "An app ID that cannot tell Ibis which output its document needs.",
@@ -3037,6 +3070,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "project",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3267,6 +3301,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "entry",
       "params": {
         "$defs": {
@@ -3418,6 +3453,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "styles",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3584,6 +3620,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "outputs",
       "params": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3772,6 +3809,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "schema",
       "params": {
         "$defs": {
@@ -3815,6 +3853,7 @@
       }
     },
     {
+      "contract": 1,
       "method": "call",
       "params": {
         "$defs": {
