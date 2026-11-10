@@ -14,15 +14,17 @@ function fixture(t) {
   const bin = join(dir, "bin"), calls = join(dir, "calls");
   mkdirSync(bin);
   mkdirSync(join(dir, "apps/desktop/src-tauri"), { recursive: true });
+  // The tests landing may run; a script without one has none here.
+  mkdirSync(join(dir, "scripts"));
+  for (const name of ["check.test.mjs", "land.test.mjs"]) writeFileSync(join(dir, "scripts", name), "");
   const stubs = {
     git: `printf 'git %s\\n' "$*" >> "$CALLS"
 case "$1" in
   rev-parse)
     if [ "$2" = --abbrev-ref ]; then echo "$BRANCH"
-    elif [ "$4" = MERGE_HEAD ]; then [ "$MERGE_PENDING" = 1 ]
     else pwd; fi ;;
-  diff) echo README.md ;;
-  commit) exit "$COMMIT_STATUS" ;;
+  merge-tree) exit "$CONFLICT" ;;
+  diff) printf '%s\n' $CHANGED ;;
   push) exit "$PUSH_STATUS" ;;
 esac`,
     gh: `printf 'gh %s\\n' "$*" >> "$CALLS"
@@ -34,6 +36,7 @@ else echo 'unsupported GitHub command' >&2; exit 44
 fi`,
     node: `printf 'node %s\\n' "$*" >> "$CALLS"
 if [ "$*" = "scripts/check.mjs --plan" ]; then echo "$PLAN"; exit "$PLAN_STATUS"; fi
+case "$1" in --test) exit 0 ;; esac
 [ "$*" = scripts/check-agent-identity.mjs ] || exit 99
 exit "$IDENTITY_STATUS"`,
     cargo: `printf 'cargo %s\\n' "$*" >> "$CALLS"`,
@@ -44,7 +47,7 @@ exit "$IDENTITY_STATUS"`,
     writeFileSync(calls, "");
     const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
       cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", MERGE_PENDING: "0", COMMIT_STATUS: "0", IDENTITY_STATUS: "0", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", PLAN: "", PLAN_STATUS: "0", ...overrides },
+      env: { ...process.env, PATH: `${bin}${delimiter}${process.env.PATH}`, CALLS: calls, BRANCH: "fix/synthetic", CONFLICT: "0", CHANGED: "README.md", IDENTITY_STATUS: "0", PUSH_STATUS: "0", PR_NUMBER: "42", LOOKUP_STATUS: "0", MERGE_STATUS: "0", PLAN: "", PLAN_STATUS: "0", ...overrides },
     });
     return { ...result, calls: readFileSync(calls, "utf8").trim().split("\n") };
   };
@@ -74,19 +77,25 @@ test("landing refuses main or detached HEAD and never requests a merge after a f
   assert.ok(!failed.calls.some(call => call.startsWith("gh ")));
 });
 
-test("a main integration is signed off and disclosed before push; a failed commit stops landing", { skip: process.platform === "win32" }, (t) => {
+test("a conflict with main stops landing before anything is checked or published", { skip: process.platform === "win32" }, (t) => {
   const run = fixture(t);
-  const integrated = run({ MERGE_PENDING: "1" });
-  assert.equal(integrated.status, 0, integrated.stderr);
-  const commit = integrated.calls.findIndex(call => call.startsWith("git commit -s --no-edit --trailer Assisted-by:"));
-  assert.ok(commit > 0, "the integration has a sign-off and assistance trailer");
-  assert.ok(commit < integrated.calls.indexOf("git push -q -u origin fix/synthetic"));
-  const unchanged = run();
-  assert.equal(unchanged.status, 0, unchanged.stderr);
-  assert.ok(!unchanged.calls.some(call => call.startsWith("git commit")));
-  const failed = run({ MERGE_PENDING: "1", COMMIT_STATUS: "76" });
-  assert.equal(failed.status, 76);
-  assert.ok(!failed.calls.some(call => call.startsWith("git push") || call.startsWith("gh ")));
+  const clean = run();
+  assert.equal(clean.status, 0, clean.stderr);
+  assert.ok(!clean.calls.some(call => /^git (merge|commit) /.test(call)), "main is not merged in when nothing conflicts");
+  const conflict = run({ CONFLICT: "1" });
+  assert.equal(conflict.status, 1);
+  assert.match(conflict.stdout, /Merge conflict with main/);
+  assert.ok(!conflict.calls.some(call => /^(git push|gh |cargo |node scripts\/check)/.test(call)));
+});
+
+test("only the changed script tests and the tests of changed scripts run", { skip: process.platform === "win32" }, (t) => {
+  const run = fixture(t);
+  const ran = run({ CHANGED: "scripts/land.sh scripts/check.test.mjs scripts/no-test.sh website/index.html" });
+  assert.equal(ran.status, 0, ran.stderr);
+  const tests = ran.calls.filter(call => call.startsWith("node --test"));
+  assert.deepEqual(tests, ["node --test scripts/check.test.mjs scripts/land.test.mjs"]);
+  const none = run({ CHANGED: "website/index.html" });
+  assert.ok(!none.calls.some(call => call.startsWith("node --test")));
 });
 
 test("landing preserves GitHub failures and explains a branch without a PR", { skip: process.platform === "win32" }, (t) => {
@@ -109,9 +118,10 @@ test("landing checks what CI's plan selects and leaves test suites to CI", { ski
   const run = fixture(t);
   const native = run({ PLAN: "core interface native scripts web" });
   assert.equal(native.status, 0, native.stderr);
-  assert.ok(native.calls.includes("cargo test --workspace --locked --no-run -q"), "a merge that no longer compiles stops here");
+  assert.ok(native.calls.includes("cargo check --workspace --all-targets --locked -q"), "a change that no longer compiles stops here");
+  assert.deepEqual(native.calls.filter(call => call.startsWith("cargo fmt")), ["cargo fmt --all --check"]);
   assert.ok(native.calls.includes("pnpm exec tsc --noEmit -p ."));
-  assert.ok(!native.calls.some((call) => /^cargo test (?!--workspace --locked --no-run)/.test(call)), "the test suites run in CI");
+  assert.ok(!native.calls.some((call) => call.startsWith("cargo test")), "the test suites run in CI");
   const docs = run({ PLAN: "" });
   assert.equal(docs.status, 0, docs.stderr);
   assert.ok(!docs.calls.some((call) => /^(cargo|pnpm) /.test(call)), docs.calls.join("\n"));
@@ -128,7 +138,7 @@ test("a rejected public commit identity stops before publishing anything", { ski
   assert.ok(!result.calls.some(call => call.startsWith("git push") || call.startsWith("gh ")));
 });
 
-test("a real Git integration preserves both changes and publishes signed, disclosed metadata once", { skip: process.platform === "win32" }, (t) => {
+test("a real Git branch is pushed as it is, and a real conflict stops it", { skip: process.platform === "win32" }, (t) => {
   const root = mkdtempSync(join(tmpdir(), "ibis-land-git-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const repo = join(root, "repo"), origin = join(root, "origin.git"), bin = join(root, "bin");
@@ -167,15 +177,19 @@ test("a real Git integration preserves both changes and publishes signed, disclo
     });
     assert.equal(result.status, 0, result.stderr);
   };
+  const branchHead = git("rev-parse", "HEAD");
   land();
-  const head = git("rev-parse", "HEAD");
-  assert.equal(git("show", "-s", "--format=%P").split(" ").length, 2);
-  const message = git("log", "-1", "--format=%B");
-  assert.match(message, /^Signed-off-by: Synthetic Maintainer <noreply@github\.com>$/m);
-  assert.match(message, /^Assisted-by: .+AI-assisted.+$/m);
-  assert.equal(readFileSync(join(repo, "README.md"), "utf8"), "upstream main\n");
-  assert.equal(readFileSync(join(repo, "feature.md"), "utf8"), "branch work\n");
-  assert.equal(git("--git-dir", origin, "rev-parse", "refs/heads/fix/synthetic"), head);
-  land();
-  assert.equal(git("rev-parse", "HEAD"), head, "an up-to-date branch gains no empty commit");
+  // Nothing conflicts, so main is not merged in: the queue tests the combination.
+  assert.equal(git("rev-parse", "HEAD"), branchHead);
+  assert.equal(readFileSync(join(repo, "README.md"), "utf8"), "initial main\n");
+  assert.equal(git("--git-dir", origin, "rev-parse", "refs/heads/fix/synthetic"), branchHead);
+  // The same file changed on both sides stops landing with nothing pushed.
+  writeFileSync(join(repo, "README.md"), "branch edit\n");
+  git("commit", "-am", "fixture conflicting edit");
+  const result = spawnSync("bash", [fileURLToPath(new URL("./land.sh", import.meta.url))], {
+    cwd: repo, encoding: "utf8", timeout: 10_000, env: { ...env, PATH: `${bin}${delimiter}${env.PATH}` },
+  });
+  assert.equal(result.status, 1, result.stdout);
+  assert.match(result.stdout, /Merge conflict with main/);
+  assert.equal(git("--git-dir", origin, "rev-parse", "refs/heads/fix/synthetic"), branchHead);
 });
