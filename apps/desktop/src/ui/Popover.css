@@ -1,0 +1,19 @@
+/* An anchored popover (decision 0044): the menus' material and corner, an arrow on
+   what it is about, and growth from that point. The motion tokens answer Reduce
+   Motion: --press-scale is 1 there, so it only fades. */
+.ui-popover { box-sizing: border-box; display: flex; inline-size: min(var(--inspector-width), calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
+.ui-popover-dialog { flex: 1; min-block-size: 0; overflow: auto; padding: var(--space-3) var(--space-4); outline: none; }
+.ui-popover-arrow svg { display: block; }
+.ui-popover-arrow[data-placement="bottom"] svg { transform: rotate(180deg); }
+.ui-popover[data-placement="top"] { transform-origin: var(--trigger-anchor-point, bottom center); }
+.ui-popover[data-placement="bottom"] { transform-origin: var(--trigger-anchor-point, top center); }
+.ui-popover[data-entering] { animation: ui-popover-grow var(--dur-2) var(--ease-out); }
+.ui-popover[data-exiting] { animation: ui-popover-grow var(--dur-1) var(--ease-in) reverse; }
+@keyframes ui-popover-grow { from { opacity: 0; scale: var(--press-scale); } }
+/* Its parts: a heading with a quiet byline, then the body's own rows. */
+.ui-popover-body { display: flex; flex-direction: column; gap: var(--space-2); }
+.ui-popover-heading h2 { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font: var(--strong) var(--type-title-size) / var(--type-title-line) var(--font); }
+.ui-popover-heading p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
+.ui-popover-note { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
+/* A setting for what the popover is about, at its foot under a hairline: words, then the switch. */
+.ui-popover-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }

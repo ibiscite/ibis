@@ -13,7 +13,9 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** More holds working actions; preferences live in Settings and source choices
  * have their own library menu. Rows is the one look changed while working. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, keepOrder, actions, source, project }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, keepOrder, citation, actions, source, project }: {
+  /** The citation's tokens, as their keys act on them: the focused one, or the last. */
+  citation?: { tokens: number; selected: number; focus: () => void; edit: () => void; move: (step: -1 | 1) => void; remove: () => void } | null;
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
@@ -53,8 +55,18 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {project.status && project.stop && <MenuItem id="project-stop" label={say("picker-stop-project", { name: isolate(project.status.name) })} onAction={project.stop} />}
       </MenuSection>}
       {project?.choose && <MenuSeparator />}
-      {keepOrder && <MenuSection id="citation-order">
-        <MenuItem id="keep-order" label={say("picker-keep-my-order")} checked={keepOrder.checked} onAction={keepOrder.toggle} />
+      {/* The citation's own actions, with the keys a token takes. */}
+      {(citation?.tokens || keepOrder) && <MenuSection id="citation-order">
+        {citation?.tokens ? <>
+          <MenuItem id="citation-focus" label={say("key-go-to-citation")} keys={label(keysFor("citationFocus"))} closeOnSelect onAction={citation.focus} />
+          <MenuItem id="citation-edit" label={say("key-edit-citation")} closeOnSelect onAction={citation.edit} />
+        </> : null}
+        {citation && citation.selected > 1 && <>
+          <MenuItem id="citation-move-left" label={say("key-move-left")} keys={label("Shift+ArrowLeft")} closeOnSelect onAction={() => citation.move(-1)} />
+          <MenuItem id="citation-move-right" label={say("key-move-right")} keys={label("Shift+ArrowRight")} closeOnSelect onAction={() => citation.move(1)} />
+        </>}
+        {citation && citation.selected > 0 && <MenuItem id="citation-remove" label={say("key-remove-from-citation")} keys={label("Backspace")} closeOnSelect onAction={citation.remove} />}
+        {keepOrder && <MenuItem id="keep-order" label={say("picker-keep-my-order")} checked={keepOrder.checked} onAction={keepOrder.toggle} />}
       </MenuSection>}
       {actions.changeLast && <MenuSection id="citation">
         <MenuItem id="change-last" label={say("picker-change-last-citation")} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />

@@ -2,21 +2,25 @@
 
 The regions that unfold beside the list ([the model](../design.md#the-model), decision 0038).
 
+## Citation details
+
+[C23] One reference's citation details are a popover on its token (decision 0044), as Zotero's bubbles open theirs: they belong to this citation and are forgotten after the paste.
+
+- **Where**: above the token, anchored to it, with its arrow on the token, growing from it in the shared overlay material and staying inside the window, `--inspector-width` wide. Where the list can scroll, the highlighted result moves clear of it. It is not modal: Search, the list, the line and the footer stay live.
+- **Only this citation's details**, on one label column, with no actions: Open the source, Show in Zotero and the rest act on the reference, so they live in More and on its result row; Remove is the token's ×; moves are ⇧← ⇧→ and More.
+  - **Show**: a segmented control whose segments are the real outputs for this reference ("(Vale, 2021) | Vale (2021) | (2021)"), from the engine, offering only the forms this output can print. Where none can, one quiet line says why.
+  - **Page**: the value field, with the locator type as a quiet pop-up at its start ("p. ▾ 417"), drawn as every pop-up is; its menu lists all 29 CSL locator types and narrows as you type. It takes ranges and lists ("417", "xii–xiv"), a typed label names the type ("ch. 3" sets Chapter), and text that is not a locator stays literal. The engine names any output that cannot print it.
+  - **+ Text before** and **+ Text after**: quiet links that reveal the prefix and suffix fields; a field with text stays shown. The engine formats and escapes the text.
+  - **Keep My Order** at the foot, only when the style sorts.
+  - A refusal or warning about the reference shows in words at the foot.
+- **Keys**: focus starts in the Page field. Tab moves through it in order, never trapped. Enter in a field does what the footer says. Esc closes an open menu, then the details, and focus returns to the token. Pressing another token moves them; pressing the same one closes them.
+
 ## Inspector
 
-[C19] One reference's details are never an overlay. They open in a panel beside the list, as Preview's sidebar does, so one surface holds them now and a source's pages later.
+[C19] The Reader and a citation's warnings are never an overlay. They open in a panel beside the list, as Preview's sidebar does.
 
 - **Where**: in the middle row, on the trailing edge, `--inspector-width` wide, with the shelf running under both. Its divider runs the whole row it splits, as a Mac split view's does: it meets the search bar's divider at the top and the shelf at the bottom, and the content keeps S inside it (checked by `canvas/geometry.ts`). The window stays its one steady size. Search, list, shelf and footer stay where they are and stay live. Below 36 rem wide the panel takes the list's place instead.
-- **Order**: the reference's full title (two lines, then an ellipsis) with ×, and its byline once, never repeated below; **Show as**, **Page**, **Prefix** and **Suffix** as label and control rows; what will be pasted, in full, as plain text with no box around it; a separator; **Show PDF ⌘D** (when the reference has one), the source action and **Remove from Citation ⌫**. The fields never move while typing; the column is the one scroller and ends with its last row whole.
-- **Actions stay in reach**: Show PDF, Open the source and Remove from Citation sit in a footer pinned to the bottom of the column, on the panel's own surface below a divider; the details scroll in their own region above it. The footer reserves its own space, so at the smallest window and with Larger Text no action leaves view or covers a field.
-- **Show as is a pop-up**, its value the current form, its menu the three forms with quiet examples. Only the engine says a form cannot be used, and only for the citation it was asked about; until it answers every form can be tried, so a refused citation can always be corrected here. Examples stay while the next arrive. Where no form is available, as in a reference-entry style, one quiet line replaces the pop-up.
-- **One place for a failure**: while the panel is open, a citation refusal, a failed copy and every warning show in words in the panel, beside the fields that fix them, and not above the list. The shelf's warning and Details controls step aside, so nothing there comes and goes while typing.
-- **Shelf and panel work together**: pressing a segment shows its details and focuses Page; pressing another moves them; pressing the same one closes them. A reference that leaves the shelf closes them.
-- **Page** is empty when there is no page, with the placeholder "Add page", never "None"; it takes printed pages, ranges and lists ("417", "xii–xiv", "417–419, 423").
-- **Prefix and Suffix** put literal text before or after the reference. The engine formats and escapes the text and names anything the output cannot carry. Editing either field prepares a new preview. Undo restores the removed reference, its position and its fields.
-- **Keep My Order** is a checked item in More for the current citation. With it off, a style may sort. With it on, the citation follows the chosen reference order. The shelf shows the engine's order and Enter copies that same preview. The draft survives a short reopening or a permission detour. After a successful copy or a minute away, the next draft starts with the style's order. **Change Last Citation** brings back the order choice and fields from that citation.
-- **Keys**: Tab moves through it in order, never trapped. Enter in a text field does what the footer says. Esc closes the Show as menu, then the panel, and focus returns to the segment if it was inside; Search keeps focus if it was there. Removing the reference closes the panel and returns to Search.
-- **Warnings** use the same panel without a document.
+- **Warnings** list what the engine said about the citation, in words.
 - **A wider panel**: at 34 rem the column keeps its width on the trailing edge and the document sits beside it, scrolling alone.
 
 ## Reader (planned, #1252)

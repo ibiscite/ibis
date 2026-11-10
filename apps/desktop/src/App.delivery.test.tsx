@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
 import type { Copied, Delivered, FilePreview } from "./bindings";
-import { resetApp, result } from "./testing/app";
+import { resetApp, result, inCitation } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
 beforeEach(() => { vi.useFakeTimers(); });
@@ -233,7 +233,7 @@ test("Shift+Enter cancels a queued Enter even when adding the same reference kee
   }
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.copy.calls).toHaveLength(0);
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   expect(harness.clipboard.owner).toBeNull();
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.receipt.textContent).toBe("");
@@ -283,7 +283,7 @@ test("a copy finishing after a selection edit writes the clipboard but cannot pa
   expect(harness.visible).toBe(true);
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("1 reference selected for citation");
   await act(async () => { harness.preview.pending[0]!.complete({ text: "[@b]" }); });
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   await enter();
   await finishCopy(harness);
   await finishDelivery(harness);
@@ -315,8 +315,8 @@ test.each(["before paste", "before response"])("reopening %s preserves the new c
   await act(async () => { recheck.complete({ revision: "1", results: [first] }); });
   if (when === "before paste") await act(async () => { harness.delivery.pending[0]!.complete(); });
   await act(async () => { harness.notice.pending[0]!.complete(); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   expect(harness.visible).toBe(true);
   expect(harness.document.text).toBe(when === "before paste" ? "Draft: [citation]." : "Draft: [@a].");
   expect(harness.document.pastes).toHaveLength(when === "before paste" ? 0 : 1);
@@ -446,8 +446,8 @@ test("reopening during a pending copy keeps the new query and selection without 
     args.items.length === 2 && args.items[0]!.id.key === "a" && args.items[1]!.id.key === "b");
   expect(previews).toHaveLength(1);
   await act(async () => { previews[0]!.complete({ text: "[@a; @b]" }); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove b from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
+  expect(inCitation("b")).toBeTruthy();
   expect(harness.delivery.calls).toHaveLength(0);
   expect(harness.document.text).toBe("Draft: [citation].");
   expect(harness.document.pastes).toEqual([]);

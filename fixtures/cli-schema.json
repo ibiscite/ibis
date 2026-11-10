@@ -1379,6 +1379,37 @@
             ],
             "type": "object"
           },
+          "Shorthand": {
+            "additionalProperties": false,
+            "description": "A search with its typed signal and locator split off.",
+            "properties": {
+              "locator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/TrailingLocator"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "prefix": {
+                "description": "The signal exactly as typed, to become the reference's prefix.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "search": {
+                "description": "What remains to search for.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "search"
+            ],
+            "type": "object"
+          },
           "SnapshotObject": {
             "additionalProperties": false,
             "properties": {
@@ -1460,16 +1491,16 @@
               }
             ]
           },
-          "locator": {
+          "shorthand": {
             "anyOf": [
               {
-                "$ref": "#/$defs/TrailingLocator"
+                "$ref": "#/$defs/Shorthand"
               },
               {
                 "type": "null"
               }
             ],
-            "description": "The locator read off the end of the query, when one was asked for and found."
+            "description": "What was read around the query when asked for: a signal off its start\n(`see`) and a locator off its end (`417`), with what remains to search."
           },
           "snapshot": {
             "$ref": "#/$defs/Fingerprints"

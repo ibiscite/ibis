@@ -564,13 +564,18 @@ export type LocatorInput = {
 	text: string;
 };
 
-/** The engine's interpretation, shown so the person can search as typed. */
+/**
+ * The engine's interpretation, shown so the person can search as typed: a
+ * signal read off the start (`see`) and a locator read off the end (`417`).
+ */
 export type LocatorQuery = {
-	locator: Locator;
+	locator?: Locator | null;
+	/** The signal exactly as typed, to become the reference's prefix. */
+	prefix?: string | null;
 	/** What remains to search for. */
 	search: string;
 	/** The text read as the locator, exactly as typed. */
-	typed: string;
+	typed?: string | null;
 };
 
 /**

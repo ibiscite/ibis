@@ -35,7 +35,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Settings group and row (`ui/SettingsGroup`) | See [Settings](../../../../docs/design/settings.md). |
 | Shortcut table (`ui/ShortcutTable`) | Small secondary heading, one card of rows, action at the start and keys at the end. |
 | Key caps (`ui/KeyCaps`) | See [Key caps](../../../../docs/design/foundations.md#key-caps). |
-| Shelf (`ShelfSegment`, `ChipGroup`, `LocatorToken`) | See [Shelf](../../../../docs/design/picker.md#shelf). |
+| Shelf (`CitationToken`, `ChipGroup`, `LocatorToken`) and `Popover` | See [Shelf](../../../../docs/design/picker.md#shelf) and [Citation details](../../../../docs/design/inspector-and-reader.md#citation-details). A popover is the overlay material anchored to what it is about, with an arrow, growing from it; it is not modal and the picker's layers own Esc. |
 | Inspector (`ui/Inspector`, `CitationDetails`) | See [Inspector](../../../../docs/design/inspector-and-reader.md#inspector). |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See [Footer](../../../../docs/design/picker.md#footer). A status line is words, never a filled band. |
 | Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See [Notices](../../../../docs/design/delivery.md#notices). |

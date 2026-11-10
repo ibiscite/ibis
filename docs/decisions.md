@@ -87,5 +87,8 @@ the anchor older links use.
 ## 0042 Formats, apps and writings
 [0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
+## 0044 The citation line is a token field
+[0044](decisions/0044-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
