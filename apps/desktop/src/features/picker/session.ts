@@ -28,7 +28,7 @@ export type SessionView = {
 };
 type Pending = { keepOrder: boolean; choice: string | null; selection: SessionState["selected"]; queryKey: string;
   format: OutputId | null; output: OutputToken; question?: "open" | "answered" };
-type Flight = { ticket: string; hash: string; keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
+type Flight = { keepOrder: boolean; id: number; session: number; presentation: number; choice: string; format: OutputId; projectVersion?: string | null; opening: number; delivery: number; warnings: string[];
   shelf: CitationReference[]; replaces: readonly string[] | null; appId: string | null; writingProjectId?: string | null;
   phase: "copy" | "hide" | "notice"; outcome?: Copied;
   owner: { context: number; session: number; visibility: number; output: OutputToken } };
@@ -190,14 +190,13 @@ function advance(s: SessionState, copies: boolean): [SessionState, SessionEffect
   if (v.shown === "stale" || !v.chosen[0]?.revision) return [{ ...s, copyError: say("picker-snapshot-changed") }, [{ type: "refresh" }]];
   if (v.shown.project_refusal) return [{ ...s, copyError: v.shown.project_refusal }, []];
   if (!v.shown.fileTicket || !v.shown.fileHash) return [{ ...s, copyError: say("picker-preview-error") }, []];
-  const { fileTicket: ticket, fileHash: hash } = v.shown;
   const owner = { context: s.context, session: s.session, visibility: s.visibility, output: v.output };
-  const existing = s.flights.find((f) => f.ticket === ticket && f.hash === hash && f.keepOrder === s.keepOrder && (f.projectVersion ?? null) === (v.projectVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session && f.appId === (v.remembersLast ? v.appId ?? null : null));
+  const existing = s.flights.find((f) => f.keepOrder === s.keepOrder && (f.projectVersion ?? null) === (v.projectVersion ?? null) && f.choice === key && f.format === v.format && f.replaces === s.changing && f.opening === v.output.opening && f.delivery === v.output.delivery && f.owner.visibility === s.visibility && f.owner.session === s.session && f.appId === (v.remembersLast ? v.appId ?? null : null));
   if (existing) return [{ ...s, activeCopy: existing.id, flights: s.flights.map((f) => f === existing ? { ...f, owner } : f) }, []];
   const id = s.nextCopy + 1;
-  const flight: Flight = { ticket, hash, keepOrder: s.keepOrder, id, session: s.session, presentation, choice: key, format: v.format, projectVersion: v.projectVersion, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), shelf: v.chosen, replaces: s.changing, appId: v.remembersLast ? v.appId ?? null : null, writingProjectId: v.writingProjectId };
+  const flight: Flight = { keepOrder: s.keepOrder, id, session: s.session, presentation, choice: key, format: v.format, projectVersion: v.projectVersion, opening: v.output.opening, delivery: v.output.delivery, owner, phase: "copy", warnings: closestMatchWarnings(v.chosen), shelf: v.chosen, replaces: s.changing, appId: v.remembersLast ? v.appId ?? null : null, writingProjectId: v.writingProjectId };
   return [{ ...s, flights: [...s.flights, flight], activeCopy: id, nextCopy: id, copied: null, shelfCopied: null, copyNotice: null, copyError: null },
-    [{ type: "copy", id, session: s.session, ticket, hash, replaces: s.changing }]];
+    [{ type: "copy", id, session: s.session, ticket: v.shown.fileTicket, hash: v.shown.fileHash, replaces: s.changing }]];
 }
 
 /** The project context changed: what was copied or asked for under the old one is retired. */

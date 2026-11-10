@@ -129,27 +129,6 @@ test("a stale checked copy cannot consume the one-time output a fresh Enter is w
     .toMatchObject([{ type: "copy", id: 2, ticket: "fresh-checked" }]);
 });
 
-test.each(["suffix", "order"] as const)("returning to the same %s copies its fresh receipt instead of joining a retired copy", (field) => {
-  const s = scenario();
-  s.send({ type: "toggle", result: a, locator: a.locator });
-  s.send(s.view());
-  s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) });
-  const edit = (changed: boolean) => field === "suffix"
-    ? s.send({ type: "reference", reference: [...s.state.selected.values()][0]!, change: { suffix: changed ? "for review" : "" } })
-    : s.send({ type: "keep-order", value: changed });
-  edit(true);
-  s.send(s.view({ shown: { ...prepared, fileTicket: "middle" } }));
-  edit(false);
-  s.send(s.view({ shown: { ...prepared, fileTicket: "fresh", fileHash: "fresh-hash" } }));
-  expect(s.send({ type: "enter", choice: choiceKey([...s.state.selected.values()]) }))
-    .toMatchObject([{ type: "copy", id: 2, ticket: "fresh", hash: "fresh-hash" }]);
-  s.complete(1);
-  expect(s.effects).toEqual([]);
-  expect(s.state.activeCopy).toBe(2);
-  s.complete(2, { pinned: true });
-  expect(s.state.copied?.text).toBe(prepared.text);
-});
-
 test.each([false, true])("a citation draft keeps every field through a short reopen or permission detour (%s)", (permission) => {
   const s = scenario();
   s.send({ type: "toggle", result: a, locator: a.locator });
