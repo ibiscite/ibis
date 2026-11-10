@@ -113,6 +113,7 @@ fn info(loaded: &LoadedLibrary) -> LibraryInfo {
             .filter(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
             .filter_map(|warning| warning.key.clone())
             .collect(),
+        damaged_keys: loaded.damaged_keys.clone(),
         cut_short: loaded.cut_short,
     }
 }
