@@ -9,12 +9,14 @@ export type CitationReference = SearchResult & {
   /** Only Page edits carry input; locators captured from search are canonical. */
   readonly locator?: (Readonly<Locator> & { readonly input?: "page-editor" }) | null;
   readonly form?: ReferenceForm;
+  readonly prefix?: string;
+  readonly suffix?: string;
 };
-export type CitationDetailsChange = Pick<CitationReference, "locator" | "form">;
+export type CitationDetailsChange = Pick<CitationReference, "locator" | "form" | "prefix" | "suffix">;
 
 /** Selection is keyed by record identity, never by list position or citation key. */
 export function choiceKey(records: readonly CitationReference[]): string {
-  return JSON.stringify(records.map((record) => [record.id, record.revision, record.cite, record.locator?.label ?? null, record.locator?.value ?? null, record.locator?.input ?? null, record.form ?? "normal"]));
+  return JSON.stringify(records.map((record) => [record.id, record.revision, record.cite, record.locator?.label ?? null, record.locator?.value ?? null, record.locator?.input ?? null, record.form ?? "normal", record.prefix ?? "", record.suffix ?? ""]));
 }
 
 export function idKey(id: unknown): string {

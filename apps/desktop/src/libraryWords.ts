@@ -34,7 +34,10 @@ export const libraryMessages = {
     if (!status.has_snapshot) return [requestedLabel(status), ` · ${say("library-not-opened")}`];
     // After a failed switch the previous library is still the one searched: describe it.
     const source = snapshotLabel(status);
-    if (status.stale) return [source, ` ${say(status.problem === "missing" && !status.snapshot_zotero ? "library-moved" : "library-not-updated")}`];
+    if (status.stale) {
+      const moved = status.source_is_requested && status.problem === "missing" && !status.snapshot_zotero;
+      return [source, ` ${say(moved ? "library-moved" : "library-not-updated")}`];
+    }
     return [source, ` · ${status.references === 0 ? say("library-no-references") : references(status.references)}` +
       readingSummary(status) +
       (status.error ? ` · ${isolate(requestedLabel(status))} ${say(status.problem === "missing" ? "library-moved" : "library-not-opened")}` : "")];

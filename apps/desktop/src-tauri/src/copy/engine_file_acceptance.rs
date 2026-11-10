@@ -96,7 +96,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
 }
 
 #[test]
-fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn std::error::Error>> {
+fn reference_fields_and_order_match_the_real_cli() -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("synthetic.bib");
     std::fs::write(
@@ -122,17 +122,30 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
         &Cancellation::default(),
     )
     .map_err(|_| "CLI file")?;
-    for (style, locator, count) in [
-        (None, true, 1),
-        (Some("apa"), true, 1),
-        (Some("apa"), false, 2),
-        (Some("ieee"), false, 1),
+    for (format, locator, count, affixes, keep_order) in [
+        ("pandoc", true, 1, false, false),
+        ("apa", true, 1, false, false),
+        ("apa", false, 2, false, false),
+        ("ieee", false, 1, false, false),
+        ("pandoc", true, 2, true, false),
+        ("apa", true, 2, true, false),
+        ("apa", true, 2, true, true),
+        ("keys", false, 1, true, false),
     ] {
-        let output = match style {
-            Some(style) => json!({"kind":"csl","style":style}),
-            None => json!({"kind":"key","syntax":"pandoc","command":null}),
-        };
-        let request = json!({"items": rows[..count].iter().map(|row| json!({"item":row["id"],"expected_cite":row["cite"],"locator":locator.then(|| json!({"term":"page","value":"12"}))})).collect::<Vec<_>>(), "output":output,"form":"normal","keep_order":style.is_none()});
+        let output = crate::output::spec(format);
+        let prefix = affixes.then_some("see <i>invented</i>");
+        let suffix = affixes.then_some("for <b>review</b>");
+        let literal = |value: Option<&str>| value.into_iter().map(|text| json!({"text":text})).collect::<Vec<_>>();
+        let request = json!({
+            "items": rows[..count].iter().map(|row| json!({
+                "item": row["id"], "expected_cite": row["cite"],
+                "locator": locator.then(|| json!({"term":"page","value":"12"})),
+                "prefix": literal(prefix), "suffix": literal(suffix),
+            })).collect::<Vec<_>>(),
+            "output": output,
+            "form": "normal",
+            "keep_order": keep_order || matches!(output, ibis_core::contract::OutputSpec::Key { .. }),
+        });
         let mut stdout = vec![];
         let mut stderr = vec![];
         assert_eq!(
@@ -144,22 +157,36 @@ fn page_locators_and_formatted_order_match_the_real_cli() -> Result<(), Box<dyn 
                 &mut stderr,
                 ibis::OutputMode::Plain
             ),
-            0
+            u8::from(format == "keys")
         );
         let envelope: serde_json::Value = serde_json::from_slice(&stdout)?;
         let expected: CitationResult = serde_json::from_value(envelope["data"].clone())?;
-        let selections=rows[..count].iter().map(|row| serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":locator.then(|| json!({"label":"page","value":"12"}))}))).collect::<Result<Vec<FileSelection>,_>>()?;
+        let selections = rows[..count]
+            .iter()
+            .map(|row| {
+                serde_json::from_value(json!({
+                    "id": row["id"], "cite": row["cite"],
+                    "locator": locator.then(|| json!({"label":"page","value":"12"})),
+                    "prefix": prefix, "suffix": suffix,
+                }))
+            })
+            .collect::<Result<Vec<FileSelection>, _>>()?;
         let preview = file
-            .preview(file.reserve_preview(), selections, style.unwrap_or("pandoc"))
+            .preview_for(file.reserve_preview(), selections, output, keep_order, None)
             .map_err(|e| format!("native preview: {e}"))?;
         assert_eq!(preview.text, expected.text);
         assert_eq!(preview.html, expected.html);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
-        // Different authors need no year letters, so no notice either.
-        assert!(
-            preview.warnings.is_empty(),
-            "context notices must not become order-loss warnings"
-        );
+        if format == "apa" && count == 2 {
+            assert_eq!(preview.text.find("Zulu") < preview.text.find("Alpha"), keep_order);
+        }
+        if format == "keys" {
+            assert_eq!(preview.warnings.len(), 2);
+            assert!(preview.warnings.iter().any(|warning| warning.contains("text before")));
+            assert!(preview.warnings.iter().any(|warning| warning.contains("text after")));
+        } else {
+            assert!(preview.warnings.is_empty(), "{format}");
+        }
         let copied = file
             .copy(&preview.ticket, &preview.content_hash, |content| {
                 assert_eq!(content.text, expected.text);

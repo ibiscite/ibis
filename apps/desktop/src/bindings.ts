@@ -389,6 +389,8 @@ export type DisplayRun = {
 export type EditorWaiting = {
 	format: string;
 	request: number;
+	/** The editor asked for a style, which may sort its references. */
+	style: boolean;
 };
 
 /** Why the endpoint could not listen. */
@@ -435,6 +437,9 @@ export type FileSelection = {
 	locator?: Locator | null;
 	/** Raw Page editor text, mutually exclusive with a captured locator. */
 	page_input?: string | null;
+	/** Literal text; only the engine escapes and formats it. */
+	prefix?: string | null;
+	suffix?: string | null;
 };
 
 export type FormOption = {
@@ -724,6 +729,7 @@ export type PreferenceChange = {
 export type PreviewIntent = {
 	cancel: boolean;
 	context?: [number, number] | null;
+	keep_order?: boolean;
 	page: number;
 	request: number;
 };

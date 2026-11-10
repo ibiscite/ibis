@@ -111,7 +111,7 @@ export function createSessionController(initial = initialSession()) {
         const abort = previewing = new AbortController();
         const { request, ask } = effect;
         try {
-          const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext);
+          const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
           dispatch({ type: "previewed", request, preview, value: { markup: preview.html ? parse(preview.html) : [preview.text], text: preview.text, html: preview.html ?? "",
             warnings: preview.warnings, spans: preview.spans, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {

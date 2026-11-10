@@ -83,7 +83,7 @@ export function PickerStatusFooter({
         project={{ status: project.status, choose: project.choose, stop: project.stop,
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
             ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
-        density={density} pinned={pinned}
+        density={density} pinned={pinned} keepOrder={actions.keepOrder}
         actions={{
           density: changeDensity,
           pin: () => run("pin"),

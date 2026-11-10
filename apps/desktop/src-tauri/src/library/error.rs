@@ -307,6 +307,7 @@ mod tests {
             "app-command-shared-citation-key",
             "app-command-not-prepared",
             "app-command-source-not-opened",
+            "app-command-citation-too-large",
         ]);
         let catalogue: BTreeSet<&str> = ibis_engine::catalogue::SOURCE
             .lines()

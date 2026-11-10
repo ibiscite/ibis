@@ -6,7 +6,7 @@ import type { usePointerSelection } from "../../pointerSelection";
 import type { usePickerSession } from "./usePickerSession";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { useOperations } from "./useOperations";
-import { choiceKey, idKey, type CitationReference } from "./choice";
+import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import type { OutputId } from "../../format/outputs";
 
 export function useCitationRows({
@@ -39,7 +39,7 @@ export function useCitationRows({
     send({ type: "reference", reference, change: { locator: locator ? { ...locator } : null }, selectedOnly: true });
     focusHome();
   };
-  const changeReference = (reference: CitationReference, change: Pick<CitationReference, "locator" | "form">) => {
+  const changeReference = (reference: CitationReference, change: CitationDetailsChange) => {
     send({ type: "reference", reference, change, initialSelection: list && ready ? results : undefined });
   };
 

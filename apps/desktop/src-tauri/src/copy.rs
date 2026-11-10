@@ -220,6 +220,7 @@ pub(crate) async fn preview_file_citation(
     project: State<'_, crate::project::ProjectBibliography>,
 ) -> Result<crate::library::engine_file::FilePreview, CommandError> {
     let expected_context = intent.context;
+    let keep_order = intent.keep_order;
     let cancel = requests.start(intent).ok_or(CommandError::Cancelled)?;
     // The engine's id, as the menu sent it; one it does not list is refused, not guessed.
     let output = crate::output::listed(&output)
@@ -250,7 +251,7 @@ pub(crate) async fn preview_file_citation(
     );
     let current_project = current_project.filter(|_| key_output);
     let result = tauri::async_runtime::spawn_blocking(move || {
-        let mut preview = file.preview_for(reservation, items, &output, editor.as_ref())?;
+        let mut preview = file.preview_for(reservation, items, &output, keep_order, editor.as_ref())?;
         preview.warnings.extend(file.prepared_project_warnings(
             &preview.ticket,
             &preview.content_hash,

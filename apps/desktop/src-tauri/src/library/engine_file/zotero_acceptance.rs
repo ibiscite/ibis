@@ -159,6 +159,8 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
                 .preview(
                     bridge.reserve_preview(),
                     vec![FileSelection {
+                prefix: None,
+                suffix: None,
                         id: row.id.clone(),
                         cite: serde_json::from_value(json!(row.cite))?,
                         locator: None,

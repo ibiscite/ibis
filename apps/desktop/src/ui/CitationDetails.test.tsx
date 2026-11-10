@@ -12,7 +12,7 @@ const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 function Editor() {
   const [page, setPage] = useState("");
   const [form, setForm] = useState<ReferenceForm>("normal");
-  return <CitationDetails page={page} form={form} choices={{ current_form: form, forms: [
+  return <CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page={page} form={form} choices={{ current_form: form, forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
     { form: "narrative", example: "Example (2026)", reason: null },
     { form: "year-only", example: "(2026)", reason: null },
@@ -30,7 +30,7 @@ test("the Form pop-up names the current form, and a pick changes it", async () =
 
 test("Year only uses its own engine form and an unavailable form says why under its label", async () => {
   const change = vi.fn();
-  render(<CitationDetails page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="12" form="normal" onPageChange={vi.fn()} onFormChange={change} choices={{ current_form: "normal", forms: [
     { form: "normal", example: "(Example, 2026)", reason: null },
     { form: "narrative", example: null, reason: "Cite it alone or choose another output." },
     { form: "year-only", example: "(2026)", reason: null },
@@ -47,7 +47,7 @@ test("Year only uses its own engine form and an unavailable form says why under 
 
 test("before the engine answers the reference's own form shows and every form can be tried", async () => {
   const change = vi.fn();
-  render(<CitationDetails page="" form="narrative" onPageChange={vi.fn()} onFormChange={change} />);
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="narrative" onPageChange={vi.fn()} onFormChange={change} />);
   fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
   fireEvent.click(await screen.findByRole("menuitemradio", { name: "Name in brackets" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
@@ -55,7 +55,7 @@ test("before the engine answers the reference's own form shows and every form ca
 
 test("with no form to choose, one quiet line replaces the pop-up", () => {
   const reason = "Reference entries have no name forms. Choose another style.";
-  render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
     { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason },
   ] }} />);
   expect(screen.getAllByText(reason)).toHaveLength(1);
@@ -63,7 +63,7 @@ test("with no form to choose, one quiet line replaces the pop-up", () => {
 });
 
 test("an explicit answer of no form selects none, where forms have their own reasons", async () => {
-  render(<CitationDetails page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
     { form: "normal", example: null, reason: "First invented reason." }, { form: "narrative", example: null, reason: "Second invented reason." }, { form: "year-only", example: "(2026)", reason: null },
   ] }} />);
   fireEvent.click(screen.getByRole("button", { name: "Show as None" }));
