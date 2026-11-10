@@ -1,6 +1,6 @@
 import * as nativeApi from "./api";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { idKey } from "./features/picker/choice";
+import { idKey, asTyped } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
 import { PeekCard } from "./ui/PeekCard";
@@ -118,7 +118,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // What the screen shows: the selection, otherwise the shown pasted list or
   // highlighted result. It stays put while a newer search runs.
   const shownChoice = !showCitations ? [] : selected.size > 0 ? [...selected.values()] : !sameSnapshot ? [] : list ? results
-    : results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+    : results.slice(active, active + 1).map((r) => asTyped(r, interpretation));
   // What may be copied: the same, once the shown results answer the current query.
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({

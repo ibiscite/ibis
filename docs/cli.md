@@ -101,6 +101,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `WORDS` | Words from the author, title, year or citation key; quote several words |
 | `--limit N` | Return at most N results, from 1 to 1000 |
+| `--shorthand` | Read a signal before the words ("see") and a page after them ("417"), as the picker does |
 
 **`ibis show`**: Show one reference
 

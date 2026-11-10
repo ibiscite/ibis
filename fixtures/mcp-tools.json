@@ -20,6 +20,10 @@
           "description": "A few distinctive words: an author surname, title words, a year or a citation key.",
           "minLength": 1,
           "type": "string"
+        },
+        "shorthand": {
+          "description": "Read a signal before the words (\"see\") and a page after them (\"417\"), as the picker does, and return them as cited_with.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -30,6 +34,18 @@
     "name": "search",
     "outputSchema": {
       "properties": {
+        "cited_with": {
+          "description": "With shorthand: the prefix and locator read around the words, as cite item fields.",
+          "properties": {
+            "locator": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            }
+          },
+          "type": "object"
+        },
         "complete": {
           "description": "False when more references match than these; use more distinctive words.",
           "type": "boolean"
@@ -85,6 +101,10 @@
           "type": "array"
         },
         "provenance": {
+          "type": "string"
+        },
+        "searched_for": {
+          "description": "With shorthand: the words searched for once those were read.",
           "type": "string"
         }
       },

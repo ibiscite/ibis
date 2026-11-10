@@ -270,3 +270,26 @@ fn a_line_break_in_a_bad_argument_cannot_forge_a_diagnostic_line() -> Result {
     assert!(errors.contains("--bad\\nibis: forged"), "{errors}");
     Ok(())
 }
+
+#[test]
+fn search_reads_the_same_shorthand_as_the_picker() -> Result {
+    // A signal before the words and a page after them, read only when asked for.
+    let (code, text, _) = run(&["search", "--shorthand", "see taylor 417"], b"")?;
+    assert_eq!(code, 0);
+    assert!(
+        text.starts_with("Cited with: see · 417; searched for: taylor\n"),
+        "{text}"
+    );
+    assert!(text.contains("Synthetic signals"), "{text}");
+    let (_, json_text, _) = run(&["search", "--shorthand", "see taylor ch 2", "--json"], b"")?;
+    let envelope: Value = serde_json::from_str(&json_text)?;
+    assert_eq!(
+        envelope["data"]["shorthand"],
+        json!({"search":"taylor","prefix":"see","locator":{"search":"taylor","locator":{"term":"chapter","value":"2"},"typed":"ch 2"}})
+    );
+    // Without it, the same words are searched as typed.
+    let (_, plain, _) = run(&["search", "see taylor 417", "--json"], b"")?;
+    let envelope: Value = serde_json::from_str(&plain)?;
+    assert!(envelope["data"].get("shorthand").is_none());
+    Ok(())
+}

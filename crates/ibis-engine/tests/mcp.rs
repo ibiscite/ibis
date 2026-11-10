@@ -278,6 +278,24 @@ fn cite_formats_by_key_or_by_id() {
 }
 
 #[test]
+fn search_reads_shorthand_as_cite_item_fields() {
+    let (_dir, engine) = engine();
+    let read = tool(
+        &engine,
+        "search",
+        json!({"query":"see researcher 417","shorthand":true}),
+    );
+    assert_eq!(
+        read["structuredContent"]["cited_with"],
+        json!({"prefix":"see","locator":"417"})
+    );
+    assert_eq!(read["structuredContent"]["searched_for"], "researcher");
+    assert!(!read["structuredContent"]["hits"].as_array().unwrap().is_empty());
+    let plain = tool(&engine, "search", json!({"query":"see researcher 417"}));
+    assert!(plain["structuredContent"].get("cited_with").is_none());
+}
+
+#[test]
 fn a_citation_key_shaped_like_an_item_id_can_be_shown_and_cited() {
     let (_dir, engine) = library(
         "invented.json",

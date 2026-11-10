@@ -142,6 +142,12 @@ fn command() -> Command {
                         .allow_negative_numbers(true)
                         .default_value("10")
                         .help("Return at most N results, from 1 to 1000"),
+                )
+                .arg(
+                    Arg::new("shorthand")
+                        .long("shorthand")
+                        .action(ArgAction::SetTrue)
+                        .help("Read a signal before the words (\"see\") and a page after them (\"417\"), as the picker does"),
                 ),
             Method::Show => subcommand
                 .about("Show one reference")
@@ -1068,7 +1074,11 @@ fn run_method<R: BufRead>(
                 ));
             }
             let result = explain(
-                engine.dispatch(Method::Search, &json!({"query":query,"limit":limit}), &cancel),
+                engine.dispatch(
+                    Method::Search,
+                    &json!({"query":query,"limit":limit,"interpret_locator":args.get_flag("shorthand")}),
+                    &cancel,
+                ),
                 |EngineError { code, .. }| match code {
                     ErrorCode::BadInput => "the search words are too long; use fewer.".into(),
                     code => human::code_sentence(code),

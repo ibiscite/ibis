@@ -3692,6 +3692,24 @@ function locatorReply(value = "12", label: api.Locator["label"] = "page") {
     interpretation: { search: "Smith", locator: { label, value }, typed: `p.${value}` } };
 }
 
+test("typed shorthand adds the reference with its prefix and page, and the token says what will be cited", async () => {
+  const previews: PreviewRequest[] = [];
+  backend({
+    search: ({ query }) => ({ revision: "1", results: [result("vale", "Lanterns at the edge of the sea")],
+      interpretation: query.interpret_locators ? { search: "vale", prefix: "see", locator: { label: "page", value: "417" }, typed: "417" } : null }),
+    preview_file_citation: (request) => { previews.push(request); return receipt("[see @vale, p. 417]"); },
+  });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "see vale 417" } });
+  await screen.findByRole("group", { name: "Using see · p. 417" });
+  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
+  await waitFor(() => expect(previews.at(-1)?.items).toEqual([expect.objectContaining({ prefix: "see", locator: { label: "page", value: "417" } })]));
+  // Searching as typed forgets what was read.
+  fireEvent.click(screen.getByRole("button", { name: "Search as typed" }));
+  expect(screen.queryByRole("group", { name: /^Using / })).toBeNull();
+});
+
 test("a selected locator changes only through Apply or Remove, which retains the reference", async () => {
   const copies: unknown[] = [];
   backend({
@@ -3704,7 +3722,7 @@ test("a selected locator changes only through Apply or Remove, which retains the
   fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
   await expectPage("12");
   fireEvent.change(box, { target: { value: "Smith p.9" } });
-  await screen.findByRole("group", { name: "Using page 9" });
+  await screen.findByRole("group", { name: "Using p. 9" });
   await expectPage("12");
   fireEvent.click(screen.getByRole("button", { name: "Apply locator to a" }));
   // The Page field is inspected below; the retired page has no inline control.
@@ -3728,13 +3746,13 @@ test("Search as typed preserves the full query and every edit restores interpret
   fireEvent.click(await screen.findByRole("button", { name: "Search as typed" }));
   await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12", interpret_locators: false }));
   expect(box.value).toBe("Smith p.12");
-  expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Using p. 12" })).toBeNull();
   fireEvent.change(box, { target: { value: "Smith p.12 " } });
   await waitFor(() => expect(searched.at(-1)).toEqual({ text: "Smith p.12 ", interpret_locators: true }));
-  await screen.findByRole("group", { name: "Using page 12" });
+  await screen.findByRole("group", { name: "Using p. 12" });
   await act(async () => { finish({ revision: "1", results: [result("literal", "Late literal result")], interpretation: null }); });
   expect(screen.queryByText("Late literal result")).toBeNull();
-  expect(screen.getByRole("group", { name: "Using page 12" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Using p. 12" })).toBeTruthy();
 });
 
 
@@ -3756,7 +3774,7 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     expect(box.value).toBe("");
     if (change === "edit") {
       fireEvent.change(box, { target: { value: "Edited p 12" } });
-      await screen.findByRole("group", { name: "Using page 12" });
+      await screen.findByRole("group", { name: "Using p. 12" });
       expect(searched.at(-1)).toEqual({ text: "Edited p 12", interpret_locators: true });
       fireEvent.change(box, { target: { value: "" } });
     }
@@ -3772,12 +3790,12 @@ test.each(["reopen", "edit", "copy", "expiry"])("an escaped literal search prese
     await act(async () => { await emit("picker:shown"); });
     await waitFor(() => expect(box.value).toBe(""));
     await waitFor(() => expect(searched.at(-1)).toEqual({ text: "", interpret_locators: true }));
-    expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
+    expect(screen.queryByRole("group", { name: "Using p. 12" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
     expect(document.activeElement).toBe(box);
     // A real edit always starts interpreting again.
     fireEvent.change(box, { target: { value: "Reference p 12 " } });
-    await screen.findByRole("group", { name: "Using page 12" });
+    await screen.findByRole("group", { name: "Using p. 12" });
     expect(searched.at(-1)).toEqual({ text: "Reference p 12 ", interpret_locators: true });
   } finally { now.mockRestore(); }
 });
@@ -3910,10 +3928,10 @@ test("a failed replacement search clears the earlier locator interpretation", as
     return locatorReply();
   } });
   await act(async () => { render(<App />); });
-  expect(screen.getByRole("group", { name: "Using page 12" })).toBeTruthy();
+  expect(screen.getByRole("group", { name: "Using p. 12" })).toBeTruthy();
   await act(async () => { fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "failed" } }); });
   expect(screen.getByText("Ibis could not search your library. Use Reload, then try again.")).toBeTruthy();
-  expect(screen.queryByRole("group", { name: "Using page 12" })).toBeNull();
+  expect(screen.queryByRole("group", { name: "Using p. 12" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Search as typed" })).toBeNull();
 });
 
@@ -3945,7 +3963,7 @@ test("removing and re-adding a selected identity captures the newer query locato
   render(<App />);
   fireEvent.click(await screen.findByText("Locator reference"), { ctrlKey: true });
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "Smith p.9" } });
-  await screen.findByRole("group", { name: "Using page 9" });
+  await screen.findByRole("group", { name: "Using p. 9" });
   fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Locator reference"), { ctrlKey: true });
   await expectPage("9");

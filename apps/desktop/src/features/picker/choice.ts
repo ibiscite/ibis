@@ -15,6 +15,13 @@ export type CitationReference = SearchResult & {
 };
 export type CitationDetailsChange = Pick<CitationReference, "locator" | "form" | "prefix" | "suffix">;
 
+/** What the engine read around a search (`see vale 417`): the locator off its end
+ * and the signal off its start, which a reference added from it takes. */
+export type Typed = { readonly locator?: Locator | null; readonly prefix?: string | null } | null | undefined;
+export function asTyped(result: SearchResult, typed: Typed): CitationReference {
+  return { ...result, locator: typed?.locator, ...typed?.prefix ? { prefix: typed.prefix } : {} };
+}
+
 /** Selection is keyed by record identity, never by list position or citation key. */
 export function choiceKey(records: readonly CitationReference[]): string {
   return JSON.stringify(records.map((record) => [record.id, record.revision, record.cite, record.locator?.label ?? null, record.locator?.value ?? null, record.locator?.input ?? null, record.form ?? "normal", record.prefix ?? "", record.suffix ?? ""]));

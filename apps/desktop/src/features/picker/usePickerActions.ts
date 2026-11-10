@@ -86,10 +86,11 @@ export function usePickerActions({
       + (state.keepOrder && writesStyle && offered.length > 1 ? ` · ${say("picker-your-order")}` : "");
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
-  const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
+  // What the engine read around the search: a page off its end, a signal off its start.
+  const usingLocator = ready && interpretLocators && showCitations && interpretation && (interpretation.locator || interpretation.prefix) ? interpretation : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form, prefix: prepared.prefix, suffix: prepared.suffix }]);
+    choiceKey([prepared]) !== choiceKey([{ ...prepared, locator: usingLocator.locator ?? prepared.locator, prefix: usingLocator.prefix ?? prepared.prefix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")

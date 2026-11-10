@@ -229,7 +229,8 @@ fn search_input() -> Value {
         "type": "object",
         "properties": {
             "query": {"type": "string", "minLength": 1, "description": "A few distinctive words: an author surname, title words, a year or a citation key."},
-            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10}
+            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10},
+            "shorthand": {"type": "boolean", "description": "Read a signal before the words (\"see\") and a page after them (\"417\"), as the picker does, and return them as cited_with."}
         },
         "required": ["query"],
         "additionalProperties": false
@@ -265,6 +266,8 @@ fn search_output() -> Value {
             "hits": {"type": "array", "items": hit},
             "complete": {"type": "boolean", "description": "False when more references match than these; use more distinctive words."},
             "missing": {"type": "array", "items": {"type": "string"}, "description": "Keys or identifiers from a pasted list that the library does not hold."},
+            "cited_with": {"type": "object", "properties": {"prefix": {"type": "string"}, "locator": {"type": "string"}}, "description": "With shorthand: the prefix and locator read around the words, as cite item fields."},
+            "searched_for": {"type": "string", "description": "With shorthand: the words searched for once those were read."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."}
         },
@@ -286,10 +289,16 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
             .filter(|limit| (1..=MAX_HITS).contains(limit))
             .ok_or_else(|| Refusal::bad(format!("limit must be a whole number from 1 to {MAX_HITS}.")))?,
     };
+    let shorthand = match arguments.get("shorthand") {
+        None => false,
+        Some(read) => read
+            .as_bool()
+            .ok_or_else(|| Refusal::bad("shorthand must be true or false."))?,
+    };
     // One more than was asked for shows whether the list stops at the limit or at the end.
     let result = engine.search(
         &SearchRequest {
-            interpret_locator: false,
+            interpret_locator: shorthand,
             query: query.to_owned(),
             limit: limit + 1,
             libraries: None,
@@ -324,6 +333,18 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
         hits.push(Value::Object(data));
     }
     let mut answer = json!({"hits": hits, "complete": complete, "provenance": PROVENANCE});
+    // What was read, in the cite tool's own item fields, for the reference it is cited with.
+    if let Some(read) = &result.shorthand {
+        let mut cited = Map::new();
+        if let Some(prefix) = &read.prefix {
+            cited.insert("prefix".into(), json!(prefix));
+        }
+        if let Some(locator) = &read.locator {
+            cited.insert("locator".into(), json!(locator.typed));
+        }
+        answer["cited_with"] = Value::Object(cited);
+        answer["searched_for"] = json!(read.search);
+    }
     if let Some(list) = result.list.as_ref().filter(|list| !list.missing.is_empty()) {
         answer["missing"] = json!(list.missing.iter().map(|key| view::clean(key)).collect::<Vec<_>>());
     }
