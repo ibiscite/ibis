@@ -12,7 +12,6 @@ use std::{
 /// Whether the sources behind one result were healthy, read from the same
 /// library state the result came from: a later refresh never changes it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct SourceHealth {
     pub status: HealthStatus,
     /// One entry per problem, in library order; empty when `status` is `ok`.
@@ -23,10 +22,14 @@ pub struct SourceHealth {
 pub enum HealthStatus {
     Ok,
     Findings,
+    /// A status from a newer engine: it needs review.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 /// A problem with one library a result consulted. Codes only: no source text.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "code", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "code", rename_all = "kebab-case")]
 pub enum SourceFinding {
     /// The library changed and could not be read again; the result used the
     /// references from its last successful read.
@@ -39,6 +42,10 @@ pub enum SourceFinding {
     },
     /// Entries were skipped or read with problems; `ibis libraries` lists them.
     SourceWarnings { library: LibraryId, count: usize },
+    /// A finding from a newer engine: it needs review.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 impl SourceHealth {
     /// The findings of `libraries`, the ones a result consulted.
@@ -69,8 +76,9 @@ impl SourceHealth {
             findings,
         }
     }
+    /// Clean only when it says so and lists nothing; anything unknown needs review.
     pub fn is_ok(&self) -> bool {
-        self.status == HealthStatus::Ok
+        self.status == HealthStatus::Ok && self.findings.is_empty()
     }
 }
 
@@ -249,5 +257,19 @@ mod tests {
             1
         );
         assert_eq!(bounded(&Cancellation::default(), |_| 7), Some(7));
+    }
+    #[test]
+    fn health_from_a_newer_engine_parses_and_needs_review() {
+        let newer: SourceHealth = serde_json::from_value(serde_json::json!({
+            "status": "invented-status", "findings": [{"code": "invented-finding", "library": "x"}], "added": 1
+        }))
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(newer.status, HealthStatus::Unknown);
+        assert_eq!(newer.findings, [SourceFinding::Unknown]);
+        assert!(!newer.is_ok());
+        let odd: SourceHealth =
+            serde_json::from_value(serde_json::json!({"status": "ok", "findings": [{"code": "invented-finding"}]}))
+                .unwrap_or_else(|e| panic!("{e}"));
+        assert!(!odd.is_ok());
     }
 }

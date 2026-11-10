@@ -267,11 +267,15 @@
             ]
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "LibraryId": {
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
@@ -404,7 +408,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -442,7 +445,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -468,7 +470,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
@@ -1118,11 +1119,15 @@
             "type": "object"
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "Identifier": {
             "description": "A recognized identifier in canonical form.",
@@ -1609,7 +1614,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -1647,7 +1651,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -1673,7 +1676,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
@@ -2154,11 +2156,15 @@
             "type": "object"
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "Identifier": {
             "description": "A recognized identifier in canonical form.",
@@ -2506,7 +2512,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -2544,7 +2549,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -2570,7 +2574,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
@@ -3350,11 +3353,15 @@
             "type": "string"
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "ItemOutcome": {
             "oneOf": [
@@ -3562,7 +3569,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -3600,7 +3606,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -3626,7 +3631,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
@@ -3901,11 +3905,15 @@
             ]
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "KeyCheck": {
             "description": "One emitted key against one bibliography.",
@@ -4047,7 +4055,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -4085,7 +4092,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -4111,7 +4117,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
@@ -4390,11 +4395,15 @@
             ]
           },
           "HealthStatus": {
-            "enum": [
-              "ok",
-              "findings"
-            ],
-            "type": "string"
+            "oneOf": [
+              {
+                "enum": [
+                  "ok",
+                  "findings"
+                ],
+                "type": "string"
+              }
+            ]
           },
           "LibraryId": {
             "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
@@ -4405,7 +4414,6 @@
             "description": "A problem with one library a result consulted. Codes only: no source text.",
             "oneOf": [
               {
-                "additionalProperties": false,
                 "description": "The library changed and could not be read again; the result used the\nreferences from its last successful read.",
                 "properties": {
                   "code": {
@@ -4443,7 +4451,6 @@
                 "type": "object"
               },
               {
-                "additionalProperties": false,
                 "description": "Entries were skipped or read with problems; `ibis libraries` lists them.",
                 "properties": {
                   "code": {
@@ -4469,7 +4476,6 @@
             ]
           },
           "SourceHealth": {
-            "additionalProperties": false,
             "description": "Whether the sources behind one result were healthy, read from the same\nlibrary state the result came from: a later refresh never changes it.",
             "properties": {
               "findings": {
