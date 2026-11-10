@@ -64,7 +64,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "cite",
         title: "Format a citation",
-        description: "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+        description: "Write a citation or reference list from search's refs. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
         input: cite_input,
         output: cite_output,
         reads_library: true,
@@ -73,7 +73,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "styles",
         title: "Find citation styles",
-        description: "Find the style ids cite accepts by journal or style name, among every official CSL style, and list the languages a citation can be written in. With no query, the common styles come first.",
+        description: "Find the style ids cite accepts by journal or style name, and the languages a citation can be written in. With no query, the common styles come first.",
         input: styles_input,
         output: styles_output,
         reads_library: false,
@@ -228,9 +228,9 @@ fn search_input() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "query": {"type": "string", "minLength": 1, "description": "A few distinctive words: an author surname, title words, a year or a citation key."},
+            "query": {"type": "string", "minLength": 1, "description": "Distinctive words: an author surname, title words, a year or a key."},
             "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10},
-            "shorthand": {"type": "boolean", "description": "Read a signal before the words (\"see\") and a page after them (\"417\"), as the picker does, and return them as cited_with."}
+            "shorthand": {"type": "boolean", "description": "Read \"see\" before and \"417\" after the words into cited_with."}
         },
         "required": ["query"],
         "additionalProperties": false
@@ -243,7 +243,7 @@ fn record_output() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "ref": {"type": "string", "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone."},
+            "ref": {"type": "string", "description": "Pass to show or cite: the key, or an id when no key is unique."},
             "type": {}, "title": {}, "year": {}, "container": {}, "doi": {},
             "authors": {"type": "array", "items": {"type": "string"}}
         },
@@ -266,8 +266,8 @@ fn search_output() -> Value {
             "hits": {"type": "array", "items": hit},
             "complete": {"type": "boolean", "description": "False when more references match than these; use more distinctive words."},
             "missing": {"type": "array", "items": {"type": "string"}, "description": "Keys or identifiers from a pasted list that the library does not hold."},
-            "cited_with": {"type": "object", "properties": {"prefix": {"type": "string"}, "locator": {"type": "string"}}, "description": "With shorthand: the prefix and locator read around the words, as cite item fields."},
-            "searched_for": {"type": "string", "description": "With shorthand: the words searched for once those were read."},
+            "cited_with": {"type": "object", "description": "prefix and locator for the cite item"},
+            "searched_for": {"type": "string"},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."}
         },
@@ -446,7 +446,7 @@ fn cite_input() -> Value {
             "locator": {"type": "string", "description": "Where in the work, such as \"p. 12\", \"ch. 3\" or \"12-14\"."},
             "prefix": {"type": "string", "description": "Text before this item, such as \"see\"."},
             "suffix": {"type": "string", "description": "Text after this item."},
-            "omit_author": {"type": "boolean", "description": "Leave out the author, for when the sentence already names them."}
+            "omit_author": {"type": "boolean", "description": "Leave out the author the sentence already names."}
         },
         "required": ["ref"],
         "additionalProperties": false
@@ -455,10 +455,10 @@ fn cite_input() -> Value {
         "type": "object",
         "properties": {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
-            "format": {"type": "string", "enum": format_ids(), "description": "An output: a key syntax for the document's own citation processor, or one of the common styles."},
+            "format": {"type": "string", "enum": format_ids(), "description": "A key syntax for the document's own processor, or a common style."},
             "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
             "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
-            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
+            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "bibliography-only writes reference-list entries and needs a style."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}
         },
