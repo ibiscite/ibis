@@ -94,8 +94,8 @@ pub(super) fn scrub(text: &str) -> String {
     text.chars().filter(|character| !is_hidden(*character)).collect()
 }
 
-/// The id form of a ref: a marker no citation key is expected to start with, the
-/// library, then the record's key, escaped so nothing from the library arrives unread.
+/// The id form of a ref: a reserved marker, the library, then the record's key,
+/// escaped so nothing from the library arrives unread.
 pub fn reference(id: &ItemRef) -> String {
     let mut text = format!("{ID_MARK}{}/", id.library.as_str());
     for byte in id.key.bytes() {
@@ -125,7 +125,7 @@ pub(super) fn parse(reference: &str) -> (ItemSelector, Option<&str>) {
 }
 
 /// Text that is not an id is a citation key.
-fn selector(reference: &str) -> ItemSelector {
+pub(super) fn selector(reference: &str) -> ItemSelector {
     reference
         .strip_prefix(ID_MARK)
         .and_then(|id| id.split_once('/'))

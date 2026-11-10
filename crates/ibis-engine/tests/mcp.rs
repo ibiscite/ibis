@@ -264,6 +264,29 @@ fn cite_formats_by_key_or_by_id() {
 }
 
 #[test]
+fn a_citation_key_shaped_like_an_item_id_can_be_shown_and_cited() {
+    let (_dir, engine) = library(
+        "invented.json",
+        &json!([{
+            "id": "invented-1",
+            "citation-key": "id:abc/def",
+            "type": "book",
+            "title": "Chromatic Lantern Almanac",
+            "author": [{"family": "Vale", "given": "Ada"}],
+            "issued": {"date-parts": [[2024]]}
+        }])
+        .to_string(),
+    );
+    let found = tool(&engine, "search", json!({"query":"Chromatic Lantern Almanac"}));
+    let hit = &found["structuredContent"]["hits"][0];
+    assert_eq!(hit["title"], "Chromatic Lantern Almanac");
+    let shown = tool(&engine, "show", json!({"ref":hit["ref"]}));
+    assert_eq!(shown["structuredContent"]["title"], hit["title"], "{shown}");
+    let cited = tool(&engine, "cite", json!({"items":[{"ref":hit["ref"]}]}));
+    assert_eq!(cited["structuredContent"]["text"], "(Vale, 2024)", "{cited}");
+}
+
+#[test]
 fn cite_for_an_app_uses_that_apps_output_and_says_how_it_arrives() {
     let (_dir, engine) = engine();
     let cite = |arguments| tool(&engine, "cite", arguments);

@@ -452,6 +452,16 @@ fn command() -> Command {
     )
     .mut_subcommands(|subcommand| subcommand.arg(file.clone()).arg(group.clone()).arg(profile.clone()))
 }
+
+/// Help, version and early errors may have no parsed matches.
+fn json_before_options_end(arguments: &[std::ffi::OsString]) -> bool {
+    arguments
+        .iter()
+        .skip(1)
+        .take_while(|argument| *argument != "--")
+        .any(|argument| argument == "--json")
+}
+
 /// Native entry point, with streams kept explicit for script and terminal clients.
 pub fn run<R: BufRead, W: Write + Send, E: Write>(
     arguments: Vec<std::ffi::OsString>,
@@ -463,7 +473,7 @@ pub fn run<R: BufRead, W: Write + Send, E: Write>(
     match Engine::new() {
         Ok(engine) => run_engine(engine, arguments, input, output, errors, mode, Defaults::App),
         Err(error) => emit(
-            arguments.iter().any(|argument| argument == "--json"),
+            json_before_options_end(&arguments),
             Err(error.into()),
             None,
             "",
@@ -513,11 +523,11 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             70
         };
     }
-    let json = arguments.iter().any(|argument| argument == "--json");
     let program = program_name(arguments.first());
     let matches = match command().bin_name(&program).try_get_matches_from(arguments.iter()) {
         Ok(matches) => matches,
         Err(error) => {
+            let json = json_before_options_end(&arguments);
             if matches!(
                 error.kind(),
                 clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
@@ -574,6 +584,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
             );
         }
     };
+    let json = matches.get_flag("json");
     if defaults == Defaults::App {
         // Doctor writes nothing: without a saved key its ids last only for its report.
         ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
