@@ -86,12 +86,17 @@
         },
         "provenance": {
           "type": "string"
+        },
+        "source_health": {
+          "description": "How cleanly the libraries behind this answer were read. Tell the user about each finding.",
+          "type": "object"
         }
       },
       "required": [
         "hits",
         "complete",
-        "provenance"
+        "provenance",
+        "source_health"
       ],
       "type": "object"
     },
@@ -146,6 +151,9 @@
           "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone.",
           "type": "string"
         },
+        "source_health": {
+          "type": "object"
+        },
         "title": {},
         "type": {},
         "year": {}
@@ -153,7 +161,8 @@
       "required": [
         "ref",
         "fields",
-        "provenance"
+        "provenance",
+        "source_health"
       ],
       "type": "object"
     },
@@ -297,6 +306,9 @@
         "provenance": {
           "type": "string"
         },
+        "source_health": {
+          "type": "object"
+        },
         "text": {
           "type": "string"
         },
@@ -308,7 +320,8 @@
         "text",
         "notices",
         "losses",
-        "provenance"
+        "provenance",
+        "source_health"
       ],
       "type": "object"
     },

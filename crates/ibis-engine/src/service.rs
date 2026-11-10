@@ -130,6 +130,8 @@ pub struct SearchResult {
     /// The locator read off the end of the query, when one was asked for and found.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub locator: Option<ibis_core::locator::TrailingLocator>,
+    /// The libraries searched, as they were when these hits were found.
+    pub source_health: health::SourceHealth,
 }
 #[derive(Debug, Clone, Serialize, JsonSchema)]
 pub struct StylesResult {
@@ -183,6 +185,19 @@ pub struct DispatchResult {
     pub source_findings: bool,
 }
 impl DispatchResult {
+    /// Put the health of the sources this result consulted beside its data. A
+    /// problem with one makes an otherwise clean result a finding.
+    pub fn with_health(mut self, health: &health::SourceHealth) -> Result<Self, EngineError> {
+        let Value::Object(data) = &mut self.data else {
+            return Err(error(ErrorCode::Internal));
+        };
+        data.insert("source_health".into(), value(health)?);
+        self.source_findings = !health.is_ok();
+        if self.source_findings && self.exit_code == ExitCode::Ok {
+            self.exit_code = ExitCode::Findings;
+        }
+        self.bounded()
+    }
     /// Every frontend shares the same serialized result budget.
     pub fn bounded(self) -> Result<Self, EngineError> {
         crate::wire::encode(&self.data, crate::protocol::MAX_RESULT_BYTES)
@@ -362,29 +377,25 @@ impl Engine {
             None,
         )
     }
-    /// Apply source health to the process outcome while preserving canonical data.
-    pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
-        result.source_findings = self
-            .state()?
-            .libraries
-            .values()
-            .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
-        if result.source_findings && result.exit_code == ExitCode::Ok {
-            result.exit_code = ExitCode::Findings;
-        }
-        result.bounded()
-    }
     /// Whether Zotero's references here came from its closed database, the
     /// only read a profile choice affects.
     pub fn zotero_read_closed(&self) -> bool {
         self.resources.read_closed()
     }
     pub fn libraries(&self) -> Result<LibrariesResult, EngineError> {
-        Ok(LibrariesResult {
-            libraries: self.state()?.libraries.values().cloned().collect(),
-            zotero_profiles: None,
-            zotero_installed: None,
-            zotero_groups: None,
+        Ok(self.libraries_checked()?.value)
+    }
+    /// The libraries, with the health of every one of them.
+    pub fn libraries_checked(&self) -> Result<health::Checked<LibrariesResult>, EngineError> {
+        let state = self.state()?;
+        Ok(health::Checked {
+            source_health: health::SourceHealth::of(state.libraries.values()),
+            value: LibrariesResult {
+                libraries: state.libraries.values().cloned().collect(),
+                zotero_profiles: None,
+                zotero_installed: None,
+                zotero_groups: None,
+            },
         })
     }
     pub fn search(&self, request: &SearchRequest, cancel: &Cancellation) -> Result<SearchResult, EngineError> {
@@ -403,6 +414,12 @@ impl Engine {
         {
             return Err(error(ErrorCode::NotFound));
         }
+        let source_health = health::SourceHealth::of(state.libraries.values().filter(|library| {
+            request
+                .libraries
+                .as_ref()
+                .is_none_or(|scope| scope.contains(&library.id))
+        }));
         let pasted = state
             .index
             .pasted_list(&request.query, request.libraries.as_deref(), &|| cancel.is_cancelled())
@@ -442,8 +459,10 @@ impl Engine {
             list: Option<&'a PastedList>,
             #[serde(skip_serializing_if = "Option::is_none")]
             locator: Option<&'a ibis_core::locator::TrailingLocator>,
+            source_health: &'a health::SourceHealth,
         }
         let view = SearchView {
+            source_health: &source_health,
             snapshot: state.index.snapshot().fingerprints(),
             list: list.as_ref(),
             locator: locator.as_ref(),
@@ -475,20 +494,38 @@ impl Engine {
                 })
                 .collect(),
             locator,
+            source_health,
         })
     }
     pub fn show(&self, request: &ShowRequest) -> Result<SnapshotObject, EngineError> {
+        Ok(self.show_checked(request)?.value)
+    }
+    /// The object, with the health of the libraries the lookup read.
+    pub fn show_checked(&self, request: &ShowRequest) -> Result<health::Checked<SnapshotObject>, EngineError> {
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &state.libraries, &request.item)?;
         ensure_budget(selected)?;
-        Ok(selected.clone())
+        Ok(health::Checked {
+            source_health: consulted(&state, &request.item, &selected.object.id().library),
+            value: selected.clone(),
+        })
     }
     pub fn cite_keys(
         &self,
         request: &KeyCitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
-        self.cite(&self.key_citation_request(request, cancel)?, cancel)
+        Ok(self.cite_keys_checked(request, cancel)?.value)
+    }
+    /// The citation, with the health of every library: finding a key reads them all.
+    pub fn cite_keys_checked(
+        &self,
+        request: &KeyCitationRequest,
+        cancel: &Cancellation,
+    ) -> Result<health::Checked<CitationResult>, EngineError> {
+        Ok(self
+            .prepare_consulting(&self.key_citation_request(request, cancel)?, true, cancel)?
+            .into_checked())
     }
     fn key_citation_request(
         &self,
@@ -580,71 +617,73 @@ impl Engine {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let data = match method {
-            Method::Libraries => match if params.is_null() {
-                LibrariesRequest::List
-            } else {
-                parameters::<LibrariesRequest>(params)?
-            } {
-                LibrariesRequest::List => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero {
-                    libraries,
-                    profile,
-                    reload,
-                } => {
-                    self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
-                    value(self.libraries()?)?
+            Method::Libraries => {
+                let request = if params.is_null() {
+                    LibrariesRequest::List
+                } else {
+                    parameters::<LibrariesRequest>(params)?
+                };
+                let (profiles, groups) = match request {
+                    LibrariesRequest::List => (None, None),
+                    LibrariesRequest::OpenZotero {
+                        libraries,
+                        profile,
+                        reload,
+                    } => {
+                        self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
+                        (None, None)
+                    }
+                    LibrariesRequest::ZoteroProfiles => (Some(self.zotero_profiles().unwrap_or_default()), None),
+                    LibrariesRequest::ZoteroGroups => (None, Some(self.zotero_groups()?)),
+                    LibrariesRequest::OpenFile { path } => {
+                        self.open_file(&path, cancel)?;
+                        (None, None)
+                    }
+                    LibrariesRequest::Reload { library } => {
+                        self.reload_files(library.as_ref(), cancel)?;
+                        (None, None)
+                    }
+                };
+                let mut listed = self.libraries_checked()?;
+                listed.value.zotero_installed = profiles.is_some().then(ibis_sources::zotero_source::installed);
+                listed.value.zotero_profiles = profiles;
+                listed.value.zotero_groups = groups;
+                cancel.check()?;
+                return checked(listed, ExitCode::Ok);
+            }
+            Method::Search => {
+                let result = self.search(&parameters(params)?, cancel)?;
+                return DispatchResult {
+                    data: value(&result)?,
+                    exit_code: ExitCode::Ok,
+                    text: None,
+                    source_findings: false,
                 }
-                LibrariesRequest::ZoteroProfiles => value(LibrariesResult {
-                    zotero_profiles: Some(self.zotero_profiles().unwrap_or_default()),
-                    zotero_installed: Some(ibis_sources::zotero_source::installed()),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::ZoteroGroups => value(LibrariesResult {
-                    zotero_groups: Some(self.zotero_groups()?),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::OpenFile { path } => {
-                    self.open_file(&path, cancel)?;
-                    value(self.libraries()?)?
-                }
-                LibrariesRequest::Reload { library } => {
-                    self.reload_files(library.as_ref(), cancel)?;
-                    value(self.libraries()?)?
-                }
-            },
-            Method::Search => value(self.search(&parameters(params)?, cancel)?)?,
-            Method::Show => value(self.show(&parameters(params)?)?)?,
+                .with_health(&result.source_health);
+            }
+            Method::Show => return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok),
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
-                let result = self.cite(&request, cancel)?;
-                return self.finalize(DispatchResult::citation(result, request.items.len())?);
+                let checked = self.prepare_citation(&request, cancel)?.into_checked();
+                return DispatchResult::citation(checked.value, request.items.len())?
+                    .with_health(&checked.source_health);
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;
-                let exit_code = if result.settled() {
+                let exit_code = if result.value.settled() {
                     ExitCode::Ok
                 } else {
                     ExitCode::Findings
                 };
-                return self.finalize(DispatchResult {
-                    data: value(result)?,
-                    exit_code,
-                    text: None,
-                    source_findings: false,
-                });
+                return checked(result, exit_code);
             }
             Method::Entry => {
-                let result = self.entry(&parameters(params)?, cancel)?;
-                let exit_code = match result {
+                let result = self.entry_checked(&parameters(params)?, cancel)?;
+                let exit_code = match result.value {
                     EntryResult::Entry { .. } => ExitCode::Ok,
                     EntryResult::Refused { .. } => ExitCode::Findings,
                 };
-                return self.finalize(DispatchResult {
-                    data: value(result)?,
-                    exit_code,
-                    text: None,
-                    source_findings: false,
-                });
+                return checked(result, exit_code);
             }
             Method::Styles => value(self.styles(&parameters(params)?)?)?,
             Method::Outputs => {
@@ -667,13 +706,34 @@ impl Engine {
             }
         };
         cancel.check()?;
-        self.finalize(DispatchResult {
+        // Styles, outputs and schemas read no library, so no library's health bears on them.
+        DispatchResult {
             data,
             exit_code: ExitCode::Ok,
             text: None,
             source_findings: false,
-        })
+        }
+        .bounded()
     }
+}
+/// A result and its sources' health, as dispatch sends them.
+fn checked<T: Serialize>(result: health::Checked<T>, exit_code: ExitCode) -> Result<DispatchResult, EngineError> {
+    DispatchResult {
+        data: value(&result.value)?,
+        exit_code,
+        text: None,
+        source_findings: false,
+    }
+    .with_health(&result.source_health)
+}
+/// The libraries a lookup read: every one for a key, the record's own for an id.
+fn consulted(state: &State, selector: &ItemSelector, library: &LibraryId) -> health::SourceHealth {
+    health::SourceHealth::of(
+        state
+            .libraries
+            .values()
+            .filter(|info| matches!(selector, ItemSelector::Key(_)) || &info.id == library),
+    )
 }
 impl State {
     fn with_failure(&self, library: &LibraryId, failure: EngineError) -> Result<Self, EngineError> {
@@ -861,12 +921,12 @@ pub(crate) fn error(code: ErrorCode) -> EngineError {
 }
 fn response_schema(method: Method) -> Value {
     match method {
-        Method::Libraries => schema_for!(LibrariesResult),
+        Method::Libraries => schema_for!(health::Checked<LibrariesResult>),
         Method::Search => schema_for!(SearchResult),
-        Method::Show => schema_for!(SnapshotObject),
-        Method::Cite => schema_for!(CitationResult),
-        Method::Project => schema_for!(ProjectResult),
-        Method::Entry => schema_for!(EntryResult),
+        Method::Show => schema_for!(health::Checked<SnapshotObject>),
+        Method::Cite => schema_for!(health::Checked<CitationResult>),
+        Method::Project => schema_for!(health::Checked<ProjectResult>),
+        Method::Entry => schema_for!(health::Checked<EntryResult>),
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
         _ => schema_for!(Value),

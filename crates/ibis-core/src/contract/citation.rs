@@ -284,7 +284,7 @@ impl CitationError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum ItemOutcome {
     Rendered { item: usize },
     Refused { item: usize, error: CitationError },
@@ -309,7 +309,6 @@ pub enum LossReason {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Loss {
     /// Zero-based request index; None describes a request-wide loss.
     pub item: Option<usize>,
@@ -336,7 +335,6 @@ pub enum CitationWarningCode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CitationWarning {
     pub item: usize,
     pub code: CitationWarningCode,
@@ -355,7 +353,6 @@ impl Notice {
 /// Output-only passive presentation. The smaller request TextRun contract stays
 /// independent of the additional styles a citation processor may produce.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayRun {
     pub text: String,
     #[serde(default)]
@@ -376,7 +373,6 @@ fn is_false(value: &bool) -> bool {
 
 /// One display group owns ordered text leaves; shared punctuation has no item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayNode {
     pub item: Option<usize>,
     pub content: Vec<DisplayRun>,
@@ -384,13 +380,13 @@ pub struct DisplayNode {
 
 /// A bounded-depth tree: root -> ownership groups -> styled text leaves.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayTree {
     pub nodes: Vec<DisplayNode>,
 }
 
+/// Results, unlike requests, accept fields they do not know, so a client keeps
+/// working when a newer engine adds one (decision 0028).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CitationResult {
     pub text: String,
     pub html: Option<String>,
@@ -760,5 +756,22 @@ mod tests {
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","children":[]})).is_err());
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","script":"both"})).is_err());
         assert!(serde_json::from_value::<OutputSpec>(json!({"kind":"key","syntax":"invented"})).is_err());
+    }
+
+    #[test]
+    fn a_result_from_a_newer_engine_parses_with_its_extra_fields() {
+        let result = CitationResult::new(
+            "[@one]".into(),
+            None,
+            None,
+            DisplayTree::default(),
+            vec![ItemOutcome::Rendered { item: 0 }],
+            vec![],
+            vec![],
+        );
+        let mut wire = serde_json::to_value(&result).unwrap();
+        wire["source_health"] = json!({"status":"ok","findings":[]});
+        wire["outcomes"][0]["added"] = json!(true);
+        assert_eq!(serde_json::from_value::<CitationResult>(wire).unwrap(), result);
     }
 }

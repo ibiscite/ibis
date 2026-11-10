@@ -4,6 +4,7 @@
 //! a fixed error code, then what to change, with nothing from the library.
 use super::view;
 use crate::catalogue::Audience;
+use crate::health::{Checked, SourceFinding, SourceHealth};
 use crate::outputs;
 use crate::request::{ItemSelector, SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine};
@@ -194,20 +195,26 @@ fn known(arguments: &Map<String, Value>, schema: &Value, tool: &str) -> Result<(
 }
 
 /// Sentences about the libraries behind an answer, when something could change what it means.
-fn library_notes(engine: &Engine) -> Result<Vec<String>, EngineError> {
+fn library_notes(engine: &Engine, health: &SourceHealth) -> Result<Vec<String>, EngineError> {
     let libraries = engine.libraries()?.libraries;
     let mut notes = vec![];
     if libraries.iter().all(|library| library.objects == 0) {
         notes.push("The open library holds no references.".to_owned());
     }
-    if libraries.iter().any(|library| library.refresh_error.is_some()) {
+    let found = |refresh: bool| {
+        health
+            .findings
+            .iter()
+            .any(|finding| matches!(finding, SourceFinding::RefreshFailed { .. }) == refresh)
+    };
+    if found(true) {
         notes.push(
             "A library changed and could not be read again, so this answer comes from its last good copy. Ask the user to check it."
                 .to_owned(),
         );
     }
     // Sources report a skipped entry under several warning codes, so any warning counts.
-    if libraries.iter().any(|library| library.warnings_total > 0) {
+    if found(false) {
         notes.push(
             "The library has warnings, so entries may be missing or incomplete, for example two entries with one citation key. `ibis libraries` lists them for the user."
                 .to_owned(),
@@ -216,12 +223,25 @@ fn library_notes(engine: &Engine) -> Result<Vec<String>, EngineError> {
     Ok(notes)
 }
 
-fn with_library_notes(mut answer: Value, engine: &Engine) -> Result<Value, Refusal> {
-    let notes = library_notes(engine)?;
+/// The answer with the health of the libraries it came from, as `ibis --json`
+/// and RPC give it, and sentences about it for the agent to pass on.
+fn with_library_notes(mut answer: Value, engine: &Engine, health: &SourceHealth) -> Result<Value, Refusal> {
+    let notes = library_notes(engine, health)?;
     if !notes.is_empty() {
         answer["library_notes"] = json!(notes);
     }
+    answer["source_health"] = json!(health);
     Ok(answer)
+}
+
+/// The same health `ibis --json` and RPC give, for the libraries behind the answer.
+fn health_output(described: bool) -> Value {
+    let mut health = json!({"type": "object"});
+    if described {
+        health["description"] =
+            json!("How cleanly the libraries behind this answer were read. Tell the user about each finding.");
+    }
+    health
 }
 
 fn search_input() -> Value {
@@ -266,9 +286,10 @@ fn search_output() -> Value {
             "complete": {"type": "boolean", "description": "False when more references match than these; use more distinctive words."},
             "missing": {"type": "array", "items": {"type": "string"}, "description": "Keys or identifiers from a pasted list that the library does not hold."},
             "provenance": {"type": "string"},
-            "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."}
+            "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."},
+            "source_health": health_output(true)
         },
-        "required": ["hits", "complete", "provenance"]
+        "required": ["hits", "complete", "provenance", "source_health"]
     })
 }
 
@@ -327,7 +348,7 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
     if let Some(list) = result.list.as_ref().filter(|list| !list.missing.is_empty()) {
         answer["missing"] = json!(list.missing.iter().map(|key| view::clean(key)).collect::<Vec<_>>());
     }
-    with_library_notes(answer, engine)
+    with_library_notes(answer, engine, &result.source_health)
 }
 
 /// A ref for each object: its citation key when that selects it alone and reads
@@ -378,12 +399,16 @@ fn show_output() -> Value {
         json!({"type": "object", "description": "Every other citable field, under its CSL name."});
     shown["properties"]["provenance"] = json!({"type": "string"});
     shown["properties"]["library_notes"] = json!({"type": "array", "items": {"type": "string"}});
-    shown["required"] = json!(["ref", "fields", "provenance"]);
+    shown["properties"]["source_health"] = health_output(false);
+    shown["required"] = json!(["ref", "fields", "provenance", "source_health"]);
     shown
 }
 
 fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
-    let shown = selected(engine, arguments)?;
+    let Checked {
+        value: shown,
+        source_health,
+    } = selected(engine, arguments)?;
     match &shown.object {
         LibraryObject::Record(record) => {
             let citable = view::citable(record);
@@ -392,7 +417,7 @@ fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
             let mut data = view::summary(&citable, reference);
             data.insert("fields".into(), view::details(&citable));
             data.insert("provenance".into(), json!(PROVENANCE));
-            with_library_notes(Value::Object(data), engine)
+            with_library_notes(Value::Object(data), engine, &source_health)
         }
         // Notes, annotations and the rest are not shared with agents.
         _ => Err(EngineError::new(ErrorCode::NotFound).into()),
@@ -400,15 +425,15 @@ fn show(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
 }
 
 /// The record a `ref` names, as long as it still says what search saw.
-fn selected(engine: &Engine, arguments: &Map<String, Value>) -> Result<SnapshotObject, Refusal> {
+fn selected(engine: &Engine, arguments: &Map<String, Value>) -> Result<Checked<SnapshotObject>, Refusal> {
     let reference = arguments
         .get("ref")
         .and_then(Value::as_str)
         .filter(|reference| !reference.is_empty())
         .ok_or_else(|| Refusal::bad("ref must be a ref from search, as text."))?;
     let (item, check) = view::parse(reference);
-    let found = engine.show(&ShowRequest { item })?;
-    if check.is_some_and(|check| !found.fingerprints.cite.as_str().starts_with(check)) {
+    let found = engine.show_checked(&ShowRequest { item })?;
+    if check.is_some_and(|check| !found.value.fingerprints.cite.as_str().starts_with(check)) {
         return Err(Refusal::new(
             ErrorCode::NotFound,
             "This reference changed since search returned it; search again and check it is the one you meant.",
@@ -456,9 +481,10 @@ fn cite_output() -> Value {
             "warnings": {"type": "array"},
             "destination": {"type": "object", "description": "What Ibis does for the app named by for_app, with pasting on and permitted."},
             "provenance": {"type": "string"},
-            "library_notes": {"type": "array", "items": {"type": "string"}}
+            "library_notes": {"type": "array", "items": {"type": "string"}},
+            "source_health": health_output(false)
         },
-        "required": ["text", "notices", "losses", "provenance"]
+        "required": ["text", "notices", "losses", "provenance", "source_health"]
     })
 }
 
@@ -548,17 +574,22 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         .collect::<Result<Vec<_>, _>>()?;
     let count = items.len();
     let keyed = matches!(output, OutputSpec::Key { .. });
-    let result = engine.cite(
-        &CitationRequest {
-            items,
-            form,
-            keep_order: matches!(output, OutputSpec::Key { .. }),
-            output,
-            input_language: None,
-            output_locale: locale,
-        },
-        &Cancellation::default(),
-    )?;
+    let Checked {
+        value: result,
+        source_health,
+    } = engine
+        .prepare_citation(
+            &CitationRequest {
+                items,
+                form,
+                keep_order: matches!(output, OutputSpec::Key { .. }),
+                output,
+                input_language: None,
+                output_locale: locale,
+            },
+            &Cancellation::default(),
+        )?
+        .into_checked();
     // Only a complete citation is handed on; anything less is an error the
     // agent can see, never a partial text it might paste.
     // Fixed-code warnings, notices and losses carry no library data; an agent needs them to know
@@ -588,7 +619,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
     if let Some(language) = &result.language {
         answer["language"] = json!(language);
     }
-    with_library_notes(answer, engine)
+    with_library_notes(answer, engine, &source_health)
 }
 
 /// One entry of `items`, checked against the library it will be cited from:
@@ -598,7 +629,7 @@ fn citation_item(engine: &Engine, item: &Value) -> Result<CitationItem, Refusal>
         .as_object()
         .ok_or_else(|| Refusal::bad("each item must be an object with a ref from search."))?;
     known(fields, &cite_input()["properties"]["items"]["items"], "an item")?;
-    let selected = selected(engine, fields)?;
+    let selected = selected(engine, fields)?.value;
     let text = |name: &str| -> Result<Vec<TextRun>, Refusal> {
         match fields.get(name) {
             None => Ok(vec![]),

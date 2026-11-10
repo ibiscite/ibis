@@ -1192,9 +1192,12 @@ fn run_method<R: BufRead>(
                 })
                 .transpose()?;
             let mut result = if let Some(project) = &writing_project {
-                Ok(project.citation.clone())
+                Ok(ibis_engine::health::Checked {
+                    value: project.citation.clone(),
+                    source_health: project.source_health.clone(),
+                })
             } else {
-                engine.cite_keys(
+                engine.cite_keys_checked(
                     &KeyCitationRequest {
                         keys: keys.clone(),
                         output,
@@ -1234,8 +1237,8 @@ fn run_method<R: BufRead>(
                         |key| key_failure(engine, key, error, libraries_open()),
                     ),
             })?;
-            result.destination = destination;
-            let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
+            result.value.destination = destination;
+            let result = DispatchResult::citation(result.value, keys.len())?.with_health(&result.source_health)?;
             let result = writing_projects::with_check(result, writing_project)?;
             return Ok(Execution::Result(result, Some(citing)));
         }

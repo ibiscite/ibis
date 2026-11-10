@@ -280,6 +280,15 @@ The envelope looks like this:
 - `error.code` is stable and is the thing to branch on. The sentence that explains it,
   naming the argument, key or file at fault, goes to stderr as one `ibis: …` line, in
   both modes. Sentences may be reworded; codes are not.
+- Every result that reads a library (`libraries`, `search`, `show`, `cite`, `entry`,
+  `project`) carries `source_health`: `{"status":"ok","findings":[]}`, or `findings`
+  with one entry per problem in the libraries it read, as they were when it was made.
+  `refresh-failed` means the library changed and could not be read again, so the
+  result used its last good copy; it gives the `error` and `last_successful_read_ms`.
+  `source-warnings` gives the `count` of entries skipped or read with problems. A
+  search reads the libraries it searches, a key every library, an item its own
+  library. Treat a code you don't know as needing review. MCP answers carry the same
+  `source_health`, and `serve --stdio` results do too.
 - stderr also carries notes, for example when a library has warnings. stdout never
   carries anything but the envelope or the plain result.
 - In terminal output, control characters and invisible direction marks from library
@@ -288,7 +297,7 @@ The envelope looks like this:
 | Exit | `error.code` | Meaning |
 | --- | --- | --- |
 | 0 | | Success, including a search that finds nothing. |
-| 1 | | Done with findings: refusals, losses, source warnings or a failed refresh. `ok` is `true` and `data` says what. |
+| 1 | | Done with findings: refusals, losses, or `source_health` findings in a library the result read. `ok` is `true` and `data` says what. |
 | 2 | `usage` | The command line is not valid. |
 | 3 | `bad-input` | The input JSON or a value is not valid. |
 | 4 | `not-found` | A named key, item or library is not there. |

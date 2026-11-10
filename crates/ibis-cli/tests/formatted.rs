@@ -100,7 +100,10 @@ fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), 
                 case.name
             );
             assert!(errors.is_empty());
-            let mut expected_bytes = canonical(&serde_json::to_value(&case.expected)?)?;
+            // Through dispatch, a citation also says its library was read cleanly.
+            let mut healthy = serde_json::to_value(&case.expected)?;
+            healthy["data"]["source_health"] = serde_json::json!({"status":"ok","findings":[]});
+            let mut expected_bytes = canonical(&healthy)?;
             expected_bytes.push(b'\n');
             assert_eq!(output, expected_bytes, "{}", case.name);
         }
@@ -128,7 +131,9 @@ fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), 
         while let Some(frame) = read_frame(&mut frames)? {
             if frame.get("id") == Some(&serde_json::json!(7)) {
                 replies += 1;
-                assert_eq!(canonical(&frame["result"])?, canonical(&expected)?, "{}", case.name);
+                let mut healthy = expected.clone();
+                healthy["source_health"] = serde_json::json!({"status":"ok","findings":[]});
+                assert_eq!(canonical(&frame["result"])?, canonical(&healthy)?, "{}", case.name);
             }
         }
         assert_eq!(replies, 1);

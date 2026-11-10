@@ -54,6 +54,8 @@ pub struct WritingProjectCitation {
     pub citation: CitationResult,
     pub project: Option<ProjectResult>,
     pub assessment: Option<ProjectAssessment>,
+    /// The libraries the citation was made from, as they were then.
+    pub source_health: super::health::SourceHealth,
 }
 impl WritingProjectCitation {
     pub fn schema() -> serde_json::Value {
@@ -126,7 +128,7 @@ impl Engine {
         let mut request = request.clone();
         request.output = project.output.clone();
         let request = self.key_citation_request(&request, cancel)?;
-        self.cite_writing_project_with_policy(project, &request, policy, cancel)
+        self.writing_project_citation(project, &request, policy, true, cancel)
     }
 
     /// The project definition is immutable for this request. Its output is the
@@ -147,11 +149,23 @@ impl Engine {
         policy: ProjectPolicy,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
+        self.writing_project_citation(project, request, policy, false, cancel)
+    }
+
+    fn writing_project_citation(
+        &self,
+        project: &ibis_core::settings::writing_projects::WritingProject,
+        request: &CitationRequest,
+        policy: ProjectPolicy,
+        by_key: bool,
+        cancel: &Cancellation,
+    ) -> Result<WritingProjectCitation, EngineError> {
         ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
             .map_err(|_| error(ErrorCode::BadInput))?;
         let mut request = request.clone();
         request.output = project.output.clone();
-        let prepared = self.prepare_citation(&request, cancel)?;
+        let prepared = self.prepare_consulting(&request, by_key, cancel)?;
+        let source_health = prepared.source_health().clone();
         let mut assessment = None;
         let checked = if prepared.uses_citation_keys() {
             project
@@ -211,20 +225,21 @@ impl Engine {
             citation,
             project: checked,
             assessment,
+            source_health,
         })
     }
     pub(super) fn project(
         &self,
         request: &ProjectRequest,
         cancel: &Cancellation,
-    ) -> Result<ProjectResult, EngineError> {
+    ) -> Result<super::health::Checked<ProjectResult>, EngineError> {
         if request.keys.len() > MAX_KEYS {
             return Err(error(ErrorCode::BadInput));
         }
         cancel.check()?;
         let read = ProjectRead::read(&request.path, None);
         cancel.check()?;
-        self.project_checks(&read, &project_name(&request.path), &request.keys)
+        self.project_checks_checked(&read, &project_name(&request.path), &request.keys)
     }
 
     /// `keys` are compared exactly; a loaded record with that key adds its fields.
@@ -234,6 +249,16 @@ impl Engine {
         name: &str,
         keys: &[String],
     ) -> Result<ProjectResult, EngineError> {
+        Ok(self.project_checks_checked(read, name, keys)?.value)
+    }
+
+    /// The same, with the health of every library: the keys are looked up in all of them.
+    fn project_checks_checked(
+        &self,
+        read: &ProjectRead,
+        name: &str,
+        keys: &[String],
+    ) -> Result<super::health::Checked<ProjectResult>, EngineError> {
         let state = self.state()?;
         let keys = keys
             .iter()
@@ -252,11 +277,14 @@ impl Engine {
                 }
             })
             .collect();
-        Ok(ProjectResult {
-            name: name.to_owned(),
-            keys,
-            problem: read.problem(),
-            damaged_lines: read.damaged_lines().to_vec(),
+        Ok(super::health::Checked {
+            source_health: super::health::SourceHealth::of(state.libraries.values()),
+            value: ProjectResult {
+                name: name.to_owned(),
+                keys,
+                problem: read.problem(),
+                damaged_lines: read.damaged_lines().to_vec(),
+            },
         })
     }
 
@@ -284,40 +312,51 @@ impl Engine {
 
     /// The original entry of one loaded record.
     pub fn original_entry(&self, item: &ItemRef, cancel: &Cancellation) -> Result<EntryResult, EngineError> {
-        self.entry(
-            &EntryRequest {
-                item: ItemSelector::Id(item.clone()),
-            },
-            cancel,
-        )
+        Ok(self
+            .entry_checked(
+                &EntryRequest {
+                    item: ItemSelector::Id(item.clone()),
+                },
+                cancel,
+            )?
+            .value)
     }
 
-    pub(super) fn entry(&self, request: &EntryRequest, cancel: &Cancellation) -> Result<EntryResult, EngineError> {
+    pub(super) fn entry_checked(
+        &self,
+        request: &EntryRequest,
+        cancel: &Cancellation,
+    ) -> Result<super::health::Checked<EntryResult>, EngineError> {
         cancel.check()?;
         let state = self.state()?;
         let selected = select(state.index.snapshot(), &state.libraries, &request.item)?;
+        let source_health = super::consulted(&state, &request.item, &selected.object.id().library);
+        let checked = |value| super::health::Checked {
+            value,
+            source_health: source_health.clone(),
+        };
         let LibraryObject::Record(record) = &selected.object else {
             return Err(error(ErrorCode::NotFound));
         };
         let key = match record.citation_key() {
             Ok(Some(key)) => key.to_owned(),
             _ => {
-                return Ok(EntryResult::Refused {
+                return Ok(checked(EntryResult::Refused {
                     reason: EntryRefusal::NoOriginal,
-                });
+                }));
             }
         };
         let Some(path) = self.file_path(&record.id.library)? else {
-            return Ok(EntryResult::Refused {
+            return Ok(checked(EntryResult::Refused {
                 reason: EntryRefusal::NoOriginal,
-            });
+            }));
         };
         let answer = ibis_sources::original_entry(&path, &record.id, &key, &selected.fingerprints.cite);
         cancel.check()?;
-        Ok(match answer {
+        Ok(checked(match answer {
             Ok(text) => EntryResult::Entry { key, text },
             Err(reason) => EntryResult::Refused { reason },
-        })
+        }))
     }
 
     fn file_path(&self, library: &LibraryId) -> Result<Option<PathBuf>, EngineError> {

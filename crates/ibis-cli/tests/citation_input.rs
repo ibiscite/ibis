@@ -62,7 +62,12 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
                     }
                 });
         assert_eq!(code, expected_code, "{}", case.name);
-        let mut expected = ibis_engine::wire::encode(&serde_json::to_value(&case.expected)?, 16 * 1024 * 1024)?;
+        // A citation also says its library was read cleanly.
+        let mut expected = serde_json::to_value(&case.expected)?;
+        if let Some(data) = expected.get_mut("data") {
+            data["source_health"] = serde_json::json!({"status":"ok","findings":[]});
+        }
+        let mut expected = ibis_engine::wire::encode(&expected, 16 * 1024 * 1024)?;
         expected.push(b'\n');
         assert_eq!(output, expected, "{}", case.name);
         // Errors also say what went wrong on stderr, in one line; successes stay silent there.

@@ -243,7 +243,13 @@ fn golden_citations_are_identical_through_every_front_end() -> Result {
         // Zotero by `formatted.rs` and the source goldens; here every front
         // end must give what the engine gives.
         let expected = match case.request.output {
-            OutputSpec::Key { .. } => serde_json::to_value(&case.expected)?,
+            OutputSpec::Key { .. } => {
+                let mut expected = serde_json::to_value(&case.expected)?;
+                if expected["ok"] == true {
+                    expected["data"]["source_health"] = json!({"status":"ok","findings":[]});
+                }
+                expected
+            }
             _ => call(FrontEnd::Engine, &engine, Method::Cite, &request)?.ok_or("engine")?,
         };
         same(&case.name, &engine, Method::Cite, &request, &expected)?;
@@ -291,6 +297,62 @@ fn reading_methods_are_identical_through_every_front_end() -> Result {
             let expected = call(FrontEnd::Engine, &engine, method, &params)?.ok_or("engine")?;
             same(&case.name, &engine, method, &params, &expected)?;
         }
+    }
+    Ok(())
+}
+
+/// The health of the libraries behind a result reads the same through every
+/// front end and MCP, and a damaged entry makes a clean result a finding.
+#[test]
+fn source_health_is_identical_through_every_front_end_and_mcp() -> Result {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented-damaged.bib");
+    std::fs::write(
+        &path,
+        "@book{lantern,title={Invented Lantern},author={Vale, Ada},year={2026}}\n@misc{broken,title={Missing brace}\n",
+    )?;
+    let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .open_file_observed(&path, &Cancellation::default())
+        .map_err(|_| "open")?;
+    let library = engine.libraries().map_err(|_| "libraries")?.libraries.remove(0).id;
+    let warned = json!({"status":"findings","findings":[{"code":"source-warnings","library":library,"count":1}]});
+    let found = engine
+        .dispatch(Method::Search, &json!({"query":"lantern"}), &Cancellation::default())
+        .map_err(|_| "search")?;
+    let item = found.data["hits"][0]["item"]["object"]["data"]["id"].clone();
+    let cite = json!({"items":[{"item":item}],"output":{"kind":"key","syntax":"pandoc"}});
+    for (method, params) in [
+        (Method::Search, json!({"query":"lantern","limit":10})),
+        (Method::Show, json!({"item":{"by":"key","value":"lantern"}})),
+        (Method::Cite, cite),
+        (Method::Libraries, Value::Null),
+    ] {
+        let expected = call(FrontEnd::Engine, &engine, method, &params)?.ok_or("engine")?;
+        assert_eq!(expected["data"]["source_health"], warned, "{}", method.as_str());
+        same("damaged", &engine, method, &params, &expected)?;
+    }
+    for (tool, arguments) in [
+        ("search", json!({"query":"lantern"})),
+        ("show", json!({"ref":"lantern"})),
+        ("cite", json!({"items":[{"ref":"lantern"}],"format":"pandoc"})),
+    ] {
+        let answer = ibis_engine::mcp::handle(
+            &engine,
+            &mut ibis_engine::mcp::Session::default(),
+            &json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+                "name":tool,"arguments":arguments,
+                "_meta":{
+                    "io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                    "io.modelcontextprotocol/clientCapabilities":{}
+                }
+            }}),
+        )
+        .ok_or("mcp")?;
+        assert_eq!(
+            answer["result"]["structuredContent"]["source_health"], warned,
+            "{tool}: {answer}"
+        );
     }
     Ok(())
 }

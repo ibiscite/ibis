@@ -11,6 +11,7 @@ pub struct PreparedCitation {
     request: CitationRequest,
     result: CitationResult,
     sample: bool,
+    source_health: super::health::SourceHealth,
 }
 impl PreparedCitation {
     /// Caller owns the selected bibliography and binds it to this task's
@@ -88,6 +89,18 @@ impl PreparedCitation {
     }
     pub fn result(&self) -> &CitationResult {
         &self.result
+    }
+    /// The health of the libraries this citation was made from, as they were
+    /// when it was made.
+    pub fn source_health(&self) -> &super::health::SourceHealth {
+        &self.source_health
+    }
+    /// The citation with that health.
+    pub fn into_checked(self) -> super::health::Checked<CitationResult> {
+        super::health::Checked {
+            value: self.result,
+            source_health: self.source_health,
+        }
     }
     pub fn into_result(self) -> CitationResult {
         self.result
@@ -219,8 +232,24 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<PreparedCitation, EngineError> {
+        self.prepare_consulting(request, false, cancel)
+    }
+    /// `every_library` when the items were found by key: a lookup by key reads
+    /// every library, so each one's health bears on the answer.
+    pub(super) fn prepare_consulting(
+        &self,
+        request: &CitationRequest,
+        every_library: bool,
+        cancel: &Cancellation,
+    ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
+        let source_health = super::health::SourceHealth::of(
+            state
+                .libraries
+                .values()
+                .filter(|library| every_library || request.items.iter().any(|pick| pick.item.library == library.id)),
+        );
         let uses_zotero = request.items.iter().any(|pick| {
             state
                 .libraries
@@ -253,6 +282,7 @@ impl Engine {
             request,
             result,
             sample: false,
+            source_health,
         };
         // Formatting takes time, and a Zotero read can begin or finish during it.
         prepared
