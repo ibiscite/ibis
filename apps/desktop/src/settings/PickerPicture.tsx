@@ -37,8 +37,8 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
     )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
-  return <span className="ui-picker-picture" style={shape} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+  // The window's shape as two custom properties; without a frame they are unset and the default applies.
+  return <span className="ui-picker-picture" style={{ "--preview-window-w": frame && `${frame[0] / 16}rem`, "--preview-window-h": frame && `${frame[1] / 16}rem` } as CSSProperties} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

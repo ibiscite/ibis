@@ -84,7 +84,7 @@ test("the native accent adds no row rule of its own: the shared selected-row til
 
 test("selected rows and menu highlights keep WebKit's selection pair on the native accent", () => {
   // Selection is deeper than the accent and follows it (docs/design/foundations.md, Accent and selection).
-  expect(css).toMatch(/@supports \(background: -apple-system-selected-content-background\) and \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window\)\s*\{\s*--selected: -apple-system-selected-content-background;\s*--selected-text: -apple-system-alternate-selected-text;/);
+  expect(css).toMatch(/@supports \(background: -apple-system-selected-content-background\) and \(color: -apple-system-alternate-selected-text\)\s*\{\s*:root\[data-native-accent="true"\]\[data-system="macos"\]:not\(\.notice-window, \[data-accent="ibis"\]\)\s*\{\s*--selected: -apple-system-selected-content-background;\s*--selected-text: -apple-system-alternate-selected-text;/);
   const bridge = css.indexOf("--selected: var(--accent); --selected-text: var(--text-on-accent)");
   expect(bridge).toBeGreaterThan(-1);
   expect(css.indexOf("--selected: -apple-system-selected-content-background")).toBeGreaterThan(bridge);
@@ -107,7 +107,7 @@ test("accent text stays the accent's own colour, moved only as far as contrast n
 });
 
 test("an accent too pale for white fills the primary with the deeper selection pair", () => {
-  expect(css).toMatch(/:root\[data-native-accent-deep="true"\]\[data-system="macos"\]:not\(\.notice-window\) \{\s*--primary: var\(--selected\); --text-on-accent: var\(--selected-text\);/);
+  expect(css).toMatch(/:root\[data-native-accent-deep="true"\]\[data-system="macos"\]:not\(\.notice-window, \[data-accent="ibis"\]\) \{\s*--primary: var\(--selected\); --text-on-accent: var\(--selected-text\);/);
   for (const [rgb, deep] of [[[0, 122 / 255, 1], false], [[.878, .22, .243], false], [[.969, .31, .62], true], [[.549, .549, .549], true], [[1, .776, 0], true]] as const) {
     setNativeAccent(rgb);
     expect(root.hasAttribute("data-native-accent-deep")).toBe(deep);

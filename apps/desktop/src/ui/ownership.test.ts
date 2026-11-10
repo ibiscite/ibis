@@ -199,11 +199,32 @@ function spacingDeclarations(css: string): string[] {
   return [...text.matchAll(/[{;]\s*([a-z][a-z-]*)\s*:\s*([^;{}]+)(?=[;}])/g)]
     .filter(([, property]) => spacing.test(property!)).map(([, property, value]) => `${property}: ${value!.trim()}`);
 }
-/** The style props a component sets: `style={{ name: value }}` and objects passed as style. */
+/** What an element's style prop sets. An element is a lower-case JSX tag; a
+ * component's `style` (a citation style, say) is its own prop. The value must be
+ * an object literal the guard can read: a style passed by reference, built by an
+ * expression, or spread from elsewhere is reported as unreadable, since it could
+ * carry spacing. Custom properties ("--name") are values, not spacing. */
 function spacingProps(source: string): string[] {
   const text = source.replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "");
-  return [...text.matchAll(/style=\{\{([^}]*)\}\}/g)].flatMap(([, body]) => [...body!.matchAll(/([A-Za-z]+)\s*:/g)].map(([, name]) => name!))
-    .filter((name) => spacingProp.test(name));
+  const found: string[] = [];
+  for (const match of text.matchAll(/<([A-Za-z][\w.]*)\b[^<>]*?\sstyle=\{/g)) {
+    if (!/^[a-z]/.test(match[1]!)) continue;
+    // The expression inside style={…}, to its balancing brace.
+    let depth = 1, end = match.index! + match[0].length;
+    const start = end;
+    for (; end < text.length && depth; end++) {
+      if (text[end] === "{") depth++;
+      else if (text[end] === "}") depth--;
+    }
+    const expression = text.slice(start, end - 1).trim().replace(/\s+as\s+[\w.<>[\]|& ]+$/, "").trim();
+    if (!expression.startsWith("{") || !expression.endsWith("}")) { found.push(`unreadable ${expression}`); continue; }
+    const body = expression.slice(1, -1);
+    if (/\.\.\./.test(body)) found.push(`unreadable ${expression}`);
+    for (const [, quote, name] of body.matchAll(/(?:^|,)\s*(["']?)([-\w]+)\1\s*:/g)) {
+      if (!quote || !name!.startsWith("--")) { if (spacingProp.test(name!)) found.push(name!); }
+    }
+  }
+  return found;
 }
 const screenSheets = list("src/", /\.css$/).filter((name) => !isPart(name) && !values.has(name));
 const screenSources = list("src/", /\.tsx$/).filter((name) => !isPart(name) && !/\.test\.tsx$/.test(name));
@@ -220,6 +241,11 @@ test("the layout guard catches spacing in a sheet or a style prop, and passes wh
   expect(spacingDeclarations("@media (max-width: 400px) { .a { display: grid; grid-area: x; --row-height: var(--row-compact); color: red } }")).toEqual([]);
   expect(spacingProps('<span style={{ marginInlineStart: 4, colorScheme: "dark" }} /><b style={{ width: "1rem" }} />')).toEqual(["marginInlineStart", "width"]);
   expect(spacingProps("<span style={{ backgroundImage: `url(x)` }} />")).toEqual([]);
+  // A style by reference, behind a cast, or spread can carry spacing the guard can't see.
+  expect(spacingProps("<div style={layout} /><div style={{ padding: 24 } as CSSProperties} /><p style={{ ...base, color: \"red\" }} />"))
+    .toEqual(["unreadable layout", "padding", "unreadable { ...base, color: \"red\" }"]);
+  // Custom properties are values; a component's own style prop is not an element's.
+  expect(spacingProps('<span style={{ "--preview-window-w": w } as CSSProperties} /><PickerOverlays style={styleOf(format)} />')).toEqual([]);
 });
 
 /** A screen's own look: spacing, colour or a corner it declares instead of taking it from a part. */

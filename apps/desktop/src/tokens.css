@@ -335,13 +335,14 @@
 }
 /* END generated website palette */
 
-/* The Mac's own accent (nativeAccent.ts), once a validated native snapshot arrives. */
+/* The Mac's own accent (nativeAccent.ts), once a validated native snapshot arrives,
+   unless Look chose Ibis scarlet: that choice wins whatever the order of the rules. */
 /* Private inputs are unset until a validated native snapshot arrives. These
    guards preserve all system pairs, in high contrast. */
 :root { --native-accent-fill: initial; --native-accent-on: initial; --native-accent-light: initial; --native-accent-dark: initial; }
 @supports (color: light-dark(white, black)) {
   @media (prefers-contrast: no-preference) and (forced-colors: none) {
-    :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) {
+    :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window, [data-accent="ibis"]) {
       --accent: var(--native-accent-fill);
       --accent-text: light-dark(var(--native-accent-light), var(--native-accent-dark));
       --text-on-accent: var(--native-accent-on);
@@ -349,12 +350,12 @@
     }
     /* macOS keeps WebKit's selection pair: deeper than the accent, and it follows it. */
     @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
-      :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
+      :root[data-native-accent="true"][data-system="macos"]:not(.notice-window, [data-accent="ibis"]) {
         --selected: -apple-system-selected-content-background;
         --selected-text: -apple-system-alternate-selected-text;
       }
       /* An accent too bright for white text fills the primary with that deeper pair. */
-      :root[data-native-accent-deep="true"][data-system="macos"]:not(.notice-window) {
+      :root[data-native-accent-deep="true"][data-system="macos"]:not(.notice-window, [data-accent="ibis"]) {
         --primary: var(--selected); --text-on-accent: var(--selected-text);
       }
     }
