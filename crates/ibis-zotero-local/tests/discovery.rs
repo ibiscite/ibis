@@ -1,4 +1,4 @@
-use ibis_zotero_local::discovery::{DiscoveryRoots, Origin, Platform, Warning, discover};
+use ibis_zotero_local::discovery::{DiscoveryRoots, Platform, Warning, discover};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -61,7 +61,7 @@ fn platform_preferences_and_default_are_discovered_from_synthetic_roots() {
         let root = profile_root(platform, &sandbox.0, &appdata);
         sandbox.write(&root.join("profiles.ini"), "[General]\nStartWithLastProfile=1\n[Profile0]\nName=synthetic\nIsRelative=1\nPath=Profiles/test.default\nDefault=1\n");
         sandbox.write(&root.join("Profiles/test.default/prefs.js"), prefs);
-        let result = discover(&DiscoveryRoots::new(platform, sandbox.0.clone(), Some(appdata)), None);
+        let result = discover(&DiscoveryRoots::new(platform, sandbox.0.clone(), Some(appdata)));
         assert!(result.warnings.is_empty(), "{:?}", result.warnings);
         assert_eq!(
             result.directories[0].path(),
@@ -70,66 +70,13 @@ fn platform_preferences_and_default_are_discovered_from_synthetic_roots() {
                 .as_deref()
                 .unwrap_or(&sandbox.0.join("Zotero"))
         );
-        assert_eq!(
-            result.directories[0].origin(),
-            if expected.is_some() {
-                Origin::Preferences
-            } else {
-                Origin::Default
-            }
-        );
-    }
-}
-
-#[test]
-fn manual_override_bypasses_even_broken_profile_configuration() {
-    let sandbox = Sandbox::new();
-    let roots = DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None);
-    sandbox.write(&sandbox.0.join(".zotero/zotero/profiles.ini"), "broken");
-    let manual = sandbox.0.join("manual");
-    let result = discover(&roots, Some(&manual));
-    assert!(result.warnings.is_empty());
-    assert_eq!(result.directories.len(), 1);
-    assert_eq!(result.directories[0].path(), manual);
-    assert_eq!(result.directories[0].origin(), Origin::Manual);
-    let relative = discover(&roots, Some(Path::new("relative")));
-    assert!(relative.directories.is_empty());
-    assert_eq!(relative.warnings, [Warning::InvalidPath]);
-}
-
-#[test]
-fn windows_manual_override_requires_a_full_drive_or_unc_path() {
-    let roots = DiscoveryRoots::new(Platform::Windows, PathBuf::from("/synthetic"), None);
-    for text in [
-        "\\\\",
-        "\\\\server",
-        "\\\\server\\",
-        "Z:relative",
-        "\\rooted",
-        "\\\\?\\Z:relative",
-        "\\\\?\\UNC\\server",
-        "UNC\\server\\share",
-    ] {
-        let result = discover(&roots, Some(Path::new(text)));
-        assert!(result.directories.is_empty());
-        assert_eq!(result.warnings, [Warning::InvalidPath]);
-    }
-    for text in [
-        "Z:\\synthetic",
-        "\\\\server\\share\\synthetic",
-        "\\\\?\\Z:\\synthetic",
-        "\\\\?\\UNC\\server\\share\\synthetic",
-    ] {
-        let result = discover(&roots, Some(Path::new(text)));
-        assert!(result.warnings.is_empty());
-        assert_eq!(result.directories[0].path(), Path::new(text));
     }
 }
 
 #[test]
 fn missing_registry_uses_the_platform_data_default() {
     let sandbox = Sandbox::new();
-    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None), None);
+    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None));
     assert!(result.warnings.is_empty());
     assert_eq!(result.directories.len(), 1);
     assert_eq!(result.directories[0].path(), sandbox.0.join("Zotero"));
@@ -139,7 +86,7 @@ fn missing_registry_uses_the_platform_data_default() {
 fn paths_are_redacted_from_debug_and_diagnostics() {
     let secret = PathBuf::from("/synthetic-do-not-print");
     let roots = DiscoveryRoots::new(Platform::Linux, secret.clone(), None);
-    let result = discover(&roots, Some(&secret));
+    let result = discover(&roots);
     let debug = format!("{roots:?} {result:?}");
     assert!(!debug.contains("synthetic-do-not-print"));
     assert!(debug.contains("redacted"));
@@ -159,7 +106,7 @@ fn all_relative_and_absolute_profiles_are_considered_and_shared_directories_dedu
     sandbox.write(&root.join("first/prefs.js"), &prefs);
     sandbox.write(&external.join("prefs.js"), &prefs);
     sandbox.write(&root.join("third/prefs.js"), "// default");
-    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None), None);
+    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None));
     assert!(result.warnings.is_empty());
     assert_eq!(
         result.directories.iter().map(|d| d.path()).collect::<Vec<_>>(),
@@ -181,12 +128,11 @@ fn malformed_preferences_do_not_guess_another_library_and_other_profiles_still_l
     );
     sandbox.write(&root.join("good/prefs.js"), "// empty defaults");
     let roots = DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None);
-    let result = discover(&roots, None);
+    let result = discover(&roots);
     assert_eq!(result.warnings, [Warning::UnsupportedPreferences]);
     assert_eq!(result.directories.len(), 1);
-    assert_eq!(result.directories[0].origin(), Origin::Default);
     sandbox.write(&root.join("good/prefs.js"), "eval('never execute preferences')");
-    let result = discover(&roots, None);
+    let result = discover(&roots);
     assert_eq!(result.warnings, [Warning::UnsupportedPreferences]);
     assert!(result.directories.is_empty());
 }
@@ -205,7 +151,7 @@ fn profile_registry_rejects_ambiguous_paths_and_over_limit_profile_counts() {
         "[Profile0]\nIsRelative=1\nPath=first\nPath=second\n",
     ] {
         sandbox.write(&registry, text);
-        let result = discover(&roots, None);
+        let result = discover(&roots);
         assert_eq!(result.warnings, [Warning::InvalidProfiles]);
         assert!(result.directories.is_empty());
     }
@@ -213,7 +159,7 @@ fn profile_registry_rejects_ambiguous_paths_and_over_limit_profile_counts() {
         .map(|i| format!("[Profile{i}]\nIsRelative=1\nPath=profile{i}\n"))
         .collect::<String>();
     sandbox.write(&registry, &text);
-    assert_eq!(discover(&roots, None).warnings, [Warning::TooManyProfiles]);
+    assert_eq!(discover(&roots).warnings, [Warning::TooManyProfiles]);
 }
 
 #[test]
@@ -222,13 +168,13 @@ fn oversized_and_nonregular_configuration_is_rejected_with_fixed_diagnostics() {
     let root = sandbox.0.join(".zotero/zotero");
     let roots = DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None);
     sandbox.write(&root.join("profiles.ini"), &"x".repeat(64 * 1024 + 1));
-    assert_eq!(discover(&roots, None).warnings, [Warning::ConfigurationTooLarge]);
+    assert_eq!(discover(&roots).warnings, [Warning::ConfigurationTooLarge]);
     sandbox.write(&root.join("profiles.ini"), "[Profile0]\nIsRelative=1\nPath=first\n");
     sandbox.write(&root.join("first/prefs.js"), &"x".repeat(1024 * 1024 + 1));
-    assert_eq!(discover(&roots, None).warnings, [Warning::ConfigurationTooLarge]);
+    assert_eq!(discover(&roots).warnings, [Warning::ConfigurationTooLarge]);
     std::fs::remove_file(root.join("first/prefs.js")).unwrap_or_else(|_| panic!("remove owned fixture"));
     std::fs::create_dir(root.join("first/prefs.js")).unwrap_or_else(|_| panic!("create owned fixture directory"));
-    let result = discover(&roots, None);
+    let result = discover(&roots);
     assert_eq!(result.warnings, [Warning::NotRegularFile]);
     assert!(!format!("{} {result:?}", result.warnings[0]).contains(&sandbox.0.to_string_lossy().to_string()));
 }
@@ -242,7 +188,7 @@ fn symlinked_preferences_are_rejected_before_opening_the_target() {
     std::fs::create_dir(root.join("first")).unwrap_or_else(|_| panic!("create owned fixture profile"));
     std::os::unix::fs::symlink(sandbox.0.join("absent"), root.join("first/prefs.js"))
         .unwrap_or_else(|_| panic!("create owned fixture link"));
-    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None), None);
+    let result = discover(&DiscoveryRoots::new(Platform::Linux, sandbox.0.clone(), None));
     assert_eq!(result.warnings, [Warning::NotRegularFile]);
     assert!(result.directories.is_empty());
 }
@@ -272,7 +218,7 @@ fn several_profiles_are_offered_by_a_name_that_is_safe_and_unique() {
          [Profile1]\nName=Wo\u{202e}rk\nIsRelative=1\nPath=b\n\
          [Profile2]\nIsRelative=1\nPath=c\n",
     );
-    let found = discover(&roots, None);
+    let found = discover(&roots);
     assert_eq!(found.warnings, []);
     let names: Vec<_> = found.directories.iter().map(|found| found.name()).collect();
     assert_eq!(names, ["Work", "Work (2)", "Profile 3"]);
