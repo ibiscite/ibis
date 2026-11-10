@@ -7,6 +7,9 @@ name: CodeQL
 on:
   push:
     branches: [main]
+    # A release tag gets its own scan, in its own concurrency group, so a newer
+    # merge cancelling main's scan never leaves a shipped commit unscanned.
+    tags: ["v*"]
   schedule:
     - cron: "17 4 * * 1"
   workflow_dispatch:
