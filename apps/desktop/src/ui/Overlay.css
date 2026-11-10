@@ -19,6 +19,9 @@
 .ui-overlay[data-placement="bottom"] { animation-name: ui-overlay-down; }
 .ui-overlay[data-placement="top"] { animation-name: ui-overlay-up; }
 @keyframes ui-overlay-in { from { opacity: 0; } }
+/* Leaving is instant: React Aria waits for a running animation before it
+   unmounts, so an overlay dismissed mid-entrance must stop animating at once. */
+.ui-overlay[data-exiting] { animation: none; }
 @keyframes ui-overlay-down { from { opacity: 0; clip-path: inset(0 0 70% 0 round var(--r-large)); } to { clip-path: inset(0 0 0 0 round var(--r-large)); } }
 @keyframes ui-overlay-up { from { opacity: 0; clip-path: inset(70% 0 0 0 round var(--r-large)); } to { clip-path: inset(0 0 0 0 round var(--r-large)); } }
 @media (prefers-reduced-motion: reduce) {
