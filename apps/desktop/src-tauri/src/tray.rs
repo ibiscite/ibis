@@ -24,12 +24,17 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
         (LibraryState::Reloading, _, Some(name)) => format!("Reading {name}…"),
         // The last loaded references are still searched: say "not updated", not "could not be opened".
         (_, Some(error), _) if status.stale && status.kept_references => {
-            let reason = status
-                .error_reason
-                .map(|reason| reason.to_string())
-                .unwrap_or_else(|| error.clone());
             let name = status.snapshot_name.as_deref().unwrap_or("Library");
-            format!("{name}: {} references, not updated: {reason}", status.references)
+            let retained = format!("{name}: {} references, not updated", status.references);
+            if status.source_is_requested {
+                let reason = status
+                    .error_reason
+                    .map(|reason| reason.to_string())
+                    .unwrap_or_else(|| error.clone());
+                format!("{retained}: {reason}")
+            } else {
+                retained
+            }
         }
         (_, Some(error), _) => format!("Library could not be opened: {error}"),
         (_, None, Some(name)) => {
