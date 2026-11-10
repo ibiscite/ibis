@@ -5,7 +5,7 @@ import "./CitationToken.css";
 
 type TokenButton = Omit<ComponentProps<typeof Button>, "variant" | "size" | "className" | "label" | "keys" | "icon" | "children"> & { children: ReactNode };
 
-/** One reference in the citation line (decision 0043): its own words from the
+/** One reference in the citation line (decision 0044): its own words from the
  * output on a soft fill, a quiet handle when those words do not name it, and,
  * for a reference in the citation, a small × that is always shown. Neither the
  * fill nor the × is pasted. The line owns the token's keys. */

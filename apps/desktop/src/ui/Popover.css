@@ -1,4 +1,4 @@
-/* An anchored popover (decision 0043): the menus' material and corner, an arrow on
+/* An anchored popover (decision 0044): the menus' material and corner, an arrow on
    what it is about, and growth from that point. The motion tokens answer Reduce
    Motion: --press-scale is 1 there, so it only fades. */
 .ui-popover { box-sizing: border-box; display: flex; inline-size: min(var(--inspector-width), calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
