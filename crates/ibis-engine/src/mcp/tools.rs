@@ -436,10 +436,10 @@ fn cite_input() -> Value {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
             "format": {"type": "string", "enum": format_ids(), "description": "An output: a key syntax for the document's own citation processor, or one of the common styles."},
             "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
-            "locale": {"type": "string", "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own."},
+            "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
-            "keep_order": {"type": "boolean", "description": "Keep the items' order where a style would sort them. Key syntaxes always keep it."},
-            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; format or style apply when it has none of its own."}
+            "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
+            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}
         },
         "required": ["items"],
         "additionalProperties": false
