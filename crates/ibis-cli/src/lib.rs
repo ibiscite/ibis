@@ -7,7 +7,6 @@ use serde_json::{Value, json};
 use std::{
     io::{BufRead, Read, Write},
     path::{Path, PathBuf},
-    time::Duration,
 };
 mod app_libraries;
 mod completions;
@@ -700,22 +699,10 @@ fn source_values<T: Clone + Eq + Send + Sync + 'static>(matches: &ArgMatches, id
 }
 
 /// A failure keeps its contract code, and so its exit code; the message is for people only.
-/// Runs a filesystem wait on its own thread for at most the two seconds that
-/// docs/architecture.md allows, so a stalled disk cannot hold a command. A
-/// one-shot command leaves at most one such call behind before it exits.
+/// Runs a filesystem wait for at most the two seconds that docs/architecture.md
+/// allows, in the pool library reads share, so a stalled disk cannot hold a command.
 pub(crate) fn bounded<T: Send + 'static>(operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    bounded_for(Duration::from_secs(2), operation)
-}
-
-fn bounded_for<T: Send + 'static>(timeout: Duration, operation: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("ibis-bounded-io".into())
-        .spawn(move || {
-            let _ = sender.send(operation());
-        })
-        .ok()?;
-    receiver.recv_timeout(timeout).ok()
+    ibis_engine::inspect_io(operation)
 }
 
 struct Failure {
@@ -1580,14 +1567,6 @@ fn terminal_display(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    #[test]
-    fn a_stalled_wait_gives_up_at_its_deadline() {
-        assert_eq!(bounded(|| 7), Some(7));
-        let (release, held) = std::sync::mpsc::channel::<()>();
-        assert!(bounded_for(Duration::ZERO, move || held.recv_timeout(Duration::from_secs(5))).is_none());
-        drop(release);
-    }
-
     #[test]
     fn an_agent_never_reads_the_zotero_profile_names_a_person_does() {
         let error = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
