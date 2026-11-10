@@ -30,7 +30,7 @@ fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, &'sta
                 id: item.item.clone(),
                 cite: item.expected_cite.clone()?,
                 form: None,
-                page_input: None,
+                locator_input: None,
                 locator: item.locator.clone().map(Into::into),
             })
         })
@@ -204,14 +204,16 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
             }
         );
         let entries = crate::output::listed(output).is_some_and(|listed| listed.info().entries);
-        for form in ["normal", "narrative", "year-only"] {
+        for form in ["normal", "narrative", "author-only", "year-only", "full"] {
             for page in ["12", "12–15"] {
                 let mut request = case.request.clone();
                 let pick = &mut request.items[0];
                 pick.expected_cite = Some(case.library.objects()[0].fingerprints.cite.clone());
                 pick.form = match form {
                     "narrative" => Some(CitationForm::Narrative),
+                    "author-only" => Some(CitationForm::AuthorOnly),
                     "year-only" => Some(CitationForm::YearOnly),
+                    "full" => Some(CitationForm::Full),
                     _ => None,
                 };
                 pick.suppress_author = false;
@@ -255,20 +257,23 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                     Ok(())
                 })
                 .map_err(|e| e.to_string())?;
-                if entries {
+                // A reference entry or the name alone has no place for a page, and says so.
+                if entries || matches!(form, "author-only" | "full") && !preview.text.contains("12") {
                     assert!(
                         preview
                             .warnings
                             .iter()
-                            .any(|warning| warning.contains("page or location"))
+                            .any(|warning| warning.contains("page or location")),
+                        "{output} {form} {page}: {:?}",
+                        preview.warnings
                     );
                 } else {
-                    assert!(preview.text.contains("12"));
+                    assert!(preview.text.contains("12"), "{output} {form} {page}: {}", preview.text);
                     if page.contains('–') {
                         assert!(preview.text.contains("15"));
                     }
                     if style {
-                        assert_eq!(preview.text.contains("Taylor"), form != "year-only");
+                        assert_eq!(preview.text.contains("Taylor"), form != "year-only", "{output} {form}");
                     }
                 }
                 if biblatex && form == "narrative" {
@@ -329,7 +334,7 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
                 .preview(
                     file.reserve_preview(),
                     vec![serde_json::from_value(json!({
-                        "id":pick.object.id(), "cite":pick.fingerprints.cite, "page_input":typed
+                        "id":pick.object.id(), "cite":pick.fingerprints.cite, "locator_input":{"label":"page","text":typed}
                     }))?],
                     output,
                 )
@@ -388,7 +393,7 @@ fn invalid_page_editor_input_refuses_preview_and_copy_with_an_actionable_message
             "pp. 12 appendix",
         ] {
             let selection = serde_json::from_value(json!({"id":pick.object.id(), "cite":pick.fingerprints.cite,
-                "page_input":value}))?;
+                "locator_input":{"label":"page","text":value}}))?;
             let mut writes = 0;
             let outcome = file
                 .preview(file.reserve_preview(), vec![selection], output)
@@ -411,7 +416,7 @@ fn invalid_page_editor_input_refuses_preview_and_copy_with_an_actionable_message
 }
 
 #[test]
-fn page_editor_input_cannot_override_a_canonical_locator() -> Result<(), Box<dyn std::error::Error>> {
+fn typed_locator_input_cannot_override_a_canonical_locator() -> Result<(), Box<dyn std::error::Error>> {
     let case = cases()?
         .into_iter()
         .find(|case| case.name == "02-pandoc")
@@ -419,14 +424,14 @@ fn page_editor_input_cannot_override_a_canonical_locator() -> Result<(), Box<dyn
     let file = FileLibrary::from_engine(engine_for(&case)?);
     let pick = &case.library.objects()[0];
     let selection = serde_json::from_value(json!({"id":pick.object.id(),"cite":pick.fingerprints.cite,
-        "locator":{"label":"page","value":"S.12"},"page_input":"12"}))?;
+        "locator":{"label":"page","value":"S.12"},"locator_input":{"label":"page","text":"12"}}))?;
     let error = file
         .preview(file.reserve_preview(), vec![selection], "pandoc")
         .err()
         .ok_or("ambiguous page input was accepted")?;
     assert_eq!(
         error.to_string(),
-        "Reference 1: Page editor input and a captured locator cannot be combined."
+        "Reference 1: a typed locator and a captured locator cannot be combined."
     );
     Ok(())
 }
@@ -732,6 +737,133 @@ fn source_file_goldens_preview_and_copy_as_pinned_zotero_formats_them() -> Resul
         }
         // Four styles in their normal form and a numbered one as a reference list.
         assert_eq!(replayed, 5, "{source}");
+    }
+    Ok(())
+}
+
+#[test]
+fn typed_locators_of_every_type_and_kept_order_match_the_engine() -> Result<(), Box<dyn std::error::Error>> {
+    use ibis_core::contract::{Locator as EngineLocator, LocatorTerm};
+    let case = cases()?
+        .into_iter()
+        .find(|case| case.name == "02-pandoc")
+        .ok_or("case")?;
+    let engine = engine_for(&case)?;
+    let file = FileLibrary::from_engine(engine.clone());
+    let pick = &case.library.objects()[0];
+    let cite = |locator: EngineLocator, output: &str| -> Result<CitationResult, Box<dyn std::error::Error>> {
+        let mut request = case.request.clone();
+        request.items.truncate(1);
+        request.items[0].expected_cite = Some(pick.fingerprints.cite.clone());
+        request.items[0].locator = Some(locator);
+        request.output = crate::output::spec(output).clone();
+        request.keep_order = matches!(request.output, OutputSpec::Key { .. });
+        engine
+            .cite(&request, &Cancellation::default())
+            .map_err(|_| "cite".into())
+    };
+    let typed = |label: LocatorTerm, text: &str, output: &str| {
+        let selection = serde_json::from_value(json!({"id":pick.object.id(),"cite":pick.fingerprints.cite,
+            "locator_input":{"label":label,"text":text}}))?;
+        file.preview(file.reserve_preview(), vec![selection], output)
+            .map_err(|error| -> Box<dyn std::error::Error> { error.to_string().into() })
+    };
+    for output in ["pandoc", "apa", "chicago-author-date"] {
+        // Every CSL locator type, with a range, as the locator field sends it.
+        for term in LocatorTerm::ALL {
+            let expected = cite(
+                EngineLocator {
+                    term,
+                    value: "3–5".into(),
+                },
+                output,
+            )?;
+            let preview = typed(term, "3–5", output)?;
+            assert_eq!(preview.text, expected.text, "{output} {term:?}");
+            assert_eq!(
+                preview.content_hash,
+                expected.content_hash.as_str(),
+                "{output} {term:?}"
+            );
+        }
+        // A typed label names the type, whatever the field's pop-up said.
+        let expected = cite(
+            EngineLocator {
+                term: LocatorTerm::Chapter,
+                value: "3".into(),
+            },
+            output,
+        )?;
+        assert_eq!(
+            typed(LocatorTerm::Page, "ch. 3", output)?.text,
+            expected.text,
+            "{output}"
+        );
+    }
+    let refused = typed(LocatorTerm::Page, "chap.", "pandoc")
+        .err()
+        .ok_or("an empty chapter was cited")?;
+    assert_eq!(
+        refused.to_string(),
+        "Reference 1: Chapter needs a value. Enter one after the label, or clear the locator."
+    );
+    Ok(())
+}
+
+#[test]
+fn kept_order_gives_the_engines_text_and_a_style_sorts_without_it() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{taylor2026,title={Synthetic signals},author={Taylor, Avery},year={2026}}\n\
+         @book{morgan2025,title={Synthetic noise},author={Morgan, Ann},year={2025}}\n",
+    )?;
+    let engine = Engine::new().map_err(|_| "engine")?.without_file_watches();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-file","path":path}),
+            &Cancellation::default(),
+        )
+        .map_err(|_| "open library")?;
+    let picked = ["taylor2026", "morgan2025"].map(|key| {
+        engine.show(&ibis_engine::request::ShowRequest {
+            item: ibis_engine::request::ItemSelector::Key(key.into()),
+        })
+    });
+    let file = FileLibrary::from_engine(engine.clone());
+    for (keep, text) in [
+        (false, "(Morgan, 2025; Taylor, 2026)"),
+        (true, "(Taylor, 2026; Morgan, 2025)"),
+    ] {
+        let mut items = vec![];
+        let mut selections = vec![];
+        for shown in &picked {
+            let shown = shown.as_ref().map_err(|_| "show")?;
+            items.push(json!({"item":shown.object.id(),"expected_cite":shown.fingerprints.cite}));
+            selections.push(serde_json::from_value::<FileSelection>(
+                json!({"id":shown.object.id(),"cite":shown.fingerprints.cite}),
+            )?);
+        }
+        let request: CitationRequest =
+            serde_json::from_value(json!({"items":items,"output":{"kind":"csl","style":"apa"},"keep_order":keep}))?;
+        let expected = engine.cite(&request, &Cancellation::default()).map_err(|_| "cite")?;
+        let preview = file
+            .preview_for(
+                file.reserve_preview(),
+                selections,
+                crate::output::spec("apa"),
+                keep,
+                None,
+            )
+            .map_err(|error| error.to_string())?;
+        assert_eq!(
+            (preview.text.as_str(), expected.text.as_str()),
+            (text, text),
+            "keep order {keep}"
+        );
+        assert_eq!(preview.content_hash, expected.content_hash.as_str());
     }
     Ok(())
 }

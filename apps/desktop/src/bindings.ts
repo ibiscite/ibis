@@ -435,8 +435,11 @@ export type FileSelection = {
 	id: ItemRef;
 	/** A canonical locator captured from search; its value is never parsed again. */
 	locator?: Locator | null;
-	/** Raw Page editor text, mutually exclusive with a captured locator. */
-	page_input?: string | null;
+	/**
+	 * Raw locator field text and its chosen type, mutually exclusive with a
+	 * captured locator.
+	 */
+	locator_input?: LocatorInput | null;
 	/** Literal text; only the engine escapes and formats it. */
 	prefix?: string | null;
 	suffix?: string | null;
@@ -550,6 +553,15 @@ export type Locator = {
 	label: LocatorTerm;
 	/** Canonical value, including literal text preserved by the engine. */
 	value: string;
+};
+
+/**
+ * What a person typed in a reference's locator field, with the type its pop-up
+ * shows. Only the engine reads it: a typed label (`ch. 3`) names the type.
+ */
+export type LocatorInput = {
+	label: LocatorTerm;
+	text: string;
 };
 
 /** The engine's interpretation, shown so the person can search as typed. */
@@ -787,7 +799,7 @@ export type ReferenceDetails = {
 	forms: FormOption[];
 };
 
-export type ReferenceForm = "normal" | "narrative" | "year-only";
+export type ReferenceForm = "normal" | "narrative" | "author-only" | "year-only" | "full";
 
 /**
  * One setting a restore changes. Values are as the settings file writes

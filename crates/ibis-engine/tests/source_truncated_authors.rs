@@ -26,6 +26,7 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                         output: OutputSpec::Csl { style: style.into() },
                         form,
                         output_locale: None,
+                        keep_order: false,
                     },
                     &cancel,
                 )
@@ -50,6 +51,7 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                         output: OutputSpec::Csl { style: style.into() },
                         form,
                         output_locale: None,
+                        keep_order: false,
                     },
                     &cancel,
                 )
@@ -79,6 +81,7 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                 },
                 form: CitationForm::Normal,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )
@@ -111,6 +114,7 @@ fn bibtex_truncated_authors_never_become_a_copyable_author_named_others() {
                 output: OutputSpec::Csl { style: "apa".into() },
                 form: CitationForm::Normal,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )

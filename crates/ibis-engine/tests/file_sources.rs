@@ -41,6 +41,7 @@ fn file_to_search_to_citation_uses_one_private_source_owner() {
                 },
                 form: CitationForm::Normal,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )
@@ -301,6 +302,7 @@ fn a_repeated_key_is_named_and_selects_nothing_until_it_is_fixed() {
                 },
                 form: CitationForm::Normal,
                 output_locale: None,
+                keep_order: false,
             },
             &cancel,
         )

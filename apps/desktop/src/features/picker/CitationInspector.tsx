@@ -80,14 +80,14 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose}
     footer={actions} reading={reading && pdf !== null}
     document={reading && pdf && reference && onChange ? <Reader key={pdf.id} source={pdf} title={reference.title || reference.key} page={reference.locator?.label === "page" ? reference.locator.value : ""}
-      onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "page-editor" } : null })} onClose={() => setReading(false)} /> : undefined}
+      onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} onClose={() => setReading(false)} /> : undefined}
     onKeyDown={(event) => {
       const target = event.target as HTMLElement;
       if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
       event.preventDefault(); onRemove(reference);
     }}>
     {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
-      onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "page-editor" } : null })}
+      onPageChange={(value) => onChange(reference, { locator: value.trim() ? { label: "page", value, input: "editor" } : null })}
       onFormChange={(form) => onChange(reference, { form })}
       prefix={reference.prefix ?? ""} suffix={reference.suffix ?? ""}
       onPrefixChange={(prefix) => onChange(reference, { prefix })} onSuffixChange={(suffix) => onChange(reference, { suffix })} onSubmit={onSubmit} />}

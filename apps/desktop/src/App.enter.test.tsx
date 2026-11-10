@@ -104,7 +104,7 @@ test("an empty search keeps the prepared citation, page and Enter available", as
   await act(async () => { closeCitationDetails(); });
   expect(keys().getByRole("button", { name: /Copy/ })).toBeTruthy();
   await enter();
-  expect(copied).toMatchObject([{ items: [{ id: { key: "a" }, locator: null, page_input: "12" }] }]);
+  expect(copied).toMatchObject([{ items: [{ id: { key: "a" }, locator: null, locator_input: { label: "page", text: "12" } }] }]);
 });
 
 test("a completed copy cannot be repeated while hidden; reopening requires fresh Enter", async () => {

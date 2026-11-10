@@ -145,6 +145,30 @@ impl PreparedCitation {
         engine.cite_snapshot(&self.snapshot, &request, cancel)
     }
 
+    /// Whether `item` can take `form` when it is the only reference cited, so a
+    /// form refused in a group can say "only when cited alone" truthfully.
+    pub fn form_alone(
+        &self,
+        engine: &Engine,
+        original_output: &OutputSpec,
+        item: usize,
+        form: CitationForm,
+        cancel: &Cancellation,
+    ) -> Result<bool, EngineError> {
+        let mut request = self.request.clone();
+        request.output = original_output.clone();
+        let mut pick = request
+            .items
+            .get(item)
+            .cloned()
+            .ok_or_else(|| error(ErrorCode::BadInput))?;
+        pick.form = (form != CitationForm::Normal).then_some(form);
+        pick.suppress_author = false;
+        request.items = vec![pick];
+        let result = engine.cite_snapshot(&self.snapshot, &request, cancel)?;
+        Ok(result.outcomes.contains(&ItemOutcome::Rendered { item: 0 }))
+    }
+
     /// Bind sample provenance to every representation before preview or commit.
     /// The marker is fixed text, never source-provided markup. The original
     /// request and source validation stay attached to the marked result.

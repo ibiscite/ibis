@@ -256,6 +256,10 @@
           "minItems": 1,
           "type": "array"
         },
+        "keep_order": {
+          "description": "Keep the items' order where a style would sort them. Key syntaxes always keep it.",
+          "type": "boolean"
+        },
         "locale": {
           "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own.",
           "type": "string"

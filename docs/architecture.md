@@ -196,20 +196,25 @@ longer carries the pre-engine library model, file loaders or citation renderer.
 Shared names, dates, settings choices, discovery and transport rules remain
 where clients still use them.
 
-The picker's small per-reference editor (#1366) sends its captured page and
-Normal, Narrative or Omit author intent through the native preview request.
-The native adapter uses `ibis_core::locator::page_value` only for the separate
-`page_input` field containing raw Page editor text, removing an optional
-page label once before constructing the request. A captured canonical locator
+The picker's small per-reference editor (#1366, #1762) sends its locator, form,
+prefix and suffix through the native preview request, and the order choice as
+`keep_order`, as `ibis cite --keep-order` and the MCP `keep_order` do.
+A typed locator travels as `locator_input`, the field's text with the type its
+pop-up shows; the native adapter reads it only with `ibis_core::locator::read_field`.
+A recognised label at its start names the type itself (`ch. 3` in a Page field
+is chapter 3), and any other text is the value as written, so printed labels
+such as `xii` or `S12` stay literal. A captured canonical locator
 is passed through unchanged, including quoted values such as `S.12` or
 `pages of notes`; form-only edits never turn it back into raw input. Sending
-both a captured locator and raw Page input is refused. Recognised labels with missing or
-invalid values are refused before preparation; they never fall back to literal
+both a captured locator and typed input is refused. Recognised labels with missing or
+invalid values are refused before preparation, naming the type that needs a value;
+they never fall back to literal
 text. The shared numeric grammar accepts Unicode numeric characters, counts
 characters for numeric bounds and keeps four-digit years ambiguous in unlabelled
-searches. Its input length limit still bounds Page validation. The editor keeps
-the raw input. Narrative maps to an item form; Omit author maps to author
-suppression. A single BibLaTeX narrative pick selects `textcite` from the output
+searches. Its input length limit still bounds locator validation. The editor keeps
+the raw input. Each form (normal, narrative, author-only, year-only, full) maps
+to an item form; a citation whose every reference asks for its full entry is
+written as entries. A single BibLaTeX narrative pick selects `textcite` from the output
 family. Other form support and field losses come from the engine; unsupported
 mixed narrative groups are refused, never split into invented clusters. Indexed loss messages
 identify the reference and field. Page/form edits invalidate pending copy and

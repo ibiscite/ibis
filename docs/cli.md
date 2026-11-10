@@ -123,6 +123,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--for-app APP_ID` | Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
+| `--keep-order` | Keep the keys in the order given where a style would sort them |
 | `--locale LOCALE` | Language for --style output, such as de-DE; default the style's own. List them with: ibis styles --locales |
 | `--locator LOCATOR` | Pinpoint the key before it, such as "p. 12", "ch. 3" or "12-14" |
 | `--prefix TEXT` | Text before the key before it, such as "see" |

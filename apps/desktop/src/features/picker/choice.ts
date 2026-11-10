@@ -6,8 +6,9 @@ import { outputName, writesEntries, type OutputId } from "../../format/outputs";
 
 /** A prepared reference freezes its search locator independently of later queries. */
 export type CitationReference = SearchResult & {
-  /** Only Page edits carry input; locators captured from search are canonical. */
-  readonly locator?: (Readonly<Locator> & { readonly input?: "page-editor" }) | null;
+  /** A locator typed in the details carries `input`, and only the engine reads it
+   * (a typed label such as "ch. 3" names its type); one captured from search is canonical. */
+  readonly locator?: (Readonly<Locator> & { readonly input?: "editor" }) | null;
   readonly form?: ReferenceForm;
   readonly prefix?: string;
   readonly suffix?: string;

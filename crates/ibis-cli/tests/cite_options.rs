@@ -173,6 +173,36 @@ fn flags_print_what_each_output_shows_and_report_what_it_cannot() -> Result {
     let (code, text, errors) = run(&["cite", "--style", "apa", "taylor2026", "--prefix", "see"], b"")?;
     assert_eq!((code, text.as_str()), (0, "(see Taylor, 2026)\n"));
     assert!(errors.is_empty(), "{errors}");
+    // A style sorts unless the order is kept; the request says the same.
+    let (code, text, _) = run(&["cite", "--style", "apa", "taylor2026", "morgan2025"], b"")?;
+    assert_eq!((code, text.as_str()), (0, "(Morgan & Lee, 2025; Taylor, 2026)\n"));
+    let (code, text, _) = run(
+        &["cite", "--style", "apa", "--keep-order", "taylor2026", "morgan2025"],
+        b"",
+    )?;
+    assert_eq!((code, text.as_str()), (0, "(Taylor, 2026; Morgan & Lee, 2025)\n"));
+    let request = json!({"items": [picked("taylor2026", &json!({}))?, picked("morgan2025", &json!({}))?],
+        "output": {"kind":"csl","style":"apa"}, "keep_order": true});
+    let (_, from_request, _) = run(&["cite", "--request"], &serde_json::to_vec(&request)?)?;
+    assert_eq!(from_request, text);
+    // The name alone has no place for a page, and says so instead of dropping it.
+    let (code, json_text, _) = run(
+        &["cite", "--style", "apa", "--form", "author-only", "taylor2026", "--locator", "12", "--json"],
+        b"",
+    )?;
+    let envelope: Value = serde_json::from_str(&json_text)?;
+    // A reported loss exits 1, as the Keys case below does, with the text still written.
+    assert_eq!((code, &envelope["data"]["text"]), (1, &json!("Taylor")));
+    assert_eq!(
+        envelope["data"]["losses"],
+        json!([{"item":0,"field":"locator","reason":"unsupported"}])
+    );
+    // One reference asking for its full entry gets it, as the whole citation's form does.
+    let (_, entry, _) = run(&["cite", "--style", "apa", "--form", "full", "taylor2026"], b"")?;
+    let request = json!({"items": [picked("taylor2026", &json!({"form":"full"}))?], "output": {"kind":"csl","style":"apa"}});
+    let (code, from_request, _) = run(&["cite", "--request"], &serde_json::to_vec(&request)?)?;
+    assert_eq!((code, from_request.as_str()), (0, entry.as_str()));
+    assert!(entry.starts_with("Taylor, A. (2026)."), "{entry}");
     let (code, _, errors) = run(&["cite", "--format", "keys", "taylor2026", "--locator", "12"], b"")?;
     assert_eq!(code, 1);
     assert!(

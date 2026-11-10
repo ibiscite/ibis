@@ -523,7 +523,7 @@ impl Engine {
             .collect::<Result<Vec<_>, EngineError>>()?;
         Ok(CitationRequest {
             items,
-            keep_order: matches!(output, OutputSpec::Key { .. }),
+            keep_order: request.keep_order || matches!(output, OutputSpec::Key { .. }),
             output,
             form: request.form,
             input_language: None,

@@ -40,8 +40,8 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
       output, revision: chosenRevision, projectContext, keepOrder: state.keepOrder,
       selection: chosen.map((r) => ({
         id: r.id, cite: r.cite ?? "",
-        locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
-        ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
+        locator: r.locator?.input === "editor" ? null : r.locator ?? null,
+        ...(r.locator?.input === "editor" ? { locator_input: { label: r.locator.label, text: r.locator.value } } : {}),
         ...(r.form ? { form: r.form } : {}),
         ...(r.prefix ? { prefix: r.prefix } : {}), ...(r.suffix ? { suffix: r.suffix } : {}),
       })),

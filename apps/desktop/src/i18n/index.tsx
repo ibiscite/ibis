@@ -14,7 +14,7 @@ const IDS = [
   "keys-title", "keys-close", "keys-action", "keys-shortcut", "shortcuts-filter", "shortcuts-empty",
   "general-small-surprises-label", "general-small-surprises-description", "delight-name", "delight-fact-touch", "delight-fact-scarlet", "delight-fact-mummies", "delight-fact-national", "delight-fact-flight", "undo-action", "undo-remove", "undo-removed", "undo-reset-window", "undo-shortcut",
   "delight-ibis", "delight-tip", "delight-library100", "delight-library1000", "delight-library10000", "delight-empty", "delight-loading", "delight-no-library", "delight-zoom", "delight-citation", "delight-anniversary", "delight-about-words", "canvas-hovered", "canvas-pressed", "canvas-focused",
-  "form-normal", "form-narrative", "form-year-only",
+  "form-normal", "form-narrative", "form-author-only", "form-year-only", "form-full",
   "settings-pages", "settings-general", "settings-shortcuts", "settings-about",
   "general-login-label", "general-login-description", "general-login-place", "general-login-when",
   "general-login-unsupported", "general-login-needs-approval", "general-login-refused", "general-login-unreadable",

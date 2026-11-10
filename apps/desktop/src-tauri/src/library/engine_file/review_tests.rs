@@ -118,7 +118,10 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
                 cite: Fingerprint::of_bytes(b"synthetic"),
                 form: Some(ReferenceForm::Narrative),
                 locator: None,
-                page_input: Some("pp.".into()),
+                locator_input: Some(LocatorInput {
+                    label: LocatorTerm::Page,
+                    text: "pp.".into(),
+                }),
             }],
             "apa",
         )
@@ -489,7 +492,7 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
                 id: row.id.clone(),
                 cite: serde_json::from_value(json!(row.cite))?,
                 locator: None,
-                page_input: None,
+                locator_input: None,
                 form: None,
             }],
             "apa",
@@ -502,11 +505,26 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
     let choices = file
         .details(&preview.ticket, &preview.content_hash, 0)
         .map_err(|_| "details")?;
-    assert_eq!(choices.forms.len(), 3);
-    let year = &choices.forms[2];
-    assert_eq!(year.form, ReferenceForm::YearOnly);
+    let offered: Vec<_> = choices.forms.iter().map(|choice| choice.form).collect();
+    assert_eq!(
+        offered,
+        [
+            ReferenceForm::Normal,
+            ReferenceForm::Narrative,
+            ReferenceForm::AuthorOnly,
+            ReferenceForm::YearOnly,
+            ReferenceForm::Full
+        ]
+    );
+    let form = |wanted| choices.forms.iter().find(|choice| choice.form == wanted).ok_or("form");
+    let year = form(ReferenceForm::YearOnly)?;
     assert_eq!(year.example.as_deref(), Some("(2021)"));
     assert!(year.reason.is_none());
+    // APA writes the name alone and the full entry for one reference cited alone.
+    for wanted in [ReferenceForm::AuthorOnly, ReferenceForm::Full] {
+        let choice = form(wanted)?;
+        assert!(choice.reason.is_none() && choice.example.is_some(), "{wanted:?}");
+    }
     // Metadata is read-only: opening it cannot replace the authoritative copy ticket.
     assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_ok());
     file.reserve_preview();
@@ -543,7 +561,7 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
                     id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
-                    page_input: None,
+                    locator_input: None,
                     form: Some(ReferenceForm::Narrative),
                 }],
                 format,
@@ -557,11 +575,16 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
             details.forms[0].example.as_deref(),
             Some(format!("\\{command}{{Synthetic2021}}").as_str())
         );
+        let year = details
+            .forms
+            .iter()
+            .find(|choice| choice.form == ReferenceForm::YearOnly)
+            .ok_or("year only")?;
         assert_eq!(
-            details.forms[2].example.as_deref(),
+            year.example.as_deref(),
             Some(format!("\\{command}*{{Synthetic2021}}").as_str())
         );
-        assert!(details.forms[2].reason.is_none());
+        assert!(year.reason.is_none());
     }
     Ok(())
 }
@@ -595,7 +618,7 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
                     id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
-                    page_input: None,
+                    locator_input: None,
                     form: None,
                 }],
                 format,

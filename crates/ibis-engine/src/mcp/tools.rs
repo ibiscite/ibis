@@ -438,6 +438,7 @@ fn cite_input() -> Value {
             "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
             "locale": {"type": "string", "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
+            "keep_order": {"type": "boolean", "description": "Keep the items' order where a style would sort them. Key syntaxes always keep it."},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; format or style apply when it has none of its own."}
         },
         "required": ["items"],
@@ -531,6 +532,12 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
             "locale applies only to a style; a key syntax leaves language to the document's processor.",
         ));
     }
+    let keep_order = match arguments.get("keep_order") {
+        None => false,
+        Some(keep) => keep
+            .as_bool()
+            .ok_or_else(|| Refusal::bad("keep_order must be true or false."))?,
+    };
     let form: CitationForm = match arguments.get("form") {
         Some(form) => serde_json::from_value(form.clone())
             .map_err(|_| Refusal::bad("form must be one of the values in this tool's input schema."))?,
@@ -552,7 +559,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         &CitationRequest {
             items,
             form,
-            keep_order: matches!(output, OutputSpec::Key { .. }),
+            keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
             output,
             input_language: None,
             output_locale: locale,

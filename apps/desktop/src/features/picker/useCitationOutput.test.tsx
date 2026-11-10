@@ -119,7 +119,7 @@ test("returning from B to A waits for a fresh ticket instead of reusing A's reti
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   await act(async () => { pending[0]!(preview("Original A")); });
   expect(result.current.shown).toMatchObject({ text: "Original A" });
-  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { label: "page", value: "12", input: "page-editor" } }] });
+  rerender({ ...initial, chosen: [{ ...initial.chosen[0]!, locator: { label: "page", value: "12", input: "editor" } }] });
   rerender(initial);
   expect(result.current.shown).toBeNull();
   await act(async () => { pending[1]!(preview("Retired B")); });
@@ -194,10 +194,10 @@ test("the same page text in the editor retires its canonical receipt and uses th
   await act(async () => { pending[0]?.(preview("canonical S.12")); });
   expect(result.current.shown).toMatchObject({ text: "canonical S.12" });
 
-  rerender({ ...initial, chosen: [{ ...canonical, locator: { label: "page", value: "S.12", input: "page-editor" } }] });
+  rerender({ ...initial, chosen: [{ ...canonical, locator: { label: "page", value: "S.12", input: "editor" } }] });
   expect(result.current.shown).toBeNull();
   expect(previewFileCitation.mock.calls[1]?.[0]).toEqual([
-    { id: canonical.id, cite: canonical.cite, locator: null, page_input: "S.12" },
+    { id: canonical.id, cite: canonical.cite, locator: null, locator_input: { label: "page", text: "S.12" } },
   ]);
   // Applying the captured locator again must restore canonical interpretation.
   rerender(initial);

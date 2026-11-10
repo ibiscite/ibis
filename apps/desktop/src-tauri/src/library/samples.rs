@@ -40,7 +40,7 @@ fn preview_output(file: &engine_file::FileLibrary, term: &str, output: &str) -> 
             id: row.id.clone(),
             cite: serde_json::from_value(json!(row.cite)).unwrap_or_else(|e| panic!("{e}")),
             locator: None,
-            page_input: None,
+            locator_input: None,
             form: None,
         }],
         output,
