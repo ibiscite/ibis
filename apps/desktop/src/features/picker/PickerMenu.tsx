@@ -22,7 +22,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   lastOutcome?: string | null;
   density: Density;
   pinned: boolean;
-  keepOrder: { checked: boolean; toggle: () => void };
+  /** Offered only where the output may sort: a style. */
+  keepOrder: { checked: boolean; toggle: () => void } | null;
   actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered once this app has a citation from this run of Ibis. */
     changeLast?: (() => void) | null;
@@ -52,9 +53,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {project.status && project.stop && <MenuItem id="project-stop" label={say("picker-stop-project", { name: isolate(project.status.name) })} onAction={project.stop} />}
       </MenuSection>}
       {project?.choose && <MenuSeparator />}
-      <MenuSection id="citation-order">
+      {keepOrder && <MenuSection id="citation-order">
         <MenuItem id="keep-order" label={say("picker-keep-my-order")} checked={keepOrder.checked} onAction={keepOrder.toggle} />
-      </MenuSection>
+      </MenuSection>}
       {actions.changeLast && <MenuSection id="citation">
         <MenuItem id="change-last" label={say("picker-change-last-citation")} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />
       </MenuSection>}

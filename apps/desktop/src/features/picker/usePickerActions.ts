@@ -4,7 +4,7 @@ import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
 import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
-import { outputName } from "../../format/outputs";
+import { isStyle, outputName } from "../../format/outputs";
 import { enterLabel, enterPastes } from "./enterLabel";
 import { closestMatchWarnings } from "./rows";
 import type { usePickerSession } from "./usePickerSession";
@@ -105,5 +105,7 @@ export function usePickerActions({
     focusHome();
   };
   // The keys sheet lists Change Last Citation only while there is one to change, as More does.
-  return { keepOrder: { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) }, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
+  // Keys outputs always keep the order, so only a style offers the choice.
+  const keepOrder = isStyle(format) ? { checked: state.keepOrder, toggle: () => send({ type: "keep-order", value: !state.keepOrder }) } : null;
+  return { keepOrder, bindings: lastCitation ? bindings : bindings.filter((binding) => binding.action !== "changeLast"), usingLocator, prepared, canApplyLocator, toggleHighlighted, canChangeLast: Boolean(lastCitation), changeLast, hints: { enter: enterAction, shiftEnter: shiftEnterAction, escape: escapeAction } };
 }
