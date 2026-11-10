@@ -13,8 +13,6 @@ pub(crate) struct StyleTraits {
     /// Its citations are document numbers, by category or by the number itself.
     pub numeric: bool,
     pub citation_has_issued: bool,
-    /// A reachable citation instruction can print the locator's value.
-    pub citation_may_print_locator: bool,
     /// Citations are notes: outside a document, the full first note.
     pub note: bool,
     /// It separates same-author, same-year works with 2020a and 2020b.
@@ -30,7 +28,6 @@ pub(crate) fn style_traits(mut xml: &str) -> StyleTraits {
     let mut stack = Vec::<(&str, Option<&str>)>::new();
     let mut dependencies = BTreeMap::<&str, Vec<&str>>::new();
     let mut issued = Vec::new();
-    let mut locators = Vec::new();
     let mut numbers = Vec::new();
     let mut symbols = Vec::new();
     while let Some(start) = xml.find('<') {
@@ -88,13 +85,6 @@ pub(crate) fn style_traits(mut xml: &str) -> StyleTraits {
             if matches!(name, "date" | "text") && variable.as_deref() == Some("issued") {
                 issued.push(scope);
             }
-            if matches!(name, "text" | "number")
-                && variable
-                    .as_deref()
-                    .is_some_and(|value| value.split_whitespace().any(|field| field == "locator"))
-            {
-                locators.push(scope);
-            }
             if name == "text" && variable.as_deref() == Some("citation-number") {
                 numbers.push(scope);
             }
@@ -114,7 +104,6 @@ pub(crate) fn style_traits(mut xml: &str) -> StyleTraits {
     while let Some(scope) = pending.pop() {
         if seen.insert(scope) {
             traits.citation_has_issued |= issued.contains(&scope);
-            traits.citation_may_print_locator |= locators.contains(&scope);
             traits.numeric |= numbers.contains(&scope);
             traits.symbol_and |= symbols.contains(&scope);
             pending.extend(dependencies.get(scope).into_iter().flatten().copied());
@@ -438,10 +427,8 @@ fn prepare_with_style(
         for (present, field) in [
             (bibliography && !pick.prefix.is_empty(), LossField::Prefix),
             (bibliography && !pick.suffix.is_empty(), LossField::Suffix),
-            (
-                (bibliography || !traits.citation_may_print_locator) && pick.locator.is_some(),
-                LossField::Locator,
-            ),
+            // A citation's locator loss is found by rendering (see bridge.js).
+            (bibliography && pick.locator.is_some(), LossField::Locator),
             (
                 bibliography
                     && (pick.suppress_author || matches!(form, CitationForm::AuthorOnly | CitationForm::YearOnly)),

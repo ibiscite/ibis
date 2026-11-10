@@ -181,6 +181,8 @@ fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
         ("ecology", "(Taylor 2026 p. 777)", false),
         ("ecology-letters", "(Taylor 2026)", true),
         ("ieee", "A. Taylor, Synthetic signals. Imaginary Press, 2026.", true),
+        // Prints a locator for legal references only, not for this book.
+        ("apa-cv", "Taylor, A. (2026). Synthetic signals. Imaginary Press.", true),
     ] {
         request.output = OutputSpec::Csl { style: style.into() };
         let result = formatter.format(&snapshot, &request).unwrap();

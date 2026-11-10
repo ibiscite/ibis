@@ -331,6 +331,7 @@
       engines.set(key, engine);
     }
     const outputs = { status: "rendered" };
+    let raw = null;
     const expected = new Map();
     for (const cite of request.cites) expected.set(cite.id, request.bibliography ? 1 : (expected.get(cite.id) ?? 0) + (cite.narrative ? 2 : 1));
     try {
@@ -367,6 +368,7 @@
           }
         } else {
           output = cluster(engine, request.cites);
+          if (format === "text") raw = output;
           output = writeAffixes(engine, format, output, request.affixes ?? []);
           if (format === "text") {
             const parts = capture.parts.map((part) => {
@@ -384,6 +386,29 @@
         observation = null;
         if (capture.seen.size !== expected.size || [...expected].some(([id, count]) => capture.seen.get(id) !== count)) throw unverified;
         outputs[format] = format === "rtf" ? wrapRtf(output, request.bibliography) : output;
+      }
+      if (!request.bibliography) {
+        // A style can print a locator for some types or forms only. The
+        // evidence is the citation itself: if it reads the same without the
+        // locator, the locator was left out.
+        engine.setOutputFormat("text");
+        outputs.unprinted_locators = request.cites.flatMap((cite, index) => {
+          if (cite.locator === undefined) return [];
+          const { locator, label, ...without } = cite;
+          let same;
+          try {
+            same = cluster(engine, request.cites.map((other, at) => at === index ? without : other)) === raw;
+          } catch (error) {
+            const refused = error === unverified || error instanceof TypeError
+              || (error?.name === "Error" && error.message === "citation formatting failed");
+            if (!refused) throw error;
+            // Nothing prints without it, so the locator printed. The outputs
+            // above are final, but this engine is never reused.
+            engines.delete(key);
+            same = false;
+          }
+          return same ? [index] : [];
+        });
       }
     } catch (error) {
       // A partially evaluated engine must never be reused after a refusal.
