@@ -192,7 +192,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   // The format chooser's preview reads the chosen references' keys and never asks
   // the engine: an engine preview would replace the ticket the shelf copies with.
-  const previewKeys = output.ask?.selection.map((item) => item.cite).filter(Boolean).join("\u0000") ?? "";
+  const previewKeys = output.ask?.selection.map((item) => item.id.key).filter(Boolean).join("\u0000") ?? "";
   const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({

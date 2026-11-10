@@ -20,7 +20,7 @@ export const PICKER_IDS = [
   "palette-preview-example",
   "palette-preview-key",
   "palette-preview-more",
-  "palette-preview-none",
+  "palette-preview-unavailable",
   "palette-words-source",
   "palette-words-reveal-source",
   "palette-words-choose-source",

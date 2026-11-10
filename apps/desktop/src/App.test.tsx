@@ -3395,9 +3395,11 @@ test("the format chooser previews without asking the engine, so Enter still copi
   fireEvent.keyDown(formatButton(), { key: "ArrowDown" });
   const palette = await screen.findByRole("dialog", { name: "Format" });
   const field = within(palette).getByRole("combobox");
+  // The format in use first, then another: the reference's own key in each pattern.
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("[@a]");
+  fireEvent.pointerMove(paletteRow(palette, "Pandoc without brackets"));
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toBe("@a");
   fireEvent.keyDown(field, { key: "ArrowDown" });
-  fireEvent.keyDown(field, { key: "ArrowDown" });
-  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toMatch(/a/);
   await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
   fireEvent.keyDown(field, { key: "Escape" });
   expect(calls.filter((call) => call === "preview_file_citation")).toHaveLength(previews);
