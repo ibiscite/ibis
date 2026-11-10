@@ -1,6 +1,6 @@
 import { Icon } from "../../icons";
 import { Button } from "../../ui/Button";
-import { say } from "../../i18n";
+import { say, type MessageId } from "../../i18n";
 import type { SessionEvent } from "./session";
 import type { CitationReference } from "./choice";
 import type { Typed } from "./choice";
@@ -17,12 +17,12 @@ export function PickerPageToken({ usingLocator, prepared, canApplyLocator, chang
   if (!usingLocator) return null;
   const { locator, prefix } = usingLocator;
   // What was read, as it will be cited: "see · p. 417".
-  const read = [prefix, locator && `${locator.label === "page" ? "p." : locator.label} ${locator.value}`].filter(Boolean).join(" · ");
+  const read = [prefix, locator && `${say(`locator-short-${locator.label}` as MessageId)} ${locator.value}`].filter(Boolean).join(" · ");
   return <span className="search-page-token" role="group" aria-label={say("picker-using-shorthand", { value: read })}>
     <Button variant="quiet" size="small" aria-label={say("picker-search-as-typed")} title={say("picker-search-as-typed")}
       onPress={() => { send({ type: "literal" }); focusHome(); }}>
       <bdi>{read}</bdi><Icon name="close" />
     </Button>
-    {canApplyLocator && prepared && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); focusHome(); }} aria-label={say("picker-apply-locator", { key: prepared.key })} title={say("picker-apply-locator", { key: prepared.key })}>Apply</Button>}
+    {canApplyLocator && prepared && <Button variant="quiet" size="small" onPress={() => { changeLocator(prepared, usingLocator); focusHome(); }} aria-label={say("picker-apply-locator", { key: prepared.key })} title={say("picker-apply-locator", { key: prepared.key })}>{say("picker-apply")}</Button>}
   </span>;
 }

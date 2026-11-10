@@ -233,6 +233,7 @@ export const PICKER_IDS = [
   "picker-snapshot-changed",
   "picker-shared-key",
   "picker-using-shorthand",
+  "picker-apply",
   "picker-search-as-typed",
   "picker-apply-locator",
   "picker-copied",

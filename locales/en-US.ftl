@@ -815,6 +815,7 @@ picker-copy-error = Nothing was copied. Try again, or use Reload.
 picker-snapshot-changed = The library changed. Search again and reselect the references before copying.
 picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
 picker-using-shorthand = Using { $value }
+picker-apply = Apply
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
