@@ -25,7 +25,7 @@ test("it is named for what Ibis knows and shows what Copy writes", async () => {
     copy_session_bibliography: (args) => { sent.push(args); return null; },
   });
   const dialog = await open();
-  expect(within(dialog).getByRole("heading", { name: "Cited since opening" })).toBeTruthy();
+  expect(within(dialog).getByRole("heading", { name: "Cited Since Opening" })).toBeTruthy();
   expect(dialog.textContent).toContain("Ibis can’t see your document");
   expect(dialog.textContent).not.toMatch(/your bibliography|document's bibliography/i);
   await within(dialog).findByText("Morgan, A. Taylor, A.");

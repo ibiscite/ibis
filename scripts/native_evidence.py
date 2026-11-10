@@ -32,9 +32,10 @@ TEXT = {value: "text-" + code for value, code in (
     ("zzqx no such reference", "no-match"), ("Typst", "typst"),
     ("ibis tab probe", "probe"), ("ibis tab probe alternate", "probe-alternate"),
     ("invented journey", "journey"))}
+FORMAT_PANDOC = "Citation format Pandoc"
 CLICKS = {value: "click-" + code for value, code in (
     ("More", "more"), ("Library", "library"), ("Reload Library", "reload"), ("Quit Ibis", "quit"),
-    ("Copy as Pandoc", "format"))}
+    (FORMAT_PANDOC, "format"))}
 
 
 class BundleError(RuntimeError):

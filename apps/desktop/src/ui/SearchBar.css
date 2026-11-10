@@ -17,7 +17,6 @@ main > .search-bar { grid-area: search; }
    cue. Contrast and forced colours restore it below. */
 #search { width: 100%; min-width: 0; height: var(--field-h); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; background: transparent; border: 0; border-radius: var(--r-control); padding: 0; outline-offset: 4px; cursor: text; user-select: text; }
 :root[data-platform] #search { padding-inline-end: calc(var(--search-clear-size) + var(--space-1)); }
-#search::placeholder { color: var(--text-placeholder); }
 #search:focus-visible { outline: none; box-shadow: none; }
 #search::-webkit-search-cancel-button { -webkit-appearance: none; appearance: none; display: none; }
 .search-clear.ui-button { --ring-offset: var(--ring-inside); position: absolute; inset-inline-end: var(--border-width); top: 50%; transform: translateY(-50%); }

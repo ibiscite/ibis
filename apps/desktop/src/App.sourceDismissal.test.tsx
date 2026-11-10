@@ -48,7 +48,7 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
   backend({ library_status: () => library, search: () => [result("picked", "Selected invented reference")], open_library_source: open });
   render(<App />);
   await screen.findByText("Selected invented reference");
-  const trigger = within(search().closest("header")!).getByRole("button", { name: /^Copy as / });
+  const trigger = within(search().closest("header")!).getByRole("button", { name: /^Citation format / });
   fireEvent.click(trigger);
   await screen.findByRole("searchbox");
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("searchbox")));

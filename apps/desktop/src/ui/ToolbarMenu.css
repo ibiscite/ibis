@@ -7,6 +7,8 @@
 /* One narrow column, the same while filtering: a label and a short sample cut
    with "…", never the window's width. */
 .toolbar-menu-popover { width: min(20rem, calc(100vw - 2 * var(--inset))); min-width: 0; max-width: calc(100vw - 2 * var(--inset)); }
+/* A menu of names alone, such as the format menu, is as narrow as a long name. */
+.toolbar-menu-popover[data-named] { width: min(15rem, calc(100vw - 2 * var(--inset))); }
 .toolbar-menu-heading { flex: none; margin: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .toolbar-menu-filter { flex: none; }
 /* One quiet line after the label, cut with "…" at the menu's edge. */

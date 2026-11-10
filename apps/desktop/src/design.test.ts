@@ -165,7 +165,7 @@ const required: [file: string, selector: string, property: string, value: string
   ["tokens.css", ":root[data-system=\"macos\"]", "--titlebar-height", "var(--touch-target)"],
   // The focus ring is solid accent text, so it keeps 3:1 on every surface.
   ["tokens.css", ":root", "--ring", "var(--accent-text)"],
-  ["styles.css", ":focus-visible:not(.ui-button, .menu-item)", "outline", "var(--ring-width) solid var(--ring)"],
+  ["styles.css", ':focus-visible:not(.ui-button, .menu-item, [tabindex="-1"])', "outline", "var(--ring-width) solid var(--ring)"],
   ["tokens.css", ":root, :root[data-platform]", "--ring", "CanvasText", "forced-colors: active"],
   // The short frame at enlarged text drops hints while More stays reachable.
   ["styles.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
