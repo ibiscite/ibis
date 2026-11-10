@@ -17,3 +17,5 @@
 .ui-popover-heading p { margin: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); }
 .ui-popover-note { margin: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ui-popover-actions { display: flex; flex-direction: column; padding-block-start: var(--space-1); border-block-start: var(--border-width) solid var(--separator); }
+/* A setting for what the popover is about, at its foot under a hairline: words, then the switch. */
+.ui-popover-foot { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }

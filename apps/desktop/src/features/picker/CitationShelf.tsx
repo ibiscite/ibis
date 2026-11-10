@@ -10,7 +10,6 @@ import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
-import type { SourceActionProps } from "../../ui/SourceAction";
 import { CitationToken } from "../../ui/CitationToken";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
@@ -49,7 +48,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   actionsRef?: Ref<CitationLineActions | null>;
   /** Moves a reference a place along the line's order (`shown`), as the session does. */
@@ -82,9 +81,6 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   fallbackFocusRef?: RefObject<HTMLElement | null>;
   /** The receipt belongs to this interaction, never to an older preview. */
   copied?: ShelfCopied | null;
-  /** More's first item, offered in the inspector with the same words and keys. */
-  source?: SourceActionProps;
-  onOpenSource?: (reference: CitationReference) => void;
 }) {
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
@@ -127,7 +123,9 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   // a numbered style's entry.
   const entryNotice = outputNotices.includes("full-first-note") ? { short: say("picker-first-note-short"), text: say("picker-first-note") }
     : style && writesEntries(style) ? { short: say("picker-entry-only-short"), text: say("picker-entry-only", { style: outputName(style) }) } : null;
-  const statusLabel = [warnings.length > 0 && say("picker-warning-count", { count: warnings.length }), entryNotice?.short,
+  // The line holds only the citation: what the whole document decides is said in
+  // the footer's words and the details, never as a label here.
+  const statusLabel = [warnings.length > 0 && say("picker-warning-count", { count: warnings.length }),
     partialWarnings.length > 0 && say("picker-closest-matches")].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });
   const inspecting = (reference: CitationReference) => panel?.kind === "reference" && panel.reference === idKey(reference.id);
@@ -203,7 +201,9 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
   const shownOrder = [...new Set(segments?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
-  const lineOrder = shownOrder.length === currentIds.length ? shownOrder : currentIds;
+  // With the order kept (always, for keys) the line is the person's order, which
+  // a move changes at once, so quick moves compose before the next preview shows.
+  const lineOrder = keepOrder || keys || shownOrder.length !== currentIds.length ? currentIds : shownOrder;
   const tokenButton = (key: string) => output.current?.querySelector<HTMLButtonElement>(`.citation-token[data-reference="${CSS.escape(key)}"] > button`) ?? null;
   // A moved token is found again after the line reorders, until the next preview shows it.
   const refocus = useRef<{ key: string; ready: FormattedCitation | null } | null>(null);
@@ -215,6 +215,20 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     if (!keepOrder && style) setOrderNote(say("picker-order-kept"));
     onMoveReference(reference, lineOrder, step);
   };
+  // The token last focused, for More's commands once focus has moved into the menu;
+  // focus going anywhere else forgets it, and cancels a pending refocus.
+  const remembered = useRef<string | null>(null);
+  useEffect(() => {
+    const focused = (event: FocusEvent) => {
+      const node = event.target instanceof HTMLElement ? event.target : null;
+      const token = node?.closest<HTMLElement>(".citation-token")?.dataset.reference ?? null;
+      if (token) remembered.current = token;
+      else if (!node?.closest('[role="menu"], [role="dialog"]')) remembered.current = null;
+      if (refocus.current && token !== refocus.current.key && node !== document.body) refocus.current = null;
+    };
+    document.addEventListener("focusin", focused);
+    return () => document.removeEventListener("focusin", focused);
+  }, []);
   useLayoutEffect(() => {
     const moved = refocus.current;
     if (!moved) return;
@@ -252,12 +266,12 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
         tokens[Math.min(tokens.length - 1, Math.max(0, tokens.indexOf(event.currentTarget as HTMLButtonElement) + step))]?.focus();
       }
     }
-    // The details open above the token; ↓ goes back down to Search.
-    else if (event.key === "ArrowUp" && plain && !event.shiftKey) {
+    // ↓ opens the details, as a pop-up opens its menu; ↑ goes back up to Search.
+    else if (event.key === "ArrowDown" && plain && !event.shiftKey) {
       event.preventDefault();
       if (!inspecting(reference)) open("reference", event.currentTarget as HTMLElement, reference);
     }
-    else if (event.key === "ArrowDown" && plain && !event.shiftKey && fallbackFocusRef?.current?.isConnected) {
+    else if (event.key === "ArrowUp" && plain && !event.shiftKey && fallbackFocusRef?.current?.isConnected) {
       event.preventDefault();
       fallbackFocusRef.current.focus({ preventScroll: true });
     }
@@ -269,7 +283,8 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   };
   const target = () => {
     const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".citation-token")?.dataset.reference;
-    const key = focused ?? (panel?.kind === "reference" ? panel.reference : undefined) ?? lineOrder.at(-1);
+    const key = [focused, remembered.current, panel?.kind === "reference" ? panel.reference : undefined, lineOrder.at(-1)]
+      .find((id) => id && currentIds.includes(id));
     return references.find((reference) => idKey(reference.id) === key);
   };
   useImperativeHandle(actionsRef, () => ({
@@ -283,11 +298,14 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   // adds are shared and quieter, never part of a token, for one reference too.
   const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
   const token = (reference: CitationReference, name: string, words: string, contents: React.ReactNode, describedBy: string | undefined, index?: number) =>
-    <CitationToken key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} built={isSelected(reference)} aria-label={say("citation-details-edit", { reference: name })}
-      handle={names(words, reference) ? undefined : referenceLabel(reference)}
-      aria-describedby={describedBy} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete Shift+ArrowLeft Shift+ArrowRight ArrowUp" : "ArrowUp"}
+    <CitationToken key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={say("citation-details-edit", { reference: name })}
+      handle={names(words, reference) ? undefined : referenceLabel(reference)} title={words}
+      remove={isSelected(reference) ? { label: say("citation-token-remove", { reference: name }), onPress: () => remove(reference) } : undefined}
+      aria-describedby={describedBy} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete Shift+ArrowLeft Shift+ArrowRight ArrowDown" : "ArrowDown"}
       aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
-      onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}>
+      onFocus={(event) => (event.target as HTMLElement).closest(".citation-token")?.scrollIntoView?.({ block: "nearest", inline: "nearest" })}
+      // Enter pastes from a token as it does everywhere; Space or a click opens its details.
+      onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => { if (event.key === "Enter") onSubmit?.(); else edit(reference, event.target as HTMLElement); }}>
       {index === undefined ? contents : <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>}
     </CitationToken>;
   const manySegments = (!single || spanned) && !copied && segments?.map((span, index) => {
@@ -306,15 +324,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     </p>
     <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
     {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
-      moves={edited && isSelected(edited) ? (() => {
-        const at = lineOrder.indexOf(idKey(edited.id)), rtl = getComputedStyle(document.documentElement).direction === "rtl";
-        const earlier = at > 0, later = at >= 0 && at < lineOrder.length - 1;
-        return rtl ? { left: later, right: earlier } : { left: earlier, right: later };
-      })() : { left: false, right: false }}
-      onMove={(side) => { if (edited) move(edited, (side === "right" ? 1 : -1) * (getComputedStyle(document.documentElement).direction === "rtl" ? -1 : 1) as -1 | 1); }}
+      keepOrder={style && onKeepOrder && references.length > 1 && edited && isSelected(edited) ? { checked: keepOrder, onChange: onKeepOrder } : null}
       reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
-      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source}
-      onChange={onChangeReference} onSubmit={onSubmit} onOpenSource={onOpenSource} onRemove={remove} onClose={close} />}
+      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }}
+      onChange={onChangeReference} onSubmit={onSubmit} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}
         tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
@@ -338,14 +351,10 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
         </div>
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
-          {/* Keep My Order, said on the line while a move has it on in a style. */}
-          {!copied && keepOrder && style && references.length > 1 && onKeepOrder && <Button variant="quiet" size="small" className="shelf-order" aria-pressed="true"
-            title={say("picker-your-order-off")} onPress={() => { setOrderNote(""); onKeepOrder(false); }}>{say("picker-your-order")}</Button>}
           {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>
               {warnings.length > 0 && <span>{say("picker-warning-count", { count: warnings.length })}</span>}
-              {entryNotice && <span>{entryNotice.short}</span>}
             </>}</Button>}
           {!copied && !detailsOpen && (shown === "failed" || shown === "stale") && <Button variant="quiet" aria-expanded={false}
             onPress={(event) => open("failure", event.target as HTMLElement, references[0])}>{say("picker-details")}</Button>}

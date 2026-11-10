@@ -81,7 +81,9 @@ export function usePickerActions({
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
     : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
-    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
+    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0))
+      // A style that would sort keeps the person's order: the footer says so, not the line.
+      + (state.keepOrder && writesStyle && offered.length > 1 ? ` · ${say("picker-your-order")}` : "");
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
   const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;

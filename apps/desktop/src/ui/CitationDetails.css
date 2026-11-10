@@ -19,8 +19,15 @@
   .citation-field { min-height: var(--touch-target); }
   .citation-field input { height: var(--touch-target); }
 }
-/* The locator row: its type is a pop-up like Show as, then its value, sharing the
-   control column. */
-.citation-locator { display: flex; gap: var(--space-2); min-width: 0; }
+/* Page: the value field, with the locator type a quiet pop-up at its start, inside
+   the same fill. Text before and after appear when asked for, from quiet links. */
+.citation-locator { display: flex; align-items: center; min-width: 0; border-radius: var(--r-control); background: var(--surface-field); }
+.citation-locator:focus-within { outline: var(--ring-width) solid var(--ring); outline-offset: calc(-1 * var(--ring-width)); }
 .citation-locator > .toolbar-menu-control { flex: none; }
+.citation-locator .citation-locator-type.ui-button { margin-inline-start: var(--space-1); color: var(--text-secondary); }
 .citation-locator > .react-aria-TextField { flex: 1; min-width: 0; }
+.citation-locator input { background: transparent; }
+.citation-locator input:focus-visible { outline: none; }
+.citation-reveals { display: flex; flex-wrap: wrap; gap: var(--space-1); grid-column: 2; }
+.citation-reveal.ui-button { color: var(--accent-text); }
+.citation-field-note { grid-column: 2; padding-block: 0; }

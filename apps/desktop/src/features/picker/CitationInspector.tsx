@@ -5,14 +5,12 @@ import { citationDetails, isCancelled } from "../../api";
 import type { FilePreview, ReferenceDetails } from "../../bindings";
 import { composing } from "../../composition";
 import { Icon } from "../../icons";
-import { keyLabel } from "../../keys";
 import { say } from "../../i18n";
-import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";
 import { CitationDetails } from "../../ui/CitationDetails";
 import { Inspector } from "../../ui/Inspector";
 import { Popover } from "../../ui/Popover";
-import type { SourceActionProps } from "../../ui/SourceAction";
+import { Switch } from "../../ui/Switch";
 import type { CitationDetailsChange, CitationReference } from "./choice";
 import type { InspectorPanel } from "./useCitationInspector";
 
@@ -21,20 +19,18 @@ export type CitationNotes = { entry: { short: string; text: string } | null; out
 
 /** The details of one reference, or the notes on its citation. The column's
  * controls never move: everything that grows with the output sits beside them. */
-export function CitationInspector({ ref, id, panel, anchor, moves, onMove, heading, reference, index, selected, previewReceipt, output, failure, notes, source, onChange, onSubmit, onOpenSource, onRemove, onClose }: {
+export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, reference, index, selected, previewReceipt, output, failure, notes, onChange, onSubmit, onRemove, onClose }: {
   ref: Ref<HTMLElement>; id: string; panel: InspectorPanel; heading: string;
   /** What the details grow from: the reference's token, or the control that opened them. */
   anchor: RefObject<Element | null>;
-  /** Which way the reference can move along the line, as the line shows it. */
-  moves: { left: boolean; right: boolean };
-  onMove: (side: "left" | "right") => void;
+  /** Keep My Order, at the foot only where the style may sort. */
+  keepOrder: { checked: boolean; onChange: (on: boolean) => void } | null;
   reference: CitationReference | undefined; index: number; selected: boolean; previewReceipt?: FilePreview;
   /** Which output the citation is in; a page edit leaves it the same. */
   output: string;
   failure: string | null; notes: CitationNotes;
-  source?: SourceActionProps;
   onChange?: (reference: CitationReference, change: CitationDetailsChange) => void;
-  onSubmit?: () => void; onOpenSource?: (reference: CitationReference) => void;
+  onSubmit?: () => void;
   onRemove: (reference: CitationReference) => void; onClose: () => void;
 }) {
   const [details, setDetails] = useState<{ receipt: FilePreview; output: string; value: ReferenceDetails | "failed" }>();
@@ -87,8 +83,8 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
     || details.output === output && details.value.forms.every((choice) => choice.reason) ? details?.value
     : { current_form: form, forms: details.value.forms.map((choice) => ({ ...choice, reason: null })) };
   const byline = reference ? [reference.authors, reference.container, reference.year].filter(Boolean).join(" · ") : undefined;
-  const mac = currentPlatform() === "macos";
   const fields = reference && onChange && <CitationDetails autoFocus locator={reference.locator ?? null} form={form} choices={choices}
+    choosePage={pdf && !reading ? () => setReading(true) : undefined}
     onLocatorChange={(locator) => onChange(reference, { locator: locator && { ...locator, input: "editor" } })}
     onFormChange={(form) => onChange(reference, { form })}
     prefix={reference.prefix ?? ""} suffix={reference.suffix ?? ""}
@@ -108,10 +104,6 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
         onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} onClose={() => setReading(false)} />}
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
-  const action = (label: string, keys: string, onPress: () => void, isDisabled = false, className = "") =>
-    <Button variant="quiet" className={`inspector-action ${className}`} isDisabled={isDisabled} aria-keyshortcuts={keys} onPress={onPress}>
-      <span>{label}</span><span className="inspector-keys" aria-hidden="true">{keyLabel(keys, mac)}</span>
-    </Button>;
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     className="citation-popover">
     <section ref={attach} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
@@ -122,17 +114,8 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
       {fields}
       {problem}
       {notesShown}
-      {reference && <div className="ui-popover-actions">
-        {selected && (moves.left || moves.right) && <>
-          {action(say("key-move-left"), "Shift+ArrowLeft", () => onMove("left"), !moves.left)}
-          {action(say("key-move-right"), "Shift+ArrowRight", () => onMove("right"), !moves.right)}
-        </>}
-        {pdf && onChange && <Button variant="quiet" className="inspector-action" onPress={() => setReading(true)}><span>{say("reader-show")}</span></Button>}
-        {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
-          <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, mac)}</span>}
-        </Button>}
-        {selected && action(say("key-remove-from-citation"), "Backspace", () => onRemove(reference))}
-      </div>}
+      {keepOrder && <label className="ui-popover-foot"><span>{say("picker-keep-my-order")}</span>
+        <Switch aria-label={say("picker-keep-my-order")} isSelected={keepOrder.checked} onChange={keepOrder.onChange} /></label>}
     </section>
   </Popover>;
 }
