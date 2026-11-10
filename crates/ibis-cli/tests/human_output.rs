@@ -189,81 +189,81 @@ fn a_refused_citation_prints_its_reason_and_fails() -> Result<(), Box<dyn std::e
     Ok(())
 }
 
+/// One command as a person sees it: what they typed, the exit code and both streams.
+fn transcript(entry: &mut String, typed: &str, (code, stdout, stderr): (u8, String, String)) {
+    use std::fmt::Write;
+    let folder = env!("CARGO_TARGET_TMPDIR");
+    let _ = write!(entry, "$ ibis {typed}\nexit {code}\n");
+    for (stream, text) in [("stdout", stdout), ("stderr", stderr)] {
+        for line in text.replace(folder, "<tmp>").lines() {
+            let _ = writeln!(entry, "{stream}| {line}");
+        }
+    }
+    entry.push('\n');
+}
+
+/// Reviewed with `cargo insta review` (docs/testing.md); the wording is the contract.
 #[test]
 fn errors_name_the_key_file_or_argument_and_keep_their_exit_codes() -> Result<(), Box<dyn std::error::Error>> {
     let path = library_file("errors.bib", SAME_AUTHOR_YEAR)?;
-    let (code, text, errors) = run_file(&path, &["cite", "first", "absent"])?;
-    assert_eq!((code, text.as_str()), (4, ""));
-    assert_eq!(
-        errors,
-        "ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>\n"
-    );
-    let (code, _, errors) = run_file(&path, &["show", "absent"])?;
-    assert_eq!(code, 4);
-    assert!(errors.contains("'absent'"), "{errors}");
-
     // One file drops a repeated key with a warning; two open files can share one.
     let one = library_file("duplicate-one.bib", "@book{same,title={Synthetic one},year={2026}}\n")?;
     let two = library_file("duplicate-two.bib", "@book{same,title={Synthetic two},year={2026}}\n")?;
-    let (code, _, errors) = run_file(&one, &["--file", two.to_str().ok_or("path")?, "cite", "same"])?;
-    assert_eq!(code, 3);
-    assert!(
-        errors.contains("several references use the citation key 'same'"),
-        "{errors}"
-    );
-
-    let (code, _, errors) = run(engine()?, &["ibis", "--file", "/invented/missing.bib", "search", "x"])?;
-    assert_eq!(code, 5);
-    assert_eq!(
-        errors,
-        "ibis: cannot open /invented/missing.bib: there is no file at that path; check the spelling or give the full path.\n"
-    );
+    let two = two.to_str().ok_or("path")?;
     let folder = env!("CARGO_TARGET_TMPDIR");
-    let (code, _, errors) = run(engine()?, &["ibis", "--file", folder, "search", "x"])?;
-    assert_ne!(code, 0);
-    assert!(errors.contains("it is a folder"), "{errors}");
-
     let snapshot = Arc::new(Snapshot::new(vec![])?);
     let empty = || Engine::from_snapshot(snapshot.clone());
-    let (code, _, errors) = run(empty(), &["ibis", "show", "anything"])?;
-    assert_eq!(code, 4);
-    assert!(
-        errors.contains("no library is open; add --file <library> or --zotero"),
-        "{errors}"
+    let mut said = String::new();
+    transcript(
+        &mut said,
+        "--file errors.bib cite first absent",
+        run_file(&path, &["cite", "first", "absent"])?,
     );
-    let (_, text, _) = run(empty(), &["ibis", "search", "anything"])?;
-    assert_eq!(text, "No library is open; add --file <library> or --zotero.\n");
-
-    let (code, _, errors) = run(engine()?, &["ibis", "search", "x", "--limit", "5000"])?;
-    assert_eq!(code, 2);
-    assert!(errors.contains("give a whole number from 1 to 1000"), "{errors}");
-    let (code, _, errors) = run(engine()?, &["ibis", "call", "invented"])?;
-    assert_eq!(code, 2);
-    assert!(
-        errors.contains("there is no method 'invented'; choose one of: libraries"),
-        "{errors}"
+    transcript(
+        &mut said,
+        "--file errors.bib show absent",
+        run_file(&path, &["show", "absent"])?,
     );
-    let (code, _, errors) = run(engine()?, &["ibis", "call", "search", "--params", "{"])?;
-    assert_eq!(code, 3);
-    assert!(errors.contains("see: ibis schema search"), "{errors}");
-    let (code, _, errors) = run(engine()?, &["ibis", "search"])?;
-    assert_eq!(code, 2);
-    assert!(errors.starts_with("ibis: the following required arguments"), "{errors}");
-    assert!(errors.contains("<WORDS>"), "{errors}");
-    let (code, _, errors) = run(engine()?, &["ibis", "show", "--id", "nonsense"])?;
-    assert_eq!(code, 3);
-    assert!(errors.contains("--id must be a reference's id"), "{errors}");
-
+    transcript(
+        &mut said,
+        "--file duplicate-one.bib --file duplicate-two.bib cite same",
+        run_file(&one, &["--file", two, "cite", "same"])?,
+    );
+    for (typed, engine, args) in [
+        (
+            "--file /invented/missing.bib search x",
+            engine()?,
+            &["ibis", "--file", "/invented/missing.bib", "search", "x"][..],
+        ),
+        (
+            "--file <tmp> search x",
+            engine()?,
+            &["ibis", "--file", folder, "search", "x"],
+        ),
+        ("show anything (no library)", empty(), &["ibis", "show", "anything"]),
+        ("search anything (no library)", empty(), &["ibis", "search", "anything"]),
+        (
+            "search x --limit 5000",
+            engine()?,
+            &["ibis", "search", "x", "--limit", "5000"],
+        ),
+        ("call invented", engine()?, &["ibis", "call", "invented"]),
+        (
+            "call search --params {",
+            engine()?,
+            &["ibis", "call", "search", "--params", "{"],
+        ),
+        ("search", engine()?, &["ibis", "search"]),
+        ("show --id nonsense", engine()?, &["ibis", "show", "--id", "nonsense"]),
+        ("show absent --json", engine()?, &["ibis", "show", "absent", "--json"]),
+    ] {
+        transcript(&mut said, typed, run(engine, args)?);
+    }
+    insta::assert_snapshot!(said);
     // Scripts and agents get the stable code on stdout and the same sentence on stderr.
     let (_, _, plain) = run(engine()?, &["ibis", "show", "absent"])?;
-    let (code, text, errors) = run(engine()?, &["ibis", "show", "absent", "--json"])?;
-    assert_eq!(code, 4);
+    let (_, _, errors) = run(engine()?, &["ibis", "show", "absent", "--json"])?;
     assert_eq!(errors, plain);
-    assert!(
-        errors.starts_with("ibis: no reference has the citation key 'absent'"),
-        "{errors}"
-    );
-    assert_eq!(text, "{\"error\":{\"code\":\"not-found\"},\"ibis\":1,\"ok\":false}\n");
     Ok(())
 }
 

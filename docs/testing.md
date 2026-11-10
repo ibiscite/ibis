@@ -42,6 +42,13 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   notices, losses and refusals through the engine and CLI. MCP replays the
   subset its tools can express. Agreement covers those cases, not every
   style, language or destination.
+- **Reviewed snapshots:** whole outputs a person reads, such as the CLI's error
+  transcripts and the damaged-file summaries, are `insta` snapshots in each
+  crate's `tests/snapshots/`. Regenerate them with one command,
+  `INSTA_UPDATE=always cargo test -p CRATE` (or `cargo insta review`), and
+  review the `.snap` diff like code. On CI insta never writes a snapshot, so
+  a changed output fails until its new snapshot is committed; `.snap.new`
+  files are ignored by git.
 - **Interface tests:** picker, Settings and shared controls exercise keys,
   selection, delayed replies, saved choices and accessibility structure in a
   simulated document. The [shared IPC fake](../apps/desktop/src/testing/app.ts)

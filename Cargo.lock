@@ -2056,6 +2056,7 @@ dependencies = [
  "ibis-core",
  "ibis-engine",
  "ibis-sources",
+ "insta",
  "serde_json",
  "tempfile",
 ]

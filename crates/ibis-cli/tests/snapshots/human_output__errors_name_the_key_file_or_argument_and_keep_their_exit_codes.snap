@@ -1,0 +1,63 @@
+---
+source: crates/ibis-cli/tests/human_output.rs
+expression: said
+---
+$ ibis --file errors.bib cite first absent
+exit 4
+stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
+
+$ ibis --file errors.bib show absent
+exit 4
+stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
+
+$ ibis --file duplicate-one.bib --file duplicate-two.bib cite same
+exit 3
+stderr| ibis: several references use the citation key 'same'; give each one its own key in your library.
+
+$ ibis --file /invented/missing.bib search x
+exit 5
+stderr| ibis: cannot open /invented/missing.bib: there is no file at that path; check the spelling or give the full path.
+
+$ ibis --file <tmp> search x
+exit 3
+stderr| ibis: cannot open <tmp>: it is a folder; give the library file inside it.
+
+$ ibis show anything (no library)
+exit 4
+stderr| ibis: cannot look up 'anything': no library is open; add --file <library> or --zotero.
+
+$ ibis search anything (no library)
+exit 0
+stdout| No library is open; add --file <library> or --zotero.
+
+$ ibis search x --limit 5000
+exit 2
+stderr| ibis: invalid value '5000' for '--limit <N>': give a whole number from 1 to 1000
+stderr| 
+stderr|   For more information, try '--help'.
+
+$ ibis call invented
+exit 2
+stderr| ibis: there is no method 'invented'; choose one of: libraries, search, show, cite, project, entry, styles, outputs, schema, call
+
+$ ibis call search --params {
+exit 3
+stderr| ibis: --params must be the JSON parameters of search; see: ibis schema search
+
+$ ibis search
+exit 2
+stderr| ibis: the following required arguments were not provided:
+stderr|     <WORDS>
+stderr| 
+stderr|   Usage: ibis search <WORDS>
+stderr| 
+stderr|   For more information, try '--help'.
+
+$ ibis show --id nonsense
+exit 3
+stderr| ibis: --id must be a reference's id, the JSON that ibis search --json prints.
+
+$ ibis show absent --json
+exit 4
+stdout| {"error":{"code":"not-found"},"ibis":1,"ok":false}
+stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
