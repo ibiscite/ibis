@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation, citationDetails } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -108,7 +108,7 @@ test("Esc walks the stack one layer at a time: submenu, menu, search, window", a
   await waitFor(() => expect(hides(calls)).toBe(1));
 });
 
-test("Esc closes the inspector back to its chip, and Search keeps focus if it was there", async () => {
+test("Esc closes the details back to their token, and Search keeps focus if it was there", async () => {
   const { calls, chip } = await chosenCitation();
   act(() => chip.focus());
   fireEvent.click(chip);
@@ -126,17 +126,16 @@ test("Esc closes the inspector back to its chip, and Search keeps focus if it wa
   expect(hides(calls)).toBe(0);
 });
 
-test("Esc steps out of the inspector's menu, then the inspector, then the search", async () => {
+test("Esc steps out of the details' menu, then the details, then the search", async () => {
   const { calls, chip } = await chosenCitation();
   type("invented");
   fireEvent.click(chip);
   await screen.findByRole("textbox", { name: "Page" });
-  const form = await screen.findByRole("button", { name: /^Show as/ });
-  fireEvent.click(form);
+  fireEvent.click(await screen.findByRole("button", { name: "Locator type: Page" }));
   await screen.findByRole("menu");
   press("Escape");
   expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Show as/ }));
+  expect(citationDetails()?.contains(document.activeElement)).toBe(true);
   press("Escape");
   expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
   expect(search().value).toBe("invented");

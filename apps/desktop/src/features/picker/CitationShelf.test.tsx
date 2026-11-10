@@ -97,13 +97,13 @@ test("colliding keys from different libraries have distinct visible and screen-r
   expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
 });
 
-test.each(["click", "Enter", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
+test.each(["click", "ArrowDown", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
   render(shelf({ selected: chosen([record("a")]), shown: output() }));
   const segment = screen.getByRole("button", { name: "Edit García 2021" });
   expect(segment.textContent).toBe("(García, 2021)");
   expect(document.getElementById(segment.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
   expect(document.querySelector(".shelf-chips")).toBeNull();
-  if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else press(segment, key);
+  if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else if (key === "ArrowDown") { act(() => segment.focus()); fireEvent.keyDown(segment, { key }); } else press(segment, key);
   const inspector = details("Citation details for Invented title a");
   // The full title, said once: no second heading repeats it below.
   expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("Invented title a");
@@ -113,6 +113,27 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   fireEvent.click(segment);
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
   expect(document.activeElement).toBe(segment);
+});
+
+test("Enter on a token pastes, as it does everywhere, and never opens its details", () => {
+  const submit = vi.fn();
+  render(shelf({ selected: chosen([record("a")]), shown: output(), onSubmit: submit }));
+  press(screen.getByRole("button", { name: "Edit García 2021" }), "Enter");
+  expect(submit).toHaveBeenCalledOnce();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
+});
+
+test("Keep My Order is in the details only for a style with two or more references in the citation", () => {
+  const a = record("a", "Alpha"), b = record("b", "Beta"), keep = vi.fn();
+  const two = { ...output("(Alpha, 2021; Beta, 2021)"), spans: [{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }] };
+  const { rerender } = render(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep }));
+  fireEvent.click(screen.getByRole("button", { name: "Edit Alpha 2021" }));
+  fireEvent.click(within(details(/^Citation details for/)).getByRole("switch", { name: "Keep My Order" }));
+  expect(keep).toHaveBeenCalledExactlyOnceWith(true);
+  rerender(shelf({ selected: chosen([a, b]), shown: two, onKeepOrder: keep, style: null, keys: true }));
+  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
+  rerender(shelf({ selected: chosen([a]), shown: output("(Alpha, 2021)"), onKeepOrder: keep }));
+  expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
 });
 
 test("pressing the open segment closes its details; another segment moves them", () => {
@@ -213,17 +234,15 @@ const removeOnce = (method: string) => {
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 };
-test.each(["Backspace", "Delete"])("%s on a token removes it exactly once and never opens the details", removeOnce);
-// The token's × is the next product slice.
-test.skip.each(["×"])("the token's %s removes it exactly once and never opens the details", removeOnce);
+test.each(["Backspace", "Delete", "×"])("%s removes a token exactly once and never opens the details", removeOnce);
 
-test("Backspace removes from the inspector, but only ever edits text in Page", () => {
+test("Backspace removes from the details, but only ever edits text in Page", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Page" }), { key: "Backspace" });
   expect(remove).not.toHaveBeenCalled();
-  fireEvent.keyDown(screen.getByRole("button", { name: /^Show as / }), { key: "Backspace" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 
@@ -248,8 +267,7 @@ test("a key the segment does not use is handed on to the picker", () => {
   expect(picker).toHaveBeenCalledExactlyOnceWith("Escape");
 });
 
-// The token's × is the next product slice.
-test.skip("hiding the output keeps the token's one-click ×", () => {
+test("hiding the output keeps the token's one-click ×", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
   const segment = screen.getByRole("button", { name: "Edit García 2021" });
@@ -279,7 +297,7 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
   const reference = { ...record("near"), partial: true };
   const warning = "Reference 1: Check the invented year.";
   render(shelf({ selected: chosen([reference]), style: "ieee", outputWarnings: [warning], shown: preview ? output() : undefined }));
-  const warnings = screen.getByRole("button", { name: /2 warnings.*Reference entry.*Closest matches/ });
+  const warnings = screen.getByRole("button", { name: "2 warnings · Closest matches" });
   expect(warnings.textContent).toBe("! 2");
   press(warnings, " ");
   const menu = warningsPanel();
@@ -290,16 +308,17 @@ test.each([true, false])("folded warnings and Closest matches keep a visible cou
   expect(within(menu).getByText(/IEEE numbers depend on your whole document/)).toBeTruthy();
 });
 
-test("a note style says why it copies the full first note, from the engine's notice", () => {
-  vi.stubGlobal("innerWidth", 1024); vi.stubGlobal("innerHeight", 720);
+test("a note style says in the details why it copies the full first note, from the engine's notice, and the line stays the citation", () => {
   // The picker's own format may differ from the output shown (an editor's request): the notice decides.
   render(shelf({ selected: chosen([record("a")]), style: "pandoc", outputWarnings: [], outputNotices: ["needs-document-context", "full-first-note"], shown: output() }));
-  fireEvent.click(screen.getByRole("button", { name: "Full first note" }));
-  expect(within(warningsPanel()).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
+  expect(document.querySelector(".shelf-actions")?.textContent).toBe("");
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(within(details(/^Citation details for/)).getByText(/Later notes to the same work are shortened/)).toBeTruthy();
   cleanup();
   // A style without the notice says nothing of the kind.
   render(shelf({ selected: chosen([record("a")]), style: "apa", outputWarnings: [], shown: output() }));
-  expect(screen.queryByRole("button", { name: "Full first note" })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
+  expect(screen.queryByText(/Later notes to the same work are shortened/)).toBeNull();
 });
 
 test("a formatting refusal stays beside the citation before its details open, even with the preview hidden", () => {

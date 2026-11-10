@@ -700,11 +700,8 @@ const removals = [
   { position: "only", count: 1, index: 0 },
 ];
 type Removal = (typeof removals)[number] & { activation: string };
-// The token's × is the next product slice; ⌫ on the token already removes.
-test.skip.each(removals.flatMap((entry) => ["pointer", "Enter", "Space"].map((activation) => ({ ...entry, activation }))))(
-  "removing the $position selected reference with its × via $activation restores Search navigation", removalRestoresSearch);
-test.each(removals.map((entry) => ({ ...entry, activation: "Backspace" })))(
-  "removing the $position selected reference with $activation on its token restores Search navigation", removalRestoresSearch);
+test.each(removals.flatMap((entry) => ["pointer", "Enter", "Space", "Backspace"].map((activation) => ({ ...entry, activation }))))(
+  "removing the $position selected reference via $activation restores Search navigation", removalRestoresSearch);
 async function removalRestoresSearch({ count, index, activation }: Removal) {
     // Duplicate native keys must remain distinct by source through removal/copy.
     const records = [result("same", "First", "a.bib"), result("same", "Second", "b.bib"), result("last", "Last", "c.bib")];
@@ -765,8 +762,7 @@ async function removalRestoresSearch({ count, index, activation }: Removal) {
     expect(screen.queryByRole("group", { name: "Selected references" })).toBeNull();
 }
 
-// The token's × is the next product slice.
-test.skip.each([false, true])("removal with the × ignores queued Enter repeats and waits for a fresh press (Shift=%s)", async (shiftKey) => {
+test.each([false, true])("removal with the × ignores queued Enter repeats and waits for a fresh press (Shift=%s)", async (shiftKey) => {
   const copies: Record<string, unknown>[] = [];
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
@@ -779,7 +775,7 @@ test.skip.each([false, true])("removal with the × ignores queued Enter repeats 
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   fireEvent.keyDown(box, { key: "ArrowUp" });
-  const remove = screen.getByRole("button", { name: "Remove Smith 2020 · a" });
+  const remove = await screen.findByRole("button", { name: "Remove Smith 2020 · a" });
   act(() => remove.focus());
   fireEvent.keyDown(remove, { key: "Enter", shiftKey });
   await waitFor(() => expect(selectedKeys()).toEqual(["a", "b"]));
@@ -801,8 +797,7 @@ test.skip.each([false, true])("removal with the × ignores queued Enter repeats 
   expect(copies[0]!.items).toEqual(selections((shiftKey ? ["b", "a"] : ["b"]).map((key) => ({ library: "refs.bib", key: key }))));
 });
 
-// The token's × is the next product slice.
-test.skip("hovering a token's × keeps focus and menu keys unchanged", async () => {
+test("hovering a token's × keeps focus and menu keys unchanged", async () => {
   const calls = backend({ search: () => [result("a", "First"), result("b", "Second")] });
   render(<App />);
   await screen.findByText("First");
@@ -1333,7 +1328,9 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   const preview = await screen.findByRole("region", { name: "Preview" });
   expect((await within(preview).findByText(/Garcia/)).closest("bdi")?.textContent).not.toMatch(/\[\d+\]/);
   expect(preview.querySelector("img")).toBeNull();
-  expect(within(preview).getByText("Reference entry") && screen.getByText("Copy IEEE entry")).toBeTruthy();
+  // The footer says what is copied; the line holds only the citation.
+  expect(screen.getByText("Copy IEEE entry")).toBeTruthy();
+  expect(within(preview).queryByText("Reference entry")).toBeNull();
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });

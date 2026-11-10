@@ -79,11 +79,18 @@ export function citationDetails(): HTMLElement | null {
   return screen.queryByRole("dialog", { name: /^Citation details/ });
 }
 
-/** Picks a form from the details' Show as pop-up. */
+/** Picks how the citation shows, by what its choice reads: the engine's example
+ * for that form (default backend: "(Smith, 2020)", "Smith (2020)", "(2020)"), or
+ * the form's name before the engine answers. */
 export async function chooseForm(name: string) {
-  fireEvent.click(await waitFor(() => within(citationDetails()!).getByRole("button", { name: /^Show as / })));
-  const menu = await waitFor(() => { const list = document.querySelector<HTMLElement>('[role="menu"]'); if (!list) throw new Error("The Form menu is not open"); return list; });
-  fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
+  fireEvent.click(await waitFor(() => within(citationDetails()!).getByRole("radio", { name })));
+}
+
+/** The details' Text before or Text after field, asked for if it is not shown yet. */
+export function textField(name: "Text before" | "Text after"): HTMLInputElement {
+  const details = within(citationDetails()!);
+  if (!details.queryByRole("textbox", { name })) fireEvent.click(details.getByRole("button", { name: `+ ${name}` }));
+  return details.getByRole<HTMLInputElement>("textbox", { name });
 }
 
 /** Esc from inside the details, as a person closes them. */
