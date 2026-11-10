@@ -233,21 +233,27 @@ impl Mac {
         use super::Delivered;
         match outcome {
             Delivered::Pasted { .. } => self.trace.stage("posted"),
-            Delivered::Copied { reason } => {
-                let stage = match Some(reason.as_str()) {
-                    Some("accessibility-required") => Some("permission.accessibility"),
-                    Some("no-permission") => Some("permission.post_event"),
-                    Some("paste-off") => Some("policy.paste_off"),
-                    Some("copy-only") => Some("policy.copy_only"),
-                    Some("terminal") => Some("policy.terminal"),
-                    Some("remote-desktop") => Some("policy.remote_desktop"),
-                    Some("virtual-machine") => Some("policy.virtual_machine"),
-                    Some("nonstandard-shortcut") => Some("policy.nonstandard_shortcut"),
-                    Some("unknown-app") => Some("policy.unknown_app"),
-                    Some("no-target") => Some("policy.no_target"),
-                    Some("secure-input") => Some("secure_input"),
-                    Some("selection-not-shown" | "citation-not-selected") => Some("selection"),
-                    Some("clipboard-changed") => Some("clipboard"),
+            // A delivery failure keeps its own lifecycle stage.
+            Delivered::Copied {
+                reason: super::CopiedReason::Delivery(_),
+            } => {}
+            Delivered::Copied {
+                reason: super::CopiedReason::Decided(reason),
+            } => {
+                let stage = match reason {
+                    CopyReason::AccessibilityRequired => Some("permission.accessibility"),
+                    CopyReason::NoPermission => Some("permission.post_event"),
+                    CopyReason::PasteOff => Some("policy.paste_off"),
+                    CopyReason::CopyOnly => Some("policy.copy_only"),
+                    CopyReason::Terminal => Some("policy.terminal"),
+                    CopyReason::RemoteDesktop => Some("policy.remote_desktop"),
+                    CopyReason::VirtualMachine => Some("policy.virtual_machine"),
+                    CopyReason::NonstandardShortcut => Some("policy.nonstandard_shortcut"),
+                    CopyReason::UnknownApp => Some("policy.unknown_app"),
+                    CopyReason::NoTarget => Some("policy.no_target"),
+                    CopyReason::SecureInput => Some("secure_input"),
+                    CopyReason::SelectionNotShown | CopyReason::CitationNotSelected => Some("selection"),
+                    CopyReason::ClipboardChanged => Some("clipboard"),
                     _ => None, // Keep the detailed AX/readiness/lifecycle failure stage.
                 };
                 if let Some(stage) = stage {

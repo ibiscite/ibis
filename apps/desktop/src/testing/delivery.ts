@@ -19,7 +19,7 @@
  * deadlines, engine formatting or hashing. Their Rust tests remain necessary.
  */
 import { emit } from "@tauri-apps/api/event";
-import type { AppPaste, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
+import type { AppPaste, CopiedReason, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
 import { backend, prepared, receipt, type PreviewRequest } from "./app";
 
@@ -56,7 +56,7 @@ class Work<Args, Input = void, Output = void> {
 
 type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
 type DeliveryRequest = { text: string; delivery: number | null };
-type Capture = { window: number | null; surface: number | null; reason: string | null; selection: string | null; unread: boolean };
+type Capture = { window: number | null; surface: number | null; reason: CopiedReason | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { replaces: string[] | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
 type AppChoice = { output: string | null; paste: AppPaste | null };
 

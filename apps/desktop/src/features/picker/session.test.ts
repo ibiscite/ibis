@@ -4,6 +4,7 @@ import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
 import { initialSession, reduceSession, sessionQueryKey, type SessionEvent, type SessionView } from "./session";
+import type { CopiedReason } from "../../bindings";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
@@ -236,7 +237,7 @@ test("exhausted presentation reads refuse Enter and later readiness cannot repla
   expect(s.state.flights[0]?.presentation).toBe(41);
 });
 
-test.each([
+test.each<[CopiedReason, string]>([
   ["no-permission", "Copied. Ibis needs your OK to paste. Press Ctrl+V to paste."],
   ["accessibility-required", "Copied. Ibis needs Accessibility access to paste safely. Press Ctrl+V to paste."],
 ])("a %s refusal retains its reason and prepared shelf", (reason, message) => {

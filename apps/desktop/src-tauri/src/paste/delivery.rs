@@ -243,6 +243,6 @@ pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(b
 
 pub(super) fn key_release_failed() -> Delivered {
     Delivered::Copied {
-        reason: "key-release-failed".into(),
+        reason: super::CopiedReason::Delivery(super::DeliveryFailure::KeyReleaseFailed),
     }
 }

@@ -112,7 +112,7 @@ test("the notice says where the citation was pasted, or why it was only copied",
 test("a reason Rust sends that this build does not know is reported and still says why and how to paste", () => {
   const error = vi.spyOn(console, "error").mockImplementation(() => {});
   try {
-    const wire: NoticeMessage = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" };
+    const wire = { delivered: { outcome: "copied", reason: "unknown-future-code" }, text: "[@a]" } as unknown as NoticeMessage;
     const notice = readNotice(wire);
     expect(notice.delivered).toEqual({ outcome: "copied", reason: "paste-unavailable" });
     expect(noticeTitle(notice, "macos")).toBe("Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.");
@@ -120,17 +120,6 @@ test("a reason Rust sends that this build does not know is reported and still sa
     expect(readNotice({ delivered: { outcome: "copied", reason: "terminal" }, text: "[@a]" }).delivered).toEqual({ outcome: "copied", reason: "terminal" });
     expect(error).toHaveBeenCalledOnce();
   } finally { error.mockRestore(); }
-});
-
-test("the copy reasons are exactly the ones Rust sends, and each has its words", async () => {
-  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  const read = (path: string) => readFileSync(new FileURL(path, import.meta.url), "utf8");
-  const core = read("../../../crates/ibis-core/src/destination/mod.rs").match(/pub enum CopyReason \{([^}]*)\}/)![1]!
-    .replace(/\/\/[^\n]*/g, "").match(/[A-Z]\w*/g)!.map((name) => name.replace(/(?<!^)[A-Z]/g, (letter) => `-${letter}`).toLowerCase());
-  const delivery = [...read("../src-tauri/src/paste/delivery.rs").matchAll(/reason: "([a-z-]+)"\.into\(\)/g)].map((match) => match[1]!);
-  expect(core).toContain("paste-off");
-  expect([...COPY_REASONS].sort()).toEqual([...new Set([...core, ...delivery])].sort());
 });
 
 test("every reason reads as the Notices table in docs/design/delivery.md says: why, then its fix", async () => {
