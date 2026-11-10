@@ -144,6 +144,8 @@ impl Pending {
 /// What a connection needs from the app, apart so it can be tested on real
 /// sockets without one.
 trait Host: Send + Sync + 'static {
+    #[cfg(test)]
+    fn accepted(&self) {}
     fn pending(&self) -> &Pending;
     fn ready(&self) -> bool;
     fn style(&self) -> String;
@@ -205,6 +207,8 @@ fn cancel_when_closed<H: Host>(mut stream: TcpStream, id: u64, host: Arc<H>) {
 }
 
 fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, stop: &AtomicBool) {
+    #[cfg(test)]
+    host.accepted();
     let request = read_head(&mut stream).and_then(|head| cayw::parse(&head, port, token));
     // A connection accepted before the endpoint was switched off gets nothing after.
     if stop.load(Ordering::SeqCst) {
@@ -529,6 +533,7 @@ pub(crate) fn editor_request(pending: State<'_, Pending>) -> Option<EditorWaitin
 mod tests {
     use super::*;
     use ibis_engine::cayw::CaywOutput;
+    use std::io::ErrorKind;
     use std::sync::Mutex as StdMutex;
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
@@ -537,6 +542,7 @@ mod tests {
 
     #[derive(Default)]
     struct Fake {
+        accepted: Option<SyncSender<()>>,
         pending: Pending,
         presented: AtomicUsize,
         changes: AtomicUsize,
@@ -550,6 +556,11 @@ mod tests {
     }
 
     impl Host for Fake {
+        fn accepted(&self) {
+            if let Some(accepted) = &self.accepted {
+                let _ = accepted.try_send(());
+            }
+        }
         fn pending(&self) -> &Pending {
             &self.pending
         }
@@ -960,13 +971,23 @@ mod tests {
 
     #[test]
     fn a_connection_open_when_the_endpoint_is_switched_off_gets_nothing() {
-        let (listening, port, host) = server(Fake::default());
+        let (accepted, worker) = mpsc::sync_channel(1);
+        let (listening, port, host) = server(Fake {
+            accepted: Some(accepted),
+            ..Fake::default()
+        });
         let mut early = connect(port);
-        // Let the listener accept it before switching off.
-        std::thread::sleep(Duration::from_millis(100));
+        worker
+            .recv_timeout(Duration::from_secs(20))
+            .unwrap_or_else(|error| panic!("the server did not accept the connection: {error}"));
         drop(listening);
-        send(&mut early, port, &cayw(""), "");
-        assert_eq!(answer(&mut early), "");
+        // A probe would reply without going through the separate Pick guard.
+        send(&mut early, port, &cayw("?probe=true"), "");
+        match early.read(&mut [0]) {
+            Ok(0) => (),
+            Err(error) if matches!(error.kind(), ErrorKind::ConnectionReset | ErrorKind::ConnectionAborted) => (),
+            result => panic!("the server should close without a reply, got {result:?}"),
+        }
         assert_eq!(host.presented.load(Ordering::SeqCst), 0);
         assert_eq!(host.pending.current(), None);
     }
