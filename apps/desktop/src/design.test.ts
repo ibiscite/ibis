@@ -120,14 +120,14 @@ function unanswered(found: readonly Declaration[]) {
 
 test("every movement has a Reduce Motion answer, nested groups included", () => {
   expect([...new Set(unanswered(all.filter((d) => !d.file.startsWith("website/"))))]).toEqual([]);
-  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur); } } }";
+  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur-1); } } }";
   expect(unanswered(declarations("planted.css", motion))).toEqual(["planted.css: .planted: transition"]);
   expect(unanswered(declarations("planted.css", `${motion} @media (prefers-reduced-motion: reduce) { .planted { transition: none; } }`))).toEqual([]);
 });
 
 const defined = new Set(all.filter((d) => d.property.startsWith("--")).map((d) => d.property));
 // Set from script at run time: the native accent, how far a list can scroll and measured widths.
-const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|trigger-width|preview-window-[wh]|progress)$|^--(native-accent|scroll-fade-)/;
+const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|trigger-width|glide-from|preview-window-[wh]|progress)$|^--(native-accent|scroll-fade-)/;
 
 test("every token a stylesheet reads is defined, and every token is read", () => {
   const reads = all.flatMap((d) => [...d.value.matchAll(/var\((--[\w-]+)/g)].map((match) => [d.file, match[1]!] as const));
@@ -139,7 +139,7 @@ test("every token a stylesheet reads is defined, and every token is read", () =>
 });
 
 test("the motion tokens stay within 280 ms", () => {
-  for (const name of ["--dur", "--dur-panel"]) {
+  for (const name of ["--dur-1", "--dur-2", "--dur-3"]) {
     const value = all.filter((d) => d.file === "tokens.css" && d.property === name).map((d) => Number.parseFloat(d.value));
     expect(value.length, name).toBeGreaterThan(0);
     for (const ms of value) expect(ms, name).toBeLessThanOrEqual(280);

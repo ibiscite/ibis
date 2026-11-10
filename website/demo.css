@@ -120,11 +120,11 @@
 }
 @media (hover: none) { .draft .paste-slot kbd { display: none; } }
 @media (prefers-reduced-motion: no-preference) {
-  .draft .paste-slot { transition: scale var(--dur) var(--ease); }
+  .draft .paste-slot { transition: scale var(--dur-1) var(--ease-out); }
   .draft .paste-slot:active { scale: var(--website-press); }
-  .picker-status:not(:empty) { animation: receipt var(--dur-panel) var(--ease); }
+  .picker-status:not(:empty) { animation: receipt var(--dur-2) var(--ease-out); }
   /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
-  .picker-shelf[data-copied] { animation: shelf-copied calc((var(--dur) + var(--dur-panel)) / 2) var(--ease); }
+  .picker-shelf[data-copied] { animation: shelf-copied calc((var(--dur-1) + var(--dur-2)) / 2) var(--ease-out); }
 }
 @keyframes shelf-copied { from { background: color-mix(in srgb, var(--status-ok) 9%, var(--fill-control)); } }
 @media (forced-colors: active) {

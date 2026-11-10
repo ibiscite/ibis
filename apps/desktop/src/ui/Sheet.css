@@ -7,6 +7,15 @@
   border-radius: var(--r-large);
 }
 .ui-sheet:focus { outline: none; }
+/* A sheet moves a region, so it takes --dur-3: the picker dims as the sheet rises into place. */
+.ui-sheet-backdrop { animation: ui-sheet-dim var(--dur-3) var(--ease-out); }
+.ui-sheet.ui-overlay { animation: ui-sheet-in var(--dur-3) var(--ease-out); }
+@keyframes ui-sheet-dim { from { background: transparent; } }
+@keyframes ui-sheet-in { from { opacity: 0; translate: 0 var(--space-2); scale: .98; } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-sheet-backdrop { animation: ui-sheet-dim var(--dur-1) linear; }
+  .ui-sheet.ui-overlay { animation: ui-overlay-fade var(--dur-1) linear; }
+}
 .ui-sheet-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); }
 .ui-sheet-heading h2 { margin: 0; font-size: inherit; font-weight: var(--strong); }
 .ui-sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--space-4) var(--space-4); }

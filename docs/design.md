@@ -32,7 +32,7 @@ has its own page; read only the one your change touches:
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
 5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch.
 6. **Say what happened.** Every action ends in a visible result: copied, pasted, or why not. A refused library file is a failed open with a way to choose another; only a successful read can say the library is empty. Colour is never the only signal. Nothing asks "are you sure?"; destructive actions apply at once with an 8 s Undo [D16].
-7. **Calm motion.** Movement explains where something came from and stops under Reduce Motion.
+7. **Motion explains, never delays** (maintainer, 2026-11-10). Movement says what happened and where something came from: a menu grows from its button, a sheet rises over the picker it covers, the selection glides to the row it reached, a press gives a little. It never makes anyone wait: whatever appears takes keys from its first frame, and whatever leaves goes at once. It is off-able: under Reduce Motion it becomes a short fade or the end state.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. Exceptions: picture choices (see **Selection is a fill** in [components](../apps/desktop/src/ui/README.md)) and a dragged library file, which rings the whole content area.
 9. **Great defaults, then choice.** Most people never open Settings; no setting exists because a choice was hard.
 10. **The bar for anything people see.** A beginner succeeds with no reading, in plain words, without opening Settings; a pro does everything by keyboard, with nothing waiting or confirming.

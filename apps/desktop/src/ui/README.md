@@ -4,7 +4,7 @@ The rules for each shared part, beside its code. The principles are in [design](
 
 Each component in `apps/desktop/src/ui/` wraps one React Aria component (decision 0021), owns one stylesheet that reads tokens only, and is the only way a screen draws that part. A screen needing a new control adds it to `ui/` with its line here first. Shared rules every window uses live in `ui/Foundation.css`.
 
-**States.** Hover (`@media (hover: hover)` only) never moves or resizes anything. Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
+**States.** Hover (`@media (hover: hover)` only) never moves or resizes anything; a press gives a little (`--press-scale`) and springs back, as in [Motion](../../../../docs/design/foundations.md#motion). Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
 
 | | Pointer over it | Chosen or current | Keyboard focus |
 | --- | --- | --- | --- |

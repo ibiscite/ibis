@@ -90,9 +90,10 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 
 ## Motion
 
-- Durations come from `--dur` and its siblings; entrances use `--ease`, exits `--ease-in`. No bounce; chevrons never rotate; macOS menus appear at once.
+- **Three steps** (`tokens.css`): `--dur-1` (120 ms) answers a touch: hover, a press, a check drawing, the selection's glide. `--dur-2` (180 ms) brings something in: a menu or pop-over, a line appearing, a delight. `--dur-3` (240 ms) moves a region: a sheet, a panel. Entrances use `--ease-out`, exits `--ease-in`; what follows the pointer or the keys settles on `--ease-spring`, which never overshoots.
+- **The standard movements**, each in its shared part: everything that floats (`ui/Overlay`) unfolds from the edge next to its button (a clip and a fade, so its measured place never changes) and closes at once; a sheet rises 8 px while the picker dims; a pressed button shrinks to `--press-scale` and springs back; the highlighted row's fill wipes in from the side it came from (`ui/selectionGlide.ts`). Chevrons never rotate; nothing bounces.
 - **Never** animate anything longer than 280 ms. Never animated: list content while typing, row height, the caret, layout on hover, the citation text, ticking counts, focus rings, anything that loops except a busy indicator.
-- Reduce Motion: no translate, scale or slide; fades of at most 100 ms; every effect shows its end state.
+- Reduce Motion: no translate, scale or slide; `--dur-1` becomes a 100 ms fade, `--dur-2` and `--dur-3` end at once, `--press-scale` is 1; every effect shows its end state.
 
 ## Accessibility
 

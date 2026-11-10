@@ -5,7 +5,7 @@
 .shelf-segment { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); }
 /* The fill hugs the reference's own words, as a text selection does, so it never
    reaches over the brackets and separators shared between references. */
-.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); --segment-pad: calc(var(--space-1) / 2); max-width: calc(100% + 2 * var(--segment-pad)); margin-inline: calc(-1 * var(--segment-pad)); padding: 0 var(--segment-pad); transition: padding-inline-end var(--dur) var(--ease); border-width: 0; border-radius: var(--band-control-radius, var(--r-small)); color: var(--text); white-space: nowrap; }
+.shelf-segment-button.ui-button[data-variant] { justify-content: start; flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); --segment-pad: calc(var(--space-1) / 2); max-width: calc(100% + 2 * var(--segment-pad)); margin-inline: calc(-1 * var(--segment-pad)); padding: 0 var(--segment-pad); transition: padding-inline-end var(--dur-1) var(--ease-out); border-width: 0; border-radius: var(--band-control-radius, var(--r-small)); color: var(--text); white-space: nowrap; }
 .shelf-segment-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 /* The ring every button has, drawn inside so the one-line band never clips it. */
 .shelf-segment-button.ui-button { --ring-offset: var(--ring-inside); }

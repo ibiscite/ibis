@@ -176,21 +176,21 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 }
 @media (prefers-reduced-motion: no-preference) {
   html { scroll-behavior: smooth; }
-  .key, .button, .rows a { transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease), box-shadow var(--dur) var(--ease), scale var(--dur) var(--ease); }
-  .index nav .key { transition-duration: var(--dur-panel); }
+  .key, .button, .rows a { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out); }
+  .index nav .key { transition-duration: var(--dur-2); }
   a:active .key, a.key:active, .button:active { scale: var(--website-press); }
-  .star path { transition: fill var(--dur) var(--ease); }
-  .button:hover .star { animation: star var(--dur-panel) var(--ease); }
-  .reveal .pull img { transform-origin: 20% 80%; animation: peck calc(2 * var(--dur-panel)) var(--ease) var(--dur-panel); }
-  a { transition: text-decoration-color var(--dur) var(--ease); }
-  .rows .arrow { transition: translate var(--dur) var(--ease); }
+  .star path { transition: fill var(--dur-1) var(--ease-out); }
+  .button:hover .star { animation: star var(--dur-2) var(--ease-out); }
+  .reveal .pull img { transform-origin: 20% 80%; animation: peck calc(2 * var(--dur-2)) var(--ease-out) var(--dur-2); }
+  a { transition: text-decoration-color var(--dur-1) var(--ease-out); }
+  .rows .arrow { transition: translate var(--dur-1) var(--ease-out); }
   .rows a:hover .arrow { translate: var(--space-1) 0; }
   .rows a[href*="/releases/download/"]:hover .arrow { translate: 0 var(--space-1); }
-  .appearance-thumb { transition: translate var(--dur) var(--ease); }
-  section:target h2 { animation: land-text var(--dur-panel) var(--ease); }
-  .reveal { animation: reveal var(--dur-panel) var(--ease) both; }
-  .reveal .caret { animation: caret-blink calc(5 * var(--dur-panel)) step-end infinite; }
-  .draft .key { animation: receipt var(--dur-panel) var(--ease); }
+  .appearance-thumb { transition: translate var(--dur-1) var(--ease-out); }
+  section:target h2 { animation: land-text var(--dur-2) var(--ease-out); }
+  .reveal { animation: reveal var(--dur-2) var(--ease-out) both; }
+  .reveal .caret { animation: caret-blink calc(5 * var(--dur-2)) step-end infinite; }
+  .draft .key { animation: receipt var(--dur-2) var(--ease-out); }
 }
 @keyframes land-text { from { color: var(--scarlet); } }
 @keyframes reveal { from { opacity: 0; translate: 0 var(--website-reveal); } }
