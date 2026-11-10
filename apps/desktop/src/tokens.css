@@ -20,13 +20,24 @@
   /* Space, on the grid. S = --inset keeps every fill S from a window edge or divider. */
   --space-1: var(--unit); --space-2: calc(2 * var(--unit)); --space-3: calc(3 * var(--unit)); --space-4: calc(4 * var(--unit));
   --space-5: calc(5 * var(--unit)); --space-6: calc(6 * var(--unit)); --space-8: calc(8 * var(--unit)); --space-10: calc(10 * var(--unit));
+  /* Layout (maintainer, 2026-11-10): where things sit, decided here once. Only ui/
+     parts read these; a screen never sets a margin, padding, gap, inset or width
+     (ui/ownership.test.ts). The window inset, on both sides of every band and body. */
   --inset: var(--space-2);
+  /* The space between sections, columns and groups. */
+  --gutter: var(--space-4);
+  /* A row: its own padding, the gap after its icon slot (--tile), its spacing in a
+     list, and its two heights. Rows without an icon start their words at
+     --inset + --row-pad; rows with one start them on the label column after the slot. */
   --row-pad: var(--space-3); --row-gap: var(--space-3); --row-spacing: 2px;
   --row-compact: var(--space-10); --row-comfortable: 3.625rem;
   --row-height: var(--row-comfortable);
+  /* The longest a sheet's text and cards run before the window has more room. */
+  --content-max: 42rem;
   --larger-text-scale: 1.15;
 
   /* Sizes. */
+  /* --tile is the icon slot: every row's icon, the bird and the back chevron centre on it. */
   --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2);
@@ -191,7 +202,7 @@
   }
 }
 
-/* The accent is blue until the Mac's own arrives (nativeAccent.css) or Look chooses one. */
+/* The accent is blue until the Mac's own arrives (nativeAccent.ts) or Look chooses one. */
 /* WKWebView resolves AccentColorText to black, so macOS uses its list colours. */
 @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
   :root[data-system="macos"] { --selected: -apple-system-selected-content-background; --selected-text: -apple-system-alternate-selected-text; }
@@ -256,7 +267,7 @@
 /* One accent, three roles, both modes: the accent colours controls and the focus
    ring; the selection is a deeper shade that keeps its text at 4.5:1; accent text
    passes 4.5:1 on the surface. Follow the Mac reaches these roles from
-   nativeAccent.css; Ibis scarlet is the one fixed choice, following the same rule:
+   the native accent below; Ibis scarlet is the one fixed choice, following the same rule:
    selection and filled controls carry white, and the bright scarlet stays for
    accent text, the ring and marks in dark. */
 @supports (color: light-dark(white, black)) {
@@ -276,10 +287,12 @@
 /* Layer 3: components, derived from the layers above. */
 :root {
   --key-gap: calc((var(--control-small-h) - var(--key)) / 2);
+  /* Layout: the header (the search field's band) and the footer band, and where a
+     section's heading and words start: on the text of the rows in its card. */
+  --header-h: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
   --footer-h: calc(var(--control-small-h) + 2 * var(--inset));
+  --heading-offset: calc(var(--row-pad) + var(--border-width));
   --inspector-width: 18rem; --inspector-column: 15rem;
-  /* One Settings row, in every group and the shortcuts list. */
-  --settings-row-h: var(--touch-target); --settings-row-pad: var(--space-4);
   /* Measured from NSSegmentedControl: the chosen fill lands at 19% of the text colour. */
   --segment-selected: color-mix(in srgb, var(--text) 12%, transparent);
   --primary: var(--accent);
@@ -321,3 +334,41 @@
   }
 }
 /* END generated website palette */
+
+/* The Mac's own accent (nativeAccent.ts), once a validated native snapshot arrives. */
+/* Private inputs are unset until a validated native snapshot arrives. These
+   guards preserve all system pairs, in high contrast. */
+:root { --native-accent-fill: initial; --native-accent-on: initial; --native-accent-light: initial; --native-accent-dark: initial; }
+@supports (color: light-dark(white, black)) {
+  @media (prefers-contrast: no-preference) and (forced-colors: none) {
+    :root[data-native-accent="true"][data-platform="macos"]:not(.notice-window) {
+      --accent: var(--native-accent-fill);
+      --accent-text: light-dark(var(--native-accent-light), var(--native-accent-dark));
+      --text-on-accent: var(--native-accent-on);
+      --selected: var(--accent); --selected-text: var(--text-on-accent);
+    }
+    /* macOS keeps WebKit's selection pair: deeper than the accent, and it follows it. */
+    @supports (background: -apple-system-selected-content-background) and (color: -apple-system-alternate-selected-text) {
+      :root[data-native-accent="true"][data-system="macos"]:not(.notice-window) {
+        --selected: -apple-system-selected-content-background;
+        --selected-text: -apple-system-alternate-selected-text;
+      }
+      /* An accent too bright for white text fills the primary with that deeper pair. */
+      :root[data-native-accent-deep="true"][data-system="macos"]:not(.notice-window) {
+        --primary: var(--selected); --text-on-accent: var(--selected-text);
+      }
+    }
+  }
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root, :root[data-platform] { --accent: Highlight; --accent-text: CanvasText; --text-on-accent: HighlightText; }
+}
+
+/* Windows Acrylic: a guarded veil, so text keeps its roles over any backdrop (ui/Material.css). */
+@supports (color: light-dark(white, black)) {
+  @media (forced-colors: none) and (prefers-contrast: no-preference) {
+    :root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window) {
+      --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
+    }
+  }
+}

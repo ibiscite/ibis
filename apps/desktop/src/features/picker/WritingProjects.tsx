@@ -4,7 +4,8 @@ import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
-import { Sheet, SheetButtons, SheetChoice, SheetList, SheetRow, SheetSection } from "../../ui/Sheet";
+import { Buttons, ChoiceRow, Group, Note, Row, Section } from "../../ui/Layout";
+import { Sheet, SheetStatus } from "../../ui/Sheet";
 import { listedOutput, outputName, type OutputId } from "../../format/outputs";
 
 export type WritingProjectsApi = {
@@ -105,54 +106,51 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
   const creating = !form && view ? [{ label: say("writing-project-create"), disabled: busy, onPress: () => { setProblem(null); setForm({ kind: "new", name: "" }); } }] : undefined;
   return <Sheet title={say("writing-project-title")} closeLabel={say("writing-project-close")} description={say("writing-project-about")} busy={busy} onClose={close}
     leadingActions={creating}>
-        {view?.session_only && <p className="ui-sheet-note">{say("writing-project-session-only")}</p>}
+        {view?.session_only && <p>{say("writing-project-session-only")}</p>}
         {!view && !problem && <p role="status">{say("writing-project-loading")}</p>}
         {view && <>
           {view.projects.length === 0 && <p>{say("writing-project-empty")}</p>}
-          <SheetList label={say("writing-project-title")}>
-            <SheetChoice label={say("writing-project-none")} selected={view.selected === null} disabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
+          <Group label={say("writing-project-title")}>
+            <ChoiceRow label={say("writing-project-none")} selected={view.selected === null} disabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
             {view.projects.map((project) => {
               const choice = listedOutput(project.output);
-              return <SheetChoice key={project.id} label={project.name} accessibleLabel={say("writing-project-use", { name: project.name })}
-                detail={choice ? outputName(choice) : say("writing-project-unsupported")} selected={project.id === view.selected}
+              return <ChoiceRow key={project.id} label={project.name} accessibleLabel={say("writing-project-use", { name: project.name })}
+                description={choice ? outputName(choice) : say("writing-project-unsupported")} selected={project.id === view.selected}
                 disabled={busy || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />;
             })}
-          </SheetList>
-          {selected && <SheetSection label={say("writing-project-selected")} heading={<h3 dir="auto">{selected.name}</h3>}>
-            <SheetList label={say("writing-project-selected")}>
-              <SheetRow>
-                <span>
-                  <span dir="auto">{selected.bibliography ? say("writing-project-bibliography", { name: selected.bibliography }) : say("writing-project-no-bibliography")}</span>
-                </span>
+          </Group>
+          {selected && <Section label={say("writing-project-selected")} title={selected.name} level={3}>
+            <Group label={say("writing-project-selected")}>
+              <Row item label={selected.bibliography ? say("writing-project-bibliography", { name: selected.bibliography }) : say("writing-project-no-bibliography")}>
                 {api.chooseProject && <Button size="small" label={say("writing-project-choose-bibliography")} isDisabled={busy} onPress={() => bibliography(api.chooseProject)} />}
                 {selected.bibliography && api.stopProject && <Button size="small" label={say("writing-project-remove-bibliography")} isDisabled={busy} onPress={() => bibliography(api.stopProject)} />}
-              </SheetRow>
-            </SheetList>
-            <SheetButtons>
+              </Row>
+            </Group>
+            <Buttons>
               <Button label={say("writing-project-rename")} isDisabled={busy} onPress={() => setForm({ kind: "rename", id: selected.id, name: selected.name })} />
               <Button label={say("writing-project-remove")} isDisabled={busy} onPress={() => setForm({ kind: "remove", id: selected.id, name: selected.name })} />
-            </SheetButtons>
-          </SheetSection>}
+            </Buttons>
+          </Section>}
         </>}
-        {form && <div>
+        {form && <Section label={form.kind === "remove" ? say("writing-project-remove") : say("writing-project-name")}>
           {form.kind === "remove" ? <>
             <p>{say("writing-project-remove-question", { name: isolate(form.name) })}</p>
-            <SheetButtons>
+            <Buttons>
               <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
               <Button label={say("writing-project-confirm-remove")} isDisabled={busy} onPress={() => edit({ kind: "remove", id: form.id })} />
-            </SheetButtons>
-          </> : <form onSubmit={(event) => { event.preventDefault(); saveName(); }}>
+            </Buttons>
+          </> : <form className="ui-section" onSubmit={(event) => { event.preventDefault(); saveName(); }}>
             <TextField label={say("writing-project-name")} value={form.name} maxLength={80} isDisabled={busy} autoFocus onChange={(name) => setForm({ ...form, name })} />
-            {form.kind === "new" && <p className="ui-sheet-note">{say("writing-project-starts-with", { format: outputName(format) })}</p>}
-            <SheetButtons>
+            {form.kind === "new" && <Note>{say("writing-project-starts-with", { format: outputName(format) })}</Note>}
+            <Buttons>
               <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
               <Button variant="primary" label={form.kind === "new" ? say("writing-project-confirm-create") : say("writing-project-save-name")} isDisabled={busy || !form.name.trim()} onPress={saveName} />
-            </SheetButtons>
+            </Buttons>
           </form>}
-        </div>}
-        <div className="ui-sheet-status">
+        </Section>}
+        <SheetStatus>
           {busyVisible && <Progress label={say("writing-project-saving")} />}
           {problem && <p role="alert">{problem}</p>}
-        </div>
+        </SheetStatus>
   </Sheet>;
 }

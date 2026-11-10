@@ -52,7 +52,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
         expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance" }[scenario.slice(9)] ?? scenario.slice(9));
-        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-settings-row")).not.toBeNull();
+        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
       } else if (scenario === "notice") {
         expect(host.querySelector('.copy-receipt[role="status"]')?.textContent).toContain("Copied");
         expect(host.querySelector("code")?.textContent).toBe("[Aster, 2026]");

@@ -1,3 +1,4 @@
+/* The window's material (ui/Material.css), imported by ui/Window.css. */
 /* The existing opaque surface remains the default. Native success alone opts in.
    On macOS a light veil (--vibrancy-tint, tokens.css; the surface at 75% in
    webviews without light-dark()) keeps text legible over the material. Webviews
@@ -7,13 +8,6 @@
 :root[data-native-appearance="vibrancy"],
 :root[data-native-appearance="liquid-glass"] { background: var(--vibrancy-tint, color-mix(in srgb, var(--surface) 75%, transparent)); }
 
-@supports (color: light-dark(white, black)) {
-  @media (forced-colors: none) and (prefers-contrast: no-preference) {
-    :root[data-system="windows"][data-native-appearance="acrylic"]:not(.notice-window) {
-      --acrylic-tint: light-dark(rgb(249 249 249 / 92%), rgb(40 40 40 / 92%));
-    }
-  }
-}
 
 /* Defensive overrides also cover preferences changed before native refresh. */
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {

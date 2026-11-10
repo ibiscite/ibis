@@ -139,3 +139,5 @@
 .ui-option .result-byline, .ui-option .result-library { min-width: 0; }
 .ui-option .result-authors { flex: 0 10 auto; }
 
+/* A command is one line: its title and its keys. Compact rows' height in either density. */
+.command-row { --row-height: var(--row-compact); }

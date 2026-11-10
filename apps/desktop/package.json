@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "build:canvas": "vite build --config vite.canvas.config.ts",
     "canvas": "vite build --config vite.canvas.config.ts && node gallery/canvas.mjs dist-canvas dist-canvas/pictures",
+    "contact": "vite build --config vite.canvas.config.ts && node gallery/contact.mjs dist-canvas dist-canvas/contact-sheet.png",
     "build:pseudo": "tsc --noEmit && vite build --mode pseudolocale",
     "typecheck": "tsc --noEmit",
     "lint": "biome lint",

@@ -4,7 +4,6 @@ import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { Option } from "../../ui/Option";
 import type { PickerCommandEntry } from "./commands";
-import "./CommandList.css";
 
 /** ">" in the search: the commands as one-line result rows, highlighted from the
  * search as references are, so ↑ ↓ and Enter work the same and the pointer can

@@ -17,7 +17,7 @@ import { ToolbarMenu } from "../../ui/ToolbarMenu";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
 import type { CitationInspectorState, InspectorPanel } from "./useCitationInspector";
-import "./CitationShelf.css";
+import "../../ui/CitationShelf.css";
 
 /** A short name for the menu, independent of its citation key. */
 export function referenceLabel(r: SearchResult): string {

@@ -6,7 +6,9 @@ vi.mock("@tauri-apps/api/event", () => ({ listen: vi.fn() }));
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-const css = readFileSync(new FileURL("./nativeAccent.css", import.meta.url), "utf8");
+const tokens = readFileSync(new FileURL("./tokens.css", import.meta.url), "utf8");
+// The native accent's own block at the end of tokens.css.
+const css = tokens.slice(tokens.indexOf("The Mac's own accent"));
 const root = document.documentElement;
 afterEach(() => setNativeAccent(null));
 

@@ -10,7 +10,7 @@ import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWho
 
 const { readFileSync } = await vi.importActual("node:fs");
 const { URL: FileURL } = await vi.importActual("node:url");
-const pickerStyles = readFileSync(new FileURL("../../styles.css", import.meta.url), "utf8");
+const pickerStyles = readFileSync(new FileURL("../../ui/Window.css", import.meta.url), "utf8") + readFileSync(new FileURL("../../ui/Footer.css", import.meta.url), "utf8");
 
 afterEach(async () => {
   await resetApp();

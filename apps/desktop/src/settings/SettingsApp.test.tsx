@@ -49,7 +49,7 @@ test.each(["general", "shortcuts"])("localized %s records directly, refuses regi
   const recorder = await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel(DEFAULT_PICKER_SHORTCUT, currentPlatform() === "macos")}` });
   const keys = [...document.querySelectorAll(".ui-settings-keys kbd")].map((key) => key.textContent?.replaceAll("+", ""));
   if (page === "shortcuts") expect(keys).toContain(currentPlatform() === "macos" ? "⌘K" : "CtrlK");
-  for (const row of document.querySelectorAll("#picker-shortcuts .ui-settings-row-text")) expect(row.textContent).toContain("⟦");
+  for (const row of document.querySelectorAll("#picker-shortcuts .ui-row-text")) expect(row.textContent).toContain("⟦");
   vi.spyOn(api, "setShortcut").mockRejectedValueOnce("in-use");
   fireEvent.click(recorder);
   expect(recorder.textContent).toBe(pseudo.text("shortcuts-record"));
@@ -83,11 +83,11 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
   // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
-  const rowOf = (node: Element) => node.closest(".ui-settings-row")!;
+  const rowOf = (node: Element) => node.closest(".ui-row")!;
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
   expect(check.closest(".ui-about-hero")).toBeTruthy();
   expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
-  expect(document.querySelectorAll("#about-updates .ui-settings-row")).toHaveLength(1);
+  expect(document.querySelectorAll("#about-updates .ui-row")).toHaveLength(1);
   fireEvent.click(check);
   fireEvent.click(automatic);
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
@@ -247,7 +247,7 @@ test("Show in menu bar is a Mac choice that saves as a patch and goes back on fa
   fireEvent.click(choice);
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   await waitFor(() => expect((choice as HTMLInputElement).checked).toBe(true));
-  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Show in menu bar");
+  expect((await screen.findByRole("alert")).closest(".ui-row")?.textContent).toContain("Show in menu bar");
   fireEvent.click(choice);
   await waitFor(() => expect(state.patches).toEqual([{ menu_bar: false }]));
   expect((choice as HTMLInputElement).checked).toBe(false);
@@ -282,7 +282,7 @@ test("Recent citations is on by default, saves off as a patch and goes back on f
   fireEvent.click(choice);
   await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
   await waitFor(() => expect(choice.checked).toBe(true));
-  expect((await screen.findByRole("alert")).closest(".ui-settings-row")?.textContent).toContain("Recent citations");
+  expect((await screen.findByRole("alert")).closest(".ui-row")?.textContent).toContain("Recent citations");
   fireEvent.click(choice);
   await waitFor(() => expect(state.patches).toEqual([{ recent_citations: false }]));
   expect(choice.checked).toBe(false);
@@ -391,7 +391,7 @@ test.each(["Strg + Umschalt + Y", "Alt + F9", ""])("General preserves the deskto
   const guidance = "Your desktop manages this shortcut. Bind ibis toggle in Keyboard Settings.";
   state.shortcut = { shortcut: trigger, registered: !!trigger, error: null, desktop: { configurable: true, guidance } };
   render(<SettingsApp api={api} initialPage="general" />);
-  const row = document.getElementById("general-open-shortcut")!.closest(".ui-settings-row")!;
+  const row = document.getElementById("general-open-shortcut")!.closest(".ui-row")!;
   expect(await within(row as HTMLElement).findByText(trigger || "Not assigned")).toBeTruthy();
   expect(within(row as HTMLElement).getByText(guidance)).toBeTruthy();
   expect(within(row as HTMLElement).queryByText("Click the shortcut, then type a new one. Esc cancels.")).toBeNull();
@@ -603,7 +603,7 @@ test("the paste guide names the list, opens it, notices the grant on its own and
   const { api, state } = fakeApi();
   render(<SettingsApp api={api} initialPage="general" />);
   const guide = await screen.findByRole("heading", { name: "Allow Ibis to paste for you" });
-  const card = guide.closest(".paste-guide") as HTMLElement;
+  const card = guide.closest(".ui-paste-guide") as HTMLElement;
   expect(card.textContent).toContain("In Privacy & Security › Device Control and Data Access, turn on Ibis Nightly.");
   expect(card.textContent).toContain("Ibis needs Accessibility access to check which window has the keyboard");
   expect(card.textContent).not.toContain("Zotero");
@@ -1083,9 +1083,9 @@ test("search finds theme by one Appearance name, then reveals and briefly tints 
   expect(within(results).getAllByRole("option")).toEqual([appearance]);
   fireEvent.click(appearance);
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
-  expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(true);
+  expect(document.getElementById("appearance")!.closest(".ui-row")!.hasAttribute("data-highlighted")).toBe(true);
   await act(() => vi.advanceTimersByTimeAsync(2000));
-  expect(document.getElementById("appearance")!.closest(".ui-settings-row")!.hasAttribute("data-highlighted")).toBe(false);
+  expect(document.getElementById("appearance")!.closest(".ui-row")!.hasAttribute("data-highlighted")).toBe(false);
 });
 
 test("searching for the update check scrolls About to the button under the version", async () => {
@@ -1194,7 +1194,7 @@ test.each(["read-only", "failed I/O"])("%s restores the saved choice even if rec
   fireEvent.click(choice);
   const problem = await screen.findByRole("alert");
   await waitFor(() => expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true));
-  expect(problem.closest(".ui-settings-row")?.querySelector("#rows")).toBeTruthy();
+  expect(problem.closest(".ui-row")?.querySelector("#rows")).toBeTruthy();
   expect(problem.textContent).not.toContain("synthetic");
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("General");
@@ -1482,7 +1482,7 @@ test("a read-only refusal names the file constraint beside the restored control"
   fireEvent.click(choice);
   const problem = await screen.findByRole("alert");
   expect(problem).toHaveProperty("textContent", "The settings file is read-only; the saved value is shown.");
-  expect(problem.closest(".ui-settings-row")?.querySelector("#rows")).toBeTruthy();
+  expect(problem.closest(".ui-row")?.querySelector("#rows")).toBeTruthy();
   expect(screen.getByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
 });
 
@@ -1496,7 +1496,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
   const problem = await screen.findByRole("alert");
   expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toBe(automatic);
   expect(automatic).toHaveProperty("checked", true);
-  expect(problem.closest(".ui-settings-row")?.querySelector("#automatic")).toBeTruthy();
+  expect(problem.closest(".ui-row")?.querySelector("#automatic")).toBeTruthy();
 });
 
 
@@ -1509,7 +1509,7 @@ test.each([
   fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: query } });
   fireEvent.click(await screen.findByRole("option", { name }));
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", page);
-  await waitFor(() => expect(document.getElementById(id)?.closest(".ui-settings-row")?.hasAttribute("data-highlighted")).toBe(true));
+  await waitFor(() => expect(document.getElementById(id)?.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true));
 });
 
 
@@ -1569,7 +1569,7 @@ test("an Ibis accent refusal restores the saved accent beside its localized caus
   fireEvent.click(await screen.findByRole("radio", { name: pseudo.text("look-accent-ibis") }));
   const problem = await screen.findByRole("alert");
   expect(problem.textContent).toBe(pseudo.text("settings-read-only"));
-  expect(problem.closest(".ui-settings-row")?.querySelector("#accent")).toBeTruthy();
+  expect(problem.closest(".ui-row")?.querySelector("#accent")).toBeTruthy();
   expect(screen.getByRole("radio", { name: pseudo.text("look-accent-system", { platform: "other" }) })).toHaveProperty("checked", true);
   expect(document.documentElement.dataset.accent).toBe("system");
 });

@@ -1,0 +1,72 @@
+/* [C18, D17] The layout parts (ui/Layout.tsx). Two left edges, by construction: a
+   card (Group) spans its section from edge to edge, and every heading,
+   description and row's words start --heading-offset inside it, on the row text.
+   An icon row's words start on the label column after the icon slot (--tile). */
+.ui-section { display: flex; flex: none; flex-direction: column; gap: var(--space-2); min-width: 0; scroll-margin-block: var(--space-6); }
+.ui-section + .ui-section { margin-block-start: var(--gutter); }
+/* One section heading, shared with the shortcuts list and the keys sheet. */
+.ui-section-title, .ui-shortcut-table th[scope="rowgroup"] {
+  margin: 0; padding: 0 var(--heading-offset); color: var(--text-secondary);
+  font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); overflow-wrap: anywhere;
+}
+.ui-section-description { margin: 0; padding-inline: var(--heading-offset); color: var(--text-secondary); overflow-wrap: anywhere; }
+
+/* Grouped content [D17]: the Mac's quaternary fill, so the window shows through. */
+.ui-group {
+  display: flex; flex: none; flex-direction: column; min-width: 0; margin: 0; padding: 0; list-style: none;
+  border-radius: var(--r-large); background: var(--surface-grouped);
+  /* One edge per shape: the fill separates the card, as System Settings does. */
+  border: var(--border-width) solid transparent; overflow: hidden;
+}
+@media (prefers-contrast: more), (forced-colors: active) { .ui-group { border: var(--border-width) solid CanvasText; } }
+
+.ui-row {
+  position: relative; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2) var(--gutter);
+  min-height: var(--row-compact); padding: var(--space-2) var(--row-pad); font-size: var(--type-body-size); line-height: var(--type-body-line);
+}
+/* A row whose control names itself (a picture choice) gives the control the card. */
+.ui-row[data-bare] { padding: var(--space-3); }
+/* A divider belongs to the row below and is inset to its text on both sides, as
+   System Settings draws it. A highlighted row's fill is its own edge. */
+.ui-row + .ui-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
+.ui-row[data-highlighted]::before, .ui-row[data-highlighted] + .ui-row::before { display: none; }
+.ui-row[data-highlighted] { background: var(--highlight); }
+.ui-row-lead { display: flex; flex: 1 1 var(--status-min); align-items: center; gap: var(--row-gap); min-width: 0; }
+.ui-row-icon { display: inline-flex; flex: none; justify-content: center; width: var(--tile); color: var(--text-secondary); }
+.ui-row-icon > svg { width: var(--icon-small); height: var(--icon-small); }
+.ui-row-text { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }
+.ui-row > :not(.ui-row-lead, .ui-row-problem, .visually-hidden) { max-inline-size: 100%; }
+.ui-row .ui-button { padding-block: var(--space-1); }
+.ui-row-description { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-body-line); }
+.ui-row-problem { flex-basis: 100%; margin: 0; color: var(--text); overflow-wrap: anywhere; }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-row[data-highlighted] { forced-color-adjust: none; background: Highlight; color: HighlightText; }
+  .ui-row[data-highlighted] .ui-row-description { color: inherit; }
+}
+
+/* A choice row: the row is the button, so its fill hugs the row inside the card. */
+.ui-choice-row { padding: 0; }
+.ui-choice {
+  display: flex; flex: 1; align-items: center; gap: var(--gutter); min-height: var(--row-compact); margin: 0; padding: var(--space-2) var(--row-pad);
+  border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: default;
+}
+@media (hover: hover) { .ui-choice[data-hovered]:not([data-disabled]) { background: var(--fill-quiet-hover); } }
+.ui-choice[data-pressed] { background: var(--fill-control-hover); }
+/* Inside the card, so the ring is drawn inward and outranks the window-wide ring. */
+.ui-group .ui-choice:is(:focus-visible, [data-focus-visible]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-inside); }
+.ui-choice[data-disabled] { color: var(--text-disabled); }
+.ui-choice-check { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); color: var(--accent-text); }
+.ui-choice-check > svg { width: 100%; height: 100%; }
+
+.ui-buttons { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
+.ui-buttons[data-end] { justify-content: end; }
+/* A section inside a row (a preview of what a button will do) takes the row's width. */
+.ui-row > .ui-section { flex-basis: 100%; }
+.ui-section > ul { display: flex; flex-direction: column; gap: var(--space-1); margin: 0; padding-inline: var(--space-5) 0; }
+
+/* Quiet words: a note under a row or section, on the row text's edge. Inside a row
+   it takes the row's whole width. */
+.ui-note { flex-basis: 100%; margin: 0; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: anywhere; }
+.ui-section > .ui-note { padding-inline: var(--heading-offset); }
+.ui-note[data-problem] { color: var(--text); }
+.ui-note code { user-select: text; }

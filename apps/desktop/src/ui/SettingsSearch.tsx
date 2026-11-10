@@ -1,4 +1,4 @@
-import "./SettingsGroup.css";
+import "./SettingsSearch.css";
 import { useRef } from "react";
 import { composing } from "../composition";
 import { Icon } from "../icons";

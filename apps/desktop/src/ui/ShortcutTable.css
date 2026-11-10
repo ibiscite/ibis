@@ -11,15 +11,15 @@
 .ui-shortcut-table tbody:first-of-type th[scope="rowgroup"] { padding-block-start: var(--space-4); }
 /* Card rows: the row's cells draw the card, its edges and its corners, on the
    Settings cards' fill. Dividers are inset to the text on both sides, as in
-   SettingsGroup; the first row's top edge is the card's. */
-.ui-shortcut-table tr:not(:first-child) > * { height: var(--settings-row-h); padding-inline: var(--settings-row-pad); background-color: var(--surface-grouped); }
+   ui/Layout's rows; the first row's top edge is the card's. */
+.ui-shortcut-table tr:not(:first-child) > * { height: var(--row-compact); padding-inline: var(--row-pad); background-color: var(--surface-grouped); }
 .ui-shortcut-table tr:nth-child(2) > * { border-top: var(--border-width) solid var(--separator); }
-.ui-shortcut-table tr:nth-child(n + 3) > * { background-image: linear-gradient(var(--separator), var(--separator)); background-repeat: no-repeat; background-size: calc(100% - var(--settings-row-pad)) var(--border-width); }
+.ui-shortcut-table tr:nth-child(n + 3) > * { background-image: linear-gradient(var(--separator), var(--separator)); background-repeat: no-repeat; background-size: calc(100% - var(--row-pad)) var(--border-width); }
 .ui-shortcut-table tr:nth-child(n + 3) > :first-child { background-position: right top; }
 .ui-shortcut-table tr:nth-child(n + 3) > :last-child { background-position: left top; }
 .ui-shortcut-table:dir(rtl) tr:nth-child(n + 3) > :first-child { background-position: left top; }
 .ui-shortcut-table:dir(rtl) tr:nth-child(n + 3) > :last-child { background-position: right top; }
-.ui-shortcut-table tr:nth-child(n + 3) > :only-child { background-size: calc(100% - 2 * var(--settings-row-pad)) var(--border-width); background-position: center top; }
+.ui-shortcut-table tr:nth-child(n + 3) > :only-child { background-size: calc(100% - 2 * var(--row-pad)) var(--border-width); background-position: center top; }
 .ui-shortcut-table tr:not(:first-child) > :first-child { border-inline-start: var(--border-width) solid var(--separator); }
 .ui-shortcut-table tr:not(:first-child) > :last-child { border-inline-end: var(--border-width) solid var(--separator); text-align: end; }
 .ui-shortcut-table tr:last-child > * { border-bottom: var(--border-width) solid var(--separator); }

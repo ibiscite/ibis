@@ -5,7 +5,6 @@ import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { isolate, type MessageId, say } from "../../i18n";
 import "../../ui/CopyReceipt.css";
-import "./Notices.css";
 
 /** An action whose failure the picker reports in its notices. */
 /** What failed, by operation: each says what didn't happen and what to do. */

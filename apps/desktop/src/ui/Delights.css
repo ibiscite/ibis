@@ -1,6 +1,6 @@
-.ui-shortcut-echo[data-echo] .ui-settings-row { background: var(--fill-quiet-hover); }
-.ui-shortcut-echo + .ui-shortcut-echo .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
-.ui-shortcut-echo + .ui-settings-row { border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-echo[data-echo] .ui-row { background: var(--fill-quiet-hover); }
+.ui-shortcut-echo + .ui-shortcut-echo .ui-row { border-top: var(--border-width) solid var(--separator); }
+.ui-shortcut-echo + .ui-row { border-top: var(--border-width) solid var(--separator); }
 /* About: one centred column, as System Settings' About: the icon, the name, the
    version, Check for Updates and the lines; the cards, links and licence line
    below share the page's width, and the links and licence are centred too. */

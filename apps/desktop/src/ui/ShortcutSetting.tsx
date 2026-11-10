@@ -4,7 +4,7 @@ import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, type ShortcutProblem } from "../i1
 import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
-import { SettingsGroup, SettingsRow } from "./SettingsGroup";
+import { Group, Note, Row, Section } from "./Layout";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 import { ShortcutEcho, useKeyPulse } from "./Delights";
 
@@ -34,19 +34,19 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
       {status && !status.desktop && !isDefault && <Button size="small" isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>}
     </span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
-      {status?.desktop?.guidance && <p className="ui-settings-description">{status.desktop.guidance}</p>}
-      {problem && <p className="ui-settings-row-problem" role="alert">{text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined)}</p>}
+      {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
+      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined)}</p>}
     </td></tr>}
   </>;
-  return <SettingsGroup id={id}>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><SettingsRow id={rowId} label={text("shortcuts-open")} highlighted={highlighted}
+  return <Section id={id}><Group>
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={text("shortcuts-open")} highlighted={highlighted}
       description={status?.desktop?.guidance ?? (status ? text("shortcuts-description") : undefined)}
       problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
       {controls}
-    </SettingsRow></ShortcutEcho>
-    {status && !status.desktop && !isDefault && <SettingsRow id="default-shortcut" label={defaultLabel}>
+    </Row></ShortcutEcho>
+    {status && !status.desktop && !isDefault && <Row id="default-shortcut" label={defaultLabel}>
       <Button isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>
-    </SettingsRow>}
+    </Row>}
 
-  </SettingsGroup>;
+  </Group></Section>;
 }

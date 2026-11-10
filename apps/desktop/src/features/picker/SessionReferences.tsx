@@ -4,7 +4,8 @@ import type { SessionBibliography, SessionEdit, SessionReferencesView } from "..
 import { outputName, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
-import { Sheet, SheetList, SheetRow } from "../../ui/Sheet";
+import { Group, Row, Section } from "../../ui/Layout";
+import { Sheet, SheetOutput } from "../../ui/Sheet";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
 
@@ -80,23 +81,19 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
       }, say("session-not-copied")) },
     ]}>
     {view && view.rows.length === 0 && view.absent === 0 && <p>{say("session-empty")}</p>}
-    {view && view.rows.length > 0 && <SheetList label={say("session-title")}>
-      {view.rows.map((row) => <SheetRow key={idKey(row.id)}>
-        <span>
-          <span dir="auto">{row.title}</span>
-          <span className="ui-sheet-note" dir="auto">{[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}</span>
-        </span>
+    {view && view.rows.length > 0 && <Group label={say("session-title")}>
+      {view.rows.map((row) => <Row item key={idKey(row.id)} label={row.title}
+        description={[abbreviatedAuthors(row) ? row.first_author : row.authors, row.year].filter((part) => part !== null && part !== "").join(", ")}>
         <Button size="small" label={say("session-remove")} aria-label={say("session-remove-named", { name: isolate(tileName(row)) })} onPress={() => edit({ kind: "remove", id: row.id })} />
-      </SheetRow>)}
-    </SheetList>}
+      </Row>)}
+    </Group>}
     {view && view.absent > 0 && <p role="status">{say("session-absent", { count: view.absent })}</p>}
     {view?.overflowed && <p role="status">{say("session-full")}</p>}
-    {bibliography && <>
-      <h3>{say("session-bibliography-in", { style: isolate(name) })}</h3>
-      <p className="ui-sheet-output" dir="auto">{bibliography.text}</p>
+    {bibliography && <Section title={say("session-bibliography-in", { style: isolate(name) })} id="session-bibliography" level={3}>
+      <SheetOutput>{bibliography.text}</SheetOutput>
       {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
       {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
-    </>}
+    </Section>}
     {problem && <p role="alert">{problem}</p>}
     {status && <p role="status">{status}</p>}
   </Sheet>;

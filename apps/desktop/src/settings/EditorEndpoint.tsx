@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { EndpointProblem, EndpointStatus } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
-import { SettingsRow as Row } from "../ui/SettingsGroup";
+import { Note, Row } from "../ui/Layout";
 import { Switch } from "../ui/Switch";
 import { rowDetails } from "./rows";
 
@@ -44,7 +44,7 @@ export function EditorEndpointRow({ api, highlighted }: { api: EditorEndpointApi
         setCopied(false);
         void api.copyEditorEndpoint().then(() => setCopied(true), () => setFailed(true));
       }}>{text(copied ? "citations-editor-copied" : "citations-editor-copy")}</Button>
+      <Note><code dir="ltr">{status.url}</code></Note>
     </Row>}
-    {status?.on && status.url && <p className="settings-address" dir="ltr"><code>{status.url}</code></p>}
   </>;
 }

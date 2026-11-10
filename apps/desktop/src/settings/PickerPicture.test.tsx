@@ -7,9 +7,9 @@ import { PickerPicture } from "./PickerPicture";
 const sources = await vi.hoisted(async () => {
   const { readFileSync } = await vi.importActual<{ readFileSync: (url: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  return { picker: readFileSync(new FileURL("../styles.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8") };
+  return { picker: readFileSync(new FileURL("../ui/Window.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8") };
 });
-vi.mock("../styles.css?raw", () => ({ default: sources.picker }));
+vi.mock("../ui/Window.css?raw", () => ({ default: sources.picker }));
 vi.mock("../ui/Button.css?raw", () => ({ default: sources.button }));
 vi.mock("../ui/IconButton.css?raw", () => ({ default: sources.iconButton }));
 

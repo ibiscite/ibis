@@ -1,2 +1,0 @@
-/* A command is one line: its title and its keys. Compact rows' height in either density. */
-.command-row { --row-height: var(--row-compact); }

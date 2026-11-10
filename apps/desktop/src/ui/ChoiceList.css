@@ -47,3 +47,8 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
   .choice-screen[data-grid] .choice-row[data-hovered]:not([data-focused]) { background: var(--fill-control-hover); }
 }
 .choice-screen[data-grid] .choice-title { font-size: var(--type-display-size); line-height: var(--type-display-line); }
+
+/* The library setup screen around its choice list (LibrarySetup.tsx). */
+.library-setup { display: flex; flex: 1; min-width: 0; }
+.welcome-note { display: block; }
+.welcome-note + .welcome-note { margin-top: var(--space-2); }

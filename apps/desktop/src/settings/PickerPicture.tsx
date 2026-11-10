@@ -4,7 +4,7 @@ import type { Density, SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
-import pickerStyles from "../styles.css?raw";
+import pickerStyles from "../ui/Window.css?raw";
 import foundationStyles from "../ui/Foundation.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
 import iconButtonStyles from "../ui/IconButton.css?raw";

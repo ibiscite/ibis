@@ -15,7 +15,7 @@ import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
-import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { Group, Note, Row, Section } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
@@ -27,7 +27,6 @@ import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
-import "./Settings.css";
 
 import { PAGES, ROWS, rowDetails, type Page } from "./rows";
 import { LookPage } from "./LookPage";
@@ -49,7 +48,7 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design/settings.md). Every change applies at once. */
 /** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
-const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".settings-page-title")?.offsetHeight ?? 0;
+const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".ui-settings-page-title")?.offsetHeight ?? 0;
 
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
   const { text } = useInterfaceMessages();
@@ -348,7 +347,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   };
   useEffect(() => {
     if (!highlighted || !preferences || !pageRef.current) return;
-    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-settings-row, tr, .ui-about-check");
+    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-row, tr, .ui-about-check");
     if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top - underTitle(pageRef.current);
   }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
@@ -408,13 +407,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
       </NoticeSlot>
       <main ref={pageRef} className="settings-page" aria-labelledby="settings-page-title">
-        <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "settings-page-title"}>{text(`settings-${page}`)}</h1>
-        {preference.status === "unknown" && preference.message && <p className="settings-problem" role="alert">{text(preference.message)}</p>}
-        {detour && returnFailed && <p className="settings-problem" role="alert">{text("general-paste-return-failed")}</p>}
+        <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
+        {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
+        {detour && returnFailed && <Note problem role="alert">{text("general-paste-return-failed")}</Note>}
         {page === "general" && (
           <>
             {shortcutSetting}
-            <Group id="startup">
+            <Section id="startup"><Group>
                 <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
                     onChange={(on) => {
@@ -433,12 +432,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 <Row id="small-surprises" label={text("general-small-surprises-label")} description={text("general-small-surprises-description")} {...feedback("small-surprises")}>
                   <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
                 </Row>
-            </Group>
+            </Group></Section>
             {preferences && (
               <>
                 {/* Only systems where Ibis pastes ask for a permission first. */}
                 {permission?.pastes && (
-                <Group id="paste" title={text("general-paste-title")}>
+                <Section id="paste" title={text("general-paste-title")}><Group>
                   <Row id="paste-label" label={text("general-paste-label")} description={text("general-paste-description", { platform })} {...feedback("paste-label")}>
                     <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
                       onChange={(on) => change({ paste: on })} />
@@ -451,7 +450,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                   {preferences.paste && permission?.needed && (!permission.granted || guided) && (
                     <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />
                   )}
-                </Group>
+                </Group></Section>
                 )}
               </>
             )}
@@ -459,7 +458,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}
-        {page === "citations" && <Group id="citation-choices">
+        {page === "citations" && <Section id="citation-choices"><Group>
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
           </Row>}
@@ -468,7 +467,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </Row>}
           {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow highlighted={highlighted === "editor-endpoint"}
             api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint }} />}
-        </Group>}
+        </Group></Section>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
         {page === "about" && (
           <>
@@ -481,17 +480,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
-              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
+              {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
                 <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
+                {checkResult === "failed" && <p className="ui-row-problem" role="alert">{text("about-check-failed")}</p>}
               </div>}
               <p className="ui-about-mission">{text("about-mission")}</p>
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
-            <Group id="about-updates" title={text("about-updates")}>
+            <Section id="about-updates" title={text("about-updates")}><Group>
               <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
                     isDisabled={updatesSaving || updates === null} onChange={(on) => {
@@ -502,7 +501,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                       }).finally(() => { if (live.current) setUpdatesSaving(false); });
                     }} />}
               </Row>
-            </Group>
+            </Group></Section>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>
               {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}
             </div>

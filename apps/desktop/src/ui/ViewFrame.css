@@ -9,8 +9,13 @@
   color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-view:focus { outline: none; }
+/* A view replaces a region of the window, so it takes --dur-3 (motion foundation):
+   it fades in over the picker it hides. Reduce Motion keeps only a short fade. */
+.ui-view { animation: ui-view-in var(--dur-3) var(--ease-out); }
+@keyframes ui-view-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ui-view { animation: ui-view-in var(--dur-1) linear; } }
 .ui-view-head {
-  flex: none; display: flex; align-items: center; min-height: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
+  flex: none; display: flex; align-items: center; min-height: var(--header-h);
   padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);
 }
 /* The chevron centres on the tile column, where the bird sits; the name follows so

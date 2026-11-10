@@ -1,0 +1,42 @@
+/* The paste permission guide (#1292): a picture of the switch to turn on,
+   the steps, one button and a live answer. */
+.ui-paste-guide {
+  display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--space-4); text-align: start;
+  padding: var(--space-4) var(--row-pad); box-shadow: inset 0 var(--border-width) 0 var(--separator);
+}
+.ui-paste-guide-text { min-width: 0; overflow-wrap: anywhere; }
+.ui-paste-guide h3 { margin: 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
+.ui-paste-guide ol { margin: var(--space-3) 0; padding-inline-start: var(--space-5); display: flex; flex-direction: column; gap: var(--space-1); }
+.ui-paste-guide-actions { display: flex; justify-content: start; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ui-paste-guide-status { margin: 0; color: var(--text-secondary); font-size: var(--type-body-size); }
+.ui-paste-guide-status[data-done] { color: var(--text); font-weight: var(--strong); }
+.ui-paste-guide-art {
+  display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3);
+  justify-self: start; min-width: 0; width: 100%; max-width: 16rem; box-sizing: border-box;
+  border-radius: var(--r-control); background: var(--surface-grouped);
+}
+.ui-paste-guide-pane { color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.ui-paste-guide-row {
+  display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2);
+  border-radius: var(--r-small); background: var(--surface); box-shadow: var(--shadow-card);
+  font-size: var(--type-body-size); font-weight: 500;
+}
+.ui-paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-small); background: center / cover no-repeat; }
+.ui-paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ui-paste-guide-switch {
+  position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);
+  transition: background-color var(--dur-2) var(--ease-out);
+}
+.ui-paste-guide-switch > span {
+  position: absolute; top: var(--border-width); inset-inline-start: var(--border-width); width: 13px; height: 13px; border-radius: var(--r-full);
+  background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-2) var(--ease-out);
+}
+.ui-paste-guide-switch[data-on] { background: var(--accent); }
+.ui-paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }
+@media (prefers-reduced-motion: reduce) { .ui-paste-guide-switch, .ui-paste-guide-switch > span { transition: none; } }
+@media (prefers-contrast: more), (forced-colors: active) {
+  .ui-paste-guide-switch { border: var(--border-width) solid CanvasText; }
+  .ui-paste-guide-switch[data-on] { background: Highlight; }
+}
+.ui-paste-guide-note { margin: 0; color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
+.ui-paste-guide-note[data-problem] { color: var(--text); }

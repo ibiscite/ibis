@@ -3,7 +3,7 @@ import type { BackupProblem, System as BackupSystem, RestoreChange, Note as Rest
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { currentPlatform } from "../platform";
 import { Button } from "../ui/Button";
-import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { listedOutput, outputName } from "../format/outputs";
 
 export type BackupApi = {
@@ -126,11 +126,11 @@ export function BackupRows({ api }: { api: BackupApi }) {
   };
 
   return (
-    <Group id="another-computer" title={text("backup-title")}>
+    <Section id="another-computer" title={text("backup-title")}><Group>
       <Row id="backup-settings" label={text("backup-label")} description={text("backup-description", { platform: currentPlatform() })}
         problem={problem?.row === "backup" ? text(problem.id) : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
-        {saved && <span role="status" className="ui-settings-description">{text("backup-saved", { file: saved })}</span>}
+        {saved && <Note role="status">{text("backup-saved", { file: saved })}</Note>}
       </Row>
       <Row id="restore-settings" label={text("restore-label")} description={text("restore-description")}
         problem={problem?.row === "restore" ? text(problem.id) : undefined}>
@@ -138,20 +138,20 @@ export function BackupRows({ api }: { api: BackupApi }) {
       </Row>
       {preview && (
         <Row id="restore-preview" label={text("restore-from", { system: SYSTEMS[preview.made_on], version: preview.made_by })}>
-          <div className="settings-restore" role="group" aria-labelledby="restore-preview">
+          <Section label={text("restore-from", { system: SYSTEMS[preview.made_on], version: preview.made_by })}>
             {preview.changes.length
-              ? <ul className="ui-settings-description">{preview.changes.map((item) => <li key={item.setting}>{change(item)}</li>)}</ul>
-              : !restorable(preview) && <p className="ui-settings-description">{text("restore-same")}</p>}
-            {preview.notes.map((note) => <p key={note} className="ui-settings-description">{text(NOTES[note])}</p>)}
+              ? <Note list>{preview.changes.map((item) => <li key={item.setting}>{change(item)}</li>)}</Note>
+              : !restorable(preview) && <Note>{text("restore-same")}</Note>}
+            {preview.notes.map((note) => <Note key={note}>{text(NOTES[note])}</Note>)}
             {restarting
-              ? <p role="status" className="ui-settings-description">{text("restore-restarting")}</p>
-              : <div className="settings-restore-actions">
+              ? <Note role="status">{text("restore-restarting")}</Note>
+              : <Buttons end>
                   <Button onPress={forget} isDisabled={busy !== null}>{text("restore-cancel")}</Button>
                   {restorable(preview) && <Button variant="primary" onPress={restore} isDisabled={busy !== null}>{text("restore-confirm")}</Button>}
-                </div>}
-          </div>
+                </Buttons>}
+          </Section>
         </Row>
       )}
-    </Group>
+    </Group></Section>
   );
 }

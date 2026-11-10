@@ -1,41 +1,5 @@
-@import "./tokens.css";
-@import "./nativeAppearance.css";
-
-:root { font-synthesis: none; font-family: var(--font); color: var(--text); background: var(--surface); }
-
-* { box-sizing: border-box; }
-body { margin: 0; overflow: hidden; }
-button, input, select { font: inherit; color: inherit; }
-/* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
-   focus (:focus-visible), 2 px with a 1 px gap, in the system accent. Contrast
-   and forced colours make it a solid CanvasText ring. Menu rows show a fill instead
-   (Menu.css): a ring there is clipped by the list and covers its neighbours.
-   Something only the app focuses (a sheet, a list, tabindex -1) never shows one. */
-:focus-visible:not(.ui-button, .menu-item, [tabindex="-1"]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
-main {
-  height: 100dvh;
-  container-type: inline-size;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-/* The inspector opens beside the list, in the middle row only. */
-main:has(> .picker-content) {
-  display: grid;
-  grid-template: "search search" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
-}
-/* The frame is native-owned. These bands retain their full control targets. */
-main > .shelf { grid-area: shelf; }
-main > footer { grid-area: footer; }
-
-.results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
-
-.notices:empty { display: none; }
-.notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
-.notices p { margin: var(--space-3) 0; }
-.copy-notice { display: flow-root; padding-bottom: var(--space-2); }
-.dismiss { float: right; margin: var(--space-2) 0 var(--space-2) var(--space-2); }
-
+/* The picker's footer band (ui/Footer.css): the library status on the label column
+   after its dot in the icon slot, the Enter hints, then More on the last column. */
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets grow the band instead of clipping; its columns are in PickerFooter.css. */
@@ -65,30 +29,30 @@ footer { display: flex; align-items: center; padding-block: 0; padding-inline: c
 .status-dot[data-health="look"] { background: var(--status-warning); }
 .status-dot[data-health="stop"] { background: var(--status-error); }
 
+/* Whatever the leading slot holds, action, More: the action's column can only
+   shrink, so no label, and no action at all, can move More off the last column.
+   Quiet notes span a row of their own. */
+/* The leading column always keeps room for its fix (`--footer-fix`, measured). */
+.library-bar { --footer-status-min: max(var(--status-min), calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)));
+  position: relative; display: grid; grid-template-columns: minmax(min(var(--footer-status-min), 100%), 1fr) minmax(0, auto) auto; }
+.library-bar[data-status-compact] { --footer-status-min: calc(var(--tile) + var(--row-gap) + var(--space-1) + var(--footer-fix, 0px)); }
+.library-bar[data-status-compact]:not([data-hints-compact]) { --footer-status-min: calc(var(--tile) + var(--row-gap) + var(--status-short) + var(--space-1) + var(--footer-fix, 0px)); }
+.library-bar > :not(.enter-hints, .more, .ui-quiet-status, .library-action-error) { grid-column: 1; min-width: 0; }
+/* One line always: the action truncates, and Alt's two actions fold to keys. */
+.library-bar > .enter-hints { grid-area: 1 / 2; flex-wrap: nowrap; }
+/* Only at the smallest window with very large text can even Alt's keys not fit:
+   they are cut at their column then, never drawn over More. */
+.library-bar[data-alt-compact][data-hints-compact] > .enter-hints { overflow: hidden; }
+.library-bar > .more { grid-area: 1 / 3; }
+.footer-fit-measure { position: absolute; visibility: hidden; pointer-events: none; display: flex; max-width: 100%; height: 0; overflow: hidden; }
+.footer-status-size { flex: none; width: var(--status-min); }
+.footer-status-minimum { flex: none; width: calc(var(--tile) + var(--row-gap) + var(--status-short)); }
+.footer-label-minimum { flex: none; width: 7rem; }
+.library-bar .footer-action .key-hint-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.library-bar[data-hints-compact] :is(.enter-hints, .more) .key-hint-label, .library-bar[data-alt-compact] .enter-hints .key-hint-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
 /* More keeps the last column, so its menu opens inward. */
 .more { position: relative; }
-
-@media (max-width: 460px) {
-  .results-area { flex: none; overflow: visible; }
-}
-/* Notices and results share one middle scroller. Search, shelf and footer are
-   separate bands; the inspector sits beside the list and grows none of them. */
-.picker-content { grid-area: middle; position: relative; display: flex; flex-direction: column; align-items: stretch; min-width: 0; min-height: var(--type-label-line); overflow: auto; overscroll-behavior: contain; container-type: size; }
-/* Notices keep their full content height and scroll with the middle region. */
-.picker-content > .notices { flex: none; }
-/* Notices have no height bound. Share their scroll owner instead of reserving
-   a nested results viewport that the notice and shelf can push out of view. */
-.picker-content:has(> .notices:not(:empty)) > .results-area { flex: none; min-height: 0; overflow: visible; }
-/* Below room for a heading and useful result rows, share the middle viewport.
-   The shelf is a separate band and no longer contributes to this threshold. */
-@container (max-height: 8rem) {
-  .picker-content > .results-area { flex: none; min-height: 0; overflow: visible; }
-}
-/* Setup/recovery/hints always contribute their whole natural height. */
-.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
-
-/* Remembered picker preferences (ADR 0020). */
-:root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
 
 /* Footer key hints (#491): what Enter does now, or with Alt held the other
    keys. They stay in narrow windows and truncate instead of overlapping. */
@@ -104,13 +68,8 @@ footer .key-hint-label { display: inline; }
 @container (max-width: 28.75em) {
   footer .key-hint-label { display: none; }
 }
-.empty-actions { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--space-2); margin-top: var(--space-3); }
 
-/* The viewport never adds a second scrollbar: short-window content scrolls
-   between the full-height search and footer controls. */
 @media (max-height: 400px) {
-  main { height: 100dvh; min-height: 0; overflow: hidden; }
-  main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
   /* The 480x360 frame at 200% text is 15em wide. Keep the normal shelf and
      footer targets and their insets; omit only the footer hints, whose keys
      still work and are listed in More. The search rows keep their controls

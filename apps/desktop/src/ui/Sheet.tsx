@@ -1,11 +1,9 @@
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
-import { Button as AriaButton } from "react-aria-components";
-import { Icon } from "../icons";
 import { useLayer } from "./layers";
 import { Button } from "./Button";
 import { ViewFrame } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
-import "./SettingsGroup.css";
+import "./Layout.css";
 import "./Sheet.css";
 
 /** One of a sheet's footer actions. The primary one runs on Enter too, unless a control in the body has the keyboard. */
@@ -62,44 +60,19 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
     }}>
     <div ref={body} className="ui-sheet-body scroll-area" tabIndex={0} role="group" aria-labelledby={titleId} aria-busy={busy || undefined}>
       <div className="ui-sheet-content">
-        {description && <p id={aboutId} className="ui-sheet-note">{description}</p>}
+        {description && <p id={aboutId} className="ui-sheet-lead">{description}</p>}
         {children}
       </div>
     </div>
   </ViewFrame>;
 }
 
-/** A list of things in a sheet, one per row. */
-export function SheetList({ label, children }: { label: string; children: ReactNode }) {
-  return <ul className="ui-settings-card ui-sheet-list" aria-label={label}>{children}</ul>;
+/** What a sheet will copy or save, kept as written and selectable, on a card. */
+export function SheetOutput({ children }: { children: ReactNode }) {
+  return <div className="ui-group"><p className="ui-sheet-output" dir="auto">{children}</p></div>;
 }
 
-/** One row of a sheet's list, drawn as a Settings row on a grouped card: what
- * it is first, then its buttons. */
-export function SheetRow({ children }: { children: ReactNode }) {
-  return <li className="ui-settings-row ui-sheet-row">{children}</li>;
-}
-
-/** One choice in a sheet's list, as System Settings lists choices: the whole row
- * is the button, its name and a quiet detail at the start, a check at the end
- * on the chosen one. */
-export function SheetChoice({ label, detail, accessibleLabel, selected, disabled, onPress }: {
-  label: string; detail?: ReactNode; accessibleLabel?: string; selected: boolean; disabled?: boolean; onPress: () => void;
-}) {
-  return <li className="ui-settings-row ui-sheet-row ui-sheet-choice-row">
-    <AriaButton className="ui-sheet-choice" aria-label={accessibleLabel} aria-pressed={selected} isDisabled={disabled} onPress={onPress}>
-      <span className="ui-settings-row-text"><span dir="auto">{label}</span>{detail && <span className="ui-settings-description" dir="auto">{detail}</span>}</span>
-      <span className="ui-sheet-check" aria-hidden="true">{selected && <Icon name="check" />}</span>
-    </AriaButton>
-  </li>;
-}
-
-/** A part of a sheet's body named by its heading, as a Settings group is. */
-export function SheetSection({ label, heading, children }: { label: string; heading?: ReactNode; children: ReactNode }) {
-  return <section className="ui-sheet-section" aria-label={label}>{heading}{children}</section>;
-}
-
-/** Buttons that act on what is just above them, inside the body. */
-export function SheetButtons({ children }: { children: ReactNode }) {
-  return <div className="ui-sheet-buttons">{children}</div>;
+/** A line reserved under a sheet's content for a spinner or a problem, so nothing above it moves. */
+export function SheetStatus({ children }: { children?: ReactNode }) {
+  return <div className="ui-sheet-status">{children}</div>;
 }

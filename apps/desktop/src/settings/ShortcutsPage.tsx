@@ -1,3 +1,4 @@
+import { Note } from "../ui/Layout";
 import { useState, type ReactNode } from "react";
 import { useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
@@ -22,6 +23,6 @@ export function ShortcutsPage({ opening, enterPastes }: { opening: ReactNode; en
         ? showOpen && <ShortcutGroup key={region} ids region="system" bindings={[]} isMac={currentPlatform() === "macos"}>{opening}</ShortcutGroup>
         : bindings.some((binding) => binding.region === region) && <ShortcutGroup key={region} region={region} bindings={bindings} isMac={currentPlatform() === "macos"} plain ids />)}
     </table>
-    {!showOpen && !bindings.length && <p role="status" className="settings-description">{text("shortcuts-empty")}</p>}
+    {!showOpen && !bindings.length && <Note role="status">{text("shortcuts-empty")}</Note>}
   </>;
 }
