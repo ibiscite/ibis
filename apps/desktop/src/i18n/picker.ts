@@ -234,6 +234,7 @@ export const PICKER_IDS = [
   "picker-shared-key",
   "picker-using-shorthand",
   "picker-apply",
+  "picker-shorthand-hint",
   "picker-search-as-typed",
   "picker-apply-locator",
   "picker-copied",

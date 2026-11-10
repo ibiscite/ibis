@@ -21,6 +21,9 @@ impl LocalMoment {
     }
 }
 
+/// How many times the shorthand hint is shown on one computer.
+const SHORTHAND_HINTS: u8 = 3;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum DelightStatus {
@@ -175,6 +178,21 @@ impl SettingsFile {
         view
     }
 
+    /// Whether to teach what can be typed with the search ("see vale 417") now:
+    /// a few times on this computer, then never again. Never performs I/O.
+    pub(crate) fn claim_shorthand_hint(&self) -> bool {
+        let Ok(mut owner) = self.delights.lock() else {
+            return false;
+        };
+        let saved = owner.record();
+        if saved.shorthand_hints >= SHORTHAND_HINTS {
+            return false;
+        }
+        saved.shorthand_hints += 1;
+        owner.revision = owner.revision.wrapping_add(1);
+        true
+    }
+
     /// Called only after an accepted successful native delivery. Never performs I/O.
     pub(crate) fn record_delight_paste(&self, token: u32) -> Option<u32> {
         let mut owner = self.delights.lock().ok()?;
@@ -275,6 +293,19 @@ pub(crate) fn delight_view(
     };
     flush_later(file.inner().clone());
     view
+}
+
+/// Asked when a person reaches for a citation's details by hand; true while the
+/// hint has been shown fewer than [`SHORTHAND_HINTS`] times.
+#[tauri::command]
+#[ibis_desktop_macros::command]
+pub(crate) fn shorthand_hint(app: AppHandle) -> bool {
+    let file = app.state::<SettingsFile>();
+    let shown = file.claim_shorthand_hint();
+    if shown {
+        flush_later(file.inner().clone());
+    }
+    shown
 }
 
 #[cfg(test)]

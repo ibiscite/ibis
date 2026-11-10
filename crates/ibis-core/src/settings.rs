@@ -287,6 +287,8 @@ pub struct Delights {
     pub welcome: bool,
     pub libraries: BTreeMap<String, u8>,
     pub fact_index: Option<u8>,
+    /// How often the picker has taught what can be typed with the search.
+    pub shorthand_hints: u8,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

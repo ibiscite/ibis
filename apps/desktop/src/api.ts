@@ -14,6 +14,7 @@ export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copie
 
 export const {
   delightView,
+  shorthandHint,
   chooseLibrary,
   useZotero,
   useSampleLibrary,

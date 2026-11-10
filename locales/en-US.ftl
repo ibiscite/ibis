@@ -816,6 +816,7 @@ picker-snapshot-changed = The library changed. Search again and reselect the ref
 picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
 picker-using-shorthand = Using { $value }
 picker-apply = Apply
+picker-shorthand-hint = Type it with the search: a page “vale 417”, a chapter “vale ch 2”, text before “see vale”.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
