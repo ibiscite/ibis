@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, resetApp, result, inCitation } from "./testing/app";
 
 afterEach(resetApp);
 const choiceRow = (name: RegExp) => screen.getByRole("option", { name });
@@ -161,7 +161,7 @@ test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only r
   const preview = await screen.findByRole("button", { name: /^Edit / });
   const announcement = screen.getByRole("status", { name: "Citation selection" });
   expect(announcement.textContent).toBe("1 reference selected for citation");
-  const target = destination === "chip" ? screen.getByRole("button", { name: "Remove old from the selection" })
+  const target = destination === "chip" ? inCitation("old")
     : destination === "preview" ? preview : screen.getByRole("button", { name: /^More/ });
   act(() => target.focus());
   expect(document.activeElement).toBe(target);

@@ -19,3 +19,9 @@
   .citation-field { min-height: var(--touch-target); }
   .citation-field input { height: var(--touch-target); }
 }
+/* The locator row, as Zotero's dialog: its type is a quiet pop-up in the label
+   column and its value the field. Prefix and Suffix share one row, each labelled. */
+.citation-field .citation-locator-type.ui-button { justify-self: end; max-width: 9rem; color: var(--text); }
+.citation-locator-value { display: contents; }
+.citation-affixes { grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr); column-gap: var(--space-2); }
+.citation-affix { display: contents; }

@@ -20,8 +20,12 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
   // Quick Look's key: Space types a space in the search, so peeking is ⌘Y as in Finder by keyboard.
   { region: "search", action: "peek", keys: ["CmdOrCtrl+Y"] },
-  // A focused shelf segment: CitationShelf's segmentKeys.
+  // Search to the citation's last token: usePickerKeys' searchKey.
+  { region: "search", action: "citationFocus", keys: ["CmdOrCtrl+ArrowDown"] },
+  // A focused citation token: CitationShelf's segmentKeys.
   { region: "citation", action: "citationMove", keys: ["ArrowLeft", "ArrowRight"] },
+  { region: "citation", action: "citationReorder", keys: ["Shift+ArrowLeft", "Shift+ArrowRight"] },
+  { region: "citation", action: "citationOpen", keys: ["Space", "ArrowUp"] },
   { region: "citation", action: "citationRemove", keys: ["Backspace", "Delete"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
   { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },

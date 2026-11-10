@@ -467,7 +467,7 @@ try {
       await page.waitForTimeout(300); // The chip grows to make room for it.
       assert.equal(await remove.evaluate((node) => {
         const rect = node.getBoundingClientRect();
-        const text = node.closest(".shelf-segment").querySelector(".preview-text").getBoundingClientRect();
+        const text = node.closest(".citation-token").querySelector(".preview-text").getBoundingClientRect();
         const size = rect.width * 2 / 3;
         const top = rect.top + (rect.height - size) / 2, left = rect.left + (rect.width - size) / 2;
         return Math.abs(rect.width - rect.height) <= 1 && rect.width >= 16 &&
@@ -507,7 +507,7 @@ try {
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
-        const segments = page.locator("main > .shelf .shelf-segment-button");
+        const segments = page.locator("main > .shelf .citation-token-button");
         await segments.nth(8).waitFor({ state: "attached" });
         assert.equal(await segments.count(), 9, "the citation has one engine-owned segment per reference");
         await segments.first().focus(); await segments.first().press("ArrowRight");
@@ -631,7 +631,7 @@ try {
       await search.press("Shift+Enter");
       await search.press("ArrowDown");
       await search.press("Shift+Enter");
-      await waitForCheck("large-notice-two-selected", () => document.querySelector(".shelf-count")?.getAttribute("aria-label") === "2 references");
+      await waitForCheck("large-notice-two-selected", () => document.querySelectorAll(".citation-token").length === 2);
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
       assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
       assert.equal(await page.evaluate(isWholeShelf), true, "the shelf stays outside the overflowing notice region");

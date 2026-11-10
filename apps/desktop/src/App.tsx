@@ -15,6 +15,7 @@ import { Notices } from "./features/picker/Notices";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
 import { PickerResults } from "./features/picker/PickerResults";
 import { PickerCitationShelf } from "./features/picker/PickerCitationShelf";
+import type { CitationLineActions } from "./features/picker/CitationShelf";
 import { PickerStatusFooter } from "./features/picker/PickerStatusFooter";
 import { PickerNotices, PickerOverlays } from "./features/picker/PickerOverlays";
 import { useOperations } from "./features/picker/useOperations";
@@ -189,9 +190,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
+  // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
+  const citationLine = useRef<CitationLineActions | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    quitAfterSaving, commandKeys,
+    quitAfterSaving, commandKeys, citationLine,
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -272,11 +275,11 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf
         state={state} send={send} showCitations={showCitations && !commands.mode} results={results} output={output} chosen={shownChoice}
-        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector}
+        changeReference={rows.changeReference} copyChosen={rows.copyChosen} libraryOf={scope.libraryOf} format={format} input={input} sourceState={source} inspector={inspector} citationLine={citationLine}
         deliverable={!searchPending && preferences.ready && library?.state !== "reloading" && destination.ready && !destination.saving} />
       <PickerStatusFooter
         copyProblem={projectRefusal}
-        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run}
+        api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, prepared, resetApp, result } from "./testing/app";
+import { backend, prepared, resetApp, result, inCitation } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -106,7 +106,7 @@ test.each(["row", "tile"])("an add activation on a stale %s cancels queued Enter
     else fireEvent.click(screen.getByTitle(/^Add /));
   });
   await act(async () => { found.resolve([result("a", "Fresh reference")]); });
-  expect(screen.queryByRole("button", { name: "Remove old from the selection" })).toBeNull();
+  expect(inCitation("old")).toBeNull();
   expect(calls).not.toContain("copy_file_citation");
 });
 
@@ -127,7 +127,7 @@ test.each(["copy", "hide", "delivery"])("changing only the search cannot repeat 
   await enter(true);
   await enter();
   await act(async () => { fireEvent.change(box(), { target: { value: "another search" } }); });
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   await enter();
   const copiesWhilePending = copies;
   await act(async () => { paused.resolve(); });

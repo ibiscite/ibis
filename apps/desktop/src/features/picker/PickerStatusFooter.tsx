@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import type { ReactNode, RefObject } from "react";
+import type { CitationLineActions } from "./CitationShelf";
 import { say } from "../../i18n";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
 import type { PickerApi } from "../../App";
@@ -23,8 +24,9 @@ import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
   api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem, command,
+  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem, command, citationLine,
 }: {
+  citationLine?: RefObject<CitationLineActions | null>;
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
   highlighted?: SearchResult;
@@ -84,6 +86,10 @@ export function PickerStatusFooter({
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
             ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
         density={density} pinned={pinned} keepOrder={actions.keepOrder}
+        citation={menuOpen && citationLine?.current ? (() => {
+          const line = citationLine.current, after = (act: () => void) => () => { menus.leaveOverlays(); act(); };
+          return { ...line.state(), focus: after(line.focusLast), edit: after(line.edit), move: (step: -1 | 1) => after(() => line.move(step))(), remove: after(line.remove) };
+        })() : null}
         actions={{
           density: changeDensity,
           pin: () => run("pin"),

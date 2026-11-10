@@ -874,3 +874,26 @@ test("the picker counts as hidden until it is shown, and a visibility read never
   s = send(s, { type: "visibility-read", visible: false, events: started });
   expect(s.shown).toBe(true);
 });
+
+test("moving a reference follows the line's order, keeps the person's order, and refuses a stale line", () => {
+  const s = scenario();
+  s.send({ type: "toggle", result: a, locator: a.locator });
+  s.send({ type: "toggle", result: b });
+  const [first, second] = [...s.state.selected.values()];
+  // A sorting style shows b before a; moving a left puts it first, as the line shows.
+  const shown = [idKey(b.id), idKey(a.id)];
+  s.send({ type: "move-reference", reference: first!, shown, step: -1 });
+  expect([...s.state.selected.keys()]).toEqual([idKey(a.id), idKey(b.id)]);
+  expect(s.state.keepOrder).toBe(true);
+  // The end of the line, a line from before a removal, or a replaced reference do nothing.
+  const before = s.state;
+  s.send({ type: "move-reference", reference: first!, shown: [idKey(a.id), idKey(b.id)], step: -1 });
+  s.send({ type: "move-reference", reference: second!, shown: [idKey(b.id)], step: 1 });
+  s.send({ type: "move-reference", reference: { ...second! }, shown: [idKey(a.id), idKey(b.id)], step: -1 });
+  expect(s.state).toBe(before);
+  // Undo after a remove puts the reference back beside the neighbours it had after the move.
+  s.send({ type: "remove-reference", reference: first! });
+  s.send({ type: "undo-reference", removal: s.state.removed! });
+  expect([...s.state.selected.keys()]).toEqual([idKey(a.id), idKey(b.id)]);
+  expect(s.state.selected.get(idKey(a.id))?.locator).toEqual(a.locator);
+});

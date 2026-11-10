@@ -1,5 +1,5 @@
 import { Icon } from "../../icons";
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from "react";
+import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FilePreview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
@@ -10,10 +10,8 @@ import { closestMatchWarnings } from "./rows";
 import type { ShelfCopied } from "./session";
 import { composing } from "../../composition";
 import { Button } from "../../ui/Button";
-import { useInterfaceMessages } from "../../i18n";
 import type { SourceActionProps } from "../../ui/SourceAction";
-import { ShelfSegment } from "../../ui/ShelfSegment";
-import { ToolbarMenu } from "../../ui/ToolbarMenu";
+import { CitationToken } from "../../ui/CitationToken";
 import { beak } from "../../brand";
 import { CitationInspector } from "./CitationInspector";
 import type { CitationInspectorState, InspectorPanel } from "./useCitationInspector";
@@ -31,6 +29,19 @@ export function referenceLabels(records: SearchResult[], libraryName?: (r: Searc
   return scoped.map((label, i) => scoped.indexOf(label) !== scoped.lastIndexOf(label) ? `${label} · ${i + 1}` : label);
 }
 
+/** What More and the keys do to the citation's tokens: the focused one, or the last. */
+export type CitationLineActions = {
+  /** Has tokens; `selected` when at least one is in the citation, so it can move or go. */
+  state: () => { tokens: number; selected: number };
+  focusLast: () => void; edit: () => void; move: (step: -1 | 1) => void; remove: () => void;
+};
+
+/** Whether a reference's words in the output name it, or it needs its handle beside them. */
+function names(words: string, reference: SearchResult): boolean {
+  const text = words.toLocaleLowerCase();
+  return [reference.first_author, reference.key].some((name) => name && text.includes(name.toLocaleLowerCase()));
+}
+
 function Beak({ closing = false }: { closing?: boolean }) {
   return <svg className={`shelf-mark shelf-mark-${closing ? "close" : "open"}`} viewBox={beak.viewBox} fill="currentColor" aria-hidden="true" focusable="false"
     dangerouslySetInnerHTML={{ __html: beak.body }} />;
@@ -38,8 +49,12 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
+  actionsRef?: Ref<CitationLineActions | null>;
+  /** Moves a reference a place along the line's order (`shown`), as the session does. */
+  onMoveReference?: (reference: CitationReference, shown: readonly string[], step: -1 | 1) => void;
+  onKeepOrder?: (on: boolean) => void;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
   copyProblem?: string | null;
@@ -54,7 +69,6 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
   highlightedReferences?: CitationReference[];
   previewReceipt?: FilePreview;
   onChangeReference?: (reference: CitationReference, change: CitationDetailsChange) => void;
-  removeLabel: (r: SearchResult) => string;
   onRemove: (r: SearchResult) => void;
   referenceLibrary?: (r: SearchResult) => string | null;
   style: OutputId | null;
@@ -72,7 +86,6 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
   source?: SourceActionProps;
   onOpenSource?: (reference: CitationReference) => void;
 }) {
-  const { text: interfaceText } = useInterfaceMessages();
   const copied = copiedReceipt && shown && typeof shown === "object" && shown.text === copiedReceipt.text ? copiedReceipt : null;
   const preserveFocus = useCallback((node: HTMLElement | null) => {
     if (!node) return;
@@ -87,7 +100,6 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
   const inspectorId = useId();
   const citationId = useId();
   const output = useRef<HTMLElement>(null);
-  const count = useRef<HTMLButtonElement>(null);
   const wasVisible = useRef(shown !== undefined);
   useLayoutEffect(() => {
     if (shown === undefined && wasVisible.current && output.current?.contains(document.activeElement)) fallbackFocusRef?.current?.focus({ preventScroll: true });
@@ -126,9 +138,11 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
   const isSelected = (reference: CitationReference) => records.some((r) => idKey(r.id) === idKey(reference.id));
   const fullProblem = problem ?? (style ? say("picker-preview-style-error", { style: outputName(style) }) : say("picker-preview-error"));
   const ready = shown && typeof shown === "object" ? shown : null;
-  const referenceIds = JSON.stringify(references.map((reference) => idKey(reference.id)));
-  const retained = useRef<{ presentation: typeof presentation; ids: string; value: FormattedCitation } | null>(null);
-  useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: referenceIds, value: ready }; }, [ready, presentation, referenceIds]);
+  const currentIds = references.map((reference) => idKey(reference.id));
+  const referenceIds = JSON.stringify(currentIds);
+  const retained = useRef<{ presentation: typeof presentation; ids: readonly string[]; value: FormattedCitation } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: referenceIds stands for currentIds.
+  useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: currentIds, value: ready }; }, [ready, presentation, referenceIds]);
   const meaning = choiceKey(references);
   const pendingOwner = useMemo(() => ({ meaning, keepOrder, style, keys, presentation }), [meaning, keepOrder, style, keys, presentation]);
   const [expired, setExpired] = useState<object | null>(null);
@@ -140,7 +154,10 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
     return () => window.clearTimeout(timer);
   }, [waiting, pendingOwner]);
   const previous = waiting && expired !== pendingOwner && retained.current?.presentation === presentation ? retained.current?.value ?? null : null;
-  const retainedSegments = Boolean(previous && retained.current?.ids === referenceIds);
+  // The same references in another order keep their tokens while the next preview is
+  // made, each found by identity, so a moved token keeps its place and its focus.
+  const retainedIds = retained.current?.ids ?? [];
+  const retainedSegments = Boolean(previous && retainedIds.length === currentIds.length && currentIds.every((id) => retainedIds.includes(id)));
   const visible = ready ?? (retainedSegments ? previous : null);
   const text = visible?.text;
   // Dragging delivers what Enter would: only the current prepared citation,
@@ -171,25 +188,77 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
     if (!heldFocus.current || panel) return;
     heldFocus.current = false;
     const { reference, origin } = opened.current ?? {};
-    const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".shelf-segment") ?? []].find((part) => part.dataset.reference === reference) : undefined;
+    const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".citation-token") ?? []].find((part) => part.dataset.reference === reference) : undefined;
     const target = segment?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
     target?.focus({ preventScroll: true });
   }, [panel, fallbackFocusRef]);
+  // The details grow from their reference's token, or from the control that opened them.
+  const anchor = useRef<Element | null>(null);
+  useLayoutEffect(() => {
+    anchor.current = (panel?.kind === "reference" && panel.reference ? tokenButton(panel.reference) : null) ?? (panel?.origin.isConnected ? panel.origin : output.current);
+  });
+  const fromPrevious = !ready && retainedSegments;
+  const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
+  const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
+  const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
+  // The line's order, which a style may have sorted: moves follow what the person sees.
+  const shownOrder = [...new Set(segments?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
+  const lineOrder = shownOrder.length === currentIds.length ? shownOrder : currentIds;
+  const tokenButton = (key: string) => output.current?.querySelector<HTMLButtonElement>(`.citation-token[data-reference="${CSS.escape(key)}"] > button`) ?? null;
+  // A moved token is found again after the line reorders, until the next preview shows it.
+  const refocus = useRef<{ key: string; ready: FormattedCitation | null } | null>(null);
+  const [orderNote, setOrderNote] = useState("");
+  const move = (reference: CitationReference, step: -1 | 1) => {
+    const index = lineOrder.indexOf(idKey(reference.id));
+    if (!onMoveReference || !isSelected(reference) || index + step < 0 || index + step >= lineOrder.length) return;
+    refocus.current = document.activeElement === tokenButton(idKey(reference.id)) ? { key: idKey(reference.id), ready } : null;
+    if (!keepOrder && style) setOrderNote(say("picker-order-kept"));
+    onMoveReference(reference, lineOrder, step);
+  };
+  useLayoutEffect(() => {
+    const moved = refocus.current;
+    if (!moved) return;
+    const button = tokenButton(moved.key);
+    if (button && document.activeElement !== button && (document.activeElement === document.body || output.current?.contains(document.activeElement))) button.focus({ preventScroll: true });
+    if (ready && ready !== moved.ready) refocus.current = null;
+  });
+  // A changed order slides each token from where it was, in the line's time.
+  const placed = useRef<{ order: string; at: Map<string, number> }>({ order: "", at: new Map() });
+  useLayoutEffect(() => {
+    const nodes = [...output.current?.querySelectorAll<HTMLElement>(".citation-token") ?? []];
+    const order = nodes.map((node) => node.dataset.reference).join("\u0001");
+    const at = new Map(nodes.map((node) => [node.dataset.reference!, node.getBoundingClientRect().left]));
+    const { order: before, at: was } = placed.current;
+    placed.current = { order, at };
+    if (order === before || matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const duration = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-2")) || 180;
+    for (const node of nodes) {
+      const from = was.get(node.dataset.reference!), to = at.get(node.dataset.reference!)!;
+      if (from !== undefined && Math.abs(from - to) > 1 && typeof node.animate === "function") {
+        node.animate([{ translate: `${from - to}px 0` }, { translate: "0 0" }], { duration, easing: "cubic-bezier(.2, .9, .3, 1)" });
+      }
+    }
+  });
   const segmentKeys: (event: Parameters<NonNullable<ComponentProps<typeof Button>["onKeyDown"]>>[0], reference: CitationReference) => void = (event, reference) => {
     if (composing(event)) return event.continuePropagation();
-    if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+    const plain = !event.altKey && !event.metaKey && !event.ctrlKey;
+    if ((event.key === "ArrowLeft" || event.key === "ArrowRight") && plain) {
       event.preventDefault();
-      const segments = [...output.current?.querySelectorAll<HTMLButtonElement>(".shelf-segment-button") ?? []];
-      const step = (event.key === "ArrowRight" ? 1 : -1) * (getComputedStyle(event.currentTarget).direction === "rtl" ? -1 : 1);
-      segments[Math.min(segments.length - 1, Math.max(0, segments.indexOf(event.currentTarget as HTMLButtonElement) + step))]?.focus();
+      const step = (event.key === "ArrowRight" ? 1 : -1) * (getComputedStyle(event.currentTarget).direction === "rtl" ? -1 : 1) as -1 | 1;
+      if (event.shiftKey) move(reference, step);
+      else {
+        const tokens = [...output.current?.querySelectorAll<HTMLButtonElement>(".citation-token-button") ?? []];
+        tokens[Math.min(tokens.length - 1, Math.max(0, tokens.indexOf(event.currentTarget as HTMLButtonElement) + step))]?.focus();
+      }
     }
-    // ↑ ↓ belong to the list, as in Search: go back there and move once, so the
-    // shelf never holds focus for a key it does not use.
-    else if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.altKey && !event.metaKey && fallbackFocusRef?.current?.isConnected) {
+    // The details open above the token; ↓ goes back down to Search.
+    else if (event.key === "ArrowUp" && plain && !event.shiftKey) {
       event.preventDefault();
-      const search = fallbackFocusRef.current;
-      search.focus({ preventScroll: true });
-      search.dispatchEvent(new KeyboardEvent("keydown", { key: event.key, code: event.key, bubbles: true, cancelable: true }));
+      if (!inspecting(reference)) open("reference", event.currentTarget as HTMLElement, reference);
+    }
+    else if (event.key === "ArrowDown" && plain && !event.shiftKey && fallbackFocusRef?.current?.isConnected) {
+      event.preventDefault();
+      fallbackFocusRef.current.focus({ preventScroll: true });
     }
     else if ((event.key === "Backspace" || event.key === "Delete") && isSelected(reference)) {
       event.preventDefault(); remove(reference);
@@ -197,39 +266,53 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
     // React Aria stops every key it is shown. Esc and the rest belong to the picker.
     else event.continuePropagation();
   };
-  const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
-  const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
-  // A segment is the reference's own words; the brackets and separators the output
-  // adds are shared and quieter, never part of a segment, for one reference too.
+  const target = () => {
+    const focused = (document.activeElement as HTMLElement | null)?.closest<HTMLElement>(".citation-token")?.dataset.reference;
+    const key = focused ?? (panel?.kind === "reference" ? panel.reference : undefined) ?? lineOrder.at(-1);
+    return references.find((reference) => idKey(reference.id) === key);
+  };
+  useImperativeHandle(actionsRef, () => ({
+    state: () => ({ tokens: copied ? 0 : references.length, selected: copied ? 0 : records.length }),
+    focusLast: () => { const last = lineOrder.at(-1); if (last) tokenButton(last)?.focus(); },
+    edit: () => { const reference = target(); if (reference && !inspecting(reference)) open("reference", tokenButton(idKey(reference.id)) ?? output.current!, reference); },
+    move: (step) => { const reference = target(); if (reference) move(reference, step); },
+    remove: () => { const reference = target(); if (reference && isSelected(reference)) remove(reference); },
+  }));
+  // A token is the reference's own words; the brackets and separators the output
+  // adds are shared and quieter, never part of a token, for one reference too.
   const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
+  const token = (reference: CitationReference, name: string, words: string, contents: React.ReactNode, describedBy: string | undefined, index?: number) =>
+    <CitationToken key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} built={isSelected(reference)} aria-label={say("citation-details-edit", { reference: name })}
+      handle={names(words, reference) ? undefined : referenceLabel(reference)}
+      aria-describedby={describedBy} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete Shift+ArrowLeft Shift+ArrowRight ArrowUp" : "ArrowUp"}
+      aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
+      onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}>
+      {index === undefined ? contents : <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>}
+    </CitationToken>;
   const manySegments = (!single || spanned) && !copied && segments?.map((span, index) => {
-    const reference = span.item === null ? undefined : references[span.item];
+    const reference = span.item === null ? undefined : referenceAt(span.item);
     const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
-    const name = labels[span.item!]!;
-    return <ShelfSegment key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={say("citation-details-edit", { reference: name })}
-      aria-describedby={`${citationId}-${index}`} aria-keyshortcuts={isSelected(reference) ? "Backspace Delete" : undefined}
-      aria-expanded={inspecting(reference)} aria-controls={inspecting(reference) ? inspectorId : undefined}
-      onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => edit(reference, event.target as HTMLElement)}
-      remove={isSelected(reference) ? { label: removeLabel(reference), onPress: () => remove(reference) } : undefined}>
-      <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>
-    </ShelfSegment>;
+    return token(reference, labels[references.indexOf(reference)]!, span.text, contents, `${citationId}-${index}`, index);
   });
-  const singleSegment = single && !spanned && onChangeReference && !copied ? <ShelfSegment reference={idKey(single.id)} referenceKey={single.key} aria-label={say("citation-details-edit", { reference: labels[0]! })}
-    aria-keyshortcuts={isSelected(single) ? "Backspace Delete" : undefined}
-    aria-describedby={text !== undefined ? citationId : undefined}
-    aria-expanded={inspecting(single)} aria-controls={inspecting(single) ? inspectorId : undefined}
-    onKeyDown={(event) => segmentKeys(event, single)} onPress={(event) => edit(single, event.target as HTMLElement)}
-    remove={isSelected(single) ? { label: removeLabel(single), onPress: () => remove(single) } : undefined}>
-    <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>
-  </ShelfSegment> : null;
+  const singleWords = text ?? labels[0] ?? "";
+  const singleSegment = single && !spanned && onChangeReference && !copied
+    ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
+    : null;
   return <>
     <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
       {announce ? [say("picker-selection-count", { count: selected.size }), ...partialWarnings].join(" ") : ""}
     </p>
-    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} heading={labels[editedIndex] ?? say("picker-citation-details")}
-      reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`} citation={visible}
-      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source} keys={keys}
+    <p className="visually-hidden" role="status" aria-live="polite">{keepOrder ? orderNote : ""}</p>
+    {panel && hasShelf && <CitationInspector key={panel.reference ?? panel.kind} ref={returnFocus} id={inspectorId} panel={panel} anchor={anchor} heading={labels[editedIndex] ?? say("picker-citation-details")}
+      moves={edited && isSelected(edited) ? (() => {
+        const at = lineOrder.indexOf(idKey(edited.id)), rtl = getComputedStyle(document.documentElement).direction === "rtl";
+        const earlier = at > 0, later = at >= 0 && at < lineOrder.length - 1;
+        return rtl ? { left: later, right: earlier } : { left: earlier, right: later };
+      })() : { left: false, right: false }}
+      onMove={(side) => { if (edited) move(edited, (side === "right" ? 1 : -1) * (getComputedStyle(document.documentElement).direction === "rtl" ? -1 : 1) as -1 | 1); }}
+      reference={panel.kind === "warnings" ? undefined : edited} index={editedIndex} selected={Boolean(edited && isSelected(edited))} previewReceipt={previewReceipt} output={`${style}:${keys}`}
+      failure={shown === "failed" ? fullProblem : copyProblem ?? null} notes={{ entry: entryNotice, output: currentWarnings, closest: partialWarnings }} source={source}
       onChange={onChangeReference} onSubmit={onSubmit} onOpenSource={onOpenSource} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}
@@ -254,13 +337,9 @@ export function CitationShelf({ deliverable = true, keepOrder = false, inspector
         </div>
         <div className="shelf-actions">
           {copied && <span role="status" aria-label={say("picker-copied")} className="shelf-copied"><Icon name="check" />{say("picker-copied")}</span>}
-          {!copied && references.length > 1 && <ToolbarMenu buttonRef={count} label={say("picker-selected-references")} value={String(references.length)} placement="top end" selectedKey={panel?.reference ?? ""}
-            button={{ className: "shelf-count", quiet: true, label: interfaceText("shelf-references", { count: references.length }), title: say("picker-all-chosen", { n: String(references.length) }),
-              // Words say what the count is; a folded shelf keeps the number, as its warnings do.
-              content: compact ? String(references.length) : interfaceText("shelf-references", { count: references.length }) }}
-            filterLabel={say("picker-filter-references")} sections={[{ id: "references", label: say("picker-selected-references"), items: references.map((reference, i) => ({ id: idKey(reference.id), label: labels[i]!,
-              sample: [reference.locator && `${reference.locator.label} ${reference.locator.value}`, reference.partial && say("picker-closest-match")].filter(Boolean).join(" · ") || undefined, prose: true })) }]}
-            onAction={(key) => { const reference = references.find((r) => idKey(r.id) === key); if (reference) open("reference", count.current!, reference); }} />}
+          {/* Keep My Order, said on the line while a move has it on in a style. */}
+          {!copied && keepOrder && style && references.length > 1 && onKeepOrder && <Button variant="quiet" size="small" className="shelf-order" aria-pressed="true"
+            title={say("picker-your-order-off")} onPress={() => { setOrderNote(""); onKeepOrder(false); }}>{say("picker-your-order")}</Button>}
           {statusLabel && !detailsOpen && <Button variant="quiet" className="shelf-warnings" aria-label={statusLabel} title={statusLabel}
             aria-expanded={panel?.kind === "warnings"} aria-controls={panel?.kind === "warnings" ? inspectorId : undefined}
             onPress={(event) => toggle("warnings", event.target as HTMLElement)}>{compact ? warnings.length > 0 ? `! ${warnings.length}` : "i" : <>

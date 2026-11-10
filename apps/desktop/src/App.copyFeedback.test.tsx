@@ -226,7 +226,7 @@ test.each(["selection", "search", "reopening"])("a delayed hide failure cannot c
   const shelfText = document.querySelector(".shelf")?.textContent;
   await act(async () => { rejectHide(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
   expect(document.querySelector(".shelf")?.textContent).toBe(shelfText);
-  expect(document.querySelector(".shelf-segment, .shelf-count")).toBeTruthy();
+  expect(document.querySelector(".citation-token")).toBeTruthy();
   expect(calls).not.toContain("show_copied_notice");
 });
 

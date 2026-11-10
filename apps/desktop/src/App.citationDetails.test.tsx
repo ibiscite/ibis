@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseForm, chooseFromMore, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest } from "./testing/app";
+import { backend, chooseForm, chooseFromMore, prepared, receipt, resetApp, result, openCitationDetails, closeCitationDetails, type PreviewRequest, inCitation } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -120,7 +120,7 @@ test("removing a middle reference and Undo restore its position and fields", asy
   fireEvent.change(screen.getByRole("textbox", { name: "Prefix" }), { target: { value: "see" } });
   fireEvent.change(screen.getByRole("textbox", { name: "Suffix" }), { target: { value: "for details" } });
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
   expect(screen.getByRole("button", { name: "2 references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   list = await openReferences();
@@ -200,7 +200,7 @@ test("closing and reopening while Page has focus returns to Search and retains t
   fireEvent.change(page, { target: { value: "42" } });
   await act(async () => { await emit("picker:hidden"); await emit("picker:shown"); await new Promise(requestAnimationFrame); });
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
   expect((await openCitationDetails()).value).toBe("42");
 });
 
@@ -223,7 +223,7 @@ test("reference and window Undo take the slot in turn and cannot consume each ot
   expect(screen.getByText("Removed Smith 2020")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: /^Undo / }));
   expect(screen.queryByRole("button", { name: /^Undo / })).toBeNull();
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
 });
 
 test("source and sentence-case warnings stay visible in preview and copy feedback", async () => {
@@ -275,7 +275,7 @@ test("a label-only Page refuses copy until corrected", async () => {
   });
   render(<App />);
   const page = await openCitationDetails();
-  await within(screen.getByRole("region", { name: "Full citation" })).findByText("Original output");
+  await within(screen.getByRole("region", { name: "Preview" })).findByText("Original output");
   const search = screen.getByLabelText("Search references");
   fireEvent.change(page, { target: { value: "pp." } });
   expect((await screen.findByRole("alert")).textContent).toBe(message);
@@ -407,7 +407,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "12" } });
-  await within(screen.getByRole("region", { name: /^Citation details for/ })).findByText(warning);
+  await within(screen.getByRole("dialog", { name: /^Citation details for/ })).findByText(warning);
   closeCitationDetails();
   const preview = screen.getByRole("region", { name: "Preview" });
   const warnings = await within(preview).findByRole("button", { name: "1 warning" });
@@ -438,7 +438,7 @@ test("a form edit cancels queued Enter and ignores the retired preview", async (
   await chooseForm("Name in the sentence");
   await waitFor(() => expect(pending).toHaveLength(2));
   await act(async () => { pending[1]!(receipt("New narrative")); });
-  await within(screen.getByRole("region", { name: "Full citation" })).findByText("New narrative");
+  await within(screen.getByRole("region", { name: "Preview" })).findByText("New narrative");
   await act(async () => { pending[0]!(receipt("Retired normal")); });
   expect(screen.queryByText("Retired normal")).toBeNull();
   expect(calls).not.toContain("copy_file_citation");
@@ -566,7 +566,7 @@ test("Search and the list stay live beside the panel, and Esc from Search closes
   expect(screen.getByRole("textbox", { name: "Page" })).toBeTruthy();
   fireEvent.keyDown(search, { key: "ArrowDown" });
   await waitFor(() => expect(screen.getByRole("option", { name: /Second work/ }).getAttribute("aria-selected")).toBe("true"));
-  expect(screen.getByRole("region", { name: "Citation details for First work" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Citation details for First work" })).toBeTruthy();
   fireEvent.keyDown(search, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull());
   expect(document.activeElement).toBe(search);
@@ -641,7 +641,7 @@ test("Enter in Page does what the footer says, once, and a held key does not rep
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42" } });
-  await within(screen.getByRole("region", { name: "Full citation" })).findByText("Citation 42");
+  await within(screen.getByRole("region", { name: "Preview" })).findByText("Citation 42");
   fireEvent.keyDown(page, { key: "Enter", repeat: true });
   fireEvent.keyDown(page, { key: "Enter", isComposing: true });
   expect(copied).toEqual([]);
@@ -658,14 +658,14 @@ test("a refused page stays visible in place, and Enter in Page copies nothing", 
   render(<App />);
   const page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "pp." } });
-  const refusal = await within(screen.getByRole("region", { name: /^Citation details for/ })).findByRole("alert");
+  const refusal = await within(screen.getByRole("dialog", { name: /^Citation details for/ })).findByRole("alert");
   expect(refusal.textContent).toBe(message);
   expect(document.activeElement).toBe(page);
   fireEvent.keyDown(page, { key: "Enter" });
   await act(async () => { await Promise.resolve(); });
   expect(calls).not.toContain("copy_file_citation");
   expect(document.activeElement).toBe(page);
-  expect(within(screen.getByRole("region", { name: /^Citation details for/ })).getByRole("alert").textContent).toBe(message);
+  expect(within(screen.getByRole("dialog", { name: /^Citation details for/ })).getByRole("alert").textContent).toBe(message);
 });
 
 test("failed examples leave every form usable and say so once, quietly", async () => {
@@ -735,11 +735,11 @@ test("pressing another segment moves the inspector to it and retires the first r
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
   fireEvent.click(await screen.findByRole("button", { name: "Edit Smith 2020 · a" }));
-  await screen.findByRole("region", { name: "Citation details for First work" });
+  await screen.findByRole("dialog", { name: "Citation details for First work" });
   await waitFor(() => expect(replies.at(-1)?.item).toBe(0));
   const first = replies.at(-1)!;
   fireEvent.click(screen.getByRole("button", { name: "Edit Smith 2020 · b" }));
-  await screen.findByRole("region", { name: "Citation details for Second work" });
+  await screen.findByRole("dialog", { name: "Citation details for Second work" });
   await waitFor(() => expect(replies.at(-1)?.item).toBe(1));
   const choices = (example: string) => ({ current_form: "normal", forms: [{ form: "normal", example, reason: null }, { form: "narrative", example: null, reason: null }, { form: "year-only", example: null, reason: null }] });
   await act(async () => replies.at(-1)!.resolve(choices("Second example")));
@@ -773,12 +773,12 @@ test("a copy that fails says so in the panel, once, so it is seen when the panel
   backend({ search: () => [result("a", "Invented work")], preview_file_citation: () => receipt("Citation"), copy_file_citation: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
   const page = await openCitationDetails();
-  await within(screen.getByRole("region", { name: "Full citation" })).findByText("Citation");
+  await within(screen.getByRole("region", { name: "Preview" })).findByText("Citation");
   fireEvent.keyDown(page, { key: "Enter" });
   const alert = await screen.findByRole("alert");
   expect(alert.closest(".inspector")).toBeTruthy();
   expect(alert.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-  expect(screen.getByRole("region", { name: "Full citation" }).textContent).toBe("Citation");
+  expect(screen.getByRole("region", { name: "Preview" }).textContent).toBe("Citation");
   closeCitationDetails();
   await waitFor(() => expect(document.querySelector(".inspector")).toBeNull());
   expect((await screen.findByRole("alert")).closest(".notices")).toBeTruthy();

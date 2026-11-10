@@ -221,3 +221,15 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   void listen<api.LibraryStatus>("library:changed", (event) => { lastLibrary = event.payload; });
   return calls;
 }
+
+/** The token of a reference in the citation being built, by its key; null when it is not in it. */
+export function inCitation(key: string): HTMLButtonElement | null {
+  return document.querySelector<HTMLButtonElement>(`.citation-token[data-built][data-reference-key="${CSS.escape(key)}"] > button`);
+}
+
+/** Removes a reference from the citation as a person does: ⌫ on its token. */
+export function removeFromCitation(token: HTMLElement | null) {
+  if (!token) throw new Error("That reference is not in the citation");
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "Backspace" });
+}

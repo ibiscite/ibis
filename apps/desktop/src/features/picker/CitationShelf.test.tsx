@@ -18,7 +18,7 @@ type ShelfProps = Partial<Parameters<typeof CitationShelf>[0]>;
 function Shelf(props: ShelfProps) {
   const inspector = useCitationInspector();
   return <CitationShelf inspector={inspector} announce={false} selected={new Map()}
-    removeLabel={(r) => `Remove ${r.key}`} onRemove={() => undefined} onChangeReference={() => undefined}
+    onRemove={() => undefined} onChangeReference={() => undefined}
     style="apa" keys={false} shown={undefined} focusable={false} outputWarnings={[]} {...props} />;
 }
 const shelf = (props: ShelfProps) => <Shelf {...props} />;
@@ -44,7 +44,7 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
   expect(document.activeElement).toBe(alpha);
   fireEvent.keyDown(alpha, { key: "Delete" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(a);
-  expect(within(beta.closest(".shelf-segment")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
+  expect(within(beta.closest(".citation-token")!).getByRole("button", { name: "Remove b" })).toBeTruthy();
 });
 
 test("↑ and ↓ on a segment go back to Search and move the list; the shelf itself is never a focus stop", () => {
@@ -131,7 +131,7 @@ test.each(["click", "Enter", " "])("a single reference is the whole citation seg
   expect(within(inspector).getByRole("button", { name: /Remove from Citation/ })).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.click(within(inspector).getByRole("button", { name: "Close" }));
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
   expect(document.activeElement).toBe(segment);
 });
 
@@ -147,7 +147,7 @@ test("pressing the open segment closes its details; another segment moves them",
   expect(details("Citation details for Invented title b")).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
   fireEvent.click(beta);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
 test("a pending preview can be edited before formatting finishes", () => {
@@ -170,7 +170,7 @@ test("a long single citation can be read in full from its keyboard-opened detail
   const text = "An invented long reference with its complete meaning. ".repeat(30).trim();
   render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
   press(screen.getByRole("button", { name: "Edit García 2021" }), "Enter");
-  const full = screen.getByRole("region", { name: "Full citation" });
+  const full = screen.getByRole("region", { name: "Preview" });
   expect(full.textContent).toBe(text);
   expect(full.tabIndex).toBe(0);
 });
@@ -243,7 +243,7 @@ test.each(["Backspace", "Delete", "action", "badge"])("%s removes exactly once; 
   } else if (method === "badge") fireEvent.click(screen.getByRole("button", { name: "Remove a" }));
   else press(segment, method);
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
 test("Backspace removes from the inspector, but only ever edits text in Page", () => {
@@ -281,10 +281,10 @@ test("hiding the output keeps the reference's one-click remove badge", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
   const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  const wrapper = segment.closest<HTMLElement>(".shelf-segment")!;
+  const wrapper = segment.closest<HTMLElement>(".citation-token")!;
   fireEvent.click(within(wrapper).getByRole("button", { name: "Remove a" }));
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
-  expect(screen.queryByRole("region", { name: /^Citation details for/ })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 });
 
 test.each([1, 2])("many references at the minimum frame and %s× text retain exact output and one-step access to every reference", async (scale) => {
