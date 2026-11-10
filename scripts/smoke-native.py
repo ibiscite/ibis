@@ -149,7 +149,8 @@ def missing_library_evidence(snapshot, name):
 
 
 
-# Library actions live in the footer's Library menu; application actions in More.
+# Library actions live in the footer's Library menu; application actions in More,
+# whose palette lists them as options of a listbox (ui/Palette), not menu items.
 TREE_SETTLE_SECONDS = 10
 MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
                 "Reload Library": "Library", "Quit Ibis": "More"}
@@ -157,6 +158,8 @@ MENU_ACTIONS = {"Choose Library…": "Library", "Use Zotero": "Library",
 # Library, More and the format pop-up use the same native HTML button contract.
 MENU_BUTTON_ROLES = {"button", "pushbutton", "pushbuttonmenu", "combobox"}
 MENU_ITEM_ROLES = {"menuitem", "checkmenuitem", "radiomenuitem", "menuitemcheckbox", "menuitemradio"}
+# ATK exposes a listbox option as a list item; newer AT-SPI names the role "option".
+PALETTE_ITEM_ROLES = {"listitem", "option"}
 
 
 class NativeControlUnavailable(AssertionError):
@@ -1230,7 +1233,9 @@ class Linux:
         # The footer and its menu used to share "Library"; activating the region
         # could hit Find instead. Bind menu actions to their actual widget role,
         # also avoiding a same-named menu left in the accessibility tree.
-        roles = MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values() else MENU_ITEM_ROLES if name in MENU_ACTIONS else None
+        roles = (MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values()
+                 else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
+                 else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
         def children(parent, *, owned=False):
             try:
                 count = parent.childCount
@@ -2908,7 +2913,11 @@ class ContractTests(unittest.TestCase):
             with self.subTest(name=name):
                 native, desktop, owned, target, foreign = self.linux_click_fixture()
                 target.name = name
-                menu = self.CensusNode(name=MENU_ACTIONS[name], role="menu", children=[target])
+                # More's actions are options of its palette's list box; the Library menu's are menu items.
+                palette = MENU_ACTIONS[name] == "More"
+                if palette:
+                    target.role = "list item"
+                menu = self.CensusNode(name=MENU_ACTIONS[name], role="list box" if palette else "menu", children=[target])
                 menu.queryAction = Mock()
                 trigger = self.CensusNode(name=MENU_ACTIONS[name], role="push button menu")
                 def opened(_index):
@@ -3010,7 +3019,8 @@ class ContractTests(unittest.TestCase):
                                               ("Choose Library…", "label", "menu item"),
                                               ("Choose Library…", "push button", "menu item"),
                                               ("Use Zotero", "list item", "menu item"),
-                                              ("Quit Ibis", "section", "menu item")):
+                                              ("Quit Ibis", "section", "list item"),
+                                              ("Quit Ibis", "menu item", "list item")):
             with self.subTest(name=name, wrong_role=wrong_role):
                 native, desktop, owned, target, foreign = self.linux_click_fixture()
                 target.name, target.role = name, right_role
