@@ -34,6 +34,9 @@
   --hit: var(--control-h);
   /* The narrowest a status line (library, project) shrinks before it wraps. */
   --status-min: 14rem;
+  /* The shortest a status gets before the footer folds its hint labels to keys:
+     about a word, never a stub such as "Z…". */
+  --status-short: 6rem;
   /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
   --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
