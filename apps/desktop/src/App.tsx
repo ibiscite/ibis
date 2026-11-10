@@ -1,5 +1,5 @@
 import * as nativeApi from "./api";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { idKey } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
@@ -10,6 +10,7 @@ import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
+import type { FormatPreview } from "./features/picker/FormatMenu";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
@@ -133,7 +134,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
-  const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
+  const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
@@ -188,6 +189,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
+  // The format chooser's preview: the chosen references in another format,
+  // asked of the engine as the preview is, cancelled by a newer ask.
+  const { ask } = output;
+  const formatPreview = useCallback<FormatPreview>(async (other, signal) => {
+    if (!ask) return null;
+    const preview = await api.previewFileCitation(ask.selection, other, ask.revision, signal, ask.projectContext, ask.keepOrder);
+    return preview.text;
+  }, [ask, api]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
@@ -227,7 +236,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onScrollCapture={pointer.resetHover}
     >
       <PickerHeader
-        hidden={welcomeShown} pinned={pinned} onTogglePin={() => { keys.run("pin"); focusHome(); }}
+        hidden={welcomeShown} yours={preferences.format} preview={formatPreview}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken
@@ -280,7 +289,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        cancelCopy={cancelCopy} command={commands.footer} />
+        command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}

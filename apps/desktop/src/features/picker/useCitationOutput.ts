@@ -63,5 +63,6 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   const previewProblem = shown === "failed" ? result?.problem ?? (style ? say("picker-preview-style-error", { style: outputName(style) }) : say("picker-preview-error")) : undefined;
   const previewReceipt = result?.preview;
   const displayedOutput = chosen.length > 0 ? shown : undefined;
-  return { formatted: result, previewReceipt, chosenKey, shown, previewProblem, displayedOutput };
+  // What the preview asks the engine, for the format chooser's own preview.
+  return { formatted: result, previewReceipt, chosenKey, shown, previewProblem, displayedOutput, ask: inputs.ask };
 }

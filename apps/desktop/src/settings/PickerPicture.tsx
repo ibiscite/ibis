@@ -30,7 +30,7 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
   const html = renderToStaticMarkup(<>
     <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} pinned={false} onTogglePin={ignore} />
+      onFormatChange={ignore} />
     <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />

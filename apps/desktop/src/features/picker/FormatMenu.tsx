@@ -1,19 +1,31 @@
-import type { RefObject } from "react";
+import { useEffect, useState, type RefObject } from "react";
 import { ariaKeys, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import type { AppPaste } from "../../api";
-import { keyOutputs, listedOutput, outputName, styleOutputs, type OutputId } from "../../format/outputs";
+import { isStyle, keyOutputs, listedOutput, outputName, outputOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
-import { ToolbarMenu, type ToolbarMenuSection, type MenuCloseReason } from "../../ui/ToolbarMenu";
+import { Palette, type PaletteClose, type PaletteItem, type PaletteSection } from "../../ui/Palette";
+import { PopupButton } from "../../ui/PopupButton";
 import type { FormatPick, FormatSource } from "./useDestination";
 
-/** The copy format menu: the engine's key syntaxes and common styles, each
- * by its one name, with what it writes and a style's full title beside it. Picking one remembers it for the app; without an app it is the
- * default. The menu says which applies and why.
- * Styles stay listed but unavailable while the engine is not offered.
- * Focus goes back to the search box after a pick, Escape or Tab. */
-export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writingProject, onWritingProjects }: {
+/** What closed the chooser: a pick, a dismissal, or a command clearing the way. */
+export type MenuCloseReason = PaletteClose;
+/** The citation as it would be pasted in another format, or null when it can't be. */
+export type FormatPreview = (output: OutputId, signal: AbortSignal) => Promise<string | null>;
+
+// The formats chosen in this run of Ibis, newest first: the chooser's short list.
+const recent: OutputId[] = [];
+const remember = (output: OutputId) => { recent.splice(0, recent.length, output, ...recent.filter((id) => id !== output).slice(0, 5)); };
+
+/** The format chooser (decision 0042, palette B): the chip names the format in
+ * use and, when it isn't your own, why ("APA · Word", "APA · Thesis"). It opens
+ * the palette: the way back to your format first, your recent formats, the
+ * app's own choices, then every format by typing, with the highlighted
+ * format's real citation beside the list. Focus returns to Search. */
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, copyOnly, disabled, styles, onChange, searchRef, writingProject, onWritingProjects, preview }: {
   format: OutputId;
+  /** Your own format, the one a "back" row returns to. */
+  yours?: OutputId;
   buttonRef?: RefObject<HTMLButtonElement | null>;
   /** The app the picker was opened from, named beside the format. */
   app: string | null;
@@ -22,8 +34,11 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
   /** Where a pick goes. */
   pick: FormatPick;
   onOpenChange?: (open: boolean, reason?: MenuCloseReason) => void;
+  /** The app's paste question is open: offer its two answers. */
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
+  /** Copy instead of pasting into this app from now on (decision 0042: with the app's other choices). */
+  copyOnly?: (() => void) | null;
   disabled: boolean;
   /** Whether formatted citation styles can be used now. */
   styles: boolean;
@@ -32,31 +47,80 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
   /** Explicit project context, distinct from the destination app. */
   writingProject?: { name: string } | null;
   onWritingProjects?: () => void;
+  preview?: FormatPreview | null;
 }) {
-  const sections: ToolbarMenuSection[] = [
-    ...onWritingProjects ? [{ id: "project-actions", items: [{ id: "writing-projects", label: say("writing-project-menu"), command: true }] }] : [],
-    ...pasteChoices && app ? [{ id: "delivery", label: say("picker-for-app", { app }), items: [
-      { id: "paste", label: say("picker-paste-from-now-on", { app }), command: true },
-      { id: "copy-only", label: say("picker-copy-only"), command: true },
-    ] }] : [],
-    { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map((output) => (
-      { id: output.id, label: output.name, sample: output.example ?? undefined })) },
-    { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map((output) => (
-      { id: output.id, label: output.name, keywords: output.description ?? undefined, disabled: !styles })) },
-  ];
+  const [open, setOpen] = useState(false);
   const name = outputName(format);
   const value = writingProject ? say("picker-format-for-app", { format: name, app: writingProject.name }) : source === "held" ? say("picker-format-this-paste", { format: name }) : source === "default" || !app ? name : say("picker-format-for-app", { format: name, app });
   const why = writingProject ? say("writing-project-remembered", { name: isolate(writingProject.name) }) : source === "held" ? say("picker-format-held", { format: name }) : source === "default" ? app ? say("picker-format-app-default", { app }) : say("picker-format-no-app")
     : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : say("picker-format-no-app");
   const next = writingProject ? say("writing-project-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
     : pick === "paste" ? say("picker-pick-this-paste") : pick === "default" ? say("picker-pick-default") : source === "remembered" ? say("picker-pick-replaces") : say("picker-pick-remembered");
-  // One line says where a pick goes; the full reason is the menu's description.
-  const heading = writingProject ? say("picker-for-app", { app: writingProject.name }) : pick === "paste" ? say("picker-pick-heading-this-paste")
-    : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
-  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={say("picker-copy-as")} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
-    filterLabel={say("picker-filter-formats")} onAction={(key) => {
-      if (key === "writing-projects") onWritingProjects?.();
-      else if (key === "paste" || key === "copy-only") onPasteChange?.(key);
-      else { const output = listedOutput(key); if (output) onChange(output); }
-    }} returnFocusRef={searchRef} /></>;
+  // Whose a pick is, quietly beside the palette's name.
+  const whose = writingProject ? writingProject.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
+  const back = !writingProject && app && yours && yours !== format && (source === "remembered" || source === "suggested") ? yours : null;
+  const row = (output: OutputChoice): PaletteItem => ({
+    id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description].filter(Boolean).join(" "),
+    ...output.style && !styles ? { disabled: true, detail: say("palette-style-unavailable") } : {},
+  });
+  const shortList = [...new Set<OutputId>([format, ...recent, ...yours ? [yours] : []])].slice(0, 5).map((id) => row(outputOf(id)));
+  const sections: PaletteSection[] = [
+    ...back ? [{ id: "back", items: [{ id: "back", back: true, label: say("palette-use-again", { format: outputName(back), app: app! }) }] }] : [],
+    { id: "recent", label: say("palette-recent"), items: shortList, only: "browsing" },
+    ...app && (pasteChoices || copyOnly) ? [{ id: "app", label: say("picker-for-app", { app }), items: [
+      ...pasteChoices ? [{ id: "paste", label: say("picker-paste-from-now-on", { app }) }, { id: "copy-only", label: say("picker-copy-only") }]
+        : copyOnly ? [{ id: "copy-only-here", label: say("picker-copy-only-here", { app }) }] : [],
+    ] }] : [],
+    ...onWritingProjects ? [{ id: "writings", items: [{ id: "writing-projects", label: say("writing-project-menu") }] }] : [],
+    { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map(row), only: "searching" },
+    { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map(row), only: "searching" },
+  ];
+  const close = (reason: PaletteClose) => {
+    setOpen(false);
+    onOpenChange?.(false, reason);
+    if (reason !== "command") searchRef.current?.focus({ preventScroll: true });
+  };
+  const choose = (key: string) => {
+    close("action");
+    if (key === "writing-projects") onWritingProjects?.();
+    else if (key === "paste" || key === "copy-only") onPasteChange?.(key);
+    else if (key === "copy-only-here") copyOnly?.();
+    else {
+      const output = listedOutput(key === "back" ? back : key);
+      if (output) { remember(output); onChange(output); }
+    }
+  };
+  return <>
+    <span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span>
+    <PopupButton ref={buttonRef} aria-keyshortcuts={ariaKeys(keysFor("format"), isMac)} isDisabled={disabled} className="toolbar-menu-button"
+      aria-label={`${say("picker-format-label")} ${value}`} aria-expanded={open} aria-haspopup="dialog"
+      onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}>{value}</PopupButton>
+    {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats", { count: keyOutputs.length + styleOutputs.length })}
+      sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
+      actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writingProject?.name ?? app ?? "" }) : say("palette-run")}
+      preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} note={`${why} ${next}`.trim()} />} />}
+  </>;
+}
+
+/** The highlighted format's real citation for the chosen references, asked of
+ * the engine as the highlight moves; a newer highlight cancels the older ask. */
+function FormatPreviewPane({ output, preview, note }: { output: OutputId | null; preview: FormatPreview | null; note: string }) {
+  const [shown, setShown] = useState<{ output: OutputId; text: string | null } | null>(null);
+  useEffect(() => {
+    if (!output || !preview) return;
+    const abort = new AbortController();
+    const timer = window.setTimeout(() => {
+      void preview(output, abort.signal).then((text) => { if (!abort.signal.aborted) setShown({ output, text }); }, () => { if (!abort.signal.aborted) setShown({ output, text: null }); });
+    }, 60);
+    return () => { window.clearTimeout(timer); abort.abort(); };
+  }, [output, preview]);
+  if (!output) return <p className="ui-palette-preview-note">{note}</p>;
+  const ready = shown?.output === output;
+  return <>
+    <h3 className="ui-palette-preview-heading">{say(isStyle(output) ? "palette-preview-text" : "palette-preview-key")}</h3>
+    <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} data-pending={!ready || undefined} dir="auto">
+      {!preview ? say("palette-preview-choose") : ready ? shown.text ?? say("palette-preview-none") : say("palette-preview-pending")}
+    </p>
+    <p className="ui-palette-preview-note">{note}</p>
+  </>;
 }

@@ -1,86 +1,89 @@
 import type { Ref, RefObject } from "react";
-import type { Density, ProjectStatus } from "../../api";
-import { keyLabel, keysFor } from "../../keys";
+import type { ProjectStatus } from "../../api";
+import { Icon } from "../../icons";
+import { ariaKeys, keyLabel, keysFor } from "../../keys";
 import { isolate, say } from "../../i18n";
-import { isMac } from "../../platform";
-import { SourceIcon } from "../../ui/SourceAction";
-import type { SourceActionProps } from "../../ui/SourceAction";
-import { MenuDetail, MenuSubmenu } from "../../ui/Menu";
-import { MenuItem, MenuSection, MenuSeparator, MoreMenu } from "./MoreMenu";
+import { currentPlatform, isMac } from "../../platform";
+import { Button } from "../../ui/Button";
+import { IconButton } from "../../ui/IconButton";
+import { KeyHint } from "../../ui/KeyCaps";
+import { Palette, type PaletteItem, type PaletteSection } from "../../ui/Palette";
+import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import { projectDetail } from "./useProjectBibliography";
 
-const label = (accelerator: string) => keyLabel(accelerator, isMac);
+type Action = PaletteItem & { run: () => void };
 
-/** More holds working actions; preferences live in Settings and source choices
- * have their own library menu. Rows is the one look changed while working. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, keepOrder, actions, source, project }: {
+/** More (⌘K) is the actions palette: every action in the picker, found by its
+ * name or a common word for it, each showing its key (control placement, the
+ * third door). Grouped by what it acts on: the library, the citation, the
+ * window, Ibis. Preferences live in Settings and the format chooser holds the
+ * app's own choices. While Keep Window Open is on, the footer shows it. */
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, pinned, keepOrder, actions, source, project }: {
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
   /** Where the references come from and how fresh they are. */
   libraryDetail: [string, string | null] | null;
   lastOutcome?: string | null;
-  density: Density;
   pinned: boolean;
   /** Offered only where the output may sort: a style. */
   keepOrder: { checked: boolean; toggle: () => void } | null;
-  actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
+  actions: { pin: () => void; keys: () => void; settings: (() => void) | null; format: (() => void) | null;
+    chooseSource: () => void; revealSource: (() => void) | null;
     /** Offered once this app has a citation from this run of Ibis. */
     changeLast?: (() => void) | null;
-    /** Offered for a proven ordinary app target. */
-    copyOnlyHere?: { app: string; choose: () => void } | null;
+    /** The highlighted reference's details, as ⌘Y shows them. */
+    peek?: (() => void) | null;
     forgetRecent?: (() => void) | null; quit: () => void;
     sessionReferences?: (() => void) | null };
   /** The bibliography keys are checked against, and the entry of the highlighted row. */
   project?: { status: ProjectStatus | null; choose: (() => void) | null; stop: (() => void) | null; copyEntry: (() => void) | null };
 }) {
-  return (
-    <MoreMenu isOpen={isOpen} onOpenChange={onOpenChange} buttonRef={buttonRef} searchRef={searchRef}
-      keys={keysFor("more")}>
-      {/* Where the references come from and how fresh they are, read
-          as the group's name when the menu is reached by keyboard. */}
-      <MenuSection id="library" label={[lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ")}
-        // The footer's status already names the library right under this menu, so More
-        // shows it only in the section's name for screen readers, never a second time.
-        header={lastOutcome ? <MenuDetail title={lastOutcome} /> : undefined}>
-        {source && <MenuItem id="source" label={source.label} icon={<SourceIcon icon={source.icon} file={source.file} />} keys={source.keys ? label(source.keys) : undefined} onAction={source.open} />}
-      </MenuSection>
-      <MenuSeparator />
-      {project?.choose && <MenuSection id="project" label={project.status ? projectDetail(project.status) : undefined}
-        header={project.status ? <MenuDetail title={projectDetail(project.status)} /> : undefined}>
-        {project.copyEntry && project.status && <MenuItem id="project-entry" label={say("picker-copy-project-entry", { name: isolate(project.status.name) })} onAction={project.copyEntry} />}
-        <MenuItem id="project-choose" label={project.status ? say("picker-choose-other-project") : say("picker-choose-project")} onAction={project.choose} />
-        {project.status && project.stop && <MenuItem id="project-stop" label={say("picker-stop-project", { name: isolate(project.status.name) })} onAction={project.stop} />}
-      </MenuSection>}
-      {project?.choose && <MenuSeparator />}
-      {keepOrder && <MenuSection id="citation-order">
-        <MenuItem id="keep-order" label={say("picker-keep-my-order")} checked={keepOrder.checked} onAction={keepOrder.toggle} />
-      </MenuSection>}
-      {actions.changeLast && <MenuSection id="citation">
-        <MenuItem id="change-last" label={say("picker-change-last-citation")} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />
-      </MenuSection>}
-      <MenuSection id="view">
-        <MenuSubmenu id="density" label={say("picker-rows")} value={say("picker-density", { name: say("density-name", { density }) })} title={say("picker-density-title")}>
-          <MenuSection id="densities" selectionMode="single">
-            {(["compact", "comfortable"] as const).map((choice) => <MenuItem key={choice} id={choice}
-              label={say("density-name", { density: choice })} example={say("picker-density-examples", { density: choice })} checked={density === choice}
-              closeOnSelect onAction={() => actions.density(choice)} />)}
-          </MenuSection>
-        </MenuSubmenu>
-        {actions.copyOnlyHere && <MenuItem id="copy-only-here" label={say("picker-copy-only-here", { app: actions.copyOnlyHere.app })} onAction={actions.copyOnlyHere.choose} />}
-        {actions.sessionReferences && <MenuItem id="session-references" label={say("session-menu")} onAction={actions.sessionReferences} />}
-        {actions.forgetRecent && <MenuItem id="forget-recent" label="Forget Recent Citations" onAction={actions.forgetRecent} />}
-      </MenuSection>
-      <MenuSection id="view-toggles">
-        <MenuItem id="pin" label={say("picker-keep-open-menu")} keys={label(keysFor("pin"))} checked={pinned} onAction={actions.pin} />
-      </MenuSection>
-      <MenuSeparator />
-      <MenuSection id="ibis">
-        <MenuItem id="keys" label={say("key-title")} keys={label(keysFor("keys"))} onAction={actions.keys} />
-        {actions.settings && <MenuItem id="settings" label={say("picker-settings")} keys={label(keysFor("settings"))} onAction={actions.settings} />}
-        {/* Closing the window only hides it; this ends the app and frees the shortcut. */}
-        <MenuItem id="quit" label={say("picker-quit-label")} keys={label(keysFor("quit"))} onAction={actions.quit} />
-      </MenuSection>
-    </MoreMenu>
-  );
+  const platform = currentPlatform();
+  const action = (id: string, label: string, run: (() => void) | null | undefined, more: Partial<Action> = {}): Action[] =>
+    run ? [{ id, label, run, keywords: say(`palette-words-${id}` as never), ...more }] : [];
+  const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command) });
+  const sections: (PaletteSection & { items: Action[] })[] = [
+    { id: "library", label: libraryDetail?.[0] ?? undefined, items: [
+      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys }) : [],
+      ...action("reveal-source", say("picker-show-source-folder", { platform: isMac ? "macos" : "other" }), actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
+      ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library" />, ...keyed("chooseSource") }),
+    ] },
+    // The bibliography keys are checked against, named by its state.
+    { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
+      ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), project.copyEntry) : [],
+      ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), project.choose) : [],
+      ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), project.stop) : [],
+    ] },
+    { id: "citation", label: say("palette-citation"), items: [
+      ...action("format", say("picker-change-format"), actions.format, { icon: <Icon name="swap" />, ...keyed("format") }),
+      ...action("peek", say("palette-peek"), actions.peek, { icon: <Icon name="find" />, ...keyed("peek") }),
+      ...action("change-last", say("picker-change-last-citation"), actions.changeLast, { icon: <Icon name="write" />, ...keyed("changeLast") }),
+      ...keepOrder ? action("keep-order", say("picker-keep-my-order"), keepOrder.toggle, { checked: keepOrder.checked }) : [],
+      ...action("session-references", say("session-menu"), actions.sessionReferences, { icon: <Icon name="citations" /> }),
+      ...action("forget-recent", say("picker-forget-recent"), actions.forgetRecent),
+    ] },
+    { id: "ibis", label: say("palette-ibis"), items: [
+      ...action("pin", say("picker-keep-open-menu"), actions.pin, { checked: pinned, icon: <Icon name="pin" />, ...keyed("pin") }),
+      ...action("keys", say("key-title"), actions.keys, { icon: <Icon name="shortcuts" />, ...keyed("keys") }),
+      ...action("settings", say("picker-settings"), actions.settings, { icon: <Icon name="general" />, ...keyed("settings") }),
+      // Closing the window only hides it; this ends the app and frees the shortcut.
+      ...action("quit", say("picker-quit-label"), actions.quit, { icon: <Icon name="close" />, ...keyed("quit") }),
+    ] },
+  ];
+  const run = (id: string) => sections.flatMap((section) => section.items).find((item) => item.id === id)?.run();
+  const more = keysFor("more");
+  return <>
+    {pinned && <IconButton icon="pin" className="footer-pinned" isSelected aria-label={say("picker-keep-open")}
+      title={`${say("picker-keep-open-menu")} (${keyLabel(keysFor("pin"), isMac)})`} aria-keyshortcuts={ariaKeys(keysFor("pin"), isMac)} onChange={actions.pin} />}
+    <Button ref={buttonRef} variant="quiet" size="small" className="more-button" aria-label={say("picker-more")} aria-haspopup="dialog" aria-expanded={isOpen}
+      title={say("picker-more-title", { keys: keyLabel(more, isMac) })} aria-keyshortcuts={ariaKeys(more, isMac)} onPress={() => onOpenChange(!isOpen)}>
+      <KeyHint label={say("picker-more")} keys={more} platform={platform} hidden />
+    </Button>
+    {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")} subtitle={lastOutcome ?? null}
+      placeholder={say("palette-search-actions")} sections={sections} empty={say("palette-no-actions")}
+      onAction={(id) => { onOpenChange(false); run(id); }}
+      onClose={(reason) => { onOpenChange(false); if (reason !== "command") searchRef.current?.focus({ preventScroll: true }); }}
+      actionLabel={() => say("palette-run")} />}
+  </>;
 }
