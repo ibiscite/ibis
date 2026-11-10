@@ -272,6 +272,18 @@
     const rest = make([{ ...cite, suffix, locator, label, "suppress-author": true, "author-only": false }]);
     return `${author} ${rest}`;
   };
+  // Numeric locators remain NumberBlobs until the processor's final range
+  // pass. Serialize copies of those now-final leaves only; no cite tree is
+  // evaluated again, and no processor blob changes.
+  const leafText = (engine, part) => part.parts.map((leaf) => typeof leaf === "string" ? leaf : engine.output.renderBlobs([
+    { ...leaf, strings: { ...leaf.strings }, decorations: [...leaf.decorations], checkNext: null, checkLast: null },
+  ])).join("");
+  // The text each cite owns, without the cluster's shared punctuation.
+  const ownedText = (engine, capture, count) => {
+    const texts = Array(count).fill("");
+    for (const part of capture.parts) if (part.item !== undefined && part.item !== null) texts[part.item] += leafText(engine, part);
+    return texts;
+  };
   const oneLine = (text) => text.replace(/\s*\n\s*/g, " ").trim();
   const wrapRtf = (text, bibliography) => `{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0 Times New Roman;}}\\f0\n${bibliography ? text.split("\n").join("\\par\n") : text}\n}`;
   globalThis.__ibisFormat = (request, source) => {
@@ -331,7 +343,9 @@
       engines.set(key, engine);
     }
     const outputs = { status: "rendered" };
-    let raw = null;
+    const indices = new Map();
+    request.cites.forEach((cite, index) => indices.set(cite.id, [...indices.get(cite.id) ?? [], index]));
+    let owned = null;
     const expected = new Map();
     for (const cite of request.cites) expected.set(cite.id, request.bibliography ? 1 : (expected.get(cite.id) ?? 0) + (cite.narrative ? 2 : 1));
     try {
@@ -341,8 +355,6 @@
       engine.updateItems(request.items.map((item) => item.id));
       for (const format of ["text", "html", "rtf"]) {
         engine.setOutputFormat(format);
-        const indices = new Map();
-        request.cites.forEach((cite, index) => indices.set(cite.id, [...indices.get(cite.id) ?? [], index]));
         const capture = { engine, format, area: request.bibliography ? "bibliography" : "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
         observation = capture;
         let output;
@@ -368,16 +380,11 @@
           }
         } else {
           output = cluster(engine, request.cites);
-          if (format === "text") raw = output;
           output = writeAffixes(engine, format, output, request.affixes ?? []);
           if (format === "text") {
+            owned = ownedText(engine, capture, request.cites.length);
             const parts = capture.parts.map((part) => {
-              // Numeric locators remain NumberBlobs until the processor's final
-              // range pass. Serialize copies of those now-final leaves only;
-              // no cite tree is evaluated again, and no processor blob changes.
-              const text = part.parts.map((leaf) => typeof leaf === "string" ? leaf : engine.output.renderBlobs([
-                { ...leaf, strings: { ...leaf.strings }, decorations: [...leaf.decorations], checkNext: null, checkLast: null },
-              ])).join("");
+              const text = leafText(engine, part);
               return { item: part.item, text: writeAffixes(engine, format, text, (request.affixes ?? []).filter((affix) => text.includes(affix.placeholder))) };
             });
             outputs.spans = spans(output, parts);
@@ -389,15 +396,19 @@
       }
       if (!request.bibliography) {
         // A style can print a locator for some types or forms only. The
-        // evidence is the citation itself: if it reads the same without the
-        // locator, the locator was left out.
+        // evidence is the cite's own text: if it reads the same without the
+        // locator, the locator was left out. Shared punctuation, which can
+        // change when cites group differently, is not part of it.
         engine.setOutputFormat("text");
         outputs.unprinted_locators = request.cites.flatMap((cite, index) => {
           if (cite.locator === undefined) return [];
           const { locator, label, ...without } = cite;
           let same;
+          const capture = { engine, format: "text", area: "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
+          observation = capture;
           try {
-            same = cluster(engine, request.cites.map((other, at) => at === index ? without : other)) === raw;
+            cluster(engine, request.cites.map((other, at) => at === index ? without : other));
+            same = ownedText(engine, capture, request.cites.length)[index] === owned[index];
           } catch (error) {
             const refused = error === unverified || error instanceof TypeError
               || (error?.name === "Error" && error.message === "citation formatting failed");
@@ -406,6 +417,8 @@
             // above are final, but this engine is never reused.
             engines.delete(key);
             same = false;
+          } finally {
+            observation = null;
           }
           return same ? [index] : [];
         });
