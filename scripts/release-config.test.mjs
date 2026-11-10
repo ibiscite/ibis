@@ -104,7 +104,7 @@ function fakeGithub() {
   }
   if (command === "upload" || command === "create") {
     if (state.failUpload) process.exit(1);
-    for (const path of args.filter((arg) => /^(dist|feed)\//.test(arg))) {
+    for (const path of args.filter((arg) => /^(dist|feed|style-changes)\//.test(arg))) {
       release.assets[path.split("/").at(-1)] = fs.readFileSync(path, "utf8");
     }
     if (state.failAfterFeedUpload && args.includes("feed/latest.json")) {
@@ -153,6 +153,7 @@ function fixture(t, initial = {}) {
   writeFileSync(join(dir, "dist/SHA256SUMS-synthetic.txt"), `${hash}  Ibis-synthetic.zip\n`);
   writeFileSync(join(dir, "feed/latest.json"), JSON.stringify({ version: "0.2.3" }));
   writeFileSync(join(dir, "style-changes/notes.md"), "**Citation styles**\n\n- Output changed since v0.2.2 in 1 style: `invented-style`\n");
+  writeFileSync(join(dir, "style-changes/changed-styles.txt"), "Citation styles compared with v0.2.2.\n\nOutput changed:\ninvented-style\n");
   const draft = { isDraft: true, prerelease: true, body: "### Bug Fixes\n* invented fix", assets: {} };
   writeFileSync(join(dir, "github.json"), JSON.stringify({ latest: "v0.2.2", releases: { "v0.2.3": draft }, calls: [], ...initial }));
   const state = () => JSON.parse(readFileSync(join(dir, "github.json"), "utf8"));
@@ -174,6 +175,7 @@ test("numbered releases publish fully with a versioned title and explicit Latest
     assert.equal(release.prerelease, false);
     assert.equal(release.title, "Ibis 0.2.3");
     assert.match(release.body, /\*\*Citation styles\*\*\n\n- Output changed since v0\.2\.2 in 1 style: `invented-style`/);
+    assert.match(release.assets["changed-styles.txt"], /^Output changed:\ninvented-style$/m);
     assert.equal(state.latest, latest === "v0.2.10" ? latest : "v0.2.3");
     const edit = state.calls.find((args) => args.includes("--draft=false"));
     assert.ok(edit.includes(latest === "v0.2.10" ? "--latest=false" : "--latest"));

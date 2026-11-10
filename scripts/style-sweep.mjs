@@ -13,6 +13,8 @@
 //     checkout's sweep. Writes OUT/report.md and OUT/notes.md, the release
 //     notes' list of styles whose output changed.
 //   node scripts/style-sweep.mjs compare OLD.jsonl NEW.jsonl REPORT.md
+//   node scripts/style-sweep.mjs baseline TAG < published-release-tags
+//     Prints the newest published numbered release before TAG.
 //
 // Each exits 1 when a style fails that is not listed as a known exception in
 // crates/ibis-csl/tests/sweep-exceptions.json, after writing its files.
@@ -136,19 +138,54 @@ export function pinTitle(before, after) {
   return moved.length ? `fix: update to ${moved.join(", ")}` : null;
 }
 
-/** The release notes' part on styles: which ones a person will see change. */
-export function styleNotes({ changed, added, removed }, since) {
+/** The full list the release attaches, when the notes cannot hold every style. */
+export const CHANGED_STYLES_FILE = "changed-styles.txt";
+
+/**
+ * The release notes' part on styles: every style a person will see change,
+ * named in the notes, or, past `MAX_LISTED` of a kind, in the attached file
+ * the notes link to (`attachment`, its address), which `changedStyles` writes.
+ */
+export function styleNotes({ changed, added, removed }, since, attachment) {
   const lines = ["**Citation styles**", ""];
   if (!changed.length && !added.length && !removed.length) {
     lines.push(`Every style writes what it wrote in ${since}.`);
     return `${lines.join("\n")}\n`;
   }
+  const named = (styles) =>
+    styles.length > MAX_LISTED
+      ? `${styles.length} styles, listed in [${CHANGED_STYLES_FILE}](${attachment})`
+      : styles.map((style) => `\`${style}\``).join(", ");
   if (changed.length) {
-    lines.push(`- Output changed since ${since} in ${changed.length} ${changed.length === 1 ? "style" : "styles"}: ${list(changed)}`);
+    lines.push(`- Output changed since ${since} in ${changed.length} ${changed.length === 1 ? "style" : "styles"}: ${named(changed)}`);
   }
-  if (added.length) lines.push(`- New: ${list(added)}`);
-  if (removed.length) lines.push(`- Removed or renamed (old ids still work when upstream renamed them): ${list(removed)}`);
+  if (added.length) lines.push(`- New: ${named(added)}`);
+  if (removed.length) lines.push(`- Removed or renamed (old ids still work when upstream renamed them): ${named(removed)}`);
   return `${lines.join("\n")}\n`;
+}
+
+/** Every changed, new and removed style, one per line, for the attachment. */
+export function changedStyles({ changed, added, removed }, since) {
+  const part = (title, styles) => (styles.length ? [`${title}:`, ...styles, ""] : []);
+  return [
+    `Citation styles compared with ${since}.`,
+    "",
+    ...part("Output changed", changed),
+    ...part("New", added),
+    ...part("Removed or renamed", removed),
+  ].join("\n");
+}
+
+/** The newest published numbered release before `tag`, from release tags. */
+export function baseline(tag, published) {
+  const version = (name) => /^v(\d+)\.(\d+)\.(\d+)$/.exec(name)?.slice(1).map(Number);
+  const order = (left, right) => left[0] - right[0] || left[1] - right[1] || left[2] - right[2];
+  const current = version(tag);
+  if (!current) return null;
+  return published
+    .map((name) => [name, version(name)])
+    .filter(([, parts]) => parts && order(parts, current) < 0)
+    .sort(([, left], [, right]) => order(right, left))[0]?.[0] ?? null;
 }
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -243,7 +280,11 @@ function release(oldRef, out) {
       continue;
     }
     const result = compareFiles(join(out, "old.jsonl"), join(out, "new.jsonl"), join(out, "report.md"));
-    writeFileSync(join(out, "notes.md"), styleNotes(result, since));
+    const repo = process.env.GITHUB_REPOSITORY || "ibiscite/ibis";
+    const tag = process.env.GITHUB_REF_NAME || "HEAD";
+    const attachment = `https://github.com/${repo}/releases/download/${tag}/${CHANGED_STYLES_FILE}`;
+    writeFileSync(join(out, "notes.md"), styleNotes(result, since, attachment));
+    writeFileSync(join(out, CHANGED_STYLES_FILE), changedStyles(result, since));
     return result;
   }
   // Without a comparison there are no notes: the release waits for a sweep that builds.
@@ -258,10 +299,22 @@ function main() {
     weekly: args.length === 1,
     release: args.length === 2,
     compare: args.length === 3,
+    baseline: args.length === 1,
   };
   if (!usage[command]) {
-    console.error("Usage: node scripts/style-sweep.mjs weekly OUT | release OLD_REF OUT | compare OLD.jsonl NEW.jsonl REPORT.md");
+    console.error("Usage: node scripts/style-sweep.mjs weekly OUT | release OLD_REF OUT | compare OLD.jsonl NEW.jsonl REPORT.md | baseline TAG < published-tags");
     process.exit(2);
+  }
+  if (command === "baseline") {
+    // The release to compare with is the last one people got, not a tag
+    // whose publication failed.
+    const found = baseline(args[0], readFileSync(0, "utf8").split("\n").map((line) => line.trim()));
+    if (!found) {
+      console.error(`No published release before ${args[0]}.`);
+      process.exit(1);
+    }
+    console.log(found);
+    process.exit(0);
   }
   const result = command === "weekly" ? weekly(...args) : command === "release" ? release(...args) : compareFiles(...args);
   process.exit(result.newFailures.length ? 1 : 0);

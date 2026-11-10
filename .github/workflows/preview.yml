@@ -403,8 +403,15 @@ jobs:
       - name: Render every style at the previous release and at this one
         env:
           OUT: ${{ runner.temp }}/style-changes
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
         run: |
-          previous=$(git describe --tags --abbrev=0 --match 'v[0-9]*.[0-9]*.[0-9]*' "${GITHUB_SHA}^")
+          set -euo pipefail
+          # The last release people got, not a tag whose publication failed.
+          previous=$(gh api "repos/$REPO/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            | node scripts/style-sweep.mjs baseline "$GITHUB_REF_NAME")
+          git rev-parse --verify --quiet "refs/tags/$previous" >/dev/null
           status=0
           node scripts/style-sweep.mjs release "$previous" "$OUT" || status=$?
           if [ -f "$OUT/report.md" ]; then cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"; fi

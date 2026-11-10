@@ -132,7 +132,10 @@ jobs:
               exit 1
             fi
           fi
-          pr=$(gh pr list --repo "$REPO" --head styles/newest --state open --json number --jq '.[0].number // empty')
+          # Only this repository's own branch: a fork's `styles/newest` is someone else's.
+          pr=$(gh pr list --repo "$REPO" --head styles/newest --base main --state open --limit 100 \
+            --json number,headRefName,isCrossRepository \
+            --jq '[.[] | select(.headRefName == "styles/newest" and (.isCrossRepository | not))][0].number // empty')
           # A reviewed head that is waiting to merge must not merge unreviewed changes.
           if [ -n "$pr" ] && [ "$(gh pr view "$pr" --repo "$REPO" --json autoMergeRequest --jq '.autoMergeRequest != null')" = true ]; then
             gh pr merge "$pr" --repo "$REPO" --disable-auto

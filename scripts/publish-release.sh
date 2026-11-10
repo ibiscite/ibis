@@ -14,7 +14,8 @@ fi
 # Release Please drafts the release with its generated change list;
 # scripts/release-notes.mjs puts the download table and install notes
 # in front, drops the commit hashes (#450) and names the citation styles
-# whose output changed, from the style-changes job (#19).
+# whose output changed, from the style-changes job (#19); their full list is
+# attached, unchecked by the package checksums, as changed-styles.txt.
 if gh release view "$TAG" --repo "$REPO" --json body,isDraft > release.json; then
   if [ "$(jq -r .isDraft release.json)" != true ]; then
     echo "::error::The release is already public; refusing to replace its packages."
@@ -22,7 +23,7 @@ if gh release view "$TAG" --repo "$REPO" --json body,isDraft > release.json; the
   fi
   jq -r .body release.json > generated-notes.md
   node scripts/release-notes.mjs "$TAG" generated-notes.md style-changes/notes.md > release-notes.md
-  gh release upload "$TAG" dist/* --repo "$REPO" --clobber
+  gh release upload "$TAG" dist/* style-changes/changed-styles.txt --repo "$REPO" --clobber
   gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag" --title "Ibis ${TAG#v}" --notes-file release-notes.md
 elif [[ "$ACTOR" == *"[bot]" ]]; then
   # Release Please pushes the tag before it drafts the release. A bot
@@ -33,6 +34,6 @@ elif [[ "$ACTOR" == *"[bot]" ]]; then
 else
   : > generated-notes.md
   node scripts/release-notes.mjs "$TAG" generated-notes.md style-changes/notes.md > release-notes.md
-  gh release create "$TAG" dist/* --repo "$REPO" --prerelease=false --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
+  gh release create "$TAG" dist/* style-changes/changed-styles.txt --repo "$REPO" --prerelease=false --draft --title "Ibis ${TAG#v}" --notes-file release-notes.md --verify-tag
   gh release edit "$TAG" --repo "$REPO" --prerelease=false --draft=false "$latest_flag"
 fi
