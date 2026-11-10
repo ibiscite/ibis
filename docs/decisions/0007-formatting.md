@@ -53,3 +53,27 @@ and each style's own. `styles` with an `id` returns that style's authors,
 contributors, licence and documentation links as its `<info>` gives them, a
 dependent style's own rather than its parent's; emails stay in the file.
 `ibis styles --about [ID]` shows it, and the app's About view will use the same.
+
+2026-11-10 (#19, design attacked by an independent review before code): your
+styles. Keep this version and any `.csl` file live in one folder,
+`com.ibiscite.ibis/styles/` beside the stable app's settings, as `<id>.csl`,
+shared by Ibis, Ibis Nightly and `ibis`; front ends name the folder, so each
+test has its own.
+- A style there wins over the bundled style of that id, before upstream's
+  renames, and as the parent of a bundled dependent style too. No Ibis release
+  changes it; the list marks it, with the bundled style's date when that differs.
+- Keep copies the bundled file byte for byte, with a dependent style's parent
+  unless you have one; keeping over a different version of yours is refused.
+  Add takes a file of at most 1 MiB whose `<id>` ends in a plain id, whose
+  parent and language exist, and that writes a citation of an invented
+  reference within the usual limits; it replaces yours of that id, saying so.
+  Remove deletes yours and names your styles that used its rules.
+- Your files are outside input, read when used: a regular file under its exact
+  name, its `<id>` agreeing with that name, its parent an independent style
+  other than itself, its language a bundled one. Otherwise the citation is
+  refused, never written by the bundled style of the same id. Every cache
+  follows the files' contents, not their ids.
+- Author only, year only and narrative follow the SHA-256 of the rules checked
+  against Zotero (`VERIFIED`), so a kept copy of a checked version keeps them
+  and a new upstream version has them once checked again.
+- Agents cite with your styles and see them listed; only a person changes them.

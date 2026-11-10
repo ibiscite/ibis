@@ -93,6 +93,36 @@ pub struct StyleEntry {
     pub fields: Vec<String>,
     /// One of the styles offered first.
     pub curated: bool,
+    /// Yours: kept or added, so it wins over the bundled style of its id and
+    /// never changes with an Ibis release.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub yours: bool,
+    /// For a style of yours, the bundled style's date when it differs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub bundled_updated: Option<String>,
+}
+
+/// What keeping a style did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct Kept {
+    /// The style kept, under its current id.
+    pub id: String,
+    /// You already kept this version, so nothing changed.
+    pub already: bool,
+    /// Its parent, kept too because you had no parent of yours by that id.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+}
+
+/// What removing a style of yours did.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct Removed {
+    pub id: String,
+    /// You had a style by that id.
+    pub removed: bool,
+    /// Your styles that use its rules, which now use the bundled style's or are refused.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub dependents: Vec<String>,
 }
 
 /// Someone a style names as its author or contributor. Their email stays in the
@@ -144,10 +174,9 @@ pub struct StylePage {
 /// A style ready for the processor: its own identity, and the rules to run.
 #[derive(Debug)]
 pub(crate) struct Resolved {
-    /// The id asked for, after renames.
-    pub id: String,
-    /// The independent style whose XML this is.
-    pub rules: String,
+    /// What the processor keeps its warm engine under: the rules' id for the
+    /// bundle's, their contents for yours, so a changed file is never stale.
+    pub engine_key: String,
     pub xml: Arc<str>,
     pub traits: crate::input::StyleTraits,
     /// A dependent style's own default language, which replaces its parent's.
@@ -165,8 +194,18 @@ static HEADER: LazyLock<Result<Header, FormatError>> = LazyLock::new(|| {
     let (header, _, _) = sections()?;
     serde_json::from_slice(&unpack(header)?).map_err(|_| FormatError::Runtime)
 });
-/// One warm style: a preview typed repeatedly never unpacks it twice.
-static LAST: Mutex<Option<Arc<Resolved>>> = Mutex::new(None);
+/// One warm style: a preview typed repeatedly never unpacks it twice. It holds
+/// what it was built from, your files included, and answers only while those
+/// are the same.
+static LAST: Mutex<Option<Last>> = Mutex::new(None);
+
+struct Last {
+    asked: String,
+    own: Option<String>,
+    parent: Option<String>,
+    parent_own: Option<String>,
+    resolved: Arc<Resolved>,
+}
 
 fn header() -> Result<&'static Header, FormatError> {
     HEADER.as_ref().map_err(|error| *error)
@@ -279,15 +318,50 @@ struct Lookup<'a>(
     usize,
 );
 
-/// A style by id, following its rename and its parent. Unknown is `UnsupportedStyle`.
-pub(crate) fn resolve(id: &str) -> Result<Arc<Resolved>, FormatError> {
-    let id = renamed(id)?;
+fn sha256(text: &str) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+/// A style by id: yours first, then upstream's renames (yours again under the
+/// new id), then the bundle, following its parent the same way. Unknown is
+/// `UnsupportedStyle`; a style of yours that cannot be used is `InvalidStyle`,
+/// never answered by the bundled style of the same id.
+pub(crate) fn resolve(asked: &str) -> Result<Arc<Resolved>, FormatError> {
+    let (id, own) = match crate::yours::read(asked)? {
+        Some(xml) => (asked, Some(xml)),
+        None => {
+            let id = renamed(asked)?;
+            (id, crate::yours::read(id)?)
+        }
+    };
     {
         let last = LAST.lock().map_err(|_| FormatError::Runtime)?;
-        if let Some(style) = last.as_ref().filter(|style| style.id == id) {
-            return Ok(style.clone());
+        if let Some(last) = last.as_ref().filter(|last| last.asked == asked && last.own == own) {
+            let parent_own = last.parent.as_deref().map(crate::yours::read).transpose()?.flatten();
+            if parent_own == last.parent_own {
+                return Ok(last.resolved.clone());
+            }
         }
     }
+    let (resolved, parent, parent_own) = build(id, own.as_deref())?;
+    let resolved = Arc::new(resolved);
+    *LAST.lock().map_err(|_| FormatError::Runtime)? = Some(Last {
+        asked: asked.to_owned(),
+        own,
+        parent,
+        parent_own,
+        resolved: resolved.clone(),
+    });
+    Ok(resolved)
+}
+
+/// The style `id` from `own`, a file of yours, or from the bundle; with the
+/// parent it named and your file for that parent, which the cache compares.
+fn build(id: &str, own: Option<&str>) -> Result<(Resolved, Option<String>, Option<String>), FormatError> {
     let (_, rows, _) = sections()?;
     let bytes = unpack(rows)?;
     let rows: Vec<Lookup<'_>> = serde_json::from_slice(&bytes).map_err(|_| FormatError::Runtime)?;
@@ -296,29 +370,98 @@ pub(crate) fn resolve(id: &str) -> Result<Arc<Resolved>, FormatError> {
             .map(|index| &rows[index])
             .map_err(|_| FormatError::UnsupportedStyle)
     };
-    let own = row(id)?;
-    let rules = own.3.map_or(Ok(own), row)?;
-    let xml: Arc<str> = file(rules.7, rules.8, rules.9)?.into();
-    let forced_locale = own.3.and(own.4).map(str::to_owned);
-    let sentence_titles = sentence_titles(own.0) || sentence_titles(rules.0);
-    let resolved = Arc::new(Resolved {
-        id: own.0.to_owned(),
-        rules: rules.0.to_owned(),
+    // This style's own text, parent and language, from your file or the bundle.
+    let (parent, own_locale) = match own {
+        Some(xml) => {
+            let meta = crate::info::Metadata::read(xml);
+            if meta.id.as_deref() != Some(id) || meta.title.is_none() {
+                return Err(FormatError::InvalidStyle);
+            }
+            (meta.parent, meta.default_locale)
+        }
+        None => {
+            let own = row(id)?;
+            (own.3.map(str::to_owned), own.4.map(str::to_owned))
+        }
+    };
+    // The rules to run: this style's, or its parent's (yours first), which must
+    // be an independent style other than this one.
+    let parent_own = parent.as_deref().map(crate::yours::read).transpose()?.flatten();
+    let (rules, xml, rules_locale, rules_yours): (String, Arc<str>, Option<String>, bool) = match (&parent, &parent_own)
+    {
+        (None, _) => match own {
+            Some(xml) => (id.to_owned(), xml.into(), own_locale.clone(), true),
+            None => {
+                let own = row(id)?;
+                (
+                    id.to_owned(),
+                    file(own.7, own.8, own.9)?.into(),
+                    own_locale.clone(),
+                    false,
+                )
+            }
+        },
+        (Some(parent), _) if parent == id => return Err(FormatError::InvalidStyle),
+        (Some(parent), Some(xml)) => {
+            let meta = crate::info::Metadata::read(xml);
+            if meta.parent.is_some() || meta.id.as_deref() != Some(parent.as_str()) {
+                return Err(FormatError::InvalidStyle);
+            }
+            (parent.clone(), xml.as_str().into(), meta.default_locale, true)
+        }
+        (Some(parent), None) => {
+            let found = row(parent).map_err(|_| match own {
+                Some(_) => FormatError::InvalidStyle,
+                None => FormatError::Runtime,
+            })?;
+            if found.3.is_some() {
+                return Err(FormatError::InvalidStyle);
+            }
+            (
+                parent.clone(),
+                file(found.7, found.8, found.9)?.into(),
+                found.4.map(str::to_owned),
+                false,
+            )
+        }
+    };
+    let forced_locale = parent.as_ref().and(own_locale);
+    // A style may name a bare language ("fr"); report the dialect it means. A
+    // language of yours that Ibis does not have is refused, never approximated.
+    let language = match forced_locale.as_deref().or(rules_locale.as_deref()) {
+        None => "en-US",
+        Some(tag) if own.is_some() || rules_yours => locale_tag(tag).map_err(|_| FormatError::InvalidStyle)?,
+        Some(tag) => locale_tag(tag).unwrap_or("en-US"),
+    }
+    .to_owned();
+    let hash = sha256(&xml);
+    let resolved = Resolved {
+        engine_key: if rules_yours {
+            format!("yours:{hash}")
+        } else {
+            rules.clone()
+        },
+        sentence_titles: sentence_titles(id) || sentence_titles(&rules),
+        verified_forms: crate::VERIFIED.contains(&hash.as_str()),
         traits: crate::input::style_traits(&xml),
-        // A style may name a bare language ("fr"); report the dialect it means.
-        language: forced_locale
-            .as_deref()
-            .or(rules.4)
-            .map_or(Ok("en-US"), locale_tag)
-            .unwrap_or("en-US")
-            .to_owned(),
+        language,
         forced_locale,
-        sentence_titles,
-        verified_forms: crate::STYLES.iter().any(|(id, _)| *id == rules.0),
         xml,
-    });
-    *LAST.lock().map_err(|_| FormatError::Runtime)? = Some(resolved.clone());
-    Ok(resolved)
+    };
+    Ok((resolved, parent, parent_own))
+}
+
+/// A style you are adding, checked as it would be used, before it is saved.
+pub(crate) fn candidate(xml: &str) -> Result<(String, Resolved), FormatError> {
+    if xml.len() > crate::yours::MAX_BYTES {
+        return Err(FormatError::InvalidStyle);
+    }
+    let id = crate::info::Metadata::read(xml)
+        .id
+        .filter(|id| crate::yours::valid_id(id))
+        .ok_or(FormatError::InvalidStyle)?;
+    let (resolved, _, _) = build(&id, Some(xml))?;
+    Ok((id, resolved))
 }
 
 /// The bundled tag a request's language means: exact, or a language's main
@@ -381,30 +524,35 @@ pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, For
         .enumerate()
         .map(|(rank, style)| (style.id(), (rank, style.title())))
         .collect();
-    let mut found: Vec<(usize, StyleRow)> = rows()?
-        .into_iter()
-        .filter_map(|row| {
-            let id = row.id.to_lowercase();
-            let title = curated
-                .get(row.id.as_str())
-                .map_or(row.title.as_str(), |(_, title)| title);
-            let title = title.to_lowercase();
-            let original = row.title.to_lowercase();
+    let rows = rows()?;
+    let yours = your_entries(&rows)?;
+    let shadowed: Vec<String> = yours.iter().map(|style| style.id.clone()).collect();
+    let entries = yours.into_iter().chain(
+        rows.into_iter()
+            .filter(|row| !shadowed.contains(&row.id))
+            .map(|row| entry(row, &curated)),
+    );
+    let phrase = words.join(" ");
+    let mut found: Vec<(usize, StyleEntry)> = entries
+        .filter_map(|style| {
+            let id = style.id.to_lowercase();
+            let title = style.title.to_lowercase();
             words
                 .iter()
-                .all(|word| id.contains(word) || title.contains(word) || original.contains(word))
+                .all(|word| id.contains(word) || title.contains(word))
                 .then(|| {
-                    let phrase = words.join(" ");
-                    let rank = match curated.get(row.id.as_str()) {
-                        Some((rank, _)) => *rank,
+                    // Yours first, then the common styles, then the closest matches.
+                    let rank = match curated.get(style.id.as_str()) {
+                        _ if style.yours => 0,
+                        Some((rank, _)) => rank + 1,
                         None if !words.is_empty() && (id == phrase || title == phrase) => usize::MAX - 3,
                         None if !words.is_empty() && (id.starts_with(&phrase) || title.starts_with(&phrase)) => {
                             usize::MAX - 2
                         }
-                        None if row.parent.is_none() => usize::MAX - 1,
+                        None if style.parent.is_none() => usize::MAX - 1,
                         None => usize::MAX,
                     };
-                    (rank, row)
+                    (rank, style)
                 })
         })
         .collect();
@@ -414,19 +562,7 @@ pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, For
         .into_iter()
         .skip(offset)
         .take(limit)
-        .map(|(_, row)| {
-            let curated_title = curated.get(row.id.as_str()).map(|(_, title)| (*title).to_owned());
-            StyleEntry {
-                curated: curated_title.is_some(),
-                title: curated_title.unwrap_or(row.title),
-                id: row.id,
-                updated: row.updated,
-                parent: row.parent,
-                default_locale: row.locale,
-                format: row.format,
-                fields: row.fields,
-            }
-        })
+        .map(|(_, style)| style)
         .collect();
     Ok(StylePage {
         styles,
@@ -445,27 +581,147 @@ pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, For
     })
 }
 
-/// One style's own entry and credits, after renames; a dependent style's are its
-/// own, not its parent's. Unknown is `UnsupportedStyle`.
-pub fn style_credits(id: &str) -> Result<(StyleEntry, StyleCredits), FormatError> {
-    let id = renamed(id)?;
-    let row = rows()?
-        .into_iter()
-        .find(|row| row.id == id)
-        .ok_or(FormatError::UnsupportedStyle)?;
-    let xml = file(row.block, row.offset, row.length)?;
-    let curated = header()?.curated.iter().find(|style| style.id() == id);
-    let info = crate::credits::Info::read(&xml);
-    let style = StyleEntry {
-        curated: curated.is_some(),
-        title: curated.map_or(row.title, |style| style.title().to_owned()),
+fn entry(row: StyleRow, curated: &BTreeMap<&str, (usize, &str)>) -> StyleEntry {
+    // The curated title also matches what the style calls itself.
+    let curated_title = curated.get(row.id.as_str()).map(|(_, title)| (*title).to_owned());
+    StyleEntry {
+        curated: curated_title.is_some(),
+        title: curated_title.unwrap_or(row.title),
         id: row.id,
         updated: row.updated,
         parent: row.parent,
         default_locale: row.locale,
         format: row.format,
         fields: row.fields,
+        yours: false,
+        bundled_updated: None,
+    }
+}
+
+/// A word that names a category or language: anything else in your file is left out.
+fn plain(value: String) -> Option<String> {
+    (value.len() <= 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')))
+    .then_some(value)
+}
+
+/// Your styles as the list shows them. A file that does not describe itself
+/// as the style its name says is left out of the list; using it is refused.
+fn your_entries(rows: &[StyleRow]) -> Result<Vec<StyleEntry>, FormatError> {
+    let curated = curated()?;
+    Ok(crate::yours::ids()?
+        .into_iter()
+        .filter_map(|id| {
+            let xml = crate::yours::read(&id).ok()??;
+            let meta = crate::info::Metadata::read(&xml);
+            if meta.id.as_deref() != Some(id.as_str()) {
+                return None;
+            }
+            let updated = meta.updated.unwrap_or_default();
+            let bundled = rows.iter().find(|row| row.id == id);
+            Some(StyleEntry {
+                curated: curated.iter().any(|style| style.id() == id),
+                title: meta.title?,
+                bundled_updated: bundled.map(|row| row.updated.clone()).filter(|date| *date != updated),
+                updated,
+                parent: meta.parent.and_then(plain),
+                default_locale: meta.default_locale.and_then(plain),
+                format: meta.format.and_then(plain),
+                fields: meta.fields.into_iter().filter_map(plain).collect(),
+                yours: true,
+                id,
+            })
+        })
+        .collect())
+}
+
+/// Keep the bundled style `id` as it is now: a copy, byte for byte, in your
+/// styles, which no later Ibis release changes. A dependent style's parent is
+/// kept too unless you have one, since its rules are the parent's.
+pub fn keep_style(id: &str) -> Result<Kept, FormatError> {
+    let id = renamed(id)?;
+    let rows = rows()?;
+    let find = |id: &str| {
+        rows.iter()
+            .find(|row| row.id == id)
+            .ok_or(FormatError::UnsupportedStyle)
     };
+    let own = find(id)?;
+    let xml = file(own.block, own.offset, own.length)?;
+    let already = match crate::yours::read(id) {
+        Ok(None) => false,
+        Ok(Some(existing)) if existing == xml => true,
+        _ => return Err(FormatError::KeptDifferent),
+    };
+    let parent = match &own.parent {
+        Some(parent) if crate::yours::read(parent)?.is_none() => {
+            let row = find(parent)?;
+            crate::yours::write(parent, &file(row.block, row.offset, row.length)?)?;
+            Some(parent.clone())
+        }
+        _ => None,
+    };
+    if !already {
+        crate::yours::write(id, &xml)?;
+    }
+    Ok(Kept {
+        id: id.to_owned(),
+        already,
+        parent,
+    })
+}
+
+/// Remove your style `id`, so the bundled style of that id, if any, applies again.
+pub fn remove_style(id: &str) -> Result<Removed, FormatError> {
+    let removed = crate::yours::valid_id(id) && crate::yours::remove(id)?;
+    let dependents = crate::yours::ids()?
+        .into_iter()
+        .filter(|other| {
+            crate::yours::read(other)
+                .ok()
+                .flatten()
+                .is_some_and(|xml| crate::info::Metadata::read(&xml).parent.as_deref() == Some(id))
+        })
+        .collect();
+    Ok(Removed {
+        id: id.to_owned(),
+        removed,
+        dependents,
+    })
+}
+
+/// One style's own entry and credits, after renames; a dependent style's are its
+/// own, not its parent's. Unknown is `UnsupportedStyle`.
+pub fn style_credits(id: &str) -> Result<(StyleEntry, StyleCredits), FormatError> {
+    let rows = rows()?;
+    let yours = your_entries(&rows)?;
+    let id = match crate::yours::read(id)? {
+        Some(_) => id,
+        None => renamed(id)?,
+    };
+    let (style, xml) = match yours.into_iter().find(|style| style.id == id) {
+        Some(style) => {
+            let xml = crate::yours::read(id)?.ok_or(FormatError::InvalidStyle)?;
+            (style, xml)
+        }
+        None if crate::yours::read(id)?.is_some() => return Err(FormatError::InvalidStyle),
+        None => {
+            let curated = header()?
+                .curated
+                .iter()
+                .map(|style| (style.id(), (0, style.title())))
+                .collect();
+            let row = rows
+                .into_iter()
+                .find(|row| row.id == id)
+                .ok_or(FormatError::UnsupportedStyle)?;
+            let xml = file(row.block, row.offset, row.length)?;
+            (entry(row, &curated), xml)
+        }
+    };
+    let info = crate::info::Info::read(&xml);
     Ok((
         style,
         StyleCredits {
@@ -536,7 +792,7 @@ mod tests {
             .find(|row| row.parent.is_some() && row.locale.as_deref().is_some_and(|locale| locale.starts_with("de")))
             .unwrap();
         let resolved = resolve(&german.id).unwrap();
-        assert_eq!(Some(&resolved.rules), german.parent.as_ref());
+        assert_eq!(resolved.xml, resolve(german.parent.as_deref().unwrap()).unwrap().xml);
         assert_eq!(Some(resolved.language.as_str()), german.locale.as_deref());
         assert_eq!(resolved.forced_locale, german.locale);
         assert!(resolved.xml.contains("<citation"));
@@ -545,7 +801,7 @@ mod tests {
     #[test]
     fn an_old_id_finds_its_new_style_and_an_unknown_id_is_refused() {
         let (old, new) = header().unwrap().renames.iter().next().unwrap();
-        assert_eq!(&resolve(old).unwrap().id, new);
+        assert_eq!(resolve(old).unwrap().xml, resolve(new).unwrap().xml);
         assert_eq!(resolve("invented-style").err(), Some(FormatError::UnsupportedStyle));
     }
 
@@ -589,6 +845,16 @@ mod tests {
             assert!(locale_xml(asked).unwrap().unwrap().contains(found), "{asked}");
         }
         assert_eq!(locale_xml("xx-INVENTED"), Ok(None));
+    }
+
+    #[test]
+    fn the_styles_checked_against_zotero_are_known_by_their_contents() {
+        // A new upstream version of one needs its forms checked again, and its
+        // SHA-256 added to `VERIFIED`, before it offers them.
+        for (id, _) in crate::STYLES {
+            assert!(resolve(id).unwrap().verified_forms, "{id}");
+        }
+        assert!(!resolve("nature").unwrap().verified_forms);
     }
 
     #[test]

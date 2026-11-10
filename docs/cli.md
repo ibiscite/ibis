@@ -150,6 +150,9 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--limit N` | Return at most N styles, up to 20000 |
 | `--offset N` | Skip the first N styles |
 | `--locales` | List citation languages instead of styles |
+| `--keep ID` | Keep the bundled style ID as it is now, so later versions of Ibis never change it |
+| `--add FILE` | Add a .csl style file to your styles; it wins over a bundled style with its id |
+| `--remove ID` | Remove your style ID, so the bundled style with that id applies again |
 | `--about ID` | Credit the Citation Style Language project, or with a style id, that style's authors and licence |
 
 **`ibis outputs`**: List the outputs cite writes: key syntaxes, then the common styles

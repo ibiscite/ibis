@@ -18,9 +18,10 @@ icu_collator = "2.4.0"
 icu_locale_core = "2.4.0"
 icu_casemap = "2.4.0"
 ruzstd = { version = "0.9.1", default-features = false, features = ["std"] }
+sha2 = "0.11.1"
 
 [dev-dependencies]
-sha2 = "0.11.1"
+proptest = "1.12.0"
 
 [lints]
 workspace = true

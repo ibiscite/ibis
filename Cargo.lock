@@ -2083,6 +2083,7 @@ dependencies = [
  "icu_casemap",
  "icu_collator",
  "icu_locale_core",
+ "proptest",
  "rquickjs",
  "ruzstd",
  "schemars 1.2.3",

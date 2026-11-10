@@ -268,6 +268,21 @@
                 "const": "unknown-format",
                 "description": "Neither the file's name nor its contents identify a supported library format.",
                 "type": "string"
+              },
+              {
+                "const": "invalid-style",
+                "description": "A style of yours, or one being added, is not a usable CSL style.",
+                "type": "string"
+              },
+              {
+                "const": "styles-folder",
+                "description": "Your styles folder is not known here or cannot be written.",
+                "type": "string"
+              },
+              {
+                "const": "kept-different",
+                "description": "A different version of the style is already yours.",
+                "type": "string"
               }
             ]
           },
@@ -3574,6 +3589,13 @@
           "StyleEntry": {
             "description": "One entry in the style list.",
             "properties": {
+              "bundled_updated": {
+                "description": "For a style of yours, the bundled style's date when it differs.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "curated": {
                 "description": "One of the styles offered first.",
                 "type": "boolean"
@@ -3614,6 +3636,10 @@
               "updated": {
                 "description": "The style's own last-changed date, `YYYY-MM-DD`: its only version marker.",
                 "type": "string"
+              },
+              "yours": {
+                "description": "Yours: kept or added, so it wins over the bundled style of its id and\nnever changes with an Ibis release.",
+                "type": "boolean"
               }
             },
             "required": [
@@ -3621,7 +3647,8 @@
               "title",
               "updated",
               "fields",
-              "curated"
+              "curated",
+              "yours"
             ],
             "type": "object"
           }

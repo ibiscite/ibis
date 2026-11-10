@@ -269,6 +269,10 @@ style used stays unpacked. The bundle is read from disk only when used, so an id
 or hidden app that formats nothing pays nothing. Sizes, memory and timings are
 measured on the pull request that changes the bundle (#19's are on its pull request).
 
+Your styles (decision 0007) are read from their folder when used; a request
+reads at most two small files of yours (a style and its parent) and unpacks
+nothing more for them.
+
 `style_sweep` renders six invented records in every style, in every form. Author
 only, year only and narrative are offered only for the styles checked against
 Zotero; other styles refuse them until their output for those forms is verified.

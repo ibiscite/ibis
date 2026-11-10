@@ -1,6 +1,56 @@
-//! Who made a style and on what terms, read from its `<info>`. The bundle keeps
-//! every file byte for byte; this only reads it for the credits view.
+//! What a style says about itself in its `<info>`: who made it and on what
+//! terms, and for a style of yours, its name and rules. The bundle keeps every
+//! file byte for byte; this only reads it. Any text may come from outside
+//! (your styles), so nothing here can panic, and what it returns is plain text.
 use crate::catalog::Person;
+
+/// A style's own description of itself, for a style that is not in the bundle.
+#[derive(Debug, Default, PartialEq, Eq)]
+pub(crate) struct Metadata {
+    /// The last part of its `<id>`.
+    pub id: Option<String>,
+    pub title: Option<String>,
+    /// `YYYY-MM-DD`.
+    pub updated: Option<String>,
+    /// The last part of its `independent-parent` link.
+    pub parent: Option<String>,
+    pub default_locale: Option<String>,
+    pub format: Option<String>,
+    pub fields: Vec<String>,
+}
+
+impl Metadata {
+    pub(crate) fn read(xml: &str) -> Self {
+        let xml = without_comments(xml);
+        let Some((style, content)) = tags(&xml, "style").into_iter().next() else {
+            return Self::default();
+        };
+        let Some(info) = inner(content, "info").into_iter().next() else {
+            return Self::default();
+        };
+        let last_part = |uri: String| uri.rsplit('/').next().map(str::to_owned);
+        let categories = tags(info, "category");
+        Self {
+            id: inner(info, "id").first().and_then(|id| text(id)).and_then(last_part),
+            title: inner(info, "title").first().and_then(|title| text(title)),
+            updated: inner(info, "updated")
+                .first()
+                .and_then(|updated| text(updated))
+                .and_then(|updated| updated.get(..10).map(str::to_owned)),
+            parent: tags(info, "link")
+                .into_iter()
+                .find(|(tag, _)| attribute(tag, "rel").as_deref() == Some("independent-parent"))
+                .and_then(|(tag, _)| attribute(tag, "href"))
+                .and_then(last_part),
+            default_locale: attribute(style, "default-locale"),
+            format: categories.iter().find_map(|(tag, _)| attribute(tag, "citation-format")),
+            fields: categories
+                .iter()
+                .filter_map(|(tag, _)| attribute(tag, "field"))
+                .collect(),
+        }
+    }
+}
 
 /// The parts of `<info>` a credit shows.
 #[derive(Debug, Default, PartialEq, Eq)]
@@ -219,6 +269,21 @@ mod tests {
             Some("http://creativecommons.org/licenses/by-sa/3.0/")
         );
         assert!(info.rights.unwrap().starts_with("This work is licensed"));
+    }
+
+    proptest::proptest! {
+        // A style of yours is outside text: every reader of it must survive any input.
+        #[test]
+        fn any_text_is_read_without_panicking(
+            noise in "\\PC{0,200}",
+            tag in proptest::sample::select(vec!["style", "info", "id", "title", "link", "author", "name", "updated", "category", "rights"]),
+        ) {
+            for text in [noise.clone(), format!("<style><info><{tag} a=\"{noise}\">{noise}</{tag}></info></style>"), format!("<{tag}{noise}")] {
+                let _ = Info::read(&text);
+                let _ = Metadata::read(&text);
+                let _ = crate::input::style_traits(&text);
+            }
+        }
     }
 
     #[test]

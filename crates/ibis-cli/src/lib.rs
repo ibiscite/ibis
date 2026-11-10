@@ -324,7 +324,7 @@ fn command() -> Command {
                 .arg(Arg::new("key").value_name("KEY").required(true).help("The citation key of the reference")),
             Method::Styles => subcommand
                 .about("Find bundled CSL styles and citation languages")
-                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales\n  ibis styles --about apa")
+                .after_help("Examples:\n  ibis styles            # the common styles first\n  ibis styles nature\n  ibis styles \"gb/t 7714\"\n  ibis styles --locales\n  ibis styles --about apa\n  ibis styles --keep apa\n  ibis styles --add my-journal.csl")
                 .arg(
                     Arg::new("query")
                         .value_name("WORDS")
@@ -352,6 +352,28 @@ fn command() -> Command {
                         .long("locales")
                         .action(ArgAction::SetTrue)
                         .help("List citation languages instead of styles"),
+                )
+                .arg(
+                    Arg::new("keep")
+                        .long("keep")
+                        .value_name("ID")
+                        .conflicts_with_all(["query", "locales", "about", "add", "remove"])
+                        .help(ibis_engine::catalogue::text("cli-styles-keep-help", None, &[]).unwrap_or_default()),
+                )
+                .arg(
+                    Arg::new("add")
+                        .long("add")
+                        .value_name("FILE")
+                        .value_parser(clap::value_parser!(PathBuf))
+                        .conflicts_with_all(["query", "locales", "about", "remove"])
+                        .help(ibis_engine::catalogue::text("cli-styles-add-help", None, &[]).unwrap_or_default()),
+                )
+                .arg(
+                    Arg::new("remove")
+                        .long("remove")
+                        .value_name("ID")
+                        .conflicts_with_all(["query", "locales", "about"])
+                        .help(ibis_engine::catalogue::text("cli-styles-remove-help", None, &[]).unwrap_or_default()),
                 )
                 .arg(
                     Arg::new("about")
@@ -597,6 +619,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     if defaults == Defaults::App {
         // Doctor writes nothing: without a saved key its ids last only for its report.
         ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+        ibis_engine::use_saved_styles();
     }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
@@ -1280,6 +1303,9 @@ fn run_method<R: BufRead>(
                 None,
             ));
         }
+        Method::Styles if ["keep", "add", "remove"].iter().any(|flag| args.contains_id(flag)) => {
+            return your_styles(engine, args).map(|result| Execution::Result(result, None));
+        }
         Method::Styles => {
             let words: Vec<&str> = args
                 .get_many::<String>("query")
@@ -1353,6 +1379,72 @@ fn run_method<R: BufRead>(
         None,
     ))
 }
+/// `ibis styles --keep`, `--add` and `--remove`: your styles, which win over
+/// the bundled ones and never change with an Ibis release (decision 0007).
+fn your_styles(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, Failure> {
+    let say = |id: &str, args: &[(&str, &str)]| ibis_engine::catalogue::text(id, None, args).unwrap_or_default();
+    let explain_style = |error: EngineError| Failure::explained(error, human::reason_or_code(error));
+    let (data, text) = if let Some(id) = args.get_one::<String>("keep") {
+        let kept = engine.keep_style(id).map_err(explain_style)?;
+        let mut text = say(
+            if kept.already {
+                "cli-styles-kept-already"
+            } else {
+                "cli-styles-kept"
+            },
+            &[("id", &human::field(&kept.id))],
+        );
+        if let Some(parent) = &kept.parent {
+            text.push(' ');
+            text.push_str(&say("cli-styles-kept-parent", &[("parent", &human::field(parent))]));
+        }
+        (json!(kept), text)
+    } else if let Some(path) = args.get_one::<PathBuf>("add") {
+        let unreadable = || {
+            Failure::new(
+                ErrorCode::BadInput,
+                say(
+                    "cli-styles-add-unreadable",
+                    &[("file", &human::field(&path.display().to_string()))],
+                ),
+            )
+        };
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .and_then(|file| file.take(1024 * 1024 + 1).read_to_end(&mut bytes))
+            .map_err(|_| unreadable())?;
+        let xml = String::from_utf8(bytes).map_err(|_| unreadable())?;
+        let added = engine.add_style(&xml).map_err(explain_style)?;
+        let message = if added.replaced {
+            "cli-styles-replaced"
+        } else {
+            "cli-styles-added"
+        };
+        (json!(added), say(message, &[("id", &human::field(&added.id))]))
+    } else {
+        let id = args.get_one::<String>("remove").map_or("", String::as_str);
+        let removed = engine.remove_style(id).map_err(explain_style)?;
+        let message = if removed.removed {
+            "cli-styles-removed"
+        } else {
+            "cli-styles-not-yours"
+        };
+        let mut text = say(message, &[("id", &human::field(id))]);
+        if !removed.dependents.is_empty() {
+            let names: Vec<String> = removed.dependents.iter().map(|id| human::field(id)).collect();
+            text.push(' ');
+            text.push_str(&say("cli-styles-removed-dependents", &[("ids", &names.join(", "))]));
+        }
+        (json!(removed), text)
+    };
+    Ok(DispatchResult {
+        data,
+        exit_code: ExitCode::Ok,
+        text: Some(text),
+        source_findings: false,
+    })
+}
+
 /// What a canonical CitationRequest asked for, so its findings read as sentences.
 fn request_citing(params: &Value) -> Option<human::Citing> {
     let request: CitationRequest = serde_json::from_value(params.clone()).ok()?;

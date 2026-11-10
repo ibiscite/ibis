@@ -797,6 +797,21 @@
           "description": "Neither the file's name nor its contents identify a supported library format.",
           "type": "string",
           "const": "unknown-format"
+        },
+        {
+          "description": "A style of yours, or one being added, is not a usable CSL style.",
+          "type": "string",
+          "const": "invalid-style"
+        },
+        {
+          "description": "Your styles folder is not known here or cannot be written.",
+          "type": "string",
+          "const": "styles-folder"
+        },
+        {
+          "description": "A different version of the style is already yours.",
+          "type": "string",
+          "const": "kept-different"
         }
       ]
     },

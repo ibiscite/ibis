@@ -166,6 +166,12 @@ pub enum ErrorReason {
     LibraryCutShort,
     /// Neither the file's name nor its contents identify a supported library format.
     UnknownFormat,
+    /// A style of yours, or one being added, is not a usable CSL style.
+    InvalidStyle,
+    /// Your styles folder is not known here or cannot be written.
+    StylesFolder,
+    /// A different version of the style is already yours.
+    KeptDifferent,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]

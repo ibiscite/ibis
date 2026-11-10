@@ -128,6 +128,29 @@ impl Engine {
             credits: credits.map(|(_, credits)| credits),
         })
     }
+    /// Keep the bundled style `id` as it is now in your styles (decision 0007).
+    pub fn keep_style(&self, id: &str) -> Result<ibis_csl::Kept, EngineError> {
+        ibis_csl::keep_style(id).map_err(formatter_error)
+    }
+    /// Add a `.csl` file to your styles, after checking it as it would be used.
+    pub fn add_style(&self, xml: &str) -> Result<ibis_csl::Added, EngineError> {
+        self.formatter()?.add_style(xml).map_err(formatter_error)
+    }
+    /// Remove your style `id`; the bundled style of that id, if any, applies again.
+    pub fn remove_style(&self, id: &str) -> Result<ibis_csl::Removed, EngineError> {
+        ibis_csl::remove_style(id).map_err(formatter_error)
+    }
+    fn formatter(&self) -> Result<ibis_csl::Formatter, EngineError> {
+        let mut current = self.shared.formatter.lock().map_err(|_| error(ErrorCode::Internal))?;
+        if let Some(formatter) = current.as_ref() {
+            return Ok(formatter.clone());
+        }
+        // Construction only spawns the worker. A transient OS resource failure
+        // must not permanently disable formatting for this engine.
+        let formatter = ibis_csl::Formatter::new().map_err(|_| error(ErrorCode::ResourceLimit))?;
+        *current = Some(formatter.clone());
+        Ok(formatter)
+    }
     pub(super) fn formatted(
         &self,
         snapshot: &Arc<Snapshot>,
@@ -161,18 +184,7 @@ impl Engine {
                 vec![],
             ));
         }
-        let formatter = {
-            let mut current = self.shared.formatter.lock().map_err(|_| error(ErrorCode::Internal))?;
-            if let Some(formatter) = current.as_ref() {
-                formatter.clone()
-            } else {
-                // Construction only spawns the worker. A transient OS resource failure
-                // must not permanently disable formatting for this engine.
-                let formatter = ibis_csl::Formatter::new().map_err(|_| error(ErrorCode::ResourceLimit))?;
-                *current = Some(formatter.clone());
-                formatter
-            }
-        };
+        let formatter = self.formatter()?;
         let task = match formatter.submit(snapshot.clone(), request.clone()) {
             Ok(task) => task,
             Err(failure) => return Err(formatter_error(failure)),
@@ -191,6 +203,9 @@ fn formatter_error(failure: FormatError) -> EngineError {
         FormatError::UnsupportedStyle => EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownStyle),
         FormatError::InvalidLocale => EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownLocale),
         FormatError::Runtime => error(ErrorCode::Internal),
+        FormatError::InvalidStyle => EngineError::because(ErrorCode::BadInput, ErrorReason::InvalidStyle),
+        FormatError::StylesFolder => EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::StylesFolder),
+        FormatError::KeptDifferent => EngineError::because(ErrorCode::BadInput, ErrorReason::KeptDifferent),
     }
 }
 

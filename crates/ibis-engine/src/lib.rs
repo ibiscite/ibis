@@ -22,6 +22,12 @@ pub mod rpc;
 
 mod service;
 pub use ibis_sources::identity;
+
+/// Use your styles, kept beside the stable app's settings whichever build runs,
+/// as the library-id key is, so Ibis, Ibis Nightly and `ibis` share them.
+pub fn use_saved_styles() {
+    ibis_csl::use_styles_folder(identity::config_dir().map(|dir| dir.join("com.ibiscite.ibis").join("styles")));
+}
 /// The file names a library chooser offers, and whether a dropped file is one.
 pub use ibis_sources::{library_file_extensions, names_a_library};
 pub use service::*;

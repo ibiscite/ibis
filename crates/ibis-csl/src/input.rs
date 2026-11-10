@@ -227,7 +227,7 @@ pub(crate) fn prepare(
     prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
 }
 
-fn prepare_with_style(
+pub(crate) fn prepare_with_style(
     snapshot: &Snapshot,
     request: &CitationRequest,
     limits: &Limits,
@@ -500,7 +500,7 @@ fn prepare_with_style(
         });
     }
     let language = locale.clone().unwrap_or_else(|| style.language.clone());
-    let json=String::from_utf8(bounded_json(&json!({"style":style.rules,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
+    let json=String::from_utf8(bounded_json(&json!({"style":style.engine_key,"numeric":traits.numeric,"sentence_titles":style.sentence_titles,"items":items,"cites":cites,"affixes":affixes,"bibliography":bibliography,"keep_order":request.keep_order,"locale":locale}),limits.input_bytes)?).map_err(|_|FormatError::InvalidRequest)?;
     // Each placeholder (in its cite and in the affix list) must be the only
     // place its sentinel occurs, or the bridge could write an affix into a
     // record's own text.
@@ -819,8 +819,7 @@ mod tests {
 
     fn synthetic_style(id: &str, xml: &str) -> catalog::Resolved {
         catalog::Resolved {
-            id: id.into(),
-            rules: id.into(),
+            engine_key: id.into(),
             xml: xml.into(),
             traits: style_traits(xml),
             forced_locale: None,

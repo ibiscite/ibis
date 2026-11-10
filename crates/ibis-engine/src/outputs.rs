@@ -138,8 +138,20 @@ pub fn outputs() -> &'static [OutputInfo] {
 
 /// The list as the `outputs` method returns it.
 pub fn list() -> OutputsResult {
+    // A common style you replaced with your own has your style's forms.
+    let yours = ibis_csl::your_style_ids();
     OutputsResult {
-        outputs: outputs().to_vec(),
+        outputs: outputs()
+            .iter()
+            .filter_map(|output| match &output.output {
+                OutputSpec::Csl { style } if yours.binary_search(style).is_ok() => Some(OutputInfo {
+                    forms: ibis_csl::style_forms(style).ok()?,
+                    entries: ibis_csl::style_writes_entries(style).ok()?,
+                    ..output.clone()
+                }),
+                _ => Some(output.clone()),
+            })
+            .collect(),
         default: DEFAULT.to_owned(),
         default_style: DEFAULT_STYLE.to_owned(),
     }

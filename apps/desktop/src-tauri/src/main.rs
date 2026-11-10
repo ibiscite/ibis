@@ -282,6 +282,7 @@ fn main() {
         .setup(move |app| {
             // Before the first library, so its id lasts and matches `ibis`.
             ibis_engine::identity::use_saved_key(true);
+            ibis_engine::use_saved_styles();
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
             app.manage(SettingsFile::new(settings_path.clone()));

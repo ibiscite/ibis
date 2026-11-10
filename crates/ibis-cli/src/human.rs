@@ -137,12 +137,29 @@ fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<St
             let mut lines = styles
                 .iter()
                 .map(|style| {
-                    Some(format!(
+                    let mut line = format!(
                         "{}\t{}\t{}",
                         field(style.get("id")?.as_str()?),
                         field(style.get("title")?.as_str()?),
                         field(style.get("updated")?.as_str()?)
-                    ))
+                    );
+                    if style.get("yours").and_then(Value::as_bool) == Some(true) {
+                        let bundled = style.get("bundled_updated").and_then(Value::as_str).map(field);
+                        line.push('\t');
+                        line.push_str(
+                            &ibis_engine::catalogue::text(
+                                if bundled.is_some() {
+                                    "cli-styles-yours-bundled"
+                                } else {
+                                    "cli-styles-yours"
+                                },
+                                None,
+                                &[("date", bundled.as_deref().unwrap_or_default())],
+                            )
+                            .unwrap_or_default(),
+                        );
+                    }
+                    Some(line)
                 })
                 .collect::<Option<Vec<_>>>()?;
             if total == 0 {
@@ -738,6 +755,11 @@ pub(super) fn key_failure(
 }
 
 /// The sentence for each reason an engine error gives.
+/// The sentence for an engine error: its reason's when it has one.
+pub(super) fn reason_or_code(error: EngineError) -> String {
+    error.reason.map_or_else(|| code_sentence(error.code), reason_sentence)
+}
+
 pub(super) fn reason_sentence(reason: ErrorReason) -> String {
     catalogue::sentence("reason", reason, Audience::Cli, &[])
 }
