@@ -139,7 +139,7 @@ function fakeJq() {
 function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of ["scripts", "dist", "feed"]) mkdirSync(join(dir, name));
+  for (const name of ["scripts", "dist", "feed", "style-changes"]) mkdirSync(join(dir, name));
   for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", ...Object.values(scripts)]) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
@@ -152,6 +152,7 @@ function fixture(t, initial = {}) {
   const hash = createHash("sha256").update("invented package").digest("hex");
   writeFileSync(join(dir, "dist/SHA256SUMS-synthetic.txt"), `${hash}  Ibis-synthetic.zip\n`);
   writeFileSync(join(dir, "feed/latest.json"), JSON.stringify({ version: "0.2.3" }));
+  writeFileSync(join(dir, "style-changes/notes.md"), "**Citation styles**\n\n- Output changed since v0.2.2 in 1 style: `invented-style`\n");
   const draft = { isDraft: true, prerelease: true, body: "### Bug Fixes\n* invented fix", assets: {} };
   writeFileSync(join(dir, "github.json"), JSON.stringify({ latest: "v0.2.2", releases: { "v0.2.3": draft }, calls: [], ...initial }));
   const state = () => JSON.parse(readFileSync(join(dir, "github.json"), "utf8"));
@@ -172,6 +173,7 @@ test("numbered releases publish fully with a versioned title and explicit Latest
     assert.equal(release.isDraft, false);
     assert.equal(release.prerelease, false);
     assert.equal(release.title, "Ibis 0.2.3");
+    assert.match(release.body, /\*\*Citation styles\*\*\n\n- Output changed since v0\.2\.2 in 1 style: `invented-style`/);
     assert.equal(state.latest, latest === "v0.2.10" ? latest : "v0.2.3");
     const edit = state.calls.find((args) => args.includes("--draft=false"));
     assert.ok(edit.includes(latest === "v0.2.10" ? "--latest=false" : "--latest"));

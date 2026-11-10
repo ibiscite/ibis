@@ -269,7 +269,9 @@ style used stays unpacked. The bundle is read from disk only when used, so an id
 or hidden app that formats nothing pays nothing. Sizes, memory and timings are
 measured on the pull request that changes the bundle (#19's are on its pull request).
 
-`style_sweep` renders six invented records in every style, in every form. Author
+`style_sweep` renders six invented records in every style, in every form: weekly
+against upstream's newest, and before each release against the previous one, whose
+notes name the styles that changed (`scripts/style-sweep.mjs`). Author
 only, year only and narrative are offered only for the styles checked against
 Zotero; other styles refuse them until their output for those forms is verified.
 

@@ -1,0 +1,148 @@
+name: Citation styles
+
+# Every Monday, and when run by hand on main: renders the fixture items in every
+# bundled CSL style (each dependent style through its parent) at the pinned
+# snapshot, then moves the styles, locales and citeproc-js to upstream's newest
+# and renders again (scripts/style-sweep.mjs weekly). A style that newly fails
+# fails the run. When the pins moved, the ibis-release app opens or updates one
+# pull request from the `styles/newest` branch with the new snapshot and the
+# output diff; agents review and merge it like any other change, so styles
+# still change only with an Ibis release (decision 0007, #19).
+
+on:
+  schedule:
+    - cron: "41 2 * * 1"
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: citation-styles
+  cancel-in-progress: false
+
+jobs:
+  sweep:
+    name: Render every style
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    outputs:
+      moved: ${{ steps.sweep.outputs.moved }}
+      failed: ${{ steps.sweep.outputs.failed }}
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+
+      # No build cache: what this job writes becomes a pull request.
+      - name: Render at the pins and at upstream's newest
+        id: sweep
+        env:
+          # Read-only, for the GitHub API's newest citeproc-js commit.
+          GH_TOKEN: ${{ github.token }}
+          OUT: ${{ runner.temp }}/styles
+        run: |
+          status=0
+          node scripts/style-sweep.mjs weekly "$OUT" || status=$?
+          [ "$status" = 0 ] || echo "failed=true" >> "$GITHUB_OUTPUT"
+          if [ -s "$OUT/title.txt" ]; then echo "moved=true" >> "$GITHUB_OUTPUT"; fi
+          if [ -f "$OUT/report.md" ]; then cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          mkdir -p "$OUT/vendor"
+          cp crates/ibis-csl/vendor/{manifest.json,csl-bundle.json,csl-bundle.bin,citeproc.mjs} "$OUT/vendor/"
+          rm -f "$OUT"/*.jsonl
+
+      - name: Keep the new snapshot and its report
+        if: steps.sweep.outputs.moved == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: styles-newest
+          path: ${{ runner.temp }}/styles
+          if-no-files-found: error
+          retention-days: 14
+
+  pull-request:
+    name: Open the styles pull request
+    needs: sweep
+    if: ${{ !cancelled() && needs.sweep.outputs.moved == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    # The app's token, unlike GITHUB_TOKEN, starts CI on the pull request. It
+    # pushes only the styles/newest branch; main takes it through the merge queue.
+    environment: release
+    permissions: {}
+    steps:
+      - name: Mint the release app token
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        id: app
+        with:
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+
+      - name: Checkout the commit that was rendered
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Download the new snapshot
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: styles-newest
+          path: ${{ runner.temp }}/styles
+
+      - name: Push styles/newest and open or update its pull request
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token }}
+          APP: ${{ steps.app.outputs.app-slug }}
+          REPO: ${{ github.repository }}
+          RUN: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          FAILED: ${{ needs.sweep.outputs.failed }}
+          STYLES: ${{ runner.temp }}/styles
+        run: |
+          set -euo pipefail
+          for file in manifest.json csl-bundle.json csl-bundle.bin citeproc.mjs; do
+            cp "$STYLES/vendor/$file" "crates/ibis-csl/vendor/$file"
+          done
+          # Only the vendored files may change; anything else stops here.
+          unexpected=$(git status --porcelain | grep -v ' crates/ibis-csl/vendor/' || true)
+          [ -z "$unexpected" ] || { echo "::error::Unexpected changes: $unexpected"; exit 1; }
+          title=$(head -n 1 "$STYLES/title.txt")
+          id=$(gh api "users/${APP}%5Bbot%5D" --jq .id)
+          git -c user.name="${APP}[bot]" -c user.email="${id}+${APP}[bot]@users.noreply.github.com" \
+            commit -q -a -m "$title" -m "Built by the Citation styles workflow: $RUN"
+          git push -q --force "https://x-access-token:${GH_TOKEN}@github.com/${REPO}.git" HEAD:refs/heads/styles/newest
+          {
+            [ "$FAILED" != true ] || printf '**This run found new failures; fix or list them before merging.**\n\n'
+            # A pull request body holds 65,536 characters; the run keeps the whole report.
+            head -c 50000 "$STYLES/report.md"
+            printf '\n\nFull report: %s\n\n' "$RUN"
+            printf '## Handoff\n\nReview the changed output above against the upstream changes, report style or engine bugs upstream, add any style that now fails to `crates/ibis-csl/tests/sweep-exceptions.json` with its upstream report, then merge on green. A newer weekly run replaces this branch.\n'
+          } > body.md
+          pr=$(gh pr list --repo "$REPO" --head styles/newest --state open --json number --jq '.[0].number // empty')
+          if [ -n "$pr" ]; then
+            gh pr edit "$pr" --repo "$REPO" --title "$title" --body-file body.md
+          else
+            gh pr create --repo "$REPO" --base main --head styles/newest --title "$title" --body-file body.md
+          fi
+
+  result:
+    name: Fail on new failures
+    needs: sweep
+    if: ${{ !cancelled() && needs.sweep.outputs.failed == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 2
+    steps:
+      - name: Report
+        run: |
+          echo "::error::A style newly fails; see the run summary."
+          exit 1

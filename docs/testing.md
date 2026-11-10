@@ -108,6 +108,14 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   version inference or publication-order checks. Script tests cover raw
   timestamps, no manifest download, formula-name refusal, CSV validation,
   append-only rows, weekly deduplication and API/ref failures and races.
+- [Citation styles](../.github/workflows/styles.yml) renders the fixture
+  items in every bundled CSL style each Monday, at the pins and at upstream's
+  newest styles, locales and citeproc-js. A style that newly fails, and is not
+  in `crates/ibis-csl/tests/sweep-exceptions.json`, fails the run; moved pins
+  become one pull request from `styles/newest` with the output diff. Before a
+  numbered release, Preview's style-changes job renders with the previous
+  release and this one, and the release notes name each style whose output
+  changed (`scripts/style-sweep.mjs`, #19).
 
 `node scripts/check.mjs` runs what CI would for a branch's changes; setup is in
 [CONTRIBUTING.md](../CONTRIBUTING.md). A test definition, screenshot or build

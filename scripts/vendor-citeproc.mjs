@@ -5,6 +5,8 @@
 //
 //   node scripts/vendor-citeproc.mjs           verify and (re)write the files
 //   node scripts/vendor-citeproc.mjs --update  record new hashes for new pins
+//   node scripts/vendor-citeproc.mjs --newest  move each pin to the newest commit
+//                                              that changed its file (the styles workflow)
 
 import { createHash } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -14,11 +16,25 @@ import { fileURLToPath } from "node:url";
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const dir = join(root, "crates/ibis-csl/vendor");
 const manifestPath = join(dir, "manifest.json");
-const update = process.argv.includes("--update");
+const newest = process.argv.includes("--newest");
+const update = newest || process.argv.includes("--update");
+
+/** The newest commit on the default branch that changed `path`. */
+async function newestCommit(repo, path) {
+  const headers = { accept: "application/vnd.github+json" };
+  if (process.env.GH_TOKEN) headers.authorization = `Bearer ${process.env.GH_TOKEN}`;
+  const url = `https://api.github.com/repos/${repo}/commits?path=${encodeURIComponent(path)}&per_page=1`;
+  const response = await fetch(url, { headers });
+  if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
+  const sha = (await response.json())?.[0]?.sha;
+  if (!/^[0-9a-f]{40}$/.test(sha ?? "")) throw new Error(`${url}: no commit`);
+  return sha;
+}
 
 const manifest = JSON.parse(await readFile(manifestPath, "utf8"));
 for (const file of manifest.files) {
   const source = manifest.sources[file.source];
+  if (newest) source.commit = await newestCommit(source.repo, file.path);
   const url = `https://raw.githubusercontent.com/${source.repo}/${source.commit}/${file.path}`;
   const response = await fetch(url);
   if (!response.ok) throw new Error(`${url}: HTTP ${response.status}`);
