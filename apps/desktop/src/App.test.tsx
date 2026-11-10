@@ -3803,7 +3803,7 @@ test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))(
   await waitFor(() => expect(preview).toHaveBeenLastCalledWith({ items: [
     { id: result("a", "").id, cite: result("a", "").cite, locator: { label: "page", value: "12" } },
   ], output: format, expectedRevision: "1", intent: {
-    page: expect.any(Number), request: expect.any(Number), cancel: false, context: null,
+    page: expect.any(Number), request: expect.any(Number), cancel: false, context: null, keep_order: false,
   } }));
   const box = screen.getByLabelText("Search references");
   fireEvent.keyDown(box, { key: "Enter" });

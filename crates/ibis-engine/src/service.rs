@@ -63,6 +63,10 @@ pub struct LibraryInfo {
     #[serde(skip)]
     #[schemars(skip)]
     pub duplicate_keys: std::collections::BTreeSet<String>,
+    /// Each skipped entry whose header names its key, with why it was skipped.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub damaged_keys: std::collections::BTreeMap<String, ibis_sources::SourceWarning>,
     /// The read stopped at a limit, so a key past it selects nothing.
     #[serde(skip)]
     #[schemars(skip)]
@@ -83,6 +87,7 @@ impl LibraryInfo {
             watch_warning: None,
             zotero: None,
             duplicate_keys: Default::default(),
+            damaged_keys: Default::default(),
             cut_short: false,
         }
     }
@@ -836,6 +841,8 @@ fn select<'a>(
             let found = matches.next().ok_or_else(|| {
                 if libraries.values().any(|library| library.duplicate_keys.contains(key)) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::DuplicateKey)
+                } else if libraries.values().any(|library| library.damaged_keys.contains_key(key)) {
+                    EngineError::because(ErrorCode::NotFound, ErrorReason::DamagedEntry)
                 } else if libraries.values().any(|library| library.cut_short) {
                     EngineError::because(ErrorCode::NotFound, ErrorReason::LibraryCutShort)
                 } else {

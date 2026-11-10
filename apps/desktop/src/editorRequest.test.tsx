@@ -2,7 +2,7 @@ import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -53,4 +53,27 @@ test("a second request in the same format is still a new request", async () => {
   waiting = { request: 2, format: "Pandoc" };
   await act(() => emit("editor:request"));
   await waitFor(() => expect(previews).toBeGreaterThan(before));
+});
+
+test("Keep My Order follows the waiting editor's output, not the picker's format", async () => {
+  let waiting: { request: number; format: string; style: boolean } | null = { request: 1, format: "APA", style: true };
+  const orders: boolean[] = [];
+  backend({
+    editor_request: () => waiting,
+    search: () => [result("taylor2026", "Synthetic signals")],
+    preview_file_citation: ({ intent }) => { orders.push(Boolean(intent.keep_order)); return receipt("(Taylor, 2026)"); },
+  });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "signals" } });
+  await waitFor(() => expect(plain(document.body.textContent)).toContain("Citing for your editor in APA."));
+  await chooseFromMore("Keep My Order", "menuitemcheckbox");
+  await waitFor(() => expect(orders.at(-1)).toBe(true));
+  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  // The picker's own Pandoc always keeps the order, so it does not offer the choice.
+  waiting = null;
+  await act(() => emit("editor:request"));
+  await waitFor(() => expect(plain(document.body.textContent)).not.toContain("Citing for your editor"));
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await screen.findByRole("menu", { name: "More" });
+  expect(screen.queryByRole("menuitemcheckbox", { name: "Keep My Order" })).toBeNull();
 });

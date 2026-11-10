@@ -15,6 +15,9 @@ enum Outputs {
         text_parts: Option<Vec<String>>,
         coverage: Vec<usize>,
         spans: Vec<Span>,
+        /// Cites whose citation reads the same without their locator.
+        #[serde(default)]
+        unprinted_locators: Vec<usize>,
     },
 }
 
@@ -61,6 +64,7 @@ pub(crate) fn result(
         text_parts,
         coverage,
         spans,
+        unprinted_locators,
     } = output
     else {
         return Ok(refused(input));
@@ -113,9 +117,16 @@ pub(crate) fn result(
             .iter()
             .any(|span| span.item.is_some_and(|item| item >= items.len()))
         || (0..items.len()).any(|item| !spans.iter().any(|span| span.item == Some(item)))
+        || unprinted_locators.iter().any(|&cite| cite >= items.len())
     {
         return Err(FormatError::Runtime);
     }
+    let mut losses = input.losses.clone();
+    losses.extend(unprinted_locators.iter().map(|&cite| Loss {
+        item: Some(items[cite]),
+        field: LossField::Locator,
+        reason: LossReason::Unsupported,
+    }));
     // Project validated presentation equivalents onto the canonical text while
     // retaining emphasis. Clipboard HTML and RTF remain untouched.
     let canonical = canonical_runs(&text, &runs, superscripts);
@@ -157,7 +168,7 @@ pub(crate) fn result(
         Some(rtf),
         DisplayTree { nodes },
         input.outcomes.clone(),
-        input.losses.clone(),
+        losses,
         input.notices.clone(),
     )
     .with_warnings(input.warnings.clone())

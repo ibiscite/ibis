@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 /// The golden cases the picker can ask for: an output the engine lists, in
 /// the normal form, with plain items. Page and form combinations have their
-/// own matrix below; affixes remain outside the picker.
+/// own matrix below; literal affixes also run through the real CLI.
 fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, &'static str)> {
     let output = ibis_engine::outputs::named(&request.output)?;
     if request.form != CitationForm::Normal || request.items.is_empty() {
@@ -25,6 +25,8 @@ fn picker_choice(request: &CitationRequest) -> Option<(Vec<FileSelection>, &'sta
                 && item.annotation.is_none();
             plain.then_some(())?;
             Some(FileSelection {
+                prefix: None,
+                suffix: None,
                 id: item.item.clone(),
                 cite: item.expected_cite.clone()?,
                 form: None,

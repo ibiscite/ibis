@@ -30,7 +30,7 @@ use biblatex::Bibliography;
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
-use lexer::{Block, RawEntry, parse_entry, parse_string, split_blocks};
+use lexer::{Block, RawEntry, header_key, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
 /// Why an entry was skipped or one of its fields needs checking: a fixed
@@ -276,11 +276,14 @@ pub(crate) fn load_with_budget(
             _ => {}
         }
         if !block.complete {
-            result.warnings.push(skip(Problem::new(WarningCause::NotClosed, None)));
+            result.skip(
+                header_key(block.body),
+                skip(Problem::new(WarningCause::NotClosed, None)),
+            );
             continue;
         }
         match parse_entry(block) {
-            Err(problem) => result.warnings.push(skip(problem)),
+            Err(problem) => result.skip(header_key(block.body), skip(problem)),
             Ok(entry) if seen.contains_key(&entry.key) => {
                 // Every entry under a repeated key is skipped, so each one is
                 // named, the first included, and the person can find them all.
@@ -346,10 +349,11 @@ pub(crate) fn load_with_budget(
                 }
                 result.push_record(record, previous);
             }
-            Ok(Err(problem)) => result.warnings.push(warn(WarningCode::Syntax, &problem)),
-            Err(_) => result
-                .warnings
-                .push(warn(WarningCode::Syntax, &Problem::new(WarningCause::Unreadable, None))),
+            Ok(Err(problem)) => result.skip(Some(&entry.key), warn(WarningCode::Syntax, &problem)),
+            Err(_) => result.skip(
+                Some(&entry.key),
+                warn(WarningCode::Syntax, &Problem::new(WarningCause::Unreadable, None)),
+            ),
         }
     }
     result

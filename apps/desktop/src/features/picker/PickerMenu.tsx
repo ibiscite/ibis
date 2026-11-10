@@ -13,7 +13,7 @@ const label = (accelerator: string) => keyLabel(accelerator, isMac);
 
 /** More holds working actions; preferences live in Settings and source choices
  * have their own library menu. Rows is the one look changed while working. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, actions, source, project }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, density, pinned, keepOrder, actions, source, project }: {
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
@@ -22,6 +22,8 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   lastOutcome?: string | null;
   density: Density;
   pinned: boolean;
+  /** Offered only where the output may sort: a style. */
+  keepOrder: { checked: boolean; toggle: () => void } | null;
   actions: { density: (density: Density) => void; pin: () => void; keys: () => void; settings: (() => void) | null;
     /** Offered once this app has a citation from this run of Ibis. */
     changeLast?: (() => void) | null;
@@ -51,6 +53,9 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
         {project.status && project.stop && <MenuItem id="project-stop" label={say("picker-stop-project", { name: isolate(project.status.name) })} onAction={project.stop} />}
       </MenuSection>}
       {project?.choose && <MenuSeparator />}
+      {keepOrder && <MenuSection id="citation-order">
+        <MenuItem id="keep-order" label={say("picker-keep-my-order")} checked={keepOrder.checked} onAction={keepOrder.toggle} />
+      </MenuSection>}
       {actions.changeLast && <MenuSection id="citation">
         <MenuItem id="change-last" label={say("picker-change-last-citation")} keys={label(keysFor("changeLast"))} onAction={actions.changeLast} />
       </MenuSection>}

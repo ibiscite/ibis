@@ -181,6 +181,8 @@ fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
         ("ecology", "(Taylor 2026 p. 777)", false),
         ("ecology-letters", "(Taylor 2026)", true),
         ("ieee", "A. Taylor, Synthetic signals. Imaginary Press, 2026.", true),
+        // Prints a locator for legal references only, not for this book.
+        ("apa-cv", "Taylor, A. (2026). Synthetic signals. Imaginary Press.", true),
     ] {
         request.output = OutputSpec::Csl { style: style.into() };
         let result = formatter.format(&snapshot, &request).unwrap();
@@ -216,6 +218,27 @@ fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
     );
     assert!(result.copy_content(1).is_none());
     assert!(result.losses.is_empty());
+    // A locator can change only the punctuation between grouped cites. The
+    // first work's own text still shows that its page was left out.
+    let snapshot = library(&[
+        json!({"type":"book","title":"Synthetic orbit","author":[{"family":"Vale"}],"issued":{"date-parts":[[2024]]}}),
+        json!({"type":"book","title":"Synthetic tide","author":[{"family":"Vale"}],"issued":{"date-parts":[[2025]]}}),
+    ]);
+    let mut request = selection(&snapshot, "annual-review-of-astronomy-and-astrophysics", false);
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "777".into(),
+    });
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(result.text, "(Vale 2024; 2025)");
+    assert_eq!(
+        result.losses,
+        [Loss {
+            item: Some(0),
+            field: LossField::Locator,
+            reason: LossReason::Unsupported,
+        }]
+    );
 }
 
 #[test]

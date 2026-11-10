@@ -109,6 +109,8 @@ fn a_superseded_preview_stops_before_reading_its_page_and_form() -> Result<(), B
         .preview(
             older,
             vec![FileSelection {
+                prefix: None,
+                suffix: None,
                 id: ItemRef {
                     library: LibraryId::digest(b"synthetic"),
                     key: "work".into(),
@@ -482,6 +484,8 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
         .preview(
             file.reserve_preview(),
             vec![FileSelection {
+                prefix: None,
+                suffix: None,
                 id: row.id.clone(),
                 cite: serde_json::from_value(json!(row.cite))?,
                 locator: None,
@@ -534,6 +538,8 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
             .preview(
                 file.reserve_preview(),
                 vec![FileSelection {
+                    prefix: None,
+                    suffix: None,
                     id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
@@ -584,6 +590,8 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
             .preview(
                 file.reserve_preview(),
                 vec![FileSelection {
+                    prefix: None,
+                    suffix: None,
                     id: row.id.clone(),
                     cite: serde_json::from_value(json!(row.cite))?,
                     locator: None,
@@ -681,5 +689,29 @@ fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() 
     })));
     let chosen = crate::library::tasks::remembered_choice(&source, &loaded).ok_or("choice")?;
     assert_eq!(chosen, ibis_core::settings::LibrarySetting::Bibtex(b.canonicalize()?));
+    Ok(())
+}
+
+#[test]
+fn oversized_reference_text_is_refused_before_formatting_without_echoing_it() -> Result<(), Box<dyn std::error::Error>>
+{
+    let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
+    let text = "x".repeat(ibis_core::syntax::MAX_CITATION_BYTES / 2 + 1);
+    let selection = || {
+        serde_json::from_value(json!({
+            "id": {"library": LibraryId::digest(b"invented"), "key": "invented"},
+            "cite": Fingerprint::of_bytes(b"invented"), "prefix": text, "suffix": text,
+        }))
+    };
+    for format in ["pandoc", "apa"] {
+        let error = file
+            .preview(file.reserve_preview(), vec![selection()?], format)
+            .err()
+            .ok_or("oversized text was formatted")?;
+        assert_eq!(
+            error.to_string(),
+            "This citation has too much text. Shorten its fields or remove references."
+        );
+    }
     Ok(())
 }

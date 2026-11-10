@@ -171,7 +171,7 @@ test.each([
   expect(signal).toBeInstanceOf(AbortSignal);
   expect(signal?.aborted).toBe(false);
   expect(previewFileCitation).toHaveBeenLastCalledWith(
-    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", "1", signal, undefined,
+    [{ id: chosen.id, cite: chosen.cite, ...details }], "pandoc", "1", signal, undefined, false,
   );
 
   await act(async () => { pending[1]?.(preview("edited citation")); });

@@ -38,13 +38,14 @@ function Beak({ closing = false }: { closing?: boolean }) {
 
 /** One line of exact engine output. All editing stays in the inspector above it;
  * a folded citation retains its full text and every reference's identity. */
-export function CitationShelf({ deliverable = true, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
+export function CitationShelf({ deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, source, onOpenSource, announce, selected, highlightedReference, highlightedReferences, onChangeReference, removeLabel, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
   /** Enter in Page does what it does in Search. */
   onSubmit?: () => void;
   copyProblem?: string | null;
   /** Enter would deliver the shown citation now; until then nothing drags. */
   deliverable?: boolean;
+  keepOrder?: boolean;
   presentation?: number;
   present?: boolean;
   announce: boolean;
@@ -129,7 +130,7 @@ export function CitationShelf({ deliverable = true, inspector, onSubmit, copyPro
   const retained = useRef<{ presentation: typeof presentation; ids: string; value: FormattedCitation } | null>(null);
   useLayoutEffect(() => { if (ready) retained.current = { presentation, ids: referenceIds, value: ready }; }, [ready, presentation, referenceIds]);
   const meaning = choiceKey(references);
-  const pendingOwner = useMemo(() => ({ meaning, style, keys, presentation }), [meaning, style, keys, presentation]);
+  const pendingOwner = useMemo(() => ({ meaning, keepOrder, style, keys, presentation }), [meaning, keepOrder, style, keys, presentation]);
   const [expired, setExpired] = useState<object | null>(null);
   // While the next preview is made, hold the last citation for 300 ms.
   const waiting = shown === null;

@@ -77,6 +77,8 @@ pub(crate) struct PreviewRequests(SearchRequests);
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PreviewIntent {
+    #[serde(default)]
+    pub(crate) keep_order: bool,
     pub(crate) page: u32,
     pub(crate) request: u32,
     pub(crate) cancel: bool,

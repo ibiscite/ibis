@@ -323,6 +323,7 @@ mod tests {
                 "ieee".into(),
                 String::new(),
                 super::super::PreviewIntent {
+                    keep_order: false,
                     page: 1,
                     request,
                     cancel: false,
@@ -406,6 +407,7 @@ mod tests {
                 "pandoc".into(),
                 active.revision(),
                 super::super::PreviewIntent {
+                    keep_order: false,
                     page: 1,
                     request: 1,
                     cancel: false,

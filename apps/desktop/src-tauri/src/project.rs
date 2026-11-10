@@ -864,6 +864,7 @@ mod tests {
                 "pandoc".into(),
                 String::new(),
                 crate::library::PreviewIntent {
+                    keep_order: false,
                     page: 1,
                     request,
                     cancel: false,

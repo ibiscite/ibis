@@ -1,5 +1,5 @@
 import { Input, Label, Text, TextField } from "react-aria-components";
-import { useRef, type RefObject } from "react";
+import { useRef, type KeyboardEvent, type RefObject } from "react";
 import type { ReferenceDetails, ReferenceForm } from "../bindings";
 import { composing } from "../composition";
 import { say } from "../i18n";
@@ -16,17 +16,22 @@ const FORMS = [
 /** The same per-reference fields wherever a citation is being prepared. Only the
  * engine says a form cannot be used: until it answers, every form can be tried,
  * so a refused citation can always be corrected from here. */
-export function CitationDetails({ page, form, pageRef, choices, autoFocus = false, onPageChange, onFormChange, onSubmit }: {
-  page: string; form: ReferenceForm;
+export function CitationDetails({ page, form, prefix, suffix, pageRef, choices, autoFocus = false, onPageChange, onFormChange, onPrefixChange, onSuffixChange, onSubmit }: {
+  page: string; form: ReferenceForm; prefix: string; suffix: string;
   pageRef?: RefObject<HTMLInputElement | null>;
   autoFocus?: boolean;
   choices?: ReferenceDetails | "failed";
   onPageChange: (value: string) => void;
   onFormChange: (value: ReferenceForm) => void;
-  /** Enter in Page does what it does in Search. */
+  onPrefixChange: (value: string) => void;
+  onSuffixChange: (value: string) => void;
+  /** Enter in a text field does what it does in Search. */
   onSubmit?: () => void;
 }) {
   const formButton = useRef<HTMLButtonElement>(null);
+  const submit = (event: KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
+  };
   const answer = typeof choices === "object" ? choices : undefined;
   // The engine answers null where no name form applies, as for Keys only.
   const current = answer ? answer.current_form : form;
@@ -47,10 +52,16 @@ export function CitationDetails({ page, form, pageRef, choices, autoFocus = fals
     </div>}
     <TextField className="citation-field" value={page} onChange={onPageChange}>
       <Label className="citation-label">{say("citation-details-page")}</Label>
-      <Input ref={pageRef} autoFocus={autoFocus} placeholder={say("citation-details-page-placeholder")} onKeyDown={(event) => {
-        if (event.key === "Enter" && !event.repeat && !composing(event)) { event.preventDefault(); onSubmit?.(); }
-      }} />
+      <Input ref={pageRef} autoFocus={autoFocus} placeholder={say("citation-details-page-placeholder")} onKeyDown={submit} />
       <Text slot="description" className="visually-hidden">{say("citation-details-page-hint")}</Text>
+    </TextField>
+    <TextField className="citation-field" value={prefix} onChange={onPrefixChange}>
+      <Label className="citation-label">{say("citation-details-prefix")}</Label>
+      <Input onKeyDown={submit} />
+    </TextField>
+    <TextField className="citation-field" value={suffix} onChange={onSuffixChange}>
+      <Label className="citation-label">{say("citation-details-suffix")}</Label>
+      <Input onKeyDown={submit} />
     </TextField>
   </div>;
 }

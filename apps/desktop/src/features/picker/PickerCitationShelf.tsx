@@ -42,7 +42,7 @@ export function PickerCitationShelf({
     const shared = [...selected.values()].some((other) => other.key === r.key && other.source !== r.source);
     return shared && library ? say("picker-remove-reference-in", { key: r.key, library }) : say("picker-remove-reference", { key: r.key });
   };
-  return <CitationShelf deliverable={deliverable} presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
+  return <CitationShelf keepOrder={state.keepOrder} deliverable={deliverable} presentation={state.visibility} present={showCitations && results.length > 0} announce={selectionChanged} selected={showCitations ? selected : noSelection} removeLabel={removeLabel} onRemove={(r) => {
     send({ type: "remove-reference", reference: r });
     input.current?.focus({ preventScroll: true });
   }} highlightedReferences={selected.size === 0 ? chosen : undefined} previewReceipt={previewReceipt}

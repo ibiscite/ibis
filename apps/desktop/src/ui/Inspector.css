@@ -8,13 +8,15 @@
   .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
-.inspector-body { box-sizing: border-box; display: flex; flex-direction: column; height: 100%; padding-block: var(--inset); overflow: hidden auto; overscroll-behavior: contain; }
+.inspector-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }
+.inspector-sidebar { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 /* The panel scrolls only up and down: a sub-pixel overhang (the quiet rows' hover
    fill) must never draw a sideways scroll bar. */
-.inspector-column, .inspector-document { flex: none; min-width: 0; padding-inline: var(--inspector-pad); }
+.inspector-column, .inspector-document { box-sizing: border-box; flex: 1; min-width: 0; min-height: 0; padding: var(--inset) var(--inspector-pad); overflow: hidden auto; overscroll-behavior: contain; }
 /* One vertical step: every row is a 32 px target, one --space-1 apart, as the
    label and control rows (CitationDetails) are. */
 .inspector-column { --ring-offset: var(--ring-inside); display: flex; flex-direction: column; gap: var(--space-1); }
+.inspector-column > * { flex-shrink: 0; }
 /* Under the column, the document starts after a divider like the column's own. */
 .inspector-document { padding-block: var(--space-1); }
 .inspector-document::before { content: ""; display: block; margin-block-end: var(--space-3); border-top: var(--border-width) solid var(--separator); }
@@ -29,10 +31,10 @@
 /* The column gap is a quarter step; a divider keeps S from the fills beside it [C1]. */
 .inspector-column > hr { width: 100%; margin: calc(var(--inset) - var(--space-1)) 0; border: 0; border-top: var(--border-width) solid var(--separator); }
 /* A reference's actions stay at the bottom of the panel, in view at the smallest
-   window and with Larger Text. The details above scroll under them, so the bar
-   is the panel's own surface across its full width, below a divider. */
-.inspector-actions { position: sticky; inset-block-end: calc(-1 * var(--inset)); z-index: 1; display: flex; flex-direction: column; gap: var(--space-1);
-  margin-block: auto calc(-1 * var(--inset)); margin-inline: calc(-1 * var(--inspector-pad)); padding: 0 var(--inspector-pad) var(--inset); background: var(--surface); }
+   window and with Larger Text. Their own layout row reserves the space, so the
+   scrolling fields and citation can never be covered by the footer. */
+.inspector-actions { flex: none; display: flex; flex-direction: column; gap: var(--space-1);
+  padding: 0 var(--inspector-pad) var(--inset); background: var(--surface); }
 .inspector-actions > hr { width: calc(100% + 2 * var(--inspector-pad)); margin: 0 calc(-1 * var(--inspector-pad)) calc(var(--inset) - var(--space-1)); border: 0; border-top: var(--border-width) solid var(--separator); }
 /* Quiet rows: the label starts on the column's edge, its hover fill hangs past it. */
 .inspector-action.ui-button[data-variant] { justify-content: space-between; gap: var(--space-4); width: calc(100% + 2 * var(--space-2)); max-width: none; min-height: var(--control-h); margin-inline: calc(-1 * var(--space-2)); padding-inline: var(--space-2); border: 0; border-radius: var(--r-small); font: var(--type-body-size) / var(--type-body-line) var(--font); text-align: start; }
@@ -47,11 +49,9 @@ main:has(> .inspector[data-reading]) > .picker-content { display: none; }
 /* A panel wide enough for a document keeps its column on the trailing edge,
    and only the document scrolls. */
 @container inspector (min-width: 34rem) and (min-height: 11rem) {
-  .inspector-body.scroll-area { flex-direction: row-reverse; padding-block: 0; overflow: hidden; }
-  .inspector-column, .inspector-document { box-sizing: border-box; padding-block: var(--inset); }
-  .inspector-column { flex: 0 0 var(--inspector-column); overflow: hidden auto; }
-  .inspector-column:only-child { flex: 1; }
-  .inspector-document { flex: 1; overflow: hidden auto; }
+  .inspector-body { flex-direction: row-reverse; }
+  .inspector-sidebar { flex: 0 0 var(--inspector-column); }
+  .inspector-sidebar:only-child { flex: 1; }
   .inspector-document::before { content: none; }
-  .inspector-column:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
+  .inspector-sidebar:not(:only-child) { border-inline-start: var(--border-width) solid var(--separator); }
 }

@@ -10,7 +10,7 @@ export type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: str
 type Selection = Parameters<typeof nativeApi.previewFileCitation>[0][number];
 
 /** One preview to ask for: the chosen references in one output on one snapshot. */
-export type PreviewAsk = { selection: Selection[]; output: OutputId; revision: string; projectContext?: [number, number] | null };
+export type PreviewAsk = { selection: Selection[]; output: OutputId; revision: string; keepOrder?: boolean; projectContext?: [number, number] | null };
 
 export type PreviewInputs = {
   /** The output, library version, choice and project context. A preview is tagged with it. */
@@ -61,8 +61,8 @@ export type PreviewEffect = { type: "preview"; request: number; ask: PreviewAsk 
 export type PreviewStep = { preview: PreviewState; effects: (PreviewEffect | { type: "refresh" })[] };
 
 /** What a preview is made for: the output, the library version, the choice and the project context. */
-export const previewKey = (output: OutputId, version: number, choice: string, context: [number, number] | null | undefined) =>
-  `${output}\u0002${version}\u0002${choice}\u0002${JSON.stringify(context)}`;
+export const previewKey = (output: OutputId, version: number, choice: string, context: [number, number] | null | undefined, keepOrder = false) =>
+  `${output}\u0002${version}\u0002${choice}\u0002${JSON.stringify(context)}\u0002${keepOrder}`;
 
 /** The preview's answer for `key`, if it is this choice's to use now. */
 export function ownedPreview(s: PreviewState, key: string, session: number, opened: number): PreviewResult | null {

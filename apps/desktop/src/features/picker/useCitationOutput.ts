@@ -32,23 +32,24 @@ export function useCitationOutput({ session, state, chosen, library, libraryVers
   // A style the engine cannot format now is not previewed as anything else.
   const output = style ?? format;
   // Reading unchanged status must not retry the same stale citation forever.
-  const retryKey = JSON.stringify([output, library?.revision, chosenKey, projectContext]);
-  const key = previewKey(output, libraryVersion, chosenKey, projectContext);
+  const retryKey = JSON.stringify([output, library?.revision, chosenKey, projectContext, state.keepOrder]);
+  const key = previewKey(output, libraryVersion, chosenKey, projectContext, state.keepOrder);
   const inputs: PreviewInputs = {
     key, retryKey, contextReady,
     ask: chosen.length === 0 || !chosenRevision ? null : {
-      output, revision: chosenRevision, projectContext,
+      output, revision: chosenRevision, projectContext, keepOrder: state.keepOrder,
       selection: chosen.map((r) => ({
         id: r.id, cite: r.cite ?? "",
         locator: r.locator?.input === "page-editor" ? null : r.locator ?? null,
         ...(r.locator?.input === "page-editor" ? { page_input: r.locator.value } : {}),
         ...(r.form ? { form: r.form } : {}),
+        ...(r.prefix ? { prefix: r.prefix } : {}), ...(r.suffix ? { suffix: r.suffix } : {}),
       })),
     },
   };
   useLayoutEffect(() => { session.connect({ previewFileCitation }); });
   useEffect(() => () => session.stop(), [session]);
-  // The key covers the choice, its locators, forms, revision, the output and the
+  // The key covers the choice, its fields and order, revision, the output and the
   // project context; the opening and the context's answer complete the request.
   // biome-ignore lint/correctness/useExhaustiveDependencies: those three are the only triggers.
   useLayoutEffect(() => { session.dispatch({ type: "preview-inputs", inputs }); }, [key, state.session, contextReady]);
