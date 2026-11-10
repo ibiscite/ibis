@@ -397,7 +397,7 @@ fn proof() -> CopyProof {
 
 fn copied(reason: &str) -> Delivered {
     Delivered::Copied {
-        reason: reason.to_owned(),
+        reason: serde_json::from_value(serde_json::json!(reason)).unwrap_or_else(|_| panic!("no copy reason {reason}")),
     }
 }
 

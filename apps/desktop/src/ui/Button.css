@@ -27,6 +27,12 @@
 .ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--fill-control-hover); }
 .ui-button[data-variant="primary"]:is([data-pressed], [data-selected], [aria-expanded="true"]):not([data-disabled], [aria-disabled="true"]) { background: var(--accent-pressed); }
 .ui-button[data-variant="icon"][data-selected]:not([data-pressed], [data-disabled], [aria-disabled="true"]) { background: var(--fill-control-pressed); color: var(--text); }
+/* A press gives a little and springs back. Only the contents move: the button's
+   box, and so its hit area, keeps its size, or a press near an edge could be
+   released outside it and cancelled. Reduce Motion keeps the size. */
+.ui-button[data-variant] > * { transition: scale var(--dur-1) var(--ease-spring); }
+.ui-button[data-pressed]:not([data-disabled], [aria-disabled="true"]) > * { scale: var(--press-scale); }
+@media (prefers-reduced-motion: reduce) { .ui-button[data-variant] > * { transition: none; } }
 .ui-button[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
 .ui-button:is([data-disabled], [aria-disabled="true"]) { background: var(--fill-control); color: var(--text-disabled); }
 .ui-button:is([data-variant="quiet"], [data-variant="icon"]):is([data-disabled], [aria-disabled="true"]) { background: transparent; }
