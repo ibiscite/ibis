@@ -239,6 +239,19 @@ fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
             reason: LossReason::Unsupported,
         }]
     );
+
+    // A style that prints the record's own page when there is no locator
+    // still prints the locator: that page is not a loss.
+    let snapshot = library(&[json!({"type":"article-journal","title":"Synthetic tides","author":[{"family":"Vale"}],
+        "container-title":"Journal of Tests","page":"417","issued":{"date-parts":[[2024]]}})]);
+    let mut request = selection(&snapshot, "chicago-notes-bibliography", false);
+    request.items[0].locator = Some(Locator {
+        term: LocatorTerm::Page,
+        value: "417".into(),
+    });
+    let result = formatter.format(&snapshot, &request).unwrap();
+    assert!(result.text.contains("417"), "{}", result.text);
+    assert!(result.losses.iter().all(|loss| loss.field != LossField::Locator), "{:?}", result.losses);
 }
 
 #[test]

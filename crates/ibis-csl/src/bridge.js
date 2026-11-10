@@ -278,6 +278,11 @@
   const leafText = (engine, part) => part.parts.map((leaf) => typeof leaf === "string" ? leaf : engine.output.renderBlobs([
     { ...leaf, strings: { ...leaf.strings }, decorations: [...leaf.decorations], checkNext: null, checkLast: null },
   ])).join("");
+  // Every digit, or with none every letter, moved by one; 9 becomes 8 so a
+  // range keeps its order. Numbering, labels and ranges keep their shape.
+  const shiftedLocator = (value) => /[0-9]/.test(value)
+    ? value.replace(/[0-9]/g, (digit) => String(digit === "9" ? 8 : Number(digit) + 1))
+    : value.replace(/[A-Za-z]/g, (letter) => /[yzYZ]/.test(letter) ? String.fromCharCode(letter.charCodeAt(0) - 1) : String.fromCharCode(letter.charCodeAt(0) + 1));
   // The text each cite owns, without the cluster's shared punctuation.
   const ownedText = (engine, capture, count) => {
     const texts = Array(count).fill("");
@@ -402,7 +407,12 @@
         engine.setOutputFormat("text");
         outputs.unprinted_locators = request.cites.flatMap((cite, index) => {
           if (cite.locator === undefined) return [];
-          const { locator, label, ...without } = cite;
+          // The same locator with another value of the same shape: if the
+          // cite reads the same, its value was not printed. Leaving it out
+          // instead would miss a style that prints the record's own page.
+          const { locator, label, ...bare } = cite;
+          const other = shiftedLocator(locator);
+          const without = other === locator ? bare : { ...cite, locator: other };
           let same;
           const capture = { engine, format: "text", area: "citation", seen: new Map(), roots: new WeakMap(), parts: [], indices, occurrences: new Map() };
           observation = capture;
