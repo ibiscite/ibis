@@ -361,6 +361,7 @@ fn parse_with_budget(
         snapshot,
         warnings,
         cut_short: parsed_cut_short,
+        damaged_keys: parsed.damaged_keys,
         attachment_paths,
         best_attachments: Default::default(),
     })

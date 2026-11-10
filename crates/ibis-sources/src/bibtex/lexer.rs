@@ -352,20 +352,20 @@ fn next_entry_line(src: &str, from: usize) -> Option<usize> {
 }
 
 /// Parse an entry body: `key, name = value, ...`.
+/// The citation key an entry's header names, also when the rest cannot be read.
+pub(crate) fn header_key(body: &str) -> Option<&str> {
+    Parser::new(body).key()
+}
+
 pub(crate) fn parse_entry<'s>(block: &Block<'s>) -> Result<RawEntry<'s>, Problem> {
     if block.kind.contains('}') {
         return Err(Problem::new(WarningCause::UnexpectedText, None));
     }
     let mut p = Parser::new(block.body);
-    p.skip_ws();
-    let key_start = p.pos;
-    while p.peek().is_some_and(|c| c != ',' && !c.is_whitespace()) {
-        p.bump();
-    }
-    let key = block.body[key_start..p.pos].to_string();
-    if key.is_empty() || key.contains(['=', '{', '}', '"', '(', ')', '#']) {
-        return Err(Problem::new(WarningCause::NoKey, None));
-    }
+    let key = p
+        .key()
+        .ok_or_else(|| Problem::new(WarningCause::NoKey, None))?
+        .to_string();
     let mut fields = Vec::new();
     loop {
         p.skip_ws();
@@ -432,6 +432,17 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(src: &'a str) -> Self {
         Parser { src, pos: 0 }
+    }
+
+    /// The entry's key, read up to the comma or space after it.
+    fn key(&mut self) -> Option<&'a str> {
+        self.skip_ws();
+        let start = self.pos;
+        while self.peek().is_some_and(|c| c != ',' && !c.is_whitespace()) {
+            self.bump();
+        }
+        let key = &self.src[start..self.pos];
+        (!key.is_empty() && !key.contains(['=', '{', '}', '"', '(', ')', '#'])).then_some(key)
     }
 
     fn peek(&self) -> Option<char> {
