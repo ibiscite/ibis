@@ -30,7 +30,7 @@ import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -49,7 +49,7 @@ const longRows = rows.map((row) => ({ ...row, title: longTitle, authors: "Aster,
 /** What differs from the loaded picker. Each entry is real app state: the
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
-  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean };
+  query?: string; library?: Partial<LibraryStatus>; rows?: SearchResult[]; preferences?: { density?: "compact"; larger_text?: boolean; output?: string };
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
@@ -74,6 +74,11 @@ const fixtures: Partial<Record<Scenario, {
   "larger-text": { preferences: { larger_text: true } },
   "right-to-left": {},
   "long-titles": { rows: longRows },
+  // APA sorts the two; moving the later token first keeps the person's order and says so.
+  "citation-order": { preferences: { output: "apa" }, keys: [{ key: "ArrowDown" }, { key: "Enter", shiftKey: true }, { key: "ArrowUp" }, { key: "Enter", shiftKey: true },
+    { key: "ArrowDown", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }, { key: "ArrowLeft", shiftKey: true }] },
+  // A numbered style's words are numbers, so each token carries its author and year.
+  "citation-handles": { preferences: { output: "ieee" }, keys: [{ key: "Enter", shiftKey: true }, { key: "ArrowDown" }, { key: "Enter", shiftKey: true }] },
 };
 
 function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (page: string | null) => Promise<void>): PickerApi {
@@ -106,14 +111,24 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
       return { revision: "1", results: query && !fixture ? shown : [],
         ...page ? { interpretation: { search: page[1]!, locator: { label: "page" as const, value: page[2]!.replace("-", "–") }, typed: page[2]! } } : {} };
     },
-    previewFileCitation: async (items, output) => {
+    previewFileCitation: async (items, output, _revision, _signal, _context, keepOrder) => {
       const style = isStyle(output);
       const ticket = `synthetic-ticket-${++sequence}`;
-      const spans = items.flatMap((item, index) => [
-        ...(index ? [{ item: null, text: "; " }] : []),
-        { item: index, text: style ? "(Aster, 2026)" : `@${(item.id as { key: string }).key}${item.locator ? `, p. ${item.locator.value}` : ""}` },
+      const key = (index: number) => (items[index]!.id as { key: string }).key;
+      const page = (index: number) => items[index]!.locator?.value ?? items[index]!.locator_input?.text;
+      // As a style would, APA sorts unless the order is kept; key outputs keep it.
+      const order = items.map((_, index) => index);
+      if (style && !keepOrder) order.sort((a, b) => key(a).localeCompare(key(b)));
+      const numbered = output === "ieee";
+      const words = (index: number) => numbered ? String(order.indexOf(index) + 1)
+        : style ? `Aster, 2026${String.fromCharCode(97 + Number(key(index).replace(/\D/g, "")) % 26)}${page(index) ? `, p. ${page(index)}` : ""}`
+        : `@${key(index)}${page(index) ? `, p. ${page(index)}` : ""}`;
+      const spans = order.flatMap((index, at) => [
+        ...(at ? [{ item: null, text: numbered ? "], [" : "; " }] : []),
+        { item: index, text: words(index) },
       ]);
-      if (!style) { spans.unshift({ item: null, text: "[" }); spans.push({ item: null, text: "]" }); }
+      if (!style || numbered) { spans.unshift({ item: null, text: "[" }); spans.push({ item: null, text: "]" }); }
+      else { spans.unshift({ item: null, text: "(" }); spans.push({ item: null, text: ")" }); }
       const text = spans.map((span) => span.text).join("");
       receipts.set(ticket, text);
       return { ticket, content_hash: ticket, text, spans, html: null, warnings: [], project_refusal: refusal };
@@ -237,8 +252,12 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
     const open = () => {
       const search = host.querySelector<HTMLInputElement>("#search");
       if (keys.length && (!search || !host.querySelector('[role="option"]'))) return;
+      // A key for the citation's tokens waits until the line has drawn them.
+      if (keys[0]?.key === "ArrowDown" && (keys[0].metaKey || keys[0].ctrlKey) && !host.querySelector(".citation-token-button")) return;
       // One key per commit: each acts on the state the last one left.
-      if (keys.length) { search!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...keys.shift()! })); return; }
+      // Keys go where focus is, so ⌘↓ can hand the next ones to a token.
+      const focused = host.contains(document.activeElement) ? document.activeElement : search;
+      if (keys.length) { focused!.dispatchEvent(new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...keys.shift()! })); return; }
       if (!clicks.length) { observer.disconnect(); return; }
       const button = host.querySelector<HTMLButtonElement>(clicks[0]!);
       if (!button || button.disabled || document.documentElement.hasAttribute("data-picker-hidden")) return;

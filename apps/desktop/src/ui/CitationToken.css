@@ -1,12 +1,12 @@
-/* Citation tokens (decision 0042). The band sets its controls' padding, corner and
-   fills (--band-control-*); the words stay on the title column and the capsule
-   hangs one padding past them. Motion reads the shared motion tokens; Reduce
+/* Citation tokens (decision 0042). The band sets its controls' corner and fills
+   (--band-control-*). Each capsule keeps its own room, so neither it nor its
+   ring ever covers the brackets and separators beside it. Motion reads the shared motion tokens; Reduce
    Motion only cross-fades. */
 .citation-token { position: relative; display: flex; flex: 0 1 auto; min-width: 0; padding-block: var(--space-2); }
 /* With several, none takes more than a third of the line, so every reference
    keeps a handle on it; the line is their container (CitationShelf.css). */
 :has(> .citation-token ~ .citation-token) > .citation-token { max-width: 33cqi; }
-.citation-token-button.ui-button[data-variant] { --token-pad: calc(var(--space-1) / 2); justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: calc(100% + 2 * var(--token-pad)); margin-inline: calc(-1 * var(--token-pad)); padding: 0 var(--token-pad); border-width: 0; border-radius: var(--band-control-radius, var(--r-small)); color: var(--text); white-space: nowrap; background: var(--band-control-rest, var(--fill-4)); transition: background-color var(--dur-1, 120ms) var(--ease-out, ease-out), scale var(--dur-1, 120ms) var(--ease-out, ease-out); }
+.citation-token-button.ui-button[data-variant] { --token-pad: var(--space-1); justify-content: start; gap: var(--space-1); flex: 0 1 auto; min-width: 0; min-height: var(--control-small-h); max-width: 100%; margin-inline: calc(var(--space-1) / 2); padding: 0 var(--token-pad); border-width: 0; border-radius: var(--band-control-radius, var(--r-small)); color: var(--text); white-space: nowrap; background: var(--band-control-rest, var(--fill-4)); transition: background-color var(--dur-1, 120ms) var(--ease-out, ease-out), scale var(--dur-1, 120ms) var(--ease-out, ease-out); }
 .citation-token-button.ui-button[data-size="small"]::after { inset-inline: 0; }
 .citation-token-button.ui-button { --ring-offset: var(--ring-inside); }
 .citation-token-words { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
