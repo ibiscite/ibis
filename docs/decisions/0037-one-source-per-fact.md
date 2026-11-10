@@ -21,5 +21,5 @@ Before 1.0, anything that fights this is restructured, with no compatibility kep
 - **Budgets as data:** one table of limits, each with its check; deterministic
   counts where possible, timings only reported on shared runners.
 - **Routine steps as commands:** `scripts/cloud-setup.sh` sets up a session and
-  `scripts/land.sh` lands a branch (merge main, check what changed, push, auto-merge).
+  `scripts/land.sh` lands a branch (refuse a conflict with main, check what changed, push, auto-merge).
 - **Small documents:** a session reads the one file its task needs (#1690).
