@@ -258,7 +258,7 @@ pub enum CitationError {
     FormatterUnavailable,
     AnnotationMismatch,
     NotCitable,
-    /// A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
+    // A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
     NotFromZotero,
 }
 

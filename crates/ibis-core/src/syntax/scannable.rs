@@ -83,11 +83,18 @@ pub fn cite(
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
         }
     }
-    let refused = outcomes.iter().any(|outcome| matches!(outcome, ItemOutcome::Refused { .. }));
+    let refused = outcomes
+        .iter()
+        .any(|outcome| matches!(outcome, ItemOutcome::Refused { .. }));
     let display = DisplayTree {
         nodes: if refused { vec![] } else { markers },
     };
-    let text: String = display.nodes.iter().flat_map(|node| &node.content).map(|run| run.text.as_str()).collect();
+    let text: String = display
+        .nodes
+        .iter()
+        .flat_map(|node| &node.content)
+        .map(|run| run.text.as_str())
+        .collect();
     if text.len() > MAX_OUTPUT_BYTES {
         return Err(CitationError::OutputTooLarge);
     }
@@ -138,11 +145,21 @@ fn marker<'a>(
         }
     };
     let label = label(record);
-    let label = if item.suppress_author { format!("-{label}") } else { label };
+    let label = if item.suppress_author {
+        format!("-{label}")
+    } else {
+        label
+    };
     let fields = [affix(&item.prefix)?, label, locator, affix(&item.suffix)?, identifier];
     let text = fields
         .iter()
-        .map(|field| if field.is_empty() { " ".to_owned() } else { format!(" {field} ") })
+        .map(|field| {
+            if field.is_empty() {
+                " ".to_owned()
+            } else {
+                format!(" {field} ")
+            }
+        })
         .collect::<Vec<_>>()
         .join("|");
     Ok((format!("{{{text}}}"), record))
@@ -152,7 +169,10 @@ fn marker<'a>(
 /// the numeric user ID, which a document should not carry.
 fn identifier(origin: Option<ZoteroOrigin>, key: &str) -> Result<String, CitationError> {
     // Zotero's item keys: eight of its 32 letters and digits.
-    let valid = key.len() == 8 && key.bytes().all(|byte| b"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ".contains(&byte));
+    let valid = key.len() == 8
+        && key
+            .bytes()
+            .all(|byte| b"23456789ABCDEFGHIJKLMNPQRSTUVWXYZ".contains(&byte));
     match origin {
         Some(ZoteroOrigin::Personal) if valid => Ok(format!("zu:0:{key}")),
         Some(ZoteroOrigin::Group(group)) if valid && group > 0 => Ok(format!("zg:{group}:{key}")),
@@ -172,11 +192,22 @@ fn label(record: &Record) -> String {
     let plain = |part: String| {
         let part: String = part
             .chars()
-            .map(|ch| if ch.is_control() || RESERVED.contains(&ch) { ' ' } else { ch })
+            .map(|ch| {
+                if ch.is_control() || RESERVED.contains(&ch) {
+                    ' '
+                } else {
+                    ch
+                }
+            })
             .collect();
         part.split_whitespace().collect::<Vec<_>>().join(" ")
     };
-    let parts: Vec<String> = name.into_iter().chain(summary.year).map(plain).filter(|part| !part.is_empty()).collect();
+    let parts: Vec<String> = name
+        .into_iter()
+        .chain(summary.year)
+        .map(plain)
+        .filter(|part| !part.is_empty())
+        .collect();
     // A leading `-` would ask Zotero to leave the author out.
     parts.join(", ").trim_start_matches('-').trim().to_owned()
 }
@@ -209,8 +240,15 @@ fn affix(runs: &RichText) -> Result<String, CitationError> {
             (true, _) | (_, true) => {
                 let marks = if *italic { "*" } else { "**" };
                 let words = text.trim();
-                let (before, after) = (&text[..text.len() - text.trim_start().len()], &text[text.trim_end().len()..]);
-                if words.is_empty() { text.clone() } else { format!("{before}{marks}{words}{marks}{after}") }
+                let (before, after) = (
+                    &text[..text.len() - text.trim_start().len()],
+                    &text[text.trim_end().len()..],
+                );
+                if words.is_empty() {
+                    text.clone()
+                } else {
+                    format!("{before}{marks}{words}{marks}{after}")
+                }
             }
             _ => text.clone(),
         })
@@ -245,9 +283,17 @@ mod tests {
         let book = json!({"type":"book","title":"Invented atlas","author":[{"family":"Example","given":"Avery"}],"issued":{"date-parts":[[2026]]}});
         Snapshot::new(vec![
             record(PERSONAL, "ABCD2345", book.clone()),
-            record(GROUP, "WXYZ6789", json!({"type":"book","title":"Untitled | {braced} *atlas*","issued":{"date-parts":[[2025]]}})),
+            record(
+                GROUP,
+                "WXYZ6789",
+                json!({"type":"book","title":"Untitled | {braced} *atlas*","issued":{"date-parts":[[2025]]}}),
+            ),
             record(b"bibtex-file", "example2026", book),
-            record(PERSONAL, "LEGAL234", json!({"type":"legal_case","title":"Invented v. Example"})),
+            record(
+                PERSONAL,
+                "LEGAL234",
+                json!({"type":"legal_case","title":"Invented v. Example"}),
+            ),
             record(PERSONAL, "lowercase", json!({"type":"book","title":"Invented"})),
         ])
         .unwrap()
@@ -279,7 +325,11 @@ mod tests {
 
     fn text(items: Vec<serde_json::Value>) -> String {
         let result = cite_items(items, "normal");
-        assert!(result.copy_content(result.outcomes.len()).is_some(), "{:?}", result.outcomes);
+        assert!(
+            result.copy_content(result.outcomes.len()).is_some(),
+            "{:?}",
+            result.outcomes
+        );
         result.text
     }
 
@@ -318,7 +368,11 @@ mod tests {
         // carry is dropped, as the label is display only.
         assert_eq!(
             text(vec![
-                item(PERSONAL, "ABCD2345", json!({"suppress_author":true,"locator":{"term":"chapter","value":"3"}})),
+                item(
+                    PERSONAL,
+                    "ABCD2345",
+                    json!({"suppress_author":true,"locator":{"term":"chapter","value":"3"}})
+                ),
                 item(GROUP, "WXYZ6789", json!({})),
             ]),
             "{ | -Example, 2026 | ch. 3 | | zu:0:ABCD2345 }{ | Untitled braced atlas, 2025 | | | zg:4321:WXYZ6789 }"
@@ -329,29 +383,70 @@ mod tests {
     fn anything_a_marker_cannot_say_refuses_the_whole_citation() {
         let good = || item(PERSONAL, "ABCD2345", json!({}));
         for (extra, expected) in [
-            (json!({"locator":{"term":"timestamp","value":"1:02"}}), CitationError::UnsupportedForm),
-            (json!({"locator":{"term":"page","value":"1|2"}}), CitationError::InvalidLocator),
-            (json!({"prefix":[{"text":"see | also"}]}), CitationError::InvalidRichText),
+            (
+                json!({"locator":{"term":"timestamp","value":"1:02"}}),
+                CitationError::UnsupportedForm,
+            ),
+            (
+                json!({"locator":{"term":"page","value":"1|2"}}),
+                CitationError::InvalidLocator,
+            ),
+            (
+                json!({"prefix":[{"text":"see | also"}]}),
+                CitationError::InvalidRichText,
+            ),
             (json!({"suffix":[{"text":"{x}"}]}), CitationError::InvalidRichText),
             (json!({"suffix":[{"text":"a*b"}]}), CitationError::InvalidRichText),
-            (json!({"suffix":[{"text":"one","italic":true},{"text":" and "},{"text":"two","italic":true}]}), CitationError::InvalidRichText),
-            (json!({"suffix":[{"text":"both","italic":true,"bold":true}]}), CitationError::InvalidRichText),
-            (json!({"suffix":[{"text":"2","script":"superscript"}]}), CitationError::InvalidRichText),
+            (
+                json!({"suffix":[{"text":"one","italic":true},{"text":" and "},{"text":"two","italic":true}]}),
+                CitationError::InvalidRichText,
+            ),
+            (
+                json!({"suffix":[{"text":"both","italic":true,"bold":true}]}),
+                CitationError::InvalidRichText,
+            ),
+            (
+                json!({"suffix":[{"text":"2","script":"superscript"}]}),
+                CitationError::InvalidRichText,
+            ),
             (json!({"form":"narrative"}), CitationError::UnsupportedForm),
             (json!({"expected_cite":"0".repeat(64)}), CitationError::ChangedItem),
         ] {
-            assert_eq!(refusal(vec![good(), item(PERSONAL, "ABCD2345", extra.clone())], "normal"), [expected], "{extra}");
+            assert_eq!(
+                refusal(vec![good(), item(PERSONAL, "ABCD2345", extra.clone())], "normal"),
+                [expected],
+                "{extra}"
+            );
         }
         // Not read from Zotero, a key Zotero never makes, or not in the library at all.
-        assert_eq!(refusal(vec![item(b"bibtex-file", "example2026", json!({}))], "normal"), [CitationError::NotFromZotero]);
-        assert_eq!(refusal(vec![item(PERSONAL, "lowercase", json!({}))], "normal"), [CitationError::NotFromZotero]);
-        assert_eq!(refusal(vec![item(PERSONAL, "MISSING2", json!({}))], "normal"), [CitationError::MissingItem]);
+        assert_eq!(
+            refusal(vec![item(b"bibtex-file", "example2026", json!({}))], "normal"),
+            [CitationError::NotFromZotero]
+        );
+        assert_eq!(
+            refusal(vec![item(PERSONAL, "lowercase", json!({}))], "normal"),
+            [CitationError::NotFromZotero]
+        );
+        assert_eq!(
+            refusal(vec![item(PERSONAL, "MISSING2", json!({}))], "normal"),
+            [CitationError::MissingItem]
+        );
         // A legal item takes no locator; without one it is cited.
         assert_eq!(
-            refusal(vec![item(PERSONAL, "LEGAL234", json!({"locator":{"term":"page","value":"4"}}))], "normal"),
+            refusal(
+                vec![item(
+                    PERSONAL,
+                    "LEGAL234",
+                    json!({"locator":{"term":"page","value":"4"}})
+                )],
+                "normal"
+            ),
             [CitationError::UnsupportedForm]
         );
-        assert_eq!(text(vec![item(PERSONAL, "LEGAL234", json!({}))]), "{ | Invented v. Example | | | zu:0:LEGAL234 }");
+        assert_eq!(
+            text(vec![item(PERSONAL, "LEGAL234", json!({}))]),
+            "{ | Invented v. Example | | | zu:0:LEGAL234 }"
+        );
         for form in ["narrative", "author-only", "year-only", "full", "bibliography-only"] {
             assert_eq!(refusal(vec![good()], form), [CitationError::UnsupportedForm], "{form}");
         }
@@ -363,6 +458,9 @@ mod tests {
             json!({"items":[item(PERSONAL, "ABCD2345", json!({}))],"output":{"kind":"key","syntax":"scannable-cite"}}),
         )
         .unwrap();
-        assert_eq!(super::super::cite(&snapshot(), &request), Err(CitationError::UnsupportedOutput));
+        assert_eq!(
+            super::super::cite(&snapshot(), &request),
+            Err(CitationError::UnsupportedOutput)
+        );
     }
 }

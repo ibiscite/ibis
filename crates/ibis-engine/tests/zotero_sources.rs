@@ -225,6 +225,12 @@ fn zotero_markers_name_each_item_in_the_library_it_was_read_from() {
         engine.cite(&request, &cancel).unwrap().text
     };
     // The same item and key in both libraries: each marker names its own.
-    assert_eq!(marker(ZoteroLibrary::Personal), "{ | Invented atlas, 2026 | | | zu:0:SYNTH234 }");
-    assert_eq!(marker(ZoteroLibrary::Group(7)), "{ | Invented atlas, 2026 | | | zg:7:SYNTH234 }");
+    assert_eq!(
+        marker(ZoteroLibrary::Personal),
+        "{ | Invented atlas, 2026 | | | zu:0:SYNTH234 }"
+    );
+    assert_eq!(
+        marker(ZoteroLibrary::Group(7)),
+        "{ | Invented atlas, 2026 | | | zg:7:SYNTH234 }"
+    );
 }
