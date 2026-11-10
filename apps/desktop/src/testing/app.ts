@@ -82,14 +82,19 @@ export function citationDetails(): HTMLElement | null {
 /** Picks how the citation shows, by what its choice reads: the engine's example
  * for that form (default backend: "(Smith, 2020)", "Smith (2020)", "(2020)"), or
  * the form's name before the engine answers. */
+/** Picks a form by its output in Show as: a segment, or with more than three, its pop-up's item. */
 export async function chooseForm(name: string) {
-  fireEvent.click(await waitFor(() => within(citationDetails()!).getByRole("radio", { name })));
+  const details = await waitFor(() => within(citationDetails()!));
+  const radio = details.queryByRole("radio", { name });
+  if (radio) return void fireEvent.click(radio);
+  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
+  fireEvent.click(await screen.findByRole("menuitemradio", { name }));
 }
 
 /** The details' Text before or Text after field, asked for if it is not shown yet. */
 export function textField(name: "Text before" | "Text after"): HTMLInputElement {
   const details = within(citationDetails()!);
-  if (!details.queryByRole("textbox", { name })) fireEvent.click(details.getByRole("button", { name: `+ ${name}` }));
+  if (!details.queryByRole("textbox", { name })) fireEvent.click(details.getByRole("button", { name }));
   return details.getByRole<HTMLInputElement>("textbox", { name });
 }
 

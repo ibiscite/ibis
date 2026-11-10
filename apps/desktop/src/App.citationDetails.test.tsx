@@ -646,7 +646,7 @@ test("failed examples leave every form usable and say so once, quietly", async (
   render(<App />);
   await openCitationDetails();
   expect(await screen.findByText("Examples are unavailable")).toBeTruthy();
-  fireEvent.click(screen.getByRole("radio", { name: "Year only" }));
+  await chooseForm("Year only");
   await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("year-only"));
   expect(screen.queryByRole("alert")).toBeNull();
 });
@@ -659,7 +659,7 @@ test("cancelled examples say nothing: a newer preview owns the answer", async ()
   await openCitationDetails();
   await act(async () => { await Promise.resolve(); });
   expect(screen.queryByText("Examples are unavailable")).toBeNull();
-  fireEvent.click(screen.getByRole("radio", { name: "Year only" }));
+  await chooseForm("Year only");
   await waitFor(() => expect(previews.at(-1)?.items[0]?.form).toBe("year-only"));
   expect(screen.queryByRole("alert")).toBeNull();
 });

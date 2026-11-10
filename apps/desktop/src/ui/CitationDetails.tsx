@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type KeyboardEvent, type RefObject } from 
 import type { Locator, LocatorTerm, ReferenceDetails, ReferenceForm } from "../bindings";
 import { composing } from "../composition";
 import { say, type MessageId } from "../i18n";
+import { Icon } from "../icons";
 import { Button } from "./Button";
 import { Segmented } from "./Segmented";
 import { ToolbarMenu } from "./ToolbarMenu";
@@ -45,6 +46,7 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   onSubmit?: () => void;
 }) {
   const typeButton = useRef<HTMLButtonElement>(null);
+  const formButton = useRef<HTMLButtonElement>(null);
   // A pick or Esc in the type menu returns to the value, where typing continues.
   const ownField = useRef<HTMLInputElement>(null);
   const field = locatorRef ?? ownField;
@@ -60,14 +62,20 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
   const current = answer ? answer.current_form : form;
   const choice = (value: ReferenceForm) => answer?.forms.find((option) => option.form === value);
   // Only the forms this output can print, each as the text it would paste.
-  const offered = FORMS.filter((option) => !choice(option.value)?.reason)
+  // Once the engine answers, only the forms it lists without a reason; before, every one.
+  const offered = FORMS.filter((option) => answer ? choice(option.value) && !choice(option.value)?.reason : true)
     .map((option) => ({ value: option.value, label: choice(option.value)?.example ?? option.label }));
   const hidden = FORMS.filter((option) => choice(option.value)?.reason);
   const reasons = new Set(hidden.map((option) => choice(option.value)?.reason));
   return <div className="citation-details">
     <div className="citation-field">
       <span className="citation-label" aria-hidden="true">{say("citation-details-form")}</span>
-      {offered.length > 1 ? <Segmented label={say("citation-details-form")} value={current} options={offered} onChange={onFormChange} />
+      {/* Side by side while they fit at a glance; more become a pop-up of the same outputs. */}
+      {offered.length > 3 ? <ToolbarMenu buttonRef={formButton} returnFocusRef={formButton} placement="bottom start" label={say("citation-details-form")}
+        value={offered.find((option) => option.value === current)?.label ?? say("citation-details-none")} selectedKey={current ?? ""}
+        sections={[{ id: "forms", items: offered.map((option) => ({ id: option.value, label: option.label })) }]}
+        onAction={(key) => { const chosen = offered.find((option) => option.value === key); if (chosen) onFormChange(chosen.value); }} />
+        : offered.length > 1 ? <Segmented label={say("citation-details-form")} value={current} options={offered} onChange={onFormChange} />
         : <p className="citation-note">{offered.length ? offered[0]!.label : [...reasons][0] ?? say("citation-details-none")}</p>}
     </div>
     {/* What the others are, quietly, where they are looked for. */}
@@ -102,8 +110,8 @@ export function CitationDetails({ locator, form, prefix, suffix, locatorRef, cho
       <Input autoFocus={!autoFocus && suffix === ""} onKeyDown={submit} />
     </TextField>}
     {(!shown.before || !shown.after) && <div className="citation-reveals">
-      {!shown.before && <Button variant="quiet" size="small" className="citation-reveal" onPress={() => setShown((old) => ({ ...old, before: true }))}>{say("citation-details-add-prefix")}</Button>}
-      {!shown.after && <Button variant="quiet" size="small" className="citation-reveal" onPress={() => setShown((old) => ({ ...old, after: true }))}>{say("citation-details-add-suffix")}</Button>}
+      {!shown.before && <Button variant="quiet" size="small" className="citation-reveal" icon={<Icon name="plus" />} onPress={() => setShown((old) => ({ ...old, before: true }))}>{say("citation-details-add-prefix")}</Button>}
+      {!shown.after && <Button variant="quiet" size="small" className="citation-reveal" icon={<Icon name="plus" />} onPress={() => setShown((old) => ({ ...old, after: true }))}>{say("citation-details-add-suffix")}</Button>}
     </div>}
   </div>;
 }

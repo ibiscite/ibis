@@ -40,11 +40,12 @@ test("a form this output cannot print is not offered, and one quiet line says wh
   expect(screen.getByText(/^Name in the sentence: Cite it alone or choose another output\./)).toBeTruthy();
 });
 
-test("before the engine answers, each form shows by its name and can be tried", () => {
+test("before the engine answers, every form can be tried from a pop-up of their names", async () => {
   const change = vi.fn();
   render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="narrative" onLocatorChange={vi.fn()} onFormChange={change} />);
-  expect(checked()).toEqual(["Name in the sentence"]);
-  fireEvent.click(screen.getByRole("radio", { name: "Name in brackets" }));
+  fireEvent.click(screen.getByRole("button", { name: "Show as Name in the sentence" }));
+  expect((await screen.findAllByRole("menuitemradio")).map((item) => item.textContent)).toHaveLength(5);
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Name in brackets" }));
   expect(change).toHaveBeenCalledExactlyOnceWith("normal");
 });
 
@@ -76,14 +77,14 @@ test("the locator's type is a pop-up inside the field: a new type keeps the valu
 test("text before and after are asked for, and text already there shows from the start", () => {
   const { unmount } = render(<Editor />);
   expect(screen.queryByRole("textbox", { name: "Text before" })).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: "+ Text before" }));
+  fireEvent.click(screen.getByRole("button", { name: "Text before" }));
   const before = screen.getByRole("textbox", { name: "Text before" });
   expect(document.activeElement).toBe(before);
   expect(screen.queryByRole("textbox", { name: "Text after" })).toBeNull();
   unmount();
   render(<CitationDetails prefix="see" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} locator={null} form="normal" onLocatorChange={vi.fn()} onFormChange={vi.fn()} />);
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Text before" }).value).toBe("see");
-  expect(screen.getByRole("button", { name: "+ Text after" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Text after" })).toBeTruthy();
 });
 
 test("an empty Page with the caret in it shows no placeholder", () => {
