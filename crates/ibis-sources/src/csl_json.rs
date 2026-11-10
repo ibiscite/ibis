@@ -19,7 +19,8 @@ pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<Request
         text.push_str(&serde_json::to_string(record).map_err(|_| SourceError::InvalidData)?);
     }
     text.push_str("\n]");
-    let parsed = load_str(library, &text)?;
+    // Even when no record is kept, each refusal names its record.
+    let parsed = read_str(library, &text, false)?;
     Ok(RequestRecords {
         records: parsed.records,
         warnings: parsed
@@ -41,6 +42,11 @@ pub struct RequestRecords {
 }
 
 pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary, SourceError> {
+    read_str(library, text, true)
+}
+
+/// `refuse_empty`: a file in which no record could be read is not a library.
+fn read_str(library: &LibraryId, text: &str, refuse_empty: bool) -> Result<ParsedLibrary, SourceError> {
     use serde_json::value::RawValue;
     if text.trim().is_empty() {
         return Ok(ParsedLibrary::default());
@@ -251,7 +257,7 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             }
         }
     }
-    if nonempty && result.records.is_empty() && repeated.is_empty() {
+    if refuse_empty && nonempty && result.records.is_empty() && repeated.is_empty() {
         return Err(SourceError::InvalidData);
     }
     if limited {

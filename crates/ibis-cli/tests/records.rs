@@ -126,6 +126,10 @@ fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
         errors.contains("record 2:") && !errors.contains("record 1:"),
         "{errors}"
     );
+    // A lone refused record is named too.
+    let (code, _, errors) = run(&["ibis", "cite", "--records"], br#"[{"id":"r1","type":"bok"}]"#)?;
+    assert_eq!(code, 3);
+    assert!(errors.contains("record 1: its type is not one Ibis knows"), "{errors}");
     // More than the 1 MiB stdin holds is a resource limit.
     let large = format!(
         r#"[{{"id":"r1","type":"book","title":"{}"}}]"#,
