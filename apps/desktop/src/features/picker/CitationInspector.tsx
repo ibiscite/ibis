@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState, type Ref, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState, type Ref, type RefObject } from "react";
 import { Reader } from "../reader/Reader";
 import { usePageSource } from "../reader/source";
 import { citationDetails, isCancelled } from "../../api";
@@ -51,6 +51,23 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
     );
     return () => { live = false; };
   }, [editing, previewReceipt, index, output]);
+  // One stable ref, so the shelf's own keeps its cleanup, which returns focus to the token.
+  const body = useRef<HTMLElement | null>(null);
+  const attach = useCallback((node: HTMLElement | null) => {
+    body.current = node;
+    if (typeof ref === "function") return ref(node);
+    if (ref) ref.current = node;
+  }, [ref]);
+  // The highlighted result stays in view above the details when the list can scroll it there.
+  useLayoutEffect(() => {
+    const popover = body.current?.closest(".ui-popover")?.getBoundingClientRect();
+    const row = document.querySelector<HTMLElement>('#results [role="option"][aria-selected="true"]');
+    const list = row?.closest<HTMLElement>(".scroll-area, [data-scroll]") ?? row?.parentElement?.parentElement;
+    if (!popover || !row || !list) return;
+    const overlap = row.getBoundingClientRect().bottom - popover.top;
+    const room = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
+    if (overlap > 0 && room >= overlap) list.scrollTop += overlap;
+  }, []);
   const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {
     const { entry, output, closest } = notes;
@@ -91,24 +108,13 @@ export function CitationInspector({ ref, id, panel, anchor, moves, onMove, headi
         onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} onClose={() => setReading(false)} />}
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
-  // The highlighted result stays in view above the details when the list can scroll it there.
-  const body = useRef<HTMLElement | null>(null);
-  useLayoutEffect(() => {
-    const popover = body.current?.closest(".ui-popover")?.getBoundingClientRect();
-    const row = document.querySelector<HTMLElement>('#results [role="option"][aria-selected="true"]');
-    const list = row?.closest<HTMLElement>(".scroll-area, [data-scroll]") ?? row?.parentElement?.parentElement;
-    if (!popover || !row || !list) return;
-    const overlap = row.getBoundingClientRect().bottom - popover.top;
-    const room = row.getBoundingClientRect().top - list.getBoundingClientRect().top;
-    if (overlap > 0 && room >= overlap) list.scrollTop += overlap;
-  }, []);
   const action = (label: string, keys: string, onPress: () => void, isDisabled = false, className = "") =>
     <Button variant="quiet" className={`inspector-action ${className}`} isDisabled={isDisabled} aria-keyshortcuts={keys} onPress={onPress}>
       <span>{label}</span><span className="inspector-keys" aria-hidden="true">{keyLabel(keys, mac)}</span>
     </Button>;
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     className="citation-popover">
-    <section ref={(node) => { body.current = node; if (typeof ref === "function") ref(node); else if (ref) ref.current = node; }} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
+    <section ref={attach} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
       <header className="ui-popover-heading">
         <h2><bdi dir="auto">{reference ? reference.title || heading : heading}</bdi></h2>
         {byline && <p><bdi dir="auto">{byline}</bdi></p>}

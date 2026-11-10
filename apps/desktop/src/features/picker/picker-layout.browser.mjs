@@ -335,20 +335,13 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "typing results keeps the opening frame");
     const seated = () => waitForCheck("inspector-seated-beside-the-list", isSeatedInspector);
     const openEditor = async () => {
-      const open = async () => {
-        const edit = shelfControl(page, /^Edit /).first();
-        if (await edit.count()) { await edit.click(); return; }
-        await shelfControl(page, /^\d+ references$/).click();
-        await page.getByRole("menuitemradio").first().click();
-      };
-      await open();
-      const inspector = page.getByRole("region", { name: /^Citation details for/ });
+      await shelfControl(page, /^Edit /).first().click();
+      const inspector = page.getByRole("dialog", { name: /^Citation details for/ });
       await inspector.waitFor();
       const pageField = inspector.getByRole("textbox", { name: "Page", exact: true });
-      assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a segment focuses Page");
-      await seated();
+      assert.equal(await pageField.evaluate((node) => document.activeElement === node), true, "opening a token focuses Page");
       await pageField.press("Tab");
-      assert.equal(await page.evaluate(() => document.activeElement?.closest(".inspector") !== null), true, "Tab moves through the inspector");
+      assert.equal(await page.evaluate(() => document.activeElement?.closest('[role="dialog"]') !== null), true, "Tab moves through the details");
       await inspector.waitFor();
       return inspector;
     };

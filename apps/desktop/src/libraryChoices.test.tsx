@@ -161,7 +161,7 @@ test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only r
   const preview = await screen.findByRole("button", { name: /^Edit / });
   const announcement = screen.getByRole("status", { name: "Citation selection" });
   expect(announcement.textContent).toBe("1 reference selected for citation");
-  const target = destination === "chip" ? inCitation("old")
+  const target = destination === "chip" ? inCitation("old")!
     : destination === "preview" ? preview : screen.getByRole("button", { name: /^More/ });
   act(() => target.focus());
   expect(document.activeElement).toBe(target);

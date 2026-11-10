@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -31,8 +31,7 @@ async function chosenCitation(overrides = {}) {
   await screen.findByText("Invented reference");
   act(() => search().focus());
   press("Enter", { shiftKey: true });
-  const chip = await screen.findByRole("button", { name: /^Edit/ });
-  await screen.findByRole("button", { name: /^Remove/ });
+  const chip = await findInCitation("picked");
   return { calls, chip };
 }
 

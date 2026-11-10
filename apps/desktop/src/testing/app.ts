@@ -74,16 +74,22 @@ export async function openCitationDetails(): Promise<HTMLInputElement> {
   return screen.findByRole<HTMLInputElement>("textbox", { name: "Page" });
 }
 
-/** Picks a form from the inspector's Form pop-up. */
+/** The open popover of a token's details, or null. */
+export function citationDetails(): HTMLElement | null {
+  return screen.queryByRole("dialog", { name: /^Citation details/ });
+}
+
+/** Picks a form from the details' Show as pop-up. */
 export async function chooseForm(name: string) {
-  fireEvent.click(await waitFor(() => within(document.querySelector<HTMLElement>(".inspector")!).getByRole("button", { name: /^Show as / })));
+  fireEvent.click(await waitFor(() => within(citationDetails()!).getByRole("button", { name: /^Show as / })));
   const menu = await waitFor(() => { const list = document.querySelector<HTMLElement>('[role="menu"]'); if (!list) throw new Error("The Form menu is not open"); return list; });
   fireEvent.click(within(menu).getByRole("menuitemradio", { name }));
 }
 
+/** Esc from inside the details, as a person closes them. */
 export function closeCitationDetails() {
-  const details = document.querySelector(".inspector");
-  if (details) fireEvent.keyDown(details, { key: "Escape" });
+  const details = citationDetails();
+  if (details) fireEvent.keyDown(details.contains(document.activeElement) ? document.activeElement! : details, { key: "Escape" });
 }
 
 export function result(key: string, title: string, source = "refs.bib") {
@@ -109,6 +115,17 @@ let receiptNumber = 0;
 export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
   return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
+}
+
+/** A synthetic result with each reference's own words as its own token, joined by "; ". */
+export function lineReceipt(words: readonly string[], warnings: string[] = []): FilePreview {
+  const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
+  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), spans };
+}
+
+/** The keys of the references in the citation being built, in the line's order. */
+export function citationKeys(): string[] {
+  return [...document.querySelectorAll<HTMLElement>(".citation-token[data-built]")].map((token) => token.dataset.referenceKey!);
 }
 
 /** Resolve the exact native copy receipt, including its content hash. */
@@ -150,8 +167,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     dismiss_window_position_undo: () => null,
     preview_file_citation: ({ items, output }) => {
       const style = isStyle(listedOutput(output as string) ?? "pandoc");
-      const spans = items.flatMap(({ id }, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text: style ? "(Smith, 2020)" : `@${id.key}` }]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return lineReceipt(items.map(({ id }) => style ? "(Smith, 2020)" : `@${id.key}`));
     },
     recent_references: (args) => overrides.search?.({ ...args, query: { text: "", interpret_locators: true } }) ?? [],
     citation_details: (args) => ({ current_form: prepared(args).request.items[Number(args.item)]?.form ?? "normal", forms: [
@@ -225,6 +241,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
 /** The token of a reference in the citation being built, by its key; null when it is not in it. */
 export function inCitation(key: string): HTMLButtonElement | null {
   return document.querySelector<HTMLButtonElement>(`.citation-token[data-built][data-reference-key="${CSS.escape(key)}"] > button`);
+}
+
+/** Waits for a reference's token to be in the citation being built. */
+export function findInCitation(key: string): Promise<HTMLButtonElement> {
+  return waitFor(() => { const token = inCitation(key); if (!token) throw new Error(`${key} is not in the citation`); return token; });
 }
 
 /** Removes a reference from the citation as a person does: ⌫ on its token. */
