@@ -5,7 +5,7 @@
 use super::view;
 use crate::catalogue::Audience;
 use crate::outputs;
-use crate::request::{SearchRequest, ShowRequest, StylesRequest};
+use crate::request::{ItemSelector, SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine};
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ItemOutcome,
@@ -335,11 +335,9 @@ fn search(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refu
 fn references<'a>(snapshot: &Snapshot, objects: impl Iterator<Item = &'a SnapshotObject>) -> Vec<String> {
     let objects: Vec<_> = objects.collect();
     let usable = |object: &'a SnapshotObject| match &object.object {
-        LibraryObject::Record(record) => record
-            .citation_key()
-            .ok()
-            .flatten()
-            .filter(|key| !key.is_empty() && *key == view::clean(key)),
+        LibraryObject::Record(record) => record.citation_key().ok().flatten().filter(|key| {
+            !key.is_empty() && *key == view::clean(key) && matches!(view::selector(key), ItemSelector::Key(_))
+        }),
         _ => None,
     };
     let wanted: BTreeSet<&str> = objects.iter().filter_map(|object| usable(object)).collect();

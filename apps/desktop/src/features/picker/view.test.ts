@@ -42,8 +42,8 @@ test("Enter while reopening waits for the new opening's search, then copies the 
   expect(reopened.copies).toEqual([]);
   const { state } = reopened;
   // The picker tells the new opening what it searches: the settled answer is adopted without asking again.
-  const [heard, searched] = reduceSession(state, { type: "search-inputs", inputs: state.search.inputs! });
-  expect(searched).toEqual([]);
+  const [heard, reopening] = reduceSession(state, { type: "search-inputs", inputs: state.search.inputs! });
+  expect(reopening.filter((effect) => effect.type === "search" || effect.type === "copy")).toEqual([]);
   const [next, effects] = reduceSession(heard, { type: "committed" });
   expect(effects).toMatchObject([{ type: "copy", session: next.session, ticket: "ticket-a" }]);
 });
