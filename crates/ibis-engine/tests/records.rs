@@ -58,6 +58,25 @@ fn two_records_give_an_apa_citation_and_no_library_changes() {
 }
 
 #[test]
+fn an_id_that_starts_like_an_internal_reference_stays_its_own_record() {
+    let engine = Engine::new().unwrap();
+    let sent = json!([
+        {"id": "x", "type": "book", "title": "Invented X", "citation-key": "plain"},
+        {"id": "record:x", "type": "book", "title": "Invented Prefixed", "citation-key": "prefixed"}
+    ]);
+    assert_eq!(
+        records(&engine, pandoc(sent.clone())).unwrap().text.as_deref(),
+        Some("[@plain; @prefixed]")
+    );
+    let chosen = records(
+        &engine,
+        json!({"records": sent, "output": {"kind": "preset", "name": "pandoc"},
+        "items": [{"id": "record:x"}]}),
+    );
+    assert_eq!(chosen.unwrap().text.as_deref(), Some("[@prefixed]"));
+}
+
+#[test]
 fn a_keyless_record_formats_and_key_outputs_refuse_it() {
     let engine = Engine::new().unwrap();
     let keyless = json!([{"id": "r1", "type": "book", "title": "Invented"}]);

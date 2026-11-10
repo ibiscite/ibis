@@ -575,7 +575,13 @@ impl Engine {
                 .records
                 .iter()
                 .map(|record| RecordItem {
-                    id: record.id.key.trim_start_matches("record:").to_owned(),
+                    // Exactly one prefix: an id may itself start with `record:`.
+                    id: record
+                        .id
+                        .key
+                        .strip_prefix("record:")
+                        .unwrap_or(&record.id.key)
+                        .to_owned(),
                     ..RecordItem::default()
                 })
                 .collect(),

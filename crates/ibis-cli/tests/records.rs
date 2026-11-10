@@ -80,6 +80,13 @@ fn records_cite_the_same_through_every_front_end() -> Result {
         answer["result"]["structuredContent"]["losses"],
         expected["data"]["losses"]
     );
+    // The output schema requires provenance, and it names where the text came from.
+    assert!(
+        answer["result"]["structuredContent"]["provenance"]
+            .as_str()
+            .is_some_and(|said| said.contains("records sent with this request")),
+        "{answer}"
+    );
     Ok(())
 }
 
