@@ -34,21 +34,22 @@ jobs:
     # Issues: read and write on this repository only). Its credentials live in
     # the release environment.
     environment: release
-    # Reading the queue's CI runs for the release gate; nothing is written with it.
+    # Reading pending releases and the queue's CI runs for the release gate;
+    # nothing is written with it.
     permissions:
       actions: read
       contents: read
+      pull-requests: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
       # A release merged outside the merge queue is refused before any tag
-      # exists: the release pull request's own run checks nothing.
-      - name: Release only a commit the merge queue checked
+      # exists, now and on every later push: its own run checks nothing.
+      - name: Release only commits the merge queue checked
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
-          SHA: ${{ github.sha }}
         run: scripts/release-gate.sh
       - name: Mint the release app token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
