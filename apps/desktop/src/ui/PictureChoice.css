@@ -27,3 +27,9 @@
 @media (pointer: coarse) {
   .ui-picture-choice { min-width: var(--touch-target); min-height: var(--touch-target); }
 }
+/* A small picture choice ends a Settings row: three thumbnails, captions under them. */
+.ui-picture-choices[data-size="small"] { width: auto; grid-template-columns: repeat(var(--choice-columns), auto); gap: var(--space-3); }
+.ui-picture-choices[data-size="small"] .ui-picker-picture { --preview: var(--preview-thumb); }
+/* The one live picture over a group of choices: the picker as they make it. */
+.ui-picture-preview { display: grid; place-items: center; padding: var(--space-4); }
+.ui-picture-preview .ui-picker-picture { --preview: var(--preview-live); border-radius: var(--r-control); }
