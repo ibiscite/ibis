@@ -601,15 +601,19 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     let libraries = library_options(&matches);
     match execute(&engine, &matches, defaults, &mut input, &mut output, &mut errors, mode) {
         Ok(Execution::Stdio(code)) => code,
-        Ok(Execution::Result(result, citing)) => emit(
-            json,
-            Ok(result),
-            citing.as_ref(),
-            &libraries,
-            &mut output,
-            &mut errors,
-            mode,
-        ),
+        Ok(Execution::Result(mut result, citing)) => {
+            // `ibis libraries` lists the warnings itself; no note to run it.
+            result.source_findings &= matches.subcommand_name() != Some("libraries");
+            emit(
+                json,
+                Ok(result),
+                citing.as_ref(),
+                &libraries,
+                &mut output,
+                &mut errors,
+                mode,
+            )
+        }
         Err(failure) if matches.subcommand_name() == Some("serve") => {
             let error = failure.error;
             if protocol::write_frame(&mut output, &ibis_engine::rpc::failure(None, error)).is_err() {
@@ -763,22 +767,25 @@ fn zotero_open_failure(error: EngineError, profiles: &[String]) -> Failure {
     failure.unnamed = Some(human::zotero_failure(error, &[]));
     failure
 }
-/// Why a citation key selected no single reference, with every line that repeats it.
+/// Why a citation key selected no single reference, with every line that
+/// repeats it or the damaged entry that names it.
 fn key_failure(engine: &Engine, key: &str, error: EngineError, libraries_open: bool) -> Failure {
-    let lines: Vec<usize> = if error.reason == Some(ErrorReason::DuplicateKey) {
-        engine
-            .libraries()
-            .map(|result| result.libraries)
-            .unwrap_or_default()
+    let libraries = engine.libraries().map(|result| result.libraries).unwrap_or_default();
+    let warnings: Vec<_> = match error.reason {
+        Some(ErrorReason::DuplicateKey) => libraries
             .iter()
             .flat_map(|library| &library.warnings)
             .filter(|warning| warning.key.as_deref() == Some(key))
-            .filter_map(|warning| warning.line)
-            .collect()
-    } else {
-        vec![]
+            .cloned()
+            .collect(),
+        Some(ErrorReason::DamagedEntry) => libraries
+            .iter()
+            .filter_map(|library| library.damaged_keys.get(key))
+            .cloned()
+            .collect(),
+        _ => vec![],
     };
-    Failure::explained(error, human::key_failure(key, error, libraries_open, &lines))
+    Failure::explained(error, human::key_failure(key, error, libraries_open, &warnings))
 }
 /// Attach a sentence to an engine error without changing its code or reason.
 /// A reason has its own sentence; front ends never guess one from the code.

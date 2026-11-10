@@ -613,11 +613,17 @@ pub(super) fn zotero_failure(error: EngineError, profiles: &[String]) -> String 
 }
 
 /// Why a citation key did not select exactly one reference.
-pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, lines: &[usize]) -> String {
+pub(super) fn key_failure(
+    key: &str,
+    error: EngineError,
+    libraries_open: bool,
+    warnings: &[ibis_engine::SourceWarning],
+) -> String {
     let shown = field(&key.chars().take(80).collect::<String>());
+    let lines: Vec<usize> = warnings.iter().filter_map(|warning| warning.line).collect();
     match (error.code, error.reason) {
         (_, Some(ErrorReason::DuplicateKey)) => {
-            let at = match lines {
+            let at = match lines.as_slice() {
                 [] => String::new(),
                 [line] => format!(" (line {line})"),
                 [rest @ .., last] => format!(
@@ -628,6 +634,15 @@ pub(super) fn key_failure(key: &str, error: EngineError, libraries_open: bool, l
             format!(
                 "the citation key '{shown}' is used by more than one entry{at}, so Ibis skips them all; give each entry its own key."
             )
+        }
+        (_, Some(ErrorReason::DamagedEntry)) => {
+            let at = lines.first().map(|line| format!(" on line {line}")).unwrap_or_default();
+            let why = warnings
+                .first()
+                .and_then(catalogue::cause)
+                .map(|cause| format!(" ({cause})"))
+                .unwrap_or_default();
+            format!("the entry '{shown}'{at} could not be read, so Ibis skips it{why}; fix it in your library.")
         }
         (_, Some(reason @ ErrorReason::LibraryCutShort)) => {
             format!("cannot find '{shown}': {}", reason_sentence(reason))
