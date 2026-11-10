@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
+import { fileURLToPath } from "node:url";
 import { NAME, SYSTEMS, bundle, manifest, server, version } from "./mcp-registry.mjs";
 
 const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
@@ -44,7 +45,8 @@ test("server hashes the bundles it finds and ignores other files", () => {
   try {
     writeFileSync(join(folder, "ibis-mcp-Linux.mcpb"), "invented bundle");
     writeFileSync(join(folder, "ibis-Linux.tar.gz"), "not a bundle");
-    const run = spawnSync(process.execPath, [new URL("./mcp-registry.mjs", import.meta.url).pathname, "server", folder], { encoding: "utf8" });
+    const script = fileURLToPath(new URL("./mcp-registry.mjs", import.meta.url));
+    const run = spawnSync(process.execPath, [script, "server", folder], { encoding: "utf8" });
     assert.equal(run.status, 0, run.stderr);
     const entry = JSON.parse(run.stdout);
     assert.deepEqual(entry.packages.map((item) => item.identifier), [bundle("Linux")]);
