@@ -379,7 +379,10 @@ lists every field.
   with a login and local links are removed, as they are from library files. Fields
   outside CSL are dropped.
 - At most 1,000 records, 512 KiB of them, nested at most 16 deep; beyond that is
-  `resource-limit`.
+  `resource-limit`, as is input over 1 MiB. JSON nested more than 128 levels can't be
+  read at all and is `bad-input`.
+- A field that can't be read as sent is dropped with a warning, and the citation
+  exits 1, as it does for a library file.
 
 Input is one UTF-8 JSON value read to the end of stdin, at most 1 MiB. stdout holds
 only the citation, or the envelope with `--json`; reasons go to stderr. Over

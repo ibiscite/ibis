@@ -1149,7 +1149,10 @@ fn run_method<R: BufRead>(
         }
         Method::Cite if args.get_flag("records") => {
             const RECORDS_HELP: &str = "stdin must hold one JSON array of CSL-JSON records; see: ibis schema records";
-            let records = explain(stdin_json(input), |_| RECORDS_HELP.into())?;
+            let records = explain(stdin_records(input), |error| match error.code {
+                ErrorCode::ResourceLimit => "the records on stdin are more than 1 MiB; send fewer at a time.".into(),
+                _ => RECORDS_HELP.into(),
+            })?;
             let Value::Array(list) = &records else {
                 return Err(Failure::new(ErrorCode::BadInput, RECORDS_HELP));
             };
@@ -1442,9 +1445,14 @@ fn records_failure(error: EngineError, records: &[Value]) -> Failure {
         .reason
         .map_or_else(|| human::code_sentence(error.code), human::reason_sentence);
     if error.reason == Some(ErrorReason::RejectedRecord)
-        && let Some(warning) = Engine::record_problems(records)
-            .into_iter()
-            .find(|warning| warning.line.is_some())
+        // Only a record-level problem drops a record; a field warning leaves it in.
+        && let Some(warning) = Engine::record_problems(records).into_iter().find(|warning| {
+            warning.line.is_some()
+                && matches!(
+                    warning.code,
+                    ibis_engine::WarningCode::Syntax | ibis_engine::WarningCode::WorkLimit
+                )
+        })
     {
         let why = ibis_engine::catalogue::cause(&warning).unwrap_or_default();
         sentence = format!("{sentence}\nrecord {}: {why}", warning.line.unwrap_or_default());
@@ -1554,6 +1562,18 @@ fn method_named(name: &str) -> Result<Method, Failure> {
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError::new(ErrorCode::BadInput))
+}
+/// Records on stdin: more than a request may hold is a resource limit (#1539).
+fn stdin_records(input: &mut impl BufRead) -> Result<Value, EngineError> {
+    let mut bytes = vec![];
+    input
+        .take(protocol::MAX_REQUEST_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+    if bytes.len() > protocol::MAX_REQUEST_BYTES {
+        return Err(EngineError::new(ErrorCode::ResourceLimit));
+    }
+    parse_json(&bytes)
 }
 fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
     let mut bytes = vec![];

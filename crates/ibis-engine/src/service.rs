@@ -724,8 +724,19 @@ impl Engine {
             Method::Records => {
                 let request: RecordsRequest = parameters(params)?;
                 let count = request.items.as_ref().map_or(request.records.len(), Vec::len);
-                // No library is read, so no library's health bears on it.
-                return DispatchResult::citation(self.cite_records(&request, cancel)?, count);
+                // No library is read, so no library's health bears on it. A
+                // field that could not be read as sent is a finding, as it is
+                // in a library file, so the citation never reads as clean.
+                let result = self.cite_records(&request, cancel)?;
+                let unread = result
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.code == CitationWarningCode::SourceField);
+                let mut dispatched = DispatchResult::citation(result, count)?;
+                if unread {
+                    dispatched.exit_code = ExitCode::Findings;
+                }
+                return Ok(dispatched);
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;

@@ -116,5 +116,36 @@ fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
     assert_eq!(code, 2, "{errors}");
     let (code, _, _) = run(&["ibis", "cite", "--records"], br#"{"id":"r1"}"#)?;
     assert_eq!(code, 3);
+    // The record refused is the one named, even when an earlier one kept has a field warning.
+    let (code, _, errors) = run(
+        &["ibis", "cite", "--records"],
+        br#"[{"id":"r1","type":"book","title":"T","issued":"2020"},{"id":"r2","type":"bok"}]"#,
+    )?;
+    assert_eq!(code, 3);
+    assert!(
+        errors.contains("record 2:") && !errors.contains("record 1:"),
+        "{errors}"
+    );
+    // More than the 1 MiB stdin holds is a resource limit.
+    let large = format!(
+        r#"[{{"id":"r1","type":"book","title":"{}"}}]"#,
+        "x".repeat(2 * 1024 * 1024)
+    );
+    let (code, output, _) = run(&["ibis", "cite", "--records", "--json"], large.as_bytes())?;
+    assert_eq!(code, 5);
+    assert_eq!(
+        serde_json::from_slice::<Value>(&output)?["error"]["code"],
+        "resource-limit"
+    );
+    Ok(())
+}
+
+/// A field that could not be read as sent is a finding, as it is in a library file.
+#[test]
+fn a_field_that_could_not_be_read_is_a_finding() -> Result {
+    let input = br#"[{"id":"a","type":"book","title":"T","author":[{"family":"Vale"}],"issued":"2020"}]"#;
+    let (code, output, errors) = run(&["ibis", "cite", "--records", "--format", "apa"], input)?;
+    assert_eq!((code, String::from_utf8(output)?), (1, "(Vale, n.d.)\n".to_owned()));
+    assert!(errors.contains("warning:"), "{errors}");
     Ok(())
 }
