@@ -1,6 +1,6 @@
 # Citation engine, styles and locale
 
-Unmodified third-party files used for formatted citations (decision 0007). Ibis never downloads these at run time, so styles change only with an Ibis release. `tests/vendor.rs` checks every file against its hash on every test run.
+Unmodified third-party files used for formatted citations (decision 0007). Ibis never downloads these at run time, so styles change only with an Ibis release. `tests/csl/vendor.rs` checks every file against its hash on every test run.
 
 - `citeproc.mjs`: Zotero's build of citeproc-js by Frank Bennett, from [zotero/zotero](https://github.com/zotero/zotero), dual-licensed CPAL 1.0 or AGPL 3.0 (Ibis uses it under the AGPL). The only change is the appended `export default CSL;` line that makes it an ES module.
 - `csl-bundle.bin`: every style from the [Citation Style Language](https://citationstyles.org/) project ([citation-style-language/styles](https://github.com/citation-style-language/styles)) and every locale from [citation-style-language/locales](https://github.com/citation-style-language/locales), byte for byte, compressed, each licensed CC BY-SA 3.0. Authors are listed in each style. `csl-bundle.json` is its manifest: the upstream tag and commit, each file's SHA-256, and upstream's renames.

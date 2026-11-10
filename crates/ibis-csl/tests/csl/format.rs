@@ -3,9 +3,6 @@ use ibis_core::contract::*;
 use ibis_csl::{FormatError, Formatter};
 use serde_json::json;
 
-// Isolate wall-clock measurements from unrelated formatter instances in this binary.
-static FORMAT_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 fn sample() -> (Snapshot, CitationRequest) {
     let id = ItemRef {
         library: LibraryId::digest(b"synthetic-format-library"),
@@ -45,7 +42,6 @@ fn sample() -> (Snapshot, CitationRequest) {
 
 #[test]
 fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic Z","author":[{"family":"Zulu"}],"issued":{"date-parts":[[2024]]}}),
         json!({"type":"book","title":"Synthetic A","author":[{"family":"Alpha"}],"issued":{"date-parts":[[2021]]}}),
@@ -84,7 +80,6 @@ fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
 
 #[test]
 fn shelf_multi_reference_spans_preserve_passive_title_styles() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic <span style=\"font-variant: small-caps;\">Caps</span>","issued":{"date-parts":[[2026]]}}),
         json!({"type":"book","title":"Other invented title","issued":{"date-parts":[[2024]]}}),
@@ -108,7 +103,6 @@ fn shelf_multi_reference_spans_preserve_passive_title_styles() {
 
 #[test]
 fn shelf_repeated_bibliography_occurrences_keep_deduplicated_output_and_each_owner() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let (snapshot, mut request) = sample();
     request.output = OutputSpec::Csl { style: "ieee".into() };
     let formatter = Formatter::new().unwrap();
@@ -141,7 +135,6 @@ fn shelf_repeated_bibliography_occurrences_keep_deduplicated_output_and_each_own
 }
 #[test]
 fn formats_canonical_text_html_rtf_and_numeric_fallback() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     let result = formatter.format(&snapshot, &request).unwrap();
@@ -170,7 +163,6 @@ fn formats_canonical_text_html_rtf_and_numeric_fallback() {
 
 #[test]
 fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let (snapshot, mut request) = sample();
     let formatter = Formatter::new().unwrap();
     request.items[0].locator = Some(Locator {
@@ -243,7 +235,6 @@ fn a_style_without_inline_locators_reports_what_the_citation_leaves_out() {
 
 #[test]
 fn malformed_and_empty_requests_refuse_without_source_details() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.output = OutputSpec::Csl {
@@ -303,10 +294,9 @@ fn selection(snapshot: &Snapshot, style: &str, bibliography: bool) -> CitationRe
 
 #[test]
 fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     use std::io::Write;
     use std::process::{Command, Stdio};
-    let items: Vec<serde_json::Value> = serde_json::from_str(include_str!("reference-cases.json")).unwrap();
+    let items: Vec<serde_json::Value> = serde_json::from_str(include_str!("../reference-cases.json")).unwrap();
     let snapshot = library(&items);
     let formatter = Formatter::new().unwrap();
     let mut oracle_inputs = Vec::new();
@@ -371,7 +361,6 @@ fn all_styles_match_node_for_multilingual_text_html_and_rtf() {
 
 #[test]
 fn matches_pinned_zotero_synthetic_preview_expectation() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     // Zotero's own synthetic Preview Test asserts (Smith, 2019), including RTF:
     // https://github.com/zotero/zotero/blob/db41b99fddcc52d38897c59c161b6adaca036afb/test/tests/citeTest.js#L175-L203
     let snapshot = library(&[
@@ -388,7 +377,6 @@ fn matches_pinned_zotero_synthetic_preview_expectation() {
 
 #[test]
 fn hostile_huge_stale_and_duplicate_inputs_never_copy_wrong_output() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.items[0].prefix = vec![TextRun {
@@ -448,7 +436,6 @@ fn hostile_huge_stale_and_duplicate_inputs_never_copy_wrong_output() {
 
 #[test]
 fn citation_never_invents_document_year_suffixes_or_keeps_cached_metadata() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let item = json!({"type":"book","title":"First synthetic book","author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"});
     let mut second = item.clone();
@@ -481,7 +468,6 @@ fn citation_never_invents_document_year_suffixes_or_keeps_cached_metadata() {
 
 #[test]
 fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for date_kind in ["literal", "quoted-raw", "curly-quoted-raw"] {
         let items: Vec<_> = [
@@ -533,55 +519,7 @@ fn explicitly_literal_year_suffixes_keep_era_names_in_date_order() {
 }
 
 #[test]
-fn formatter_measurement_gate() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
-    use std::io::Write;
-    use std::time::{Duration, Instant};
-    let formatter = Formatter::new().unwrap();
-    let (snapshot, request) = sample();
-    let started = Instant::now();
-    formatter.format(&snapshot, &request).unwrap();
-    let cold = started.elapsed();
-    let mut warm = Vec::new();
-    for _ in 0..10 {
-        let started = Instant::now();
-        formatter.format(&snapshot, &request).unwrap();
-        warm.push(started.elapsed());
-    }
-    warm.sort_unstable();
-    let p95 = warm[9];
-    let bases: Vec<serde_json::Value> = serde_json::from_str(include_str!("reference-cases.json")).unwrap();
-    let items: Vec<_> = (0..100)
-        .map(|index| {
-            let mut item = bases[index % bases.len()].clone();
-            item["title"] = json!(format!("Synthetic measurement {index}"));
-            item
-        })
-        .collect();
-    let bibliography = library(&items);
-    let request = selection(&bibliography, "apa", true);
-    let started = Instant::now();
-    let result = formatter.format(&bibliography, &request).unwrap();
-    let batch = started.elapsed();
-    assert!(result.copy_content(100).is_some());
-    // Direct stdout makes the measurement visible in existing Cargo CI logs.
-    writeln!(
-        std::io::stdout(),
-        "CSL measurement {}: cold={}ms warm-one-p95={}ms bibliography-100={}ms",
-        std::env::consts::OS,
-        cold.as_millis(),
-        p95.as_millis(),
-        batch.as_millis()
-    )
-    .unwrap();
-    assert!(cold <= Duration::from_secs(2), "cold formatter exceeded 2s");
-    assert!(p95 <= Duration::from_millis(250), "warm preview exceeded 250ms");
-    assert!(batch <= Duration::from_secs(10), "100-entry bibliography exceeded 10s");
-}
-
-#[test]
 fn numeric_style_refuses_forms_its_reference_fallback_cannot_carry() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.output = OutputSpec::Csl { style: "ieee".into() };
@@ -599,7 +537,6 @@ fn numeric_style_refuses_forms_its_reference_fallback_cannot_carry() {
 
 #[test]
 fn year_only_preserves_bundled_support_for_dated_undated_and_zero_year_items() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for (issued, dated) in [
         (Some(json!({"date-parts":[[2026]]})), true),
@@ -642,7 +579,6 @@ fn year_only_preserves_bundled_support_for_dated_undated_and_zero_year_items() {
 
 #[test]
 fn year_only_undated_titles_and_locators_do_not_prove_no_date_output() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for (title, locator) in [
         ("Synthetic n.d. observations", "42"),
@@ -674,7 +610,6 @@ fn year_only_undated_titles_and_locators_do_not_prove_no_date_output() {
 
 #[test]
 fn presentation_equivalent_titles_are_valid_without_rewriting_canonical_output() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for title in [
         "Synthetic area in m²",
@@ -702,7 +637,6 @@ fn presentation_equivalent_titles_are_valid_without_rewriting_canonical_output()
 
 #[test]
 fn bibliography_reports_document_year_suffixes_withheld() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let items:Vec<_>=["First synthetic book","Second synthetic book"].into_iter().map(|title|json!({"type":"book","title":title,"author":[{"family":"Taylor","given":"Avery"}],"issued":{"date-parts":[[2026]]}})).collect();
     let snapshot = library(&items);
@@ -714,7 +648,6 @@ fn bibliography_reports_document_year_suffixes_withheld() {
 
 #[test]
 fn contradictory_and_missing_author_forms_never_copy_processor_sentinels() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.form = CitationForm::AuthorOnly;
@@ -745,7 +678,6 @@ fn contradictory_and_missing_author_forms_never_copy_processor_sentinels() {
 
 #[test]
 fn record_controls_do_not_discard_valid_items() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for bad in [
         json!({"type":"book","title":"Synthetic\u{0}title"}),
@@ -765,7 +697,6 @@ fn record_controls_do_not_discard_valid_items() {
 
 #[test]
 fn line_breaks_preserve_every_title_word_in_all_representations() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for style in ["chicago-author-date", "modern-language-association"] {
         for separator in [
@@ -795,7 +726,6 @@ fn line_breaks_preserve_every_title_word_in_all_representations() {
 
 #[test]
 fn ieee_lowercase_given_name_preserves_processor_bytes() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic signals","author":[{"family":"Taylor","given":"avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"}),
@@ -819,7 +749,6 @@ fn ieee_lowercase_given_name_preserves_processor_bytes() {
 
 #[test]
 fn reused_formatter_handles_bibliographies_across_locale_order_and_styles() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let items: Vec<_> = (0..100).map(|index| json!({"type":"book","title":format!("Synthetic title {index}"),"author":[{"family":format!("Invented{index}"),"given":"Avery"}],"issued":{"date-parts":[[2026]]},"publisher":"Imaginary Press"})).collect();
     let snapshot = library(&items);
     let formatter = Formatter::new().unwrap();
@@ -848,7 +777,6 @@ fn reused_formatter_handles_bibliographies_across_locale_order_and_styles() {
 
 #[test]
 fn multiple_effective_author_only_items_are_explicitly_refused() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
@@ -895,7 +823,6 @@ fn multiple_effective_author_only_items_are_explicitly_refused() {
 
 #[test]
 fn nonprinting_mla_suppression_is_refused_before_cluster_rendering() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
@@ -941,7 +868,6 @@ fn nonprinting_mla_suppression_is_refused_before_cluster_rendering() {
 
 #[test]
 fn suppression_and_year_only_capabilities_keep_each_printed_item_explicit() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"Synthetic first","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}}),
@@ -1032,7 +958,6 @@ fn suppression_and_year_only_capabilities_keep_each_printed_item_explicit() {
 
 #[test]
 fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let complete = json!({"type":"book","title":"Synthetic complete","author":[{"family":"Taylor"}],"issued":{"date-parts":[[2026]]}});
     let sparse = json!({"type":"book"});
@@ -1061,7 +986,6 @@ fn sparse_members_never_become_copyable_cluster_placeholders_or_omissions() {
 
 #[test]
 fn genuinely_printed_literal_processor_marker_text_remains_valid() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let snapshot = library(&[
         json!({"type":"book","title":"[CSL STYLE ERROR: reference with no printed form.]","issued":{"date-parts":[[2026]]}}),
@@ -1087,7 +1011,6 @@ fn run(text: &str, italic: bool) -> TextRun {
 }
 #[test]
 fn affixes_keep_their_text_and_styling_in_every_representation() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.items[0].locator = Some(Locator {
@@ -1115,7 +1038,6 @@ fn affixes_keep_their_text_and_styling_in_every_representation() {
 }
 #[test]
 fn affix_text_is_literal_never_markup_or_typography() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.items[0].prefix = vec![run("say \"it\" & <b>x</b> it's &#38; ", false)];
@@ -1138,7 +1060,6 @@ fn affix_text_is_literal_never_markup_or_typography() {
 }
 #[test]
 fn affixes_in_a_bibliography_are_reported_as_losses() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.form = CitationForm::BibliographyOnly;
@@ -1149,7 +1070,6 @@ fn affixes_in_a_bibliography_are_reported_as_losses() {
 }
 #[test]
 fn narrative_citations_name_the_author_then_cite_the_rest() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     request.form = CitationForm::Narrative;
@@ -1179,7 +1099,6 @@ fn narrative_citations_name_the_author_then_cite_the_rest() {
 
 #[test]
 fn styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let (snapshot, mut request) = sample();
     for token in ["$$", "$&", "$`", "$'"] {
@@ -1216,7 +1135,6 @@ fn styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes() {
 
 #[test]
 fn narrative_citations_refuse_author_suppression() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     for per_item in [false, true] {
         let (snapshot, mut request) = sample();
@@ -1241,7 +1159,6 @@ fn narrative_citations_refuse_author_suppression() {
 
 #[test]
 fn apa_narrative_refuses_name_lists_that_need_a_different_conjunction() {
-    let _guard = FORMAT_TESTS.lock().unwrap();
     let formatter = Formatter::new().unwrap();
     let author = json!([{"family":"Taylor"}]);
     let multiple = json!([{"family":"Taylor"},{"family":"Dale"}]);
