@@ -131,26 +131,35 @@
     },
     "CitationError": {
       "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
-      "type": "string",
-      "enum": [
-        "empty-selection",
-        "too-many-items",
-        "invalid-locator",
-        "invalid-rich-text",
-        "output-too-large",
-        "unsupported-form",
-        "missing-item",
-        "changed-item",
-        "missing-key",
-        "ambiguous-key",
-        "conflicting-key",
-        "invalid-key",
-        "unsupported-output",
-        "invalid-locale",
-        "cancelled",
-        "formatter-unavailable",
-        "annotation-mismatch",
-        "not-citable"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "empty-selection",
+            "too-many-items",
+            "invalid-locator",
+            "invalid-rich-text",
+            "output-too-large",
+            "unsupported-form",
+            "missing-item",
+            "changed-item",
+            "missing-key",
+            "ambiguous-key",
+            "conflicting-key",
+            "invalid-key",
+            "unsupported-output",
+            "invalid-locale",
+            "cancelled",
+            "formatter-unavailable",
+            "annotation-mismatch",
+            "not-citable"
+          ]
+        },
+        {
+          "description": "A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.",
+          "type": "string",
+          "const": "not-from-zotero"
+        }
       ]
     },
     "CitationForm": {

@@ -206,6 +206,7 @@
             "jekyll-scholar",
             "cayw-json",
             "keys",
+            "scannable-cite",
             "apa",
             "chicago-author-date",
             "chicago-notes-bibliography",

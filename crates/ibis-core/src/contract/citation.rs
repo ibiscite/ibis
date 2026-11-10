@@ -258,10 +258,12 @@ pub enum CitationError {
     FormatterUnavailable,
     AnnotationMismatch,
     NotCitable,
+    /// A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
+    NotFromZotero,
 }
 
 impl CitationError {
-    pub const ALL: [Self; 18] = [
+    pub const ALL: [Self; 19] = [
         Self::EmptySelection,
         Self::TooManyItems,
         Self::InvalidLocator,
@@ -280,6 +282,7 @@ impl CitationError {
         Self::FormatterUnavailable,
         Self::AnnotationMismatch,
         Self::NotCitable,
+        Self::NotFromZotero,
     ];
 }
 

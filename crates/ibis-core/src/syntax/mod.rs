@@ -8,6 +8,7 @@ use crate::contract::*;
 pub(crate) mod escape;
 pub(crate) mod read;
 mod render;
+pub mod scannable;
 
 pub const MAX_CITATION_ITEMS: usize = 1_000;
 pub const MAX_CITATION_BYTES: usize = 1024 * 1024;
@@ -39,6 +40,8 @@ pub enum Escaping {
     Html,
     Liquid,
     CaywJson,
+    /// Zotero's scannable markers: `syntax::scannable` checks their text itself.
+    Scannable,
 }
 
 /// This table drives validation and field losses, rather than merely describing
@@ -97,7 +100,7 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
     SyntaxCapabilities {
         id: "pandoc",
         name: "Pandoc",
@@ -433,6 +436,25 @@ pub const CAPABILITIES: [SyntaxCapabilities; 18] = [
         author_suppression: Unsupported,
         escaping: Escaping::Json,
     },
+    // Zotero's RTF and ODF Scan read these into live Zotero citations. They
+    // name Zotero items, so `syntax::scannable` writes them, not the key path.
+    SyntaxCapabilities {
+        id: "scannable-cite",
+        name: "Zotero RTF/ODF Scan",
+        example: Some("{ | Example, 2026 | | | zu:0:ABCD2345 }"),
+        syntax: KeySyntax::ScannableCite,
+        command: None,
+        narrative: None,
+        exports_records: false,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Native,
+        prefix: &[(Normal, Native)],
+        suffix: Native,
+        rich_text: Native,
+        author_suppression: Native,
+        escaping: Escaping::Scannable,
+    },
 ];
 
 pub fn capabilities(output: &OutputSpec) -> Result<&'static SyntaxCapabilities, CitationError> {
@@ -469,6 +491,10 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
         return Err(CitationError::TooManyItems);
     }
     let mut caps = capabilities(&request.output)?;
+    // Markers name Zotero items, which only the engine can vouch for.
+    if caps.syntax == KeySyntax::ScannableCite {
+        return Err(CitationError::UnsupportedOutput);
+    }
     // Narrative is its own command in some syntaxes (BibLaTeX's `\textcite`):
     // a citation that is narrative throughout is written with that command.
     if let Some(command) = caps.narrative
@@ -707,7 +733,7 @@ fn resolve<'a>(
     Ok((record, key, form))
 }
 
-fn validate_annotation(snapshot: &Snapshot, item: &CitationItem) -> Result<(), CitationError> {
+pub(super) fn validate_annotation(snapshot: &Snapshot, item: &CitationItem) -> Result<(), CitationError> {
     let Some(id) = &item.annotation else {
         return if item.expected_annotation_cite.is_some() {
             Err(CitationError::AnnotationMismatch)
@@ -743,7 +769,7 @@ fn validate_annotation(snapshot: &Snapshot, item: &CitationItem) -> Result<(), C
     }
 }
 
-fn validate_request(request: &CitationRequest) -> Result<(), CitationError> {
+pub(super) fn validate_request(request: &CitationRequest) -> Result<(), CitationError> {
     for locale in [request.input_language.as_deref(), request.output_locale.as_deref()]
         .into_iter()
         .flatten()

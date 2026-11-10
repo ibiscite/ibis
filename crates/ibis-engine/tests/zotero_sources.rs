@@ -195,3 +195,36 @@ fn a_closed_zotero_with_nothing_read_lists_no_groups_and_starts_no_read() {
     assert_eq!(failure.code, ErrorCode::SourceUnavailable);
     assert!(engine.libraries().unwrap().libraries.is_empty());
 }
+
+#[test]
+fn zotero_markers_name_each_item_in_the_library_it_was_read_from() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(
+            Method::Libraries,
+            &json!({"action":"open-zotero","libraries":["personal", {"group": 7}]}),
+            &cancel,
+        )
+        .unwrap();
+    let snapshot = engine.snapshot().unwrap();
+    let libraries = engine.libraries().unwrap().libraries;
+    let marker = |zotero: ZoteroLibrary| {
+        let library = libraries.iter().find(|info| info.zotero == Some(zotero)).unwrap();
+        let object = snapshot
+            .objects()
+            .iter()
+            .find(|object| object.object.id().library == library.id)
+            .unwrap();
+        let request = serde_json::from_value(json!({
+            "items":[{"item":object.object.id(),"expected_cite":object.fingerprints.cite}],
+            "output":{"kind":"key","syntax":"scannable-cite"},
+        }))
+        .unwrap();
+        engine.cite(&request, &cancel).unwrap().text
+    };
+    // The same item and key in both libraries: each marker names its own.
+    assert_eq!(marker(ZoteroLibrary::Personal), "{ | Invented atlas, 2026 | | | zu:0:SYNTH234 }");
+    assert_eq!(marker(ZoteroLibrary::Group(7)), "{ | Invented atlas, 2026 | | | zg:7:SYNTH234 }");
+}
