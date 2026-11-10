@@ -194,9 +194,9 @@ test("an entry is offered only for a missing key", async () => {
   picker("repeated", () => file());
   await waitFor(() => expect(shownRow()).toContain("Key appears more than once"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).queryByRole("menuitem", { name: /Copy Entry/ })).toBeNull();
-  expect(within(menu).getByRole("menuitem", { name: /Stop Checking/ })).toBeTruthy();
+  const menu = await screen.findByRole("dialog");
+  expect(within(menu).queryByRole("option", { name: /Copy Entry/ })).toBeNull();
+  expect(within(menu).getByRole("option", { name: /Stop Checking/ })).toBeTruthy();
 });
 
 test("More says what is wrong with the file, and offers the choice when none is made", async () => {
@@ -204,8 +204,8 @@ test("More says what is wrong with the file, and offers the choice when none is 
   picker("could-not-check", () => status);
   await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read all of thesis.bib, so nothing is called missing.");
-  fireEvent.keyDown(await screen.findByRole("menu"), { key: "Escape" });
+  expect(plain((await screen.findByRole("dialog")).textContent)).toContain("Couldn’t read all of thesis.bib, so nothing is called missing.");
+  fireEvent.keyDown(await screen.findByRole("dialog"), { key: "Escape" });
   status = null;
   await act(() => emit("project:changed"));
   await waitFor(() => expect(shownRow()).not.toContain("thesis.bib"));
@@ -216,7 +216,7 @@ test("More names the failed read and why", async () => {
   picker("could-not-check", () => file({ state: "failed", reason: "It is still changing." }));
   await waitFor(() => expect(shownRow()).toContain("Couldn’t check thesis.bib"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  expect(plain((await screen.findByRole("menu")).textContent)).toContain("Couldn’t read thesis.bib. It is still changing.");
+  expect(plain((await screen.findByRole("dialog")).textContent)).toContain("Couldn’t read thesis.bib. It is still changing.");
 });
 
 test("a choice that could not be saved says so", async () => {

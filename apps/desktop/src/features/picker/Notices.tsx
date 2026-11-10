@@ -41,7 +41,7 @@ export type Operation = keyof typeof OPERATION_FAILURES;
 
 /** Settings problems, failed actions, search and copy errors, and what was
  * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], densityAnnouncement, projectNotice, editorNotice }: {
+export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], projectNotice, editorNotice }: {
   /** What became of the last project entry copy. */
   projectNotice?: string | null;
   /** The format an editor waiting on the endpoint asked for. */
@@ -58,9 +58,6 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
   onDismissCopied: () => void;
 }) {
   return <>
-    <p className="visually-hidden" role="status" aria-label={say("picker-view-changes")} aria-live="polite" aria-atomic="true">
-      {densityAnnouncement === undefined ? "" : say("picker-density", { name: say("density-name", { density: densityAnnouncement }) })}
-    </p>
     <div className="notices">
       {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
       {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (

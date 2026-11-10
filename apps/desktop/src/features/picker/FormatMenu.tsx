@@ -15,6 +15,8 @@ export type FormatPreview = (output: OutputId, signal: AbortSignal) => Promise<s
 
 // The formats chosen in this run of Ibis, newest first: the chooser's short list.
 const recent: OutputId[] = [];
+/** Forget this run's recent formats (between tests, as a restart would). */
+export const forgetRecentFormats = () => { recent.length = 0; };
 const remember = (output: OutputId) => { recent.splice(0, recent.length, output, ...recent.filter((id) => id !== output).slice(0, 5)); };
 
 /** The format chooser (decision 0042, palette B): the chip names the format in
@@ -22,7 +24,7 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with the highlighted
  * format's real citation beside the list. Focus returns to Search. */
-export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, copyOnly, disabled, styles, onChange, searchRef, writingProject, onWritingProjects, preview }: {
+export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writingProject, onWritingProjects, preview }: {
   format: OutputId;
   /** Your own format, the one a "back" row returns to. */
   yours?: OutputId;
@@ -37,8 +39,6 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   /** The app's paste question is open: offer its two answers. */
   pasteChoices?: boolean;
   onPasteChange?: (paste: AppPaste) => void;
-  /** Copy instead of pasting into this app from now on (decision 0042: with the app's other choices). */
-  copyOnly?: (() => void) | null;
   disabled: boolean;
   /** Whether formatted citation styles can be used now. */
   styles: boolean;
@@ -63,28 +63,33 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     id: output.id, label: output.name, checked: output.id === format, keywords: [output.example, output.description].filter(Boolean).join(" "),
     ...output.style && !styles ? { disabled: true, detail: say("palette-style-unavailable") } : {},
   });
-  const shortList = [...new Set<OutputId>([format, ...recent, ...yours ? [yours] : []])].slice(0, 5).map((id) => row(outputOf(id)));
+  const shortIds = [...new Set<OutputId>([format, ...recent, ...yours ? [yours] : []])].slice(0, 5);
+  const shortList = shortIds.map((id) => row(outputOf(id)));
+  const notRecent = (output: OutputChoice) => !shortIds.includes(output.id);
   const sections: PaletteSection[] = [
     ...back ? [{ id: "back", items: [{ id: "back", back: true, label: say("palette-use-again", { format: outputName(back), app: app! }) }] }] : [],
     { id: "recent", label: say("palette-recent"), items: shortList, only: "browsing" },
-    ...app && (pasteChoices || copyOnly) ? [{ id: "app", label: say("picker-for-app", { app }), items: [
-      ...pasteChoices ? [{ id: "paste", label: say("picker-paste-from-now-on", { app }) }, { id: "copy-only", label: say("picker-copy-only") }]
-        : copyOnly ? [{ id: "copy-only-here", label: say("picker-copy-only-here", { app }) }] : [],
+    // The app's own choices, together (decision 0042): paste into it or only copy.
+    ...app && pasteChoices ? [{ id: "app", label: say("picker-for-app", { app }), items: [
+      { id: "paste", label: say("picker-paste-from-now-on", { app }) }, { id: "copy-only", label: say("picker-copy-only") },
     ] }] : [],
     ...onWritingProjects ? [{ id: "writings", items: [{ id: "writing-projects", label: say("writing-project-menu") }] }] : [],
-    { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map(row), only: "searching" },
-    { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map(row), only: "searching" },
+    // Each format appears once: before typing, the catalogue leaves out the recent ones above it.
+    { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.filter(notRecent).map(row), only: "browsing" },
+    { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.filter(notRecent).map(row), only: "browsing" },
+    { id: "key-formats-all", label: say("picker-key-formats"), items: keyOutputs.map(row), only: "searching" },
+    { id: "citation-styles-all", label: say("picker-formatted-styles"), items: styleOutputs.map(row), only: "searching" },
   ];
   const close = (reason: PaletteClose) => {
     setOpen(false);
     onOpenChange?.(false, reason);
+    // A pick, Esc or Tab returns to Search, as a pop-up does; a command clearing the way decides itself.
     if (reason !== "command") searchRef.current?.focus({ preventScroll: true });
   };
   const choose = (key: string) => {
     close("action");
     if (key === "writing-projects") onWritingProjects?.();
     else if (key === "paste" || key === "copy-only") onPasteChange?.(key);
-    else if (key === "copy-only-here") copyOnly?.();
     else {
       const output = listedOutput(key === "back" ? back : key);
       if (output) { remember(output); onChange(output); }
@@ -98,13 +103,13 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats", { count: keyOutputs.length + styleOutputs.length })}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
       actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writingProject?.name ?? app ?? "" }) : say("palette-run")}
-      preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} note={`${why} ${next}`.trim()} />} />}
+      description={`${why} ${next}`.trim()} preview={(item) => <FormatPreviewPane output={listedOutput(item.back ? back : item.id)} preview={preview ?? null} />} />}
   </>;
 }
 
 /** The highlighted format's real citation for the chosen references, asked of
  * the engine as the highlight moves; a newer highlight cancels the older ask. */
-function FormatPreviewPane({ output, preview, note }: { output: OutputId | null; preview: FormatPreview | null; note: string }) {
+function FormatPreviewPane({ output, preview }: { output: OutputId | null; preview: FormatPreview | null }) {
   const [shown, setShown] = useState<{ output: OutputId; text: string | null } | null>(null);
   useEffect(() => {
     if (!output || !preview) return;
@@ -114,13 +119,12 @@ function FormatPreviewPane({ output, preview, note }: { output: OutputId | null;
     }, 60);
     return () => { window.clearTimeout(timer); abort.abort(); };
   }, [output, preview]);
-  if (!output) return <p className="ui-palette-preview-note">{note}</p>;
+  if (!output) return null;
   const ready = shown?.output === output;
   return <>
     <h3 className="ui-palette-preview-heading">{say(isStyle(output) ? "palette-preview-text" : "palette-preview-key")}</h3>
     <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} data-pending={!ready || undefined} dir="auto">
       {!preview ? say("palette-preview-choose") : ready ? shown.text ?? say("palette-preview-none") : say("palette-preview-pending")}
     </p>
-    <p className="ui-palette-preview-note">{note}</p>
   </>;
 }

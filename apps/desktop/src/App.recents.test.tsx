@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseFromMore, prepared, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, prepared, resetApp, result, toggleKeepOpen } from "./testing/app";
 
 afterEach(resetApp);
 const writer = "invented.writer";
@@ -107,7 +107,7 @@ test("Forget clears native history and an old receipt cannot repopulate it on re
   backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await copyB();
   await screen.findByText("Recent A");
   await chooseFromMore("Forget Recent Citations");
@@ -124,7 +124,7 @@ test("after Forget, a fresh native citation can be shown without webview recordi
   backend({ picker_destination: destination, recent_references: native.recent_references, copy_file_citation: native.copy_file_citation, search: () => [b] });
   render(<App />);
   await screen.findByText("Recent A");
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await chooseFromMore("Forget Recent Citations");
   await waitFor(() => expect(screen.queryByText("Recent A")).toBeNull());
   await copyB();
@@ -149,6 +149,6 @@ test("a saved off followed by on refreshes native rows and clears Change Last Ci
   });
   await waitFor(() => expect(screen.queryByRole("heading", { name: "Cited here recently" })).toBeNull());
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("menu")).toBeTruthy();
-  expect(screen.queryByRole("menuitem", { name: /Forget Recent Citations/ })).toBeNull();
+  expect(await screen.findByRole("dialog")).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /Forget Recent Citations/ })).toBeNull();
 });

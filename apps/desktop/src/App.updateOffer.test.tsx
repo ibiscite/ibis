@@ -18,15 +18,15 @@ test("the format chooser blocks update readiness and closing rearms a fresh idle
   await act(async () => { render(<App />); });
   const format = screen.getByRole("button", { name: /^Citation format/ });
   await act(async () => { fireEvent.click(format); });
-  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
   reports.length = 0;
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
   expect(reports.filter((value) => value !== null)).toEqual([]);
   await act(async () => {
-    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape", code: "Escape" });
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape", code: "Escape" });
     fireEvent.keyUp(window, { key: "Escape", code: "Escape" });
   });
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
   // React Aria restores focus on the next frame, which also rearms idle.
   await act(async () => { await vi.advanceTimersByTimeAsync(50); });
   const closeTicket = ticket;

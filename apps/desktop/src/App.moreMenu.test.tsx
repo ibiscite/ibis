@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import { backend, chooseFromMore, resetApp, result } from "./testing/app";
+import { backend, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -22,13 +22,10 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
   expect(button.type).toBe("button");
   expect(button.disabled).toBe(false);
   expect(button.tabIndex).toBe(0);
-  expect(button.getAttribute("aria-haspopup")).toBe("true");
-  expect(typeof button.onclick).toBe("function");
+  expect(button.getAttribute("aria-haspopup")).toBe("dialog");
   act(() => button.click());
-  const menu = await screen.findByRole("menu", { name: "More" });
-  const quit = within(menu).getByRole("menuitem", { name: "Quit Ibis" });
-  expect(typeof quit.onclick).toBe("function");
-  act(() => quit.click());
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  act(() => within(palette).getByRole("option", { name: "Quit Ibis" }).click());
   await waitFor(() => expect(calls.filter((command) => command === "quit")).toHaveLength(1));
 });
 
@@ -52,9 +49,9 @@ test("with a result ready to copy, the citation format is a distinct named contr
   expect(button.tabIndex).toBe(0);
   expect(typeof button.onclick).toBe("function");
   act(() => button.click());
-  const filter = await screen.findByRole("searchbox");
+  const filter = await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "Typst" } });
-  await screen.findByRole("menuitemradio", { name: "Typst" });
+  await screen.findByRole("option", { name: "Typst" });
   fireEvent.keyDown(filter, { key: "ArrowDown" });
   const choice = document.activeElement!;
   fireEvent.keyDown(choice, { key: "Enter" });
@@ -70,84 +67,13 @@ test("More holds working actions, leaving preferences and update checks to Setti
   const calls = backend({ login_item: () => ({ name: "Ibis", enabled: true, problem: null }),
     update_checks: () => true, update_available: () => true, check_for_updates: () => null });
   render(<App />);
-  await chooseFromMore("Rows: Comfortable");
-  // Opening Rows never changes the view or saves a preference.
-  expect(document.documentElement.dataset.density).toBe("comfortable");
+  fireEvent.click(await screen.findByRole("button", { name: /^More/ }));
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  const labels = within(palette).getAllByRole("option").map((row) => row.querySelector(".ui-palette-label")?.textContent);
+  expect(labels).toEqual(expect.arrayContaining(["Open ⁨refs.bib⁩", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"]));
+  // Preferences (Rows, login, updates) live in Settings; More only acts.
+  expect(labels.filter((label) => /Rows|Login|Updates/.test(label ?? ""))).toEqual([]);
   expect(calls).not.toContain("picker_preferences_saved");
-  const more = screen.getByRole("menu", { name: "More" });
-  expect([...more.querySelectorAll('[role^="menuitem"]')].map((item) => item.getAttribute("aria-label") ?? item.textContent))
-    .toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a .bib File…", "Rows: Comfortable", "Cited Since Opening…", "Keep Window OpenCtrl+Shift+P", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
-  expect(within(more).queryByRole("menuitem", { name: "Forget formats for apps" })).toBeNull();
   expect(calls).not.toContain("forget_app_outputs");
 });
 
-test.each(["Compact", "Comfortable"])("Rows offers every density and its line count, then chooses %s directly", async (choice) => {
-  const saved: unknown[] = [];
-  backend({ picker_preferences_saved: ({ preferences }) => { saved.push(preferences); return null; } });
-  render(<App />);
-  await chooseFromMore("Rows: Comfortable");
-  const rows = await screen.findByRole("menu", { name: "Rows" });
-  const options = within(rows).getAllByRole("menuitemradio");
-  expect(options.map((item) => item.textContent)).toEqual(["Compact1 line", "Comfortable2 lines"]);
-  expect(options.map((item) => document.getElementById(item.getAttribute("aria-describedby")!)?.textContent))
-    .toEqual(["1 line", "2 lines"]);
-  expect(options.map((item) => item.getAttribute("aria-checked"))).toEqual(["false", "true"]);
-  const option = within(rows).getByRole("menuitemradio", { name: choice });
-  act(() => option.focus());
-  if (choice === "Compact") {
-    fireEvent.keyDown(option, { key: "Enter" });
-    fireEvent.keyUp(option, { key: "Enter" });
-  } else fireEvent.click(option);
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  await waitFor(() => expect(document.documentElement.dataset.density).toBe(choice.toLowerCase()));
-  expect(saved).toEqual(choice === "Comfortable" ? [] : [{ density: choice.toLowerCase() }]);
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
-  await chooseFromMore(`Rows: ${choice}`);
-  expect(within(await screen.findByRole("menu", { name: "Rows" })).getByRole("menuitemradio", { name: choice }).getAttribute("aria-checked")).toBe("true");
-  expect(saved).toEqual(choice === "Comfortable" ? [] : [{ density: choice.toLowerCase() }]);
-});
-
-test("Rows supports arrow navigation and Escape returns to More without saving", async () => {
-  const calls = backend();
-  render(<App />);
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "k", ctrlKey: true });
-  await screen.findByRole("menu", { name: "More" });
-  const trigger = screen.getByRole("menuitem", { name: "Rows: Comfortable" });
-  act(() => trigger.focus());
-  fireEvent.keyDown(trigger, { key: "ArrowRight" });
-  const submenu = await screen.findByRole("menu", { name: "Rows" });
-  fireEvent.keyDown(document.activeElement!, { key: "Home" });
-  expect(document.activeElement).toBe(within(submenu).getByRole("menuitemradio", { name: "Compact" }));
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu", { name: "Rows" })).toBeNull());
-  expect(screen.getByRole("menu", { name: "More" })).toBeTruthy();
-  expect(document.activeElement).toBe(trigger);
-  expect(calls).not.toContain("picker_preferences_saved");
-});
-
-test("Tab from Rows dismisses both menus and returns typing to Search", async () => {
-  backend();
-  render(<App />);
-  await chooseFromMore("Rows: Comfortable");
-  const submenu = await screen.findByRole("menu", { name: "Rows" });
-  fireEvent.keyDown(within(submenu).getByRole("menuitemradio", { name: "Compact" }), { key: "Tab" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  fireEvent.input(document.activeElement!, { target: { value: "immediate" } });
-  expect(screen.getByLabelText<HTMLInputElement>("Search references").value).toBe("immediate");
-});
-
-test("Command-O from Rows leaves an accessible failure and working recovery", async () => {
-  const calls = backend({ open_library_source: () => { throw { code: "failed" }; }, choose_library: () => null });
-  render(<App />);
-  await chooseFromMore("Rows: Comfortable");
-  fireEvent.keyDown(await screen.findByRole("menu", { name: "Rows" }), { key: "o", ctrlKey: true });
-  const failure = await screen.findByRole("alert");
-  expect(failure.textContent).toBe("The source file could not open. Try again.");
-  expect(screen.queryByRole("menu")).toBeNull();
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
-  fireEvent.keyDown(document.activeElement!, { key: "o", ctrlKey: true });
-  await waitFor(() => expect(calls.filter((call) => call === "choose_library")).toHaveLength(1));
-  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  expect(calls.filter((call) => call === "open_library_source")).toHaveLength(1);
-});

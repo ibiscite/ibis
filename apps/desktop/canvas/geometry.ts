@@ -11,7 +11,7 @@
 export const columns = {
   marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
   words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
+  outside: ".choice-screen, .inspector, .menu-popover, .ui-palette, [inert]",
 } as const;
 
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading

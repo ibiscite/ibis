@@ -8,7 +8,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
-import { backend, chooseFromMore, chooseRows, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
+import { backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -298,7 +298,7 @@ function chooseFormat(value: string) {
   const trigger = formatButton();
   if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
   const name = outputName(value as OutputId);
-  fireEvent.click(screen.getByRole("menuitemradio", { name }));
+  fireEvent.click(paletteRow(screen.getByRole("dialog", { name: "Format" }), name));
 }
 /** The format the header's format menu shows, as its value. */
 function formatValue() {
@@ -599,8 +599,8 @@ test("the quit shortcut works with Caps Lock on, like the More shortcut", async 
   render(<App />);
   await screen.findByText("First");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "K", ctrlKey: true });
-  expect(screen.getByRole("menu")).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Q", ctrlKey: true });
+  expect(screen.getByRole("dialog")).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "Q", ctrlKey: true });
   await waitFor(() => expect(calls).toContain("quit"));
 });
 
@@ -816,7 +816,7 @@ test("hovering Remove keeps focus and menu keys unchanged", async () => {
   fireEvent.mouseMove(remove);
   expect(document.activeElement).toBe(more);
   fireEvent.keyDown(more, { key: "k", ctrlKey: true });
-  const menu = await screen.findByRole("menu");
+  const menu = await screen.findByRole("dialog");
   fireEvent.keyDown(menu, { key: "Escape" });
   expect(document.activeElement).toBe(more);
   expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBe(remove);
@@ -1397,69 +1397,6 @@ test("moving before a waiting Enter's engine preview is ready cancels that copy"
   await within(preview).findByText("(Alpha, 2021)");
   expect(copies).not.toHaveBeenCalled();
 });
-test("resizing More keeps its focused action visible without undoing manual scrolling", async () => {
-  backend();
-  render(<App />);
-  fireEvent.click(await screen.findByRole("button", { name: /^More/ }));
-  const menu = await screen.findByRole("menu");
-  act(() => menu.focus());
-  fireEvent.keyDown(document.activeElement!, { key: "End" });
-  const last = document.activeElement as HTMLElement;
-  expect(last.textContent).toContain("Quit Ibis");
-  // JSDOM supplies no layout: model a fractional resized scrollport with Quit below it.
-  const menuBox = vi.spyOn(menu, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 8, 240, 191.531));
-  const itemBox = vi.spyOn(last, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 220.4, 240, 32));
-  const height = vi.spyOn(menu, "clientHeight", "get").mockReturnValue(190);
-  const border = vi.spyOn(menu, "clientTop", "get").mockReturnValue(1);
-  try {
-    fireEvent.scroll(menu);
-    expect(menu.scrollTop).toBe(0);
-    fireEvent.resize(window);
-    expect(menu.scrollTop).toBe(54);
-    expect(document.activeElement).toBe(last);
-  } finally {
-    menuBox.mockRestore();
-    itemBox.mockRestore();
-    height.mockRestore();
-    border.mockRestore();
-  }
-});
-
-test("Search shortcut opening gives Escape an invoker at once", async () => {
-  backend();
-  render(<App />);
-  const search = screen.getByLabelText("Search references");
-  const more = screen.getByRole("button", { name: /^More/ });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
-  act(() => search.focus());
-  let popover: Element | undefined;
-  const focusMore = more.focus.bind(more);
-  // A real modal popover makes its invoker inert. JSDOM needs that refusal
-  // modelled so a close-time focus call cannot hide the restoration race.
-  const focus = vi.spyOn(more, "focus").mockImplementation(() => {
-    if (!popover?.isConnected) focusMore();
-  });
-  let finishExit!: () => void;
-  try {
-    fireEvent.keyDown(search, { key: "k", ctrlKey: true });
-    const menu = await screen.findByRole("menu");
-    popover = menu.closest(".menu-popover")!;
-    const finished = new Promise<void>((resolve) => { finishExit = resolve; });
-    Object.defineProperty(popover, "getAnimations", { value: () => popover?.hasAttribute("data-exiting")
-      ? [{ playState: "running", finished }] : [] });
-    expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(popover.isConnected).toBe(false);
-    expect(document.activeElement).toBe(more);
-    fireEvent.keyDown(document.activeElement!, { key: " " });
-    fireEvent.keyUp(document.activeElement!, { key: " " });
-    expect(await screen.findByRole("menu")).toBeTruthy();
-  } finally {
-    finishExit?.();
-    focus.mockRestore();
-  }
-});
-
 test("the output keeps ordered chips and exact key copying", async () => {
   const copies: unknown[] = [];
   backend({ search: () => [result("a", "First"), result("b", "Second")],
@@ -1497,19 +1434,23 @@ test.each(["same", "different"])("copy feedback only omits exact visible output 
   expect(screen.getByRole("button", { name: "Dismiss copy warnings" })).toBeTruthy();
 });
 
-test("Ctrl+K opens More with every action, Escape closes it before hiding the picker", async () => {
+test("Ctrl+K opens More's actions with their keys, Escape closes it before hiding the picker", async () => {
   const calls = backend({ hide_picker: () => null, reload_library: () => null });
   render(<App />);
   const box = screen.getByLabelText("Search references");
   await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
   fireEvent.keyDown(box, { key: "k", ctrlKey: true });
-  const menu = await screen.findByRole("menu");
-  const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a .bib File…", "Rows: Comfortable›", "Cited Since Opening…", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
-  expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
-  expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
-  expect(document.activeElement?.textContent).toContain("Quit Ibis");
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  const field = within(palette).getByRole("combobox", { name: "Search actions" });
+  expect(document.activeElement).toBe(field);
+  const label = (row: HTMLElement) => row.querySelector(".ui-palette-label")?.textContent;
+  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Open ⁨refs.bib⁩", "Show in Folder", "Choose Library…", "Check Against a .bib File…", "Change Format…", "Peek at Reference", "Cited Since Opening…", "Forget Recent Citations", "Keep Window Open", "Keyboard Shortcuts", "Settings…", "Quit Ibis"].filter((name) => within(palette).queryAllByRole("option").some((row) => label(row) === name)));
+  expect(paletteRow(palette, "Keep Window Open").getAttribute("aria-current")).toBeNull();
+  expect(paletteRow(palette, "Quit Ibis").getAttribute("aria-keyshortcuts")).toBe("Control+Q");
+  // A common word finds an action by what it does.
+  fireEvent.change(field, { target: { value: "preferences" } });
+  expect(within(palette).getAllByRole("option").map(label)).toEqual(["Settings…"]);
+  fireEvent.change(field, { target: { value: "" } });
   const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
   try {
     const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, rules: { "color-contrast": { enabled: false } } });
@@ -1517,21 +1458,15 @@ test("Ctrl+K opens More with every action, Escape closes it before hiding the pi
   } finally {
     canvas.mockRestore();
   }
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
+  expect(document.activeElement).toBe(box);
   expect(calls).not.toContain("hide_picker");
   fireEvent.keyDown(box, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.pointerDown(document.body);
-  fireEvent.click(document.body);
-  expect(screen.queryByRole("menu")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.keyDown(within(screen.getByRole("menu")).getAllByRole("menuitem")[0]!, { key: "Tab" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(box);
-  expect(screen.getByRole("button", { name: /^More/ }).textContent).toContain("K");
+  fireEvent.pointerDown(document.querySelector(".ui-palette-scrim")!);
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   expect(screen.getByRole("button", { name: /^More/ }).getAttribute("aria-keyshortcuts")).toBe("Control+K");
 });
 
@@ -1641,33 +1576,29 @@ test("Escape clears the search before it hides the picker, keeping chosen refere
   expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
 });
 
-test("header and More share the pin with state-dependent labels", async () => {
+test("More and the shortcut share the pin, and the footer shows it while it is on", async () => {
   const pins: unknown[] = [];
   backend({ set_pinned: ({ on }) => { pins.push(on); return null; } });
   render(<App />);
-  const pin = screen.getByRole("button", { name: "Keep Window Open" });
-  expect(pin.closest("header")).not.toBeNull();
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
-  expect(pin.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+P");
-  expect(document.querySelector("footer .pin-button")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Keep Window Open" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const keep = await screen.findByRole("menuitemcheckbox", { name: "Keep Window Open" });
-  expect(keep.getAttribute("aria-checked")).toBe("false");
-  fireEvent.click(keep);
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  expect(paletteRow(palette, "Keep Window Open").getAttribute("aria-current")).toBeNull();
+  fireEvent.click(paletteRow(palette, "Keep Window Open"));
   await waitFor(() => expect(pins).toEqual([true]));
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Keep Window Open" })).getAttribute("aria-checked")).toBe("true");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
+  const pin = await screen.findByRole("button", { name: "Keep Window Open", pressed: true });
+  expect(pin.closest("footer")).not.toBeNull();
+  expect(pin.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+P");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(paletteRow(await screen.findByRole("dialog", { name: "Actions" }), "Keep Window Open").getAttribute("aria-current")).toBe("true");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   fireEvent.click(pin);
   await waitFor(() => expect(pins).toEqual([true, false]));
+  expect(screen.queryByRole("button", { name: "Keep Window Open" })).toBeNull();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(pins).toEqual([true, false, true]));
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
+  await chooseFromMore("Keep Window Open");
   await waitFor(() => expect(pins).toEqual([true, false, true, false]));
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
@@ -1682,7 +1613,7 @@ test("the keep-open shortcut ignores repeats, composition and extra modifiers", 
   expect(pins).toEqual([]);
   fireEvent.keyDown(box, { key: "P", code: "KeyP", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(pins).toEqual([true]));
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await waitFor(() => expect(pins).toEqual([true, false]));
   expect(document.activeElement).toBe(box);
 });
@@ -1706,7 +1637,7 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
   fireEvent.keyDown(box, { key: "Escape" });
   expect(screen.getByRole("button", { name: "Keep Window Open", pressed: true })).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await waitFor(() => expect(pins).toEqual([true, false]));
   fireEvent.change(box, { target: { value: "first" } });
   await screen.findByText("First");
@@ -1717,9 +1648,9 @@ test("a pinned picker stays open after copying, and Escape never unpins it", asy
 test("a failed pin is reported", async () => {
   backend({ set_pinned: () => { throw new Error("SYNTHETIC_PRIVATE_PAYLOAD"); } });
   render(<App />);
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   expect((await screen.findByText("Ibis could not change the pin. Try again.")).getAttribute("role")).toBe("alert");
-  expect(screen.getByRole("button", { name: "Keep Window Open" }).getAttribute("aria-pressed")).toBe("false");
+  expect(screen.queryByRole("button", { name: "Keep Window Open" })).toBeNull();
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
@@ -1746,7 +1677,7 @@ test.each([false, true])("rapid keep-open changes retain the last confirmed stat
     await act(async () => { requests[2]!.reject(); });
   }
   await screen.findByText("Ibis could not change the pin. Try again.");
-  expect(screen.getByRole("button", { name: "Keep Window Open" }).getAttribute("aria-pressed")).toBe(String(firstSucceeds));
+  expect(screen.queryByRole("button", { name: "Keep Window Open", pressed: true }) !== null).toBe(firstSucceeds);
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
 });
 
@@ -1922,16 +1853,11 @@ test("rapid A-B-A choices keep the last failed choice applied and never resend i
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
   // The unsaved choice still applies in the picker until Ibis restarts.
   expect(formatValue()).toBe("cite");
-  await chooseRows("compact");
+  chooseFormat("typst");
   await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
-  // The next choice carries only its own field: the failed one is never sent again.
-  expect(keys).toEqual(["cite", "pandoc", "cite", null]);
-  expect(remembered).toBe("pandoc");
-  remembered = "keys"; // A hand edit after a successful save must survive.
-  await chooseRows("comfortable");
-  await waitFor(() => expect(keys).toHaveLength(5));
-  expect(keys[4]).toBeNull();
-  expect(remembered).toBe("keys");
+  // The failed choice is never sent again: the next save is the next choice.
+  expect(keys).toEqual(["cite", "pandoc", "cite", "typst"]);
+  expect(remembered).toBe("typst");
 });
 
 test.each(["menu", "shortcut"])("%s Quit drains ordered format choices before exiting", async (route) => {
@@ -2014,27 +1940,6 @@ test("a stuck settings request cannot keep Quit waiting indefinitely", async () 
   expect(calls).toContain("quit");
 });
 
-test("format, density and preview choices are saved without losing each other", async () => {
-  const saved: unknown[] = [];
-  backend({
-    picker_preferences: () => ({ output: "typst" }),
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences); return null; },
-  });
-  render(<App />);
-  await waitFor(() => expect(formatValue()).toBe("typst"));
-  chooseFormat("ieee");
-  await chooseRows("compact");
-  chooseFormat("pandoc");
-  await waitFor(() => expect(saved).toHaveLength(3));
-  expect(saved).toMatchObject([
-    { output: "ieee" },
-    { density: "compact" },
-    { output: "pandoc" },
-  ]);
-  expect(Object.assign({}, ...saved)).toEqual({ output: "pandoc", density: "compact" });
-  expect(document.documentElement.dataset.density).toBe("compact");
-});
-
 test("a choice made while saved choices load is kept and saved, not replaced", async () => {
   let finish = () => undefined as void;
   const loaded = new Promise<void>((resolve) => { finish = resolve; });
@@ -2063,11 +1968,9 @@ test("unreadable saved choices are reported and never overwritten with defaults"
   // Nothing could be read, so the engine's default applies for now.
   expect(formatValue()).toBe("pandoc");
   chooseFormat("apa");
-  await chooseRows("compact");
-  expect(document.documentElement.dataset.density).toBe("compact");
-  // Each choice names only its own field, so nothing else is written as a default;
+  // The choice names only its own field, so nothing else is written as a default;
   // the settings owner refuses them while the file cannot be read.
-  await waitFor(() => expect(saved).toEqual([{ output: "apa" }, { density: "compact" }]));
+  await waitFor(() => expect(saved).toEqual([{ output: "apa" }]));
 });
 
 const NO_LIBRARY = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
@@ -2261,7 +2164,7 @@ test.each(["Ctrl+K", "Escape", "Tab", "outside click"])("closing the library men
   // A click outside, on More itself too, lands on the menu's underlay, as in a native menu.
   if (closeWith === "Ctrl+K") {
     fireEvent.keyDown(screen.getByRole("menu"), { key: "k", ctrlKey: true });
-    const moreMenu = screen.getByRole("menu", { name: "More" });
+    const moreMenu = screen.getByRole("dialog", { name: "Actions" });
     fireEvent.keyDown(moreMenu, { key: "Escape" });
   }
   else if (closeWith === "outside click") { fireEvent.pointerDown(document.body); fireEvent.click(document.body); }
@@ -2657,16 +2560,15 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   const text = searchHint.textContent;
   expect(text).toContain(alt ? "Add to Citation" : "Copy as Pandoc");
   const more = screen.getByRole("button", { name: /^More/ });
-  // As a native menu button, More focuses itself and opens on pointer down.
   fireEvent.pointerDown(more, { button: 0, pointerType: "mouse" });
-  expect(await screen.findByRole("menu")).toBeTruthy();
+  act(() => more.focus());
+  fireEvent.pointerUp(more, { button: 0, pointerType: "mouse" });
+  fireEvent.click(more, { detail: 1 });
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
   expect(searchHint.isConnected).toBe(true);
   expect(searchHint.textContent).toBe(text);
   expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
-  fireEvent.pointerUp(more, { button: 0, pointerType: "mouse" });
-  fireEvent.click(more, { detail: 1 });
-  expect(screen.getByRole("menu")).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  fireEvent.keyDown(within(palette).getByRole("combobox"), { key: "Escape" });
   expect(document.activeElement).toBe(more);
   act(() => box.focus());
   expect(searchHint.hasAttribute("aria-hidden")).toBe(false);
@@ -2726,7 +2628,7 @@ test("the keys sheet names what Enter does from the same answer as the footer", 
   expect(await screen.findByRole("button", { name: /^Paste into Example Writer/ })).toBeTruthy();
   expect(await enterRow()).toBe("Paste the citation");
   // A kept-open window copies, and both places say so.
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await waitFor(() => expect(screen.queryByRole("button", { name: /^Paste into/ })).toBeNull());
   expect(await enterRow()).toBe("Copy the citation");
 });
@@ -3439,10 +3341,10 @@ test.each(["p", "З"])("the keep-open shortcut toggles from Format and leaves it
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  const filter = screen.getByRole("searchbox");
+  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
   fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1));
-  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
   expect(document.activeElement).toBe(filter);
   expect(calls).not.toContain("quit");
 });
@@ -3454,12 +3356,12 @@ test.each([
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
   // Let a wrongly queued command finish; another key must not cancel the probe.
   await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
   expect(calls).not.toContain("set_pinned");
   expect(calls).not.toContain("quit");
-  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
 });
 
 test("format toolbar menu exposes both sections and saves a choice without copying", async () => {
@@ -3470,9 +3372,11 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   expect(screen.getByRole("group", { name: "Key formats" })).toBeTruthy();
   expect(screen.getByRole("group", { name: "Citation styles" })).toBeTruthy();
   // Exactly the engine's list, each by its one name.
-  expect(screen.getAllByRole("menuitemradio").map((item) => item.getAttribute("aria-label") ?? item.querySelector(".menu-label")?.textContent)).toEqual(OUTPUTS.map((output) => output.name));
-  expect(screen.getByRole("menuitemradio", { name: "Pandoc" }).getAttribute("aria-checked")).toBe("true");
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "BibLaTeX \\autocite" }));
+  const formats = within(screen.getByRole("dialog", { name: "Format" })).getAllByRole("option")
+    .filter((item) => item.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"]')).map((item) => item.querySelector(".ui-palette-label")?.textContent);
+  expect([...formats].sort()).toEqual(OUTPUTS.map((output) => output.name).sort());
+  expect(screen.getByRole("option", { name: "Pandoc" }).getAttribute("aria-current")).toBe("true");
+  fireEvent.click(screen.getByRole("option", { name: "BibLaTeX \\autocite" }));
   await waitFor(() => expect(saved).toContain("autocite"));
   expect(calls).not.toContain("copy_file_citation");
   expect(formatButton("Citation format BibLaTeX \\autocite")).toBeTruthy();
@@ -3484,17 +3388,17 @@ test("engine citation styles are reachable and save their choice without copying
   backend({ picker_preferences_saved: saved });
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  const filter = screen.getByRole("searchbox");
+  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
   fireEvent.keyDown(filter, { key: "End" });
   // The last of the engine's common styles, whichever it is.
   const last = OUTPUTS.at(-1)!;
-  const style = screen.getByRole("menuitemradio", { name: last.name });
+  const style = screen.getByRole("option", { name: last.name });
   expect(style.getAttribute("aria-disabled")).not.toBe("true");
   expect(filter.getAttribute("aria-activedescendant")).toBe(style.id);
   fireEvent.keyDown(filter, { key: "Enter" });
   fireEvent.keyUp(filter, { key: "Enter" });
   await waitFor(() => expect(saved).toHaveBeenCalledWith(expect.objectContaining({ preferences: expect.objectContaining({ output: last.id }) })));
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
 });
 
 test("format filter IME and Escape preserve the query, and Ctrl+K switches layers", async () => {
@@ -3504,22 +3408,22 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   fireEvent.change(search, { target: { value: "sleep" } });
   const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
-  const filter = screen.getByRole("searchbox");
+  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "APA" } });
   fireEvent.compositionStart(filter);
   for (const key of ["Enter", "Escape", "k"]) fireEvent.keyDown(filter, { key, ctrlKey: key === "k", isComposing: true });
-  expect(screen.getByRole("menu")).toBeTruthy();
+  expect(screen.getByRole("dialog")).toBeTruthy();
   expect(calls).not.toContain("hide_picker");
   expect(calls).not.toContain("picker_preferences_saved");
   fireEvent.compositionEnd(filter);
   fireEvent.keyDown(filter, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   expect(search.value).toBe("sleep");
   expect(calls).not.toContain("hide_picker");
   fireEvent.click(trigger);
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key: "k", ctrlKey: true });
-  expect(await screen.findByRole("menu", { name: /^More/ })).toBeTruthy();
-  expect(screen.queryByRole("searchbox")).toBeNull();
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "k", ctrlKey: true });
+  expect(await screen.findByRole("dialog", { name: "Actions" })).toBeTruthy();
+  expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
 });
 
 test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search", async (action) => {
@@ -3529,14 +3433,14 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   fireEvent.change(search, { target: { value: "sleep" } });
   const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
-  const filter = screen.getByRole("searchbox");
+  const filter = screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
   fireEvent.change(filter, { target: { value: "Typst" } });
   fireEvent.keyDown(filter, { key: "k", ctrlKey: true });
-  const more = await screen.findByRole("menu", { name: /^More/ });
+  const more = await screen.findByRole("dialog", { name: "Actions" });
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
-  if (action === "Tab") fireEvent.keyDown(more, { key: "Tab" });
+  if (action === "Tab") fireEvent.keyDown(within(more).getByRole("combobox"), { key: "Tab" });
   else await chooseFromLibrary("Reload Library");
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await waitFor(() => expect(document.activeElement).toBe(search));
   expect(search.value).toBe("sleep");
 });
@@ -3545,7 +3449,7 @@ test.each(["k", "/"])("hiding the picker closes what Format's Ctrl+%s left open"
   const calls = backend();
   render(<App />);
   fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true });
+  fireEvent.keyDown(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key, ctrlKey: true });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
   expect(screen.queryByRole("menu")).toBeNull();
@@ -3554,36 +3458,6 @@ test.each(["k", "/"])("hiding the picker closes what Format's Ctrl+%s left open"
   expect(calls).not.toContain("set_pinned");
 });
 
-
-test("Format shortcut opening gives Escape a More invoker at once", async () => {
-  backend();
-  render(<App />);
-  const more = screen.getByRole("button", { name: /^More/ });
-  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
-  let popover: Element | undefined;
-  const focusMore = more.focus.bind(more);
-  const focus = vi.spyOn(more, "focus").mockImplementation(() => {
-    if (!popover?.isConnected) focusMore();
-  });
-  let finishExit!: () => void;
-  try {
-    fireEvent.keyDown(screen.getByRole("searchbox"), { key: "k", ctrlKey: true });
-    const menu = await screen.findByRole("menu", { name: /^More/ });
-    popover = menu.closest(".menu-popover")!;
-    const finished = new Promise<void>((resolve) => { finishExit = resolve; });
-    Object.defineProperty(popover, "getAnimations", { value: () => popover?.hasAttribute("data-exiting")
-      ? [{ playState: "running", finished }] : [] });
-    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
-    expect(popover.isConnected).toBe(false);
-    expect(document.activeElement).toBe(more);
-    fireEvent.keyDown(document.activeElement!, { key: " " });
-    fireEvent.keyUp(document.activeElement!, { key: " " });
-    expect(await screen.findByRole("menu", { name: /^More/ })).toBeTruthy();
-  } finally {
-    finishExit?.();
-    focus.mockRestore();
-  }
-});
 
 test.each(["keyboard", "fallback", "other focus", "pointer", "oversized"])("footer reflow follows only the Search keyboard owner (%s)", async (mode) => {
   const observations: { callback: () => void; nodes: Set<Element> }[] = [];
@@ -3638,15 +3512,14 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   const calls = backend();
   render(<App />);
   await screen.findByText("Type to find a reference");
-  const pin = screen.getByRole("button", { name: "Keep Window Open" });
-  pin.focus();
+  const more = screen.getByRole("button", { name: /^More/ });
+  more.focus();
   const progress = { attempt: 2, revision: 2, received: 25, total: 100, phase: "downloading" };
   await act(async () => { await emit("update:progress", progress); });
   expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
   await act(async () => { await emit("update:progress", { ...progress, attempt: 1, phase: "failed" }); });
   expect(screen.queryByRole("alert")).toBeNull();
-  expect(document.activeElement).toBe(pin);
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
+  expect(document.activeElement).toBe(more);
   expect(calls).not.toContain("set_pinned");
   await act(async () => { await emit("update:progress", { ...progress, revision: 3, phase: "failed" }); });
   expect(screen.queryByRole("progressbar")).toBeNull();

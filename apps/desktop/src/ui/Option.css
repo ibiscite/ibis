@@ -5,8 +5,8 @@
 /* Rows are exactly --row-height and --row-spacing apart in every list of
    options (C4); the clear border (an edge only in increased contrast) is
    taken from the side padding so titles stay aligned. */
-[role="option"]:where(:not(.ui-side-navigation-item)) { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-control); border: var(--border-width) solid transparent; }
-[role="option"]:where(:not(.ui-side-navigation-item)) + [role="option"]:where(:not(.ui-side-navigation-item)) { margin-top: var(--row-spacing); }
+[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)) { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-height); cursor: default; padding: 0 calc(var(--row-pad) - var(--border-width)); margin: 0; border-radius: var(--r-control); border: var(--border-width) solid transparent; }
+[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)) + [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)) { margin-top: var(--row-spacing); }
 .result-body { flex: 1; min-width: 0; display: flex; flex-direction: column; justify-content: center; container-type: inline-size; }
 /* The leading tile (docs/design/picker.md, "List and row"): the type icon on a quiet
    fill. On hover and on the active row the icon gives way to the add control in
@@ -21,22 +21,22 @@
 [data-active] .type-icon, [data-citation-selected] .type-icon { opacity: 0; }
 [data-active] .result-tile { color: inherit; }
 @media (hover: hover) {
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered] .tile-button { opacity: 1; }
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered] .type-icon { opacity: 0; }
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered] .result-tile { color: inherit; }
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered] .tile-button { opacity: 1; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered] .type-icon { opacity: 0; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered] .result-tile { color: inherit; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered]:not([data-active]) { background: var(--fill-quiet-hover); }
 }
 @media (pointer: coarse) {
-  [role="option"]:where(:not(.ui-side-navigation-item)) { min-height: max(var(--row-height), var(--touch-target)); }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)) { min-height: max(var(--row-height), var(--touch-target)); }
   .result-tile .tile-button { width: var(--touch-target); height: var(--touch-target); }
 }
 [data-active] .result-tile { background: var(--on-selected-fill); }
 /* A resting result shows its type as a glyph alone: the plate appears only where the
    tile does something (hover, selection: Add) or says something (cited). Every row
    carrying the same grey square was chrome, not information. */
-#results [role="option"]:where(:not(.ui-side-navigation-item)):not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
-@media (hover: hover) { #results [role="option"]:where(:not(.ui-side-navigation-item))[data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
-[role="option"]:where(:not(.ui-side-navigation-item))[data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
+#results [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)):not([data-active], [data-citation-selected]) .result-tile { background: transparent; }
+@media (hover: hover) { #results [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-hovered]:not([data-active], [data-citation-selected]) .result-tile { background: var(--fill-control); } }
+[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-citation-selected] .result-tile { background: var(--scarlet); color: var(--on-scarlet); }
 /* The year shares the title's first line in every density, size and view. */
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
@@ -75,15 +75,15 @@
 /* The selected (active) row is a full accent fill with its paired text on
    every platform (C4, D7): the system accent on macOS and Windows, the GTK
    selection colour on Linux. Fill only: no border, ring or side pill. */
-[role="option"]:where(:not(.ui-side-navigation-item))[data-active] { background: var(--selected); color: var(--selected-text); }
+[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active] { background: var(--selected); color: var(--selected-text); }
 [data-active] :is(.result-meta, .result-year, .result-why, .result-project, .result-first-author) { color: var(--selected-text-secondary); }
 /* An added row that is also selected keeps its tile apart from any accent,
    red and orange included (D9): the selected text colour with a scarlet check. */
-[role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
+[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--scarlet); }
 /* Compact draws a 24 px tile without a fill, centred in the 32 px tile column
    so titles still start where the search text does; its control covers 32 px. */
 :root[data-density="compact"] { --row-height: var(--row-compact); }
-:root[data-density="compact"] [role="option"]:where(:not(.ui-side-navigation-item)):not([data-citation-selected]) .result-tile { background: transparent; }
+:root[data-density="compact"] [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)):not([data-citation-selected]) .result-tile { background: transparent; }
 :root[data-density="compact"] .result-tile { width: 1.5rem; height: 1.5rem; margin-inline: calc((var(--tile) - var(--control-small-h)) / 2); }
 :root[data-density="compact"] .result-meta { display: none; }
 /* Rows that tell similar references apart (#492). Comfortable rows show
@@ -101,21 +101,21 @@
 }
 @media (prefers-contrast: more) {
   /* The 3 px edge comes out of the side padding, so the text stays put. */
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - var(--ring-width) - var(--border-width)); }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active] { border-color: var(--text); border-width: 3px; padding-inline: calc(var(--row-pad) - var(--ring-width) - var(--border-width)); }
   /* The tile carries the citation state as an inverted square with its check. */
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active][data-citation-selected] .result-tile { background: var(--selected-text); color: var(--selected); }
 }
 @media (forced-colors: active) {
   /* Opt the active row out of the forced-colours backplate, which would paint
      Canvas behind its HighlightText text; its colours are already system pairs. */
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active] { border-color: var(--selected); forced-color-adjust: none; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active] { border-color: var(--selected); forced-color-adjust: none; }
   /* The added tile keeps its fill and check as a system-colour pair: the text
      colour with a Canvas check, or on the Highlight row the HighlightText tile
      with a Highlight check. The check, not colour, says "added". */
   .result-tile { forced-color-adjust: none; background: Canvas; color: CanvasText; }
   [data-active] .result-tile { background: Highlight; color: HighlightText; }
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
-  [role="option"]:where(:not(.ui-side-navigation-item))[data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-citation-selected] .result-tile { background: CanvasText; color: Canvas; }
+  [role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row))[data-active][data-citation-selected] .result-tile { background: HighlightText; color: Highlight; }
 }
 @media (max-width: 460px) {
   .result-meta { flex-wrap: wrap; }
@@ -127,7 +127,7 @@
 }
 /* Row heights are minima. Wrapping grows the block without spending its
    padding or widening the picker (Wrapped text keeps its padding, C4). */
-.ui-option[role="option"]:where(:not(.ui-side-navigation-item)), .choice-row[role="option"]:where(:not(.ui-side-navigation-item)) {
+.ui-option[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)), .choice-row[role="option"]:where(:not(.ui-side-navigation-item, .ui-palette-row)) {
   min-inline-size: 0; max-inline-size: 100%; padding-block: calc(var(--space-2) - var(--border-width));
 }
 .ui-option .result-title {

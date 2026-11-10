@@ -4,10 +4,10 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
 
 ## Search bar
 
-- Order: search glyph, query, clear ×, format pop-up, pin. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-row`).
+- Order: search glyph, query, clear ×, format pop-up. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-row`).
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
-- **Pin** [C6]: a neutral IconButton at the header's end; on, it shows the pressed fill, never the accent. Esc never unpins.
-- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen.
+- **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
+- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** (decision 0042): the way back first when the format isn't yours, recent formats, the app's own choices, writings, then every format by typing, with the highlighted format's real citation beside the list.
 
 ## Results
 
@@ -47,6 +47,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 ## Footer
 
 - **Footer** [C8]: status dot and text at the leading edge (dot on the tiles' column), the source action, the one primary action ("Paste into Word · APA ↵" or "Copy N as <format> ↵"), and last, on the rows' trailing edge, "More ⌘K".
+- **More** (⌘K) opens the **actions palette**: every action in the picker, grouped by what it acts on (the library, this citation, Ibis), each with its key, and found by its name or a common word for it ("preferences" finds Settings). It is the third door to every action (control placement).
 - **More never moves**: it has the last column of its own, so nothing about the action moves it: not a longer label, not Alt, not the action being absent. A click aimed at More can never land on Copy. The action sits against it and grows toward the status. The leading slot always keeps room for its fix ("Find thesis.bib…"), so the fix never wraps onto the action; a failure line under them spans the footer.
 - Every hint is label first, then keys, on one baseline. When the footer does not fit, shorten the status, then truncate the action's label with "…", its keys and full name kept, and only by the window's width drop hint labels to keys. The action's own width never decides that fold. With ⌥ held, its two actions cannot both truncate on one line, so their labels fold to keys when their full names do not fit; More keeps its label either way.
 - **Quiet bands**: nothing in the shelf or footer is a filled button. The main action (Copy or Paste) reads as Raycast's: its words in the text colour at medium weight and the footer's one accent on its ↵ cap, so the eye rests on the results, not on the bottom edge. The library status, the source action, More, the reference count, notes and Details are quiet.

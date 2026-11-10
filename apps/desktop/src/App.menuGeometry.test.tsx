@@ -1,9 +1,9 @@
 import { afterEach, expect, test, vi } from "vitest";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import * as api from "./api";
-import { backend, chooseFromMore, resetApp, result, openCitationDetails } from "./testing/app";
+import { backend, chooseFromMore, resetApp, result, openCitationDetails, toggleKeepOpen } from "./testing/app";
 
 afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
@@ -60,41 +60,32 @@ test.each(["error", "refusal"])("a window reset offers Undo without taking focus
   expect(calls).not.toContain("fit_picker");
 });
 
-test("More is gone before the probe's keys-sheet and Copy as steps", async () => {
+test("More is gone at once before the probe's keys-sheet and format steps", async () => {
   backend({ search: () => [] });
   render(<App />);
   await screen.findByText("Type to find a reference");
   const more = screen.getByRole("button", { name: "More" });
   const search = screen.getByRole("combobox");
   fireEvent.click(more);
-  const moreMenu = await screen.findByRole("menu", { name: "More" });
-  const popover = moreMenu.closest(".menu-popover")!;
-  let finishExit!: () => void;
-  const finished = new Promise<void>((resolve) => { finishExit = resolve; });
-  Object.defineProperty(popover, "getAnimations", { value: () => popover.hasAttribute("data-exiting")
-    ? [{ playState: "running", finished }] : [] });
-  try {
-    fireEvent.keyDown(moreMenu, { key: "End" });
-    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: /^Quit/ })));
-    fireEvent.keyDown(document.activeElement!, { key: "Home" });
-    fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(popover.isConnected).toBe(false);
-    // Playwright focuses its search locator before sending the shortcut.
-    act(() => search.focus());
-    fireEvent.keyDown(search, { key: "/", ctrlKey: true });
-    const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
-    fireEvent.keyDown(keys, { key: "Escape" });
-    const format = screen.getByRole("button", { name: /^Citation format/ });
-    fireEvent.click(format);
-    const formatMenu = await screen.findByRole("menu", { name: /^Citation format/ });
-    expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
-    expect(more.getAttribute("aria-expanded")).toBe("false");
-    expect(format.getAttribute("aria-expanded")).toBe("true");
-    expect(formatMenu.isConnected).toBe(true);
-  } finally {
-    await act(async () => { finishExit(); });
-  }
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  const field = within(palette).getByRole("combobox");
+  fireEvent.keyDown(field, { key: "End" });
+  expect(field.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: /^Quit/ }).id);
+  fireEvent.keyDown(field, { key: "Escape" });
+  // Nothing waits on an exit: the palette is gone in the same frame.
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(palette.isConnected).toBe(false);
+  // Playwright focuses its search locator before sending the shortcut.
+  act(() => search.focus());
+  fireEvent.keyDown(search, { key: "/", ctrlKey: true });
+  const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
+  fireEvent.keyDown(keys, { key: "Escape" });
+  const format = screen.getByRole("button", { name: /^Citation format/ });
+  fireEvent.click(format);
+  await screen.findByRole("dialog", { name: "Format" });
+  expect(screen.getAllByRole("dialog")).toHaveLength(1);
+  expect(more.getAttribute("aria-expanded")).toBe("false");
+  expect(format.getAttribute("aria-expanded")).toBe("true");
 });
 
 test.each([false, true])("empty, controls, results, selection, no matches and keys never measure or resize (Larger=%s)", async (larger) => {
@@ -109,11 +100,11 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
   for (const layer of ["More", "output"]) {
     if (layer === "More") fireEvent.keyDown(search, { key: "k", ctrlKey: true });
     else fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
-    const menu = await screen.findByRole("menu");
-    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("searchbox"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    const menu = await screen.findByRole("dialog");
+    fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   }
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   fireEvent.change(search, { target: { value: "work" } });
   await screen.findByRole("option", { name: /First invented work/ });
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });

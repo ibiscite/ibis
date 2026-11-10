@@ -268,7 +268,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
           onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
           disabled={!destination.ready || destination.saving || !ready || searchPending} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
+        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />

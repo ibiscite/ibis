@@ -1,7 +1,8 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { Icon } from "../icons";
-import { keyLabel } from "../keys";
+import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { KeyHint } from "./KeyCaps";
 import { say } from "../i18n";
@@ -18,8 +19,8 @@ export type PaletteItem = {
 };
 /** A titled group. `browsing` groups show only before typing (your few formats);
  * `searching` ones only while typing (the whole catalogue). */
-export type PaletteSection = { id: string; label?: string; items: readonly PaletteItem[]; only?: "browsing" | "searching" };
-export type PaletteClose = "action" | "dismiss" | "command";
+export type PaletteSection = { id: string; label?: string; /** The group's spoken name, when it says more than the heading. */ name?: string; items: readonly PaletteItem[]; only?: "browsing" | "searching" };
+export type PaletteClose = "action" | "dismiss" | "command" | "tab";
 
 const fold = (text: string) => text.normalize("NFD").replace(/\p{M}/gu, "").toLocaleLowerCase();
 
@@ -39,15 +40,18 @@ export function filterPalette(sections: readonly PaletteSection[], query: string
  * unfolds over the picker, takes keys from its first frame, and Esc, its own
  * key or a pick closes it. ↑ ↓ move, Enter runs the highlighted row. An
  * optional preview shows what the highlighted row would do. */
-export function Palette({ id, title, subtitle, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial }: {
+export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial }: {
   id: string;
   /** The palette's name, also the token before the field ("Format", "Actions"). */
   title: string;
   /** Whose choice this is ("for Word", "Thesis"); quiet, after the title. */
   subtitle?: string | null;
+  /** Why the choice stands as it does, read with the palette and shown under the preview. */
+  description?: string;
   placeholder: string;
   sections: readonly PaletteSection[];
   onAction: (id: string) => void;
+  /** Closed. On a dismissal the palette has already returned focus to its opener; the caller may move it on. */
   onClose: (reason: PaletteClose) => void;
   /** What the highlighted row would do, shown beside the list. */
   preview?: (item: PaletteItem) => ReactNode;
@@ -63,17 +67,30 @@ export function Palette({ id, title, subtitle, placeholder, sections, onAction, 
   const items = useMemo(() => shown.flatMap((section) => section.items), [shown]);
   const [highlight, setHighlight] = useState<string | undefined>(initial);
   const current = items.find((item) => item.id === highlight) ?? items[0];
-  const listId = useId(), titleId = useId();
+  const listId = useId(), titleId = useId(), descriptionId = useId();
   const optionId = (item: PaletteItem) => `${id}-${item.id}`;
   const field = useRef<HTMLInputElement>(null);
   const mac = currentPlatform() === "macos";
-  useLayer("menu", true, () => onClose("dismiss"));
-  useLayoutEffect(() => { field.current?.focus({ preventScroll: true }); }, []);
+  // Esc, a click outside or Back hands the keyboard back to whatever had it.
+  const opener = useRef<Element | null>(null);
+  // Once a row runs, the palette is done: an action clearing the way (a sheet
+  // opening) closes it without handing focus back.
+  const acted = useRef(false);
+  const dismiss = () => {
+    if (acted.current) return;
+    const back = opener.current;
+    if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
+    onClose("dismiss");
+  };
+  // A command clearing the way needs the palette gone before it acts.
+  useLayer("menu", true, () => { flushSync(dismiss); });
+  useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
   useLayoutEffect(() => {
-    if (current) document.getElementById(optionId(current))?.scrollIntoView({ block: "nearest" });
+    if (current) document.getElementById(optionId(current))?.scrollIntoView?.({ block: "nearest" });
   });
   const run = (item: PaletteItem | undefined) => {
-    if (!item || item.disabled) return;
+    if (!item || item.disabled || acted.current) return;
+    acted.current = true;
     onAction(item.id);
   };
   const move = (step: number) => {
@@ -81,8 +98,8 @@ export function Palette({ id, title, subtitle, placeholder, sections, onAction, 
     const at = current ? items.indexOf(current) : -1;
     setHighlight(items[Math.min(Math.max(at + step, 0), items.length - 1)]!.id);
   };
-  return <div className="ui-palette-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) onClose("dismiss"); }}>
-    <div className="ui-overlay ui-palette" role="dialog" aria-labelledby={titleId} data-preview={preview ? "" : undefined}>
+  return <div className="ui-palette-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
+    <div className="ui-overlay ui-palette" role="dialog" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} data-preview={preview ? "" : undefined}>
       <div className="ui-palette-head">
         <span id={titleId} className="ui-palette-title">{title}</span>
         {subtitle && <span className="ui-palette-subtitle">{subtitle}</span>}
@@ -96,17 +113,18 @@ export function Palette({ id, title, subtitle, placeholder, sections, onAction, 
             else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
             else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
             else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
-            else if (event.key === "Tab") event.preventDefault();
+            // Tab leaves the palette for Search, as Tab leaves a menu.
+            else if (event.key === "Tab") { event.preventDefault(); acted.current = true; onClose("tab"); }
           }} />
       </div>
       <div className="ui-palette-body">
         <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
           {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
             {section.label && <div className="ui-palette-heading" aria-hidden="true">{section.label}</div>}
-            <ul role="group" aria-label={section.label ?? title}>
+            <ul role="group" aria-label={section.name ?? section.label ?? title}>
               {section.items.map((item) => <li key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
                 aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
-                aria-keyshortcuts={item.keys || undefined} data-active={item === current || undefined}
+                aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
                 onPointerMove={() => { if (highlight !== item.id) setHighlight(item.id); }}
                 onClick={() => run(item)}>
                 <span className="ui-palette-lead" aria-hidden="true">{item.back ? "↩" : item.checked ? <Icon name="check" /> : item.icon}</span>
@@ -118,13 +136,17 @@ export function Palette({ id, title, subtitle, placeholder, sections, onAction, 
           </li>)}
           {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}
         </ul>
-        {preview && current && <div className="ui-palette-preview" aria-live="polite">{preview(current)}</div>}
+        {preview && <div className="ui-palette-preview">
+          <div aria-live="polite">{current && preview(current)}</div>
+          {description && <p id={descriptionId} className="ui-palette-preview-note">{description}</p>}
+        </div>}
+        {!preview && description && <p id={descriptionId} className="visually-hidden">{description}</p>}
       </div>
       <div className="ui-palette-foot">
         {current && !current.disabled && <button type="button" className="ui-palette-action" tabIndex={-1} onClick={() => run(current)}>
           <KeyHint label={actionLabel(current)} keys="Enter" primary />
         </button>}
-        <button type="button" className="ui-palette-back" tabIndex={-1} onClick={() => onClose("dismiss")}>
+        <button type="button" className="ui-palette-back" tabIndex={-1} onClick={dismiss}>
           <KeyHint label={say("palette-back")} keys="Escape" />
         </button>
       </div>

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, paletteRow } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -88,19 +88,17 @@ test.each(["empty search", "choose library"])("every control of the %s screen hi
   } else await waitFor(() => expect(hides(calls)).toBe(before + 1));
 });
 
-test("Esc walks the stack one layer at a time: submenu, menu, search, window", async () => {
+test("Esc walks the stack one layer at a time: palette, search, window", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
-  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
-  await screen.findByRole("menuitemradio", { name: "Compact" });
-  await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(2));
-  act(() => screen.getByRole("menuitemradio", { name: "Compact" }).focus());
+  await chooseFromMore("Keep Window Open");
+  const more = screen.getByRole("button", { name: /^More/ });
+  act(() => more.focus());
+  fireEvent.click(more);
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
-  await waitFor(() => expect(screen.getAllByRole("menu")).toHaveLength(1));
-  press("Escape");
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
+  expect(document.activeElement).toBe(more);
   expect(search().value).toBe("invented");
   press("Escape");
   expect(search().value).toBe("");
@@ -246,9 +244,11 @@ test("focus left on a hidden field moves to a visible control, so Esc and keys s
   await waitFor(() => expect(search().closest("[hidden]")).not.toBeNull());
   act(() => search().focus());
   press("k", { ctrlKey: true });
-  expect(await screen.findByRole("menu", { name: /^More/ })).toBeTruthy();
+  expect(await screen.findByRole("dialog", { name: "Actions" })).toBeTruthy();
   press("Escape");
-  expect(document.activeElement).toBe(more);
+  // Back to a visible control, so the next key still works.
+  expect(document.activeElement?.closest("[hidden]")).toBeNull();
+  expect([more, ...document.querySelectorAll(".choice-row")]).toContain(document.activeElement);
   press("Escape");
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
@@ -288,14 +288,14 @@ test.each(commands)("%s does the same by key and from More", async (name, role, 
     if (native) await waitFor(() => expect(calls).toContain(native));
     const seen = {
       native: native ? calls.filter((call) => call === native).length : 0,
-      menu: screen.queryAllByRole("menu", { name: /^More/ }).length, sheet: document.querySelectorAll(".ui-sheet").length,
+      menu: screen.queryAllByRole("dialog", { name: "Actions" }).length, sheet: document.querySelectorAll(".ui-sheet").length,
     };
     view.unmount();
     await resetApp();
     return seen;
   };
   const byKey = await outcome(() => { press(key, { ctrlKey: true, ...modifiers }); });
-  const byMenu = await outcome(() => chooseFromMore(new RegExp(`^${name}`) as unknown as string, role));
+  const byMenu = await outcome(() => chooseFromMore(new RegExp(`^${name}`)));
   // A toggle leaves its menu open so several can be changed; the key opened none.
   expect({ ...byMenu, menu: 0 }).toEqual({ ...byKey, menu: 0 });
   if (role === "menuitem") expect(byMenu.menu).toBe(0);
@@ -325,10 +325,13 @@ test("More names Keep Window Open the same way on and off, with a check", async 
   backend({ library_status: () => library });
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("true"));
-  fireEvent.click(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }));
-  await waitFor(() => expect(screen.getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false"));
+  const keep = async () => paletteRow(await screen.findByRole("dialog", { name: "Actions" }), "Keep Window Open");
+  await chooseFromMore("Keep Window Open");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect((await keep()).getAttribute("aria-current")).toBe("true");
+  fireEvent.click(await keep());
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await waitFor(async () => expect((await keep()).getAttribute("aria-current")).toBeNull());
 });
 
 test("Settings and a source name the opening that asked, so a late one cannot hide a newer one", async () => {
@@ -347,20 +350,20 @@ test("Settings and a source name the opening that asked, so a late one cannot hi
 test("a command clears every layer in its way, and the keys for an open layer close it", async () => {
   await chosenCitation();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("/", { ctrlKey: true });
   await waitFor(() => expect(document.querySelector(".ui-sheet")).not.toBeNull());
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   expect(document.querySelector(".ui-sheet")).toBeNull();
   press("k", { ctrlKey: true });
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
   press("f", { ctrlKey: true, shiftKey: true });
-  await screen.findByRole("searchbox");
+  await screen.findByRole("dialog", { name: "Format" });
   press("f", { ctrlKey: true, shiftKey: true });
-  expect(screen.queryByRole("searchbox")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Format" })).toBeNull();
   expect(document.activeElement).toBe(search());
 });
 
@@ -373,7 +376,7 @@ test("the inspector stays live: a command opens over it and Esc comes back throu
   await waitFor(() => expect(document.activeElement).toBe(page));
   fireEvent.change(page, { target: { value: "12" } });
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   expect(page.isConnected).toBe(true);
   press(",", { ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
@@ -391,7 +394,7 @@ test("refused: a hide the native side declines leaves the stack working", async 
   await waitFor(() => expect(hides(calls)).toBe(1));
   await reopen();
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
   expect(screen.queryByRole("menu")).toBeNull();
 });
@@ -402,7 +405,7 @@ test("failed I/O: Settings that cannot open says so and leaves the keyboard in S
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press(",", { ctrlKey: true });
   await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
   expect(await screen.findByText(/settings/i)).toBeTruthy();
@@ -421,7 +424,7 @@ test("delayed: a source open that fails after the picker reopened neither report
   await waitFor(() => expect(fail).toBeTypeOf("function"));
   await reopen();
   press("k", { ctrlKey: true });
-  const menu = await screen.findByRole("menu", { name: /^More/ });
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
   await act(async () => { fail({ code: "failed" }); });
   expect(menu.isConnected).toBe(true);
   expect(screen.queryByText(/could not be opened/i)).toBeNull();
@@ -431,7 +434,7 @@ test("delayed: a key pressed while a menu closes acts on what is on screen now",
   await chosenCitation();
   type("invented");
   press("k", { ctrlKey: true });
-  await screen.findByRole("menu", { name: /^More/ });
+  await screen.findByRole("dialog", { name: "Actions" });
   press("Escape");
   press("Escape");
   expect(search().value).toBe("");

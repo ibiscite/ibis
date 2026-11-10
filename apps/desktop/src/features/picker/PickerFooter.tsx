@@ -50,7 +50,7 @@ export function PickerFooter({ library, groupName, hints, altHeld, actions, more
       const actions = [...(hintsRow.current?.children ?? [])];
       const hintGap = hintsRow.current ? parseFloat(getComputedStyle(hintsRow.current).columnGap) || 0 : 0;
       // More, and the pin beside it while the window is kept open.
-      const moreWidth = intrinsic(menu.current?.querySelector(".more-button") ?? null) + width(menu.current?.querySelector(".footer-pinned") ?? null);
+      const moreWidth = intrinsic(menu.current?.querySelector(".more-button") ?? menu.current?.querySelector("button") ?? null) + width(menu.current?.querySelector(".footer-pinned") ?? null);
       const status = preferred + fix + moreWidth + actions.reduce((sum, action) => sum + intrinsic(action), 0)
         + Math.max(0, actions.length - 1) * hintGap + gap * 2 > available;
       // Never the action's own width: its label must not be able to resize More.

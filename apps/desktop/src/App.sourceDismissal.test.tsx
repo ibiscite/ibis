@@ -42,7 +42,7 @@ test("Command-O leaves citation details before exposing a source failure and its
 test.each([false, true])("source opening leaves Copy as before exposing an accessible failure and recovery (Option %s)", async (altKey) => {
   const atOpen: { menu: HTMLElement | null; focus: Element | null }[] = [];
   const open = vi.fn(() => {
-    atOpen.push({ menu: screen.queryByRole("menu"), focus: document.activeElement });
+    atOpen.push({ menu: screen.queryByRole("dialog"), focus: document.activeElement });
     throw { code: "failed" };
   });
   backend({ library_status: () => library, search: () => [result("picked", "Selected invented reference")], open_library_source: open });
@@ -50,8 +50,8 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
   await screen.findByText("Selected invented reference");
   const trigger = within(search().closest("header")!).getByRole("button", { name: /^Citation format / });
   fireEvent.click(trigger);
-  await screen.findByRole("searchbox");
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("searchbox")));
+  await screen.findByRole("combobox", { name: /^Search (\d+ formats|actions)$/ });
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: /^Search (\d+ formats|actions)$/ })));
   press("o", { ctrlKey: true, altKey });
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
   expect(atOpen).toEqual([{ menu: null, focus: search() }]);

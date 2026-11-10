@@ -3,7 +3,7 @@ import type { ProjectStatus } from "../../api";
 import { Icon } from "../../icons";
 import { ariaKeys, keyLabel, keysFor } from "../../keys";
 import { isolate, say } from "../../i18n";
-import { currentPlatform, isMac } from "../../platform";
+import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";
 import { IconButton } from "../../ui/IconButton";
 import { KeyHint } from "../../ui/KeyCaps";
@@ -40,13 +40,17 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   project?: { status: ProjectStatus | null; choose: (() => void) | null; stop: (() => void) | null; copyEntry: (() => void) | null };
 }) {
   const platform = currentPlatform();
+  // Read now, not at load: the platform decides the keys people see.
+  const mac = platform === "macos";
   const action = (id: string, label: string, run: (() => void) | null | undefined, more: Partial<Action> = {}): Action[] =>
     run ? [{ id, label, run, keywords: say(`palette-words-${id}` as never), ...more }] : [];
   const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command) });
   const sections: (PaletteSection & { items: Action[] })[] = [
-    { id: "library", label: libraryDetail?.[0] ?? undefined, items: [
+    // The footer's status already names the library under More; the group's name
+    // says it again only for screen readers, with the last outcome first.
+    { id: "library", label: lastOutcome ?? undefined, name: [lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ") || undefined, items: [
       ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys }) : [],
-      ...action("reveal-source", say("picker-show-source-folder", { platform: isMac ? "macos" : "other" }), actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
+      ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
       ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library" />, ...keyed("chooseSource") }),
     ] },
     // The bibliography keys are checked against, named by its state.
@@ -75,15 +79,15 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const more = keysFor("more");
   return <>
     {pinned && <IconButton icon="pin" className="footer-pinned" isSelected aria-label={say("picker-keep-open")}
-      title={`${say("picker-keep-open-menu")} (${keyLabel(keysFor("pin"), isMac)})`} aria-keyshortcuts={ariaKeys(keysFor("pin"), isMac)} onChange={actions.pin} />}
+      title={`${say("picker-keep-open-menu")} (${keyLabel(keysFor("pin"), mac)})`} aria-keyshortcuts={ariaKeys(keysFor("pin"), mac)} onChange={actions.pin} />}
     <Button ref={buttonRef} variant="quiet" size="small" className="more-button" aria-label={say("picker-more")} aria-haspopup="dialog" aria-expanded={isOpen}
-      title={say("picker-more-title", { keys: keyLabel(more, isMac) })} aria-keyshortcuts={ariaKeys(more, isMac)} onPress={() => onOpenChange(!isOpen)}>
+      title={say("picker-more-title", { keys: keyLabel(more, mac) })} aria-keyshortcuts={ariaKeys(more, mac)} onPress={() => onOpenChange(!isOpen)}>
       <KeyHint label={say("picker-more")} keys={more} platform={platform} hidden />
     </Button>
-    {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")} subtitle={lastOutcome ?? null}
+    {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")}
       placeholder={say("palette-search-actions")} sections={sections} empty={say("palette-no-actions")}
-      onAction={(id) => { onOpenChange(false); run(id); }}
-      onClose={(reason) => { onOpenChange(false); if (reason !== "command") searchRef.current?.focus({ preventScroll: true }); }}
+      onAction={(id) => { onOpenChange(false); searchRef.current?.focus({ preventScroll: true }); run(id); }}
+      onClose={(reason) => { onOpenChange(false); if (reason === "tab") searchRef.current?.focus({ preventScroll: true }); }}
       actionLabel={() => say("palette-run")} />}
   </>;
 }

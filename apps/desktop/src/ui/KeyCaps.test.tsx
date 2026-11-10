@@ -2,7 +2,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
-import { MoreMenu } from "../features/picker/MoreMenu";
+import { PickerMenu } from "../features/picker/PickerMenu";
 import { KeysDialog } from "../features/picker/KeysDialog";
 import { setPlatform } from "../nativeAppearance";
 
@@ -30,7 +30,8 @@ test("footer and More pair actual system keys with their accessible shortcuts", 
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false}
     actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn() }}
-    more={<MoreMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} keys="CmdOrCtrl+K">{null}</MoreMenu>} />;
+    more={<PickerMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} libraryDetail={null} pinned={false} keepOrder={null}
+      actions={{ pin: vi.fn(), keys: vi.fn(), settings: null, format: null, chooseSource: vi.fn(), revealSource: null, quit: vi.fn() }} />} />;
   setPlatform("Win32");
   const { container, rerender } = render(footer());
   const check = (more: string, moreCaps: string[], copyCap: string) => {

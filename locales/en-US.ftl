@@ -723,11 +723,6 @@ writing-project-bibliography-not-saved = The bibliography choice could not be sa
 writing-project-pick = Your pick changes this project’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
-density-name =
-    { $density ->
-        [compact] Compact
-       *[comfortable] Comfortable
-    }
 picker-choose-project = Check Against a .bib File…
 picker-choose-other-project = Check Against Another Bibliography…
 picker-open-zotero = Open Zotero
@@ -765,7 +760,6 @@ picker-pick-heading-default = Default format
 picker-pick-heading-this-paste = This paste only
 picker-paste-from-now-on = Paste into { $app } from Now On
 picker-copy-only = Copy Only
-picker-copy-only-here = Copy Only in { $app }
 picker-preview = Preview
 picker-citation-details = Citation details
 picker-details = Details
@@ -841,15 +835,6 @@ picker-choose-library-menu = Choose Library…
 picker-format-label = Citation format
 picker-quit-label = Quit Ibis
 picker-settings = Settings…
-picker-density = Rows: { $name }
-picker-rows = Rows
-picker-density-examples =
-    { $density ->
-        [compact] 1 line
-       *[comfortable] 2 lines
-    }
-picker-density-title = Show less or more of each reference
-picker-view-changes = View changes
 picker-zotero-libraries = Zotero libraries
 picker-search-in = Search in
 picker-all-libraries = All Libraries

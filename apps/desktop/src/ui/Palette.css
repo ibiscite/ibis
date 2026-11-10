@@ -14,9 +14,9 @@
 .ui-palette-title { flex: none; padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); color: var(--text); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
 .ui-palette-subtitle { flex: none; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-palette-field { flex: 1; min-width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); outline: none; }
-.ui-palette-field:focus-visible { outline: none; box-shadow: none; }
+.ui-palette .ui-palette-field:focus-visible { outline: none; box-shadow: none; }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .ui-palette-field:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
+  .ui-palette .ui-palette-field:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 }
 .ui-palette-body { flex: 1; display: flex; min-height: 0; }
 .ui-palette-list { flex: 1; min-width: 0; margin: 0; padding: var(--space-1); list-style: none; overflow-y: auto; }
@@ -44,6 +44,7 @@
 .ui-palette-preview-text { margin: 0 0 var(--space-2); color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); user-select: text; }
 .ui-palette-preview-text[data-entry] { font-size: var(--type-body-size); line-height: var(--type-body-line); padding-inline-start: var(--space-6); text-indent: calc(-1 * var(--space-6)); }
 .ui-palette-preview-text[data-key] { font-family: var(--mono); }
+.ui-palette-preview > div { display: flex; flex-direction: column; gap: var(--space-2); }
 .ui-palette-preview-note { margin: auto 0 0; color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 .ui-palette-preview-text[data-pending] { color: var(--text-secondary); }
 .ui-palette-foot {
@@ -57,7 +58,7 @@
   .ui-palette-body { flex-direction: column; }
   .ui-palette[data-preview] .ui-palette-list { flex: 1 1 auto; min-width: 0; border-inline-end: 0; border-block-end: var(--border-width) solid var(--separator); }
   .ui-palette-preview { flex: none; padding: var(--space-2) var(--space-3); }
-  .ui-palette-preview > :not(.ui-palette-preview-text:first-of-type) { display: none; }
+  .ui-palette-preview :is(.ui-palette-preview-heading, .ui-palette-preview-note) { display: none; }
 }
 @media (forced-colors: active) {
   .ui-palette-row[data-active] { forced-color-adjust: none; background: Highlight; color: HighlightText; }

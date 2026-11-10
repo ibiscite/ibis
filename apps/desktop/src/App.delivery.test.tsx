@@ -626,7 +626,7 @@ const pastedOnce = async () => {
 const changeLast = async () => {
   const more = screen.getByRole("button", { name: /^More/ });
   await act(async () => { fireEvent.click(more); });
-  await act(async () => { fireEvent.click(screen.getByRole("menuitem", { name: /Change Last Citation/ })); });
+  await act(async () => { fireEvent.click(screen.getByRole("option", { name: /Change Last Citation/ })); });
 };
 
 test("Change Last Citation replaces the old citation only when it is selected", async () => {
@@ -648,9 +648,9 @@ test("⌘E changes the last citation from inside More, and More closes", async (
   harness.document.selection = [7, 11];
   await act(async () => { await harness.reopen(); });
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.getByRole("menuitem", { name: /Change Last Citation/ })).toBeTruthy();
+  expect(screen.getByRole("option", { name: /Change Last Citation/ })).toBeTruthy();
   await act(async () => { fireEvent.keyDown(document.activeElement ?? document.body, { key: "e", code: "KeyE", ctrlKey: true }); });
-  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /Change Last Citation/ })).toBeNull();
   expect(document.activeElement).toBe(searchBox());
   await act(async () => { harness.preview.pending.at(-1)!.complete({ text: "[@a, p. 3]" }); });
   await enter();
@@ -767,7 +767,7 @@ test("the shortcut alone never reopens the last citation", async () => {
 test("More offers no Change Last Citation until this app has one", async () => {
   await open();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^More/ })); });
-  expect(screen.queryByRole("menuitem", { name: /Change Last Citation/ })).toBeNull();
+  expect(screen.queryByRole("option", { name: /Change Last Citation/ })).toBeNull();
 });
 
 test("the last citation is never written anywhere", async () => {

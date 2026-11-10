@@ -184,9 +184,10 @@ test("Keep My Order changes the engine preview and survives a short reopen", asy
   fireEvent.click(await screen.findByText("Zulu work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Alpha work"), { ctrlKey: true });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("a; z"));
-  await chooseFromMore("Keep My Order", "menuitemcheckbox");
-  expect(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }).getAttribute("aria-checked")).toBe("true");
-  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  await chooseFromMore("Keep My Order");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.getByRole("option", { name: "Keep My Order" }).getAttribute("aria-current")).toBe("true");
+  fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Actions" })).getByRole("combobox"), { key: "Escape" });
   await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("z; a"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -468,7 +469,7 @@ test("page and form survive changing output and remain editable", async () => {
   const search = screen.getByLabelText("Search references");
   closeCitationDetails();
   fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Citation format Pandoc" }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst" }));
+  fireEvent.click(screen.getByRole("option", { name: "Typst" }));
   await waitFor(() => expect(previews.at(-1)?.output).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
   page = await openCitationDetails();
