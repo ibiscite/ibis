@@ -244,6 +244,23 @@ pub(crate) struct Resolver<'a, 's> {
     entries: &'a [RawEntry<'s>],
     index: HashMap<String, usize>,
     index_folded: HashMap<String, usize>,
+    /// Work counts that let tests prove a wide file stays linear without a clock.
+    #[cfg(test)]
+    work: Work,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct Work {
+    /// Field values expanded, across every entry and parent evaluation.
+    expansions: Cell<usize>,
+    /// Field-name index lookups: one per own field and one per merged candidate.
+    name_probes: Cell<usize>,
+}
+
+#[cfg(test)]
+fn tick(cell: &Cell<usize>) {
+    cell.set(cell.get() + 1);
 }
 
 /// An entry ready for parsing, plus problems found while resolving it.
@@ -297,7 +314,16 @@ impl<'a, 's> Resolver<'a, 's> {
             entries,
             index,
             index_folded,
+            #[cfg(test)]
+            work: Work::default(),
         }
+    }
+
+    /// One field-name lookup in an index (never a search through the fields).
+    fn indexed<T>(&self, lookup: T) -> T {
+        #[cfg(test)]
+        tick(&self.work.name_probes);
+        lookup
     }
 
     fn find(&self, key: &str) -> Option<usize> {
@@ -438,6 +464,8 @@ impl<'a, 's> Resolver<'a, 's> {
                 return Rc::default();
             }
             let mut field_problems = Vec::new();
+            #[cfg(test)]
+            tick(&self.work.expansions);
             let value = self.expand(
                 &field.name,
                 &field.parts,
@@ -474,7 +502,7 @@ impl<'a, 's> Resolver<'a, 's> {
                 "crossref" => crossref_key = Some(super::convert::literal_value(&value)).filter(|k| !k.is_empty()),
                 _ => {
                     // As in Biber and Pandoc, a repeated field keeps its last value.
-                    if let Some(&position) = own_positions.get(field.name.as_str()) {
+                    if let Some(&position) = self.indexed(own_positions.get(field.name.as_str())) {
                         let existing = &mut own[position];
                         if root {
                             walk.problems
@@ -614,7 +642,8 @@ impl<'a, 's> Resolver<'a, 's> {
                 ) {
                     return Rc::default();
                 }
-                if !DATE_PARTS.contains(&field.name.as_str()) && merged_names.insert(field.name.as_str()) {
+                if !DATE_PARTS.contains(&field.name.as_str()) && self.indexed(merged_names.insert(field.name.as_str()))
+                {
                     merged.push(field.clone());
                 }
             }
@@ -1434,18 +1463,18 @@ mod tests {
     }
 
     #[test]
-    fn wide_parent_shared_children_finish_before_the_deadline() {
-        use std::process::Command;
-        use std::time::{Duration, Instant};
-
-        const CHILD: &str = "IBIS_FIELD_LOOKUP_TEST_CHILD";
-        if std::env::var_os(CHILD).is_some() {
+    fn wide_parent_and_shared_children_resolve_in_linear_work() {
+        // One parent with `width` fields and `children` entries that crossref it.
+        // Work is counted, not timed (#152), so a slow shared runner cannot fail
+        // it. Re-expanding the shared parent, or a name lookup that stops using
+        // the field-name indexes, changes the counts.
+        fn run(width: usize, children: usize) -> (usize, usize) {
             let mut text = String::from("@book{parent,title={Parent}");
-            for i in 0..4_000 {
+            for i in 0..width {
                 text.push_str(&format!(",field{i:05}={{Value{i:05}}}"));
             }
             text.push_str("}\n");
-            for i in 0..20 {
+            for i in 0..children {
                 text.push_str(&format!("@inbook{{child{i},title={{Child}},crossref={{parent}}}}\n"));
             }
             let entries: Vec<_> = split_blocks(&text)
@@ -1455,17 +1484,17 @@ mod tests {
                 .collect();
             let budget = Budget::new(usize::MAX);
             let resolver = Resolver::new(Vec::new(), &entries, &budget);
-            let start = Instant::now();
             for i in 0..entries.len() {
                 let resolved = resolver.resolve(i);
-                assert_eq!(resolved.fields.len(), 4_000 + if i == 0 { 1 } else { 2 });
+                let last = format!("field{:05}", width - 1);
+                assert_eq!(resolved.fields.len(), width + if i == 0 { 1 } else { 2 });
                 assert_eq!(
                     resolved.fields.get("field00000").map(String::as_str),
                     Some("Value00000")
                 );
                 assert_eq!(
-                    resolved.fields.get("field03999").map(String::as_str),
-                    Some("Value03999")
+                    resolved.fields.get(&last).map(String::as_str),
+                    Some(format!("Value{:05}", width - 1).as_str())
                 );
                 assert_eq!(
                     resolved.fields.get("title").map(String::as_str),
@@ -1476,32 +1505,22 @@ mod tests {
                 }
                 assert!(resolved.problems.is_empty());
             }
-            eprintln!("synthetic resolver: {:?}", start.elapsed());
-            return;
+            (resolver.work.expansions.get(), resolver.work.name_probes.get())
         }
-        // Keep the deadline outside the resolver process so a regression cannot hang CI.
-        let mut child = Command::new(std::env::current_exe().unwrap_or_else(|e| panic!("{e:?}")))
-            .args([
-                "--exact",
-                "bibtex::resolve::tests::wide_parent_shared_children_finish_before_the_deadline",
-                "--nocapture",
-            ])
-            .env(CHILD, "1")
-            .spawn()
-            .unwrap_or_else(|e| panic!("{e:?}"));
-        let start = Instant::now();
-        loop {
-            if let Some(status) = child.try_wait().unwrap_or_else(|e| panic!("{e:?}")) {
-                assert!(status.success());
-                break;
-            }
-            if start.elapsed() >= Duration::from_secs(2) {
-                child.kill().unwrap_or_else(|e| panic!("{e:?}"));
-                child.wait().unwrap_or_else(|e| panic!("{e:?}"));
-                panic!("synthetic resolver exceeded the 2 second deadline");
-            }
-            std::thread::sleep(Duration::from_millis(10));
-        }
+        let (width, children) = (4_000, 20);
+        let parent = width + 1;
+        let (expansions, name_probes) = run(width, children);
+        // The parent is expanded once as itself and once for the first child;
+        // the other children reuse that snapshot and expand only their own two fields.
+        assert_eq!(expansions, 2 * parent + 2 * children);
+        // Each parent evaluation looks up its own fields once and merges them once.
+        // The first child does the same for its title plus the parent's fields,
+        // and the others replay the cached parent. Every lookup is one probe.
+        assert_eq!(name_probes, 2 * 2 * parent + children * (1 + 1 + parent));
+        // Doubling the children adds only their own work, never another parent pass.
+        let (more_expansions, more_probes) = run(width, 2 * children);
+        assert_eq!(more_expansions - expansions, 2 * children);
+        assert_eq!(more_probes - name_probes, children * (1 + 1 + parent));
     }
 
     #[test]
