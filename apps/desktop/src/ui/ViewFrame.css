@@ -19,7 +19,8 @@
   flex: none; --icon-button-size: var(--field-h); border-radius: var(--r-control);
   margin-inline: calc(var(--row-pad) + (var(--tile) - var(--field-h)) / 2) calc((var(--tile) - var(--field-h)) / 2 + var(--row-gap));
 }
-.ui-view-title { flex: none; margin: 0 var(--space-3) 0 0; padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); color: var(--text); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
+.ui-view-title { flex: none; min-width: 0; margin: 0 var(--space-3) 0 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
+.ui-view-title[data-chip] { padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 /* A view's search is the picker's: frameless and large. */
 .ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
 .ui-view .ui-view-field:focus-visible { outline: none; box-shadow: none; }

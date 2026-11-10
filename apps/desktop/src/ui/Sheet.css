@@ -1,11 +1,11 @@
-/* [C13] A sheet's body inside ui/ViewFrame: the only part that scrolls, its text on
-   a readable measure from the title column, so nothing touches the window's edge. */
-.ui-sheet-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-4) var(--inset) var(--space-4) calc(var(--inset) + var(--row-pad) + var(--title-start)); }
+/* [C13] A sheet's body inside ui/ViewFrame: the only part that scrolls, with one
+   content inset on both sides, the list's own (--inset), so its cards sit evenly in
+   the window and its words, headings and cards share one leading edge. */
+.ui-sheet-body { flex: 1; min-width: 0; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-4) var(--inset); }
 .ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
-.ui-sheet-content { max-width: 42rem; }
 .ui-sheet-content > :first-child { margin-block-start: 0; }
 .ui-sheet-body p { margin: var(--space-2) 0; }
-.ui-sheet-body :is(h3, h4) { margin-block: var(--space-4) 0; }
+.ui-sheet-body :is(h3, h4) { margin-block: var(--space-4) 0; padding-inline: 0; }
 .ui-sheet-note { color: var(--text-secondary); }
 /* What will be copied or saved: kept as written and selectable, on a card. */
 .ui-sheet-body .ui-sheet-output { margin: 0; padding: var(--space-3) var(--settings-row-pad); white-space: pre-wrap; user-select: text; }
