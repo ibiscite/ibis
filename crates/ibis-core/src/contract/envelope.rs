@@ -137,6 +137,9 @@ pub enum ErrorReason {
     UnknownLocale,
     /// The key is repeated in a library, so every entry under it is skipped.
     DuplicateKey,
+    /// The entry with this key is damaged, so it is skipped; the library's
+    /// warnings say where and why.
+    DamagedEntry,
     /// Several references share the key.
     AmbiguousKey,
     /// A key output needs a citation key this reference does not have.

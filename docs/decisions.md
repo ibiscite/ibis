@@ -84,6 +84,9 @@ the anchor older links use.
 ## 0041 System appearance follows the Linux desktop's dark preference
 [0041](decisions/0041-linux-system-appearance.md): on Linux, System follows the desktop portal's colour scheme or a dark GTK theme; Light and Dark still win.
 
+## 0042 Formats, apps and writings
+[0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
+
 ## 0044 The citation line is a token field
 [0044](decisions/0044-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
 
