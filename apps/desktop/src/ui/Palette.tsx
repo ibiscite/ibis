@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { Icon } from "../icons";
@@ -40,7 +40,7 @@ export function filterPalette(sections: readonly PaletteSection[], query: string
  * takes the picker's place (ui/ViewFrame), takes keys from its first frame, and Esc, its own
  * key or a pick closes it. ↑ ↓ move, Enter runs the highlighted row. An
  * optional preview shows what the highlighted row would do. */
-export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial }: {
+export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial, invoker }: {
   id: string;
   /** The palette's name, also the token before the field ("Format", "Actions"). */
   title: string;
@@ -61,6 +61,9 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   empty: string;
   /** The row highlighted on opening, such as the current format. */
   initial?: string;
+  /** The button that opens it. Esc and Back return the keyboard there, as a menu
+   * returns to its button, however the palette was opened (its key or a click). */
+  invoker?: RefObject<HTMLElement | null>;
 }) {
   const [query, setQuery] = useState("");
   const shown = useMemo(() => filterPalette(sections, query), [sections, query]);
@@ -80,7 +83,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const dismiss = () => {
     if (acted.current) return;
     leave();
-    const back = opener.current;
+    const back = invoker?.current ?? opener.current;
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
   };

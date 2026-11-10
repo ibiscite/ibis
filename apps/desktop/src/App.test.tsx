@@ -1460,9 +1460,11 @@ test("Ctrl+K opens More's actions with their keys, Escape closes it before hidin
   }
   fireEvent.keyDown(field, { key: "Escape" });
   expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
-  expect(document.activeElement).toBe(box);
+  // Escape returns to More, as a menu returns to its button, even when its key opened it.
+  const more = screen.getByRole("button", { name: /^More/ });
+  expect(document.activeElement).toBe(more);
   expect(calls).not.toContain("hide_picker");
-  fireEvent.keyDown(box, { key: "Escape" });
+  fireEvent.keyDown(more, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   fireEvent.click(screen.getByRole("button", { name: /^More/ }));
   fireEvent.click(within(screen.getByRole("dialog", { name: "Actions" })).getByRole("button", { name: "Back" }));

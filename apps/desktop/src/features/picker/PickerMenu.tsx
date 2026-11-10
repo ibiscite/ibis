@@ -1,4 +1,4 @@
-import type { Ref, RefObject } from "react";
+import type { RefObject } from "react";
 import type { ProjectStatus } from "../../api";
 import { Icon } from "../../icons";
 import { ariaKeys, keyLabel, keysFor } from "../../keys";
@@ -21,7 +21,7 @@ type Action = PaletteItem & { run: () => void };
 export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, pinned, keepOrder, actions, source, project }: {
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
-  buttonRef: Ref<HTMLButtonElement>; searchRef: RefObject<HTMLElement | null>;
+  buttonRef: RefObject<HTMLButtonElement | null>; searchRef: RefObject<HTMLElement | null>;
   /** Where the references come from and how fresh they are. */
   libraryDetail: [string, string | null] | null;
   lastOutcome?: string | null;
@@ -84,7 +84,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       title={say("picker-more-title", { keys: keyLabel(more, mac) })} aria-keyshortcuts={ariaKeys(more, mac)} onPress={() => onOpenChange(!isOpen)}>
       <KeyHint label={say("picker-more")} keys={more} platform={platform} hidden />
     </Button>
-    {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")}
+    {isOpen && <Palette id="actions-palette" title={say("palette-actions-title")} invoker={buttonRef}
       placeholder={say("palette-search-actions")} sections={sections} empty={say("palette-no-actions")}
       onAction={(id) => { onOpenChange(false); searchRef.current?.focus({ preventScroll: true }); run(id); }}
       onClose={(reason) => { onOpenChange(false); if (reason === "tab") searchRef.current?.focus({ preventScroll: true }); }}
