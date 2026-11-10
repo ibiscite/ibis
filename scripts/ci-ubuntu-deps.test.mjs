@@ -54,7 +54,7 @@ test("desktop CI keeps the runner's mirror choices and stops after a failed inde
   assert.equal(ready.status, 0, ready.stderr);
   assert.equal(ready.used, "");
   assert.equal(ready.sources, ubuntuSources);
-  assert.deepEqual(ready.calls.filter((line) => line.startsWith("timeout ")), ["timeout 5m", "timeout 5m"]);
+  assert.deepEqual(ready.calls.filter((line) => line.startsWith("timeout ")), ["timeout 15m", "timeout 15m"]);
   assert.match(ready.calls[1], /-o APT::Update::Error-Mode=any update$/);
   assert.match(ready.calls[3], / install -y --no-install-recommends libwebkit2gtk-4\.1-dev\b/);
   const failed = run("desktop", { failure: "update" });
