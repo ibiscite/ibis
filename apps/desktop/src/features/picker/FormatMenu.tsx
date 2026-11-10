@@ -8,7 +8,8 @@ import { ToolbarMenu, type ToolbarMenuSection, type MenuCloseReason } from "../.
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The copy format menu: the engine's key syntaxes and common styles, each
- * by its one name, with what it writes and a style's full title beside it. Picking one remembers it for the app; without an app it is the
+ * by its one name only; what it writes and a style's full title are found by
+ * the filter, never drawn, so the menu stays narrow and quiet. Picking one remembers it for the app; without an app it is the
  * default. The menu says which applies and why.
  * Styles stay listed but unavailable while the engine is not offered.
  * Focus goes back to the search box after a pick, Escape or Tab. */
@@ -40,7 +41,7 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
       { id: "copy-only", label: say("picker-copy-only"), command: true },
     ] }] : [],
     { id: "key-formats", label: say("picker-key-formats"), items: keyOutputs.map((output) => (
-      { id: output.id, label: output.name, sample: output.example ?? undefined })) },
+      { id: output.id, label: output.name, keywords: output.example ?? undefined })) },
     { id: "citation-styles", label: say("picker-formatted-styles"), items: styleOutputs.map((output) => (
       { id: output.id, label: output.name, keywords: output.description ?? undefined, disabled: !styles })) },
   ];
@@ -53,7 +54,7 @@ export function FormatMenu({ format, buttonRef, app, source, pick, onOpenChange,
   // One line says where a pick goes; the full reason is the menu's description.
   const heading = writingProject ? say("picker-for-app", { app: writingProject.name }) : pick === "paste" ? say("picker-pick-heading-this-paste")
     : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
-  return <><span role="status" className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={say("picker-copy-as")} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
+  return <><span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span><ToolbarMenu buttonRef={buttonRef} onOpenChange={onOpenChange} buttonShortcut={ariaKeys(keysFor("format"), isMac)} disabled={disabled} label={say("picker-format-label")} value={value} heading={heading} note={`${why} ${next}`.trim()} sections={sections} selectedKey={format}
     filterLabel={say("picker-filter-formats")} onAction={(key) => {
       if (key === "writing-projects") onWritingProjects?.();
       else if (key === "paste" || key === "copy-only") onPasteChange?.(key);

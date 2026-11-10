@@ -48,7 +48,8 @@ export function SideResults({ label, status, empty, results, onChoose }: {
   return <>
     <p className="visually-hidden" role="status">{status}</p>
     <ListBox className="ui-side-navigation" aria-label={label} selectionMode="none" onAction={(key) => onChoose(String(key))}>
-      {results.map((result) => <ListBoxItem key={result.id} id={result.id} textValue={result.label} aria-label={`${result.label}, ${result.pageLabel}`} className="ui-side-navigation-item">
+      {results.map((result) => <ListBoxItem key={result.id} id={result.id} textValue={result.label}
+        aria-label={result.label === result.pageLabel ? result.label : `${result.label}, ${result.pageLabel}`} className="ui-side-navigation-item">
         <SideRow page={result.page} tile={result.tile}>{result.label}</SideRow>
       </ListBoxItem>)}
     </ListBox>
