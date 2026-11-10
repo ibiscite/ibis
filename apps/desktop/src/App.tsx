@@ -11,6 +11,7 @@ import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
 import type { FormatPreview } from "./features/picker/FormatMenu";
+import { previewOf } from "./format/outputs";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
@@ -189,14 +190,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
-  // The format chooser's preview: the chosen references in another format,
-  // asked of the engine as the preview is, cancelled by a newer ask.
-  const { ask } = output;
-  const formatPreview = useCallback<FormatPreview>(async (other, signal) => {
-    if (!ask) return null;
-    const preview = await api.previewFileCitation(ask.selection, other, ask.revision, signal, ask.projectContext, ask.keepOrder);
-    return preview.text;
-  }, [ask, api]);
+  // The format chooser's preview reads the chosen references' keys and never asks
+  // the engine: an engine preview would replace the ticket the shelf copies with.
+  const previewKeys = output.ask?.selection.map((item) => item.cite).filter(Boolean).join("\u0000") ?? "";
+  const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,

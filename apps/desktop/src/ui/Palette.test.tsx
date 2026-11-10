@@ -61,3 +61,10 @@ test("Esc returns the keyboard to what opened it; Tab leaves for the caller to p
   expect(second.onClose).toHaveBeenCalledWith("tab");
   void field;
 });
+
+test("a press outside the field keeps the keyboard there, so keys still drive the palette", () => {
+  const { field } = open();
+  expect(fireEvent.mouseDown(screen.getByText("Formats"))).toBe(false);
+  fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
+  expect(field.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: /^IEEE/ }).id);
+});

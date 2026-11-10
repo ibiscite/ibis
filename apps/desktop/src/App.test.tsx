@@ -3383,6 +3383,28 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
+test("the format chooser previews without asking the engine, so Enter still copies the shelf's citation", async () => {
+  const calls = backend({ search: () => [result("a", "First")], copy_file_citation: () => ({ text: "[@a]", warnings: [] }) });
+  render(<App />);
+  const box = screen.getByLabelText("Search references");
+  fireEvent.change(box, { target: { value: "first" } });
+  await screen.findByText("First");
+  await waitFor(() => expect(calls).toContain("preview_file_citation"));
+  const previews = calls.filter((call) => call === "preview_file_citation").length;
+  act(() => formatButton().focus());
+  fireEvent.keyDown(formatButton(), { key: "ArrowDown" });
+  const palette = await screen.findByRole("dialog", { name: "Format" });
+  const field = within(palette).getByRole("combobox");
+  fireEvent.keyDown(field, { key: "ArrowDown" });
+  fireEvent.keyDown(field, { key: "ArrowDown" });
+  expect(palette.querySelector(".ui-palette-preview-text")?.textContent).toMatch(/a/);
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 120)); });
+  fireEvent.keyDown(field, { key: "Escape" });
+  expect(calls.filter((call) => call === "preview_file_citation")).toHaveLength(previews);
+  fireEvent.keyDown(box, { key: "Enter" });
+  await waitFor(() => expect(calls).toContain("copy_file_citation"));
+});
+
 test("engine citation styles are reachable and save their choice without copying", async () => {
   const saved = vi.fn(() => null);
   backend({ picker_preferences_saved: saved });

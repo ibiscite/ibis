@@ -1,8 +1,8 @@
-import { useEffect, useState, type RefObject } from "react";
+import { useState, type RefObject } from "react";
 import { ariaKeys, keysFor } from "../../keys";
 import { isMac } from "../../platform";
 import type { AppPaste } from "../../api";
-import { isStyle, keyOutputs, listedOutput, outputName, outputOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
+import { isStyle, keyOutputs, listedOutput, outputName, outputOf, previewOf, styleOutputs, type OutputChoice, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Palette, type PaletteClose, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { PopupButton } from "../../ui/PopupButton";
@@ -10,8 +10,8 @@ import type { FormatPick, FormatSource } from "./useDestination";
 
 /** What closed the chooser: a pick, a dismissal, or a command clearing the way. */
 export type MenuCloseReason = PaletteClose;
-/** The citation as it would be pasted in another format, or null when it can't be. */
-export type FormatPreview = (output: OutputId, signal: AbortSignal) => Promise<string | null>;
+/** How another format would show the chosen references, or null when it can't say. */
+export type FormatPreview = (output: OutputId) => ReturnType<typeof previewOf>;
 
 // The formats chosen in this run of Ibis, newest first: the chooser's short list.
 const recent: OutputId[] = [];
@@ -99,7 +99,9 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     <span role="status" aria-label={say("picker-format-label")} className="visually-hidden">{`${name}. ${why}`}</span>
     <PopupButton ref={buttonRef} aria-keyshortcuts={ariaKeys(keysFor("format"), isMac)} isDisabled={disabled} className="toolbar-menu-button"
       aria-label={`${say("picker-format-label")} ${value}`} aria-expanded={open} aria-haspopup="dialog"
-      onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}>{value}</PopupButton>
+      onPress={() => { if (open) close("dismiss"); else { setOpen(true); onOpenChange?.(true); } }}
+      // ↓ opens it too, as on every pop-up button.
+      onKeyDown={(event) => { if (event.key === "ArrowDown" && !open && !disabled) { setOpen(true); onOpenChange?.(true); } else event.continuePropagation(); }}>{value}</PopupButton>
     {open && <Palette id="format-palette" title={say("picker-format-title")} subtitle={whose} placeholder={say("palette-search-formats", { count: keyOutputs.length + styleOutputs.length })}
       sections={sections} initial={back ? "back" : format} onAction={choose} onClose={close} empty={say("palette-no-formats")}
       actionLabel={(item) => item.back || listedOutput(item.id) ? say(pick === "paste" ? "palette-use-this-paste" : pick === "default" || !app ? "palette-use-default" : "palette-use-for-app", { app: writingProject?.name ?? app ?? "" }) : say("palette-run")}
@@ -107,24 +109,17 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
   </>;
 }
 
-/** The highlighted format's real citation for the chosen references, asked of
- * the engine as the highlight moves; a newer highlight cancels the older ask. */
+/** The highlighted format's citation for the chosen references: a key syntax with
+ * their real key, a style by the engine's invented example (only the engine
+ * formats real references, and asking it here would replace the shelf's copy). */
 function FormatPreviewPane({ output, preview }: { output: OutputId | null; preview: FormatPreview | null }) {
-  const [shown, setShown] = useState<{ output: OutputId; text: string | null } | null>(null);
-  useEffect(() => {
-    if (!output || !preview) return;
-    const abort = new AbortController();
-    const timer = window.setTimeout(() => {
-      void preview(output, abort.signal).then((text) => { if (!abort.signal.aborted) setShown({ output, text }); }, () => { if (!abort.signal.aborted) setShown({ output, text: null }); });
-    }, 60);
-    return () => { window.clearTimeout(timer); abort.abort(); };
-  }, [output, preview]);
+  const shown = output && preview ? preview(output) : null;
   if (!output) return null;
-  const ready = shown?.output === output;
   return <>
-    <h3 className="ui-palette-preview-heading">{say(isStyle(output) ? "palette-preview-text" : "palette-preview-key")}</h3>
-    <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} data-pending={!ready || undefined} dir="auto">
-      {!preview ? say("palette-preview-choose") : ready ? shown.text ?? say("palette-preview-none") : say("palette-preview-pending")}
+    <h3 className="ui-palette-preview-heading">{say(shown?.example ? "palette-preview-example" : "palette-preview-key")}</h3>
+    <p className="ui-palette-preview-text" data-key={!isStyle(output) || undefined} dir="auto">
+      {shown ? shown.text : say("palette-preview-none")}
     </p>
+    {shown && shown.more > 0 && <p className="ui-palette-preview-note">{say("palette-preview-more", { count: shown.more })}</p>}
   </>;
 }

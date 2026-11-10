@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { Icon } from "../icons";
@@ -98,8 +98,21 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     const at = current ? items.indexOf(current) : -1;
     setHighlight(items[Math.min(Math.max(at + step, 0), items.length - 1)]!.id);
   };
+  // Keys belong to the whole palette, so they work wherever in it the keyboard is.
+  const keyDown = (event: ReactKeyboardEvent) => {
+    if (composing(event.nativeEvent)) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); move(event.key === "ArrowDown" ? 1 : -1); }
+    else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
+    else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
+    else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
+    // Tab leaves the palette for Search, as Tab leaves a menu.
+    else if (event.key === "Tab") { event.preventDefault(); acted.current = true; onClose("tab"); }
+  };
   return <div className="ui-palette-scrim" onPointerDown={(event) => { if (event.target === event.currentTarget) dismiss(); }}>
-    <div className="ui-overlay ui-palette" role="dialog" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} data-preview={preview ? "" : undefined}>
+    <div className="ui-overlay ui-palette" role="dialog" aria-labelledby={titleId} aria-describedby={description ? descriptionId : undefined} data-preview={preview ? "" : undefined}
+      onKeyDown={keyDown}
+      // A press anywhere but the field leaves the keyboard in the field; clicks still act.
+      onMouseDown={(event) => { if (event.target !== field.current) event.preventDefault(); }}>
       <div className="ui-palette-head">
         <span id={titleId} className="ui-palette-title">{title}</span>
         {subtitle && <span className="ui-palette-subtitle">{subtitle}</span>}
@@ -107,15 +120,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
           aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={current ? optionId(current) : undefined}
           autoComplete="off" spellCheck={false} value={query}
           onChange={(event) => { setQuery(event.target.value); setHighlight(undefined); }}
-          onKeyDown={(event) => {
-            if (composing(event.nativeEvent)) return;
-            if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); move(event.key === "ArrowDown" ? 1 : -1); }
-            else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
-            else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
-            else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
-            // Tab leaves the palette for Search, as Tab leaves a menu.
-            else if (event.key === "Tab") { event.preventDefault(); acted.current = true; onClose("tab"); }
-          }} />
+          />
       </div>
       <div className="ui-palette-body">
         <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
