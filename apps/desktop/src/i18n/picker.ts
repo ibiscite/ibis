@@ -166,8 +166,6 @@ export const PICKER_IDS = [
   "writing-project-empty",
   "writing-project-use",
   "writing-project-selected",
-  "writing-project-selected-label",
-  "writing-project-format",
   "writing-project-bibliography",
   "writing-project-no-bibliography",
   "writing-project-choose-bibliography",

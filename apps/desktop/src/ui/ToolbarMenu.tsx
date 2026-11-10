@@ -47,6 +47,8 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
   useLayoutEffect(() => { if (open) setSkipExit(false); }, [open]);
   const { contains } = useFilter({ sensitivity: "base" });
   const filtered = sections.reduce((sum, section) => sum + section.items.length, 0) > 7;
+  // A menu of names alone is narrower than one that also shows samples or notes.
+  const named = sections.every((section) => section.items.every((item) => !item.sample && !item.note));
   function changeOpen(next: boolean, reason: MenuCloseReason = "dismiss") {
     if (next) {
       setOpen(true);
@@ -89,7 +91,7 @@ export function ToolbarMenu({ buttonRef, buttonShortcut, disabled, label, value,
     }}>
     <MenuTrigger isOpen={open} onOpenChange={(next) => changeOpen(next)}>
       <PopupButton ref={button} aria-keyshortcuts={buttonShortcut} isDisabled={disabled} className={`toolbar-menu-button ${drawn?.className ?? ""}`} size={drawn ? "small" : undefined} variant={drawn?.quiet ? "quiet" : undefined} title={drawn?.title} aria-label={drawn?.label ?? `${label} ${value}`}>{drawn?.content ?? value}</PopupButton>
-      <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined}
+      <Popover ref={wholeRows} className="menu-popover toolbar-menu-popover ui-overlay" data-anchor={placement === "bottom start" ? "field" : undefined} data-named={named || undefined}
         // [C21] Never narrower than its button: React Aria measures the trigger.
         style={placement === "bottom start" ? { minWidth: "min(var(--trigger-width), calc(100vw - 2 * var(--inset)))" } : undefined} placement={renderedPlacement} offset={4} containerPadding={8} shouldSkipAnimation={skipExit} {...boundary}>
         {heading && <p className="menu-heading toolbar-menu-heading" aria-hidden="true">{heading}</p>}

@@ -372,7 +372,7 @@ ask "In TextEdit type smith 2020, select it, summon Ibis, pick any reference and
   "Did smith 2020 open as the search, selected, and did the citation replace it in TextEdit?"
 ask "In TextEdit select a whole long paragraph, summon Ibis, pick a reference and press Enter." \
   "Did the search open empty, and did Ibis copy without touching the paragraph?"
-ask "In the Copy as menu, choose APA, then search: sleep and press Enter." \
+ask "In the format menu, choose APA, then search: sleep and press Enter." \
   "Does the APA citation look right?"
 ask "Put Safari or TextEdit in full screen, summon Ibis, copy, then press Escape." \
   "Did Ibis appear over the full-screen app, and were you back in it afterwards?"

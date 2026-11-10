@@ -10,8 +10,8 @@ import { backend, prepared, receipt, resetApp, result, type PreviewRequest } fro
 afterEach(resetApp);
 const WORD: PickerDestination = { app: "Example Word", app_id: "example.word", app_identity: null, automatic: "apa", remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
 const BROWSER: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
-const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
-const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
+const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
+const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Citation format ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
 async function pick(name: string) {
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
@@ -226,7 +226,7 @@ test.each(["More", "Keyboard Shortcuts"])("opening %s cancels a first-paste pick
   const role = overlay === "More" ? "menu" : "dialog";
   await screen.findByRole(role, { name: new RegExp(`^${overlay}`) });
   await act(async () => finish());
-  await waitFor(() => expect(button.getAttribute("aria-label")).toBe("Copy as APA · Example Browser"));
+  await waitFor(() => expect(button.getAttribute("aria-label")).toBe("Citation format APA · Example Browser"));
   expect(copies).toEqual([]);
   expect(calls).not.toContain("hide_picker");
   fireEvent.keyDown(screen.getByRole(role), { key: "Escape" });

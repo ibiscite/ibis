@@ -8,7 +8,7 @@
 }
 .ui-sheet:focus { outline: none; }
 .ui-sheet-heading { flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--space-2); padding-block: var(--space-2); padding-inline: var(--space-4) var(--space-2); }
-.ui-sheet-heading h2 { margin: 0; font-size: inherit; font-weight: var(--strong); }
+.ui-sheet-heading h2 { margin: 0; font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); }
 .ui-sheet-body { flex: 0 1 auto; min-height: 0; overflow-y: auto; overflow-wrap: anywhere; padding: var(--space-2) var(--space-4) var(--space-4); }
 .ui-sheet-body:focus-visible { outline-offset: var(--ring-inside); }
 .ui-sheet-body > :first-child { margin-block-start: 0; }
@@ -24,7 +24,21 @@
 .ui-sheet-list { display: flex; flex-direction: column; margin: var(--space-3) 0; padding: 0; list-style: none; }
 /* What the row is about takes the room; its buttons keep theirs. */
 .ui-sheet-row > :first-child:not(button) { display: flex; flex: 1; flex-direction: column; min-width: 0; }
-.ui-sheet-section { margin-block: var(--space-3); padding-block-start: var(--space-2); border-block-start: var(--border-width) solid var(--separator); }
+/* A choice row: the row is the button, so its fill hugs the row inside the card. */
+.ui-sheet-choice-row { padding: 0; }
+.ui-sheet-choice {
+  display: flex; flex: 1; align-items: center; gap: var(--space-4); min-height: var(--settings-row-h); padding: var(--space-2) var(--settings-row-pad);
+  border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: start; cursor: default;
+}
+@media (hover: hover) { .ui-sheet-choice[data-hovered]:not([data-disabled]) { background: var(--fill-quiet-hover); } }
+.ui-sheet-choice[data-pressed] { background: var(--fill-control-hover); }
+/* Inside the card, so the ring is drawn inward and outranks the window-wide ring. */
+.ui-sheet .ui-sheet-choice:is(:focus-visible, [data-focus-visible]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-inside); }
+.ui-sheet-choice[data-disabled] { color: var(--text-disabled); }
+.ui-sheet-check { flex: none; display: inline-flex; width: var(--icon-small); height: var(--icon-small); color: var(--accent-text); }
+.ui-sheet-check > svg { width: 100%; height: 100%; }
+/* A titled part of the body is a Settings group: its heading, then its card. */
+.ui-sheet-section { margin-block: var(--space-4) var(--space-3); }
 .ui-sheet-section > :is(h3, h4):first-child { margin-block-start: 0; }
 /* Reserves a line for a spinner or a problem, so nothing above it moves. */
 .ui-sheet-status { min-height: var(--control-small-h); margin-block-start: var(--space-2); }

@@ -13,7 +13,7 @@ function Example({ projects = () => undefined }: { projects?: () => void }) {
 
 test("the selected project stays visible and the format menu explains where changes go", () => {
   render(<Example />);
-  const format = screen.getByRole("button", { name: /^Copy as .*Thesis$/ });
+  const format = screen.getByRole("button", { name: /^Citation format .*Thesis$/ });
   expect(format.textContent).toContain("Thesis");
   expect(format.textContent).not.toContain("Example Browser");
   fireEvent.click(format);
@@ -25,7 +25,7 @@ test("the selected project stays visible and the format menu explains where chan
 test("Writing Projects opens its sheet without choosing a citation format", () => {
   const projects = vi.fn();
   render(<Example projects={projects} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
+  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
   fireEvent.click(screen.getByRole("menuitem", { name: "Writing Projects…" }));
   expect(projects).toHaveBeenCalledOnce();
   expect(screen.queryByRole("menu")).toBeNull();

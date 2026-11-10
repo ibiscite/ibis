@@ -291,7 +291,7 @@ function pressRow(row: HTMLElement) {
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 }
 const FILE_ROW = /^Choose a Library File…/;
-const formatButton = (name: string | RegExp = /^Copy as /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
+const formatButton = (name: string | RegExp = /^Citation format /) => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name });
 
 /** Picks a format in the header's format menu, as a click would. */
 function chooseFormat(value: string) {
@@ -302,7 +302,7 @@ function chooseFormat(value: string) {
 }
 /** The format the header's format menu shows, as its value. */
 function formatValue() {
-  const shown = formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
+  const shown = formatButton().getAttribute("aria-label")!.slice("Citation format ".length);
   const choices = OUTPUTS.map((output) => output.id);
   return choices.find((choice) => shown === `${outputName(choice)}` || shown === `${outputName(choice)} · This paste`);
 }
@@ -452,7 +452,7 @@ test("first-run setup keeps the copy-format question out of the header", async (
     zotero: false, references: 0, warnings: 0, error: null, problem: null, note: null }) });
   render(<App />);
   await screen.findByRole("listbox", { name: "Where do your references live?" });
-  expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Copy as / })).toBeNull();
+  expect(within(screen.getByLabelText("Search references").closest("header")!).queryByRole("button", { name: /^Citation format / })).toBeNull();
 });
 
 test("typing after a library load failure keeps its single explanation visible", async () => {
@@ -3438,7 +3438,7 @@ test("replacing an engine preview ignores the older style's late result", async 
 test.each(["p", "З"])("the keep-open shortcut toggles from Format and leaves it open (%s)", async (key) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   const filter = screen.getByRole("searchbox");
   fireEvent.keyDown(filter, { key, code: "KeyP", ctrlKey: true, shiftKey: true });
   await waitFor(() => expect(calls.filter((call) => call === "set_pinned")).toHaveLength(1));
@@ -3453,7 +3453,7 @@ test.each([
 ])("Format ignores an isolated invalid keep-open key (%s, %j)", async (key, invalid) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   fireEvent.keyDown(screen.getByRole("searchbox"), { key, code: "KeyP", ctrlKey: true, shiftKey: true, ...invalid });
   // Let a wrongly queued command finish; another key must not cancel the probe.
   await act(async () => { await new Promise(requestAnimationFrame); await new Promise(requestAnimationFrame); });
@@ -3466,7 +3466,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   const saved: unknown[] = [];
   const calls = backend({ picker_preferences_saved: (args) => { saved.push(savedOutput(args.preferences)); return null; } });
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   expect(screen.getByRole("group", { name: "Key formats" })).toBeTruthy();
   expect(screen.getByRole("group", { name: "Citation styles" })).toBeTruthy();
   // Exactly the engine's list, each by its one name.
@@ -3475,7 +3475,7 @@ test("format toolbar menu exposes both sections and saves a choice without copyi
   fireEvent.click(screen.getByRole("menuitemradio", { name: "BibLaTeX \\autocite" }));
   await waitFor(() => expect(saved).toContain("autocite"));
   expect(calls).not.toContain("copy_file_citation");
-  expect(formatButton("Copy as BibLaTeX \\autocite")).toBeTruthy();
+  expect(formatButton("Citation format BibLaTeX \\autocite")).toBeTruthy();
   await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
@@ -3483,7 +3483,7 @@ test("engine citation styles are reachable and save their choice without copying
   const saved = vi.fn(() => null);
   backend({ picker_preferences_saved: saved });
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   const filter = screen.getByRole("searchbox");
   fireEvent.keyDown(filter, { key: "End" });
   // The last of the engine's common styles, whichever it is.
@@ -3502,7 +3502,7 @@ test("format filter IME and Escape preserve the query, and Ctrl+K switches layer
   render(<App />);
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(search, { target: { value: "sleep" } });
-  const trigger = await waitFor(() => formatButton("Copy as Pandoc"));
+  const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
   const filter = screen.getByRole("searchbox");
   fireEvent.change(filter, { target: { value: "APA" } });
@@ -3527,7 +3527,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
   render(<App />);
   const search = screen.getByLabelText("Search references") as HTMLInputElement;
   fireEvent.change(search, { target: { value: "sleep" } });
-  const trigger = await waitFor(() => formatButton("Copy as Pandoc"));
+  const trigger = await waitFor(() => formatButton("Citation format Pandoc"));
   fireEvent.click(trigger);
   const filter = screen.getByRole("searchbox");
   fireEvent.change(filter, { target: { value: "Typst" } });
@@ -3544,7 +3544,7 @@ test.each(["Tab", "Reload"])("Format hands off to More so %s returns to Search",
 test.each(["k", "/"])("hiding the picker closes what Format's Ctrl+%s left open", async (key) => {
   const calls = backend();
   render(<App />);
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   fireEvent.keyDown(screen.getByRole("searchbox"), { key, ctrlKey: true });
   await act(async () => { await emit("picker:hidden"); });
   await act(async () => { await new Promise(requestAnimationFrame); });
@@ -3559,7 +3559,7 @@ test("Format shortcut opening gives Escape a More invoker at once", async () => 
   backend();
   render(<App />);
   const more = screen.getByRole("button", { name: /^More/ });
-  fireEvent.click(await waitFor(() => formatButton("Copy as Pandoc")));
+  fireEvent.click(await waitFor(() => formatButton("Citation format Pandoc")));
   let popover: Element | undefined;
   const focusMore = more.focus.bind(more);
   const focus = vi.spyOn(more, "focus").mockImplementation(() => {
