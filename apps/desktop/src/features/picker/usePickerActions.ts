@@ -1,8 +1,8 @@
+import type * as nativeApi from "../../api";
 import { KEY_TABLE, type KeyBinding } from "../../keys";
 import { say } from "../../i18n";
 import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
-import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { outputName } from "../../format/outputs";
 import { enterLabel, enterPastes } from "./enterLabel";
@@ -21,7 +21,7 @@ export function usePickerActions({
   api, pickerSession, menus, libraryState, searchState, destination, shown, inspector, offered, canPaste, shortcut,
   perform, dismissChooser, toggle, writesStyle,
 }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   menus: ReturnType<typeof usePickerMenus>;
   libraryState: Pick<ReturnType<typeof usePickerLibrary>, "choosingLibrary" | "welcomeShown" | "showCitations">;

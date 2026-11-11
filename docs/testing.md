@@ -52,7 +52,9 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
 - **Interface tests:** picker, Settings and shared controls exercise keys,
   selection, delayed replies, saved choices and accessibility structure in a
   simulated document. The [shared IPC fake](../apps/desktop/src/testing/app.ts)
-  keeps preview tickets/content hashes and preference state. The
+  keeps preview tickets/content hashes and preference state. The picker and canvas
+  use the native command boundary, without an alternate picker API. The canvas
+  supplies invented IPC replies and checks its portalled details and Reader. The
   [stateful delivery fake](../apps/desktop/src/testing/delivery.ts) models
   clipboard ownership and sequence, one-use proofs, picker presentation and
   replacement of the invented document's selection. Its

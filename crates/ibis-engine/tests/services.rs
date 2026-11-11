@@ -171,7 +171,7 @@ fn exact_lists_win_over_closest_matches_and_trailing_locators() {
             "{query}"
         );
         assert_eq!(reply.data["list"]["missing"], json!(missing), "{query}");
-        assert!(reply.data.get("locator").is_none(), "{query}");
+        assert!(reply.data.get("shorthand").is_none(), "{query}");
     }
 }
 
@@ -229,7 +229,7 @@ fn pasted_syntax_and_identifier_tokens_keep_their_types_through_search() {
         );
         assert_eq!(reply.list.as_ref().unwrap().missing, missing, "{query}");
         assert!(reply.hits.iter().all(|hit| !hit.partial && !hit.typo));
-        assert!(reply.locator.is_none());
+        assert!(reply.shorthand.is_none());
         assert_eq!(
             serde_json::to_value(&reply).unwrap(),
             engine
@@ -465,20 +465,20 @@ fn bundled_styles_are_available_and_unknown_styles_or_locales_refuse_the_request
 }
 
 #[test]
-fn search_reads_a_trailing_locator_only_when_asked() {
+fn search_reads_shorthand_only_when_asked() {
     let case = case();
     let engine = Engine::from_snapshot(Arc::new(case.library.clone()));
     let cancel = Cancellation::default();
     let read = engine
         .dispatch(
             Method::Search,
-            &json!({"query":"signals chap. 3","interpret_locator":true}),
+            &json!({"query":"see signals chap. 3","interpret_locator":true}),
             &cancel,
         )
         .unwrap();
     assert_eq!(
-        read.data["locator"],
-        json!({"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"})
+        read.data["shorthand"],
+        json!({"search":"signals","prefix":"see","locator":{"search":"signals","locator":{"term":"chapter","value":"3"},"typed":"chap. 3"}})
     );
     let plain = engine
         .dispatch(Method::Search, &json!({"query":"signals"}), &cancel)
@@ -487,9 +487,9 @@ fn search_reads_a_trailing_locator_only_when_asked() {
     assert!(!plain.data["hits"].as_array().unwrap().is_empty());
     // Without the flag the whole query is searched and nothing is read.
     let literal = engine
-        .dispatch(Method::Search, &json!({"query":"signals chap. 3"}), &cancel)
+        .dispatch(Method::Search, &json!({"query":"see signals chap. 3"}), &cancel)
         .unwrap();
-    assert!(literal.data.get("locator").is_none());
+    assert!(literal.data.get("shorthand").is_none());
 }
 #[test]
 fn closing_an_idle_subscription_wakes_its_worker_and_preserves_other_subscribers() {

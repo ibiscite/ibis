@@ -86,6 +86,9 @@ test("the built scenario list renders, switches and reopens without Tauri or net
         expect(host.textContent).toContain("Invented reference 0");
         if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
         if (scenario === "format-menu") expect(window.document.querySelector('[role="menuitemradio"]')).not.toBeNull();
+        if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");
+        if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("Aster (2026)"))).toBe(true);
+        if (scenario === "reader") expect(host.textContent).toContain("Hide PDF");
       }
     });
   };

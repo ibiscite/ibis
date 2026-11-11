@@ -7,23 +7,24 @@ export default defineConfig({
   plugins: [react(), {
     name: "canvas-native-boundary",
     enforce: "pre",
-    resolveId(id) { if (id.startsWith("@tauri-apps/api/")) return "\0canvas-native"; },
+    resolveId(id) {
+      if (id.startsWith("@tauri-apps/api/") && !["core", "mocks"].some((part) => id === `@tauri-apps/api/${part}`)) return "\0canvas-native";
+    },
     load(id) {
       if (id !== "\0canvas-native") return;
-      // The picker preference queue issues revisions outside its injected API.
-      // Everything else must use the canvas fake; unexpected native I/O fails.
-      return `let revision = 0;
-        export async function invoke(command) {
-          if (command === "preference_revision") return ++revision;
-          if (command === "citation_details") return { current_form: "normal", forms: [
-            { form: "normal", example: "[@synthetic0]", reason: null },
-            { form: "narrative", example: "@synthetic0", reason: null },
-            { form: "year-only", example: "[-@synthetic0]", reason: null },
-          ] };
-          throw new Error("Native command unavailable on canvas: " + command);
+      // Route events to mock IPC and keep native window management out of
+      // the bundle. Visibility is the canvas's only window call.
+      return `export function getCurrentWindow() {
+          return { isVisible: () => window.__TAURI_INTERNALS__.invoke("plugin:window|is_visible") };
         }
-        export function listen() { throw new Error("Native events unavailable on canvas"); }
-        export function getCurrentWindow() { throw new Error("Native window unavailable on canvas"); }`;
+        export function getVersion() { throw new Error("Native version unavailable on canvas"); }
+        export async function listen(event, handler) {
+          const { invoke, transformCallback, unregisterCallback } = window.__TAURI_INTERNALS__;
+          const id = transformCallback(handler);
+          await invoke("plugin:event|listen", { event, handler: id });
+          return async () => { await invoke("plugin:event|unlisten", { event, id }); unregisterCallback(id); };
+        }
+        export function emit(event, payload) { return window.__TAURI_INTERNALS__.invoke("plugin:event|emit", { event, payload }); }`;
     },
   }],
   base: "./",

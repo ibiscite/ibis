@@ -1,8 +1,8 @@
+import type * as nativeApi from "../../api";
 import { useRef, type RefObject } from "react";
 import { keysFor, matchesAccelerator } from "../../keys";
 import { isMac } from "../../platform";
 import type { CitationLineActions } from "./CitationShelf";
-import type { PickerApi } from "../../App";
 import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
 import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
@@ -23,7 +23,7 @@ export function usePickerKeys({
 }: {
   /** ⌘↓ goes from Search to the citation's last token. */
   citationLine?: RefObject<CitationLineActions | null>;
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
   menus: ReturnType<typeof usePickerMenus>;
   source: Pick<ReturnType<typeof usePickerSource>, "chooseSources" | "openSource">;

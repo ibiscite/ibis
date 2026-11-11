@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
@@ -8,7 +8,7 @@ import { Sheet, SheetList, SheetRow } from "../../ui/Sheet";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, tileName } from "./rows";
 
-type Api = Required<Pick<PickerApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
+type Api = Pick<typeof nativeApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">;
 
 const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
 /** Native refusals name what to do; anything else gets this sheet's own sentence. */

@@ -890,3 +890,23 @@ test.each([true, false])("reaching for a token by hand teaches the typed shortha
   act(() => token.focus());
   expect(asked).toBe(1);
 });
+
+test.each(["hidden", "reopened", "failed"])("a %s shorthand hint reply cannot leave an old hint on screen", async (outcome) => {
+  let finish!: (show: boolean) => void;
+  let fail!: (error: Error) => void;
+  const asked = vi.fn(() => new Promise<boolean>((resolve, reject) => { finish = resolve; fail = reject; }));
+  backend({ search: () => [result("a", "Invented work")], shorthand_hint: asked });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Invented work"), { ctrlKey: true });
+  act(() => inCitation("a")!.focus());
+  await waitFor(() => expect(asked).toHaveBeenCalledOnce());
+  await act(async () => {
+    if (outcome === "failed") fail(new Error("invented hint failure"));
+    else {
+      await emit("picker:hidden");
+      if (outcome === "reopened") await emit("picker:shown", 1);
+      finish(true);
+    }
+  });
+  expect(screen.queryByText(/^Type it with the search:/)).toBeNull();
+});

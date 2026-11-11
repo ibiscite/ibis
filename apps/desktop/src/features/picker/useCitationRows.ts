@@ -1,6 +1,6 @@
+import type * as nativeApi from "../../api";
 import { useMemo, useRef, type ComponentProps } from "react";
 import type { ResultList } from "./ResultList";
-import type { PickerApi } from "../../App";
 import type { SearchResult } from "../../api";
 import type { usePointerSelection } from "../../pointerSelection";
 import type { usePickerSession } from "./usePickerSession";
@@ -13,7 +13,7 @@ export function useCitationRows({
   api, pickerSession, searchState, chosenKey, chosen, showCitations, format, snapshotRevision, focusHome,
   pointer, requestCopy, report,
 }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   searchState: ReturnType<typeof useLibrarySearch>;
   chosenKey: string;

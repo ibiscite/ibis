@@ -31,16 +31,13 @@ import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
 import { useUpdateOfferActivity } from "./features/picker/useUpdateOfferActivity";
-import { usePickerSearchFocus } from "./features/picker/usePickerSearchFocus";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
-import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { usePickerMove } from "./features/picker/usePickerMove";
 import { useAltHeld } from "./features/picker/useAltHeld";
 import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
-import { useCitationFeedback } from "./features/picker/useCitationFeedback";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
 import { ProjectCheckNotice } from "./features/picker/ProjectContextStatus";
@@ -52,7 +49,6 @@ import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useCommandSearch } from "./features/picker/useCommandSearch";
 import { COMMAND_PREFIX } from "./features/picker/commands";
-import { useWindowSizeStatus } from "./features/picker/useWindowSizeStatus";
 import type { Copied } from "./api";
 import { usePickerDelights } from "./features/picker/usePickerDelights";
 import { useEmptyFeedback, useZoomFeedback } from "./ui/Delights";
@@ -60,18 +56,11 @@ import { useInterfaceMessages } from "./i18n";
 import { rowWords } from "./features/picker/ResultList";
 import { PickerShown } from "./features/picker/pickerShown";
 
-// A stable provider lets component tests use synthetic data without IPC.
-// Formatted citations are offered only when the provider can supply them.
-export type PickerApi = Pick<typeof nativeApi,
-  "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" |
-  "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "shorthandHint" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
-
 export type PickerPreview = { query?: string; copied?: Copied };
 
 // The picker: search, choose one or more references, copy them as a citation.
-export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; preview?: PickerPreview } = {}) {
-  const api = usePickerAppearance(sourceApi);
+export function App({ preview }: { preview?: PickerPreview } = {}) {
+  const api = usePickerAppearance(nativeApi);
   const pickerSession = usePickerSession(preview);
   const { session, state, send, setQuery, setActive, cancelCopy } = pickerSession;
   const { query, interpretLocators, active, selected, copied, copyError } = state;
@@ -98,7 +87,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
   const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
-  const libraryState = usePickerLibrary(api, report, cancelCopy);
+  const libraryState = usePickerLibrary(api, operations, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const project = useProjectBibliography(api, report, perform);
   const editor = useEditorRequest(api);
@@ -137,7 +126,9 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
-  const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
+  const [searchFocused, setSearchFocused] = useState(false);
+  // autoFocus can happen before React listens for focus events.
+  useEffect(() => setSearchFocused(document.activeElement === input.current), [input]);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
@@ -151,7 +142,14 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   // Last of App's layout effects: every input above has reached the session,
   // so an Enter waiting on an engine answer may copy now.
   useLayoutEffect(() => { send({ type: "committed" }); });
-  useLibrarySetup(library, setFailures, send, focusHome);
+  const sample = Boolean(library?.sample);
+  const previousSample = useRef(sample);
+  useEffect(() => {
+    if (previousSample.current === sample) return;
+    previousSample.current = sample;
+    send({ type: "sample" });
+    focusHome();
+  }, [sample, send, focusHome]);
   const { clearNotice } = project;
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new search is the trigger: the notice was about the row before it.
   useEffect(clearNotice, [queryKey, clearNotice]);
@@ -166,7 +164,12 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { resultArea, followKeyboard } = useResultScroll({
     input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
   });
-  useCitationFeedback(copied, preview, send);
+  // Success is brief; warnings stay available until explicitly dismissed.
+  useEffect(() => {
+    if (preview || !copied || copied.warnings.length > 0) return;
+    const timer = window.setTimeout(() => send({ type: "dismiss", copied }), 2400);
+    return () => window.clearTimeout(timer);
+  }, [copied, preview, send]);
   const rows = useCitationRows({
     api, pickerSession, searchState, chosenKey: output.chosenKey, chosen, showCitations, format, snapshotRevision,
     focusHome, pointer, requestCopy, report,
@@ -203,11 +206,17 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       emptyFeedback.refuse(text(library?.state === "loading" || library?.state === "reloading" ? "delight-loading" : !library?.has_snapshot ? "delight-no-library" : "delight-empty"));
     },
   });
-  useWindowSizeStatus(api.onWindowSizeSaved, report);
+  const { onWindowSizeSaved } = api;
+  useEffect(() => {
+    let current = true;
+    const subscription = onWindowSizeSaved?.((saved) => { if (current) report("windowSize", !saved); });
+    void subscription?.catch(() => { if (current) report("windowSize"); });
+    return () => { current = false; void subscription?.then((stop) => stop()).catch(() => {}); };
+  }, [onWindowSizeSaved, report]);
   // ">" in the search lists commands by name (docs/design/picker.md, Command search).
   const commands = useCommandSearch({
     query: showCitations ? query : "", run: keys.run, setQuery,
-    source: api.openLibrarySource && source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
+    source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
   });
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
@@ -243,7 +252,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
         format={format} formatButtonRef={formatButtonRef}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
-        writingProject={destination.writingProject} onWritingProjects={api.writingProjects && !editor.label ? menus.openProjects : undefined}
+        writingProject={destination.writingProject} onWritingProjects={!editor.label ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
@@ -286,7 +295,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} command={commands.footer} />
-      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
         label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}

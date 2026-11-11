@@ -1,8 +1,8 @@
+import type * as nativeApi from "../../api";
 import type { ReactNode, RefObject } from "react";
 import type { CitationLineActions } from "./CitationShelf";
 import { say } from "../../i18n";
 import { zoteroLibraryNames } from "../../LibraryStatusLine";
-import type { PickerApi } from "../../App";
 import type { LibraryStatus, SearchResult } from "../../api";
 import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
@@ -30,7 +30,7 @@ export function PickerStatusFooter({
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
   highlighted?: SearchResult;
-  api: PickerApi;
+  api: typeof nativeApi;
   library: LibraryStatus | null | undefined;
   scope: ReturnType<typeof useZoteroScope>;
   sourceState: ReturnType<typeof usePickerSource>;
@@ -51,7 +51,7 @@ export function PickerStatusFooter({
   /** ">" in the search: Enter runs this, so the footer says so. */
   command?: { label: string | null; run: () => void } | null;
 }) {
-  const { useZoteroLibraries: chooseZoteroLibraries, reloadLibrary, useZotero, openSettings } = api;
+  const { reloadLibrary, useZotero } = api;
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
   const { libraryMenuOpen, openLibrary, closeLibrary, input, menuOpen, openMore, closeMore, moreButton, pinned, focusHome, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
@@ -65,8 +65,8 @@ export function PickerStatusFooter({
       onOpenChange={(open) => (open ? openLibrary() : closeLibrary())}
       searchRef={input} sourceAction={sourceAction} sourceFailure={sourceOpen.failure !== null}
       statusIcon={source.status_icon ?? null} hideAction={sourceState.libraryChoices}
-      rowAction={menuOpen && api.openLibrarySource && sourceState.sourceAvailable ? sourceAction.label : undefined}
-      zotero={library?.zotero && chooseZoteroLibraries ? {
+      rowAction={menuOpen && sourceState.sourceAvailable ? sourceAction.label : undefined}
+      zotero={library?.zotero ? {
         offered: ["user" as const, ...offeredGroups.map((group) => ({ group }))], isChosen, chosenCount: chosenLibraries.length,
         name: (choice) => typeof choice === "object" ? groupName(choice.group) : say("picker-my-library"), toggle: toggleLibrary, all: searchAllLibraries,
       } : null}
@@ -80,7 +80,7 @@ export function PickerStatusFooter({
     more={
       <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}
-        source={api.openLibrarySource && sourceState.sourceAvailable ? sourceAction : undefined}
+        source={sourceState.sourceAvailable ? sourceAction : undefined}
         lastOutcome={lastOutcome}
         project={{ status: project.status, choose: project.choose, stop: project.stop,
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
@@ -95,12 +95,12 @@ export function PickerStatusFooter({
           pin: () => run("pin"),
           keys: () => run("keys"),
           changeLast: actions.canChangeLast ? () => run("changeLast") : null,
-          settings: openSettings ? () => run("settings") : null,
+          settings: () => run("settings"),
           copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
             cancelCopy();
             destination.choosePaste("copy-only");
           } } : null,
-          sessionReferences: api.sessionReferences ? menus.openSession : null,
+          sessionReferences: menus.openSession,
           forgetRecent: recents.forget ? () => { recents.forget!(); focusHome(); } : null,
           quit: () => run("quit"),
         }} />

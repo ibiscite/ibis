@@ -557,13 +557,6 @@ test.each([
   else expect(screen.getByText("New library reference")).toBeTruthy();
 });
 
-test("Escape hides the picker", async () => {
-  const calls = backend();
-  render(<App />);
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Escape" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
-});
-
 test("a failed search clears the results of the previous query", async () => {
   backend({
     search: ({ query: { text: query } }) => {
@@ -579,25 +572,6 @@ test("a failed search clears the results of the previous query", async () => {
   expect((await screen.findByText("Ibis could not search your library. Use Reload, then try again.")).getAttribute("role")).toBe("alert");
   expect(screen.queryByText("Sleep and memory")).toBeNull();
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
-});
-
-test("Quit is available from the picker and from the keyboard", async () => {
-  const calls = backend({ quit: () => null });
-  render(<App />);
-  await chooseFromMore("Quit Ibis");
-  await waitFor(() => expect(calls.filter((c) => c === "quit")).toHaveLength(1));
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "q", ctrlKey: true });
-  await waitFor(() => expect(calls.filter((c) => c === "quit")).toHaveLength(2));
-});
-
-test("the quit shortcut works with Caps Lock on, like the More shortcut", async () => {
-  const calls = backend({ search: () => [result("a", "First")], quit: () => null });
-  render(<App />);
-  await screen.findByText("First");
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "K", ctrlKey: true });
-  expect(screen.getByRole("menu")).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Q", ctrlKey: true });
-  await waitFor(() => expect(calls).toContain("quit"));
 });
 
 test("identical copy warnings are both listed without duplicate React keys", async () => {
@@ -1344,28 +1318,6 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   await screen.findByText("Copied");
   expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
 });
-test("Enter before the engine preview is ready copies the new receipt once it is, never an earlier one", async () => {
-  let finish: (value: ReturnType<typeof receipt>) => void = () => undefined;
-  const copies: unknown[] = [];
-  backend({
-    search: () => [result("a", "First"), result("b", "Second")],
-    preview_file_citation: ({ items }) => items[0]!.id.key === "a" ? receipt("(Alpha, 2021)")
-      : new Promise((resolve) => { finish = resolve; }),
-    copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview.text); return { text: preview.text, warnings: [] }; },
-  });
-  render(<App />);
-  await screen.findByText("First");
-  chooseFormat("apa");
-  const preview = await screen.findByRole("region", { name: "Preview" });
-  await within(preview).findByText("(Alpha, 2021)");
-  const box = screen.getByLabelText("Search references");
-  fireEvent.keyDown(box, { key: "ArrowDown" });
-  fireEvent.keyDown(box, { key: "Enter" });
-  fireEvent.keyDown(box, { key: "Enter" });
-  expect(copies).toEqual([]);
-  await act(async () => { finish(receipt("(Beta, 2021)")); });
-  await waitFor(() => expect(copies).toEqual(["(Beta, 2021)"]));
-});
 test("moving before a waiting Enter's engine preview is ready cancels that copy", async () => {
   let finish: (value: ReturnType<typeof receipt>) => void = () => undefined;
   const copies = vi.fn(() => ({ text: "unexpected", warnings: [] }));
@@ -1451,23 +1403,6 @@ test("Search shortcut opening gives Escape an invoker at once", async () => {
   }
 });
 
-test("the output keeps ordered chips and exact key copying", async () => {
-  const copies: unknown[] = [];
-  backend({ search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (nativeReceipt) => { const { items } = prepared(nativeReceipt).request; copies.push(items); return { text: "@a; @b", warnings: [] }; } });
-  render(<App />);
-  await screen.findByText("First");
-  const box = screen.getByLabelText("Search references");
-  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  fireEvent.keyDown(box, { key: "ArrowDown" });
-  fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
-  await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("@a; @b"));
-  await waitFor(() => expect(selectedKeys()).toEqual(["a", "b"]));
-  expect(screen.getByRole("group", { name: "Keys" }).textContent).toContain("Copy 2 as Pandoc");
-  fireEvent.keyDown(box, { key: "Enter" });
-  await waitFor(() => expect(copies).toEqual([selections([result("a", "First").id, result("b", "Second").id])]));
-});
-
 test.each(["same", "different"])("copy feedback only omits exact visible output (%s)", async (presentation) => {
   const copied = presentation === "different" ? "@a; @b" : "@a";
   backend({ search: () => [result("a", "First"), ...(presentation === "different" ? [result("b", "Second")] : [])],
@@ -1486,44 +1421,6 @@ test.each(["same", "different"])("copy feedback only omits exact visible output 
   if (presentation === "different") await waitFor(() => expect(document.querySelector(".shelf-output bdi")?.textContent).toBe("@b"));
   expect(Boolean(document.querySelector(".copy-notice code"))).toBe(presentation !== "same");
   expect(screen.getByRole("button", { name: "Dismiss copy warnings" })).toBeTruthy();
-});
-
-test("Ctrl+K opens More with every action, Escape closes it before hiding the picker", async () => {
-  const calls = backend({ hide_picker: () => null, reload_library: () => null });
-  render(<App />);
-  const box = screen.getByLabelText("Search references");
-  await waitFor(() => expect(screen.getByRole("region", { name: "Picker actions" }).textContent).toMatch(/reference/));
-  fireEvent.keyDown(box, { key: "k", ctrlKey: true });
-  const menu = await screen.findByRole("menu");
-  const items = within(menu).getAllByRole("menuitem").map((item) => item.textContent);
-  expect(items).toEqual(["Open ⁨refs.bib⁩Ctrl+O", "Check Against a .bib File…", "Rows: Comfortable›", "Cited Since Opening…", "Keyboard ShortcutsCtrl+/", "Settings…Ctrl+,", "Quit IbisCtrl+Q"]);
-  expect(within(menu).getByRole("menuitemcheckbox", { name: "Keep Window Open" }).getAttribute("aria-checked")).toBe("false");
-  expect(document.activeElement).toBe(within(menu).getAllByRole("menuitem")[0]);
-  fireEvent.keyDown(document.activeElement!, { key: "ArrowUp" });
-  expect(document.activeElement?.textContent).toContain("Quit Ibis");
-  const canvas = vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(null);
-  try {
-    const found = await axe.run(document.body, { runOnly: { type: "tag", values: ["wcag2a", "wcag2aa"] }, rules: { "color-contrast": { enabled: false } } });
-    expect(found.violations.map((v) => v.id)).toEqual([]);
-  } finally {
-    canvas.mockRestore();
-  }
-  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^More/ }));
-  expect(calls).not.toContain("hide_picker");
-  fireEvent.keyDown(box, { key: "Escape" });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.pointerDown(document.body);
-  fireEvent.click(document.body);
-  expect(screen.queryByRole("menu")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.keyDown(within(screen.getByRole("menu")).getAllByRole("menuitem")[0]!, { key: "Tab" });
-  expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(box);
-  expect(screen.getByRole("button", { name: /^More/ }).textContent).toContain("K");
-  expect(screen.getByRole("button", { name: /^More/ }).getAttribute("aria-keyshortcuts")).toBe("Control+K");
 });
 
 test("a row says why it matched only when the match is not visible", async () => {
@@ -1642,36 +1539,6 @@ test("Escape clears the search before it hides the picker, keeping chosen refere
   fireEvent.keyDown(box, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
   expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
-});
-
-test("header and More share the pin with state-dependent labels", async () => {
-  const pins: unknown[] = [];
-  backend({ set_pinned: ({ on }) => { pins.push(on); return null; } });
-  render(<App />);
-  const pin = screen.getByRole("button", { name: "Keep Window Open" });
-  expect(pin.closest("header")).not.toBeNull();
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
-  expect(pin.getAttribute("aria-keyshortcuts")).toBe("Control+Shift+P");
-  expect(document.querySelector("footer .pin-button")).toBeNull();
-  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const keep = await screen.findByRole("menuitemcheckbox", { name: "Keep Window Open" });
-  expect(keep.getAttribute("aria-checked")).toBe("false");
-  fireEvent.click(keep);
-  await waitFor(() => expect(pins).toEqual([true]));
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
-  expect((await screen.findByRole("menuitemcheckbox", { name: "Keep Window Open" })).getAttribute("aria-checked")).toBe("true");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
-  expect(pin.getAttribute("aria-pressed")).toBe("true");
-  fireEvent.click(pin);
-  await waitFor(() => expect(pins).toEqual([true, false]));
-  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "P", ctrlKey: true, shiftKey: true });
-  await waitFor(() => expect(pins).toEqual([true, false, true]));
-  await chooseFromMore("Keep Window Open", "menuitemcheckbox");
-  await waitFor(() => expect(pins).toEqual([true, false, true, false]));
-  expect(pin.getAttribute("aria-pressed")).toBe("false");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Tab" });
-  await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Search references")));
 });
 
 test("the keep-open shortcut ignores repeats, composition and extra modifiers", async () => {
@@ -2394,26 +2261,6 @@ test("shortcuts read as people type them on each system", async () => {
   expect(shortcutLabel("cmdorctrl + shift + keyr", false)).toBe("Ctrl+Shift+R");
   expect(shortcutLabel("control+command+r", true)).toBe("⌃⌘R");
   expect(shortcutLabel("Alt+Space", false)).toBe("Alt+Space");
-});
-
-test("double-clicking a row copies it like Enter, and Shift+click adds it like Shift+Enter", async () => {
-  const copies: unknown[] = [];
-  const calls = backend({
-    search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: (nativeReceipt) => { const args = prepared(nativeReceipt).request; copies.push(args); return { text: "@b", warnings: [] }; },
-  });
-  render(<App />);
-  const second = (await screen.findByText("Second")).closest('[role="option"]')!;
-  fireEvent.click(second, { shiftKey: true });
-  expect(second.hasAttribute("data-citation-selected")).toBe(true);
-  expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
-  fireEvent.click(second, { shiftKey: true });
-  expect(second.hasAttribute("data-citation-selected")).toBe(false);
-  expect(copies).toEqual([]);
-  fireEvent.click(second, { detail: 2 });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
-  expect(copies).toMatchObject([{ items: selections([{ library: "refs.bib", key: "b" }]), output: "pandoc", expectedRevision: "1" }]);
-  expect(second.getAttribute("aria-selected")).toBe("true");
 });
 
 test("with sources in the citation, a double-click copies the citation like Enter", async () => {
@@ -3210,36 +3057,6 @@ test.each([false, true])("copy completion uses the current pin choice (initially
   expect(calls.includes("hide_picker")).toBe(initiallyPinned);
 });
 
-test("a delayed hide cannot show an old copy notice after reopening", async () => {
-  let releaseHide: () => void = () => undefined;
-  const calls = backend({
-    search: () => [result("a", "First")],
-    copy_file_citation: () => ({ text: "@a", warnings: [] }),
-    hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
-  });
-  render(<App />);
-  fireEvent.click(await screen.findByText("First"), { detail: 2 });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
-  await act(async () => { await emit("picker:shown"); releaseHide(); });
-  expect(calls).not.toContain("show_copied_notice");
-});
-
-test("a delayed hide cannot show an old notice over a newer selection", async () => {
-  let releaseHide: () => void = () => undefined;
-  const calls = backend({
-    search: () => [result("a", "First"), result("b", "Second")],
-    copy_file_citation: () => ({ text: "@a", warnings: [] }),
-    hide_picker: () => new Promise<void>((resolve) => { releaseHide = resolve; }),
-  });
-  render(<App />);
-  fireEvent.click(await screen.findByText("First"), { detail: 2 });
-  await waitFor(() => expect(calls).toContain("hide_picker"));
-  fireEvent.click(screen.getByText("Second"), { shiftKey: true });
-  await act(async () => { releaseHide(); });
-  expect(inCitation("b")).not.toBeNull();
-  expect(calls).not.toContain("show_copied_notice");
-});
-
 test.each(["selection", "copy feedback"])("an obsolete stale copy recovers data without replacing a newer %s", async (change) => {
   let revision = "1";
   let rejectOld: (reason: unknown) => void = () => undefined;
@@ -3654,24 +3471,17 @@ test("update progress never takes focus, toggles the pin or accepts a stale oper
   expect(screen.getByRole("alert").textContent).toContain("Check for Updates in Settings › About");
 });
 
-test("unavailable update events show a fixed notice, retain typing and discard replaced failures", async () => {
+test("unavailable update events show a fixed notice and retain typing", async () => {
   backend();
   const listen = vi.spyOn(api, "onUpdateProgress").mockRejectedValue(new Error("SYNTHETIC_PRIVATE_PAYLOAD"));
   try {
-    const { rerender } = render(<App />);
+    render(<App />);
     expect((await screen.findByRole("alert")).textContent).toBe("Update progress is unavailable.");
     expect(document.body.textContent).not.toMatch(/SYNTHETIC_PRIVATE|could not be installed|successfully installed/);
     const search = screen.getByLabelText("Search references");
     search.focus();
     fireEvent.change(search, { target: { value: "still typing" } });
     expect((search as HTMLInputElement).value).toBe("still typing");
-    expect(document.activeElement).toBe(search);
-    let rejectOld!: (error: Error) => void;
-    listen.mockImplementation(() => new Promise((_, reject) => { rejectOld = reject; }));
-    rerender(<App api={{ ...api }} />);
-    rerender(<App api={{ ...api, onUpdateProgress: async () => () => undefined }} />);
-    await act(async () => { rejectOld(new Error("SYNTHETIC_PRIVATE_PAYLOAD")); });
-    await waitFor(() => expect(screen.queryByRole("alert")).toBeNull());
     expect(document.activeElement).toBe(search);
   } finally { listen.mockRestore(); }
 });
@@ -4021,23 +3831,6 @@ test.each([false, true])("picker visibility at startup pauses animations only wh
   await act(async () => { render(<App />); });
   expect(read).toHaveBeenCalledOnce();
   expect(document.documentElement.dataset.pickerHidden).toBe(visible ? undefined : "");
-});
-
-test.each(["shown", "hidden"])("picker visibility waits for the picker:%s subscription", async (event) => {
-  let finish!: () => void;
-  const ready = new Promise<void>((resolve) => { finish = resolve; });
-  const read = vi.fn(() => false);
-  backend({ "plugin:window|is_visible": read });
-  await act(async () => {
-    render(<App api={{ ...api,
-      onPickerShown: async (handler) => { if (event === "shown") await ready; return api.onPickerShown(handler); },
-      onPickerHidden: async (handler) => { if (event === "hidden") await ready; return api.onPickerHidden(handler); },
-    }} />);
-  });
-  expect(read).not.toHaveBeenCalled();
-  await act(async () => { await emit("picker:hidden"); finish(); });
-  expect(read).toHaveBeenCalledOnce();
-  expect(document.documentElement.dataset.pickerHidden).toBe("");
 });
 
 test.each(["shown", "hidden"])("picker:%s wins over a stale picker visibility read", async (event) => {

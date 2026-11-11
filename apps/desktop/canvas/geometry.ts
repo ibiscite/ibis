@@ -24,7 +24,12 @@ export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]',
 export const menuLabels = { label: ".menu-popover .menu-label", outside: ".toolbar-menu-popover" } as const;
 
 /** [C19] Rows of one form share both edges: every control's drawn fill. */
-export const forms = { form: ".citation-details", controls: ".citation-field .ui-popup-button, .citation-field input" } as const;
+export const forms = {
+  form: ".citation-details",
+  // Page's type and text share the locator's fill. Measure that whole control,
+  // just as Show as measures its whole pop-up or segmented control.
+  controls: ".citation-field > .toolbar-menu-control .ui-popup-button, .citation-field > .ui-segmented, .citation-field > .citation-locator, .citation-field > input",
+} as const;
 
 /** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
  * from the search bar's divider to the shelf. */
