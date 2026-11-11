@@ -13,10 +13,10 @@ export const pages = [
 export const sections = [
   { label: "Try it", key: "try", href: "/#try" },
   { label: "Where you write", key: "where", href: "/#where" },
-  { label: "Get Ibis", key: "get", href: "/get/" },
-  { label: "What it does today", key: "today", href: "/today/" },
-  { label: "Command line", key: "cli", href: "/cli/" },
   { label: "Why Ibis?", key: "why", href: "/#why" },
+  { label: "Get Ibis", key: "get", href: "/get/", group: true },
+  { label: "Today", key: "today", href: "/today/" },
+  { label: "Scripts & agents", key: "cli", href: "/cli/" },
 ];
 export const notFound = { path: "/404.html", title: "Page not found", description: "This Ibis page could not be found." };
 // Each command and its real output in one terminal block; Copy takes the command alone.
@@ -36,7 +36,7 @@ export async function content(html, page = pages[0], input = new URL(".", import
   const writing = `<div class="chips" role="tablist" aria-label="Where you write">${apps.map((app, i) => `<button class="key" type="button" role="tab" id="app-${app.id}" aria-controls="writing-example" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}" title="${escape(app.name)}" data-output="${escape(app.output)}" data-explain="${escape(app.name)}: ${escape(app.note)}">@${app.id}</button>`).join("")}</div><div class="where-doc" id="writing-example" role="tabpanel" aria-labelledby="app-${apps[0].id}"><p class="draft">Lantern gardens follow the rhythm of imaginary cities <code class="key" data-out>${escape(apps[0].output)}</code><span class="caret" aria-hidden="true"></span></p><p class="small" data-explanation>${escape(apps[0].name)}: ${escape(apps[0].note)}</p></div>`;
   const values = { body: "", title: page.title, description: page.description, path: page.path, headline, version,
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
-    navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${item.label}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
+    navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
     page: page.file ?? "missing", status: lists, terminal: transcripts(await read("content/terminal.txt")), "writing-apps": writing,
     "shorthand-result": escape(apps[0].output),
     "shortcut-mac": escape(keys.keyLabel(keys.DEFAULT_PICKER_SHORTCUT, true)),

@@ -152,6 +152,8 @@ function shorthand() {
   box.querySelectorAll("[data-try]").forEach(button => button.addEventListener("click", () => { input.value = button.textContent; render(); }));
   render();
 }
+// A link from another page lands on its section at once; smooth scrolling is only for moves within the page.
+globalThis.addEventListener?.("load", () => requestAnimationFrame(() => document.documentElement.classList.add("smooth")));
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
   appearance(); platforms(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();

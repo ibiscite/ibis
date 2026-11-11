@@ -17,10 +17,10 @@ test("four pages share the shell, section navigation and appearance controls", a
     const index = html.match(/<header class="index">[\s\S]*?<\/header>/)[0];
     const nav = index.match(/<nav\b[^>]*>([\s\S]*?)<\/nav>/)[1];
     assert.deepEqual([...nav.matchAll(/href="([^"]+)"/g)].map(m => m[1].replace(/^\/#/, "#")),
-      ["#try", "#where", "/get/", "/today/", "/cli/", "#why"]);
+      ["#try", "#where", "#why", "/get/", "/today/", "/cli/"]);
     assert.deepEqual([...nav.matchAll(/<span class="label">([^<]+)<\/span> <span class="key">([^<]+)<\/span>/g)].map(m => m.slice(1)),
-      [["Try it", "@try"], ["Where you write", "@where"], ["Get Ibis", "@get"],
-        ["What it does today", "@today"], ["Command line", "@cli"], ["Why Ibis?", "@why"]]);
+      [["Try it", "@try"], ["Where you write", "@where"], ["Why Ibis?", "@why"],
+        ["Get Ibis", "@get"], ["Today", "@today"], ["Scripts &amp; agents", "@cli"]]);
     if (path) assert.deepEqual([...nav.matchAll(/<a href="([^"]+)" aria-current="page"/g)].map(m => m[1]), [`/${path}`]);
     assert.ok(index.indexOf('class="appearance"') > index.indexOf("</nav>"));
     const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)[0];

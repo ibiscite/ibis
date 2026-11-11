@@ -177,7 +177,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .row > .text, .journey, .text, .picker { max-width: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
-  html { scroll-behavior: smooth; }
+  html.smooth { scroll-behavior: smooth; }
   .key, .button, .rows a { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out); }
   .index nav .key { transition-duration: var(--dur-2); }
   a:active .key, a.key:active, .button:active { scale: var(--website-press); }
@@ -219,22 +219,11 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 .where-doc .small { margin: 0; }
 /* Today: one drawn mark per state, filled for what you can use now. */
 .roadmap li { position: relative; padding-inline-start: var(--space-5); }
-.roadmap li::before { content: ""; position: absolute; inset-inline-start: 0; top: calc(var(--space-4) + .45em); width: .5rem; height: .5rem; border-radius: 50%; background: var(--scarlet); }
+.roadmap li::before { content: ""; position: absolute; inset-inline-start: 0; top: calc(var(--space-4) + var(--border-width) + .5lh - .25rem); width: .5rem; height: .5rem; border-radius: 50%; background: var(--scarlet); }
 .roadmap strong { font-family: var(--font); }
 [data-status="nightly"] li::before { background: none; box-shadow: inset 0 0 0 var(--border-width) var(--scarlet); }
 [data-status="planned"] li::before { background: var(--separator); }
 [data-status="notYet"] li::before { background: none; box-shadow: inset 0 0 0 var(--border-width) var(--text-secondary); }
-/* Code blocks: copy the command with one press; terminals are dark in both modes. */
-.code { position: relative; margin: var(--space-3) 0 var(--website-paragraph-gap); }
-.code pre { margin: 0; padding: var(--space-4); padding-inline-end: calc(var(--space-4) + var(--control-h) + var(--space-2)); border-radius: var(--r-control); background: var(--fill-control); overflow-x: auto; font: var(--type-body-size)/1.6 var(--mono); }
-.code code { display: inline; padding: 0; background: none; color: inherit; font: inherit; white-space: pre; }
-.code pre { background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
-.terminal .prompt { opacity: .55; }
-.terminal .stderr { color: color-mix(in srgb, var(--scarlet) 55%, white); }
-.copy { display: inline-grid; place-items: center; position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--control-h); min-height: var(--control-h); padding: 0; border: 0; border-radius: var(--r-small); background: color-mix(in srgb, currentColor 12%, transparent); color: var(--text); font: var(--type-body-size)/1 var(--font); cursor: pointer; opacity: .8; }
-.code .copy { color: light-dark(var(--website-bg), var(--text)); }
-.copy:hover, .copy:focus-visible { opacity: 1; }
-.copy::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2) 0; }
 /* The typed shorthand: each part of the search, labelled. */
 .label-nightly { display: inline-block; margin-inline-start: var(--space-2); padding: .1em .45em; border-radius: var(--website-chip-radius); background: var(--fill-control); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--mono); vertical-align: .2em; }
 /* The shorthand: the demo picker's own search bar (same parts, same app tokens), then each typed word over what it means. */
@@ -254,16 +243,27 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
   .chips .key:active, .try button:active, .copy:active { scale: var(--website-press); }
   .landed { animation: receipt var(--dur-2) var(--ease-out); }
 }
-@media (forced-colors: active) { a[aria-current="page"] .key, .chips .key[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } .code pre { border: var(--border-width) solid CanvasText; } }
-/* Long real output scrolls sideways, as code does elsewhere; Copy keeps the block's own colour so it sits cleanly over it. */
-.code .copy { background: light-dark(color-mix(in srgb, var(--text) 85%, var(--website-bg)), color-mix(in srgb, var(--text) 16%, var(--website-bg))); opacity: 1; }
+@media (forced-colors: active) { a[aria-current="page"] .key, .chips .key[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } .code { border: var(--border-width) solid CanvasText; } }
 /* Inner pages start with content sooner: their title takes the section-heading size. */
 main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) * 1.5), 3.6vw, calc(var(--type-search-size) * 2.2)); margin-bottom: var(--website-block-gap); }
+/* Row text sits on the column edge like every paragraph; the hover fill bleeds outward instead of pushing the text in. */
+.rows a { margin-inline: calc(-1 * var(--space-2)); }
+/* The sidebar's two groups: this page's sections, then the other pages. */
+.index li.group { margin-top: var(--space-4); }
+@media (max-width: 61.99rem) { .index li.group { margin-top: 0; } }
+/* Code blocks: the code and its Copy button share one dark block, each in its own column, so text never runs under the button.
+   Copy lines up with the first line, or the middle of a one-line block. Terminals are dark in both modes. */
+.code { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-3) 0 var(--website-paragraph-gap); padding: var(--space-2); border-radius: var(--r-control); background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
+.code.single { align-items: center; }
+.code pre { flex: 1; min-width: 0; margin: 0; padding: var(--space-2); overflow-x: auto; font: var(--type-body-size)/1.6 var(--mono); tab-size: 8; }
+.code code { display: inline; padding: 0; background: none; color: inherit; font: inherit; white-space: pre; }
+.code .prompt { opacity: .55; }
+.code .stderr { color: color-mix(in srgb, var(--scarlet) 55%, white); }
+.copy { flex: none; position: relative; display: inline-grid; place-items: center; width: var(--control-h); height: var(--control-h); padding: 0; border: 0; border-radius: var(--r-small); background: color-mix(in srgb, currentColor 14%, transparent); color: inherit; cursor: pointer; opacity: .8; }
+.code:not(.single) .copy { margin-top: calc(var(--space-2) + (1.6 * var(--type-body-size) - var(--control-h)) / 2); }
+.copy:hover, .copy:focus-visible { opacity: 1; background: color-mix(in srgb, currentColor 22%, transparent); }
+.copy::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2); }
+.copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .copy .icon { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .copy .icon-check, .copy[data-state="copied"] .icon-copy { display: none; }
 .copy[data-state="copied"] .icon-check { display: block; }
-/* Row text sits on the column edge like every paragraph; the hover fill bleeds outward instead of pushing the text in. */
-.rows a { margin-inline: calc(-1 * var(--space-2)); }
-.copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
-.code.single .copy { top: 50%; translate: 0 -50%; }
-.code .prompt { opacity: .55; }
