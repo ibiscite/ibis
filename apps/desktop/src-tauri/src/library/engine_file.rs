@@ -1080,7 +1080,7 @@ impl FileLibrary {
     pub(crate) fn copy_recited(
         &self,
         recited: &Recited,
-        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), CommandError>,
     ) -> Result<crate::copy::Copied, CommandError> {
         let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
         let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
@@ -1119,7 +1119,9 @@ impl FileLibrary {
         hash: &str,
         write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
     ) -> Result<crate::copy::Copied, CommandError> {
-        self.copy_recited(&self.recite(ticket, hash)?, write)
+        self.copy_recited(&self.recite(ticket, hash)?, |content| {
+            write(content).map_err(CommandError::from)
+        })
     }
 }
 
