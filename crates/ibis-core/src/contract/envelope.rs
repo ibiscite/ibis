@@ -335,17 +335,18 @@ mod tests {
     }
 
     #[test]
-    fn additive_response_fields_preserve_success_and_failure() {
+    fn additive_response_fields_preserve_success_and_failure() -> Result<(), serde_json::Error> {
         let success = json!({"ibis":1,"ok":true,"data":[],"added":true});
         assert_eq!(
-            serde_json::from_value::<Envelope<Value>>(success).unwrap().data(),
+            serde_json::from_value::<Envelope<Value>>(success)?.data(),
             Some(&json!([]))
         );
         let failure = json!({"ibis":1,"ok":false,"error":{"code":"internal","added":true},"added":true});
         assert!(matches!(
-            serde_json::from_value::<Envelope<Value>>(failure).unwrap(),
+            serde_json::from_value::<Envelope<Value>>(failure)?,
             Envelope::Failure(_)
         ));
+        Ok(())
     }
 
     #[test]

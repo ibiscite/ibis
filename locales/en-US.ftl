@@ -1156,7 +1156,7 @@ library-more-not-listed =
     }
 reason-strict-citation = Strict mode requires a complete citation without losses or source problems.
     .cli = Check the reported source or citation options, or retry without --strict to review the findings.
-    .agent = Fix the source or citation options, or ask the user to review an ordinary citation's findings.
+    .agent = Fix the source or citation options, or ask the user to review an ordinary citation’s findings.
     .app = Check the source and citation options before trying again.
 
 cli-strict-help = Refuse citations with losses, refusals or source problems
