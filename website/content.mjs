@@ -6,7 +6,7 @@ export const escape = value => value.replaceAll("&", "&amp;").replaceAll("<", "&
 export const pages = [
   { path: "/", file: "home", label: "Home", title: "{{headline}}", description: "A small, free citation picker for researchers and students on Mac, Windows and Linux." },
   { path: "/get/", file: "get", label: "Get", title: "Get Ibis", description: "Download Ibis for Mac, Windows or Linux and choose your reference library." },
-  { path: "/today/", file: "today", label: "Today", title: "Today", description: "What Ibis does in the current release, what is in the nightly and what is planned." },
+  { path: "/features/", file: "features", label: "Features", title: "Features", description: "What Ibis does in the current release, what is in the nightly and what is planned." },
   { path: "/cli/", file: "cli", label: "Command line", title: "Command line and AI agents", description: "Real Ibis command line examples and read-only citation tools for AI agents." },
 ];
 // The sidebar: pages, and the home page's own sections.
@@ -15,8 +15,8 @@ export const sections = [
   { label: "Where you write", key: "where", href: "/#where" },
   { label: "Why Ibis?", key: "why", href: "/#why" },
   { label: "Get Ibis", key: "get", href: "/get/", group: true },
-  { label: "Today", key: "today", href: "/today/" },
-  { label: "Scripts & agents", key: "cli", href: "/cli/" },
+  { label: "Features", key: "features", href: "/features/" },
+  { label: "Command line", key: "cli", href: "/cli/" },
 ];
 export const notFound = { path: "/404.html", title: "Page not found", description: "This Ibis page could not be found." };
 // Each command and its real output in one terminal block; Copy takes the command alone.

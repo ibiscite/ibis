@@ -97,6 +97,9 @@ alone. The reading order and next-page rows come from `sections` in `content.mjs
 Scripts' shorthand cycles its examples after three idle seconds, pauses while
 hidden or under reduced motion, and stops permanently on focus, input or Try.
 
+### Names
+A page's label, its `@key` and its address agree: the key is the label's main word, lowercased (`Features`, `@features`, `/features/`). Labels use the words a newcomer would search for.
+
 ### Ready for other languages
 - **Words live in the page templates, never in scripts.** A script that shows text reads it from a `data-` attribute next to the element. A whole sentence is one attribute, never stitched from pieces.
 - **Layout uses start and end, never left and right** (`margin-inline-start`, `inset-inline-end`, `text-align: end`), so a right-to-left language mirrors the page.

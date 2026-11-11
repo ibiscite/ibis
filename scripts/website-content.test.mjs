@@ -10,17 +10,17 @@ const text = html => html.replace(/<[^>]*>/g, "").replaceAll("&quot;", '"')
   .replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
 
 test("four pages share the shell, section navigation and appearance controls", async () => {
-  const paths = ["", "get/", "today/", "cli/"];
+  const paths = ["", "get/", "features/", "cli/"];
   let shared;
   for (const path of paths) {
     const html = await page(path);
     const index = html.match(/<header class="index">[\s\S]*?<\/header>/)[0];
     const nav = index.match(/<nav\b[^>]*>([\s\S]*?)<\/nav>/)[1];
     assert.deepEqual([...nav.matchAll(/href="([^"]+)"/g)].map(m => m[1].replace(/^\/#/, "#")),
-      ["#try", "#where", "#why", "/get/", "/today/", "/cli/"]);
+      ["#try", "#where", "#why", "/get/", "/features/", "/cli/"]);
     assert.deepEqual([...nav.matchAll(/<span class="label">([^<]+)<\/span> <span class="key">([^<]+)<\/span>/g)].map(m => m.slice(1)),
       [["Try it", "@try"], ["Where you write", "@where"], ["Why Ibis?", "@why"],
-        ["Get Ibis", "@get"], ["Today", "@today"], ["Scripts &amp; agents", "@cli"]]);
+        ["Get Ibis", "@get"], ["Features", "@features"], ["Command line", "@cli"]]);
     if (path) assert.deepEqual([...nav.matchAll(/<a href="([^"]+)" aria-current="page"/g)].map(m => m[1]), [`/${path}`]);
     assert.ok(index.indexOf('class="appearance"') > index.indexOf("</nav>"));
     const footer = html.match(/<footer\b[\s\S]*?<\/footer>/)[0];
@@ -61,8 +61,8 @@ test("home offers a download, working picker illustration, four writing apps and
 });
 
 test("each page ends with the next page in the sidebar's reading order", async () => {
-  for (const [path, href, label] of [["", "/get/", "Get Ibis"], ["get/", "/today/", "Today"],
-    ["today/", "/cli/", "Scripts & agents"], ["cli/", "/#try", "Try it"]]) {
+  for (const [path, href, label] of [["", "/get/", "Get Ibis"], ["get/", "/features/", "Features"],
+    ["features/", "/cli/", "Command line"], ["cli/", "/#try", "Try it"]]) {
     const html = await page(path), main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
     const next = main.match(/<nav class="row next-page"[^>]*>([\s\S]*?)<\/div><\/nav>\s*$/)[1];
     assert.deepEqual([...next.matchAll(/<a href="([^"]+)"><span class="next-label">Next<\/span><span class="next-name">([^<]+) <span class="key">/g)].map(m => [m[1], text(m[2])]), [[href, label]]);
@@ -93,8 +93,8 @@ test("Get shows every download, installation notes and shared setup steps withou
   assert.doesNotMatch(html, /<details\b|<summary\b/);
 });
 
-test("Today renders all four status lists from one source and credits shipped 0.3.2 features", async () => {
-  const html = await page("today/");
+test("Features renders all four status lists from one source and credits shipped 0.3.2 features", async () => {
+  const html = await page("features/");
   const status = JSON.parse(await read("content/status.json"));
   assert.deepEqual([...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map(m => m[1]),
     ["In the current release", "In the nightly", "Planned", "Not yet"]);

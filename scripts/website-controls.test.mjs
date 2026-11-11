@@ -114,7 +114,7 @@ test("outbound prose and footer links have silent marks; local links, rows, butt
 });
 
 test("the picker shortcut opens and focuses home from every inner page, and leaves text entry alone", () => {
-  for (const platform of ["MacIntel", "Win32", "Linux"]) for (const path of ["/", "/get/", "/today/", "/cli/"]) {
+  for (const platform of ["MacIntel", "Win32", "Linux"]) for (const path of ["/", "/get/", "/features/", "/cli/"]) {
     const { ctx } = context(null, platform), events = {}, window = control(), destinations = [];
     let opened = 0;
     ctx.window = window; ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
@@ -301,7 +301,7 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
         await route.fulfill({ path: join(root, path), contentType: type, headers: path.endsWith(".html") ? { "content-security-policy": "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'" } : {} });
       });
       let chosenDark;
-      for (const path of ["/", "/get/", "/today/", "/cli/"]) {
+      for (const path of ["/", "/get/", "/features/", "/cli/"]) {
         await page.goto(`https://ibis.test${path}`);
         if (path === "/") await page.getByRole("combobox").waitFor();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${path} fits ${width} ${colorScheme}`);
