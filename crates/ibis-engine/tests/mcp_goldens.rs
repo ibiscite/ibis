@@ -63,6 +63,7 @@ fn golden_cases_replay_through_mcp() {
                 let mut expected = json!({
                     "text": content.text, "notices": data.notices, "losses": data.losses,
                     "provenance": answer["structuredContent"]["provenance"],
+                    "source_health": {"status": "ok", "findings": []},
                 });
                 // Nonempty warnings are part of citation feedback, including
                 // APA's sentence-case reminder for the bibliography case.

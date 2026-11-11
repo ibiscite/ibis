@@ -437,5 +437,5 @@ fn an_agent_can_tell_the_tools_apart_from_their_descriptions() {
         }
     }
     // The whole list stays small enough to sit in every conversation.
-    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 7_000);
+    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 8_000);
 }

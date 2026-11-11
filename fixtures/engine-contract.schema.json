@@ -324,6 +324,7 @@
       ]
     },
     "CitationResult": {
+      "description": "Results, unlike requests, accept fields they do not know, so a client keeps\nworking when a newer engine adds one (decision 0028).",
       "type": "object",
       "properties": {
         "content_hash": {
@@ -392,7 +393,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "text",
         "display",
@@ -414,7 +414,6 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
         "item",
         "code"
@@ -605,7 +604,6 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
         "content"
       ]
@@ -636,7 +634,6 @@
           "type": "boolean"
         }
       },
-      "additionalProperties": false,
       "required": [
         "text"
       ]
@@ -652,7 +649,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "nodes"
       ]
@@ -972,7 +968,6 @@
               "const": "rendered"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item"
@@ -994,7 +989,6 @@
               "const": "refused"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item",
@@ -1240,7 +1234,6 @@
           "$ref": "#/$defs/LossReason"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "reason"
