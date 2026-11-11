@@ -6,8 +6,14 @@ import { build } from "../website/build.mjs";
 await build();
 const read = path => readFile(new URL(`../website/${path}`, import.meta.url), "utf8");
 const page = path => read(`dist/${path}index.html`);
-const text = html => html.replace(/<[^>]*>/g, "").replaceAll("&quot;", '"')
-  .replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
+const text = html => {
+  let previous;
+  do {
+    previous = html;
+    html = html.replace(/<[^>]*>/g, "");
+  } while (html !== previous);
+  return html.replaceAll("&quot;", '"').replaceAll("&gt;", ">").replaceAll("&lt;", "<").replaceAll("&amp;", "&");
+};
 
 test("four pages share the shell, section navigation and appearance controls", async () => {
   const paths = ["", "get/", "features/", "cli/"];
@@ -100,6 +106,7 @@ test("Get shows every download, installation notes and shared setup steps withou
   const windows = platforms[1][0];
   assert.doesNotMatch(windows.match(/<ol class="install">([\s\S]*?)<\/ol>/)[1], /Smart App Control|work computer/);
   assert.match(windows, /<p class="small">[^<]*Smart App Control[^<]*work computer[^<]*<a href="https:\/\/github.com\/ibiscite\/ibis\/blob\/main\/docs\/compatibility.md/);
+  assert.ok(html.includes('Files come from GitHub. <a href="https://github.com/ibiscite/ibis/releases/latest">Release notes</a>'));
   assert.equal((html.match(/releases\/tag\/nightly/g) || []).length, 1);
   assert.doesNotMatch(html, /<details\b|<summary\b/);
 });
