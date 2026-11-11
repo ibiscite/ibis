@@ -25,11 +25,27 @@ test("it is named for what Ibis knows and shows what Copy writes", async () => {
     copy_session_bibliography: (args) => { sent.push(args); return null; },
   });
   const dialog = await open();
-  expect(within(dialog).getByRole("heading", { name: "Cited since opening" })).toBeTruthy();
+  expect(within(dialog).getByRole("heading", { name: "Cited Since Opening" })).toBeTruthy();
   expect(dialog.textContent).toContain("Ibis can’t see your document");
   expect(dialog.textContent).not.toMatch(/your bibliography|document's bibliography/i);
   await within(dialog).findByText("Morgan, A. Taylor, A.");
   fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
+  await within(dialog).findByText("Copied the bibliography.");
+  expect(sent).toEqual([{ style: "apa", contentHash: "hash-Morgan, A. Taylor, A." }]);
+});
+
+test("Enter copies the bibliography, as the footer says, unless a control in the sheet has the keyboard", async () => {
+  const sent: unknown[] = [];
+  backend({
+    session_references: () => list(), session_bibliography: () => formatted("Morgan, A. Taylor, A."),
+    copy_session_bibliography: (args) => { sent.push(args); return null; },
+  });
+  const dialog = await open();
+  await within(dialog).findByText("Morgan, A. Taylor, A.");
+  const remove = within(dialog).getAllByRole("button", { name: /^Remove/ })[0]!;
+  fireEvent.keyDown(remove, { key: "Enter" });
+  expect(sent).toEqual([]);
+  fireEvent.keyDown(dialog, { key: "Enter" });
   await within(dialog).findByText("Copied the bibliography.");
   expect(sent).toEqual([{ style: "apa", contentHash: "hash-Morgan, A. Taylor, A." }]);
 });

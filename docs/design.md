@@ -40,6 +40,7 @@ has its own page; read only the one your change touches:
 12. **People's words, not the engine's** (maintainer, 2026-11-05). Name things by what the person already has: "thesis.bib", "your Zotero library", "cited since opening". Engine words (session, project bibliography, context, scope, source health) never reach the interface, and the command line's human output uses the same words. Where a citation goes is read from the footer alone: the action names the app and format, the status names the library and any linked `.bib`; no other strip of selectors.
 13. **One of each, defined once** (maintainer, 2026-11-07, design pass 2). Three corners, one space scale, one raised layer for everything that floats, one scroll bar, one picture for every visual choice; a sheet is drawn with Settings' cards and rows. A part reads these and never names a second value for them; a screen that looks different is a missing part or token, not a local fix.
 14. **A control lives where its choice lasts** (maintainer, 2026-11-10). A choice for this citation lives on the citation and is forgotten after the paste; for this app or document, in the picker's header, remembered for that app and showing where it came from; for this person, in Settings; for this computer, in first run and the system's prompts; for scripts, in the command line. How often and how costly a mistake is decides how visible it is: every time is one key and visible, rare is in the command list (More), rare and consequential is in Settings with Undo. What a context cannot do is hidden, and Ibis says why where people look; the engine decides. A remembered value wins over a default and says so; a choice Ibis can infer has no control. Every action has three doors: a visible control with its key, the key, and the command list. Each control names who needs it; a control nobody needs is removed.
+15. **Name controls by their job.** A setting and the action it changes have distinct accessible names. Add a group name when it gives context. A live status names the subject of its updates.
 
 ## Where Ibis departs from macOS
 
@@ -54,7 +55,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | Citation colour | None | The scarlet beak marks the citation; its text stays in the text colours [C14] |
 | Large buttons | Capsules on macOS 26 | Rounded rectangles at every size |
 | Search icon | Magnifier | The Ibis mark, as Alfred shows its hat |
-| In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
+| In-window menus | `NSMenu` | Ibis's own, matching native metrics; the format and More are a searchable palette, as Raycast's; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
 | Key caps | Shortcuts only in menus | Caps in the footer and key lists; Settings writes keys as menus do |
 | Focus ring | A translucent keyboard focus colour | Solid accent text, so it keeps 3:1 on every surface |

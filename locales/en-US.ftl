@@ -528,7 +528,7 @@ choice-library-file-help = { -library-formats }
 choice-drop-file = Or drag a { -library-formats } file into this window.
 shelf-references = { $count } references
 keys-title = Keyboard Shortcuts
-keys-close = Close
+keys-close = Back
 keys-action = Action
 keys-shortcut = Shortcut
 shortcuts-filter = Filter shortcuts
@@ -684,10 +684,10 @@ setup-try-again-help = Read the library again
 setup-another = Use Another Library
 setup-another-help = Zotero or another library file
 session-menu = Cited Since Opening…
-session-title = Cited since opening
+session-title = Cited Since Opening
 session-about = What you copied with Ibis since it opened, or since you reset this list, in every app. Ibis can’t see your document, so check this against it.
 session-empty = Nothing yet. References you copy appear here.
-session-close = Close
+session-close = Back
 session-remove = Remove
 session-reset = Reset List
 session-undo-reset = Undo Reset List
@@ -706,13 +706,11 @@ writing-project-saving = Saving project…
 writing-project-menu = Writing Projects…
 writing-project-about = A writing project keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this project. Ibis does not identify the document.
 writing-project-session-only = Ibis can’t identify the app, so this project applies only until Ibis quits.
-writing-project-close = Close
+writing-project-close = Back
 writing-project-none = No Writing Project
 writing-project-empty = No writing projects yet. Your app’s format applies until you choose one.
 writing-project-use = Use { $name }
 writing-project-selected = Selected writing project
-writing-project-selected-label = Selected
-writing-project-format = Format: { $name }
 writing-project-bibliography = Bibliography: { $name }
 writing-project-no-bibliography = No bibliography selected.
 writing-project-choose-bibliography = Choose Bibliography…
@@ -733,11 +731,6 @@ writing-project-bibliography-not-saved = The bibliography choice could not be sa
 writing-project-pick = Your pick changes this project’s format.
 project-check-retry = Retry
 project-check-locate = Locate Bibliography…
-density-name =
-    { $density ->
-        [compact] Compact
-       *[comfortable] Comfortable
-    }
 picker-choose-project = Check Against a .bib File…
 picker-choose-other-project = Check Against Another Bibliography…
 picker-open-zotero = Open Zotero
@@ -775,7 +768,6 @@ picker-pick-heading-default = Default format
 picker-pick-heading-this-paste = This paste only
 picker-paste-from-now-on = Paste into { $app } from Now On
 picker-copy-only = Copy Only
-picker-copy-only-here = Copy Only in { $app }
 picker-preview = Preview
 picker-citation-details = Citation details
 picker-details = Details
@@ -848,18 +840,9 @@ picker-reload-library = Reload Library
 picker-choose-zotero-profile = Choose Zotero Profile…
 picker-zotero-profile = Zotero Profile
 picker-choose-library-menu = Choose Library…
-picker-copy-as = Copy as
+picker-format-label = Citation format
 picker-quit-label = Quit Ibis
 picker-settings = Settings…
-picker-density = Rows: { $name }
-picker-rows = Rows
-picker-density-examples =
-    { $density ->
-        [compact] 1 line
-       *[comfortable] 2 lines
-    }
-picker-density-title = Show less or more of each reference
-picker-view-changes = View changes
 picker-zotero-libraries = Zotero libraries
 picker-search-in = Search in
 picker-all-libraries = All Libraries
@@ -1146,3 +1129,43 @@ library-more-not-listed =
         [one] 1 more is not listed.
        *[other] { $count } more are not listed.
     }
+
+## The palette: the format chooser and More (ui/Palette).
+palette-back = Back
+palette-run = Run
+palette-recent = Recent
+palette-citation = This citation
+palette-library = This library
+palette-ibis = Ibis
+palette-peek = Peek at Reference
+palette-actions-title = Actions
+palette-search-actions = Search actions
+palette-no-actions = No matching actions
+picker-format-title = Format
+palette-search-formats = Search formats
+palette-no-formats = No matching formats
+palette-use-again = Use { $format } in { $app } Again
+palette-use-for-app = Use for { $app }
+palette-use-default = Use Everywhere
+palette-use-this-paste = Use for This Paste
+palette-style-unavailable = Not available just now
+palette-preview-example = For example
+palette-preview-key = What Ibis pastes
+palette-preview-more = and { $count } more
+palette-preview-unavailable = No preview for this format.
+palette-words-source = open file folder zotero show library
+palette-words-reveal-source = finder explorer folder file location
+palette-words-choose-source = library file bib zotero open switch change
+palette-words-project-entry = bibliography bib entry missing copy
+palette-words-project-choose = bibliography bib check project
+palette-words-project-stop = bibliography bib check stop
+palette-words-format = style output apa pandoc latex syntax
+palette-words-peek = details preview quick look info
+palette-words-change-last = edit replace previous citation again
+palette-words-keep-order = order sort sequence
+palette-words-session-references = bibliography history cited list references
+palette-words-forget-recent = clear history privacy recents
+palette-words-pin = pin float stay keep open
+palette-words-keys = keyboard shortcuts keys help hotkeys
+palette-words-settings = preferences options configure
+palette-words-quit = exit close stop

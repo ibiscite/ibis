@@ -40,9 +40,9 @@ test("a missing file's Find recovery keeps its file icon in the footer and More"
   await waitFor(() => expect(fix.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AQID"));
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  const source = await screen.findByRole("menuitem", { name: "Find ⁨thesis.bib⁩…" });
+  const source = await screen.findByRole("option", { name: "Find ⁨thesis.bib⁩…" });
   expect(source.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,AQID");
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Actions" }), { key: "Escape" });
   fireEvent.click(await screen.findByRole("button", { name: "Find ⁨thesis.bib⁩…" }));
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
 });
@@ -59,8 +59,8 @@ test("Command-O follows the selected reference; Option reveals the file without 
   expect(open.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }]);
   fireEvent.keyDown(window, { key: "Alt", altKey: true });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("menuitem", { name: "Show in Folder" })).toBeTruthy();
-  fireEvent.keyDown(screen.getByRole("menu"), { key: "o", ctrlKey: true, altKey: true });
+  expect(await screen.findByRole("option", { name: "Show in Folder" })).toBeTruthy();
+  fireEvent.keyDown(screen.getByRole("dialog", { name: "Actions" }), { key: "o", ctrlKey: true, altKey: true });
   await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
   expect(open.mock.calls[1]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: true, presentation: 0 }]);
 });
@@ -130,8 +130,8 @@ test("hidden pickers do not read icons; reopening rejects an old icon completion
   await act(async () => { pending.at(-1)?.({ kind: "file", name: "thesis.bib", icon }); });
   await act(async () => { old.forEach((finish) => finish({ kind: "file", name: "obsolete.bib", icon })); });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("menuitem", { name: "Open ⁨thesis.bib⁩" })).toBeTruthy();
-  expect(screen.queryByRole("menuitem", { name: /obsolete/ })).toBeNull();
+  expect(await screen.findByRole("option", { name: "Open ⁨thesis.bib⁩" })).toBeTruthy();
+  expect(screen.queryByRole("option", { name: /obsolete/ })).toBeNull();
 });
 
 test("failed opening replaces the same footer action with Find, and Command-O uses that recovery", async () => {
@@ -189,7 +189,7 @@ test("a delayed icon from source A cannot replace source B, and image failures r
   current = { ...file, name: "second.bib", snapshot_name: "second.bib" };
   await act(async () => { await emit("library:changed", current); });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  const source = await screen.findByRole("menuitem", { name: "Open ⁨second.bib⁩" });
+  const source = await screen.findByRole("option", { name: "Open ⁨second.bib⁩" });
   await act(async () => { finish({ kind: "file", name: "first.bib", icon }); });
   expect(source.textContent).not.toContain("first.bib");
   fireEvent.error(source.querySelector("img")!);
@@ -235,7 +235,7 @@ test("a source action shown in More hides the matching footer button until the m
   render(<App />);
   await screen.findByRole("button", { name: "Open ⁨thesis.bib⁩" });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  const row = await screen.findByRole("menuitem", { name: "Open ⁨thesis.bib⁩" });
+  const row = await screen.findByRole("option", { name: "Open ⁨thesis.bib⁩" });
   expect(document.querySelector("footer .source-action")).toBeNull();
   fireEvent.keyDown(row, { key: "Escape" });
   expect(await screen.findByRole("button", { name: "Open ⁨thesis.bib⁩" })).toBeTruthy();
@@ -264,7 +264,7 @@ test.each([false, true])("Command-O finds a missing current file without stale r
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
   expect(open).not.toHaveBeenCalled();
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  expect(await screen.findByRole("menuitem", { name: "Find ⁨thesis.bib⁩…" })).toBeTruthy();
+  expect(await screen.findByRole("option", { name: "Find ⁨thesis.bib⁩…" })).toBeTruthy();
 });
 
 test.each([0, 12])("Command-O opens the retained file after a same-named missing replacement fails (%s references)", async (references) => {
@@ -285,6 +285,6 @@ test("More keeps a different footer recovery visible after a failed source switc
   render(<App />);
   await screen.findByRole("button", { name: "Choose Library…" });
   fireEvent.click(footer().getByRole("button", { name: "More" }));
-  await screen.findByRole("menuitem", { name: "Open ⁨thesis.bib⁩" });
+  await screen.findByRole("option", { name: "Open ⁨thesis.bib⁩" });
   expect(document.querySelector("footer .source-action")?.textContent).toContain("Choose Library…");
 });

@@ -58,7 +58,7 @@ function Fixture() {
     </div>
     {open === "Keys" && <KeysDialog bindings={KEY_TABLE} isMac onClose={() => setOpen(null)} />}
     {open === "Sheet" && <Sheet title="Invented sheet" closeLabel="Close" description="What this invented sheet is for." onClose={() => setOpen(null)}
-      actions={<Button variant="primary" label="Copy" onPress={() => {}} />}>
+      actions={[{ label: "Copy", primary: true, onPress: () => {} }]}>
       <SheetList label="Invented references">{["Aster 2026", "Alder 2025"].map((name) => <SheetRow key={name}>
         <span><span>{longLabel}</span><span className="ui-sheet-note">{name}</span></span><Button size="small" label="Remove" onPress={() => {}} />
       </SheetRow>)}</SheetList>

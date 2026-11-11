@@ -11,7 +11,7 @@
 export const columns = {
   marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
   words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
+  outside: ".choice-screen, .inspector, .menu-popover, .ui-view, [inert]",
 } as const;
 
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
@@ -19,8 +19,8 @@ export const columns = {
 export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]', trigger: '.citation-field .ui-popup-button[aria-expanded="true"]' } as const;
 
 /** [C9] Action menus fit their labels until the window limits their width,
- * scrolling or not: a scroll bar never takes its width from a label. Format
- * pop-ups deliberately keep a narrow column with cut samples. */
+ * scrolling or not: a scroll bar never takes its width from a label. Pop-up
+ * menus of choices deliberately keep one narrow column. */
 export const menuLabels = { label: ".menu-popover .menu-label", outside: ".toolbar-menu-popover" } as const;
 
 /** [C19] Rows of one form share both edges: every control's drawn fill. */
@@ -35,6 +35,10 @@ export const stacks = [".inspector-titles", ".inspector-column", ".citation-deta
 
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
+
+/** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
+ * the app focuses (tabindex -1) never draws one around itself. */
+export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
 
 /** [C8] A status is never cut to a stub ("Z…"): a line whose words end in "…"
  * keeps at least --status-short of them, and the footer folds its hint labels
@@ -143,6 +147,11 @@ export function geometry(root: ParentNode = document): string[] {
       if (Math.abs(shape.top - shapes[0]!.top) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.top.toFixed(1)} from the top, the first card ${shapes[0]!.top.toFixed(1)}`);
     }
     for (const shape of shapes) if (Math.abs(shape.glyph) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.glyph.toFixed(1)} off its title's line`);
+  }
+  const focused = document.activeElement;
+  if (focused instanceof HTMLElement && focused.matches(rings.containers)) {
+    const style = getComputedStyle(focused);
+    if (style.outlineStyle !== "none" && parseFloat(style.outlineWidth) > 0) failures.push(`[D8] ${name(focused)}: draws a focus ring around itself`);
   }
   const short = (() => { const probe = document.createElement("span"); probe.style.cssText = "position:absolute;visibility:hidden;inline-size:var(--status-short)"; document.body.append(probe); const px = probe.getBoundingClientRect().width; probe.remove(); return px; })();
   for (const line of root.querySelectorAll<HTMLElement>(stubs.line)) {

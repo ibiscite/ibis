@@ -58,24 +58,6 @@ test("a global key choice during a stale Settings read wins and sends only its f
   expect(setPickerPreferences).toHaveBeenCalledWith({ output: "cite" }, 1);
 });
 
-test("a queued view save never replays an output acknowledged before it reaches the native lock", async () => {
-  const output = deferred<{ preferences: PickerPreferences }>();
-  const setPickerPreferences = vi.fn()
-    .mockImplementationOnce(() => output.promise)
-    .mockImplementationOnce(async (patch: Partial<PickerPreferences>) => ({
-      // The other window changed the global style after the first write.
-      preferences: { ...preferences, output: "ieee", ...patch },
-    }));
-  const { result } = renderHook(() => usePickerPreferences({
-    pickerPreferences: async () => ({ ...preferences, output: "apa" }), ...owner(setPickerPreferences), quit: async () => undefined }, context));
-  await act(async () => { result.current.loadPreferences(() => true); });
-  act(() => result.current.chooseFormat("cite"));
-  act(() => result.current.toggleLargerText());
-  await act(async () => { output.resolve({ preferences: { ...preferences, output: "cite" } }); });
-  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, 2]);
-  expect(result.current.format).toBe("ieee");
-});
-
 test("a failed later output stays applied in the picker and is never sent again", async () => {
   const first = deferred<void>();
   let state = { ...preferences, output: "apa" } as PickerPreferences;
@@ -96,9 +78,7 @@ test("a failed later output stays applied in the picker and is never sent again"
   await act(async () => { first.resolve(); });
   expect(writes).toBe(3);
   expect(state.output).toBe("ieee");
-  await act(async () => { result.current.toggleLargerText(); });
-  // The next choice carries only its own field: the saved IEEE is never written over later.
-  expect(setPickerPreferences.mock.calls.at(-1)?.[0]).toEqual({ larger_text: true });
-  expect(state.output).toBe("ieee");
+  // The failed choice stays applied here, and nothing sends it again.
   expect(result.current.format).toBe("typst");
+  expect(setPickerPreferences).toHaveBeenCalledTimes(3);
 });

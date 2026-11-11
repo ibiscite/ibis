@@ -109,10 +109,10 @@ test("leaving a writing project restores the app's output and copies a fresh pre
   });
   render(<App />);
   await screen.findByText("Synthetic source");
-  const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
+  const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
   fireEvent.click(formatButton());
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Writing Projects…" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Writing Projects…" }));
   const dialog = await screen.findByRole("dialog", { name: "Writing Projects" });
   fireEvent.click(await within(dialog).findByRole("button", { name: "No Writing Project" }));
   await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull());
@@ -123,10 +123,10 @@ test("leaving a writing project restores the app's output and copies a fresh pre
 });
 
 async function openWritingProjects() {
-  const format = within(screen.getByLabelText("Search references").closest("header")!).getByRole<HTMLButtonElement>("button", { name: /^Copy as / });
+  const format = within(screen.getByLabelText("Search references").closest("header")!).getByRole<HTMLButtonElement>("button", { name: /^Citation format / });
   await waitFor(() => expect(format.disabled).toBe(false));
   fireEvent.click(format);
-  fireEvent.click(await screen.findByRole("menuitem", { name: "Writing Projects…" }));
+  fireEvent.click(await screen.findByRole("option", { name: "Writing Projects…" }));
   return screen.findByRole("dialog", { name: "Writing Projects" });
 }
 

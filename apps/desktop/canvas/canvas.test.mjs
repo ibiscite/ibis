@@ -84,8 +84,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       }
       else {
         expect(host.textContent).toContain("Invented reference 0");
-        if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
-        if (scenario === "format-menu") expect(window.document.querySelector('[role="menuitemradio"]')).not.toBeNull();
+        if (scenario === "more") expect(window.document.querySelector('.ui-palette [role="option"]')).not.toBeNull();
+        if (scenario === "format-menu") expect(window.document.querySelector('#format-palette-pandoc, .ui-palette [aria-current="true"]')).not.toBeNull();
       }
     });
   };
