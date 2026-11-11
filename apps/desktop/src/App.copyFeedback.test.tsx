@@ -4,6 +4,7 @@ import { App } from "./App";
 import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
 import { emit } from "@tauri-apps/api/event";
 import type { PickerDestination } from "./api";
+import { noFormatChosen } from "./testing/format";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
 // workers are busy. Use one clock from mount through unmount; switching clocks
@@ -98,7 +99,7 @@ test.each([
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, format: noFormatChosen, automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: PreviewRequest[] = [];
@@ -117,7 +118,7 @@ test("a preferences event superseding the permission return keeps the prepared o
   });
   await copy();
   await act(async () => { await emit("picker:hidden"); });
-  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
+  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
   delayReturn = true;
   granted = true;
   await act(async () => { await emit("picker:shown"); });

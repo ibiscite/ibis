@@ -6,6 +6,7 @@ import { createSessionController } from "./sessionController";
 import { useDestination as useSessionDestination } from "./useDestination";
 import type { PickerDestination, WritingProjectsView } from "../../api";
 import type { OutputId } from "../../format/outputs";
+import { noFormatChosen } from "../../testing/format";
 
 afterEach(cleanup);
 /** The destination in its own picker session; `consumeHeld` is what a finished copy does. */
@@ -15,7 +16,7 @@ function useDestination(api: Parameters<typeof useSessionDestination>[2], settin
   return { ...useSessionDestination(session, state, api, settings),
     consumeHeld: (output: OutputToken) => session.dispatch({ type: "consume-held", output }) };
 }
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
+const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -404,7 +405,7 @@ test("returning from permission keeps the prepared output once while reading the
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   const oldCopy = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
   await act(async () => result.current.read(true, true));
   expect(result.current.app).toBe("Example Writer");
   expect(result.current).toMatchObject({ format: "typst", source: "held" });
@@ -426,7 +427,7 @@ test("superseding destination reads preserve the permission return's output and 
   await act(async () => result.current.choose("typst"));
   act(() => result.current.read(true, true));
   const token = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, remembered: "cite" };
+  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
   await act(async () => result.current.read(false));
   await act(async () => returning.resolve(browser));
   expect(result.current.app).toBe("Example Writer");

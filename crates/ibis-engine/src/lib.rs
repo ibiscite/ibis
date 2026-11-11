@@ -9,6 +9,8 @@ pub mod catalogue;
 
 pub mod mcp;
 
+/// Which format a citation uses (decision 0042).
+pub mod format;
 pub mod outputs;
 
 pub mod settings;

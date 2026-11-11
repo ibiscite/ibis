@@ -242,9 +242,57 @@ pub fn output_for(app: Option<&AppId>, default: &OutputSpec, style: &str) -> Out
     }
 }
 
-/// What Ibis does for a named app: the output it uses and whether it pastes,
-/// with pasting on and permitted, as they are by default. A choice remembered
-/// in the app for one app is that person's and stays out of this answer.
+/// Which level chose a citation's format (decision 0042); the engine decides.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum FormatFrom {
+    /// The writing chosen for this app.
+    Writing,
+    /// The format this app was given when the person changed it there.
+    App,
+    /// Your format for this kind of app.
+    Yours,
+    /// Nothing was chosen; the format suits the kind of app. The first
+    /// paste with it says so, once.
+    Suggestion,
+}
+
+/// The kinds of app a format is chosen for. People never see the word.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum FormatKind {
+    /// Formatted text: word processors, mail, browsers, unknown apps.
+    Documents,
+    /// Citation keys: Markdown, LaTeX and Typst apps and code editors.
+    Keys,
+}
+
+/// The writing that chose a format.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct WritingName {
+    pub id: String,
+    pub name: String,
+}
+
+/// The format a citation for one app uses, and why.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct FormatChoice {
+    /// The output written.
+    pub output: OutputSpec,
+    /// Its id in the engine's `outputs` list, when it is listed there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub id: Option<String>,
+    pub from: FormatFrom,
+    pub kind: FormatKind,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub writing: Option<WritingName>,
+}
+
+/// What Ibis does for a named app: the format the engine chose for it from
+/// the person's settings, and whether it pastes, with pasting on and
+/// permitted, as they are by default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Destination {
@@ -252,14 +300,20 @@ pub struct Destination {
     /// The app's name, when Ibis knows it.
     pub name: Option<String>,
     pub output: OutputSpec,
+    /// Which level chose `output`.
+    pub from: FormatFrom,
+    /// The writing that chose it, when one did.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub writing: Option<WritingName>,
     pub delivery: Decision,
     /// The app keeps `output` until a person answers this question in Ibis.
     pub output_question: Option<OutputQuestion>,
 }
 
-/// The destination for an app ID; `default` and `style` as in [`output_for`].
-pub fn destination(id: &str, running: System, default: &OutputSpec, style: &str) -> Destination {
+/// The destination for an app ID, with the format the engine chose for it.
+pub fn destination(id: &str, running: System, choose: impl FnOnce(&AppId) -> FormatChoice) -> Destination {
     let app = AppId::named(id, running);
+    let format = choose(&app);
     let entry = lookup(&app);
     let delivery = decide(
         &Target {
@@ -275,7 +329,9 @@ pub fn destination(id: &str, running: System, default: &OutputSpec, style: &str)
         },
     );
     Destination {
-        output: output_for(Some(&app), default, style),
+        output: format.output,
+        from: format.from,
+        writing: format.writing,
         name: entry.map(|entry| entry.name.to_owned()),
         output_question: entry.and_then(|entry| entry.output_question),
         delivery,

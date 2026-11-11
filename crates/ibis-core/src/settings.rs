@@ -329,6 +329,10 @@ pub struct Settings {
     /// anything but text reads as no choice, so the rest of the file is kept.
     #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
     pub output: Option<String>,
+    /// Your format in Markdown, LaTeX and Typst apps: a key output's id
+    /// (decision 0042). `output` is your format everywhere else.
+    #[serde(skip_serializing_if = "Option::is_none", deserialize_with = "text_or_none")]
+    pub key_output: Option<String>,
     /// Whether Ibis checks GitHub for updates (ADR 0019). `None` means the
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -396,6 +400,7 @@ impl Default for Settings {
             zotero_profile: None,
             editor_endpoint: None,
             output: None,
+            key_output: None,
             update_checks: None,
             density: None,
             larger_text: None,

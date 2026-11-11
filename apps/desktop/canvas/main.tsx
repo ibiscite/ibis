@@ -29,6 +29,7 @@ import "../src/ui/CopyReceipt.css";
 import "../src/notice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/styles.css?inline";
+import { noFormatChosen } from "../src/testing/format";
 
 export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
@@ -123,7 +124,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
       if (text === undefined) throw new Error("Unknown synthetic preview");
       return { text, warnings: [] };
     },
-    pickerDestination: projectContext ? async () => ({ app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+    pickerDestination: projectContext ? async () => ({ app: "Invented Editor", app_id: "invented.editor", app_identity: null, format: noFormatChosen,
       automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
       writing_project: project, writing_context: "invented-opening", context_version: [1, 0] }) : undefined,
     rememberAppOutput: projectContext ? async () => null : undefined,

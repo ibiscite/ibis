@@ -95,6 +95,8 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
 pub struct Session {
     legacy: bool,
     library_problem: Option<Refusal>,
+    /// Where the app's settings are read for the format each app uses.
+    formats: Formats,
 }
 
 impl Session {
@@ -104,8 +106,33 @@ impl Session {
         Self {
             legacy: false,
             library_problem: Some(problem),
+            formats: Formats::Defaults,
         }
     }
+
+    /// Choose `for_app` formats from the app's settings file, read at each call
+    /// so an edit applies at once (decision 0042).
+    pub fn with_formats(mut self, settings: std::path::PathBuf) -> Self {
+        self.formats = Formats::File(settings);
+        self
+    }
+
+    /// The app's settings cannot be found here, so `for_app` is refused with
+    /// this rather than answered from defaults.
+    pub fn without_formats(mut self, problem: Refusal) -> Self {
+        self.formats = Formats::Unavailable(problem);
+        self
+    }
+}
+
+/// Where `for_app` reads the formats chosen in the app.
+#[derive(Debug, Default)]
+pub(crate) enum Formats {
+    /// Nothing is chosen: a server embedded without app settings, as in tests.
+    #[default]
+    Defaults,
+    File(std::path::PathBuf),
+    Unavailable(Refusal),
 }
 
 const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
@@ -220,7 +247,13 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
             let name = params.get("name").and_then(Value::as_str);
             let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
             match tools::TOOLS.iter().find(|tool| Some(tool.name) == name) {
-                Some(tool) => tools::call(engine, session.library_problem.as_ref(), tool, &arguments),
+                Some(tool) => tools::call(
+                    engine,
+                    session.library_problem.as_ref(),
+                    &session.formats,
+                    tool,
+                    &arguments,
+                ),
                 None => return Some(error(id, -32602, "Unknown tool")),
             }
         }

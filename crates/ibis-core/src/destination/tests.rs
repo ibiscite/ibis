@@ -405,29 +405,30 @@ fn an_id_belongs_to_the_system_whose_table_knows_it() {
 
 #[test]
 fn a_destination_says_what_the_app_gets_and_how() {
-    let default = OutputSpec::Key {
-        syntax: KeySyntax::Typst,
-        command: None,
+    // The engine chooses the format (decision 0042); the destination carries it.
+    let chosen = FormatChoice {
+        output: OutputSpec::Csl { style: "ieee".into() },
+        id: Some("ieee".into()),
+        from: FormatFrom::Yours,
+        kind: FormatKind::Documents,
+        writing: None,
     };
-    let at = |id: &str, running| destination(id, running, &default, "ieee");
+    let at = |id: &str, running| destination(id, running, |_| chosen.clone());
 
     let word = at("com.microsoft.word", System::Macos);
     assert_eq!(word.name.as_deref(), Some("Microsoft Word"));
     assert_eq!(word.delivery, Decision::Paste);
-    assert_eq!(word.output, OutputSpec::Csl { style: "ieee".into() });
+    assert_eq!((&word.output, word.from), (&chosen.output, FormatFrom::Yours));
 
     let terminal = at("com.apple.Terminal", System::Windows);
     assert_eq!(terminal.delivery, Decision::Copy(CopyReason::Terminal));
-    assert_eq!(terminal.output, default);
 
     let browser = at("com.apple.Safari", System::Macos);
     assert_eq!(browser.output_question, Some(OutputQuestion::Browser));
-    assert_eq!(browser.output, default);
 
     for running in [System::Macos, System::Windows] {
         let unknown = at("com.example.unknown", running);
         assert_eq!(unknown.name, None);
-        assert_eq!(unknown.output, default);
         assert_eq!(unknown.delivery, Decision::Copy(CopyReason::UnknownApp));
     }
     let linux = at("com.example.unknown", System::Linux);
