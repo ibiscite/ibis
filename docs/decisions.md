@@ -90,8 +90,8 @@ the anchor older links use.
 ## 0043 RIS and CSV libraries
 [0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
 
-## 0044 Ibis's MCP server stays local
-[0044](decisions/0044-mcp-stays-local.md): no hosted MCP endpoint for OpenAI's directory; manual setup docs, the MCP Registry and Claude's directory instead.
+## 0045 Ibis's MCP server stays local
+[0045](decisions/0045-mcp-stays-local.md): no hosted MCP endpoint for OpenAI's directory; manual setup docs, the MCP Registry and Claude's directory instead.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
