@@ -226,8 +226,8 @@ fn command() -> Command {
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
                     .requires("project").help("Read the writing project from Ibis Nightly's settings"))
-                .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
-                    .requires("project").help("Require a current complete bibliography read for project key citations"))
+                .arg(Arg::new("strict").long("strict").action(ArgAction::SetTrue)
+                    .help(ibis_engine::catalogue::text("cli-strict-help", None, &[]).unwrap_or_default()))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
@@ -1112,15 +1112,23 @@ fn run_method<R: BufRead>(
         }
         Method::Cite if args.get_flag("request") => {
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
-            let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            let mut params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            if args.get_flag("strict") {
+                params
+                    .as_object_mut()
+                    .ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?
+                    .insert("strict".into(), json!(true));
+            }
             let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
-            let result = explain(
-                engine.dispatch(method, &params, &cancel),
-                |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => REQUEST_HELP.into(),
-                    code => human::code_sentence(code),
-                },
-            )?;
+            let result = explain(engine.dispatch(method, &params, &cancel), |error| {
+                if error.reason.is_some() {
+                    ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli)
+                } else if error.code == ErrorCode::BadInput {
+                    REQUEST_HELP.into()
+                } else {
+                    human::code_sentence(error.code)
+                }
+            })?;
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
@@ -1193,16 +1201,16 @@ fn run_method<R: BufRead>(
             let writing_project = project
                 .as_ref()
                 .map(|project| {
-                    engine.cite_writing_project_keys_with_policy(
+                    engine.cite_writing_project_keys(
                         project,
                         &KeyCitationRequest {
                             keys: keys.clone(),
                             output: output.clone(),
                             form,
+                            strict: args.get_flag("strict"),
                             output_locale: args.get_one::<String>("locale").cloned(),
                             keep_order: args.get_flag("keep-order"),
                         },
-                        writing_projects::policy(args),
                         &cancel,
                     )
                 })
@@ -1215,6 +1223,7 @@ fn run_method<R: BufRead>(
                         keys: keys.clone(),
                         output,
                         form,
+                        strict: args.get_flag("strict"),
                         output_locale: args.get_one::<String>("locale").cloned(),
                         keep_order: args.get_flag("keep-order"),
                     },

@@ -119,7 +119,7 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
     let id = object.get("id").cloned();
     let valid_id = id
         .as_ref()
-        .is_none_or(|id| id.is_string() || id.is_i64() || id.is_u64());
+        .is_none_or(|id| id.as_str().is_some_and(|id| id.len() <= 1024) || id.is_i64() || id.is_u64());
     let reply_id = id.clone().filter(|_| valid_id).unwrap_or(Value::Null);
     if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
         return Some(error(reply_id, -32600, "Invalid Request"));
@@ -230,7 +230,19 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
         result["resultType"] = json!("complete");
         result["_meta"] = json!({SERVER_INFO_KEY: server_info()});
     }
-    Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
+    let mut reply = json!({"jsonrpc": "2.0", "id": id, "result": result});
+    // Metadata and the frame itself count toward the bytes the client receives.
+    if method == "tools/call" && reply.to_string().len() + 1 > tools::MAX_ANSWER {
+        let mut refused = tools::tool_error(
+            ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
+        );
+        if modern {
+            refused["resultType"] = json!("complete");
+            refused["_meta"] = json!({SERVER_INFO_KEY: server_info()});
+        }
+        reply["result"] = refused;
+    }
+    Some(reply)
 }
 
 fn supported_versions() -> Vec<&'static str> {

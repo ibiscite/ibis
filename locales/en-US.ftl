@@ -1146,3 +1146,14 @@ library-more-not-listed =
         [one] 1 more is not listed.
        *[other] { $count } more are not listed.
     }
+reason-strict-citation = Strict mode requires a complete citation without losses or source problems.
+    .cli = Check the reported source or citation options, or retry without --strict to review the findings.
+    .agent = Fix the source or citation options, or ask the user to review an ordinary citation's findings.
+    .app = Check the source and citation options before trying again.
+
+cli-strict-help = Refuse citations with losses, refusals or source problems
+mcp-strict-help = Refuse losses, refusals or source problems.
+mcp-citation-hidden = This citation contains hidden characters and cannot be returned unchanged. Ask the user to fix the source or choose another output.
+mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
+mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
+mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings.

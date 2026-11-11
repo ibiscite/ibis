@@ -129,6 +129,8 @@ pub enum ErrorCode {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ErrorReason {
+    /// Strict citation policy found losses, refusals or unhealthy evidence.
+    StrictCitation,
     /// No style has the requested id; `styles` lists them.
     UnknownStyle,
     /// No output has the requested id; `outputs` lists them.

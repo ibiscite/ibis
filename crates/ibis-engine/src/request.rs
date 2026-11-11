@@ -100,6 +100,8 @@ pub struct ShowRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct KeyCitationRequest {
+    #[serde(default)]
+    pub strict: bool,
     pub keys: Vec<KeyItem>,
     pub output: OutputSpec,
     #[serde(default)]

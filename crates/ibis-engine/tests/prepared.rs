@@ -27,6 +27,9 @@ fn sample_provenance_labels_every_representation_and_binds_the_preview_hash() ->
         assert_eq!(result.rtf.is_some(), unmarked.rtf.is_some());
         assert!(result.content_matches_hash());
         assert_ne!(result.content_hash, unmarked.content_hash);
+        let receipt = result.receipt.as_ref().ok_or("sample receipt")?;
+        assert_eq!(receipt.content_hash, result.content_hash);
+        assert!(receipt.sample);
         let copied = engine.recite(&sample, &Cancellation::default())?;
         assert_eq!(copied, result, "a copy re-cites to exactly the marked preview");
         let content = copied.copy_content(1).ok_or("copy content")?;

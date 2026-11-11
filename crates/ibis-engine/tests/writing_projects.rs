@@ -4,7 +4,7 @@ use ibis_core::{
     settings::{Settings, writing_projects},
 };
 use ibis_engine::{
-    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, ProjectPolicy, ProjectRead,
+    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, ProjectRead,
     request::KeyCitationRequest,
 };
 use serde_json::json;
@@ -41,14 +41,23 @@ fn a_strict_key_project_without_a_bibliography_cannot_claim_a_successful_check()
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
     let normal = engine
-        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Normal, &Cancellation::default())
+        .cite_writing_project_keys(&project, &request, &Cancellation::default())
         .unwrap();
     assert_eq!(normal.citation.text, "[@vale2024]");
     let strict = engine
-        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Strict, &Cancellation::default())
-        .unwrap();
-    assert!(strict.citation.text.is_empty());
-    assert_eq!(strict.assessment.unwrap().state, Assessment::Paused);
+        .cite_writing_project_keys(
+            &project,
+            &KeyCitationRequest {
+                strict: true,
+                ..request
+            },
+            &Cancellation::default(),
+        )
+        .unwrap_err();
+    assert_eq!(
+        strict,
+        EngineError::because(ErrorCode::BadInput, ErrorReason::StrictCitation)
+    );
 }
 
 #[test]
@@ -88,6 +97,40 @@ fn one_explicit_project_controls_output_and_checks_its_bibliography() {
     assert!(!json.contains(directory.path().to_str().unwrap()));
     let ordinary = engine.cite_keys(&request, &Cancellation::default()).unwrap();
     assert!(ordinary.text.contains("Vale"));
+    let evidence = result.citation.receipt.as_ref().unwrap().project.as_ref().unwrap();
+    assert_eq!(evidence.revision, project.revision());
+    assert!(evidence.bibliography.is_some());
+    assert!(evidence.checked_at_ms.unwrap() > 0);
+    let strict = KeyCitationRequest {
+        strict: true,
+        ..request
+    };
+    assert!(
+        engine
+            .cite_writing_project_keys(&project, &strict, &Cancellation::default())
+            .is_ok()
+    );
+    std::fs::remove_file(project.bibliography.as_ref().unwrap()).unwrap();
+    assert_eq!(
+        engine
+            .cite_writing_project_keys(&project, &strict, &Cancellation::default())
+            .unwrap_err(),
+        EngineError::because(ErrorCode::BadInput, ErrorReason::StrictCitation)
+    );
+    let unverified = engine
+        .cite_writing_project_keys(
+            &project,
+            &KeyCitationRequest {
+                strict: false,
+                ..strict
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+    assert_eq!(unverified.citation.text, "\\cite{vale2024}");
+    let evidence = unverified.citation.receipt.unwrap().project.unwrap();
+    assert_eq!(evidence.bibliography, None);
+    assert_eq!(evidence.checked_at_ms, None);
 }
 
 #[test]
@@ -230,12 +273,9 @@ fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
     assert_eq!(result.assessment.unwrap().state, Assessment::Ready);
     assert_eq!(result.project.unwrap().keys[0].check, KeyCheck::CouldNotCheck);
 
-    let prepared = prepared(&engine);
+    let prepared = prepared(&engine, true);
     let unreadable = ProjectRead::read(&directory.path().join("unavailable.bib"), None);
-    assert_eq!(
-        prepared.project_evidence(&unreadable, ProjectPolicy::Strict).state,
-        Assessment::Paused
-    );
+    assert_eq!(prepared.project_evidence(&unreadable).state, Assessment::Paused);
     assert_eq!(
         prepared.result().text,
         "[@vale2024]",
@@ -250,21 +290,20 @@ fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
     )
     .unwrap();
     let complete = ProjectRead::read(&path, None);
-    assert_eq!(
-        prepared.project_evidence(&complete, ProjectPolicy::Strict).state,
-        Assessment::Ready
-    );
+    assert_eq!(prepared.project_evidence(&complete).state, Assessment::Ready);
 }
 
-fn prepared(engine: &Engine) -> ibis_engine::PreparedCitation {
+fn prepared(engine: &Engine, strict: bool) -> ibis_engine::PreparedCitation {
     let item = engine.snapshot().unwrap().objects()[0].object.id().clone();
-    let request: CitationRequest =
-        serde_json::from_value(json!({"items":[{"item":item}],"output":{"kind":"preset","name":"pandoc"}})).unwrap();
+    let request: CitationRequest = serde_json::from_value(
+        json!({"strict":strict,"items":[{"item":item}],"output":{"kind":"preset","name":"pandoc"}}),
+    )
+    .unwrap();
     engine.prepare_citation(&request, &Cancellation::default()).unwrap()
 }
 
 #[test]
-fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
+fn ordinary_and_strict_requests_refuse_a_doi_conflict_in_a_damaged_file() {
     let engine = engine();
     let snapshot = engine.snapshot().unwrap();
     let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
@@ -278,7 +317,6 @@ fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
             Arc::new(Snapshot::new(vec![LibraryObject::Record(record)]).unwrap()),
         )
         .unwrap();
-    let prepared = prepared(&engine);
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
     std::fs::write(
@@ -287,8 +325,9 @@ fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
     )
     .unwrap();
     let conflicting = ProjectRead::read(&path, None);
-    for policy in [ProjectPolicy::Normal, ProjectPolicy::Strict] {
-        let assessment = prepared.project_evidence(&conflicting, policy);
+    for strict in [false, true] {
+        let prepared = prepared(&engine, strict);
+        let assessment = prepared.project_evidence(&conflicting);
         assert_eq!(assessment.state, Assessment::Conflict);
         assert!(!assessment.can_copy());
     }

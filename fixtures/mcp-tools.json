@@ -166,7 +166,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+    "description": "Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -264,6 +264,10 @@
           "description": "A language for a style, such as de-DE, from the styles tool.",
           "type": "string"
         },
+        "strict": {
+          "description": "Refuse losses, refusals or source problems.",
+          "type": "boolean"
+        },
         "style": {
           "description": "Any style id from the styles tool, instead of format.",
           "type": "string"
@@ -301,6 +305,9 @@
         "provenance": {
           "type": "string"
         },
+        "receipt": {
+          "type": "object"
+        },
         "text": {
           "type": "string"
         },
@@ -312,6 +319,7 @@
         "text",
         "notices",
         "losses",
+        "receipt",
         "provenance"
       ],
       "type": "object"

@@ -1132,6 +1132,7 @@ mod tests {
                         command: None,
                     },
                     form: CitationForm::Normal,
+                    strict: false,
                     output_locale: None,
                     keep_order: false,
                 },

@@ -220,6 +220,9 @@ pub enum OutputSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CitationRequest {
+    /// Refuse a citation with losses, refusals or unhealthy sources.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
     /// Input order and duplicate references are meaningful and must be preserved.
     pub items: Vec<CitationItem>,
     #[serde(default)]
@@ -414,6 +417,55 @@ pub struct CitationResult {
     /// The app this citation was made for, when a caller named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination: Option<crate::destination::Destination>,
+    /// Evidence of the records and options actually used, not an archive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<CitationReceipt>,
+}
+
+/// Immutable citation evidence. Historical source material is not stored here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationReceipt {
+    /// The visible sample marker is part of the attested content.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sample: bool,
+    /// Resolved output and ordered records, with their actual cite fingerprints.
+    pub request: CitationRequest,
+    pub sources: Vec<CitationSourceCheck>,
+    pub content_hash: Fingerprint,
+    pub ibis_version: String,
+    /// Citation meaning changes independently of package and wire versions.
+    pub meaning_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formatting: Option<FormattingProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<CitationProjectCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationProjectCheck {
+    pub revision: String,
+    /// The checked bibliography's content, without its location or text.
+    pub bibliography: Option<Fingerprint>,
+    /// Present only for a complete successful read made by this citation call.
+    pub checked_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationSourceCheck {
+    pub library: super::LibraryId,
+    /// Absent for caller-supplied snapshots, which do not establish a source read.
+    pub last_successful_read_ms: Option<u64>,
+    pub refresh_error: Option<super::ErrorCode>,
+    pub warnings: usize,
+}
+
+/// Hashes of the shipped processor and style/locale bundle used for CSL output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FormattingProvenance {
+    pub processor: Fingerprint,
+    pub bundle: Fingerprint,
 }
 
 /// Borrowed canonical representations, available only after the copy gate succeeds.
@@ -476,6 +528,7 @@ impl CitationResult {
             language: None,
             content_hash,
             destination: None,
+            receipt: None,
         }
     }
 
@@ -592,6 +645,7 @@ mod tests {
             keep_order: true,
             output: OutputSpec::Csl { style: "apa".into() },
             input_language: Some("ar".into()),
+            strict: false,
             output_locale: Some("ja-JP".into()),
         });
     }

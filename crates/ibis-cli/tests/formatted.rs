@@ -50,7 +50,15 @@ fn formatted_cases() -> Result<Vec<GoldenCase>, serde_json::Error> {
     .collect()
 }
 fn canonical(value: &Value) -> Result<Vec<u8>, ibis_engine::protocol::FrameError> {
-    ibis_engine::wire::encode(value, ibis_engine::protocol::MAX_RESULT_BYTES)
+    // Compare the independently stored formatting oracle, without runtime evidence.
+    let mut value = value.clone();
+    if let Some(object) = value.as_object_mut() {
+        object.remove("receipt");
+    }
+    if let Some(data) = value.get_mut("data").and_then(Value::as_object_mut) {
+        data.remove("receipt");
+    }
+    ibis_engine::wire::encode(&value, ibis_engine::protocol::MAX_RESULT_BYTES)
 }
 #[test]
 fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), Box<dyn std::error::Error>> {
@@ -100,9 +108,13 @@ fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), 
                 case.name
             );
             assert!(errors.is_empty());
-            let mut expected_bytes = canonical(&serde_json::to_value(&case.expected)?)?;
-            expected_bytes.push(b'\n');
-            assert_eq!(output, expected_bytes, "{}", case.name);
+            let expected_bytes = canonical(&serde_json::to_value(&case.expected)?)?;
+            assert_eq!(
+                canonical(&serde_json::from_slice(&output)?)?,
+                expected_bytes,
+                "{}",
+                case.name
+            );
         }
         let mut input = vec![];
         write_frame(

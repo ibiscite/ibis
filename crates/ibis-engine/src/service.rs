@@ -25,12 +25,13 @@ pub use sources::PreparedFileReload;
 mod formatting;
 pub use formatting::Cancellation;
 mod prepared;
+mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
 mod project;
 pub use ibis_sources::project::{Doubt, EntryRefusal, KeyCheck, ProjectProblem, ProjectRead};
 pub use project::{
-    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectResult,
-    WritingProjectCitation, project_name,
+    EntryResult, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectResult, WritingProjectCitation,
+    project_name,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -195,10 +196,11 @@ impl DispatchResult {
         Ok(self)
     }
     pub fn citation(result: CitationResult, expected_items: usize) -> Result<Self, EngineError> {
+        let source_findings = result.receipt.as_ref().is_some_and(receipt::source_findings);
         let text = result
             .copy_content(expected_items)
             .map(|content| content.text.to_owned());
-        let exit_code = if result.losses.is_empty() && text.is_some() {
+        let exit_code = if result.losses.is_empty() && text.is_some() && !source_findings {
             ExitCode::Ok
         } else {
             ExitCode::Findings
@@ -207,7 +209,7 @@ impl DispatchResult {
             data: value(result)?,
             exit_code,
             text,
-            source_findings: false,
+            source_findings,
         }
         .bounded()
     }
@@ -369,11 +371,13 @@ impl Engine {
     }
     /// Apply source health to the process outcome while preserving canonical data.
     pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
-        result.source_findings = self
-            .state()?
-            .libraries
-            .values()
-            .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
+        if result.data.get("receipt").is_none() {
+            result.source_findings = self
+                .state()?
+                .libraries
+                .values()
+                .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
+        }
         if result.source_findings && result.exit_code == ExitCode::Ok {
             result.exit_code = ExitCode::Findings;
         }
@@ -527,6 +531,7 @@ impl Engine {
             })
             .collect::<Result<Vec<_>, EngineError>>()?;
         Ok(CitationRequest {
+            strict: request.strict,
             items,
             keep_order: request.keep_order || matches!(output, OutputSpec::Key { .. }),
             output,
@@ -541,10 +546,11 @@ impl Engine {
     }
     fn cite_snapshot(
         &self,
-        snapshot: &Arc<Snapshot>,
+        context: &receipt::CitationContext,
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
+        let snapshot = &context.snapshot;
         if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
             return Err(error(ErrorCode::BadInput));
         }
@@ -568,25 +574,19 @@ impl Engine {
                 ErrorCode::BadInput
             })
         };
-        let result = match &request.output {
+        let mut result = match &request.output {
             OutputSpec::Key {
                 syntax: KeySyntax::ScannableCite,
                 ..
             } => {
                 // Which Zotero library each reference came from is the engine's
                 // own record of what it read; an id names one library for good.
-                let state = self.state()?;
                 ibis_core::syntax::scannable::cite(snapshot, request, |library| {
                     use ibis_core::syntax::scannable::ZoteroOrigin;
-                    state
-                        .libraries
-                        .get(library)
-                        .filter(|info| info.kind == LibraryKind::Zotero)
-                        .and_then(|info| info.zotero)
-                        .map(|zotero| match zotero {
-                            crate::request::ZoteroLibrary::Personal => ZoteroOrigin::Personal,
-                            crate::request::ZoteroLibrary::Group(id) => ZoteroOrigin::Group(id),
-                        })
+                    context.zotero.get(library).map(|zotero| match zotero {
+                        crate::request::ZoteroLibrary::Personal => ZoteroOrigin::Personal,
+                        crate::request::ZoteroLibrary::Group(id) => ZoteroOrigin::Group(*id),
+                    })
                 })
                 .map_err(key_error)?
             }
@@ -595,6 +595,7 @@ impl Engine {
             OutputSpec::Preset { .. } => return Err(error(ErrorCode::Internal)),
         };
         cancel.check()?;
+        receipt::attach(&mut result, request, context)?;
         ensure_budget(&result)?;
         Ok(result)
     }
