@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
-import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { Group, Row, Section } from "../src/ui/Layout";
 import { useAppearance } from "../src/ui/appearance";
 import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
@@ -26,9 +26,9 @@ import type { WritingProjectsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
 import "../src/ui/CopyReceipt.css";
-import "../src/notice.css";
+import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
-import pickerStyles from "../src/styles.css?inline";
+import pickerStyles from "../src/ui/Window.css?inline";
 
 export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
@@ -168,9 +168,9 @@ function States({ theme }: { theme: Theme }) {
   // One control in every row, each state drawn by the part's own attribute through its
   // render prop, so the picture is the real rule.
   const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
-  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
+  return <div className="canvas-parts"><Section id="canvas-states"><Group>{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <Row key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
     <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check Now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
-  </SettingsRow>)}</SettingsGroup></div>;
+  </Row>)}</Group></Section></div>;
 }
 
 const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];

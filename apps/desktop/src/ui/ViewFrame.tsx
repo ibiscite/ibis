@@ -21,7 +21,7 @@ export function leaveView(view: object) { views.delete(view); sync(); }
  * says where the choice applies, with the view's actions and Back with Esc. One
  * frame for the format and actions palette and every sheet. */
 export function ViewFrame({ title, titleId, search, back, status, actions, leadingActions, children, frameRef, ...dialog }: {
-  /** The view's name, a quiet chip ("Format", "Cited Since Opening"). */
+  /** The view's name: a quiet chip before its search ("Format"), or plain title text ("Cited Since Opening"). */
   title: string; titleId: string;
   /** The view's own search field, after its name. */
   search?: ReactNode;
@@ -44,7 +44,8 @@ export function ViewFrame({ title, titleId, search, back, status, actions, leadi
     <div className="ui-view-head">
       {/* The pointer's Back; the footer's Back is the one keys and screen readers reach. */}
       <IconButton icon="back" size="large" className="ui-view-back" aria-label={back.label} title={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />
-      <h2 id={titleId} className="ui-view-title">{title}</h2>
+      {/* A chip says "searching within"; a view with no search is named by plain title text. */}
+      <h2 id={titleId} className="ui-view-title" data-chip={search ? "" : undefined}>{title}</h2>
       {search}
     </div>
     <div className="ui-view-body">{children}</div>

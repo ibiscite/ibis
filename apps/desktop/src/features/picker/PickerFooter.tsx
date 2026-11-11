@@ -3,7 +3,7 @@ import { useLayoutEffect, useRef, useState } from "react";
 import type { LibraryStatus } from "../../api";
 import { keysFor } from "../../keys";
 import { LibraryStatusLine } from "../../LibraryStatusLine";
-import "./PickerFooter.css";
+import "../../ui/Footer.css";
 import { say } from "../../i18n";
 import { currentPlatform } from "../../platform";
 import { Button } from "../../ui/Button";

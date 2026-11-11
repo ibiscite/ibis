@@ -50,7 +50,7 @@ const outsideTokens = (file: string) => file !== "tokens.css";
 /** The app's own sheets: the website composes its own page from the shared tokens. */
 const app = (file: string) => outsideTokens(file) && !file.startsWith("website/");
 /** Parts read values; the token file and the two native skins state them. */
-const parts = (file: string) => !["tokens.css", "nativeAppearance.css", "nativeAccent.css"].includes(file) && !file.startsWith("website/");
+const parts = (file: string) => file !== "tokens.css" && !file.startsWith("website/");
 // A length written out, other than zero (which the object model reads as 0px).
 const length = /(^|[\s(,*/+-])-?(?!0+(\.0+)?(px|rem)\b)\d*\.?\d+(px|rem)\b/;
 const colour = /#[0-9a-f]{3,8}\b|\b(rgba?|hsla?|oklch|oklab|color)\(|\b(white|black)\b/i;
@@ -156,23 +156,23 @@ const required: [file: string, selector: string, property: string, value: string
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],
   ["ui/ChoiceList.css", ".choice-screen .choice-row", "color", "var(--text)"],
   // The Settings search clear button outranks the shared button's position.
-  ["ui/SettingsGroup.css", ".ui-settings-search > .ui-settings-search-clear.ui-button", "position", "absolute"],
+  ["ui/SettingsSearch.css", ".ui-settings-search > .ui-settings-search-clear.ui-button", "position", "absolute"],
   // A key cap on the primary uses the pressed fill, so its label stays readable on every accent.
   ["ui/Button.css", ".ui-button[data-variant=\"primary\"] .key-caps kbd", "background", "var(--accent-pressed)"],
   // Problems and the copied mark read in the text colour, never a status hue.
-  ["ui/SettingsGroup.css", ".ui-settings-row-problem", "color", "var(--text)"],
-  ["features/picker/CitationShelf.css", ".shelf-copied", "color", "var(--text)"],
+  ["ui/Layout.css", ".ui-row-problem", "color", "var(--text)"],
+  ["ui/CitationShelf.css", ".shelf-copied", "color", "var(--text)"],
   // A found About line keeps 4.5:1 on its tint over the card.
   ["ui/Delights.css", ".ui-about-line[data-highlighted], .ui-about-hero .ui-about-line[data-highlighted]", "color", "var(--text)"],
   // Settings reserves the title bar only where macOS draws its buttons over the window.
   ["tokens.css", ":root[data-system=\"macos\"]", "--titlebar-height", "var(--touch-target)"],
   // The focus ring is solid accent text, so it keeps 3:1 on every surface.
   ["tokens.css", ":root", "--ring", "var(--accent-text)"],
-  ["styles.css", ':focus-visible:not(.ui-button, .menu-item, [tabindex="-1"])', "outline", "var(--ring-width) solid var(--ring)"],
+  ["ui/Window.css", ':focus-visible:not(.ui-button, .menu-item, [tabindex="-1"])', "outline", "var(--ring-width) solid var(--ring)"],
   ["tokens.css", ":root, :root[data-platform]", "--ring", "CanvasText", "forced-colors: active"],
   // The short frame at enlarged text drops hints while More stays reachable.
-  ["styles.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
-  ["styles.css", ".library-bar > .more", "display", "flex", "(max-height: 400px) (max-width: 20em)"],
+  ["ui/Footer.css", ".enter-hints", "display", "none", "(max-height: 400px) (max-width: 20em)"],
+  ["ui/Footer.css", ".library-bar > .more", "display", "flex", "(max-height: 400px) (max-width: 20em)"],
 ];
 
 test.each(required)("%s: %s keeps %s: %s", (file, selector, property, value, condition) => {
@@ -238,7 +238,7 @@ test("text keeps 7:1 over the veiled Mac material and 4.5:1 over Acrylic, on the
   // CI's appearance probe (#232) saw the light material lift a black channel to 141.
   for (const under of [141, 255]) expect(contrast(flatten(text[0], 0, hexOf(over(light!, under))), hexOf(over(light!, under)))).toBeGreaterThanOrEqual(7);
   for (const under of [0, 120]) expect(contrast(flatten(text[1], 1, hexOf(over(dark!, under))), hexOf(over(dark!, under)))).toBeGreaterThanOrEqual(7);
-  const acrylic = tint(read("nativeAppearance.css"), "--acrylic-tint");
+  const acrylic = tint(read("tokens.css"), "--acrylic-tint");
   expect(acrylic).toHaveLength(2);
   for (const [mode, veil] of acrylic.entries()) for (const under of [0, 255]) {
     const backdrop = hexOf(over(veil, under));

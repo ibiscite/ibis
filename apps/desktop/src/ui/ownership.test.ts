@@ -25,8 +25,8 @@ const list = (dir: string, pattern: RegExp) => readdirSync(new FileURL(dir, app)
   .map((name) => name.replaceAll("\\", "/")).filter((name) => pattern.test(name)).map((name) => `${dir}${name}`).sort();
 const read = (name: string) => readFileSync(new FileURL(name, app), "utf8");
 const isPart = (name: string) => name.startsWith("src/ui/");
-// Values, not parts: the tokens and the two files that state each system's materials.
-const values = new Set(["src/tokens.css", "src/nativeAppearance.css", "src/nativeAccent.css"]);
+// Values, not parts: the tokens.
+const values = new Set(["src/tokens.css"]);
 
 /** Every style rule's selector list, inside @media, @supports, @container and @layer, never @keyframes. */
 function selectorLists(css: string): string[] {
@@ -186,44 +186,84 @@ test("screen stylesheets never restyle a part", () => {
     + "as a variant if this context needs one, and let the screen only place the part").toEqual([]);
 });
 
-/** A screen's own look: spacing, colour or a corner it declares instead of
- * taking from a part. A screen may still lay parts out: display, grid, flex,
- * position, size, overflow, order and visibility. */
+/** [Layout] Where things sit is decided once (maintainer, 2026-11-10): the layout
+ * tokens in tokens.css and the parts in ui/ that read them. Outside them nothing
+ * sets a margin, padding, gap, inset or width, in a stylesheet or a style prop,
+ * whatever the value; a screen composes parts (ui/Layout, ui/ViewFrame and the
+ * others) and gets its spacing from them. There is no list of exceptions. */
+const spacing = /^(margin|padding|gap|row-gap|column-gap|inset|top|right|bottom|left|width|min-width|max-width|inline-size|min-inline-size|max-inline-size)$|^(margin|padding|inset)-[a-z-]+$/;
+const spacingProp = /^(margin|padding|gap|rowGap|columnGap|inset|top|right|bottom|left|width|minWidth|maxWidth|inlineSize|minInlineSize|maxInlineSize)$|^(margin|padding|inset)[A-Z]\w*$/;
+function spacingDeclarations(css: string): string[] {
+  const text = css.replace(/\/\*[^]*?\*\//g, "");
+  // Declarations only: a property name and value inside a block, never a selector or an at-rule's query.
+  return [...text.matchAll(/[{;]\s*([a-z][a-z-]*)\s*:\s*([^;{}]+)(?=[;}])/g)]
+    .filter(([, property]) => spacing.test(property!)).map(([, property, value]) => `${property}: ${value!.trim()}`);
+}
+/** What an element's style prop sets. An element is a lower-case JSX tag; a
+ * component's `style` (a citation style, say) is its own prop. The value must be
+ * an object literal the guard can read: a style passed by reference, built by an
+ * expression, or spread from elsewhere is reported as unreadable, since it could
+ * carry spacing. Custom properties ("--name") are values, not spacing. */
+function spacingProps(source: string): string[] {
+  const text = source.replace(/\/\*[^]*?\*\/|\/\/[^\n]*/g, "");
+  const found: string[] = [];
+  for (const match of text.matchAll(/<([A-Za-z][\w.]*)\b[^<>]*?\sstyle=\{/g)) {
+    if (!/^[a-z]/.test(match[1]!)) continue;
+    // The expression inside style={…}, to its balancing brace.
+    let depth = 1, end = match.index! + match[0].length;
+    const start = end;
+    for (; end < text.length && depth; end++) {
+      if (text[end] === "{") depth++;
+      else if (text[end] === "}") depth--;
+    }
+    const expression = text.slice(start, end - 1).trim().replace(/\s+as\s+[\w.<>[\]|& ]+$/, "").trim();
+    if (!expression.startsWith("{") || !expression.endsWith("}")) { found.push(`unreadable ${expression}`); continue; }
+    const body = expression.slice(1, -1);
+    if (/\.\.\./.test(body)) found.push(`unreadable ${expression}`);
+    for (const [, quote, name] of body.matchAll(/(?:^|,)\s*(["']?)([-\w]+)\1\s*:/g)) {
+      if (!quote || !name!.startsWith("--")) { if (spacingProp.test(name!)) found.push(name!); }
+    }
+  }
+  return found;
+}
+const screenSheets = list("src/", /\.css$/).filter((name) => !isPart(name) && !values.has(name));
+const screenSources = list("src/", /\.tsx$/).filter((name) => !isPart(name) && !/\.test\.tsx$/.test(name));
+
+test("only tokens.css and ui/ parts set spacing: no margin, padding, gap, inset or width anywhere else", () => {
+  expect(screenSheets.flatMap((name) => spacingDeclarations(read(name)).map((found) => `${name}: ${found}`)),
+    "Spacing outside ui/: compose the screen from ui/ parts (Section, Group, Row, ViewFrame…) or add what it needs to a part").toEqual([]);
+  expect(screenSources.flatMap((name) => spacingProps(read(name)).map((found) => `${name}: style ${found}`)),
+    "A style prop outside ui/ sets spacing: take it from a ui/ part").toEqual([]);
+});
+
+test("the layout guard catches spacing in a sheet or a style prop, and passes what only lays parts out", () => {
+  expect(spacingDeclarations(".a { margin: 0; padding-inline: var(--inset); gap: 4px } .b { inset-block-start: 0; min-width: 0; width: 100% }")).toHaveLength(6);
+  expect(spacingDeclarations("@media (max-width: 400px) { .a { display: grid; grid-area: x; --row-height: var(--row-compact); color: red } }")).toEqual([]);
+  expect(spacingProps('<span style={{ marginInlineStart: 4, colorScheme: "dark" }} /><b style={{ width: "1rem" }} />')).toEqual(["marginInlineStart", "width"]);
+  expect(spacingProps("<span style={{ backgroundImage: `url(x)` }} />")).toEqual([]);
+  // A style by reference, behind a cast, or spread can carry spacing the guard can't see.
+  expect(spacingProps("<div style={layout} /><div style={{ padding: 24 } as CSSProperties} /><p style={{ ...base, color: \"red\" }} />"))
+    .toEqual(["unreadable layout", "padding", "unreadable { ...base, color: \"red\" }"]);
+  // Custom properties are values; a component's own style prop is not an element's.
+  expect(spacingProps('<span style={{ "--preview-window-w": w } as CSSProperties} /><PickerOverlays style={styleOf(format)} />')).toEqual([]);
+});
+
+/** A screen's own look: spacing, colour or a corner it declares instead of taking it from a part. */
 const look = /^(padding|margin|gap|row-gap|column-gap|color|background|outline|box-shadow|fill|stroke|caret-color|accent-color|text-decoration-color|border)(-[a-z-]+)?$/;
 const neutral = /^(0|0px|auto|none|inherit|initial|unset|transparent|currentcolor)( (0|0px|auto))?$/i;
 function ownLook(css: string): string[] {
   return [...css.replace(/\/\*[^]*?\*\//g, "").matchAll(/([a-z][a-z-]*)\s*:\s*([^;{}]+)(?=[;}])/g)]
     .filter(([, property, value]) => look.test(property!) && !neutral.test(value!.trim())).map(([declaration]) => declaration.replace(/\s+/g, " "));
 }
-const screens = list("src/", /\.css$/).filter((name) => !isPart(name) && !values.has(name));
 
-// RATCHET: how many declarations of their own look these screens still carry,
-// until consolidation step 7 moves each into a part as it touches the screen.
-// A count may only fall: lower it when you move a look into ui/, never raise it.
-const carried: Record<string, number> = {
-  "src/LibrarySetup.css": 1,
-  "src/features/picker/CitationShelf.css": 41,
-  "src/features/picker/EmptyState.css": 18,
-  "src/features/picker/ProjectContextStatus.css": 2,
-  "src/features/reader/Reader.css": 26,
-  "src/notice.css": 3,
-  "src/settings/Settings.css": 43,
-  "src/styles.css": 27,
-};
-
-test("screens take their spacing, colours and corners from parts, never their own", () => {
-  const counts: Record<string, number> = Object.fromEntries(screens.map((name) => [name, ownLook(read(name)).length] as const).filter(([, count]) => count));
-  expect(Object.entries(counts).filter(([name, count]) => count > (carried[name] ?? 0)).map(([name]) => `${name}: ${ownLook(read(name)).join("; ")}`),
-    "These screens bring their own spacing, colour or radius. Draw them with a part from ui/, or add the look to the part "
-    + "(as a variant if this context needs one), and let the screen only lay parts out").toEqual([]);
-  expect(Object.entries(carried).filter(([name, count]) => (counts[name] ?? 0) < count).map(([name]) => `${name}: ${counts[name] ?? 0}`),
-    "These screens carry less of their own look now: lower their counts in ui/ownership.test.ts").toEqual([]);
+test("screens take their colours and corners from parts, never their own", () => {
+  expect(screenSheets.flatMap((name) => ownLook(read(name)).map((found) => `${name}: ${found}`)),
+    "These screens bring their own colour or corner. Draw them with a part from ui/, or add the look to the part").toEqual([]);
 });
 
 test("the look guard fails a screen that pads, paints or rounds itself, and passes one that only lays parts out", () => {
   expect(ownLook(".my-screen { padding: var(--space-2); color: var(--text-secondary); border-radius: var(--r-control); }")).toHaveLength(3);
-  expect(ownLook(".my-screen { margin-block: var(--inset); } .my-row:hover { background: var(--fill-control); border-top: var(--border-width) solid var(--separator); }")).toHaveLength(3);
-  expect(ownLook(".my-screen { display: grid; grid-template-columns: 1fr auto; min-width: 0; margin: 0; padding: 0; background: transparent; color: inherit; }")).toEqual([]);
+  expect(ownLook(".my-screen { display: grid; grid-template-columns: 1fr auto; background: transparent; color: inherit; }")).toEqual([]);
 });
 
 test("the guard reads the element a selector styles", () => {

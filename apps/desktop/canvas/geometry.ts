@@ -12,6 +12,8 @@ export const columns = {
   marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
   words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
   outside: ".choice-screen, .inspector, .menu-popover, .ui-view, [inert]",
+  /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
+  plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
 } as const;
 
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
@@ -40,9 +42,12 @@ export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".c
  * the app focuses (tabindex -1) never draws one around itself. */
 export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
 
 >>>>>>> origin/feat/palette
+=======
+>>>>>>> origin/feat/layout-parts
 /** [C8] A status is never cut to a stub ("Z…"): a line whose words end in "…"
  * keeps at least --status-short of them, and the footer folds its hint labels
  * before that. A part that drops whole (an update's phase) is not cut. */
@@ -70,12 +75,19 @@ export function geometry(root: ParentNode = document): string[] {
     const title = probe.cloneNode() as HTMLElement;
     title.style.insetInlineStart = "calc(var(--inset) + var(--row-pad) + var(--title-start))";
     main.append(title);
-    const tileCentre = lead(tile) + tile.width / 2, titleStart = lead(title.getBoundingClientRect());
-    probe.remove(); title.remove();
+    const plate = probe.cloneNode() as HTMLElement;
+    plate.style.insetInlineStart = "var(--inset)";
+    main.append(plate);
+    const tileCentre = lead(tile) + tile.width / 2, titleStart = lead(title.getBoundingClientRect()), plateStart = lead(plate.getBoundingClientRect());
+    probe.remove(); title.remove(); plate.remove();
     const held = (selector: string) => [...root.querySelectorAll(selector)].filter((node) => visible(node) && !node.closest(columns.outside));
     for (const node of held(columns.marks.join(", "))) {
       const rect = node.getBoundingClientRect(), centre = lead(rect) + rect.width / 2;
       if (Math.abs(centre - tileCentre) > tolerance) failures.push(`[C3] ${name(node)}: centre ${centre.toFixed(1)}, tile column ${tileCentre.toFixed(1)}`);
+    }
+    for (const node of held(columns.plates.join(", "))) {
+      const start = lead(node.getBoundingClientRect());
+      if (Math.abs(start - plateStart) > tolerance) failures.push(`[C3] ${name(node)}: plate starts ${start.toFixed(1)}, window inset ${plateStart.toFixed(1)}`);
     }
     for (const node of held(columns.words.join(", "))) {
       const rect = node.getBoundingClientRect(), style = getComputedStyle(node);

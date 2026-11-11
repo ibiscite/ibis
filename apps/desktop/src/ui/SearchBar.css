@@ -1,7 +1,7 @@
 /* The picker's search bar: the window's drag region, the large frameless search field
    and the controls beside it. Welcome has no search yet, so the bar can be hidden. */
 main > .search-bar { grid-area: search; }
-.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
+.search-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: var(--header-h); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); cursor: move; user-select: none; }
 .search-bar[hidden] { display: none; }
 /* A glyph is centred over the tile column and the query starts where row titles
    start (docs/design/foundations.md, "Two columns"). The Ibis mark is the logo, so
