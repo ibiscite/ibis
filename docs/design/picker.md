@@ -4,10 +4,10 @@ Search, list, shelf and footer ([design](../design.md#the-model)). The Inspector
 
 ## Search bar
 
-- Order: search glyph, query, clear ×, format pop-up. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-row`).
+- Order: search glyph, query, clear ×, format pop-up. The header is its tallest control plus 2S, with a divider below [C2]. Its controls take the field's height, so the gap above and beside them is S and their corners nest in the window's (`--r-control`).
 - `#tag`, `y:2019-2022` and `a:name` plus a space become removable chips; Backspace in an empty box removes the last.
 - **Keep Window Open** [C6] (⇧⌘P, or in More): a choice for this session, so it has no button of its own in the header (control placement, maintainer 2026-11-10). While it is on, a pressed pin sits beside More in the footer, and a click on it turns it off. Esc never unpins.
-- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** (decision 0042): the way back first when the format isn't yours, recent formats, the app's own choices, writings, then every format by typing, with the highlighted format's real citation beside the list.
+- The format pop-up names the exact output and, when the format belongs to something, whose it is (`APA · Word`, `APA · Thesis`); the default carries no suffix. One output has one name everywhere, the engine's (decision 0035). Hidden until a library is chosen. It opens the **format palette** ([decision 0042](../decisions/0042-formats-apps-and-writings.md)): the way back first when the format isn't yours, recent formats, the app's own choices, Writing Projects…, then the catalogue, also found by typing. Beside the list, key formats preview the chosen references and citation styles show a labelled example. Writings directly in the list and real style previews remain the decision's target.
 
 ## Results
 

@@ -480,20 +480,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <Button variant="quiet" size="small" preventFocusOnPress onPress={copyVersion}>
                 {text(versionCopied ? "about-copied" : "about-version", { version: altHeld && about?.build ? about.build : version })}
               </Button>
-<<<<<<< HEAD
-              {versionCopyFailed && <p className="settings-problem" role="alert">{text("about-copy-failed")}</p>}
-=======
               {versionCopyFailed && <Note problem role="alert">{text("about-copy-failed")}</Note>}
->>>>>>> origin/feat/layout-parts
               {/* Under the version, as Mac apps place it (decision 0038); its outcome follows it. */}
               {(updates !== null || readProblems.has("automatic")) && <div id="check-updates" className="ui-about-check" data-highlighted={highlighted === "check-updates" || undefined}>
                 <Button aria-disabled={checking || undefined} onPress={checkNow}>{text(checking ? "about-checking" : "about-check")}</Button>
                 <p className="ui-quiet-status" role="status">{checking ? text("about-checking") : checkSaid && text(checkSaid)}</p>
-<<<<<<< HEAD
-                {checkResult === "failed" && <p className="ui-settings-row-problem" role="alert">{text("about-check-failed")}</p>}
-=======
-                {checkResult === "failed" && <p className="ui-row-problem" role="alert">{text("about-check-failed")}</p>}
->>>>>>> origin/feat/layout-parts
+                {checkResult === "failed" && <Note problem role="alert">{text("about-check-failed")}</Note>}
               </div>}
               <p className="ui-about-mission">{text("about-mission")}</p>
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>

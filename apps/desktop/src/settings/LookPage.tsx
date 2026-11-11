@@ -23,11 +23,7 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
   const { text } = useInterfaceMessages();
   const appearance = p.appearance ?? "system", accent = p.accent ?? "system";
   const size = windowSize ?? "medium";
-<<<<<<< HEAD
-  return <Group id="look-appearance">
-=======
   return <Section id="look-appearance"><Group>
->>>>>>> origin/feat/layout-parts
     <div className="ui-picture-preview" aria-hidden="true">
       <PickerPicture density={p.density} appearance={appearance === "system" ? "light" : appearance} split={appearance === "system"} frame={WINDOWS[size]} />
     </div>
@@ -51,20 +47,12 @@ export function LookPage({ preferences: p, change, feedback, windowSize, chooseW
         options={(windowSize === "custom" ? ["small", "medium", "large", "custom"] as const : ["small", "medium", "large"] as const)
           .map((value) => ({ value, label: text(`look-window-${value}`), isDisabled: windowSize === null }))}
         onChange={chooseWindowSize} />
-<<<<<<< HEAD
-      {windowSize === "custom" && <p className="ui-settings-note">{text("look-window-custom-note")}</p>}
-=======
       {windowSize === "custom" && <Note>{text("look-window-custom-note")}</Note>}
->>>>>>> origin/feat/layout-parts
     </Row>
     <Row id="text-size" label={text("look-text-size")} {...feedback("text-size")}>
       <Segmented label={text("look-text-size")} value={p.larger_text ? "larger" : "default"}
         options={[{ value: "default", label: text("look-default-text") }, { value: "larger", label: text("look-larger-text") }]}
         onChange={(value) => change({ larger_text: value === "larger" })} />
     </Row>
-<<<<<<< HEAD
-  </Group>;
-=======
   </Group></Section>;
->>>>>>> origin/feat/layout-parts
 }

@@ -14,7 +14,7 @@ const footerAction = (action: SheetAction) => <Button key={action.label} variant
 const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), [tabindex='0']";
 
 /** A sheet: a view of the window (ui/ViewFrame), as the palette is. Its name in
- * the header's chip, one body that alone scrolls, and the footer as its action
+ * plain in the header, one body that alone scrolls, and the footer as its action
  * bar in the picker footer's words: leading actions, trailing actions with the
  * primary last (with ↵), then Back with Esc, each plain text as the footer's are. Esc, a hide or Back close it; Tab stays inside, and a control that
  * disappears or is disabled hands the keyboard back to the sheet, so no key acts

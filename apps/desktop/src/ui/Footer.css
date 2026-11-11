@@ -2,7 +2,7 @@
    after its dot in the icon slot, the Enter hints, then More on the last column. */
 footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
-   Coarse targets grow the band instead of clipping; its columns are in PickerFooter.css. */
+   Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */

@@ -22,8 +22,8 @@ const remember = (output: OutputId) => { recent.splice(0, recent.length, output,
 /** The format chooser (decision 0042, palette B): the chip names the format in
  * use and, when it isn't your own, why ("APA · Word", "APA · Thesis"). It opens
  * the palette: the way back to your format first, your recent formats, the
- * app's own choices, then every format by typing, with the highlighted
- * format's real citation beside the list. Focus returns to Search. */
+ * app's own choices, then every format by typing, with a key citation or a
+ * labelled style example beside the list. Focus returns to Search. */
 export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpenChange, pasteChoices, onPasteChange, disabled, styles, onChange, searchRef, writingProject, onWritingProjects, preview }: {
   format: OutputId;
   /** Your own format, the one a "back" row returns to. */
@@ -56,7 +56,7 @@ export function FormatMenu({ format, yours, buttonRef, app, source, pick, onOpen
     : app ? source === "remembered" ? say("picker-format-remembered", { app }) : say("picker-format-suggested", { app }) : say("picker-format-no-app");
   const next = writingProject ? say("writing-project-pick") : source === "held" ? pick === "app" ? say("picker-pick-to-remember") : pick === "default" ? say("picker-pick-to-set-default") : ""
     : pick === "paste" ? say("picker-pick-this-paste") : pick === "default" ? say("picker-pick-default") : source === "remembered" ? say("picker-pick-replaces") : say("picker-pick-remembered");
-  // Whose a pick is, quietly beside the palette's name.
+  // Whose a pick is, in the frame's footer status.
   const whose = writingProject ? writingProject.name : pick === "paste" ? say("picker-pick-heading-this-paste") : pick === "default" || !app ? say("picker-pick-heading-default") : say("picker-for-app", { app });
   const back = !writingProject && app && yours && yours !== format && (source === "remembered" || source === "suggested") ? yours : null;
   const row = (output: OutputChoice): PaletteItem => ({

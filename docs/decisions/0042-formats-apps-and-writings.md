@@ -2,6 +2,8 @@
 
 2026-11-10 (maintainer). This replaces the parts of 0031 about formats and writing projects; 0031's limits on what is stored for each app still apply. The implementation follows consolidation step 7's picker session and the 0.4 citation work.
 
+The design passes establish the shared frame now: the format palette, the actions palette and every sheet compose `ui/ViewFrame`, with layout tokens and `ui/` parts owning all spacing ([layout rule](../design.md#how-the-design-changes)). The format and writing model below remains the target for the engine work; the current build still has one usual format and a Writing Projects sheet reached from the palette. It previews the chosen references for key formats and a labelled example for citation styles.
+
 **One concept people see: the format** (APA, MLA, Pandoc keys, `\cite`…). Nobody has to configure more than one format. Ibis decides which format applies, in this order:
 
 1. **A writing, if you chose one for this app.** A writing is optional and opt-in: a name, a format and optionally a `.bib` to check against ("Thesis · Chicago notes"). You create one from the format palette. Ibis never guesses it from a document, a window title or a URL.

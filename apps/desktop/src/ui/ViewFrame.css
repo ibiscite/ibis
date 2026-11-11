@@ -9,7 +9,6 @@
   color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-view:focus { outline: none; }
-<<<<<<< HEAD
 /* One entrance for palettes and sheets: a region rises into place, takes keys
    immediately and leaves immediately. Reduce Motion keeps only a short fade. */
 .ui-view { animation: ui-view-in var(--dur-3) var(--ease-out); }
@@ -18,13 +17,6 @@
   .ui-view { animation: ui-view-fade var(--dur-1) linear; }
 }
 @keyframes ui-view-fade { from { opacity: 0; } }
-=======
-/* A view replaces a region of the window, so it takes --dur-3 (motion foundation):
-   it fades in over the picker it hides. Reduce Motion keeps only a short fade. */
-.ui-view { animation: ui-view-in var(--dur-3) var(--ease-out); }
-@keyframes ui-view-in { from { opacity: 0; } }
-@media (prefers-reduced-motion: reduce) { .ui-view { animation: ui-view-in var(--dur-1) linear; } }
->>>>>>> origin/feat/layout-parts
 .ui-view-head {
   flex: none; display: flex; align-items: center; min-height: var(--header-h);
   padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);

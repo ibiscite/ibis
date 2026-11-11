@@ -41,13 +41,7 @@ export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".c
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
 export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
 
->>>>>>> origin/feat/palette
-=======
->>>>>>> origin/feat/layout-parts
 /** [C8] A status is never cut to a stub ("Z…"): a line whose words end in "…"
  * keeps at least --status-short of them, and the footer folds its hint labels
  * before that. A part that drops whole (an update's phase) is not cut. */

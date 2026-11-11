@@ -6,7 +6,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 - **Primitives:** raw values named by what they are (the 4 px space scale, ink, measured hues such as `--scarlet`). Only roles read them.
 - **Semantic roles:** what a value is for, per mode (light, dark, Increase Contrast, forced colours): labels, fills, separator, surfaces, accent, selection, status, the corners (`--r-small`, `--r-control`, `--r-large`, `--r-win`), `--inset`, `--action-h`, `--key`, `--hit`.
-- **Component values:** derived from roles by a written rule, never typed as a second number (`--key-gap`, `--footer-h`, `--key-fill`). A part never names a value a token already holds: no second name for a radius, a target or a ring offset.
+- **Component values:** derived from roles by a written rule, never typed as a second number (`--key-gap`, `--footer-h`, `--heading-offset`). A part never names a value a token already holds: no second name for a radius, a target or a ring offset.
 - Components read roles and component values only: no raw colours, `GrayText`, literal radii or literal shadows [D1]. A new need picks an existing step before adding a token.
 - Light and dark come from `color-scheme` and `light-dark()`; components never read `prefers-color-scheme`. Roles default to CSS system colours so an unknown webview still follows dark mode and high contrast.
 - `data-system` records the OS for fonts, modifier labels and native material; it never chooses a layout.
@@ -56,7 +56,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Corners
 
-- **Corners** [C15][D3]: three steps from `--radius`, and nothing else: `--r-small` (6: tiles, key caps, segments, small marks), `--r-control` (8: controls, rows, fields, menu items) and `--r-large` (12: menus, sheets, cards, the copy receipt), plus the window's `--r-win` (16, the Mac's own), capsules and the app icon. Nested shapes are concentric by choosing the step below: the window (16) inset 8 holds rows at 8; a menu (12) padded 4 holds items at 8; a control (8) holds a key cap or segment at 6.
+- **Corners** [C15][D3]: three steps from `--radius`, and nothing else: `--r-small` (6: tiles, key caps, segments, small marks), `--r-control` (8: controls, rows, fields, menu items) and `--r-large` (12: menus, cards, the copy receipt), plus the window's `--r-win` (16, the Mac's own), capsules and the app icon. Nested shapes are concentric by choosing the step below: the window (16) inset 8 holds rows at 8; a menu (12) padded 4 holds items at 8; a control (8) holds a key cap or segment at 6.
 - **Neighbours share a radius**: shapes side by side at one depth use one radius and one gap.
 - Overlays and Settings cards take `--r-large`.
 - **Capsules** (`--r-full`) only for switches, count and tag pills and progress tracks. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.
@@ -92,13 +92,9 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ## Motion
 
 - **Three steps** (`tokens.css`): `--dur-1` (120 ms) answers a touch: a press, a check drawing. `--dur-2` (180 ms) brings something in: a menu or pop-over, a line appearing, a delight. `--dur-3` (240 ms) moves a region: a sheet, a panel. Entrances use `--ease-out`, exits `--ease-in`; what follows the pointer or the keys settles on `--ease-spring`, which never overshoots.
-<<<<<<< HEAD
 - **The standard movements**, each in its shared part: everything that floats (`ui/Overlay`) unfolds from the edge next to its button (a clip and a fade, so its measured place never changes) and closes at once; palettes and sheets share `ui/ViewFrame`'s rise and fade into the window, leaving at once; a pressed button shrinks to `--press-scale` and springs back. Selection, focus and hover change at once. Chevrons never rotate; nothing bounces.
-=======
-- **The standard movements**, each in its shared part: everything that floats (`ui/Overlay`) unfolds from the edge next to its button (a clip and a fade, so its measured place never changes) and closes at once; a sheet rises 8 px while the picker dims; a pressed button shrinks to `--press-scale` and springs back. Selection, focus and hover change at once. Chevrons never rotate; nothing bounces.
->>>>>>> origin/feat/layout-parts
 - **Never** animate anything longer than 280 ms. Never animated: list content while typing, row height, the caret, layout on hover, the citation text, ticking counts, focus rings, anything that loops except a busy indicator.
-- Reduce Motion: no translate, scale or slide; `--dur-1` becomes a 100 ms fade, `--dur-2` and `--dur-3` end at once, `--press-scale` is 1; every effect shows its end state.
+- Reduce Motion: no translate, scale or slide; entrances may use the short `--dur-1` fade (100 ms), `--dur-2` and `--dur-3` end at once, and `--press-scale` is 1. Other effects show their end state.
 
 ## Accessibility
 
