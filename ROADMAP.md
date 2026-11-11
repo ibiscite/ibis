@@ -2,6 +2,8 @@
 
 Ibis is a writing companion for the references people already keep. One shortcut, in any app, finds anything in their sources (a reference, its PDF page, a highlight or a note), shows it to be sure, and cites or quotes it where they are writing. People writing in LaTeX, Markdown, Quarto and Typst decide close calls; first-time and expert users, every major operating system and many languages all count. Ibis stays about references and research material, never a general file or web search (maintainer, 2026-11-05).
 
+**The core** (maintainer, 2026-11-11): Ibis is the local citation layer you and your AI agents share. One shortcut cites from your own library in any app and on any system, and every citation, pasted by you or written by an agent, can be checked against that library, so nothing gets cited that isn't really there. It is the companion Zotero said it wouldn't build: keyboard-first, offline, and it never changes your library.
+
 Every feature in the releases below ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
 
 ## How we build
@@ -63,7 +65,8 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Settings:** every shortcut can be changed, connected libraries (Zotero and `.bib` together), and a settings file to back up and restore ([#1561](https://github.com/ibiscite/ibis/issues/1561)); one rotating tip on the empty search; an opt-in "install updates when I quit".
 - **Links and integrations:** drag the citation into any app; `ibis://` links with Shortcuts and Alfred recipes; Show in Zotero and Open PDF at This Page; with Zotero in front, the same picker opens and Enter opens the PDF or shows the item; an editor endpoint compatible with Better BibTeX's Cite as You Write.
 - **Moved from 0.3** (maintainer, 2026-11-07): the app installs the matching `ibis` command, and Copy as Markdown gives a formatted citation in Markdown.
-- **For agents:** source health on every result, citation receipts and a strict mode; citing CSL-JSON a caller sends; output for an app named on the command line; the MCP Registry listing.
+- **Check against your library** (moved forward, maintainer, 2026-11-11): `ibis check` for a list of keys (found, not found, ambiguous, changed, missing from the project's `.bib`), and the same check as an MCP tool for agents. Manuscript checking stays in 0.6.
+- **For agents:** source health on every result, citation receipts and a strict mode the person turns on, which an agent can't drop; citing CSL-JSON a caller sends; output for an app named on the command line; the MCP Registry listing.
 - **The interface in German and one right-to-left language.** Public beta.
 
 ### 0.5 Find the passage
