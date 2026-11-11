@@ -64,9 +64,8 @@ test("each page ends with the next page in the sidebar's reading order", async (
   for (const [path, href, label] of [["", "/get/", "Get Ibis"], ["get/", "/today/", "Today"],
     ["today/", "/cli/", "Scripts & agents"], ["cli/", "/#try", "Try it"]]) {
     const html = await page(path), main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
-    const next = main.match(/<div class="row next-page">([\s\S]*?)<\/div><\/div>\s*$/)[1];
-    assert.match(next, /<ul class="rows">/);
-    assert.deepEqual([...next.matchAll(/<a href="([^"]+)"><strong>([^<]+)<\/strong>/g)].map(m => [m[1], text(m[2])]), [[href, label]]);
+    const next = main.match(/<nav class="row next-page"[^>]*>([\s\S]*?)<\/div><\/nav>\s*$/)[1];
+    assert.deepEqual([...next.matchAll(/<a href="([^"]+)"><span class="next-label">Next<\/span><span class="next-name">([^<]+) <span class="key">/g)].map(m => [m[1], text(m[2])]), [[href, label]]);
   }
 });
 

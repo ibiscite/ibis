@@ -37,7 +37,7 @@ export async function content(html, page = pages[0], input = new URL(".", import
   const order = sections.filter((item, index) => sections.findIndex(other => other.href.split("#")[0] === item.href.split("#")[0]) === index);
   const next = order[(order.findIndex(item => item.href.split("#")[0] === page.path) + 1) % order.length];
   const values = { body: "", title: page.title, description: page.description, path: page.path, headline, version,
-    "next-page": page === notFound ? "" : `<div class="row next-page"><div class="text"><ul class="rows"><li><a href="${next.href}"><strong>${escape(next.label)}</strong><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li></ul></div></div>`,
+    "next-page": page === notFound ? "" : `<nav class="row next-page" aria-label="Next page"><div class="text"><a href="${next.href}"><span class="next-label">Next</span><span class="next-name">${escape(next.label)} <span class="key">@${next.key}</span></span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></div></nav>`,
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
     navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
     page: page.file ?? "missing", status: lists, terminal: transcripts(await read("content/terminal.txt")), "writing-apps": writing,
