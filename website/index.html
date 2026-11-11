@@ -110,17 +110,17 @@
     <p class="margin"><span class="key">@where</span></p>
     <div class="text"><h2 id="where-h">Same shortcut, the right citation for each app</h2>
       <p class="lede">Ibis reads where you are writing and gives that app what it expects.</p>
-      <p class="small">Pick an app to see what Enter puts there for page 12 of the lantern gardens paper.</p></div>
+      <p class="small">Pick where you write to see what Enter puts there for page 12 of the lantern gardens paper.</p></div>
     <div class="where" data-where>
-      <div class="where-tabs" role="tablist" aria-label="Where you write">
-        <button type="button" role="tab" aria-selected="true" data-app="word">Word, Pages, Google Docs</button>
-        <button type="button" role="tab" aria-selected="false" data-app="markdown">Markdown, Obsidian, Quarto</button>
-        <button type="button" role="tab" aria-selected="false" data-app="latex">LaTeX, Overleaf</button>
-        <button type="button" role="tab" aria-selected="false" data-app="typst">Typst</button>
+      <div class="chips" role="tablist" aria-label="Where you write">
+        <button type="button" role="tab" aria-selected="true" data-app="word" aria-label="Word, Pages or Google Docs" title="Word, Pages or Google Docs">@word</button>
+        <button type="button" role="tab" aria-selected="false" data-app="markdown" aria-label="Markdown, Obsidian or Quarto" title="Markdown, Obsidian or Quarto">@markdown</button>
+        <button type="button" role="tab" aria-selected="false" data-app="latex" aria-label="LaTeX or Overleaf" title="LaTeX or Overleaf">@latex</button>
+        <button type="button" role="tab" aria-selected="false" data-app="typst" aria-label="Typst" title="Typst">@typst</button>
       </div>
       <div class="where-doc" role="tabpanel" aria-live="polite">
-        <p class="where-line">Lantern gardens follow the rhythm of imaginary cities <code class="where-out" data-out>(Vale, 2024, p. 12)</code></p>
-        <p class="small where-note" data-note>A formatted citation in APA, as rich text. Change the style once and Ibis remembers it for that app.</p>
+        <p class="draft">Lantern gardens follow the rhythm of imaginary cities <code class="key where-out" data-out>(Vale, 2024, p. 12)</code><span class="caret" aria-hidden="true"></span></p>
+        <p class="small" data-note>Word, Pages or Google Docs: a formatted citation in APA, as rich text. Change the style once and Ibis remembers it for that app.</p>
       </div>
       <p class="small">Enter pastes into the app you came from on macOS and Windows. On Linux, and wherever pasting isn’t safe, such as terminals, password fields or remote desktops, Ibis copies instead and says why.</p>
     </div>
@@ -131,7 +131,7 @@
     <div class="text"><h2 id="today-h">What it does today, and what it doesn’t yet</h2>
       <p class="lede">No promises dressed up as features. Here is the honest list.</p></div>
     <div class="today">
-      <div class="today-col" data-status="today"><h3><span class="badge">Today</span> In the current release</h3>
+      <div class="today-col" data-status="today"><h3><span class="key">today</span>In the current release</h3>
         <ul>
           <li>Opens from any app with one shortcut, on Windows, macOS and Linux</li>
           <li>Reads Zotero 7–10, open or closed, including group libraries, and BibTeX, BibLaTeX or CSL-JSON files</li>
@@ -145,7 +145,7 @@
           <li>Cited Since Opening: copy or save what you cited as one bibliography</li>
           <li>A command line and an MCP server, so AI agents can cite from your library</li>
         </ul></div>
-      <div class="today-col" data-status="nightly"><h3><span class="badge">Nightly</span> Arriving next</h3>
+      <div class="today-col" data-status="nightly"><h3><span class="key">nightly</span>Arriving next</h3>
         <ul>
           <li>RIS files and a CSV template as libraries</li>
           <li>Prefix and suffix (“see”, “emphasis added”) and keep my order</li>
@@ -154,7 +154,7 @@
           <li>A cleaner look: one palette for formats and actions, calmer Settings</li>
           <li>Every official citation style on the command line, credited to the CSL project</li>
         </ul></div>
-      <div class="today-col" data-status="no"><h3><span class="badge">Not yet</span> Honest limits</h3>
+      <div class="today-col" data-status="no"><h3><span class="key">not yet</span>Honest limits</h3>
         <ul>
           <li>No live Zotero fields in Word; Ibis pastes text, so Zotero’s Word plugin still owns automatic bibliographies</li>
           <li>No <i>ibid.</i> or automatic numbering across a document</li>
@@ -216,7 +216,7 @@
       <p class="lede">Everything the picker does, the <code>ibis</code> command can do too, from the same engine.</p></div>
     <div class="power">
       <div class="shorthand" data-shorthand>
-        <h3>Type it the fast way <span class="badge">Nightly</span></h3>
+        <h3>Type it the fast way<span class="key">nightly</span></h3>
         <p class="small">Skip the menus: put the details right in the search.</p>
         <label class="shorthand-field"><span class="small">Search</span><input type="text" value="see vale 417" spellcheck="false" autocomplete="off" data-shorthand-input></label>
         <p class="shorthand-parts" data-shorthand-parts aria-live="polite"></p>
@@ -224,10 +224,11 @@
         <p class="small">Try “fen ch 2”, “reed 12-14” or “see vale 33”.</p>
       </div>
       <div class="terminal" data-terminal>
-        <div class="terminal-tabs" role="tablist" aria-label="Command line examples">
-          <button type="button" role="tab" aria-selected="true" data-cmd="search">search</button>
-          <button type="button" role="tab" aria-selected="false" data-cmd="cite">cite</button>
-          <button type="button" role="tab" aria-selected="false" data-cmd="mcp">agents</button>
+        <h3>The same engine, from a terminal</h3>
+        <div class="chips" role="tablist" aria-label="Command line examples">
+          <button type="button" role="tab" aria-selected="true" data-cmd="search">@search</button>
+          <button type="button" role="tab" aria-selected="false" data-cmd="cite">@cite</button>
+          <button type="button" role="tab" aria-selected="false" data-cmd="mcp">@agents</button>
         </div>
         <pre class="terminal-screen" role="tabpanel" aria-live="polite"><code data-terminal-out></code></pre>
         <p class="small" data-terminal-note></p>
