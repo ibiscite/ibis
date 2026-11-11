@@ -87,6 +87,9 @@ the anchor older links use.
 ## 0042 Formats, apps and writings
 [0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
+## 0043 RIS and CSV libraries
+[0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
+
 ## 0044 The citation line is a token field
 [0044](decisions/0044-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
 

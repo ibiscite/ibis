@@ -150,11 +150,12 @@ pub(super) fn resident(metadata: &Metadata) -> bool {
 pub(super) fn open_source(path: &Path) -> Result<File, ClosedError> {
     #[cfg(unix)]
     let file = {
-        use rustix::fs::{Mode, OFlags, open};
+        use nix::fcntl::{OFlag, open};
+        use nix::sys::stat::Mode;
         File::from(
             open(
                 path,
-                OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::NONBLOCK | OFlags::CLOEXEC,
+                OFlag::O_RDONLY | OFlag::O_NOFOLLOW | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
                 Mode::empty(),
             )
             .map_err(|_| ClosedError::Unreadable)?,
@@ -274,7 +275,7 @@ pub(super) fn secure(path: &Path, control: &Control) -> Result<(), ClosedError> 
         let m = std::fs::symlink_metadata(path).map_err(|_| ClosedError::PrivateStorage)?;
         if !m.is_dir()
             || m.file_type().is_symlink()
-            || m.uid() != rustix::process::geteuid().as_raw()
+            || m.uid() != nix::unistd::geteuid().as_raw()
             || m.mode() & 0o777 != 0o700
         {
             return Err(ClosedError::PrivateStorage);
@@ -348,8 +349,11 @@ pub(super) fn space(path: &Path, needed: u64, control: &Control) -> Result<(), C
     control.check()?;
     #[cfg(unix)]
     {
-        let fs = rustix::fs::statvfs(path).map_err(|_| ClosedError::NoSpace)?;
-        if fs.f_bavail.saturating_mul(fs.f_frsize) < needed {
+        let fs = nix::sys::statvfs::statvfs(path).map_err(|_| ClosedError::NoSpace)?;
+        // These counts are u64 on Linux but narrower on macOS.
+        #[allow(clippy::useless_conversion)]
+        let available = u64::from(fs.blocks_available()).saturating_mul(u64::from(fs.fragment_size()));
+        if available < needed {
             return Err(ClosedError::NoSpace);
         }
     }

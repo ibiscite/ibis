@@ -158,10 +158,11 @@ fn cite_offers_exactly_the_engines_outputs() {
     let (_dir, engine) = engine();
     let tools = handle(&engine, &modern(3, "tools/list", json!({}))).unwrap();
     let formats = &tools["result"]["tools"][2]["inputSchema"]["properties"]["format"]["enum"];
-    // Every listed output but those that export whole records, in the list's order.
+    // Every listed output but those that export whole records and Zotero's
+    // scan markers, in the list's order.
     let listed: Vec<_> = ibis_engine::outputs::outputs()
         .iter()
-        .filter(|output| !output.exports_records)
+        .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect();
     assert_eq!(formats, &json!(listed));

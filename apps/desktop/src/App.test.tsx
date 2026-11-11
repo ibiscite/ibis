@@ -1540,6 +1540,17 @@ test("a row says why it matched only when the match is not visible", async () =>
   expect(screen.getByText("Best matches")).toBeTruthy();
 });
 
+test("a row's spoken name keeps each of its parts apart", async () => {
+  backend({ search: () => [{ ...result("vale2021", "Invented title"), authors: "Vale, A.", first_author: "Vale", year: "2021", container: "Invented Journal", partial: true }] });
+  render(<App />);
+  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "invented" } });
+  await screen.findByText("Invented title");
+  let spoken = "";
+  screen.getByRole("option", { name: (name) => { spoken = name; return true; } });
+  // Parts that sit apart on screen never run together when read ("Vale, A.Invented Journal").
+  expect(spoken.split(/,\s*/)).toEqual(["Invented title", "2021", "Vale", "A.", "Invented Journal", "Closest match", "Article", "vale2021"]);
+});
+
 test("rows with the same first author and year are told apart by their container", async () => {
   const garcia = { authors: "García, Okafor", first_author: "García", author_count: 2, year: "2021" };
   let density = "comfortable";
@@ -1563,8 +1574,9 @@ test("rows with the same first author and year are told apart by their container
   // around it: a no-break space before the dot and a preserved space after it
   // (white-space: pre), and no gap, margin or padding of its own.
   const byline = rows[0]?.querySelector(".result-byline");
-  expect(byline?.querySelector(".result-authors + .result-separator[aria-hidden] + .result-container")).toBeTruthy();
-  expect(byline?.textContent).toBe("García, Okafor\u00a0· Journal of Sleep \u202eResearch");
+  // The drawn dot is hidden from speech; a spoken pause stands in for it.
+  expect(byline?.querySelector(".result-authors + .result-separator[aria-hidden] + .visually-hidden + .result-container")).toBeTruthy();
+  expect(byline?.textContent).toBe("García, Okafor\u00a0· , Journal of Sleep \u202eResearch");
   expect(byline?.querySelector(".result-separator")?.textContent).toBe("\u00a0· ");
   // Each clipping part takes its own direction, so a right-to-left row cuts
   // Latin text at its end rather than its start.

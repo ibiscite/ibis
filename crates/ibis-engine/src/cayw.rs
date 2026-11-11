@@ -289,6 +289,7 @@ fn output(format: &str, command: Option<&str>, brackets: bool) -> Result<(CaywOu
         "asciidoctor-bibtex" => no_command((key(KeySyntax::AsciiDoc, None), Normal)),
         "jupyter" => no_command((key(KeySyntax::Jupyter, None), Normal)),
         "json" => no_command((key(KeySyntax::CaywJson, None), Normal)),
+        "scannable-cite" => no_command((key(KeySyntax::ScannableCite, None), Normal)),
         "formatted-citation" => no_command((CaywOutput::Style, Normal)),
         "formatted-bibliography" => no_command((CaywOutput::Style, BibliographyOnly)),
         _ => Err(Refusal::Format),
@@ -379,6 +380,7 @@ mod tests {
             ("?format=asciidoctor-bibtex", Some(AsciiDoc), None, Normal),
             ("?format=jupyter", Some(Jupyter), None, Normal),
             ("?format=json", Some(CaywJson), None, Normal),
+            ("?format=scannable-cite", Some(ScannableCite), None, Normal),
             ("?format=formatted-citation", None, None, Normal),
             ("?format=formatted-bibliography", None, None, BibliographyOnly),
         ] {
@@ -413,7 +415,6 @@ mod tests {
             "?format=eta",
             "?format=translate",
             "?format=playground",
-            "?format=scannable-cite",
             "?format=biblatex&command=footcite",
             "?format=biblatex&command=fullcite%7Binjected%7D",
             "?format=natbib&command=citealt",

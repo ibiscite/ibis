@@ -115,6 +115,14 @@ Maintainer, 2026-11-05, after Sol's review. Tests are kept for what they protect
   version inference or publication-order checks. Script tests cover raw
   timestamps, no manifest download, formula-name refusal, CSV validation,
   append-only rows, weekly deduplication and API/ref failures and races.
+- [Citation styles](../.github/workflows/styles.yml) renders the fixture
+  items in every bundled CSL style each Monday, at the pins and at upstream's
+  newest styles, locales and citeproc-js. A style that newly fails, and is not
+  in `crates/ibis-csl/tests/sweep-exceptions.json`, fails the run; moved pins
+  become one pull request from `styles/newest` with the output diff. Before a
+  numbered release, Preview's style-changes job renders with the previous
+  release and this one, and the release notes name each style whose output
+  changed (`scripts/style-sweep.mjs`, #19).
 
 `node scripts/check.mjs` runs what CI would for a branch's changes; setup is in
 [CONTRIBUTING.md](../CONTRIBUTING.md). A test definition, screenshot or build
@@ -374,7 +382,7 @@ changing them needs the same review as the workflow.
 | Node and shell scripts (not `ci-*` or `check.mjs`) | Those, plus the script tests on Windows (and macOS in the queue), without building the app | 5 minutes |
 | Interface, including the canvas, its gallery and the app's HTML pages | Those, plus colours in the system's own WebKit on macOS | 4 minutes |
 | Inside `apps/desktop` | Those, plus the app on Linux, macOS and Windows and the native smoke | 6 minutes |
-| Crates, fixtures, Python and CI scripts, `ci.yml`, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows | 13 minutes |
+| Crates, fixtures, Python and CI scripts, `ci.yml`, anything else | Those, plus the crates on Linux (with citation fidelity, minimum Rust and the search budget) and Windows, each in its own job beside the app | 13 minutes |
 
 The crates' full tests run on macOS only in the merge queue and on main: from 2026-10-25 to 2026-11-02,
 in 200 failed runs, macOS failed alone twice, while Windows found real bugs in the
