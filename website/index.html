@@ -24,7 +24,9 @@
   <link rel="stylesheet" href="picker-tokens.css">
   <link rel="stylesheet" href="style.css">
   <link rel="stylesheet" href="demo.css">
+  <link rel="stylesheet" href="explore.css">
   <script src="site.js"></script>
+  <script src="explore.js" defer></script>
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -38,8 +40,11 @@
   <p class="index-note">Early preview · <a href="https://github.com/ibiscite/ibis/releases">Release notes</a></p>
   <nav aria-label="On this page"><ul>
     <li><a href="#how"><span class="label">How it works</span> <span class="key">@how</span></a></li>
+    <li><a href="#where"><span class="label">Where you write</span> <span class="key">@where</span></a></li>
+    <li><a href="#today"><span class="label">What it does today</span> <span class="key">@today</span></a></li>
     <li><a href="#download"><span class="label">Try the preview</span> <span class="key">@download</span></a></li>
     <li><a href="#setup"><span class="label">Get set up</span> <span class="key">@setup</span></a></li>
+    <li><a href="#power"><span class="label">For power users</span> <span class="key">@power</span></a></li>
     <li><a href="#roadmap"><span class="label">Where it’s heading</span> <span class="key">@roadmap</span></a></li>
     <li><a href="#why"><span class="label">Why Ibis?</span> <span class="key">@why</span></a></li>
     <li><a href="#shape"><span class="label">Help shape it</span> <span class="key">@shape</span></a></li>
@@ -101,6 +106,65 @@
     <div class="text after"><p class="small">Ibis finds and copies the key; it does not generate your document’s bibliography. It also copies formatted citations in APA, Chicago, Harvard and MLA, and IEEE reference entries.</p></div>
   </section>
 
+  <section id="where" class="row" aria-labelledby="where-h">
+    <p class="margin"><span class="key">@where</span></p>
+    <div class="text"><h2 id="where-h">Same shortcut, the right citation for each app</h2>
+      <p class="lede">Ibis reads where you are writing and gives that app what it expects.</p>
+      <p class="small">Pick an app to see what Enter puts there for page 12 of the lantern gardens paper.</p></div>
+    <div class="where" data-where>
+      <div class="where-tabs" role="tablist" aria-label="Where you write">
+        <button type="button" role="tab" aria-selected="true" data-app="word">Word, Pages, Google Docs</button>
+        <button type="button" role="tab" aria-selected="false" data-app="markdown">Markdown, Obsidian, Quarto</button>
+        <button type="button" role="tab" aria-selected="false" data-app="latex">LaTeX, Overleaf</button>
+        <button type="button" role="tab" aria-selected="false" data-app="typst">Typst</button>
+      </div>
+      <div class="where-doc" role="tabpanel" aria-live="polite">
+        <p class="where-line">Lantern gardens follow the rhythm of imaginary cities <code class="where-out" data-out>(Vale, 2024, p. 12)</code></p>
+        <p class="small where-note" data-note>A formatted citation in APA, as rich text. Change the style once and Ibis remembers it for that app.</p>
+      </div>
+      <p class="small">Enter pastes into the app you came from on macOS and Windows. On Linux, and wherever pasting isn’t safe, such as terminals, password fields or remote desktops, Ibis copies instead and says why.</p>
+    </div>
+  </section>
+
+  <section id="today" class="row" aria-labelledby="today-h">
+    <p class="margin"><span class="key">@today</span></p>
+    <div class="text"><h2 id="today-h">What it does today, and what it doesn’t yet</h2>
+      <p class="lede">No promises dressed up as features. Here is the honest list.</p></div>
+    <div class="today">
+      <div class="today-col" data-status="today"><h3><span class="badge">Today</span> In the current release</h3>
+        <ul>
+          <li>Opens from any app with one shortcut, on Windows, macOS and Linux</li>
+          <li>Reads Zotero 7–10, open or closed, including group libraries, and BibTeX, BibLaTeX or CSL-JSON files</li>
+          <li>Never changes your library, works offline, no account</li>
+          <li>Citation keys for Pandoc, BibLaTeX, natbib, Typst, Org, MyST and more</li>
+          <li>Formatted citations in APA, Chicago, Harvard and MLA, and IEEE reference entries</li>
+          <li>Pastes for you on macOS and Windows; copies on Linux</li>
+          <li>Several references in one citation, a page or range, narrative and author-omitted forms</li>
+          <li>Remembers a format for each app</li>
+          <li>Change Last Citation, and selected text as the search</li>
+          <li>Cited Since Opening: copy or save what you cited as one bibliography</li>
+          <li>A command line and an MCP server, so AI agents can cite from your library</li>
+        </ul></div>
+      <div class="today-col" data-status="nightly"><h3><span class="badge">Nightly</span> Arriving next</h3>
+        <ul>
+          <li>RIS files and a CSV template as libraries</li>
+          <li>Prefix and suffix (“see”, “emphasis added”) and keep my order</li>
+          <li>Every page and locator type: chapter, section, line and more</li>
+          <li>A citation line you edit token by token</li>
+          <li>A cleaner look: one palette for formats and actions, calmer Settings</li>
+          <li>Every official citation style on the command line, credited to the CSL project</li>
+        </ul></div>
+      <div class="today-col" data-status="no"><h3><span class="badge">Not yet</span> Honest limits</h3>
+        <ul>
+          <li>No live Zotero fields in Word; Ibis pastes text, so Zotero’s Word plugin still owns automatic bibliographies</li>
+          <li>No <i>ibid.</i> or automatic numbering across a document</li>
+          <li>Doesn’t paste on Linux yet, and on Wayland the shortcut needs a desktop setting</li>
+          <li>Not signed by Apple or Microsoft yet, so your computer warns you once</li>
+          <li>Doesn’t search PDFs or highlights yet</li>
+        </ul></div>
+    </div>
+  </section>
+
   <section id="download" class="row" aria-labelledby="download-h">
     <p class="margin"><span class="key">@download</span></p>
     <div class="text"><h2 id="download-h">Try the early preview</h2>
@@ -146,18 +210,42 @@
     </div>
   </section>
 
+  <section id="power" class="row" aria-labelledby="power-h">
+    <p class="margin"><span class="key">@power</span></p>
+    <div class="text"><h2 id="power-h">For power users, scripts and AI agents</h2>
+      <p class="lede">Everything the picker does, the <code>ibis</code> command can do too, from the same engine.</p></div>
+    <div class="power">
+      <div class="shorthand" data-shorthand>
+        <h3>Type it the fast way <span class="badge">Nightly</span></h3>
+        <p class="small">Skip the menus: put the details right in the search.</p>
+        <label class="shorthand-field"><span class="small">Search</span><input type="text" value="see vale 417" spellcheck="false" autocomplete="off" data-shorthand-input></label>
+        <p class="shorthand-parts" data-shorthand-parts aria-live="polite"></p>
+        <p class="shorthand-out"><code data-shorthand-out>[see @vale2024lanterns, p. 417]</code></p>
+        <p class="small">Try “fen ch 2”, “reed 12-14” or “see vale 33”.</p>
+      </div>
+      <div class="terminal" data-terminal>
+        <div class="terminal-tabs" role="tablist" aria-label="Command line examples">
+          <button type="button" role="tab" aria-selected="true" data-cmd="search">search</button>
+          <button type="button" role="tab" aria-selected="false" data-cmd="cite">cite</button>
+          <button type="button" role="tab" aria-selected="false" data-cmd="mcp">agents</button>
+        </div>
+        <pre class="terminal-screen" role="tabpanel" aria-live="polite"><code data-terminal-out></code></pre>
+        <p class="small" data-terminal-note></p>
+      </div>
+    </div>
+    <div class="text after"><p class="small">AI agents can make up references that look real. Ibis lets an agent cite only what is actually in your library, and say when it can’t. Install with Homebrew or winget, or download the command from the release page. <a href="https://github.com/ibiscite/ibis/blob/main/docs/cli.md">Command line guide</a>.</p></div>
+  </section>
+
   <section id="roadmap" class="row" aria-labelledby="roadmap-h">
     <p class="margin"><span class="key">@roadmap</span></p>
     <div class="text"><h2 id="roadmap-h">A small start, with room to grow</h2>
       <p class="lede">Today Ibis finds a reference and gets you its citation. Next, I want it to take more steps off your hands.</p>
       <h3>New in Ibis Nightly</h3>
       <ul class="roadmap" data-nightly>
-        <li><strong>Pastes on Windows too</strong><span>Enter puts the citation straight into the app you came from, as it already does on a Mac.</span></li>
-        <li><strong>Selected text becomes the search</strong><span>On a Mac, select a placeholder such as “vale 2024”, press the shortcut, and the citation replaces it.</span></li>
-        <li><strong>Change Last Citation</strong><span>Reopen the citation you just pasted and fix it. On a Mac it replaces the old one while it is still selected; elsewhere Ibis copies the new one.</span></li>
-        <li><strong>Your project’s bibliography</strong><span>Results say whether each key is in your project’s <code>.bib</code> file, and a missing entry can be copied for it.</span></li>
-        <li><strong>Cited since opening</strong><span>Copy or save the references you cited since Ibis opened as one formatted bibliography.</span></li>
-        <li><strong>Cite as You Write for editors</strong><span>An optional local endpoint for editor plugins built for Better BibTeX’s Cite as You Write. The <code>ibis</code> command line also writes ConTeXt citations and every official citation style.</span></li>
+        <li><strong>RIS and spreadsheet libraries</strong><span>Read an RIS export or a CSV file in Ibis’s template as a library.</span></li>
+        <li><strong>Prefix, suffix and your order</strong><span>Add “see” before a reference or text after it, and keep references in the order you chose.</span></li>
+        <li><strong>Every locator type</strong><span>Chapters, sections, lines and more, not just pages.</span></li>
+        <li><strong>Cite as You Write for editors</strong><span>An optional local endpoint for editor plugins built for Better BibTeX’s Cite as You Write.</span></li>
       </ul>
       <p class="small"><a href="https://github.com/ibiscite/ibis/releases/tag/nightly">Ibis Nightly</a> installs beside the preview as a separate app. It is rebuilt often and may be unfinished.</p>
       <h3>Planned</h3>

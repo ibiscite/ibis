@@ -1,0 +1,37 @@
+/* The explainers under the demo: where you write, what works today, power users. */
+.where, .today, .power { min-width: 0; font-family: var(--font); }
+.where-tabs, .terminal-tabs { display: flex; flex-wrap: wrap; gap: var(--space-2); margin-bottom: var(--space-4); }
+.where-tabs button, .terminal-tabs button { min-height: var(--touch-target); padding: var(--space-2) var(--space-4); border: 0; border-radius: var(--r-control); background: var(--website-surface); color: var(--text-secondary); font: var(--type-body-size)/1.3 var(--font); cursor: pointer; transition: transform var(--motion-fast, 120ms) ease-out; }
+.where-tabs button:not([aria-selected="true"]):hover, .terminal-tabs button:not([aria-selected="true"]):hover { color: var(--text); }
+.where-tabs button:active, .terminal-tabs button:active { transform: scale(var(--website-press)); }
+.where-tabs [aria-selected="true"], .terminal-tabs [aria-selected="true"] { background: var(--text); color: var(--website-bg); }
+.where-doc { padding: var(--space-6); border-radius: var(--r-large, 12px); background: var(--website-surface); margin-bottom: var(--space-4); }
+.where-line { margin: 0 0 var(--space-3); font: var(--type-search-size)/1.55 var(--font-reading); }
+.where-out { white-space: normal; }
+.where-out.pop { animation: where-pop 220ms ease-out; }
+@keyframes where-pop { from { transform: translateY(4px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+.today { display: grid; gap: var(--space-6); grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); }
+.today-col h3 { display: flex; align-items: center; gap: var(--space-2); font-size: var(--type-title-size); margin: 0 0 var(--space-3); }
+.today-col ul { list-style: none; padding: 0; margin: 0; border-top: var(--border-width) solid var(--separator); }
+.today-col li { padding: var(--space-3) 0 var(--space-3) var(--space-6); border-bottom: var(--border-width) solid var(--separator); font: var(--type-body-size)/1.5 var(--font); position: relative; }
+.today-col li::before { position: absolute; left: 0; top: var(--space-3); font-weight: var(--strong); }
+[data-status="today"] li::before { content: "✓"; color: var(--scarlet); }
+[data-status="nightly"] li::before { content: "◐"; color: var(--text-secondary); }
+[data-status="no"] li::before { content: "–"; color: var(--text-secondary); }
+.badge { display: inline-block; padding: .1em .55em; border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--strong) .75em/1.6 var(--font); }
+[data-status="nightly"] .badge, [data-status="no"] .badge { background: var(--website-surface); color: var(--text-secondary); }
+
+.power { display: grid; gap: var(--website-gap); grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); align-items: start; }
+.shorthand, .terminal { padding: var(--space-6); border-radius: var(--r-large, 12px); background: var(--website-surface); }
+.shorthand h3, .terminal h3 { margin: 0 0 var(--space-2); font-size: var(--type-title-size); }
+.shorthand-field { display: grid; gap: var(--space-1); margin: var(--space-4) 0; }
+.shorthand-field input { min-height: var(--touch-target); padding: var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-control); background: var(--website-bg); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
+.shorthand-parts { display: flex; flex-wrap: wrap; gap: var(--space-2); min-height: 2rem; margin: 0 0 var(--space-3); }
+.chip { display: inline-flex; gap: var(--space-1); align-items: baseline; padding: .2em .6em; border-radius: var(--website-chip-radius); background: var(--website-bg); font: var(--type-body-size)/1.5 var(--font); }
+.chip span { color: var(--text-secondary); font-size: .85em; }
+.shorthand-out code { white-space: normal; }
+.terminal-screen { margin: 0 0 var(--space-3); min-height: 11rem; padding: var(--space-4); border-radius: var(--r-control); background: #141414; color: #EDEDED; font: var(--type-body-size)/1.6 var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.terminal-screen code { all: unset; white-space: pre-wrap; }
+@media (prefers-reduced-motion: reduce) { .where-out.pop { animation: none; } .where-tabs button:active, .terminal-tabs button:active { transform: none; } }
+@media (min-width: 62rem) { .where, .today, .power { grid-column: 2; } }
