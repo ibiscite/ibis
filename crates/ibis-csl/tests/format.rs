@@ -38,6 +38,7 @@ fn sample() -> (Snapshot, CitationRequest) {
         keep_order: false,
         output: OutputSpec::Csl { style: "apa".into() },
         input_language: None,
+        strict: false,
         output_locale: None,
     };
     (snapshot, request)

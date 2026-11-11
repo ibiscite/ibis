@@ -286,11 +286,12 @@ pub struct FormatChoice {
 /// the person's settings, and whether it pastes, with pasting on and
 /// permitted, as they are by default.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Destination {
+    #[serde(deserialize_with = "crate::contract::response::additive")]
     pub app: AppId,
     /// The app's name, when Ibis knows it.
     pub name: Option<String>,
+    #[serde(deserialize_with = "crate::contract::response::additive")]
     pub output: OutputSpec,
     /// Which level chose `output`.
     pub from: FormatFrom,

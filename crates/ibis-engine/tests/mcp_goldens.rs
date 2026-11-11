@@ -63,10 +63,15 @@ fn golden_cases_replay_through_mcp() {
                 let mut expected = json!({
                     "text": content.text, "notices": data.notices, "losses": data.losses,
                     "provenance": answer["structuredContent"]["provenance"],
+                    "source_health": {"status": "ok", "findings": []},
                 });
+                let mut receipt = data.receipt.clone().unwrap();
+                // The tool leaves language defaults implicit, unlike these seeds.
+                receipt.request.input_language = None;
+                receipt.request.output_locale = None;
+                expected["receipt"] = json!(receipt);
                 // Nonempty warnings are part of citation feedback, including
                 // APA's sentence-case reminder for the bibliography case.
-                // Keep the established response shape for clean citations.
                 if !data.warnings.is_empty() {
                     expected["warnings"] = json!(data.warnings);
                 }

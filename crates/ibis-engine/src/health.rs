@@ -3,10 +3,93 @@ use super::{Engine, LibraryInfo};
 use crate::Cancellation;
 use crate::settings;
 use ibis_core::contract::*;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
 use std::{
     path::{Path, PathBuf},
     sync::Arc,
 };
+
+/// Whether the sources behind one result were healthy, read from the same
+/// library state the result came from: a later refresh never changes it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct SourceHealth {
+    pub status: HealthStatus,
+    /// One entry per problem, in library order; empty when `status` is `ok`.
+    pub findings: Vec<SourceFinding>,
+}
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum HealthStatus {
+    Ok,
+    Findings,
+    /// A status from a newer engine: it needs review.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
+}
+/// A problem with one library a result consulted. Codes only: no source text.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "code", rename_all = "kebab-case")]
+pub enum SourceFinding {
+    /// The library changed and could not be read again; the result used the
+    /// references from its last successful read.
+    RefreshFailed {
+        library: LibraryId,
+        error: ErrorCode,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        reason: Option<ErrorReason>,
+        last_successful_read_ms: u64,
+    },
+    /// Entries were skipped or read with problems; `ibis libraries` lists them.
+    SourceWarnings { library: LibraryId, count: usize },
+    /// A finding from a newer engine: it needs review.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
+}
+impl SourceHealth {
+    /// The findings of `libraries`, the ones a result consulted.
+    pub fn of<'a>(libraries: impl IntoIterator<Item = &'a LibraryInfo>) -> Self {
+        let mut findings = Vec::new();
+        for library in libraries {
+            if let Some(error) = library.refresh_error {
+                findings.push(SourceFinding::RefreshFailed {
+                    library: library.id.clone(),
+                    error,
+                    reason: library.refresh_reason,
+                    last_successful_read_ms: library.updated_at_ms,
+                });
+            }
+            if library.warnings_total > 0 {
+                findings.push(SourceFinding::SourceWarnings {
+                    library: library.id.clone(),
+                    count: library.warnings_total,
+                });
+            }
+        }
+        Self {
+            status: if findings.is_empty() {
+                HealthStatus::Ok
+            } else {
+                HealthStatus::Findings
+            },
+            findings,
+        }
+    }
+    /// Clean only when it says so and lists nothing; anything unknown needs review.
+    pub fn is_ok(&self) -> bool {
+        self.status == HealthStatus::Ok && self.findings.is_empty()
+    }
+}
+
+/// A result with the health of the sources it consulted.
+#[derive(Debug, Clone, Serialize, JsonSchema)]
+pub struct Checked<T> {
+    #[serde(flatten)]
+    pub value: T,
+    pub source_health: SourceHealth,
+}
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum InspectionPolicy {
@@ -175,5 +258,19 @@ mod tests {
             1
         );
         assert_eq!(bounded(&Cancellation::default(), |_| 7), Some(7));
+    }
+    #[test]
+    fn health_from_a_newer_engine_parses_and_needs_review() {
+        let newer: SourceHealth = serde_json::from_value(serde_json::json!({
+            "status": "invented-status", "findings": [{"code": "invented-finding", "library": "x"}], "added": 1
+        }))
+        .unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!(newer.status, HealthStatus::Unknown);
+        assert_eq!(newer.findings, [SourceFinding::Unknown]);
+        assert!(!newer.is_ok());
+        let odd: SourceHealth =
+            serde_json::from_value(serde_json::json!({"status": "ok", "findings": [{"code": "invented-finding"}]}))
+                .unwrap_or_else(|e| panic!("{e}"));
+        assert!(!odd.is_ok());
     }
 }

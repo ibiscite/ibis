@@ -47,7 +47,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "parent",
@@ -103,13 +102,13 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "title": {
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "title",
@@ -131,27 +130,31 @@
     },
     "CitationError": {
       "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
-      "type": "string",
-      "enum": [
-        "empty-selection",
-        "too-many-items",
-        "invalid-locator",
-        "invalid-rich-text",
-        "output-too-large",
-        "unsupported-form",
-        "missing-item",
-        "changed-item",
-        "missing-key",
-        "ambiguous-key",
-        "conflicting-key",
-        "invalid-key",
-        "unsupported-output",
-        "invalid-locale",
-        "cancelled",
-        "formatter-unavailable",
-        "annotation-mismatch",
-        "not-citable",
-        "not-from-zotero"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "empty-selection",
+            "too-many-items",
+            "invalid-locator",
+            "invalid-rich-text",
+            "output-too-large",
+            "unsupported-form",
+            "missing-item",
+            "changed-item",
+            "missing-key",
+            "ambiguous-key",
+            "conflicting-key",
+            "invalid-key",
+            "unsupported-output",
+            "invalid-locale",
+            "cancelled",
+            "formatter-unavailable",
+            "annotation-mismatch",
+            "not-citable",
+            "not-from-zotero"
+          ]
+        }
       ]
     },
     "CitationForm": {
@@ -263,7 +266,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "value",
         "source"
@@ -277,6 +279,102 @@
         "zotero",
         "extra",
         "better-bibtex"
+      ]
+    },
+    "CitationProjectCheck": {
+      "type": "object",
+      "properties": {
+        "bibliography": {
+          "description": "The checked bibliography's content, without its location or text.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checked_at_ms": {
+          "description": "Present only for a complete successful read made by this citation call.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ]
+    },
+    "CitationReceipt": {
+      "description": "Immutable citation evidence. Historical source material is not stored here.",
+      "type": "object",
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "formatting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FormattingProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ibis_version": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "meaning_version": {
+          "description": "Citation meaning changes independently of package and wire versions.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationProjectCheck"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request": {
+          "description": "Resolved output and ordered records, with their actual cite fingerprints.",
+          "$ref": "#/$defs/CitationRequest"
+        },
+        "sample": {
+          "description": "The visible sample marker is part of the attested content.",
+          "type": "boolean"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationSourceCheck"
+          }
+        }
+      },
+      "required": [
+        "request",
+        "sources",
+        "content_hash",
+        "ibis_version",
+        "meaning_version"
       ]
     },
     "CitationRequest": {
@@ -315,6 +413,10 @@
             "null"
           ],
           "default": null
+        },
+        "strict": {
+          "description": "Refuse a citation with losses, refusals or unhealthy sources.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -324,6 +426,7 @@
       ]
     },
     "CitationResult": {
+      "description": "Results, unlike requests, accept fields they do not know, so a client keeps\nworking when a newer engine adds one (decision 0028).",
       "type": "object",
       "properties": {
         "content_hash": {
@@ -376,6 +479,17 @@
             "$ref": "#/$defs/ItemOutcome"
           }
         },
+        "receipt": {
+          "description": "Evidence of the records and options actually used, not an archive.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "rtf": {
           "type": [
             "string",
@@ -392,7 +506,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "text",
         "display",
@@ -400,6 +513,42 @@
         "losses",
         "notices",
         "content_hash"
+      ]
+    },
+    "CitationSourceCheck": {
+      "type": "object",
+      "properties": {
+        "last_successful_read_ms": {
+          "description": "Absent for caller-supplied snapshots, which do not establish a source read.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "library": {
+          "$ref": "#/$defs/LibraryId"
+        },
+        "refresh_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "library",
+        "warnings"
       ]
     },
     "CitationWarning": {
@@ -414,7 +563,6 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
         "item",
         "code"
@@ -422,10 +570,14 @@
     },
     "CitationWarningCode": {
       "description": "Fixed codes only; source diagnostics never include field text or locations.",
-      "type": "string",
-      "enum": [
-        "source-field",
-        "sentence-case-expected"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "source-field",
+            "sentence-case-expected"
+          ]
+        }
       ]
     },
     "Collection": {
@@ -451,10 +603,10 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -583,7 +735,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "app",
         "output",
@@ -610,7 +761,6 @@
           "minimum": 0
         }
       },
-      "additionalProperties": false,
       "required": [
         "content"
       ]
@@ -641,7 +791,6 @@
           "type": "boolean"
         }
       },
-      "additionalProperties": false,
       "required": [
         "text"
       ]
@@ -657,12 +806,12 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "nodes"
       ]
     },
     "EngineError": {
+      "description": "Like every result, an error accepts fields it does not know (decision 0028).",
       "type": "object",
       "properties": {
         "code": {
@@ -679,7 +828,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "code"
       ]
@@ -714,6 +862,11 @@
     "ErrorReason": {
       "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
       "oneOf": [
+        {
+          "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+          "type": "string",
+          "const": "strict-citation"
+        },
         {
           "description": "No style has the requested id; `styles` lists them.",
           "type": "string",
@@ -803,6 +956,16 @@
           "description": "Neither the file's name nor its contents identify a supported library format.",
           "type": "string",
           "const": "unknown-format"
+        },
+        {
+          "description": "Two records a request sends share an `id`, `1` and `\"1\"` included.",
+          "type": "string",
+          "const": "duplicate-record"
+        },
+        {
+          "description": "A record a request sends was not valid CSL-JSON, so none is cited.",
+          "type": "string",
+          "const": "rejected-record"
         }
       ]
     },
@@ -833,7 +996,6 @@
           "$ref": "#/$defs/FailureStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",
@@ -858,7 +1020,6 @@
           "$ref": "#/$defs/Fingerprint"
         }
       },
-      "additionalProperties": false,
       "required": [
         "cite",
         "full"
@@ -887,6 +1048,22 @@
           "type": "string",
           "const": "suggestion"
         }
+      ]
+    },
+    "FormattingProvenance": {
+      "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "processor": {
+          "$ref": "#/$defs/Fingerprint"
+        }
+      },
+      "required": [
+        "processor",
+        "bundle"
       ]
     },
     "GoldenCase": {
@@ -1002,7 +1179,6 @@
               "const": "rendered"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item"
@@ -1024,7 +1200,6 @@
               "const": "refused"
             }
           },
-          "additionalProperties": false,
           "required": [
             "outcome",
             "item",
@@ -1089,7 +1264,6 @@
               "const": "record"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1106,7 +1280,6 @@
               "const": "attachment"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1123,7 +1296,6 @@
               "const": "note"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1140,7 +1312,6 @@
               "const": "annotation"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1157,7 +1328,6 @@
               "const": "collection"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1174,7 +1344,6 @@
               "const": "tag"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1191,7 +1360,6 @@
               "const": "saved-search"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1270,28 +1438,35 @@
           "$ref": "#/$defs/LossReason"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "reason"
       ]
     },
     "LossField": {
-      "type": "string",
-      "enum": [
-        "locator",
-        "prefix",
-        "suffix",
-        "author-suppression",
-        "rich-text",
-        "order"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "locator",
+            "prefix",
+            "suffix",
+            "author-suppression",
+            "rich-text",
+            "order"
+          ]
+        }
       ]
     },
     "LossReason": {
-      "type": "string",
-      "enum": [
-        "unsupported",
-        "flattened"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unsupported",
+            "flattened"
+          ]
+        }
       ]
     },
     "Note": {
@@ -1308,27 +1483,31 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "text": {
           "description": "Untrusted plain text; front ends must never inject this as HTML.",
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "text"
       ]
     },
     "Notice": {
-      "type": "string",
-      "enum": [
-        "needs-document-context",
-        "reference-entry",
-        "full-first-note",
-        "year-suffix-withheld",
-        "input-language-unsupported"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "needs-document-context",
+            "reference-entry",
+            "full-first-note",
+            "year-suffix-withheld",
+            "input-language-unsupported"
+          ]
+        }
       ]
     },
     "OutputSpec": {
@@ -1442,7 +1621,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "csl"
@@ -1465,7 +1643,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -1493,7 +1670,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "operator",
@@ -1514,7 +1690,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "objects",
         "fingerprints"
@@ -1530,7 +1705,6 @@
           "$ref": "#/$defs/LibraryObject"
         }
       },
-      "additionalProperties": false,
       "required": [
         "object",
         "fingerprints"
@@ -1549,7 +1723,6 @@
           "$ref": "#/$defs/SuccessStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",
@@ -1586,7 +1759,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name"

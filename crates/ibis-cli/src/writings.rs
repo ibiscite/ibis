@@ -329,5 +329,5 @@ pub(crate) fn with_check(
     }
     result.data = serde_json::to_value(writing)
         .map_err(|_| Failure::new(ErrorCode::Internal, "The writing citation is unavailable."))?;
-    Ok(result)
+    Ok(result.bounded()?)
 }

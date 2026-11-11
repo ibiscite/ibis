@@ -252,6 +252,7 @@ impl FileLibrary {
             keep_order: false,
             output: OutputSpec::Csl { style: style.into() },
             input_language: None,
+            strict: false,
             output_locale: None,
         };
         let citation = self
@@ -807,6 +808,7 @@ impl FileLibrary {
             output: output.clone(),
             form: CitationForm::Normal,
             input_language: None,
+            strict: false,
             output_locale: None,
         };
         if let Some(editor) = editor {

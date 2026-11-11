@@ -180,6 +180,19 @@ fn an_unreadable_writing_bibliography_is_a_warning() {
         citation["data"]["bibliography"]["keys"][0]["check"]["status"],
         "could-not-check"
     );
+    let (code, strict, _) = home.run(&[
+        "cite",
+        "vale2024",
+        "--writing",
+        id,
+        "--strict",
+        "--file",
+        bib.to_str().unwrap(),
+    ]);
+    assert_eq!(code, 3, "{strict}");
+    assert_eq!(strict["ok"], false);
+    assert_eq!(strict["error"]["reason"], "strict-citation");
+    assert!(strict.get("data").is_none());
 }
 
 #[test]
@@ -203,11 +216,20 @@ fn a_known_wrong_work_key_is_refused() {
         writing.to_str().unwrap(),
     ]);
     let id = made["data"]["writing"]["name"].as_str().unwrap();
-    let args = vec!["cite", "vale2024", "--writing", id, "--file", library.to_str().unwrap()];
-    let (code, refused, _) = home.run(&args);
-    assert_eq!(code, 1, "{refused}");
-    assert_eq!(refused["data"]["assessment"]["state"], "conflict");
-    assert_eq!(refused["data"]["citation"]["text"], "");
+    for flags in [&[][..], &["--strict"][..]] {
+        let mut args = vec!["cite", "vale2024", "--writing", id, "--file", library.to_str().unwrap()];
+        args.extend_from_slice(flags);
+        let (code, refused, _) = home.run(&args);
+        if flags.is_empty() {
+            assert_eq!(code, 1, "{refused}");
+            assert_eq!(refused["data"]["assessment"]["state"], "conflict");
+            assert_eq!(refused["data"]["citation"]["text"], "");
+        } else {
+            assert_eq!(code, 3, "{refused}");
+            assert_eq!(refused["ok"], false);
+            assert!(refused.get("data").is_none());
+        }
+    }
 }
 
 #[test]

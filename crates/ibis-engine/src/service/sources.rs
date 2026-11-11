@@ -1124,7 +1124,7 @@ mod tests {
         assert_eq!(listed.exit_code, ExitCode::Ok);
         assert_eq!(listed.data["libraries"][0]["watch_warning"], "live-refresh-off");
         let cited = engine
-            .cite_keys(
+            .cite_keys_checked(
                 &KeyCitationRequest {
                     keys: vec!["demo".into()],
                     output: OutputSpec::Key {
@@ -1132,6 +1132,7 @@ mod tests {
                         command: None,
                     },
                     form: CitationForm::Normal,
+                    strict: false,
                     output_locale: None,
                     keep_order: false,
                 },
@@ -1139,8 +1140,9 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            engine
-                .finalize(DispatchResult::citation(cited, 1).unwrap())
+            DispatchResult::citation(cited.value, 1)
+                .unwrap()
+                .with_health(&cited.source_health)
                 .unwrap()
                 .text
                 .as_deref(),

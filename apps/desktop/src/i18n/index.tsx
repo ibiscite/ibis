@@ -37,8 +37,8 @@ const IDS = [
   "about-automatic", "about-automatic-description", "about-check", "about-check-label", "about-checking", "about-check-failed", "about-check-newest", "about-check-busy", "about-mission", "about-updates", "about-links", "about-website", "about-source", "about-problem", "about-licences", "about-free", "about-copied", "about-copy-failed", "about-version", "about-unavailable",
 ] as const;
 export type MessageId = typeof IDS[number];
-/** Messages the Rust front ends own: engine codes, then the command line's and the app's native words. */
-const RUST = /^(error|reason|refusal|warning|loss|notice|form|cause|cli|app)-/;
+/** Messages Rust owns: engine codes and the CLI, MCP and native app's words. */
+const RUST = /^(error|reason|refusal|warning|loss|notice|form|cause|cli|mcp|app)-/;
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;

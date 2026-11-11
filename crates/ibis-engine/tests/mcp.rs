@@ -360,6 +360,7 @@ fn cite_preserves_both_item_warning_codes_by_key_and_by_id() {
                 keys: vec!["protected2020".into()],
                 output: OutputSpec::Csl { style: "apa".into() },
                 form: CitationForm::BibliographyOnly,
+                strict: false,
                 output_locale: None,
                 keep_order: false,
             },

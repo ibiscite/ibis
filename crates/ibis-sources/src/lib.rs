@@ -16,6 +16,7 @@ use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
+pub use csl_json::{RequestRecords, request_records};
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, library_file_extensions, load_file,
     load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing,
