@@ -99,6 +99,14 @@ fn command() -> Command {
                 .action(ArgAction::SetTrue)
                 .help("Print the versioned JSON envelope, including errors and findings"),
         )
+        .arg(
+            Arg::new("contract")
+                .long("contract")
+                .global(true)
+                .value_name("VERSION")
+                .value_parser([ibis_core::contract::CONTRACT_VERSION.to_string()])
+                .help("The JSON contract version your client expects; one this Ibis does not speak is refused"),
+        )
         .arg(file.clone());
     root = root.arg(
         Arg::new("zotero")
@@ -120,9 +128,11 @@ fn command() -> Command {
                 "Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named",
             ),
     );
-    for method in Method::ALL {
+    // `records` is `cite --records` here, and `ibis call records`.
+    for method in Method::ALL.into_iter().filter(|method| *method != Method::Records) {
         let subcommand = Command::new(method.as_str());
         root = root.subcommand(match method {
+            Method::Records => subcommand,
             Method::Libraries => subcommand.about("List the libraries and their warnings"),
             Method::Search => subcommand
                 .about("Find references")
@@ -174,8 +184,8 @@ fn command() -> Command {
                         .value_name("KEY")
                         .help("Citation keys, in the order they appear in the citation")
                         .num_args(1..)
-                        .required_unless_present("request")
-                        .conflicts_with("request"),
+                        .required_unless_present_any(["request", "records"])
+                        .conflicts_with_all(["request", "records"]),
                 )
                 .arg(
                     Arg::new("request")
@@ -197,6 +207,22 @@ fn command() -> Command {
                             "keep-order",
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
+                )
+                .arg(
+                    Arg::new("records")
+                        .long("records")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with_all([
+                            "request",
+                            "project",
+                            "for-app",
+                            "locator",
+                            "prefix",
+                            "suffix",
+                            "omit-author",
+                            "keep-order",
+                        ])
+                        .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )
                 .arg(
                     Arg::new("format")
@@ -226,8 +252,8 @@ fn command() -> Command {
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
                     .requires("project").help("Read the writing project from Ibis Nightly's settings"))
-                .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
-                    .requires("project").help("Require a current complete bibliography read for project key citations"))
+                .arg(Arg::new("strict").long("strict").action(ArgAction::SetTrue)
+                    .help(ibis_engine::catalogue::text("cli-strict-help", None, &[]).unwrap_or_default()))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
@@ -905,6 +931,20 @@ fn open_libraries(
             "--app-libraries is not available here; name the libraries to read.",
         ));
     }
+    // Records sent on stdin are cited with no library: none is opened.
+    if matches
+        .subcommand_matches("cite")
+        .is_some_and(|cite| cite.get_flag("records"))
+    {
+        return if named || asked {
+            Err(Failure::new(
+                ErrorCode::Usage,
+                "--records cites only the records on stdin; leave out the library options.",
+            ))
+        } else {
+            Ok(names)
+        };
+    }
     // `call` of search, show or cite reads what those commands would read.
     let called = matches
         .subcommand_matches("call")
@@ -1064,6 +1104,7 @@ fn run_method<R: BufRead>(
         _ => human::Holdings::NoLibrary,
     };
     let params = match method {
+        Method::Records => return Err(EngineError::new(ErrorCode::Usage).into()),
         Method::Libraries => json!({"action":"list"}),
         Method::Search => {
             let query = args.get_one::<String>("query").map_or("", String::as_str);
@@ -1112,15 +1153,58 @@ fn run_method<R: BufRead>(
         }
         Method::Cite if args.get_flag("request") => {
             const REQUEST_HELP: &str = "stdin must hold one CitationRequest JSON object; see: ibis schema cite";
-            let params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            let mut params = explain(stdin_json(input), |_| REQUEST_HELP.into())?;
+            if args.get_flag("strict") {
+                params
+                    .as_object_mut()
+                    .ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?
+                    .insert("strict".into(), json!(true));
+            }
             let citing = request_citing(&params).ok_or_else(|| Failure::new(ErrorCode::BadInput, REQUEST_HELP))?;
-            let result = explain(
-                engine.dispatch(method, &params, &cancel),
-                |EngineError { code, .. }| match code {
-                    ErrorCode::BadInput => REQUEST_HELP.into(),
-                    code => human::code_sentence(code),
-                },
-            )?;
+            let result = explain(engine.dispatch(method, &params, &cancel), |error| {
+                if error.reason.is_some() {
+                    ibis_engine::catalogue::error(&error, ibis_engine::catalogue::Audience::Cli)
+                } else if error.code == ErrorCode::BadInput {
+                    REQUEST_HELP.into()
+                } else {
+                    human::code_sentence(error.code)
+                }
+            })?;
+            return Ok(Execution::Result(result, Some(citing)));
+        }
+        Method::Cite if args.get_flag("records") => {
+            const RECORDS_HELP: &str = "stdin must hold one JSON array of CSL-JSON records; see: ibis schema records";
+            let records = explain(stdin_records(input), |error| match error.code {
+                ErrorCode::ResourceLimit => "the records on stdin are more than 1 MiB; send fewer at a time.".into(),
+                _ => RECORDS_HELP.into(),
+            })?;
+            let Value::Array(list) = &records else {
+                return Err(Failure::new(ErrorCode::BadInput, RECORDS_HELP));
+            };
+            let output = chosen_output(args)?;
+            let form = chosen_form(args, &output)?;
+            let params = json!({
+                "records": records,
+                "strict": args.get_flag("strict"),
+                "output": output,
+                "form": form,
+                "output_locale": args.get_one::<String>("locale"),
+            });
+            let result = engine
+                .dispatch(Method::Records, &params, &cancel)
+                .map_err(|error| records_failure(error, list))?;
+            let citing = human::Citing {
+                labels: list
+                    .iter()
+                    .map(|record| match &record["id"] {
+                        Value::String(id) => id.clone(),
+                        id => id.to_string(),
+                    })
+                    .collect(),
+                flags: vec![],
+                output: output_name(&output),
+                form,
+            };
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
@@ -1193,28 +1277,32 @@ fn run_method<R: BufRead>(
             let writing_project = project
                 .as_ref()
                 .map(|project| {
-                    engine.cite_writing_project_keys_with_policy(
+                    engine.cite_writing_project_keys(
                         project,
                         &KeyCitationRequest {
                             keys: keys.clone(),
                             output: output.clone(),
                             form,
+                            strict: args.get_flag("strict"),
                             output_locale: args.get_one::<String>("locale").cloned(),
                             keep_order: args.get_flag("keep-order"),
                         },
-                        writing_projects::policy(args),
                         &cancel,
                     )
                 })
                 .transpose()?;
             let mut result = if let Some(project) = &writing_project {
-                Ok(project.citation.clone())
+                Ok(ibis_engine::health::Checked {
+                    value: project.citation.clone(),
+                    source_health: project.source_health.clone(),
+                })
             } else {
-                engine.cite_keys(
+                engine.cite_keys_checked(
                     &KeyCitationRequest {
                         keys: keys.clone(),
                         output,
                         form,
+                        strict: args.get_flag("strict"),
                         output_locale: args.get_one::<String>("locale").cloned(),
                         keep_order: args.get_flag("keep-order"),
                     },
@@ -1251,8 +1339,8 @@ fn run_method<R: BufRead>(
                         |key| key_failure(engine, key, error, libraries_open()),
                     ),
             })?;
-            result.destination = destination;
-            let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
+            result.value.destination = destination;
+            let result = DispatchResult::citation(result.value, keys.len())?.with_health(&result.source_health)?;
             let result = writing_projects::with_check(result, writing_project)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
@@ -1355,6 +1443,53 @@ fn request_citing(params: &Value) -> Option<human::Citing> {
         output: output_name(&request.output),
         form: request.form,
     })
+}
+/// The output `--style` or `--format` names, or the default.
+fn chosen_output(args: &ArgMatches) -> Result<OutputSpec, Failure> {
+    Ok(
+        match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
+            (Some(style), _) => OutputSpec::Csl { style: style.clone() },
+            (None, format) => ibis_engine::outputs::find(format.map_or(ibis_engine::outputs::DEFAULT, String::as_str))
+                .map(|output| output.output.clone())
+                .ok_or_else(|| EngineError::new(ErrorCode::Internal))?,
+        },
+    )
+}
+/// The form `--form` or `--bibliography` asks for; a bibliography needs a style.
+fn chosen_form(args: &ArgMatches, output: &OutputSpec) -> Result<CitationForm, Failure> {
+    if args.get_flag("bibliography") {
+        if !matches!(output, OutputSpec::Csl { .. }) {
+            return Err(Failure::new(
+                ErrorCode::Usage,
+                "--bibliography needs a style: give --style, or a --format that is a style.",
+            ));
+        }
+        return Ok(CitationForm::BibliographyOnly);
+    }
+    serde_json::from_value(json!(
+        args.get_one::<String>("form").map(String::as_str).unwrap_or("normal")
+    ))
+    .map_err(|_| Failure::from(EngineError::new(ErrorCode::Usage)))
+}
+/// Why records on stdin were refused, naming the first record at fault.
+fn records_failure(error: EngineError, records: &[Value]) -> Failure {
+    let mut sentence = error
+        .reason
+        .map_or_else(|| human::code_sentence(error.code), human::reason_sentence);
+    if error.reason == Some(ErrorReason::RejectedRecord)
+        // Only a record-level problem drops a record; a field warning leaves it in.
+        && let Some(warning) = Engine::record_problems(records).into_iter().find(|warning| {
+            warning.line.is_some()
+                && matches!(
+                    warning.code,
+                    ibis_engine::WarningCode::Syntax | ibis_engine::WarningCode::WorkLimit
+                )
+        })
+    {
+        let why = ibis_engine::catalogue::cause(&warning).unwrap_or_default();
+        sentence = format!("{sentence}\nrecord {}: {why}", warning.line.unwrap_or_default());
+    }
+    Failure::explained(error, sentence)
 }
 /// An output's one name from the engine's list; a style outside it is named by its id.
 fn output_name(output: &OutputSpec) -> String {
@@ -1459,6 +1594,18 @@ fn method_named(name: &str) -> Result<Method, Failure> {
 }
 fn parse_json(bytes: &[u8]) -> Result<Value, EngineError> {
     protocol::parse_json(bytes).map_err(|_| EngineError::new(ErrorCode::BadInput))
+}
+/// Records on stdin: more than a request may hold is a resource limit (#1539).
+fn stdin_records(input: &mut impl BufRead) -> Result<Value, EngineError> {
+    let mut bytes = vec![];
+    input
+        .take(protocol::MAX_REQUEST_BYTES as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|_| EngineError::new(ErrorCode::BadInput))?;
+    if bytes.len() > protocol::MAX_REQUEST_BYTES {
+        return Err(EngineError::new(ErrorCode::ResourceLimit));
+    }
+    parse_json(&bytes)
 }
 fn stdin_json(input: &mut impl BufRead) -> Result<Value, EngineError> {
     let mut bytes = vec![];

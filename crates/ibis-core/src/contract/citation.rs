@@ -220,6 +220,9 @@ pub enum OutputSpec {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CitationRequest {
+    /// Refuse a citation with losses, refusals or unhealthy sources.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
     /// Input order and duplicate references are meaningful and must be preserved.
     pub items: Vec<CitationItem>,
     #[serde(default)]
@@ -260,6 +263,10 @@ pub enum CitationError {
     NotCitable,
     // A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
     NotFromZotero,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 impl CitationError {
@@ -287,10 +294,19 @@ impl CitationError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "outcome", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "outcome", rename_all = "kebab-case")]
 pub enum ItemOutcome {
-    Rendered { item: usize },
-    Refused { item: usize, error: CitationError },
+    Rendered {
+        item: usize,
+    },
+    Refused {
+        item: usize,
+        error: CitationError,
+    },
+    /// An outcome from a newer engine: never rendered, so never copied.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -302,6 +318,10 @@ pub enum LossField {
     AuthorSuppression,
     RichText,
     Order,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -309,10 +329,13 @@ pub enum LossField {
 pub enum LossReason {
     Unsupported,
     Flattened,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Loss {
     /// Zero-based request index; None describes a request-wide loss.
     pub item: Option<usize>,
@@ -328,6 +351,10 @@ pub enum Notice {
     FullFirstNote,
     YearSuffixWithheld,
     InputLanguageUnsupported,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 /// Fixed codes only; source diagnostics never include field text or locations.
@@ -336,10 +363,13 @@ pub enum Notice {
 pub enum CitationWarningCode {
     SourceField,
     SentenceCaseExpected,
+    /// A code from a newer engine. It reads as needing review, never as success.
+    #[serde(other)]
+    #[schemars(skip)]
+    Unknown,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CitationWarning {
     pub item: usize,
     pub code: CitationWarningCode,
@@ -358,7 +388,6 @@ impl Notice {
 /// Output-only passive presentation. The smaller request TextRun contract stays
 /// independent of the additional styles a citation processor may produce.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayRun {
     pub text: String,
     #[serde(default)]
@@ -379,7 +408,6 @@ fn is_false(value: &bool) -> bool {
 
 /// One display group owns ordered text leaves; shared punctuation has no item.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayNode {
     pub item: Option<usize>,
     pub content: Vec<DisplayRun>,
@@ -387,13 +415,13 @@ pub struct DisplayNode {
 
 /// A bounded-depth tree: root -> ownership groups -> styled text leaves.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct DisplayTree {
     pub nodes: Vec<DisplayNode>,
 }
 
+/// Results, unlike requests, accept fields they do not know, so a client keeps
+/// working when a newer engine adds one (decision 0028).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CitationResult {
     pub text: String,
     pub html: Option<String>,
@@ -414,6 +442,56 @@ pub struct CitationResult {
     /// The app this citation was made for, when a caller named one.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination: Option<crate::destination::Destination>,
+    /// Evidence of the records and options actually used, not an archive.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub receipt: Option<CitationReceipt>,
+}
+
+/// Immutable citation evidence. Historical source material is not stored here.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationReceipt {
+    /// The visible sample marker is part of the attested content.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub sample: bool,
+    /// Resolved output and ordered records, with their actual cite fingerprints.
+    #[serde(deserialize_with = "super::response::additive")]
+    pub request: CitationRequest,
+    pub sources: Vec<CitationSourceCheck>,
+    pub content_hash: Fingerprint,
+    pub ibis_version: String,
+    /// Citation meaning changes independently of package and wire versions.
+    pub meaning_version: u32,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub language: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub formatting: Option<FormattingProvenance>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub project: Option<CitationProjectCheck>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationProjectCheck {
+    pub revision: String,
+    /// The checked bibliography's content, without its location or text.
+    pub bibliography: Option<Fingerprint>,
+    /// Present only for a complete successful read made by this citation call.
+    pub checked_at_ms: Option<u64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct CitationSourceCheck {
+    pub library: super::LibraryId,
+    /// Absent for caller-supplied snapshots, which do not establish a source read.
+    pub last_successful_read_ms: Option<u64>,
+    pub refresh_error: Option<super::ErrorCode>,
+    pub warnings: usize,
+}
+
+/// Hashes of the shipped processor and style/locale bundle used for CSL output.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct FormattingProvenance {
+    pub processor: Fingerprint,
+    pub bundle: Fingerprint,
 }
 
 /// Borrowed canonical representations, available only after the copy gate succeeds.
@@ -476,6 +554,7 @@ impl CitationResult {
             language: None,
             content_hash,
             destination: None,
+            receipt: None,
         }
     }
 
@@ -592,6 +671,7 @@ mod tests {
             keep_order: true,
             output: OutputSpec::Csl { style: "apa".into() },
             input_language: Some("ar".into()),
+            strict: false,
             output_locale: Some("ja-JP".into()),
         });
     }
@@ -763,5 +843,81 @@ mod tests {
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","children":[]})).is_err());
         assert!(serde_json::from_value::<TextRun>(json!({"text":"x","script":"both"})).is_err());
         assert!(serde_json::from_value::<OutputSpec>(json!({"kind":"key","syntax":"invented"})).is_err());
+    }
+
+    #[test]
+    fn receipt_evidence_accepts_additive_fields_without_loosening_requests() {
+        let request = json!({
+            "items":[{"item":{"library":"synthetic","key":"item_one"},
+                "annotation":{"library":"synthetic","key":"item_note"},
+                "locator":{"term":"page","value":"12"},"prefix":[{"text":"see"}]}],
+            "output":{"kind":"key","syntax":"pandoc"}
+        });
+        let parsed_request: CitationRequest = serde_json::from_value(request.clone()).unwrap();
+        let mut evidence = json!({
+            "request":request,"sources":[],"content_hash":Fingerprint::of_bytes(b"invented"),
+            "ibis_version":"invented","meaning_version":1
+        });
+        evidence["added"] = json!(true);
+        evidence["request"]["added"] = json!(true);
+        evidence["request"]["output"]["added"] = json!(true);
+        for field in ["item", "annotation", "locator"] {
+            evidence["request"]["items"][0][field]["added"] = json!(true);
+        }
+        evidence["request"]["items"][0]["added"] = json!(true);
+        evidence["request"]["items"][0]["prefix"][0]["added"] = json!(true);
+        assert!(serde_json::from_value::<CitationRequest>(evidence["request"].clone()).is_err());
+        let parsed: CitationReceipt = serde_json::from_value(evidence.clone()).unwrap();
+        assert_eq!(parsed.request, parsed_request);
+        evidence["request"]["items"][0]["locator"]["term"] = json!("invented");
+        assert!(serde_json::from_value::<CitationReceipt>(evidence).is_err());
+    }
+
+    #[test]
+    fn codes_from_a_newer_engine_parse_and_read_as_needing_review() {
+        let result = CitationResult::new(
+            "[@one]".into(),
+            None,
+            None,
+            DisplayTree::default(),
+            vec![ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }],
+            vec![],
+            vec![],
+        );
+        let mut wire = serde_json::to_value(&result).unwrap();
+        wire["source_health"] = json!({"status":"ok","findings":[]});
+        wire["outcomes"][0]["added"] = json!(true);
+        assert_eq!(serde_json::from_value::<CitationResult>(wire.clone()).unwrap(), result);
+        wire["outcomes"] = json!([
+            {"outcome":"refused","item":0,"error":"invented-refusal"},
+            {"outcome":"invented-outcome","item":1}
+        ]);
+        wire["losses"] = json!([{"item":null,"field":"invented-field","reason":"invented-reason"}]);
+        wire["notices"] = json!(["invented-notice"]);
+        wire["warnings"] = json!([{"item":0,"code":"invented-warning"}]);
+        let parsed: CitationResult = serde_json::from_value(wire).unwrap();
+        assert_eq!(
+            parsed.outcomes,
+            [
+                ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::Unknown
+                },
+                ItemOutcome::Unknown
+            ]
+        );
+        assert_eq!(
+            parsed.losses,
+            [Loss {
+                item: None,
+                field: LossField::Unknown,
+                reason: LossReason::Unknown
+            }]
+        );
+        assert_eq!(parsed.notices, [Notice::Unknown]);
+        assert_eq!(parsed.warnings[0].code, CitationWarningCode::Unknown);
+        // Nothing unknown is ever copied as a finished citation.
+        assert!(!parsed.is_complete());
+        assert!(parsed.copy_content(2).is_none());
     }
 }

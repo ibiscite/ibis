@@ -38,7 +38,7 @@ stderr|   For more information, try '--help'.
 
 $ ibis call invented
 exit 2
-stderr| ibis: there is no method 'invented'; choose one of: libraries, search, show, cite, project, entry, styles, outputs, schema, call
+stderr| ibis: there is no method 'invented'; choose one of: libraries, search, show, cite, records, project, entry, styles, outputs, schema, call
 
 $ ibis call search --params {
 exit 3
