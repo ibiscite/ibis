@@ -48,6 +48,7 @@ import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
 import { useCitationInspector } from "./features/picker/useCitationInspector";
+import { useShorthandHint } from "./features/picker/useShorthandHint";
 import { usePickerKeys } from "./features/picker/usePickerKeys";
 import { useCommandSearch } from "./features/picker/useCommandSearch";
 import { COMMAND_PREFIX } from "./features/picker/commands";
@@ -64,7 +65,7 @@ import { PickerShown } from "./features/picker/pickerShown";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "shorthandHint" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -178,6 +179,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
   const inspector = useCitationInspector();
+  const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
   const listProblem = inspector.panel ? null : citationProblem;
@@ -281,7 +283,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
-        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} command={commands.footer} />
       <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />

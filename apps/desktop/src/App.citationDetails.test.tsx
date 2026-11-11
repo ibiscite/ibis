@@ -873,3 +873,20 @@ test("a late preview from before Keep My Order went off cannot replace the newes
   expect(copied).toEqual(["(a); (z)"]);
   expect(screen.queryByText("(z); (a)")).toBeNull();
 });
+
+test.each([true, false])("reaching for a token by hand teaches the typed shorthand while the computer allows it (%s)", async (allowed) => {
+  let asked = 0;
+  backend({ search: () => [result("a", "Invented work")], shorthand_hint: () => { asked += 1; return allowed; } });
+  render(<App />);
+  fireEvent.click(await screen.findByText("Invented work"), { ctrlKey: true });
+  const token = await findInCitation("a");
+  act(() => token.focus());
+  await waitFor(() => expect(asked).toBe(1));
+  const hint = "Type it with the search: a page “vale 417”, a chapter “vale ch 2”, text before “see vale”.";
+  if (allowed) expect(await screen.findByText(hint)).toBeTruthy();
+  else expect(screen.queryByText(hint)).toBeNull();
+  // Once an opening: focusing again asks nothing more.
+  act(() => screen.getByLabelText("Search references").focus());
+  act(() => token.focus());
+  expect(asked).toBe(1);
+});

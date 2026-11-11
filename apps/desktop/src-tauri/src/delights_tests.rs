@@ -324,3 +324,23 @@ fn the_build_line_names_the_commit_once() {
         "0.2.8-nightly.20261102120000+abc1234 · 2026-11-02"
     );
 }
+
+#[test]
+fn the_shorthand_hint_is_shown_three_times_on_a_computer_then_never() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("settings.json");
+    let file = SettingsFile::new(path.clone());
+    assert_eq!(
+        (0..5).map(|_| file.claim_shorthand_hint()).collect::<Vec<_>>(),
+        [true, true, true, false, false]
+    );
+    file.flush_delights().unwrap();
+    assert_eq!(
+        ibis_core::settings::load(&path)
+            .settings
+            .delights
+            .unwrap()
+            .shorthand_hints,
+        3
+    );
+}
