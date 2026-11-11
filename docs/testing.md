@@ -38,8 +38,10 @@ node --test scripts/doc-links.test.mjs
 node scripts/gen.mjs --check
 ```
 
-Plain `cargo test` skips desktop Rust tests. `check.mjs` exits 2 when a tool
-is missing. `gen.mjs --check` checks generated schemas, bindings and CLI
+Plain `cargo test` skips desktop Rust tests. `land.sh` requires a clean commit
+and runs the shared `check.mjs` gate. Each check reports passed, failed,
+unavailable (preflight reason), or infrastructure; exits 2 and 75 mean
+unavailable and infrastructure respectively, and both stop landing. `gen.mjs --check` checks generated schemas, bindings and CLI
 options without replacing them. To update a reviewed Rust snapshot, use
 `INSTA_UPDATE=always cargo test -p CRATE` and inspect the `.snap` diff.
 
@@ -62,7 +64,8 @@ predecessor and attaches changed style IDs to the release notes.
 ## Native journeys
 
 `scripts/smoke-native.py` drives the real desktop app with invented data.
-Package install/start and offline observation run separately in Preview.
+Daily/manual CI runs installed nightly journeys; Preview checks package
+install/start and offline observation.
 Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
 
 - **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
@@ -76,7 +79,7 @@ Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-t
   citation exactly once, verified through Accessibility. A safe copy gets
   one retry. A Terminal collector must receive no keys. Missing terminal
   Accessibility permission or an already open TextEdit makes it unavailable.
-  CI runs the debug-build journey too.
+  Daily/manual CI runs this journey on the installed nightly.
 - **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
   console collector. It types the search, checks selection replacement once
   through `WM_GETTEXT`, and checks that the console gets no automatic input.
@@ -152,29 +155,20 @@ library data or `.local/`. Evidence does not certify unobserved capabilities.
 
 ## Where checks run
 
-[`ci-paths.mjs`](../scripts/ci-paths.mjs) selects checks for pull requests and
-merge-queue entries. Unknown paths or unreadable change lists select all.
-`check.mjs --plan` uses the same classification. `docs/cli.md` selects native
-checks because its options are generated; other top-level Markdown is docs-only.
-Script tests, workflow lint and dependency policy run for docs changes too.
+[`ci-paths.mjs`](../scripts/ci-paths.mjs) selects affected areas on PRs and
+main pushes; unknown lists select all. One required **CI result** gates squash
+auto-merge, with no merge queue or reused runs. Main checks every pushed commit;
+nightly publication requires green push CI for its revision and current main.
 
-Licences, bans, sources and commit identities always block; every non-merge
-commit needs a sign-off, except those with author email
-`347725936+ibis-release[bot]@users.noreply.github.com` and committer
-`GitHub <noreply@github.com>`. RustSec advisories block only changes to a
-`Cargo.toml`, `Cargo.lock` or `deny.toml`, release tags and the weekly check,
-which keeps one issue up to date; other changes get a warning. Ubuntu package
-downloads are cached.
+PRs use fast Linux suites plus affected native/platform checks. Daily and
+manual [CI](../.github/workflows/ci.yml) add the full three-system matrix,
+WebKit, release-mode/MSRV checks, five-minute fuzzing and installed journeys
+against the latest published nightly (its revision is recorded). Failed or
+unavailable qualification updates one issue in place. Run manual CI before
+a release. An unavailable native journey exits 2 and establishes no coverage.
 
-[CI](../.github/workflows/ci.yml) reports one required `CI result`. The queue
-checks against current main. Passing identical trees can be reused, except
-where the queue adds macOS crate/script tests omitted on pull requests.
-The commit-identity guard still runs. Main without reusable evidence and the
-daily scheduled run use the full matrix; cache-input changes also refresh
-main's caches.
-
-[Preview](../.github/workflows/preview.yml) builds, installs and publishes
-nightlies for relevant pushes to main. Docs/website-only changes do not build
-a nightly. Release checks run beside package builds; numbered publication
-requires them, while nightly publication does not wait for them. Release and
-update operations are described once in [RELEASING.md](../RELEASING.md).
+Licences, bans, sources and identity privacy checks remain; DCO is not enforced.
+RustSec advisories block dependency changes, release preparation and the weekly
+check; other failures warn. Ubuntu package sources retain security pockets;
+mirror/provisioning failures report infrastructure. [Preview](../.github/workflows/preview.yml)
+builds and verifies packages; publication is described in [RELEASING.md](../RELEASING.md).

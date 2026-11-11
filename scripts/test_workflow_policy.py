@@ -3,7 +3,8 @@ parser, never with regular expressions (decision 0035).
 
 "CI result" is the one required check. GitHub counts a skipped required check as
 passing, so the job must run whatever its needs did (`if: always()`) and must
-need every other job, or a red pull request could merge.
+need every validation job, or a red pull request could merge.
+The issue reporter runs after the result and is outside the PR gate.
 """
 
 import sys
@@ -43,7 +44,7 @@ class CiResultTest(unittest.TestCase):
         key, jobs = result_job(self.workflow)
         needs = jobs[key].get("needs", [])
         needs = [needs] if isinstance(needs, str) else list(needs)
-        self.assertEqual(sorted(needs), sorted(name for name in jobs if name != key))
+        self.assertEqual(sorted(needs), sorted(name for name in jobs if name not in {key, "nightly-report"}))
 
     def test_runs_no_local_workflow_or_action(self):
         # ci-paths.mjs treats every other workflow as documentation, which holds
@@ -72,7 +73,7 @@ class CiResultTest(unittest.TestCase):
         self.assertEqual(reporter["env"]["BLOCKING"], "${{ steps.advisory_policy.outputs.blocking }}")
         self.assertFalse(reporter.get("continue-on-error", False))
         identity = next(step for step in steps if step.get("name") == "Public commit identities")
-        self.assertEqual(identity["run"].splitlines(), ["node scripts/check-agent-identity.mjs", "bash scripts/ci-commit-signoffs.sh"])
+        self.assertEqual(identity["run"], "node scripts/check-agent-identity.mjs")
         self.assertNotIn("if", identity)
 
     def test_weekly_advisory_run_reuses_the_dependency_job(self):
@@ -80,11 +81,20 @@ class CiResultTest(unittest.TestCase):
         self.assertIn({"cron": "43 5 * * 1"}, events["schedule"])
         self.assertEqual(events["push"]["tags"], ["v*"])
         jobs = self.workflow["jobs"]
-        self.assertEqual(set(jobs), {"changes", "test", "web", "desktop", "webkit", "dependencies", "result"})
+        self.assertIn("dependencies", jobs["result"]["needs"])
         self.assertNotIn("if", jobs["dependencies"])
         self.assertEqual(jobs["dependencies"]["permissions"], {"contents": "read", "issues": "write"})
         reporter = next(step for step in jobs["dependencies"]["steps"] if step.get("name") == "Report advisory failure")
         self.assertEqual(reporter["env"]["SCHEDULE"], "${{ github.event.schedule }}")
+
+    def test_heavy_qualification_and_failure_report_stay_off_prs(self):
+        jobs = self.workflow["jobs"]
+        for name in ["webkit", "installed", "release-checks", "bibtex-fuzz"]:
+            self.assertEqual(jobs[name]["if"], "github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'")
+            self.assertIn(name, jobs["result"]["needs"])
+        self.assertEqual(jobs["nightly-report"]["needs"], "result")
+        events = self.workflow.get("on", self.workflow.get(True))
+        self.assertNotIn("merge_group", events)
 
     def test_release_advisories_gate_publication(self):
         workflow = yaml.safe_load((ROOT / ".github/workflows/preview.yml").read_text(encoding="utf-8"))

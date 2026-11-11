@@ -5,27 +5,6 @@ set -euo pipefail
 # moving downloads on 2026-11-10, failing every desktop job that day.
 apt=(timeout 15m apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 
-# The sources without the security pocket. CI installs only from the main
-# archive, and on 2026-11-10 an unreachable security.ubuntu.com failed every
-# update; an unreachable main archive still does. Each Suites line loses its
-# *-security suites, and a stanza left with none is dropped.
-without_security() {
-  awk 'BEGIN { RS = ""; ORS = "" }
-    {
-      kept = ""; dropped = 0; n = split($0, lines, "\n")
-      for (i = 1; i <= n; i++) {
-        line = lines[i]
-        if (line ~ /^Suites:/) {
-          m = split(substr(line, 8), suites, /[ \t]+/); line = "Suites:"
-          for (j = 1; j <= m; j++) if (suites[j] != "" && suites[j] !~ /-security$/) line = line " " suites[j]
-          if (line == "Suites:") dropped = 1
-        }
-        kept = kept line "\n"
-      }
-      if (!dropped) { printf "%s%s", (printed ? "\n" : ""), kept; printed = 1 }
-    }' "$1"
-}
-
 profile=${1:-}
 if [ "$profile" = cache-key ]; then profile=${2:-}; fi
 case $profile in
@@ -53,7 +32,7 @@ APT::Keep-Downloaded-Packages "true";
 Binary::apt::APT::Keep-Downloaded-Packages "true";
 EOF
 apt+=(-c "$scratch/keep-downloads.conf")
-without_security "$sources" > "$scratch/ubuntu.sources"
+cp "$sources" "$scratch/ubuntu.sources"
 if ! grep -q '^URIs:' "$scratch/ubuntu.sources"; then
   echo 'Expected the Ubuntu archive in the sources.' >&2
   exit 1
@@ -75,5 +54,12 @@ case $1 in
 esac
 apt+=(-o "Dir::Etc::sourcelist=$scratch/ubuntu.sources" -o Dir::Etc::sourceparts=-)
 
-"${apt[@]}" -o APT::Update::Error-Mode=any update
-"${apt[@]}" install -y --no-install-recommends "${packages[@]}"
+# Mirror/index/download failures are infrastructure, never a passing check.
+if ! "${apt[@]}" -o APT::Update::Error-Mode=any update; then
+  echo '::error title=Infrastructure::Ubuntu mirror/index refresh failed.' >&2
+  exit 75
+fi
+if ! "${apt[@]}" install -y --no-install-recommends "${packages[@]}"; then
+  echo '::error title=Infrastructure::Ubuntu package provisioning failed.' >&2
+  exit 75
+fi
