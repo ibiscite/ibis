@@ -10,10 +10,10 @@ const script = fileURLToPath(new URL("./ci-commit-signoffs.sh", import.meta.url)
 const posix = { skip: process.platform === "win32" };
 const signed = "fix: synthetic change\n\nSigned-off-by: Example Contributor <contributor@example.org>";
 
-function fixture(t) {
+function fixture(t, identity = {}) {
   const cwd = mkdtempSync(join(tmpdir(), "ibis-ci-signoffs-"));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT(HUB)?_/.test(key))), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Example Contributor", GIT_AUTHOR_EMAIL: "contributor@example.org", GIT_COMMITTER_NAME: "Example Contributor", GIT_COMMITTER_EMAIL: "contributor@example.org" };
+  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT(HUB)?_/.test(key))), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_AUTHOR_NAME: "Example Contributor", GIT_AUTHOR_EMAIL: "contributor@example.org", GIT_COMMITTER_NAME: "Example Contributor", GIT_COMMITTER_EMAIL: "contributor@example.org", ...identity };
   const git = (...args) => {
     const result = spawnSync("git", ["-c", "commit.gpgsign=false", ...args], { cwd, env, encoding: "utf8" });
     assert.equal(result.status, 0, result.stderr);
@@ -26,7 +26,7 @@ function fixture(t) {
   return { git, commit, base, run };
 }
 
-test("every non-merge commit needs a sign-off, including an unsigned earlier commit and a Merge subject", posix, (t) => {
+test("ordinary non-merge commits need a sign-off, including an unsigned earlier commit and a Merge subject", posix, (t) => {
   const f = fixture(t);
   assert.equal(f.run(f.base, "").status, 0, "a signed root commit needs no range");
   f.commit(); assert.equal(f.run().status, 0);
@@ -39,6 +39,29 @@ test("every non-merge commit needs a sign-off, including an unsigned earlier com
   assert.equal(f.run("missing").status, 1);
   assert.notEqual(f.run(undefined, "a".repeat(40)).status, 0);
 });
+
+const releaseIdentity = {
+  GIT_AUTHOR_NAME: "ibis-release[bot]",
+  GIT_AUTHOR_EMAIL: "347725936+ibis-release[bot]@users.noreply.github.com",
+  GIT_COMMITTER_NAME: "GitHub",
+  GIT_COMMITTER_EMAIL: "noreply@github.com",
+};
+
+for (const { name, identity, status } of [
+  { name: "a release-app commit made by GitHub needs no sign-off", identity: releaseIdentity, status: 0 },
+  { name: "the release-app author with a different committer name still needs a sign-off", identity: { ...releaseIdentity, GIT_COMMITTER_NAME: "Example Contributor" }, status: 1 },
+  { name: "the release-app author with a different committer email still needs a sign-off", identity: { ...releaseIdentity, GIT_COMMITTER_EMAIL: "contributor@example.org" }, status: 1 },
+  { name: "a different author email committed by GitHub still needs a sign-off", identity: { ...releaseIdentity, GIT_AUTHOR_EMAIL: "contributor@example.org" }, status: 1 },
+  { name: "an ordinary commit without a sign-off fails", identity: {}, status: 1 },
+]) {
+  test(name, posix, (t) => {
+    const f = fixture(t, identity);
+    f.commit("chore: synthetic unsigned change");
+    const result = f.run();
+    assert.equal(result.status, status, result.stdout + result.stderr);
+    if (status === 1) assert.match(result.stdout, /::error::Commit [a-f0-9]+ needs a Signed-off-by trailer/);
+  });
+}
 
 test("a git merge syncing main needs no sign-off, but its unsigned source commits still fail", posix, (t) => {
   const f = fixture(t);
