@@ -103,13 +103,27 @@ test("outbound prose and footer links have silent marks; local links, rows, butt
     ["https://ibis.test/get/", false, false], ["https://ibis.test/#try", false, false],
     ["mailto:hello@example.test", false, false],
     ...["rows", "button", "key"].map(() => ["https://other.test/", true, false]),
-  ].map(([href, excluded, marked]) => ({ ...control(), href, marked, closest: () => excluded, append(node) { this.mark = node; } }));
-  ctx.document.querySelectorAll = () => links; ctx.document.createElement = control;
+  ].map(([href, excluded, marked]) => {
+    const link = { ...control(), href, marked, closest: () => excluded, append(node) { this.mark = node; } };
+    link.text = { textContent: "FUSE support", splitText(index) {
+      const word = { textContent: this.textContent.slice(index), replaceWith(node) { link.end = node; } };
+      this.textContent = this.textContent.slice(0, index); return word;
+    } };
+    return link;
+  });
+  ctx.document.querySelectorAll = () => links;
+  ctx.document.createElement = () => ({ ...control(), append(...children) { this.children = children; } });
+  ctx.document.createTreeWalker = link => { let pending = true; return { nextNode() { if (!pending) return null; pending = false; return link.text; } }; };
   ctx.location = new URL("https://ibis.test/"); ctx.URL = URL;
   ctx.outboundLinks();
   for (const link of links) {
-    assert.equal(!!link.mark, link.marked, link.href);
-    if (link.mark) { assert.equal(link.mark.className, "outbound"); assert.equal(link.mark.attrs["aria-hidden"], "true"); }
+    assert.equal(!!link.end, link.marked, link.href);
+    if (link.end) {
+      const [word, mark] = link.end.children;
+      assert.equal(link.text.textContent + word.textContent, "FUSE support");
+      assert.equal(word.textContent, "support");
+      assert.equal(mark.className, "outbound"); assert.equal(mark.attrs["aria-hidden"], "true");
+    }
   }
 });
 
@@ -260,6 +274,19 @@ test("home navigation keeps one current section at the top, on clicks and throug
   window.scrollY = 3100; window.handlers.scroll(); check(2);
 });
 
+test("an inner page reveals its current key on load without scrolling the document", () => {
+  const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 600,
+    getBoundingClientRect: () => ({ left: 0, right: 300 }) };
+  const current = { getBoundingClientRect: () => ({ left: 400, right: 480 }) };
+  ctx.window = { ...control(), innerHeight: 900, scrollY: 0 };
+  ctx.document.documentElement.scrollHeight = 2000;
+  ctx.document.querySelectorAll = () => [];
+  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : current;
+  ctx.navigation();
+  assert.equal(bar.scrollLeft, 196);
+  assert.equal(ctx.window.scrollY, 0);
+});
+
 test("Copy copies only the command and reports clipboard refusal", async () => {
   for (const allowed of [true, false]) {
     const label = { textContent: "Copy" };
@@ -287,8 +314,8 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
   const root = resolve("website/dist"), screenshots = resolve(".local/website-review");
   await mkdir(screenshots, { recursive: true });
   try {
-    for (const width of [375, 1440]) for (const colorScheme of ["light", "dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, reducedMotion: "reduce" });
+    for (const width of [375, 1270]) for (const colorScheme of ["light", "dark"]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, reducedMotion: "reduce", hasTouch: width === 375, isMobile: width === 375 });
       const errors = []; page.on("pageerror", error => errors.push(error.message));
       await page.addInitScript(() => {
         Object.defineProperty(navigator, "clipboard", { value: { async writeText(value) { window.copiedCommand = value; } } });
@@ -303,13 +330,27 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
       let chosenDark;
       for (const path of ["/", "/get/", "/features/", "/cli/"]) {
         await page.goto(`https://ibis.test${path}`);
-        if (path === "/") await page.getByRole("combobox").waitFor();
+        if (path === "/") await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${path} fits ${width} ${colorScheme}`);
         assert.equal(await page.getByRole("heading", { level: 1 }).count(), 1);
         assert.equal(await page.locator('.index nav a[aria-current]').count(), 1);
+        assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
+          const chip = node.getBoundingClientRect(), bar = node.closest("ul").getBoundingClientRect();
+          return chip.left >= bar.left - 1 && chip.right <= bar.right + 1;
+        }), true, `${path} current key is in view`);
+        if (width === 375) {
+          assert.equal(await page.locator(".index nav .key").count(), 6);
+          assert.equal(await page.locator(".index nav ul").evaluate(node => node.scrollWidth <= node.clientWidth + 1), true, "six keys fit without scrolling");
+        }
         assert.equal(await page.getByRole("link", { name: "Source on GitHub", exact: true }).count(), 1);
         assert.equal(await page.locator('footer .outbound').count(), 3);
         assert.equal(await page.locator('.rows .outbound, .button .outbound, .key .outbound, a[href^="/#"] .outbound, a[href^="#"] .outbound').count(), 0);
+        assert.equal(await page.locator('.outbound').evaluateAll(marks => marks.every(mark => {
+          const end = mark.parentElement, range = document.createRange(); range.selectNodeContents(end.firstChild);
+          const word = [...range.getClientRects()].at(-1), arrow = mark.getBoundingClientRect();
+          return end.classList.contains("outbound-end") && arrow.top < word.bottom && arrow.bottom > word.top;
+        })), true, "outbound marks stay with their last word");
+        await page.screenshot({ path: join(screenshots, `${path.replaceAll("/", "") || "home"}-${width}-${colorScheme}.png`), fullPage: true });
         if (chosenDark !== undefined) assert.equal(await page.getByRole("switch").getAttribute("aria-checked"), chosenDark);
         if (path === "/get/") {
           assert.equal(await page.locator('.platform a[href*="/releases/download/"]:visible').count(), 5);
@@ -333,17 +374,49 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
           }
           await page.keyboard.press(shortcut);
           await page.waitForURL("https://ibis.test/#try");
-          await page.getByRole("combobox").waitFor();
-          assert.equal(await page.getByRole("combobox").evaluate(node => node === document.activeElement), true);
+          await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
+          assert.equal(await page.getByRole("combobox", { name: "Search the made-up library" }).evaluate(node => node === document.activeElement), true);
           continue;
         }
         assert.equal(await page.locator(".picker-primary").isVisible(), true);
         assert.equal(await page.locator(".picker-library").isVisible(), true);
-        const query = page.getByRole("combobox");
+        const query = page.getByRole("combobox", { name: "Search the made-up library" });
+        assert.equal(await query.inputValue(), "");
+        assert.equal(await page.getByRole("listbox").getByRole("option").count(), 3);
+        assert.equal(await page.getByRole("listbox", { name: "Recently added" }).isVisible(), true);
+        const height = await page.locator("[data-picker] .picker-panel").evaluate(node => node.getBoundingClientRect().height);
+        assert.equal(await page.locator("[data-picker] .picker-search").evaluate(node => {
+          const field = node.querySelector(".picker-field").getBoundingClientRect(), controls = node.querySelector(".picker-controls").getBoundingClientRect();
+          return Math.abs(field.top + field.height / 2 - controls.top - controls.height / 2) < 1;
+        }), true, "search and format share one row");
+        assert.equal(await page.locator(".picker-foot").evaluate(node => {
+          const foot = node.getBoundingClientRect();
+          return [...node.querySelectorAll(".picker-actions > *")].every(control => {
+            const rect = control.getBoundingClientRect();
+            return rect.top >= foot.top && rect.bottom <= foot.bottom && rect.left >= foot.left && rect.right <= foot.right;
+          });
+        }), true, "all footer columns fit one row");
+        assert.equal(await page.locator(".picker-more").count(), 1);
+        if (width === 375) {
+          assert.equal(await page.locator(".picker-more").innerText(), "More");
+          assert.equal(await page.locator(".picker-primary .picker-action-label").isVisible(), true);
+          assert.equal(await page.locator(".picker-primary .key-caps").isVisible(), false);
+          assert.equal(await page.locator("[data-picker] select").evaluate(node => node.getBoundingClientRect().height < 44), true, "format control stays slim");
+          assert.equal(await page.locator(".picker-actions button").evaluateAll(nodes => nodes.every(node => node.getBoundingClientRect().height < 44)), true, "footer actions stay slim");
+          const add = page.getByRole("button", { name: "Add", exact: true });
+          await add.scrollIntoViewIfNeeded();
+          const box = await add.boundingBox();
+          await page.touchscreen.tap(box.x + box.width / 2, box.y - (44 - box.height) / 2 + 2);
+          assert.equal(await page.getByRole("button", { name: "Remove", exact: true }).isVisible(), true, "invisible hit area activates Add");
+          await page.getByRole("button", { name: "Remove", exact: true }).click();
+        }
         await query.fill("not in this invented library");
         assert.equal(await page.getByText("No matching references", { exact: true }).isVisible(), true);
         assert.equal(await page.getByRole("button", { name: "Copy as Pandoc", exact: true }).isDisabled(), true);
-        await query.fill("lantern"); await query.press("Enter");
+        await query.fill("lantern");
+        assert.equal(await page.getByRole("listbox", { name: "Best matches" }).isVisible(), true);
+        assert.equal(await page.locator("[data-picker] .picker-panel").evaluate(node => node.getBoundingClientRect().height), height, "search keeps the three-row panel height");
+        await query.press("Enter");
         await page.getByRole("button", { name: "Paste the copied citation into the sentence" }).click();
         assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\]/);
         await page.getByRole("tab", { name: "@typst", exact: true }).click();
@@ -354,7 +427,8 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
         await page.getByRole("switch").click();
         chosenDark = await page.getByRole("switch").getAttribute("aria-checked");
         assert.notEqual(chosenDark, dark);
-        await page.screenshot({ path: join(screenshots, `home-${width}-${colorScheme}.png`), fullPage: true });
+        await page.getByRole("switch").click();
+        chosenDark = dark;
       }
       await page.getByRole("button", { name: "Use system" }).click();
       assert.equal(await page.getByRole("switch").getAttribute("aria-checked"), String(colorScheme === "dark"));

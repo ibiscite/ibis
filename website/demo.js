@@ -1,11 +1,12 @@
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
-import { typePaths } from "./icon-paths.js";
+import { KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
+import { typePaths, iconPaths } from "./icon-paths.js";
 import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
-function icon(kind) {
+function icon(kind, className = "") {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   svg.setAttribute("viewBox", "0 0 20 20"); svg.setAttribute("aria-hidden", "true");
-  for (const drawing of typePaths[kind]) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", drawing); svg.append(path); }
+  svg.setAttribute("class", className);
+  for (const drawing of typePaths[kind] ?? [iconPaths[kind]]) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", drawing); svg.append(path); }
   return svg;
 }
 export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
@@ -13,25 +14,26 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   // update key, it omits the update controls offered in the app's More menu.
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
   if (!figure || !result) return;
+  const words = (name, values = {}) => figure.dataset[name].replaceAll(/\{(\w+)\}/g, (_, key) => values[key]);
   const section = figure.closest("section"), anchorBottom = section.getBoundingClientRect().bottom;
   const model = createDemo(), state = model.state, platform = document.documentElement.dataset.platform ?? "linux", mac = platform === "macos";
   const sentence = result.firstChild.textContent.trim();
   result.tabIndex = -1;
-  const input = el("input", { type: "search", value: state.query, placeholder: "Search references", autocomplete: "off" });
-  const clear = el("button", { type: "button", className: "picker-clear", textContent: "×" }); clear.setAttribute("aria-label", "Clear search");
-  for (const [key, value] of Object.entries({ role: "combobox", "aria-label": "Search the made-up library", "aria-autocomplete": "list", "aria-controls": "demo-results", "aria-expanded": "true" })) input.setAttribute(key, value);
+  const input = el("input", { type: "search", value: state.query, placeholder: words("searchPlaceholder"), autocomplete: "off" });
+  const clear = el("button", { type: "button", className: "picker-clear" }, icon("close")); clear.setAttribute("aria-label", words("clear"));
+  for (const [key, value] of Object.entries({ role: "combobox", "aria-label": words("searchLabel"), "aria-autocomplete": "list", "aria-controls": "demo-results", "aria-expanded": "true" })) input.setAttribute(key, value);
   const select = el("select", {}, ...Object.entries(formats).map(([value, label]) => el("option", { value, textContent: label })));
-  select.setAttribute("aria-label", "Copy format");
+  select.setAttribute("aria-label", words("formatLabel"));
   // A drawn chevron beside the select: native arrows ignore its height on iOS, and Safari drops background chevrons.
-  const format = el("span", { className: "picker-format" }, select);
+  const format = el("label", { className: "picker-format" }, select);
   format.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>');
   const list = el("ul", { id: "demo-results", className: "picker-results" });
-  list.setAttribute("role", "listbox"); list.setAttribute("aria-label", "Best matches");
-  const count = el("span"), output = el("code"), status = el("span", { className: "picker-status" });
+  list.setAttribute("role", "listbox");
+  const count = el("span"), output = el("code"), statusLabel = el("span"), status = el("span", { className: "picker-status" }, icon("check"), statusLabel);
   output.dir = "ltr";
   // Keep the live region mounted so the first copy is announced.
   const announce = el("span", { className: "demo-status" }); announce.setAttribute("role", "status"); status.setAttribute("aria-hidden", "true");
-  const copy = el("button", { type: "button", className: "picker-primary", textContent: "Copy" }), add = el("button", { type: "button", textContent: "Add" });
+  const copy = el("button", { type: "button", className: "picker-primary" }), add = el("button", { type: "button" });
   function keyCaps(accelerator) {
     const caps = el("span", { className: "key-caps" }); caps.setAttribute("aria-hidden", "true");
     for (const label of keyCapLabels(accelerator, mac)) {
@@ -50,19 +52,16 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     button.title = `${label} (${keyLabel(accelerator, mac)})`;
     button.replaceChildren(el("span", { className: "picker-action-label", textContent: label }), keyCaps(accelerator));
   }
-  const paste = el("button", { type: "button", className: "paste-slot" }, "Paste ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
-  paste.setAttribute("aria-label", "Paste the copied citation into the sentence");
-  const reopen = el("button", { type: "button", textContent: "Open the picker again", hidden: true });
+  const paste = el("button", { type: "button", className: "paste-slot" }, words("paste"), " ", el("kbd", { textContent: keyLabel("CmdOrCtrl+V", mac) }));
+  paste.setAttribute("aria-label", words("pasteLabel"));
+  const reopen = el("button", { type: "button", textContent: words("reopen"), hidden: true });
   const hint = el("p", { className: "demo-hint" });
-  const labels = { copy: "copy", add: "add", move: "choose", escape: "step back", preview: "show output" };
+  const labels = Object.fromEntries(["copy", "add", "move", "escape", "preview"].map(action => [action, words(`legend${action[0].toUpperCase()}${action.slice(1)}`)]));
   const touch = matchMedia("(hover: none)").matches;
-  // The app's default shortcut also opens this example, so visitors learn it by using it.
-  // The event key includes the layout’s Command layer (Dvorak–QWERTY ⌘);
-  // only a layer without Latin letters keeps its US place (#196).
-  if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then tap Enter to copy.";
-  else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
+  hint.hidden = touch;
+  hint.append(...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
   if (!touch) {
-    const accelerators = [DEFAULT_PICKER_SHORTCUT, ...KEY_TABLE.filter(row => labels[row.action]).flatMap(row => row.keys)];
+    const accelerators = KEY_TABLE.filter(row => labels[row.action]).flatMap(row => row.keys);
     hint.querySelectorAll("kbd").forEach((cap, index) => { cap.dataset.accelerator = accelerators[index]; });
   }
   const decoration = className => { const node = el("span", { className }); node.setAttribute("aria-hidden", "true"); return node; };
@@ -71,20 +70,21 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     el("img", { className: "logo-dark", src: "assets/ibis-mark-on-dark.svg", alt: "", width: 24, height: 24 }));
   const citation = el("div", { className: "picker-citation" }, beak, output, closingBeak);
   const shelf = el("div", { className: "picker-shelf" }, citation, status);
-  const heading = el("p", { className: "picker-meta" }, el("span", { textContent: "Best matches" }), count);
-  const actions = el("div", { className: "picker-actions" }, add, copy);
-  actions.setAttribute("role", "group"); actions.setAttribute("aria-label", "Keys");
+  const headingLabel = el("span"), heading = el("p", { className: "picker-meta" }, headingLabel, count);
+  const more = el("span", { className: "picker-static-control picker-more" }, el("span", { className: "picker-action-label", textContent: words("more") }), keyCaps("CmdOrCtrl+K"));
+  const actions = el("div", { className: "picker-actions" }, add, copy, more);
+  actions.setAttribute("role", "group"); actions.setAttribute("aria-label", words("actionsLabel"));
   const panel = el("div", { className: "picker-panel" }, el("div", { className: "picker-search" },
     el("div", { className: "picker-field" }, mark, input), el("div", { className: "picker-controls" }, clear, format)),
     el("div", { className: "picker-middle" }, heading, list), shelf,
-    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: `Sample references · ${references.length}` }, decoration("picker-dot"), el("span", {}, `Sample references · ${references.length}`)), actions));
+    el("div", { className: "picker-foot" }, el("span", { className: "picker-library", title: words("library", { count: references.length }) }, decoration("picker-dot"), el("span", {}, words("library", { count: references.length }))), actions));
   panel.setAttribute("data-app-tokens", ""); panel.dataset.platform = "macos";
   // C12 source choices require an actually empty or missing library. This
   // fixed invented library stays loaded; an unmatched query keeps search
   // feedback and any references already chosen, as in the app (#949).
-  const clearEmpty = el("button", { type: "button", textContent: "Clear search" });
-  const empty = el("div", { className: "picker-empty" }, el("strong", { textContent: "No matching references" }),
-    el("p", { textContent: "Try a surname, year or fewer words." }), clearEmpty);
+  const clearEmpty = el("button", { type: "button", textContent: words("clear") });
+  const empty = el("div", { className: "picker-empty" }, el("strong", { textContent: words("noMatches") }),
+    el("p", { textContent: words("searchHelp") }), clearEmpty);
   empty.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="20" cy="20" r="12"/><path d="m29 29 12 12"/></svg>');
   panel.querySelector(".picker-middle").append(empty);
   const rows = new Map(references.map((ref, index) => {
@@ -106,27 +106,30 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     input.value = state.query; panel.hidden = !state.open; reopen.hidden = state.open;
     clear.hidden = !state.query;
     input.setAttribute("aria-expanded", String(state.open && found.length > 0));
-    count.textContent = `${found.length} ${found.length === 1 ? "result" : "results"}`;
+    headingLabel.textContent = words(state.query.trim() ? "headingQuery" : "headingEmpty");
+    list.setAttribute("aria-label", headingLabel.textContent);
+    count.textContent = words(found.length === 1 ? "countOne" : "countMany", { count: found.length });
     for (const { row, item, tile, ref } of rows.values()) {
       item.hidden = !found.includes(ref); const selected = ref === current;
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
-      const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(added ? "✓" : icon(ref.kind));
-      tile.setAttribute("aria-label", `${added ? "Remove" : "Add"} ${ref.title}${added ? " from" : " to"} citation`); tile.setAttribute("aria-pressed", String(added));
-      row.setAttribute("aria-label", `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}${added ? ", added to citation" : ""}`);
+      const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(...(added ? [icon("check")] : [icon(ref.kind, "tile-kind"), icon("plus", "tile-add")]));
+      tile.setAttribute("aria-label", words(added ? "removeNamed" : "addNamed", ref)); tile.setAttribute("aria-pressed", String(added));
+      row.setAttribute("aria-label", words(added ? "rowAdded" : "row", ref));
     }
     empty.hidden = found.length > 0;
     list.hidden = !found.length;
     heading.hidden = !found.length;
     if (current) input.setAttribute("aria-activedescendant", rows.get(current.key).row.id); else input.removeAttribute("aria-activedescendant");
     output.textContent = value || "—"; output.title = value;
-    status.textContent = value && value === state.copied ? "Copied" : "";
-    closingBeak.hidden = !state.preview || !status.textContent;
-    shelf.toggleAttribute("data-copied", !!status.textContent);
-    const feedback = state.copied ? `${state.pasted === state.copied ? "Pasted" : "Copied"} ${state.copied}` : "";
+    status.hidden = !value || value !== state.copied;
+    statusLabel.textContent = status.hidden ? "" : words("copied");
+    closingBeak.hidden = !state.preview || status.hidden;
+    shelf.toggleAttribute("data-copied", !status.hidden);
+    const feedback = state.copied ? words(state.pasted === state.copied ? "announcePasted" : "announceCopied", { citation: state.copied }) : "";
     if (announce.textContent !== feedback) announce.textContent = feedback;
-    citation.hidden = !state.preview; shelf.hidden = !value || (!state.preview && !status.textContent);
-    copy.disabled = !value; actionLabel(copy, `Copy ${state.added.length > 1 ? `${state.added.length} ` : ""}as ${formats[state.format]}`, "copy");
-    add.disabled = !current; actionLabel(add, current && state.added.includes(current.key) ? "Remove" : "Add", "add");
+    citation.hidden = !state.preview; shelf.hidden = !value || (!state.preview && status.hidden);
+    copy.disabled = !value; actionLabel(copy, words(state.added.length > 1 ? "copyMany" : "copyOne", { count: state.added.length, format: formats[state.format] }), "copy");
+    add.disabled = !current; actionLabel(add, words(current && state.added.includes(current.key) ? "remove" : "add"), "add");
     const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];
     const waiting = state.copied && state.copied !== state.pasted ? [" ", paste] : [];
     const blank = !state.copied ? [" ", el("span", { className: "paste-gap", ariaHidden: "true", textContent: "\u00a0" })] : [];

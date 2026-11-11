@@ -48,7 +48,14 @@ function outboundLinks() {
     const url = new URL(link.href, location.href);
     if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) continue;
     const mark = document.createElement("span"); mark.className = "outbound"; mark.setAttribute("aria-hidden", "true");
-    link.append(mark);
+    // Keep the last word and its mark on the same line, including inside formatted links.
+    const walker = document.createTreeWalker(link, 4);
+    let tail, node;
+    while ((node = walker.nextNode())) if (node.textContent.trim()) tail = node;
+    if (!tail) { link.append(mark); continue; }
+    const end = document.createElement("span"); end.className = "outbound-end";
+    const word = tail.splitText(tail.textContent.search(/\S+\s*$/u));
+    word.replaceWith(end); end.append(word, mark);
   }
 }
 const textEntry = target => target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
@@ -112,6 +119,12 @@ function navigation() {
   const links = [...document.querySelectorAll('.index nav a[href^="#"]')];
   const targets = links.map(link => document.querySelector(link.getAttribute("href")));
   const bar = document.querySelector(".index nav ul");
+  // Scroll the chip bar sideways only; scrollIntoView would also move the page.
+  function reveal(link) {
+    const chip = link.getBoundingClientRect(), view = bar.getBoundingClientRect(), room = 16;
+    if (chip.left < view.left) bar.scrollLeft += chip.left - view.left - room;
+    else if (chip.right > view.right) bar.scrollLeft += chip.right - view.right + room;
+  }
   const edge = () => { bar.toggleAttribute("data-at-end", bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1); bar.toggleAttribute("data-at-start", bar.scrollLeft <= 1); };
   bar.addEventListener("scroll", edge, { passive: true });
   window.addEventListener("resize", edge); edge();
@@ -127,15 +140,15 @@ function navigation() {
     links.forEach((link, index) => { if (targets[index] === current) {
       if (!link.hasAttribute("aria-current")) {
         link.setAttribute("aria-current", "location");
-        // Scroll the chip bar sideways only; scrollIntoView would also move the page.
-        const chip = link.getBoundingClientRect(), view = bar.getBoundingClientRect(), room = 16;
-        if (chip.left < view.left) bar.scrollLeft += chip.left - view.left - room;
-        else if (chip.right > view.right) bar.scrollLeft += chip.right - view.right + room;
+        reveal(link);
       }
     } else link.removeAttribute("aria-current"); });
   }
   const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(show); } };
   window.addEventListener("scroll", schedule, { passive: true }); window.addEventListener("resize", schedule); show();
+  const current = document.querySelector(".index nav a[aria-current]");
+  if (current) reveal(current);
+  edge();
 }
 // Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
 function writingApps() {

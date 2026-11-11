@@ -78,7 +78,9 @@ from indexing. Search engines decide when and whether to index the site.
 2. Serif for reading, sans for UI, mono for keys, commands and code. The
    picker keeps the app's type and tokens.
 3. Reserve scarlet for keys, citations and the current item.
-4. Separate rows with hairlines; keep the same rhythm across pages.
+4. Separate rows with hairlines; keep the same rhythm and 45rem reading measure
+   across pages. Hover follows the sidebar: text darkens, key chips gain an inset
+   ring and arrows nudge, without new scarlet or underlines.
 5. Keep content visible: no disclosure toggles, accordions or `<details>`.
 6. Hover and press motion uses the app's timings. All motion is off under
    reduced motion.
@@ -86,6 +88,10 @@ from indexing. Search engines decide when and whether to index the site.
    features as nightly.
 8. A PR that changes the app's picker updates the demo in the same PR, using
    the shared app tokens scoped by the build and `demo.css`.
+9. Keep controls visually slim on touch screens; invisible hit areas provide
+   their full tap height. At phone width all six navigation keys fit, and the
+   picker search and footer each stay on one row. Citation carets stay attached
+   to the end of inline chips; outbound marks stay with the link's last word.
 
 The interactive demo keeps the app's bundled sample references and changes only
 its own page; it never reads a visitor's library or clipboard. Search, combine,

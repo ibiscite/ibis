@@ -8,6 +8,9 @@ import { createDemo, references, formats } from "../website/demo-model.mjs";
 // Like the page-control tests, run the real script against a small synthetic DOM.
 const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
+const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
+const labels = Object.fromEntries([...template.match(/<figure class="picker"[\s\S]*?>/)[0].matchAll(/data-([\w-]+)="([^"]*)"/g)]
+  .map(([, key, value]) => [key.replaceAll(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value]));
 function demoPage(platform) {
   let copies = 0, pastes = 0;
   const element = tag => ({ tag, children: [], attrs: {}, handlers: {}, dataset: {}, className: "", classList: { toggle() {} },
@@ -26,6 +29,7 @@ function demoPage(platform) {
     replaceWith(replacement) { this.replacement = replacement; }, getBoundingClientRect() { return { bottom: 0 }; },
   });
   const figure = element("figure"), result = element("p"), section = element("section"), list = element("ol"), placeholder = element("div");
+  figure.dataset = labels;
   placeholder.className = "picker-panel";
   figure.append(placeholder);
   const sentence = element("span"); sentence.textContent = "Invented sentence"; result.append(sentence);
@@ -123,8 +127,9 @@ test("the website uses exactly the desktop's bundled invented references", async
 
 test("website rows show plain titles and accessible reference details", () => {
   const { input, panel } = demoPage("macos");
-  input.value = ""; input.handlers.input();
-  const rows = panel.querySelectorAll(".pick");
+  assert.equal(input.value, "");
+  const rows = panel.querySelectorAll("li").filter(item => !item.hidden).map(item => item.querySelector(".pick"));
+  assert.match(panel.querySelector(".picker-meta").textContent, /Recently added/);
   assert.deepEqual(rows.map(row => row.querySelector("strong").textContent), references.map(ref => ref.title));
   assert.deepEqual(rows.map(row => row.attrs["aria-label"]), references.map(ref =>
     `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}`));
@@ -180,7 +185,7 @@ test("close and reopen preserves choices; reload starts the same practice task a
   assert.equal(demo.copy(), false);
   assert.equal(demo.state.copied, "[@vale2024lanterns]");
   const reloaded = createDemo();
-  assert.equal(reloaded.state.query, "lantern");
+  assert.equal(reloaded.state.query, "");
   assert.deepEqual(reloaded.state.added, []);
   assert.equal(reloaded.state.copied, null);
   assert.equal(reloaded.state.pasted, null);

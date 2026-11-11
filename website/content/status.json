@@ -1,26 +1,32 @@
 {
   "current": [
     {
-      "text": "Zotero libraries, open or closed, and BibTeX, BibLaTeX, CSL-JSON, RIS and CSV files."
+      "text": "Your reference library",
+      "note": "Zotero open or closed, or BibTeX, BibLaTeX, CSL-JSON, RIS and CSV files"
     },
     {
-      "text": "Citation keys for Pandoc, LaTeX, Typst and other writing tools."
+      "text": "Citation keys",
+      "note": "For Pandoc, LaTeX, Typst and other writing tools"
     },
     {
-      "text": "Formatted citations and reference entries with the official CSL styles."
+      "text": "Formatted citations",
+      "note": "Citations and reference entries with the official CSL styles"
     },
     {
-      "text": "Several references in one citation, page ranges and narrative or author-omitted forms."
+      "text": "Several references together",
+      "note": "Combine references, add page ranges and use narrative or author-omitted forms"
     },
     {
-      "text": "Prefix, suffix and Keep My Order.",
-      "note": "New in 0.3.2: “see” before a reference, “emphasis added” after it."
+      "text": "Prefix, suffix and Keep My Order",
+      "note": "New in 0.3.2: “see” before a reference, “emphasis added” after it"
     },
     {
-      "text": "A remembered format per app, Change Last Citation and selected text as search."
+      "text": "A format for each app",
+      "note": "Remembered formats, Change Last Citation and selected text as search"
     },
     {
-      "text": "Cited Since Opening: copy or save the references you cited as a bibliography."
+      "text": "Cited Since Opening",
+      "note": "Copy or save the references you cited as a bibliography"
     }
   ],
   "nightly": [

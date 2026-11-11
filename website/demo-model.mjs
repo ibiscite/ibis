@@ -20,7 +20,7 @@ function renderKeys(format, keys) {
   return "";
 }
 export function createDemo() {
-  const state = { query: "lantern", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
+  const state = { query: "", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
   const found = () => {
     const words = state.query.toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));

@@ -41,6 +41,12 @@ test("home offers a download, working picker illustration, four writing apps and
   assert.match(html, /Lantern gardens and the rhythm of imaginary cities/);
   assert.match(html, /Copy as Pandoc/);
   assert.match(html, /Sample references · 3/);
+  const picker = html.match(/<figure class="picker"[\s\S]*?<\/figure>/)[0];
+  assert.deepEqual([...picker.matchAll(/<strong>([^<]+)<\/strong>/g)].map(m => m[1]),
+    ["Lantern gardens and the rhythm of imaginary cities", "A field guide to clockwork clouds", "Mapping the quiet islands of an invented sea"]);
+  assert.match(picker, /Recently added/);
+  assert.match(picker, /Made-up references\. Nothing leaves this page\./);
+  assert.match(picker, /More/);
   const apps = JSON.parse(await read("content/writing-apps.json"));
   const tabs = [...html.matchAll(/<button\b[^>]*role="tab"[^>]*>([^<]+)<\/button>/g)];
   assert.deepEqual(tabs.map(m => m[1]), apps.map(app => `@${app.id}`));
@@ -55,8 +61,11 @@ test("home offers a download, working picker illustration, four writing apps and
   assert.match(html, /github.com\/diyanko/);
   assert.match(html, /ibiscite\/ibis\/discussions/);
   const strip = html.match(/<p class="key-strip">([\s\S]*?)<\/p>/)[1];
-  assert.deepEqual([...strip.matchAll(/<kbd\b[^>]*>([^<]+)<\/kbd>/g)].map(m => m[1]), ["⇧⌘Y", "type a few words", "↵"]);
+  assert.deepEqual([...strip.matchAll(/<kbd\b[^>]*>([^<]+)<\/kbd>/g)].map(m => m[1]), ["⇧⌘Y", "↵"]);
+  assert.match(strip, /<span>type a few words<\/span>/);
   assert.match(strip, /data-shortcut-other="Ctrl\+Shift\+Y"/);
+  assert.ok(html.indexOf('class="signature"') < html.indexOf('<ul class="rows">'));
+  assert.doesNotMatch(html, /preview-note|fn-mark|data-practice-task/);
   assert.doesNotMatch(html.match(/<section id="try"[\s\S]*?<\/section>/)[0], /A citation key is/);
 });
 
@@ -71,6 +80,8 @@ test("each page ends with the next page in the sidebar's reading order", async (
 
 test("Get shows every download, installation notes and shared setup steps without toggles", async () => {
   const html = await page("get/");
+  assert.match(html, /Free for Mac, Windows and Linux\./);
+  assert.doesNotMatch(html, /data-download-privacy/);
   const platforms = [...html.matchAll(/<div class="platform" data-os="(mac|windows|linux)">[\s\S]*?<\/div>/g)];
   assert.deepEqual(platforms.map(m => m[1]), ["mac", "windows", "linux"]);
   for (const [section] of platforms) {
@@ -105,10 +116,12 @@ test("Features renders all four status lists from one source and credits shipped
   assert.match(html, /Prefix, suffix and Keep My Order/);
   assert.match(html, /0\.3\.2/);
   assert.match(html, /blob\/main\/ROADMAP.md/);
+  assert.ok(html.indexOf("Plans can change") < html.indexOf('id="current"'));
 });
 
 test("CLI prints the captured transcript verbatim, explains stdout and offers installation and MCP", async () => {
   const html = await page("cli/");
+  assert.match(html, /<h1>Command line<\/h1>/);
   const terminal = await read("content/terminal.txt");
   const blocks = [...html.matchAll(/<div class="code terminal">[\s\S]*?<pre><code>([\s\S]*?)<\/code><\/pre>[\s\S]*?<\/div>/g)];
   // Each separate terminal block contributes one line break to the transcript.
