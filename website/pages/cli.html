@@ -1,0 +1,33 @@
+<div class="row intro"><div class="text">
+  <h1>Command line</h1>
+  <p class="lede">Everything the picker does, the <code>ibis</code> command does too, from the same engine.</p>
+  <p class="small">The examples run against <a href="https://github.com/ibiscite/ibis/blob/main/fixtures/website/sample.bib">sample.bib</a>, three invented references, and show exactly what Ibis prints.</p>
+</div></div>
+<section id="terminal" class="row" aria-labelledby="terminal-h">
+  <p class="margin"><span class="key">@terminal</span></p>
+  <div class="text"><h2 id="terminal-h">Search and cite from a terminal</h2>
+    {{terminal}}
+    <p class="small">Ibis prints to standard output and errors to standard error; it never copies by itself. Pipe it to <code>pbcopy</code>, <code>clip</code> or <code>wl-copy</code> to copy.</p></div>
+</section>
+<section id="shorthand" class="row" aria-labelledby="shorthand-h" data-shorthand data-references='[{"key":"vale2024lanterns","label":"Vale 2024","words":"vale lantern lanterns gardens"},{"key":"fen2023clouds","label":"Fen 2023","words":"fen clouds clockwork"},{"key":"reed2025maps","label":"Reed and Vale 2025","words":"reed maps islands"}]'>
+  <p class="margin"><span class="key">@shorthand</span></p>
+  <div class="text"><h2 id="shorthand-h">Type it the fast way <span class="label-nightly">nightly</span></h2>
+    <p>In the picker, put the details right in the search: a word before the reference, the reference, then a page.</p>
+    <figure class="picker shorthand-picker"><div class="picker-panel" data-app-tokens data-platform="macos"><div class="picker-search"><div class="picker-field"><span class="picker-mark" aria-hidden="true"><img class="logo-light" src="/assets/ibis-mark.svg" alt="" width="24" height="24"><img class="logo-dark" src="/assets/ibis-mark-on-dark.svg" alt="" width="24" height="24"></span><input type="text" value="see vale 417" aria-label="Search, as you would in the picker" spellcheck="false" autocomplete="off" data-shorthand-input></div></div></div></figure>
+    <ol class="gloss" data-shorthand-parts aria-live="polite" data-before="before" data-empty="No match in the sample references. Try vale, fen or reed."></ol>
+    <p class="draft">Lantern gardens follow the rhythm of imaginary cities <code class="key" data-shorthand-out data-empty="…">[see @vale2024lanterns, p. 417]</code></p>
+    <p class="small try">Try <button type="button" data-try>fen ch 2</button> <button type="button" data-try>reed 12-14</button> <button type="button" data-try>see vale 33</button></p></div>
+</section>
+<section id="agents" class="row" aria-labelledby="agents-h">
+  <p class="margin"><span class="key">@agents</span></p>
+  <div class="text"><h2 id="agents-h">For AI agents</h2>
+    <p>AI agents can make up references that look real. Ibis’s MCP server lets an agent search your references, show their fields, format citations and find styles, and nothing else: it’s read-only and doesn’t share notes or attachments. Add this command to your agent’s MCP setup:</p>
+    <div class="code single"><pre><code>ibis mcp</code></pre><button class="copy" type="button" data-copy="ibis mcp" data-copied="Copied" data-failed="Select to copy" title="Copy"><svg class="icon icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Copy</span></button></div></div>
+</section>
+<section id="install" class="row" aria-labelledby="install-h">
+  <p class="margin"><span class="key">@install</span></p>
+  <div class="text"><h2 id="install-h">Install the command</h2>
+    <p>Homebrew on Mac or Linux:</p>
+    <div class="code single"><pre><code>brew install ibiscite/tap/ibis</code></pre><button class="copy" type="button" data-copy="brew install ibiscite/tap/ibis" data-copied="Copied" data-failed="Select to copy" title="Copy"><svg class="icon icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Copy</span></button></div>
+    <p>On Windows, or without Homebrew, download the command for your system from the <a href="https://github.com/ibiscite/ibis/releases/latest">release page</a>. <a href="https://github.com/ibiscite/ibis/blob/main/docs/cli.md">Command line guide</a>.</p></div>
+</section>

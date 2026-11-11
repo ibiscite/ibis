@@ -21,8 +21,10 @@ const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
   /^apps\/desktop\/src\/.*\.(?:ts|tsx|css|svg)$/.test(path) || /^apps\/desktop\/(?:index|notice|settings)\.html$/.test(path)
   || /^apps\/desktop\/(?:canvas|gallery)\//.test(path) || path === "apps/desktop/vite.canvas.config.ts"
 );
-// The website is plain files checked by the script tests in the Web job.
-const websiteFile = (path) => path.startsWith("website/");
+// The website is checked by the Web job, except for CLI examples whose exact
+// outputs the crates verify against fixtures/website/sample.bib.
+const websiteFile = (path) => path.startsWith("website/")
+  && path !== "website/content/terminal.txt" && path !== "website/content/writing-apps.json";
 // Node scripts and the shell scripts their tests run. No native job runs them,
 // and no Rust reads them, so their tests on Linux, Windows and (outside pull
 // requests) macOS are enough. Python, PowerShell and C helpers run in the

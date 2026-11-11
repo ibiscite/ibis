@@ -1,0 +1,6 @@
+[
+  {"id": "word", "format": "apa", "output": "(Vale, 2024, p. 12)", "note": "A formatted APA citation. Choose another style in Ibis.", "name": "Word, Pages or Google Docs"},
+  {"id": "markdown", "format": "pandoc", "output": "[@vale2024lanterns, p. 12]", "note": "A Pandoc citation key; Pandoc or Quarto builds the reference list.", "name": "Markdown, Obsidian or Quarto"},
+  {"id": "latex", "format": "autocite", "output": "\\autocite[12]{vale2024lanterns}", "note": "A BibLaTeX command; LaTeX builds the bibliography.", "name": "LaTeX or Overleaf"},
+  {"id": "typst", "format": "typst", "output": "@vale2024lanterns[p. 12]", "note": "A Typst citation; Typst applies the document’s style.", "name": "Typst"}
+]

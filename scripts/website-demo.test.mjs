@@ -8,7 +8,11 @@ import { createDemo, references, formats } from "../website/demo-model.mjs";
 // Like the page-control tests, run the real script against a small synthetic DOM.
 const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
+const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
+const labels = Object.fromEntries([...template.match(/<figure class="picker"[\s\S]*?>/)[0].matchAll(/data-([\w-]+)="([^"]*)"/g)]
+  .map(([, key, value]) => [key.replaceAll(/-([a-z])/g, (_, letter) => letter.toUpperCase()), value]));
 function demoPage(platform) {
+  let copies = 0, pastes = 0;
   const element = tag => ({ tag, children: [], attrs: {}, handlers: {}, dataset: {}, className: "", classList: { toggle() {} },
     append(...children) { this.children.push(...children); },
     replaceChildren(...children) { this.children = children; },
@@ -16,7 +20,7 @@ function demoPage(platform) {
     set textContent(text) { this.children = [text]; },
     get firstChild() { return this.children[0]; },
     setAttribute(key, value) { this.attrs[key] = String(value); }, removeAttribute(key) { delete this.attrs[key]; }, toggleAttribute() {},
-    addEventListener(key, fn) { this.handlers[key] = fn; }, insertAdjacentHTML() {}, focus() {},
+    addEventListener(key, fn) { this.handlers[key] = fn; }, insertAdjacentHTML() {}, focus() { this.focused = true; }, select() { this.selected = true; }, scrollIntoView() {},
     querySelectorAll(selector) { return this.children.filter(child => typeof child !== "string").flatMap(child => [
       ...((selector.startsWith(".") ? child.className.split(" ").includes(selector.slice(1)) : child.tag === selector) ? [child] : []),
       ...child.querySelectorAll(selector),
@@ -25,16 +29,18 @@ function demoPage(platform) {
     replaceWith(replacement) { this.replacement = replacement; }, getBoundingClientRect() { return { bottom: 0 }; },
   });
   const figure = element("figure"), result = element("p"), section = element("section"), list = element("ol"), placeholder = element("div");
+  figure.dataset = labels;
   placeholder.className = "picker-panel";
   figure.append(placeholder);
   const sentence = element("span"); sentence.textContent = "Invented sentence"; result.append(sentence);
   figure.closest = selector => selector === "section" ? section : list;
   const document = { ...element("document"), documentElement: { dataset: { platform } }, createElement: element,
     createElementNS: (_namespace, tag) => element(tag), querySelector: selector => selector === "[data-picker]" ? figure : result };
-  runInNewContext(`${keyScript}\n${demoScript}\nsetupDemo();`, { document, createDemo, references, formats,
-    typePaths: { book: [], article: [] }, matchMedia: () => ({ matches: false }) });
+  const picker = runInNewContext(`${keyScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
+    onCopy: () => { copies++; }, onPaste: () => { pastes++; },
+    typePaths: { book: [], article: [] }, iconPaths: { check: "", plus: "", close: "" }, matchMedia: () => ({ matches: false }) });
   const panel = placeholder.replacement, [add, copy] = panel.querySelector(".picker-actions").children, input = panel.querySelector("input");
-  return { add, copy, input, panel, figure, result, reopen: figure.querySelector("button") };
+  return { add, copy, input, panel, figure, result, picker, feedback: () => ({ copies, pastes }), reopen: figure.querySelector("button") };
 }
 
 for (const [platform, addCaps, copyCaps] of [
@@ -74,7 +80,7 @@ test("shared cap labels are one cap per shortcut in native modifier order, with 
 });
 
 test("copy confirms once in the shelf and paste keeps the copied value through later edits", () => {
-  const { copy, input, panel, figure, result, reopen } = demoPage("macos");
+  const { copy, input, panel, figure, result, reopen, feedback, picker } = demoPage("macos");
   const capsule = panel.querySelector(".picker-status"), announce = figure.querySelector(".demo-status");
   const check = () => {
     assert.equal(panel.querySelectorAll(".picker-status").length, 1);
@@ -83,6 +89,7 @@ test("copy confirms once in the shelf and paste keeps the copied value through l
   };
   check(); assert.equal(capsule.textContent, "");
   copy.handlers.click(); check();
+  assert.deepEqual(feedback(), { copies: 1, pastes: 0 });
   assert.equal(capsule.textContent, "Copied");
   assert.equal(capsule.attrs["aria-hidden"], "true");
   assert.equal(announce.attrs.role, "status");
@@ -94,13 +101,15 @@ test("copy confirms once in the shelf and paste keeps the copied value through l
   assert.equal(announce.textContent, "Copied [@vale2024lanterns]");
   input.value = "no invented reference matches"; input.handlers.input();
   assert.equal(copy.disabled, true); copy.handlers.click(); check();
+  assert.deepEqual(feedback(), { copies: 1, pastes: 0 });
   result.querySelector("button").handlers.click();
+  assert.deepEqual(feedback(), { copies: 1, pastes: 1 });
   assert.equal(result.textContent, "Invented sentence [@vale2024lanterns].");
   assert.equal(announce.textContent, "Pasted [@vale2024lanterns]");
   const escape = { key: "Escape", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: input, preventDefault() {} };
   for (let step = 0; step < 3; step++) panel.handlers.keydown(escape);
   assert.equal(panel.hidden, true);
-  reopen.handlers.click(); check();
+  picker.open(); check(); assert.equal(input.focused, true); assert.equal(input.selected, true);
   assert.equal(panel.hidden, false);
   assert.equal(result.textContent, "Invented sentence [@vale2024lanterns].");
 });
@@ -118,8 +127,9 @@ test("the website uses exactly the desktop's bundled invented references", async
 
 test("website rows show plain titles and accessible reference details", () => {
   const { input, panel } = demoPage("macos");
-  input.value = ""; input.handlers.input();
-  const rows = panel.querySelectorAll(".pick");
+  assert.equal(input.value, "");
+  const rows = panel.querySelectorAll("li").filter(item => !item.hidden).map(item => item.querySelector(".pick"));
+  assert.match(panel.querySelector(".picker-meta").textContent, /Recently added/);
   assert.deepEqual(rows.map(row => row.querySelector("strong").textContent), references.map(ref => ref.title));
   assert.deepEqual(rows.map(row => row.attrs["aria-label"]), references.map(ref =>
     `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}`));
@@ -175,7 +185,7 @@ test("close and reopen preserves choices; reload starts the same practice task a
   assert.equal(demo.copy(), false);
   assert.equal(demo.state.copied, "[@vale2024lanterns]");
   const reloaded = createDemo();
-  assert.equal(reloaded.state.query, "lantern");
+  assert.equal(reloaded.state.query, "");
   assert.deepEqual(reloaded.state.added, []);
   assert.equal(reloaded.state.copied, null);
   assert.equal(reloaded.state.pasted, null);
