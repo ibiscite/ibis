@@ -40,6 +40,28 @@ pub enum Platform {
     Linux,
 }
 
+/// Lexical directory identity; never probes or canonicalizes a candidate.
+pub fn path_identity(path: &Path, platform: Platform) -> Vec<u8> {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    if platform != Platform::Windows {
+        return bytes.to_vec();
+    }
+    let mut identity = Vec::with_capacity(bytes.len());
+    // Fold Unicode case without expanding one filename character to several.
+    // Preserve non-Unicode OS units: lossy conversion could merge distinct paths.
+    for chunk in bytes.utf8_chunks() {
+        for character in chunk.valid().chars() {
+            let mut upper = character.to_uppercase();
+            let first = upper.next().unwrap_or(character);
+            let folded = if upper.next().is_none() { first } else { character };
+            let normalized = if folded == '\\' { '/' } else { folded };
+            identity.extend_from_slice(normalized.encode_utf8(&mut [0; 4]).as_bytes());
+        }
+        identity.extend_from_slice(chunk.invalid());
+    }
+    identity
+}
+
 /// Caller-supplied roots; Debug deliberately omits personal paths.
 #[derive(Clone)]
 pub struct DiscoveryRoots {
@@ -142,8 +164,13 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    fn add(&mut self, path: PathBuf, name: Option<&str>) {
-        if self.directories.iter().any(|candidate| candidate.path == path) {
+    fn add(&mut self, path: PathBuf, name: Option<&str>, platform: Platform) {
+        let identity = path_identity(&path, platform);
+        if self
+            .directories
+            .iter()
+            .any(|candidate| path_identity(&candidate.path, platform) == identity)
+        {
             return;
         }
         let name = self.unique_name(name.map(clean_name).filter(|name| !name.is_empty()));
@@ -179,7 +206,7 @@ pub fn discover(roots: &DiscoveryRoots) -> Discovery {
     let profiles = match registry.and_then(|text| text.map(|text| profile_paths(&text, roots)).transpose()) {
         Ok(Some(profiles)) => profiles,
         Ok(None) => {
-            result.add(roots.home.join("Zotero"), None);
+            result.add(roots.home.join("Zotero"), None, roots.platform);
             return result;
         }
         Err(warning) => {
@@ -193,10 +220,10 @@ pub fn discover(roots: &DiscoveryRoots) -> Discovery {
                 .map_err(|()| Warning::UnsupportedPreferences)
         }) {
             Ok(Some(path)) if absolute(Path::new(&path), roots.platform) => {
-                result.add(PathBuf::from(path), name.as_deref())
+                result.add(PathBuf::from(path), name.as_deref(), roots.platform)
             }
             Ok(Some(_)) => result.warn(Warning::InvalidPath),
-            Ok(None) => result.add(roots.home.join("Zotero"), name.as_deref()),
+            Ok(None) => result.add(roots.home.join("Zotero"), name.as_deref(), roots.platform),
             Err(warning) => result.warn(warning),
         }
     }

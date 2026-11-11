@@ -474,6 +474,29 @@ impl FileLibrary {
         Ok(same)
     }
 
+    pub(super) fn prepare_zotero_reload(
+        &self,
+        chosen: &ZoteroLibraries,
+        profile: Option<&str>,
+        force: bool,
+        cancel: &Cancellation,
+        guard: impl FnMut(
+            &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
+        ) -> Result<(), ibis_core::contract::EngineError>,
+    ) -> Result<ibis_engine::PreparedZoteroReload, super::LoadError> {
+        let libraries: Vec<_> = chosen
+            .libraries()
+            .iter()
+            .map(|library| match library {
+                ZoteroLibrary::User => EngineZoteroLibrary::Personal,
+                ZoteroLibrary::Group(id) => EngineZoteroLibrary::Group(*id),
+            })
+            .collect();
+        self.engine
+            .prepare_zotero_reload_guarded(force, Some(&libraries), profile, cancel, guard)
+            .map_err(super::LoadError::Zotero)
+    }
+
     pub(super) fn observe_once(
         &self,
     ) -> Result<Option<ibis_engine::LibrarySubscription>, ibis_core::contract::EngineError> {
