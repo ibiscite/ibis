@@ -55,7 +55,7 @@ Anything not listed follows Apple. A new departure is added here in the same cha
 | Citation colour | None | The scarlet beak marks the citation; its text stays in the text colours [C14] |
 | Large buttons | Capsules on macOS 26 | Rounded rectangles at every size |
 | Search icon | Magnifier | The Ibis mark, as Alfred shows its hat |
-| In-window menus | `NSMenu` | Ibis's own, matching native metrics; menu bar, tray and right-click stay native |
+| In-window menus | `NSMenu` | Ibis's own, matching native metrics; the format and More are a searchable palette, as Raycast's; menu bar, tray and right-click stay native |
 | Window size | Content decides | One steady size while open [C10] |
 | Key caps | Shortcuts only in menus | Caps in the footer and key lists; Settings writes keys as menus do |
 | Focus ring | A translucent keyboard focus colour | Solid accent text, so it keeps 3:1 on every surface |

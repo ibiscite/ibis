@@ -5,7 +5,7 @@ import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
 import type { useOperations } from "./useOperations";
 import type { OutputId } from "../../format/outputs";
-import type { MenuCloseReason } from "../../ui/ToolbarMenu";
+import type { MenuCloseReason } from "./FormatMenu";
 
 export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen }: {
   api: PickerApi;

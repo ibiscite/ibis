@@ -64,7 +64,7 @@ const fixtures: Partial<Record<Scenario, {
   "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
-  pinned: { click: ".pin-button" },
+  pinned: { keys: [{ key: "P", code: "KeyP", shiftKey: true, [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   "no-matches": { rows: [] },
   missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "the library file is unavailable; download any online-only file to this computer first" } },
   "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero’s library cannot be read while it is closed" } },

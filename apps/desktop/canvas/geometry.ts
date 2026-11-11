@@ -11,7 +11,7 @@
 export const columns = {
   marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
   words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
+  outside: ".choice-screen, .inspector, .menu-popover, .ui-view, [inert]",
 } as const;
 
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
@@ -39,6 +39,10 @@ export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".c
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
 export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
+<<<<<<< HEAD
+=======
+
+>>>>>>> origin/feat/palette
 /** [C8] A status is never cut to a stub ("Z…"): a line whose words end in "…"
  * keeps at least --status-short of them, and the footer folds its hint labels
  * before that. A part that drops whole (an update's phase) is not cut. */

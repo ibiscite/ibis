@@ -53,7 +53,7 @@ test.each([
   expect(button.firstElementChild?.tagName).toBe(more.firstElementChild?.tagName);
   expect(button.firstElementChild?.hasAttribute("aria-hidden")).toBe(false);
   expect(button.firstElementChild?.textContent).toContain(summary);
-  for (const attribute of ["type", "aria-haspopup", "aria-expanded", "tabindex", "data-variant", "data-size", "data-react-aria-pressable"]) {
+  for (const attribute of ["type", "aria-expanded", "tabindex", "data-variant", "data-size", "data-react-aria-pressable"]) {
     expect(button.getAttribute(attribute)).toBe(more.getAttribute(attribute));
   }
   expect(button.closest('[aria-hidden="true"], [hidden], [inert], [role="presentation"], [role="none"]')).toBeNull();
@@ -299,8 +299,8 @@ test("Command-O opens the searched source and More lists it first", async () => 
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
   expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toContain("Show in Zotero");
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
+  expect(within(menu).getAllByRole("option")[0]?.textContent).toContain("Show in Zotero");
 });
 
 test("Command-O works on a recovery screen and a missing source refuses with a visible outcome", async () => {
@@ -323,11 +323,11 @@ test("Command-O opens a file from every picker overlay, without passing a file p
   render(<App />);
   await screen.findByText("Invented file reference");
   fireEvent.click(screen.getByRole("button", { name: "More" }));
-  const menu = await screen.findByRole("menu");
-  expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toBe("Open ⁨مراجع.bib⁩Ctrl+O");
+  const menu = await screen.findByRole("dialog", { name: "Actions" });
+  expect(within(menu).getAllByRole("option")[0]?.textContent).toBe("Open ⁨مراجع.bib⁩Ctrl+O");
   fireEvent.keyDown(menu, { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(1));
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Actions" })).toBeNull();
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "/", ctrlKey: true });
   fireEvent.keyDown(await screen.findByRole("dialog"), { key: "o", ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));

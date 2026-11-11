@@ -1,24 +1,23 @@
 import type React from "react";
 import type { MouseEvent } from "react";
 import { IbisMark } from "../../ui/IbisMark";
-import { IconButton } from "../../ui/IconButton";
 import { SearchBar, SearchField } from "../../ui/SearchBar";
 import { say } from "../../i18n";
-import { ariaKeys, keysFor } from "../../keys";
-import { currentPlatform } from "../../platform";
 import type { OutputId } from "../../format/outputs";
-import { FormatMenu } from "./FormatMenu";
-import type { MenuCloseReason } from "../../ui/ToolbarMenu";
+import { FormatMenu, type FormatPreview } from "./FormatMenu";
+import type { MenuCloseReason } from "./FormatMenu";
 import type { AppPaste } from "../../api";
 import type { FormatPick, FormatSource } from "./useDestination";
 
 /** The search bar: the search box and the copy format. */
-export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, pinned, onTogglePin, writingProject, onWritingProjects }: {
+export function PickerHeader({ hidden = false, onResetPosition, inputRef, query, pageToken, onQueryChange, expanded, activeDescendant, format, formatButtonRef, app = null, formatSource = "default", formatPick = "default", onFormatOpenChange, pasteChoices, onPasteChange, formatDisabled = false, showFormat, styles, onFormatChange, yours, preview, writingProject, onWritingProjects }: {
   /** Welcome has no search yet; the field stays mounted so focus can return to it. */
   hidden?: boolean;
   inputRef: React.RefObject<HTMLInputElement | null>;
-  pinned: boolean;
-  onTogglePin: () => void;
+  /** Your own format, the one the chooser offers to return to. */
+  yours?: OutputId;
+  /** The chosen references as another format would paste them. */
+  preview?: FormatPreview | null;
   query: string;
   pageToken?: React.ReactNode;
   onQueryChange: (query: string) => void;
@@ -88,9 +87,7 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
           });
         }}
       />
-      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} />}
-      <IconButton icon="pin" size="large" className="pin-button" aria-label={say("picker-keep-open")} aria-keyshortcuts={ariaKeys(keysFor("pin"), currentPlatform() === "macos")}
-        isSelected={pinned} onChange={onTogglePin}/>
+      {showFormat && <FormatMenu format={format} buttonRef={formatButtonRef} app={app} source={formatSource} pick={formatPick} onOpenChange={onFormatOpenChange} pasteChoices={pasteChoices} onPasteChange={onPasteChange} disabled={formatDisabled} styles={styles} onChange={onFormatChange} searchRef={inputRef} writingProject={writingProject} onWritingProjects={onWritingProjects} yours={yours} preview={preview} />}
     </SearchBar>
   );
 }

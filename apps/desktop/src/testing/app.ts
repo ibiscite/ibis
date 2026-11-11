@@ -3,12 +3,14 @@
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
-import { listen } from "@tauri-apps/api/event";
+import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 import { isStyle, listedOutput } from "../format/outputs";
+import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
+  forgetRecentFormats();
   cleanup();
   // Unmount effects and React Aria's focus restoration must finish on the clock
   // that created them, before discarding fake timers or the mocked native API.
@@ -26,23 +28,42 @@ export async function resetApp() {
   delete document.documentElement.dataset.pickerHidden;
 }
 
-/** Opens the More menu and picks an action from it, as a user would. */
-export async function chooseFromMore(name: string, role: "menuitem" | "menuitemcheckbox" = "menuitem") {
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  const item = await screen.findByRole(role, { name });
-  // fireEvent.click omits the focus a real pointer/keyboard activation gives
-  // the row; the shortcuts dialog uses it to choose its return destination.
-  act(() => item.focus());
-  fireEvent.click(item);
+let changeSaved: ((patch: Partial<api.PickerPreferences>) => void) | null = null;
+
+/** Rows changed in Settings, the one place it lives, as the picker hears of it. */
+export async function chooseRows(density: Density) {
+  changeSaved?.({ density });
+  await act(async () => { await emit("preferences:changed"); });
 }
 
-/** Choose a named row density from More's submenu, without cycling values. */
-export async function chooseRows(density: Density) {
-  if (!screen.queryByRole("menu")) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
-  fireEvent.click(await screen.findByRole("menuitem", { name: /^Rows: / }));
-  const item = await screen.findByRole("menuitemradio", { name: density.charAt(0).toUpperCase() + density.slice(1) });
-  act(() => item.focus());
-  fireEvent.click(item);
+/** A palette row by its name, as a person reads it (the label, not the detail or keys). */
+export function paletteRow(palette: HTMLElement, name: string | RegExp): HTMLElement {
+  const label = (option: HTMLElement) => option.querySelector(".ui-palette-label")?.textContent ?? "";
+  const row = within(palette).queryAllByRole("option").find((option) => typeof name === "string" ? label(option) === name : name.test(label(option)));
+  if (!row) throw new Error(`No palette row named ${name}: ${within(palette).queryAllByRole("option").map((option) => option.querySelector(".ui-palette-label")?.textContent).join(", ")}`);
+  return row;
+}
+
+/** Opens More (the actions palette) and runs an action from it, as a user would. */
+export async function chooseFromMore(name: string | RegExp) {
+  if (!screen.queryByRole("dialog", { name: "Actions" })) fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  fireEvent.click(await waitFor(() => paletteRow(palette, name)));
+}
+
+/** Turns Keep Window Open on from More, or off from the footer's pin, as a person would. */
+export async function toggleKeepOpen() {
+  const pinned = screen.queryByRole("button", { name: "Keep Window Open", pressed: true });
+  if (pinned) fireEvent.click(pinned);
+  else await chooseFromMore("Keep Window Open");
+}
+
+/** Opens the format chooser, finds a format by typing its name, and picks it. */
+export async function chooseFormatNamed(name: string) {
+  if (!screen.queryByRole("dialog", { name: "Format" })) fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+  const palette = await screen.findByRole("dialog", { name: "Format" });
+  fireEvent.change(within(palette).getByRole("combobox"), { target: { value: name } });
+  fireEvent.click(await waitFor(() => paletteRow(palette, name)));
 }
 
 export function libraryButton(): HTMLButtonElement {
@@ -127,6 +148,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
   let lastLibrary: Partial<api.LibraryStatus> = {};
   let activityTicket = 0;
   let preferences = { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true } as api.PickerPreferences;
+  changeSaved = (patch) => { preferences = { ...preferences, ...patch }; };
   let revision = 0;
   const written = new Map<string, number>();
   const submitted = new Map<number, Partial<api.PickerPreferences>>();

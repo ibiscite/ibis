@@ -102,7 +102,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
     edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: format }
       : { kind: "rename", id: form.id, name: form.name.trim() });
   };
-  const creating = !form && view ? <Button label={say("writing-project-create")} isDisabled={busy} onPress={() => { setProblem(null); setForm({ kind: "new", name: "" }); }} /> : undefined;
+  const creating = !form && view ? [{ label: say("writing-project-create"), disabled: busy, onPress: () => { setProblem(null); setForm({ kind: "new", name: "" }); } }] : undefined;
   return <Sheet title={say("writing-project-title")} closeLabel={say("writing-project-close")} description={say("writing-project-about")} busy={busy} onClose={close}
     leadingActions={creating}>
         {view?.session_only && <p className="ui-sheet-note">{say("writing-project-session-only")}</p>}
