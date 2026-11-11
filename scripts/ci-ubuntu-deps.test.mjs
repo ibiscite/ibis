@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -22,14 +23,18 @@ Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg
 function fixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-apt-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const log = join(dir, "calls"), sources = join(dir, "ubuntu.sources"), used = join(dir, "used.sources");
+  const log = join(dir, "calls"), sources = join(dir, "ubuntu.sources"), used = join(dir, "used.sources"), config = join(dir, "used.conf");
   for (const [name, script] of Object.entries({
     sudo: 'exec "$@"',
     timeout: 'printf "timeout %s\n" "$1" >> "$APT_LOG"\nshift\nexec "$@"',
     python3: 'exit "$YAML_STATUS"',
+    sha256sum: `exec "$NODE_FOR_TEST" -e 'const { createHash } = require("node:crypto"); const { readFileSync } = require("node:fs"); console.log(createHash("sha256").update(readFileSync(0)).digest("hex") + "  -");'`,
     "apt-get": `printf '%s\\n' "$*" >> "$APT_LOG"
+previous=''
 for arg; do
+  if [ "$previous" = -c ]; then cp "$arg" "$APT_CONFIG_USED"; fi
   case "$arg" in Dir::Etc::sourcelist=*) cp "\${arg#*=}" "$APT_USED";; esac
+  previous=$arg
 done
 if [[ " $* " == *" $FAIL_APT "* ]]; then exit 42; fi`,
   })) writeFileSync(join(dir, name), `#!/usr/bin/env bash\n${script}\n`, { mode: 0o755 });
@@ -37,12 +42,13 @@ if [[ " $* " == *" $FAIL_APT "* ]]; then exit 42; fi`,
   return (profile, { contents = ubuntuSources, failure = "none", yaml = false } = {}) => {
     writeFileSync(log, "");
     writeFileSync(used, "");
+    writeFileSync(config, "");
     writeFileSync(sources, contents);
-    const result = spawnSync(fileURLToPath(new URL("./ci-ubuntu-deps.sh", import.meta.url)), [profile, sources], {
+    const result = spawnSync(fileURLToPath(new URL("./ci-ubuntu-deps.sh", import.meta.url)), Array.isArray(profile) ? profile : [profile, sources], {
       cwd: dir, encoding: "utf8", timeout: 5000,
-      env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}`, APT_LOG: log, APT_USED: used, FAIL_APT: failure, YAML_STATUS: yaml ? "0" : "1" },
+      env: { ...process.env, PATH: `${dir}${delimiter}${process.env.PATH}`, APT_LOG: log, APT_USED: used, APT_CONFIG_USED: config, NODE_FOR_TEST: process.execPath, FAIL_APT: failure, YAML_STATUS: yaml ? "0" : "1" },
     });
-    return { status: result.status, stderr: result.stderr, sources: readFileSync(sources, "utf8"), used: readFileSync(used, "utf8"), calls: readFileSync(log, "utf8").trim().split("\n").filter(Boolean) };
+    return { status: result.status, stdout: result.stdout, stderr: result.stderr, sources: readFileSync(sources, "utf8"), used: readFileSync(used, "utf8"), config: readFileSync(config, "utf8"), calls: readFileSync(log, "utf8").trim().split("\n").filter(Boolean) };
   };
 }
 
@@ -87,4 +93,29 @@ test("web CI installs PyYAML from the Azure Ubuntu archive with the same suites 
   const unknown = run("web", { contents: ubuntuSources.replace("archive.ubuntu.com", "example.invalid") });
   assert.equal(unknown.status, 1, unknown.stderr);
   assert.deepEqual(unknown.calls, []);
+});
+
+test("cache keys hash exactly the installed package list without touching apt or needing sources", posix, (t) => {
+  const run = fixture(t);
+  for (const profile of ["desktop", "web"]) {
+    const installed = run(profile);
+    const packages = installed.calls.at(-1).split("--no-install-recommends ")[1].split(" ");
+    const key = run(["cache-key", profile]);
+    assert.equal(key.status, 0, key.stderr);
+    assert.equal(key.stdout, `key=${createHash("sha256").update(packages.join("\n") + "\n").digest("hex")}\n`);
+    assert.equal(run(["cache-key", profile], { yaml: true }).stdout, key.stdout);
+    assert.deepEqual(key.calls, []);
+  }
+});
+
+test("apt retains downloads for the cache even in images with cleanup hooks", posix, (t) => {
+  const run = fixture(t);
+  for (const profile of ["desktop", "web"]) {
+    const result = run(profile);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.config, /^#clear DPkg::Post-Invoke;$/m);
+    assert.match(result.config, /^#clear APT::Update::Post-Invoke;$/m);
+    assert.match(result.config, /^APT::Keep-Downloaded-Packages "true";$/m);
+    assert.match(result.config, /^Binary::apt::APT::Keep-Downloaded-Packages "true";$/m);
+  }
 });
