@@ -77,6 +77,43 @@ fn an_id_that_starts_like_an_internal_reference_stays_its_own_record() {
 }
 
 #[test]
+fn records_numeric_ids_survive_raw_transport_parsing() {
+    let engine = Engine::new().unwrap();
+    // Start with raw JSON: json! would bypass the transport's decimal parser.
+    for sent in [
+        br#"{"records":[{"id":51.248178375505404,"type":"book","citation-key":"exact"}],
+             "output":{"kind":"preset","name":"pandoc"},"items":[{"id":"51.248178375505404"}]}"#
+            .as_slice(),
+        br#"{"records":[{"id":51.248178375505404,"type":"book","citation-key":"exact"},
+                         {"id":"51.24817837550541","type":"book","citation-key":"distinct"}],
+             "output":{"kind":"preset","name":"pandoc"},"items":[{"id":"51.248178375505404"}]}"#
+            .as_slice(),
+    ] {
+        let params = ibis_engine::protocol::parse_json(sent).unwrap();
+        let cited = records(&engine, params).unwrap();
+        assert_eq!(cited.text.as_deref(), Some("[@exact]"));
+    }
+}
+
+#[test]
+fn records_without_ids_refuse_the_whole_request_even_with_citation_keys() {
+    let engine = Engine::new().unwrap();
+    for sent in [
+        json!([{"type": "book", "citation-key": "missing"}]),
+        json!([
+            {"id": "r1", "type": "book", "citation-key": "valid"},
+            {"type": "book", "citation-key": "missing"}
+        ]),
+    ] {
+        let error = records(&engine, pandoc(sent)).unwrap_err();
+        assert_eq!(
+            (error.code, error.reason),
+            (ErrorCode::BadInput, Some(ErrorReason::RejectedRecord))
+        );
+    }
+}
+
+#[test]
 fn a_keyless_record_formats_and_key_outputs_refuse_it() {
     let engine = Engine::new().unwrap();
     let keyless = json!([{"id": "r1", "type": "book", "title": "Invented"}]);

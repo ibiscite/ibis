@@ -212,6 +212,7 @@ fn command() -> Command {
                             "prefix",
                             "suffix",
                             "omit-author",
+                            "keep-order",
                         ])
                         .help("Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records"),
                 )

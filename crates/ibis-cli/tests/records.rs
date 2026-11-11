@@ -91,6 +91,21 @@ fn records_cite_the_same_through_every_front_end() -> Result {
 }
 
 #[test]
+fn records_refuse_keep_order_instead_of_silently_sorting() -> Result {
+    let (code, output, errors) = run(
+        &["ibis", "cite", "--records", "--format", "apa", "--keep-order"],
+        &serde_json::to_vec(&records())?,
+    )?;
+    assert_eq!(code, 2, "{errors}");
+    assert!(output.is_empty());
+    assert!(
+        errors.contains("--keep-order") && errors.contains("--records"),
+        "{errors}"
+    );
+    Ok(())
+}
+
+#[test]
 fn refused_records_say_which_and_print_nothing_on_stdout() -> Result {
     let input = br#"[{"id":"r1","type":"book","title":"Invented"},{"id":"r2","title":"No type"}]"#;
     let (code, output, errors) = run(&["ibis", "cite", "--records"], input)?;
