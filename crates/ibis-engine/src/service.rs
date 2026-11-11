@@ -572,6 +572,103 @@ impl Engine {
             output_locale: request.output_locale.clone(),
         })
     }
+    /// Cite or export records sent with the request (#1539). No library is
+    /// opened or changed: the records live only for this call.
+    pub fn cite_records(&self, request: &RecordsRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
+        cancel.check()?;
+        if request.records.is_empty() {
+            return Err(error(ErrorCode::BadInput));
+        }
+        // Records are far shallower than any transport limit allows, so the
+        // same records meet the same limits however they arrive.
+        if request.records.len() > ibis_core::syntax::MAX_CITATION_ITEMS
+            || request.records.iter().any(|record| depth(record) > MAX_RECORD_DEPTH)
+            || crate::wire::serialized_size(&request.records, MAX_RECORDS_BYTES).is_err()
+        {
+            return Err(error(ErrorCode::ResourceLimit));
+        }
+        let library = LibraryId::digest(b"records sent with a request");
+        let read = ibis_sources::request_records(&library, &request.records)
+            .map_err(|_| EngineError::because(ErrorCode::BadInput, ErrorReason::RejectedRecord))?;
+        if read
+            .warnings
+            .iter()
+            .any(|warning| warning.code == ibis_sources::WarningCode::DuplicateKey)
+        {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::DuplicateRecord));
+        }
+        // Clean output never leaves a record out without saying so.
+        if read.records.len() != request.records.len() {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::RejectedRecord));
+        }
+        cancel.check()?;
+        let item = |id: &str| ItemRef {
+            library: library.clone(),
+            key: format!("record:{id}"),
+        };
+        let picks: Vec<RecordItem> = match &request.items {
+            Some(items) => items.clone(),
+            None => read
+                .records
+                .iter()
+                .map(|record| RecordItem {
+                    // Exactly one prefix: an id may itself start with `record:`.
+                    id: record
+                        .id
+                        .key
+                        .strip_prefix("record:")
+                        .unwrap_or(&record.id.key)
+                        .to_owned(),
+                    ..RecordItem::default()
+                })
+                .collect(),
+        };
+        if picks.is_empty() || picks.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
+            return Err(error(ErrorCode::BadInput));
+        }
+        let snapshot = Arc::new(
+            Snapshot::new(read.records.into_iter().map(LibraryObject::Record).collect())
+                .map_err(|_| error(ErrorCode::BadInput))?,
+        );
+        let items = picks
+            .into_iter()
+            .map(|pick| {
+                let id = item(&pick.id);
+                if snapshot.get(&id).is_none() {
+                    return Err(error(ErrorCode::NotFound));
+                }
+                Ok(CitationItem {
+                    item: id,
+                    expected_cite: None,
+                    form: None,
+                    locator: pick.locator,
+                    prefix: pick.prefix,
+                    suffix: pick.suffix,
+                    suppress_author: pick.suppress_author,
+                    annotation: None,
+                    expected_annotation_cite: None,
+                })
+            })
+            .collect::<Result<Vec<_>, EngineError>>()?;
+        let output = crate::outputs::resolve(&request.output)?;
+        let citation = CitationRequest {
+            items,
+            keep_order: matches!(output, OutputSpec::Key { .. }),
+            output,
+            form: request.form,
+            input_language: None,
+            output_locale: request.output_locale.clone(),
+        };
+        self.cite_snapshot(&snapshot, &citation, cancel)
+    }
+    /// Why records sent with a request would not all be cited: each warning's
+    /// `line` is a record's place in the list, from one. Nothing is opened.
+    pub fn record_problems(records: &[Value]) -> Vec<SourceWarning> {
+        ibis_sources::request_records(&LibraryId::digest(b"records sent with a request"), records).map_or_else(
+            |_| vec![SourceWarning::at(ibis_sources::WarningCode::Syntax, None)],
+            |read| read.warnings,
+        )
+    }
     pub fn cite(&self, request: &CitationRequest, cancel: &Cancellation) -> Result<CitationResult, EngineError> {
         self.prepare_citation(request, cancel)
             .map(PreparedCitation::into_result)
@@ -731,6 +828,23 @@ impl Engine {
                 let checked = self.prepare_citation(&request, cancel)?.into_checked();
                 return DispatchResult::citation(checked.value, request.items.len())?
                     .with_health(&checked.source_health);
+            }
+            Method::Records => {
+                let request: RecordsRequest = parameters(params)?;
+                let count = request.items.as_ref().map_or(request.records.len(), Vec::len);
+                // No library is read, so no library's health bears on it. A
+                // field that could not be read as sent is a finding, as it is
+                // in a library file, so the citation never reads as clean.
+                let result = self.cite_records(&request, cancel)?;
+                let unread = result
+                    .warnings
+                    .iter()
+                    .any(|warning| warning.code == CitationWarningCode::SourceField);
+                let mut dispatched = DispatchResult::citation(result, count)?;
+                if unread {
+                    dispatched.exit_code = ExitCode::Findings;
+                }
+                return Ok(dispatched);
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;
@@ -940,6 +1054,24 @@ impl Shared {
         self.notify()
     }
 }
+/// The deepest a record sent with a request may nest: CSL names and dates
+/// need four levels.
+const MAX_RECORD_DEPTH: usize = 16;
+/// The most JSON the records of one request may take.
+const MAX_RECORDS_BYTES: usize = 512 * 1024;
+fn depth(value: &Value) -> usize {
+    let mut deepest = 0;
+    let mut pending = vec![(value, 1)];
+    while let Some((value, level)) = pending.pop() {
+        deepest = deepest.max(level);
+        match value {
+            Value::Array(values) => pending.extend(values.iter().map(|value| (value, level + 1))),
+            Value::Object(values) => pending.extend(values.values().map(|value| (value, level + 1))),
+            _ => {}
+        }
+    }
+    deepest
+}
 fn now_ms() -> u64 {
     std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -1001,10 +1133,17 @@ fn response_schema(method: Method) -> Value {
     match method {
         Method::Libraries => schema_for!(health::Checked<LibrariesResult>),
         Method::Search => schema_for!(SearchResult),
+<<<<<<< HEAD
         Method::Show => schema_for!(health::Checked<SnapshotObject>),
         Method::Cite => schema_for!(health::Checked<CitationResult>),
         Method::Project => schema_for!(health::Checked<ProjectResult>),
         Method::Entry => schema_for!(health::Checked<EntryResult>),
+=======
+        Method::Show => schema_for!(SnapshotObject),
+        Method::Cite | Method::Records => schema_for!(CitationResult),
+        Method::Project => schema_for!(ProjectResult),
+        Method::Entry => schema_for!(EntryResult),
+>>>>>>> origin/feat/cite-records
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
         _ => schema_for!(Value),
