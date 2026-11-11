@@ -159,10 +159,10 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .logo { --logo-width: 7.5rem; padding-top: var(--space-4); }
   .index-note { margin-bottom: 0; }
   .index nav { position: sticky; inset-block-start: 0; z-index: var(--z-chrome); margin-inline: calc(-1 * var(--website-pad)); padding-inline: var(--website-pad); background: var(--website-bg); border-bottom: var(--border-width) solid var(--website-line); }
-  .index ul { flex-wrap: nowrap; align-items: center; gap: var(--space-1); min-block-size: var(--touch-target); overflow-x: auto; scrollbar-width: none; padding-block: .6rem; mask-image: linear-gradient(90deg, CanvasText 85%, transparent); }
+  .index ul { flex-wrap: nowrap; align-items: center; gap: var(--space-2); min-block-size: var(--touch-target); overflow-x: auto; scrollbar-width: none; padding-block: .6rem; mask-image: linear-gradient(90deg, CanvasText 85%, transparent); }
   .index li { flex: none; }
   .index nav a { padding: 0; }
-  .index nav .key { padding: .2em .35em; scroll-margin-block-start: -4rem; }
+  .index nav .key { padding: .2em .45em; scroll-margin-block-start: -4rem; }
   .index ul[data-at-end] { mask-image: none; }
   .index ul[data-at-end]:not([data-at-start]) { mask-image: linear-gradient(90deg, transparent, CanvasText 15%); }
   .index ul:not([data-at-end]):not([data-at-start]) { mask-image: linear-gradient(90deg, transparent, CanvasText 15%, CanvasText 85%, transparent); }
