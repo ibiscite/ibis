@@ -52,7 +52,7 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       expect(window.document.querySelector("[src], [href]")).toBeNull();
       if (scenario.startsWith("settings-")) {
         expect(host.querySelector('[aria-current="page"]')?.textContent?.toLowerCase()).toContain({ look: "appearance" }[scenario.slice(9)] ?? scenario.slice(9));
-        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-settings-row")).not.toBeNull();
+        expect(host.querySelector(scenario === "settings-shortcuts" ? ".ui-shortcut-table" : ".ui-row")).not.toBeNull();
       } else if (scenario === "notice") {
         expect(host.querySelector('.copy-receipt[role="status"]')?.textContent).toContain("Copied");
         expect(host.querySelector("code")?.textContent).toBe("[Aster, 2026]");
@@ -84,8 +84,8 @@ test("the built scenario list renders, switches and reopens without Tauri or net
       }
       else {
         expect(host.textContent).toContain("Invented reference 0");
-        if (scenario === "more") expect(window.document.querySelector('[role="menu"][aria-label="More"]')).not.toBeNull();
-        if (scenario === "format-menu") expect(window.document.querySelector('[role="menuitemradio"]')).not.toBeNull();
+        if (scenario === "more") expect(window.document.querySelector('.ui-palette [role="option"]')).not.toBeNull();
+        if (scenario === "format-menu") expect(window.document.querySelector('#format-palette-pandoc, .ui-palette [aria-current="true"]')).not.toBeNull();
         if (scenario === "reference-details") expect(window.document.querySelector('.ui-popover [role="dialog"]')?.textContent).toContain("Page");
         if (scenario === "show-as-menu") expect([...window.document.querySelectorAll('[role="menuitemradio"]')].some((item) => item.textContent.includes("Aster (2026)"))).toBe(true);
         if (scenario === "reader") expect(host.textContent).toContain("Hide PDF");

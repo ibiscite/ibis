@@ -1,6 +1,5 @@
 import { say } from "../../i18n";
 import { Button } from "../../ui/Button";
-import "./ProjectContextStatus.css";
 
 /** The project bibliography beside a key citation. A key known to name a
  * different work is refused; a file that can't be read is only advice, and

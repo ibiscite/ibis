@@ -2,7 +2,7 @@ import { act, render, waitFor } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { afterEach, expect, test } from "vitest";
 import { App } from "../App";
-import { backend, chooseRows, resetApp } from "../testing/app";
+import { backend, chooseFormatNamed, resetApp } from "../testing/app";
 import type { PickerPreferences, PickerSave } from "../bindings";
 
 afterEach(resetApp);
@@ -58,7 +58,7 @@ test("a Settings notification invalidates a queued old save even when its newer 
     picker_preferences_saved: () => saving });
   render(<App />);
   await waitFor(() => expect(document.documentElement.dataset.accent).toBe("ibis"));
-  await chooseRows("compact");
+  await chooseFormatNamed("APA");
   await act(async () => { await emit("preferences:changed", {}); });
   await act(async () => resolve({ preferences: { ...saved, accent: "ibis" } }));
   await waitFor(() => expect(reads).toBe(2));

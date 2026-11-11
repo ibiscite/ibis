@@ -40,6 +40,11 @@ A month of fast building left parallel paths, rules no one has used and code tha
 7. **The picker session, in working slices** ([#1260](https://github.com/ibiscite/ibis/issues/1260)): session behaviour moves into one state machine a slice at a time, the library's lifecycle separately; shared sheets, menus and buttons in `ui/` are consolidated as each screen is touched.
 8. **Leaner checks** ([#1678](https://github.com/ibiscite/ibis/issues/1678), [#1693](https://github.com/ibiscite/ibis/issues/1693)): `scripts/check.mjs` plans the checks and `land.sh` uses the same plan; finer CI path classes; long inline programs in `preview.yml` move into scripts; tests that read source or CSS become rendered outcome checks; sleeps become fake clocks; engine output checks become reviewed snapshots.
 
+- Isolate each client's task context: capture project, source scope and output at task start so another client's selection cannot retarget it; source changes still revalidate citations (from architecture).
+- Merge `ibis-zotero-local` into `ibis-sources` once its callers reach it through the engine (from architecture).
+- Generate action/race sequences for picker, Settings and Rust delivery, save minimized regressions, and run short seeded campaigns in PR CI and larger ones nightly (from testing).
+- Align performance gates with the release sizes: block at 10,000 generated references and report a 50,000-reference nightly check, replacing the current 100k timing cases (from architecture, #1536).
+
 ### 0.3 Straight into your document
 
 - **The first citation with almost no setup.** The output follows the app you are writing in and the footer shows what Enter will do ("Paste into Word · APA"); one key changes it for that app. The first paste into a browser, code editor or unknown app asks once. Setup finishes itself, including the paste permission. Sample references when there is no library.
@@ -52,6 +57,8 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **Ships when** consolidation steps 1 to 3 have landed and the maintainer's hands-on checks pass: the Mac hands-on run (VoiceOver, updates keeping the paste permission, help screenshots), NVDA on Windows and one input-method check (maintainer, 2026-11-07). Text ready for translation moves into step 4's catalogue, limits that run as checks into step 8, and small picker touches with the word-processor note into 0.4.
 
 ### 0.4 Build any citation
+
+- Add locators without a type where the output can preserve them (from parity).
 
 - **Everything Zotero's citation dialog does** (built first in 0.4, maintainer, 2026-11-07)**:** several references and reordering, every locator type with ranges, prefix and suffix, citation forms and keep my order.
 - **Every key syntax Ibis can write correctly** (Typst, org-cite, MyST, AsciiDoc, ConTeXt and more); **any official CSL style and locale**; output presets; bibliography entries; references cited since Ibis opened as an editable bibliography.
@@ -68,12 +75,22 @@ A month of fast building left parallel paths, rules no one has used and code tha
 
 ### 0.5 Find the passage
 
+- Add last-cited recall through `ibid`/`ebd.` (from parity).
+
 - **Search** that forgives Chinese, Japanese and Korean names and romanised readings; collections, tags, saved searches and filters; "Selected in Zotero"; suggestions before typing.
 - **Passages** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)): Zotero highlights, notes and comments searchable from the picker, each with its reference and page ("PDF page 8 · cite p. 417"), the printed page taken from the PDF, the annotation or an offset the person confirms, never assumed. Notes and comments stay distinct from quotations.
 - **Quotes and briefs** ([#1385](https://github.com/ibiscite/ibis/issues/1385), [#1517](https://github.com/ibiscite/ibis/issues/1517)): a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown; chosen passages exported as one Markdown brief.
 - **A read-only PDF preview** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions/0036-reader-trust-boundary.md)) for PDFs already in Zotero or a `.bib` `file` field, so checking a page never needs Zotero; Ibis never imports, edits or annotates them. EPUB and web snapshots follow.
 - **Files outside a reference manager:** a folder of PDFs or of Markdown notes can be searched, previewed and quoted.
 - **Agents and passages:** opt-in per library, off by default; private links never reach them.
+- **Rules to settle before building 0.5** (from the removed source-workflow research):
+  - **Presentation:** do passages appear as a References/Passages scope or unfolded under a reference, and does Enter open a passage? Decide with a comprehension walkthrough first.
+  - **Open buttons** name their target ("Open annotation in Zotero", "Open PDF at page", "Open reference"). A failed open offers the others and never silently opens something else.
+  - **Pages:** a Roman page label is never sent as a PDF index, and "Citation page unknown" is said plainly.
+  - **Briefs:** never overwrite a file, repeat the reference for each passage, treat the question as literal text, and stay readable without Ibis or Zotero.
+  - **Testing:** check with real Zotero users and bibliography-only users that they can tell a quote from a comment, and with someone who reads a brief without Ibis.
+- **Add a note instead of a citation** ([#55](https://github.com/ibiscite/ibis/issues/55)), like Zotero's Add Note.
+- **Changed-key warning** (maintainer, 2026-11-11: important; design the UX and edge cases first): warn when a key you cited before now belongs to a renamed or changed item. Warn only when the same item is provable (a plain `.bib` rename can't be tracked); remember a key only after its copy succeeded; offer a way to forget a remembered key.
 - **Is this in my library?** for a pasted identifier or reference list; results say whether a reference has a PDF or a saved web page.
 
 ### 0.6 Your document
@@ -82,19 +99,33 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
-- Opt-in DOI lookup for references not in the library (network decision first).
+- **Opt-in online lookup** (maintainer, 2026-11-11): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
 
 ### 0.7 Everywhere you work
+
+- Make the rules and file readers usable in WebAssembly, with native Zotero/SQLite readers optional; if requested, add thin Python/npm clients around `ibis` and data/pipe extensions rather than loading native code (from architecture).
 
 - Pasting on Linux desktops, and per-app paste rules.
 - A language server (`ibis lsp`), launcher extensions (Raycast and others) and a browser extension.
 - A library on another computer over the person's own SSH ([#1542](https://github.com/ibiscite/ibis/issues/1542)).
 - Adding a missing item to Zotero through its official local write API (opt-in, decided first).
 - More translations; EndNote XML and Word Sources.xml files; ARM64 builds; search by meaning.
+- **Annotations from other reference managers** (maintainer, 2026-11-11: support as many apps and systems as possible): Paperpile, JabRef, BibDesk/Skim, EndNote, Mendeley and Citavi, each read from the manager's own data, since `.bib` and RIS carry no annotations.
 
 ### 1.0 Stable
 
 No new features. People test everything, then the maintainer moves to 1.0. Gates: VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew and winget, with Linux support stated per desktop; the documentation site; licence notices and supply-chain records. macOS keeps its self-signed identity and Windows installers stay unsigned; paid signing is revisited near 1.0 (decision 0032).
+
+- Qualify minimum OS versions, real Wayland consent/focus and cloud/network file-provider recovery per platform; build and protocol fakes do not establish these (from compatibility and architecture).
+- Extend the existing native editor journeys with LibreOffice rich-text readback on Mac and Windows, checking placement, replacement and refusal with replayable evidence (from testing).
+- Add reviewed native visual-state comparisons for picker and Settings, including large text, contrast, reduced motion, scaling and mixed-direction text (from testing).
+- Retain complete VoiceOver/NVDA journeys, real Chinese/Japanese/Korean input-method checks and an Orca pilot, recording unavailable coverage explicitly (from testing).
+- Collect exact-release native latency, idle CPU/wakeups and whole-process memory on named Mac/Windows/Linux machines, including cycle trends and the existing validator's sample/settling requirements (from testing and architecture).
+- Run bounded Codex exploration with existing access and independent assertions, plus free Google Docs/Overleaf readback in isolated synthetic sessions; arrange self-hosted Mac/Windows sessions, permissions, LibreOffice and dedicated free test accounts without paid runners or models (from testing).
+- Before numbered releases, run a risk-ordered computer-use check of the nightly on Mac, Windows and Ubuntu, at most 45 scenarios, restoring settings and recording pass/fail/blocked/skipped with failure evidence (from testing).
+- Publish release SBOMs, make stable releases immutable, and write the update-key loss/rotation procedure (from releasing).
+- Qualify non-US keyboard layouts (Cyrillic and others fall back to the US key position today), sleep and wake, and Windows 10 (WebView2 is supported there to at least October 2028) (from compatibility).
+- Before claiming support: replay the VS Code "Citation Picker for Zotero" requests against Ibis's editor endpoint, and claim Zotero 10 for the ODF Scan flow only after Ibis's own LibreOffice round trip passes on it (from compatibility).
 
 ## After 1.0, maybe
 

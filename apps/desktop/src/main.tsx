@@ -1,7 +1,7 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";
-import "./styles.css";
+import "./ui/Window.css";
 import "./ui/Foundation.css";
 import { commands } from "./bindings";
 import { installNativeAppearance, setPlatform } from "./nativeAppearance";

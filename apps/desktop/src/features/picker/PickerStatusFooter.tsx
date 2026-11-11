@@ -15,17 +15,17 @@ import type { usePickerMenus } from "./usePickerMenus";
 import type { usePickerActions } from "./usePickerActions";
 import type { usePickerKeys } from "./usePickerKeys";
 import type { useCitationRows } from "./useCitationRows";
-import type { useDestination } from "./useDestination";
 import type { useRecentReferences } from "./useRecentReferences";
-import type { usePickerPreferences } from "./usePickerPreferences";
 import type { useOperations } from "./useOperations";
 import type { useProjectBibliography } from "./useProjectBibliography";
 import { libraryMessages } from "../../libraryWords";
 
 export function PickerStatusFooter({
-  api, library, scope, sourceState, menus, actions, run, copyChosen, destination, recents, preferences,
-  operations, altHeld, lastOutcome, cancelCopy, emptyAction, notices, project, highlighted, copyProblem, command, citationLine,
+  api, library, scope, sourceState, menus, actions, run, copyChosen, recents,
+  operations, altHeld, lastOutcome, emptyAction, notices, project, highlighted, copyProblem, command, peek, citationLine,
 }: {
+  /** The highlighted reference's details (⌘Y), when there is one. */
+  peek?: (() => void) | null;
   citationLine?: RefObject<CitationLineActions | null>;
   project: ReturnType<typeof useProjectBibliography>;
   /** The active row of a key output, the one a missing entry can be copied for. */
@@ -38,13 +38,10 @@ export function PickerStatusFooter({
   actions: ReturnType<typeof usePickerActions>;
   run: ReturnType<typeof usePickerKeys>["run"];
   copyChosen: ReturnType<typeof useCitationRows>["copyChosen"];
-  destination: ReturnType<typeof useDestination>;
   recents: ReturnType<typeof useRecentReferences>;
-  preferences: ReturnType<typeof usePickerPreferences>;
   operations: ReturnType<typeof useOperations>;
   altHeld: boolean;
   lastOutcome: string | null;
-  cancelCopy: () => void;
   emptyAction?: boolean;
   notices?: ReactNode;
   copyProblem?: string | null;
@@ -55,7 +52,6 @@ export function PickerStatusFooter({
   const { groupName, offeredGroups, isChosen, chosenLibraries, toggleLibrary, searchAllLibraries } = scope;
   const { libraryMenuOpen, openLibrary, closeLibrary, input, menuOpen, openMore, closeMore, moreButton, pinned, focusHome, runFromMenu } = menus;
   const { sourceAction, sourceOpen, source, chooseSources, chooseFile, openSource } = sourceState;
-  const { density, changeDensity } = preferences;
   const { failures } = operations;
   const { toggleHighlighted, hints } = actions;
   // Read when More opens, the only time it is shown there.
@@ -85,21 +81,20 @@ export function PickerStatusFooter({
         project={{ status: project.status, choose: project.choose, stop: project.stop,
           copyEntry: highlighted?.project?.state === "missing" && highlighted.project.generation === project.status?.generation
             ? () => { project.copyEntry(highlighted); focusHome(); } : null }}
-        density={density} pinned={pinned} keepOrder={actions.keepOrder}
+        pinned={pinned} keepOrder={actions.keepOrder}
         citation={menuOpen && citationLine?.current ? (() => {
           const line = citationLine.current, after = (act: () => void) => () => { menus.leaveOverlays(); act(); };
           return { ...line.state(), focus: after(line.focusLast), edit: after(line.edit), move: (step: -1 | 1) => after(() => line.move(step))(), remove: after(line.remove) };
         })() : null}
         actions={{
-          density: changeDensity,
           pin: () => run("pin"),
           keys: () => run("keys"),
+          format: () => run("format"),
+          chooseSource: () => run("chooseSource"),
+          revealSource: sourceState.sourceAvailable ? () => run("revealSource") : null,
+          peek,
           changeLast: actions.canChangeLast ? () => run("changeLast") : null,
           settings: () => run("settings"),
-          copyOnlyHere: destination.pasteChoices && destination.app ? { app: destination.app, choose: () => {
-            cancelCopy();
-            destination.choosePaste("copy-only");
-          } } : null,
           sessionReferences: menus.openSession,
           forgetRecent: recents.forget ? () => { recents.forget!(); focusHome(); } : null,
           quit: () => run("quit"),

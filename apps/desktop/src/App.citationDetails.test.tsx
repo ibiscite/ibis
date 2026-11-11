@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseForm, chooseFromMore, prepared, receipt, resetApp, result, openCitationDetails, textField, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
+import { backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -177,9 +177,10 @@ test("Keep My Order changes the engine preview and survives a short reopen", asy
   fireEvent.click(await screen.findByText("Zulu work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Alpha work"), { ctrlKey: true });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("a; z"));
-  await chooseFromMore("Keep My Order", "menuitemcheckbox");
-  expect(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }).getAttribute("aria-checked")).toBe("true");
-  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  await chooseFromMore("Keep My Order");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  expect(screen.getByRole("option", { name: "Keep My Order" }).getAttribute("aria-current")).toBe("true");
+  fireEvent.keyDown(within(screen.getByRole("dialog", { name: "Actions" })).getByRole("combobox"), { key: "Escape" });
   await act(async () => { await emit("picker:hidden"); await emit("picker:shown", 2); });
   await waitFor(() => expect(screen.getByRole("region", { name: "Preview" }).textContent).toContain("z; a"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
@@ -456,8 +457,8 @@ test("page and form survive changing output and remain editable", async () => {
   await chooseForm("Smith (2020)");
   const search = screen.getByLabelText("Search references");
   closeCitationDetails();
-  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Copy as Pandoc" }));
-  fireEvent.click(screen.getByRole("menuitemradio", { name: "Typst" }));
+  fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Citation format Pandoc" }));
+  fireEvent.click(screen.getByRole("option", { name: "Typst" }));
   await waitFor(() => expect(previews.at(-1)?.output).toBe("typst"));
   expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, locator_input: { label: "page", text: "42" }, form: "narrative" });
   page = await openCitationDetails();
@@ -790,9 +791,11 @@ test("⇧→ moves a token in a sorting style: the line shows the new order, foc
   fireEvent.keyDown(a, { key: "ArrowRight", shiftKey: true });
   await waitFor(() => expect(line()).toBe("(b); (a); (c)"));
   expect(document.activeElement).toBe(inCitation("a"));
-  await chooseFromMore("Keep My Order", "menuitemcheckbox");
-  expect(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }).getAttribute("aria-checked")).toBe("false");
-  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  await chooseFromMore("Keep My Order");
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  expect(paletteRow(palette, "Keep My Order").getAttribute("aria-current")).toBeNull();
+  fireEvent.keyDown(palette, { key: "Escape" });
   await waitFor(() => expect(line()).toBe("(a); (b); (c)"));
 });
 
@@ -860,8 +863,7 @@ test("a late preview from before Keep My Order went off cannot replace the newes
   await waitFor(() => expect(line()).toBe("(a); (z)"));
   fireEvent.keyDown(inCitation("a")!, { key: "ArrowRight", shiftKey: true });
   await waitFor(() => expect(held.has("kept:z,a")).toBe(true));
-  await chooseFromMore("Keep My Order", "menuitemcheckbox");
-  fireEvent.keyDown(screen.getByRole("menuitemcheckbox", { name: "Keep My Order" }), { key: "Escape" });
+  await chooseFromMore("Keep My Order");
   await waitFor(() => expect(held.has("sorted:a,z")).toBe(true));
   const search = screen.getByLabelText("Search references");
   act(() => search.focus());
