@@ -80,6 +80,14 @@ fn records_cite_the_same_through_every_front_end() -> Result {
         answer["result"]["structuredContent"]["losses"],
         expected["data"]["losses"]
     );
+    assert_eq!(
+        answer["result"]["structuredContent"]["receipt"],
+        expected["data"]["receipt"]
+    );
+    assert_eq!(
+        answer["result"]["structuredContent"]["source_health"],
+        expected["data"]["source_health"]
+    );
     // The output schema requires provenance, and it names where the text came from.
     assert!(
         answer["result"]["structuredContent"]["provenance"]
@@ -166,5 +174,35 @@ fn a_field_that_could_not_be_read_is_a_finding() -> Result {
     let (code, output, errors) = run(&["ibis", "cite", "--records", "--format", "apa"], input)?;
     assert_eq!((code, String::from_utf8(output)?), (1, "(Vale, n.d.)\n".to_owned()));
     assert!(errors.contains("warning:"), "{errors}");
+    Ok(())
+}
+
+#[test]
+fn strict_records_refuse_warnings_through_cli_and_mcp() -> Result {
+    let sent = json!([{"id":"r1","type":"book","title":"Invented","issued":"2020"}]);
+    let (code, output, _) = run(
+        &["ibis", "cite", "--records", "--format", "apa", "--strict", "--json"],
+        &serde_json::to_vec(&sent)?,
+    )?;
+    assert_eq!(code, 3);
+    let refused: Value = serde_json::from_slice(&output)?;
+    assert_eq!(refused["ok"], false);
+    assert_eq!(refused["error"]["reason"], "strict-citation");
+    assert!(refused.get("data").is_none());
+    let engine = Engine::new().map_err(|_| "engine")?;
+    let answer = ibis_engine::mcp::handle(
+        &engine,
+        &mut ibis_engine::mcp::Session::default(),
+        &json!({
+            "jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+                "name":"cite","arguments":{"records":sent,"format":"apa","strict":true},
+                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION,
+                    "io.modelcontextprotocol/clientCapabilities":{}}
+            }
+        }),
+    )
+    .ok_or("mcp")?;
+    assert_eq!(answer["result"]["isError"], true);
+    assert!(answer["result"].get("structuredContent").is_none());
     Ok(())
 }

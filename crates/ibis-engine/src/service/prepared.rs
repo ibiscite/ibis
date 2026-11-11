@@ -278,11 +278,12 @@ impl Engine {
     ) -> Result<PreparedCitation, EngineError> {
         cancel.check()?;
         let state = self.state()?;
+        let context = super::receipt::CitationContext::capture(&state, request);
         let source_health = super::health::SourceHealth::of(
             state
                 .libraries
                 .values()
-                .filter(|library| every_library || request.items.iter().any(|pick| pick.item.library == library.id)),
+                .filter(|library| every_library || context.sources.iter().any(|source| source.library == library.id)),
         );
         let uses_zotero = request.items.iter().any(|pick| {
             state
@@ -293,7 +294,6 @@ impl Engine {
         if uses_zotero && !state.zotero_ready {
             return Err(error(ErrorCode::SourceUnavailable));
         }
-        let context = super::receipt::CitationContext::capture(&state, request);
         let snapshot = &context.snapshot;
         // The receipt keeps the output the preset means, and the exact objects
         // it cites: citing it again refuses a changed reference even when its

@@ -65,19 +65,38 @@ impl<const OK: bool> JsonSchema for Status<OK> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Success<T> {
     ibis: Version,
     ok: Status<true>,
     pub data: T,
+    /// `error` contradicts success even though additive response fields are allowed.
+    #[serde(
+        rename = "error",
+        default,
+        skip_serializing,
+        deserialize_with = "reject_contradiction"
+    )]
+    #[schemars(skip)]
+    error: (),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Failure {
     ibis: Version,
     ok: Status<false>,
     pub error: EngineError,
+    #[serde(
+        rename = "data",
+        default,
+        skip_serializing,
+        deserialize_with = "reject_contradiction"
+    )]
+    #[schemars(skip)]
+    data: (),
+}
+
+fn reject_contradiction<'de, D: Deserializer<'de>>(_: D) -> Result<(), D::Error> {
+    Err(de::Error::custom("contradictory ibis envelope field"))
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -93,6 +112,7 @@ impl<T> Envelope<T> {
             ibis: Version,
             ok: Status,
             data,
+            error: (),
         })
     }
     pub fn failure(error: impl Into<EngineError>) -> Self {
@@ -100,6 +120,7 @@ impl<T> Envelope<T> {
             ibis: Version,
             ok: Status,
             error: error.into(),
+            data: (),
         })
     }
     pub fn data(&self) -> Option<&T> {
@@ -311,6 +332,20 @@ mod tests {
             [2, 3, 4, 5, 5, 6, 70, 130]
         );
         Ok(())
+    }
+
+    #[test]
+    fn additive_response_fields_preserve_success_and_failure() {
+        let success = json!({"ibis":1,"ok":true,"data":[],"added":true});
+        assert_eq!(
+            serde_json::from_value::<Envelope<Value>>(success).unwrap().data(),
+            Some(&json!([]))
+        );
+        let failure = json!({"ibis":1,"ok":false,"error":{"code":"internal","added":true},"added":true});
+        assert!(matches!(
+            serde_json::from_value::<Envelope<Value>>(failure).unwrap(),
+            Envelope::Failure(_)
+        ));
     }
 
     #[test]

@@ -120,6 +120,7 @@ pub struct CitationKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Record {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
     /// Source-added metadata; affects recents/display, never citation meaning.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -175,7 +176,9 @@ pub enum Availability {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Attachment {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
+    #[serde(default, deserialize_with = "super::response::additive")]
     pub parent: Option<ItemRef>,
     pub title: String,
     pub media_type: String,
@@ -186,7 +189,9 @@ pub struct Attachment {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Note {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
+    #[serde(default, deserialize_with = "super::response::additive")]
     pub parent: Option<ItemRef>,
     /// Untrusted plain text; front ends must never inject this as HTML.
     pub text: String,
@@ -194,8 +199,10 @@ pub struct Note {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Annotation {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
     /// The attachment, not an invented bibliographic parent.
+    #[serde(deserialize_with = "super::response::additive")]
     pub parent: ItemRef,
     pub text: String,
     pub comment: String,
@@ -206,17 +213,22 @@ pub struct Annotation {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Collection {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
+    #[serde(default, deserialize_with = "super::response::additive")]
     pub parent: Option<ItemRef>,
     pub name: String,
+    #[serde(deserialize_with = "super::response::additive")]
     pub items: Vec<ItemRef>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Tag {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
     pub name: String,
     #[serde(default)]
+    #[serde(deserialize_with = "super::response::additive")]
     pub items: Vec<ItemRef>,
 }
 
@@ -229,6 +241,7 @@ pub struct SearchCondition {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct SavedSearch {
+    #[serde(deserialize_with = "super::response::additive")]
     pub id: ItemRef,
     pub name: String,
     /// Source conditions are data only; this contract never executes them.
@@ -928,6 +941,18 @@ mod tests {
         ];
         for object in &objects {
             round_trip(object);
+            let mut newer = serde_json::to_value(object).unwrap();
+            newer["added"] = json!(true);
+            newer["data"]["id"]["added"] = json!(true);
+            if newer["data"]["parent"].is_object() {
+                newer["data"]["parent"]["added"] = json!(true);
+            }
+            if let Some(items) = newer["data"]["items"].as_array_mut() {
+                for item in items {
+                    item["added"] = json!(true);
+                }
+            }
+            assert_eq!(serde_json::from_value::<LibraryObject>(newer).unwrap(), *object);
         }
         let snapshot = Snapshot::new(objects).unwrap();
         round_trip(&snapshot);

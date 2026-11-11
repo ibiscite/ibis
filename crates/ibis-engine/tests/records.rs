@@ -266,3 +266,28 @@ fn every_style_field_survives_into_rendering() {
         assert!(text.contains(printed), "{printed} in {text}");
     }
 }
+
+#[test]
+fn strict_records_refuse_losses_refusals_and_item_source_warnings() {
+    let engine = Engine::new().unwrap();
+    let mut clean = pandoc(json!([{"id":"r1","type":"book","citation-key":"one"}]));
+    clean["strict"] = json!(true);
+    let result = records(&engine, clean).unwrap();
+    assert_eq!(result.text.as_deref(), Some("[@one]"));
+    assert_eq!(result.data["source_health"], json!({"status":"ok","findings":[]}));
+    assert_eq!(result.data["receipt"]["sources"], json!([]));
+    assert!(result.data["receipt"]["request"]["items"][0]["expected_cite"].is_string());
+    for mut params in [
+        pandoc(json!([{"id":"r1","type":"book"}])),
+        apa(json!([{"id":"r1","type":"book","title":"Invented","issued":"2020"}])),
+        json!({"records":[{"id":"r1","type":"book","citation-key":"one"}],
+            "output":{"kind":"preset","name":"keys"},"items":[{"id":"r1","locator":{"term":"page","value":"12"}}]}),
+    ] {
+        params["strict"] = json!(true);
+        let error = records(&engine, params).unwrap_err();
+        assert_eq!(
+            (error.code, error.reason),
+            (ErrorCode::BadInput, Some(ErrorReason::StrictCitation))
+        );
+    }
+}

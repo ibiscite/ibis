@@ -126,6 +126,9 @@ pub struct KeyCitationRequest {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct RecordsRequest {
+    /// Refuse losses, refusals and source field warnings in the supplied records.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub strict: bool,
     /// CSL-JSON items, each with an `id` and a `type`. A `citation-key` is what
     /// key outputs write; a record without one formats but has no key.
     #[schemars(length(min = 1, max = 1000))]

@@ -68,7 +68,6 @@ Saved Text, Recreate the Earlier Citation, Create Current Citation) is
 withdrawn until people ask for it. Receipts (#1538) and exporting what a
 document cites (0.6) remain.
 
-<<<<<<< HEAD
 2026-11-10 (#1538, the maintainer's issue): **compatibility rules for the engine
 contract.**
 
@@ -98,8 +97,8 @@ contract.**
 - **Old clients keep working.** The golden cases in `fixtures/cases` are
   contract 1 requests with their answers, and they replay through every front
   end with the same citations.
-=======
-Citation receipts describe a complete result's ordered record identities and cite
+
+Citation receipts describe a complete result's ordered opaque record identities and cite
 fingerprints, resolved output options, captured source read times and findings,
 and canonical content hash. CSL receipts identify the shipped processor and
 style/locale bundle by digest and record the actual output language. The package
@@ -113,4 +112,9 @@ There is no loss-acceptance mechanism, so every reported loss is unaccepted.
 For project key outputs it also requires a complete current bibliography read
 with every emitted key found unambiguously. Ordinary last-good citation remains
 available with its captured warning and last successful source read time.
->>>>>>> origin/feat/receipts-strict
+
+Caller-supplied records use the same receipt and strict policy against their own
+request-local snapshot. They read no library: their receipt lists no source reads
+and their source health is clean. Source field warnings still refuse strict output.
+Citation source health and receipt evidence come from the same held snapshot,
+including annotation dependencies; later library changes cannot rewrite them.

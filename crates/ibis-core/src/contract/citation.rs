@@ -261,15 +261,12 @@ pub enum CitationError {
     FormatterUnavailable,
     AnnotationMismatch,
     NotCitable,
-<<<<<<< HEAD
     // A Zotero marker names a Zotero item, and Ibis did not read this one from Zotero.
     NotFromZotero,
-=======
     /// A code from a newer engine. It reads as needing review, never as success.
     #[serde(other)]
     #[schemars(skip)]
     Unknown,
->>>>>>> origin/feat/contract-version
 }
 
 impl CitationError {
@@ -457,6 +454,7 @@ pub struct CitationReceipt {
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub sample: bool,
     /// Resolved output and ordered records, with their actual cite fingerprints.
+    #[serde(deserialize_with = "super::response::additive")]
     pub request: CitationRequest,
     pub sources: Vec<CitationSourceCheck>,
     pub content_hash: Fingerprint,
@@ -848,30 +846,48 @@ mod tests {
     }
 
     #[test]
-<<<<<<< HEAD
-    fn a_result_from_a_newer_engine_parses_with_its_extra_fields() {
-=======
+    fn receipt_evidence_accepts_additive_fields_without_loosening_requests() {
+        let request = json!({
+            "items":[{"item":{"library":"synthetic","key":"item_one"},
+                "annotation":{"library":"synthetic","key":"item_note"},
+                "locator":{"term":"page","value":"12"},"prefix":[{"text":"see"}]}],
+            "output":{"kind":"key","syntax":"pandoc"}
+        });
+        let parsed_request: CitationRequest = serde_json::from_value(request.clone()).unwrap();
+        let mut evidence = json!({
+            "request":request,"sources":[],"content_hash":Fingerprint::of_bytes(b"invented"),
+            "ibis_version":"invented","meaning_version":1
+        });
+        evidence["added"] = json!(true);
+        evidence["request"]["added"] = json!(true);
+        evidence["request"]["output"]["added"] = json!(true);
+        for field in ["item", "annotation", "locator"] {
+            evidence["request"]["items"][0][field]["added"] = json!(true);
+        }
+        evidence["request"]["items"][0]["added"] = json!(true);
+        evidence["request"]["items"][0]["prefix"][0]["added"] = json!(true);
+        assert!(serde_json::from_value::<CitationRequest>(evidence["request"].clone()).is_err());
+        let parsed: CitationReceipt = serde_json::from_value(evidence.clone()).unwrap();
+        assert_eq!(parsed.request, parsed_request);
+        evidence["request"]["items"][0]["locator"]["term"] = json!("invented");
+        assert!(serde_json::from_value::<CitationReceipt>(evidence).is_err());
+    }
+
+    #[test]
     fn codes_from_a_newer_engine_parse_and_read_as_needing_review() {
->>>>>>> origin/feat/contract-version
         let result = CitationResult::new(
             "[@one]".into(),
             None,
             None,
             DisplayTree::default(),
-<<<<<<< HEAD
-            vec![ItemOutcome::Rendered { item: 0 }],
-=======
             vec![ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }],
->>>>>>> origin/feat/contract-version
             vec![],
             vec![],
         );
         let mut wire = serde_json::to_value(&result).unwrap();
-<<<<<<< HEAD
         wire["source_health"] = json!({"status":"ok","findings":[]});
         wire["outcomes"][0]["added"] = json!(true);
-        assert_eq!(serde_json::from_value::<CitationResult>(wire).unwrap(), result);
-=======
+        assert_eq!(serde_json::from_value::<CitationResult>(wire.clone()).unwrap(), result);
         wire["outcomes"] = json!([
             {"outcome":"refused","item":0,"error":"invented-refusal"},
             {"outcome":"invented-outcome","item":1}
@@ -903,6 +919,5 @@ mod tests {
         // Nothing unknown is ever copied as a finished citation.
         assert!(!parsed.is_complete());
         assert!(parsed.copy_content(2).is_none());
->>>>>>> origin/feat/contract-version
     }
 }

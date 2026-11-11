@@ -1185,6 +1185,7 @@ fn run_method<R: BufRead>(
             let form = chosen_form(args, &output)?;
             let params = json!({
                 "records": records,
+                "strict": args.get_flag("strict"),
                 "output": output,
                 "form": form,
                 "output_locale": args.get_one::<String>("locale"),

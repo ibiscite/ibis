@@ -102,7 +102,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "title": {
           "type": "string"
@@ -129,29 +130,6 @@
     },
     "CitationError": {
       "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
-<<<<<<< HEAD
-      "type": "string",
-      "enum": [
-        "empty-selection",
-        "too-many-items",
-        "invalid-locator",
-        "invalid-rich-text",
-        "output-too-large",
-        "unsupported-form",
-        "missing-item",
-        "changed-item",
-        "missing-key",
-        "ambiguous-key",
-        "conflicting-key",
-        "invalid-key",
-        "unsupported-output",
-        "invalid-locale",
-        "cancelled",
-        "formatter-unavailable",
-        "annotation-mismatch",
-        "not-citable",
-        "not-from-zotero"
-=======
       "oneOf": [
         {
           "type": "string",
@@ -173,10 +151,10 @@
             "cancelled",
             "formatter-unavailable",
             "annotation-mismatch",
-            "not-citable"
+            "not-citable",
+            "not-from-zotero"
           ]
         }
->>>>>>> origin/feat/contract-version
       ]
     },
     "CitationForm": {
@@ -625,7 +603,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         }
       },
       "required": [
@@ -752,7 +731,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "app",
         "output",
@@ -1013,7 +991,6 @@
           "$ref": "#/$defs/FailureStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",
@@ -1476,7 +1453,8 @@
             {
               "type": "null"
             }
-          ]
+          ],
+          "default": null
         },
         "text": {
           "description": "Untrusted plain text; front ends must never inject this as HTML.",
@@ -1723,7 +1701,6 @@
           "$ref": "#/$defs/SuccessStatus"
         }
       },
-      "additionalProperties": false,
       "required": [
         "ibis",
         "ok",

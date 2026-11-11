@@ -360,7 +360,8 @@ fn an_older_prepared_result_keeps_its_own_records_and_checks_after_a_newer_resul
     let earlier = engine
         .prepare_citation(&serde_json::from_value(request.clone()).unwrap(), &cancel)
         .unwrap();
-    let before = serde_json::to_value(earlier.result()).unwrap();
+    let mut before = serde_json::to_value(earlier.result()).unwrap();
+    before["source_health"] = serde_json::to_value(earlier.source_health()).unwrap();
     std::fs::write(
         dir.path().join("invented.bib"),
         "@book{one,title={New Invented Signals},year={2027}}\n",
@@ -386,8 +387,10 @@ fn an_older_prepared_result_keeps_its_own_records_and_checks_after_a_newer_resul
             )
             .is_err()
     );
-    let delayed = engine
-        .finalize(DispatchResult::citation(earlier.into_result(), 1).unwrap())
+    let earlier = earlier.into_checked();
+    let delayed = DispatchResult::citation(earlier.value, 1)
+        .unwrap()
+        .with_health(&earlier.source_health)
         .unwrap();
     assert_eq!(delayed.data, before);
     assert!(!delayed.source_findings);

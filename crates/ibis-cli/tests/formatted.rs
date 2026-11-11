@@ -108,22 +108,15 @@ fn formatted_goldens_replay_through_engine_human_call_and_stdio() -> Result<(), 
                 case.name
             );
             assert!(errors.is_empty());
-<<<<<<< HEAD
-            // Through dispatch, a citation also says its library was read cleanly.
+            // Runtime evidence is separate from the independently stored formatting oracle.
             let mut healthy = serde_json::to_value(&case.expected)?;
             healthy["data"]["source_health"] = serde_json::json!({"status":"ok","findings":[]});
-            let mut expected_bytes = canonical(&healthy)?;
-            expected_bytes.push(b'\n');
-            assert_eq!(output, expected_bytes, "{}", case.name);
-=======
-            let expected_bytes = canonical(&serde_json::to_value(&case.expected)?)?;
             assert_eq!(
                 canonical(&serde_json::from_slice(&output)?)?,
-                expected_bytes,
+                canonical(&healthy)?,
                 "{}",
                 case.name
             );
->>>>>>> origin/feat/receipts-strict
         }
         let mut input = vec![];
         write_frame(

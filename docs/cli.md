@@ -482,7 +482,8 @@ Plain `cite` keeps its existing result shape.
 Complete citations in `--json`, RPC and MCP carry `receipt`: ordered opaque record
 identities and their cite fingerprints, resolved request options, source read times
 and findings, the canonical content hash and formatting versions. A caller-supplied
-snapshot has no source read time. CSL receipts include the actual language and
+snapshot has no source read time. `--records` receipts describe the request-local
+records and list no library reads; their `source_health` is clean. CSL receipts include the actual language and
 digests of the shipped processor and style/locale bundle. Project citations add the
 definition's revision, the checked bibliography's fingerprint and its successful
 check time.
@@ -493,6 +494,8 @@ was used; they do not archive records or promise historical recreation.
 `ibis cite --strict` returns an error without citation text for any loss, refusal,
 source warning or failed source refresh. `--request` accepts it as a flag or as
 `"strict": true` in the request, as does RPC; MCP's `cite` tool accepts `strict`.
+`--records` and the `records` method apply it to the records sent with the request,
+including warnings about fields that could not be read.
 With `--project`, strict mode also requires a current complete bibliography check
 with each emitted key found unambiguously. It changes no saved setting.
 

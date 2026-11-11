@@ -415,6 +415,11 @@ fn a_destination_says_what_the_app_gets_and_how() {
     assert_eq!(word.name.as_deref(), Some("Microsoft Word"));
     assert_eq!(word.delivery, Decision::Paste);
     assert_eq!(word.output, OutputSpec::Csl { style: "ieee".into() });
+    let mut newer = serde_json::to_value(&word).unwrap();
+    newer["added"] = serde_json::json!(true);
+    newer["app"]["added"] = serde_json::json!(true);
+    newer["output"]["added"] = serde_json::json!(true);
+    assert_eq!(serde_json::from_value::<Destination>(newer).unwrap(), word);
 
     let terminal = at("com.apple.Terminal", System::Windows);
     assert_eq!(terminal.delivery, Decision::Copy(CopyReason::Terminal));

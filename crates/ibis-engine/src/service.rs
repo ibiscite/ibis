@@ -384,23 +384,7 @@ impl Engine {
             None,
         )
     }
-<<<<<<< HEAD
-=======
-    /// Apply source health to the process outcome while preserving canonical data.
-    pub fn finalize(&self, mut result: DispatchResult) -> Result<DispatchResult, EngineError> {
-        if result.data.get("receipt").is_none() {
-            result.source_findings = self
-                .state()?
-                .libraries
-                .values()
-                .any(|library| library.warnings_total > 0 || library.refresh_error.is_some());
-        }
-        if result.source_findings && result.exit_code == ExitCode::Ok {
-            result.exit_code = ExitCode::Findings;
-        }
-        result.bounded()
-    }
->>>>>>> origin/feat/receipts-strict
+
     /// Whether Zotero's references here came from its closed database, the
     /// only read a profile choice affects.
     pub fn zotero_read_closed(&self) -> bool {
@@ -654,12 +638,15 @@ impl Engine {
             .into_iter()
             .map(|pick| {
                 let id = item(&pick.id);
-                if snapshot.get(&id).is_none() {
-                    return Err(error(ErrorCode::NotFound));
-                }
+                let expected_cite = snapshot
+                    .get(&id)
+                    .ok_or_else(|| error(ErrorCode::NotFound))?
+                    .fingerprints
+                    .cite
+                    .clone();
                 Ok(CitationItem {
                     item: id,
-                    expected_cite: None,
+                    expected_cite: Some(expected_cite),
                     form: None,
                     locator: pick.locator,
                     prefix: pick.prefix,
@@ -672,6 +659,7 @@ impl Engine {
             .collect::<Result<Vec<_>, EngineError>>()?;
         let output = crate::outputs::resolve(&request.output)?;
         let citation = CitationRequest {
+            strict: request.strict,
             items,
             keep_order: matches!(output, OutputSpec::Key { .. }),
             output,
@@ -679,7 +667,15 @@ impl Engine {
             input_language: None,
             output_locale: request.output_locale.clone(),
         };
-        self.cite_snapshot(&snapshot, &citation, cancel)
+        self.cite_snapshot(
+            &receipt::CitationContext {
+                snapshot,
+                sources: Vec::new(),
+                zotero: BTreeMap::new(),
+            },
+            &citation,
+            cancel,
+        )
     }
     /// Why records sent with a request would not all be cited: each warning's
     /// `line` is a record's place in the list, from one. Nothing is opened.
@@ -757,15 +753,14 @@ impl Engine {
         cancel.check()?;
         crate::protocol::validate_shape(params).map_err(|_| error(ErrorCode::BadInput))?;
         let data = match method {
-<<<<<<< HEAD
             Method::Libraries => {
                 let request = if params.is_null() {
-                    LibrariesRequest::List
+                    LibrariesRequest::List {}
                 } else {
                     parameters::<LibrariesRequest>(params)?
                 };
                 let (profiles, groups) = match request {
-                    LibrariesRequest::List => (None, None),
+                    LibrariesRequest::List {} => (None, None),
                     LibrariesRequest::OpenZotero {
                         libraries,
                         profile,
@@ -774,8 +769,8 @@ impl Engine {
                         self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
                         (None, None)
                     }
-                    LibrariesRequest::ZoteroProfiles => (Some(self.zotero_profiles().unwrap_or_default()), None),
-                    LibrariesRequest::ZoteroGroups => (None, Some(self.zotero_groups()?)),
+                    LibrariesRequest::ZoteroProfiles {} => (Some(self.zotero_profiles().unwrap_or_default()), None),
+                    LibrariesRequest::ZoteroGroups {} => (None, Some(self.zotero_groups()?)),
                     LibrariesRequest::OpenFile { path } => {
                         self.open_file(&path, cancel)?;
                         (None, None)
@@ -803,42 +798,7 @@ impl Engine {
                 .with_health(&result.source_health);
             }
             Method::Show => return checked(self.show_checked(&parameters(params)?)?, ExitCode::Ok),
-=======
-            Method::Libraries => match if params.is_null() {
-                LibrariesRequest::List {}
-            } else {
-                parameters::<LibrariesRequest>(params)?
-            } {
-                LibrariesRequest::List {} => value(self.libraries()?)?,
-                LibrariesRequest::OpenZotero {
-                    libraries,
-                    profile,
-                    reload,
-                } => {
-                    self.read_zotero(reload, libraries.as_deref(), profile.as_deref(), cancel)?;
-                    value(self.libraries()?)?
-                }
-                LibrariesRequest::ZoteroProfiles {} => value(LibrariesResult {
-                    zotero_profiles: Some(self.zotero_profiles().unwrap_or_default()),
-                    zotero_installed: Some(ibis_sources::zotero_source::installed()),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::ZoteroGroups {} => value(LibrariesResult {
-                    zotero_groups: Some(self.zotero_groups()?),
-                    ..self.libraries()?
-                })?,
-                LibrariesRequest::OpenFile { path } => {
-                    self.open_file(&path, cancel)?;
-                    value(self.libraries()?)?
-                }
-                LibrariesRequest::Reload { library } => {
-                    self.reload_files(library.as_ref(), cancel)?;
-                    value(self.libraries()?)?
-                }
-            },
-            Method::Search => value(self.search(&parameters(params)?, cancel)?)?,
-            Method::Show => value(self.show(&parameters(params)?)?)?,
->>>>>>> origin/feat/contract-version
+
             Method::Cite => {
                 let request: CitationRequest = parameters(params)?;
                 let checked = self.prepare_citation(&request, cancel)?.into_checked();
@@ -860,7 +820,7 @@ impl Engine {
                 if unread {
                     dispatched.exit_code = ExitCode::Findings;
                 }
-                return Ok(dispatched);
+                return dispatched.with_health(&health::SourceHealth::of(std::iter::empty()));
             }
             Method::Project => {
                 let result = self.project(&parameters(params)?, cancel)?;
@@ -1149,17 +1109,11 @@ fn response_schema(method: Method) -> Value {
     match method {
         Method::Libraries => schema_for!(health::Checked<LibrariesResult>),
         Method::Search => schema_for!(SearchResult),
-<<<<<<< HEAD
         Method::Show => schema_for!(health::Checked<SnapshotObject>),
         Method::Cite => schema_for!(health::Checked<CitationResult>),
         Method::Project => schema_for!(health::Checked<ProjectResult>),
         Method::Entry => schema_for!(health::Checked<EntryResult>),
-=======
-        Method::Show => schema_for!(SnapshotObject),
-        Method::Cite | Method::Records => schema_for!(CitationResult),
-        Method::Project => schema_for!(ProjectResult),
-        Method::Entry => schema_for!(EntryResult),
->>>>>>> origin/feat/cite-records
+        Method::Records => schema_for!(health::Checked<CitationResult>),
         Method::Styles => schema_for!(StylesResult),
         Method::Outputs => schema_for!(crate::outputs::OutputsResult),
         _ => schema_for!(Value),

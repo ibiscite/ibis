@@ -17,7 +17,6 @@ pub enum ProjectAssessmentState {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct ProjectAssessment {
     pub state: ProjectAssessmentState,
     pub name: String,
@@ -35,7 +34,6 @@ impl ProjectAssessment {
 /// A request-local writing context, with the ordinary citation contract kept
 /// intact. Paths are native input only; the check names just its bibliography.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct WritingProjectCitation {
     pub id: String,
     pub name: String,
@@ -107,11 +105,7 @@ impl Engine {
         let mut request = request.clone();
         request.output = project.output.clone();
         let request = self.key_citation_request(&request, cancel)?;
-<<<<<<< HEAD
-        self.writing_project_citation(project, &request, policy, true, cancel)
-=======
-        self.cite_writing_project(project, &request, cancel)
->>>>>>> origin/feat/receipts-strict
+        self.writing_project_citation(project, &request, true, cancel)
     }
 
     /// The project definition is immutable for this request. Its output is the
@@ -122,30 +116,16 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
-<<<<<<< HEAD
-        self.cite_writing_project_with_policy(project, request, ProjectPolicy::Normal, cancel)
-    }
-
-    pub fn cite_writing_project_with_policy(
-        &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
-        request: &CitationRequest,
-        policy: ProjectPolicy,
-        cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
-        self.writing_project_citation(project, request, policy, false, cancel)
+        self.writing_project_citation(project, request, false, cancel)
     }
 
     fn writing_project_citation(
         &self,
         project: &ibis_core::settings::writing_projects::WritingProject,
         request: &CitationRequest,
-        policy: ProjectPolicy,
         by_key: bool,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
-=======
->>>>>>> origin/feat/receipts-strict
         ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
             .map_err(|_| error(ErrorCode::BadInput))?;
         let mut request = request.clone();
