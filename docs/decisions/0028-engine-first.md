@@ -68,6 +68,7 @@ Saved Text, Recreate the Earlier Citation, Create Current Citation) is
 withdrawn until people ask for it. Receipts (#1538) and exporting what a
 document cites (0.6) remain.
 
+<<<<<<< HEAD
 2026-11-10 (#1538, the maintainer's issue): **compatibility rules for the engine
 contract.**
 
@@ -97,3 +98,19 @@ contract.**
 - **Old clients keep working.** The golden cases in `fixtures/cases` are
   contract 1 requests with their answers, and they replay through every front
   end with the same citations.
+=======
+Citation receipts describe a complete result's ordered record identities and cite
+fingerprints, resolved output options, captured source read times and findings,
+and canonical content hash. CSL receipts identify the shipped processor and
+style/locale bundle by digest and record the actual output language. The package
+version and citation-meaning version are separate. A receipt is evidence of what
+was used; it archives neither the original source nor historical formatting
+material, and is not a promise that an earlier citation can be recreated.
+
+Strict citation policy is request-local and enforced by the engine: any refusal,
+loss, source warning or failed source refresh returns an error with no citation.
+There is no loss-acceptance mechanism, so every reported loss is unaccepted.
+For project key outputs it also requires a complete current bibliography read
+with every emitted key found unambiguously. Ordinary last-good citation remains
+available with its captured warning and last successful source read time.
+>>>>>>> origin/feat/receipts-strict

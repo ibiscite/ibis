@@ -54,6 +54,7 @@ fn request(items: &[(ItemRef, Option<CitationForm>)], form: CitationForm, output
         keep_order: true,
         output,
         input_language: None,
+        strict: false,
         output_locale: None,
     }
 }

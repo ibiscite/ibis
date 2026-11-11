@@ -242,6 +242,7 @@ fn golden_citations_are_identical_through_every_front_end() -> Result {
         // Key output must equal the seed. Formatted seeds are checked against
         // Zotero by `formatted.rs` and the source goldens; here every front
         // end must give what the engine gives.
+<<<<<<< HEAD
         let expected = match case.request.output {
             OutputSpec::Key { .. } => {
                 let mut expected = serde_json::to_value(&case.expected)?;
@@ -252,6 +253,16 @@ fn golden_citations_are_identical_through_every_front_end() -> Result {
             }
             _ => call(FrontEnd::Engine, &engine, Method::Cite, &request)?.ok_or("engine")?,
         };
+=======
+        let expected = call(FrontEnd::Engine, &engine, Method::Cite, &request)?.ok_or("engine")?;
+        if matches!(case.request.output, OutputSpec::Key { .. }) {
+            let mut meaning = expected.clone();
+            if let Some(data) = meaning.get_mut("data").and_then(serde_json::Value::as_object_mut) {
+                data.remove("receipt");
+            }
+            assert_eq!(meaning, serde_json::to_value(&case.expected)?, "{}", case.name);
+        }
+>>>>>>> origin/feat/receipts-strict
         same(&case.name, &engine, Method::Cite, &request, &expected)?;
         // The same output named by its id in the engine's list gives the same citation.
         if let Some(listed) = ibis_engine::outputs::named(&case.request.output) {

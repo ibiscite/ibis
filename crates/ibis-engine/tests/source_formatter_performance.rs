@@ -25,6 +25,7 @@ fn chicago_source_bibliography_and_warm_preview_meet_release_budgets() {
         },
         form: CitationForm::BibliographyOnly,
         keep_order: false,
+        strict: false,
         output_locale: None,
     };
     let start = Instant::now();

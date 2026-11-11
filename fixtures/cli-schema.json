@@ -182,6 +182,11 @@
             "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
             "oneOf": [
               {
+                "const": "strict-citation",
+                "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+                "type": "string"
+              },
+              {
                 "const": "unknown-style",
                 "description": "No style has the requested id; `styles` lists them.",
                 "type": "string"
@@ -2981,6 +2986,10 @@
               "string",
               "null"
             ]
+          },
+          "strict": {
+            "description": "Refuse a citation with losses, refusals or unhealthy sources.",
+            "type": "boolean"
           }
         },
         "required": [
@@ -4119,6 +4128,285 @@
             ],
             "type": "string"
           },
+          "CitationForm": {
+            "enum": [
+              "normal",
+              "narrative",
+              "author-only",
+              "year-only",
+              "full",
+              "bibliography-only"
+            ],
+            "type": "string"
+          },
+          "CitationItem": {
+            "additionalProperties": false,
+            "properties": {
+              "annotation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ItemRef"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "expected_annotation_cite": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Fingerprint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Captures the annotation page/parent intent separately from its cited work."
+              },
+              "expected_cite": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Fingerprint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "A picked item carries its original cite fingerprint for atomic copy-time validation.\nDirect requests may omit it when they intentionally use the current snapshot."
+              },
+              "form": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationForm"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null,
+                "description": "Overrides the request form, allowing mixed forms in one citation."
+              },
+              "item": {
+                "$ref": "#/$defs/ItemRef"
+              },
+              "locator": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Locator"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "default": null
+              },
+              "prefix": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/TextRun"
+                },
+                "type": "array"
+              },
+              "suffix": {
+                "default": [],
+                "items": {
+                  "$ref": "#/$defs/TextRun"
+                },
+                "type": "array"
+              },
+              "suppress_author": {
+                "default": false,
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "item"
+            ],
+            "type": "object"
+          },
+          "CitationProjectCheck": {
+            "properties": {
+              "bibliography": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Fingerprint"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "The checked bibliography's content, without its location or text."
+              },
+              "checked_at_ms": {
+                "description": "Present only for a complete successful read made by this citation call.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "revision": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "revision"
+            ],
+            "type": "object"
+          },
+          "CitationReceipt": {
+            "description": "Immutable citation evidence. Historical source material is not stored here.",
+            "properties": {
+              "content_hash": {
+                "$ref": "#/$defs/Fingerprint"
+              },
+              "formatting": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/FormattingProvenance"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "ibis_version": {
+                "type": "string"
+              },
+              "language": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "meaning_version": {
+                "description": "Citation meaning changes independently of package and wire versions.",
+                "format": "uint32",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "project": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/CitationProjectCheck"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "request": {
+                "$ref": "#/$defs/CitationRequest",
+                "description": "Resolved output and ordered records, with their actual cite fingerprints."
+              },
+              "sample": {
+                "description": "The visible sample marker is part of the attested content.",
+                "type": "boolean"
+              },
+              "sources": {
+                "items": {
+                  "$ref": "#/$defs/CitationSourceCheck"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "request",
+              "sources",
+              "content_hash",
+              "ibis_version",
+              "meaning_version"
+            ],
+            "type": "object"
+          },
+          "CitationRequest": {
+            "additionalProperties": false,
+            "properties": {
+              "form": {
+                "$ref": "#/$defs/CitationForm",
+                "default": "normal"
+              },
+              "input_language": {
+                "default": null,
+                "description": "None uses en-US, never the process or operating-system locale.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "items": {
+                "description": "Input order and duplicate references are meaningful and must be preserved.",
+                "items": {
+                  "$ref": "#/$defs/CitationItem"
+                },
+                "type": "array"
+              },
+              "keep_order": {
+                "default": false,
+                "type": "boolean"
+              },
+              "output": {
+                "$ref": "#/$defs/OutputSpec"
+              },
+              "output_locale": {
+                "default": null,
+                "description": "None uses the style default. Engines validate locale strings as data.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "strict": {
+                "description": "Refuse a citation with losses, refusals or unhealthy sources.",
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "items",
+              "output"
+            ],
+            "type": "object"
+          },
+          "CitationSourceCheck": {
+            "properties": {
+              "last_successful_read_ms": {
+                "description": "Absent for caller-supplied snapshots, which do not establish a source read.",
+                "format": "uint64",
+                "minimum": 0,
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              },
+              "refresh_error": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/ErrorCode"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "warnings": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "library",
+              "warnings"
+            ],
+            "type": "object"
+          },
           "CitationWarning": {
             "additionalProperties": false,
             "properties": {
@@ -4341,9 +4629,38 @@
             ],
             "type": "object"
           },
+          "ErrorCode": {
+            "enum": [
+              "usage",
+              "bad-input",
+              "not-found",
+              "source-unavailable",
+              "resource-limit",
+              "newer-format",
+              "internal",
+              "cancelled"
+            ],
+            "type": "string"
+          },
           "Fingerprint": {
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
+          },
+          "FormattingProvenance": {
+            "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
+            "properties": {
+              "bundle": {
+                "$ref": "#/$defs/Fingerprint"
+              },
+              "processor": {
+                "$ref": "#/$defs/Fingerprint"
+              }
+            },
+            "required": [
+              "processor",
+              "bundle"
+            ],
+            "type": "object"
           },
           "ItemOutcome": {
             "oneOf": [
@@ -4391,6 +4708,23 @@
               }
             ]
           },
+          "ItemRef": {
+            "additionalProperties": false,
+            "description": "Identity inside one library; citation keys are intentionally separate.\nNon-item kinds use source-namespaced keys (for example `tag:...`) so\nsource tags and collections cannot collide with native item keys.",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "library": {
+                "$ref": "#/$defs/LibraryId"
+              }
+            },
+            "required": [
+              "library",
+              "key"
+            ],
+            "type": "object"
+          },
           "KeySyntax": {
             "enum": [
               "pandoc",
@@ -4409,6 +4743,63 @@
               "keys",
               "csl-json",
               "cayw-json"
+            ],
+            "type": "string"
+          },
+          "LibraryId": {
+            "description": "A library's opaque token. It says nothing about the library: its kind and\ncapabilities are fields of its description, and nothing may read them from\nhere. Sources mint one with [`LibraryId::digest`] over a private key and the\nsource's identity, so a seen id confirms no guessed location.",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$",
+            "type": "string"
+          },
+          "Locator": {
+            "additionalProperties": false,
+            "properties": {
+              "term": {
+                "$ref": "#/$defs/LocatorTerm"
+              },
+              "value": {
+                "description": "Literal range or pinpointer, never interpreted as markup.",
+                "type": "string"
+              }
+            },
+            "required": [
+              "term",
+              "value"
+            ],
+            "type": "object"
+          },
+          "LocatorTerm": {
+            "description": "CSL 1.0.2 input locator vocabulary, including the disambiguating `-locator` names.\nhttps://github.com/citation-style-language/schema/blob/v1.0.2/schemas/input/csl-citation.json",
+            "enum": [
+              "act",
+              "appendix",
+              "article-locator",
+              "book",
+              "canon",
+              "chapter",
+              "column",
+              "elocation",
+              "equation",
+              "figure",
+              "folio",
+              "issue",
+              "line",
+              "note",
+              "opus",
+              "page",
+              "paragraph",
+              "part",
+              "rule",
+              "scene",
+              "section",
+              "sub-verbo",
+              "supplement",
+              "table",
+              "timestamp",
+              "title-locator",
+              "verse",
+              "version",
+              "volume"
             ],
             "type": "string"
           },
@@ -4553,6 +4944,31 @@
               "linux"
             ],
             "type": "string"
+          },
+          "TextRun": {
+            "additionalProperties": false,
+            "description": "Fixed-depth rich text: styling is data, never arbitrary HTML or executable markup.",
+            "properties": {
+              "bold": {
+                "default": false,
+                "type": "boolean"
+              },
+              "italic": {
+                "default": false,
+                "type": "boolean"
+              },
+              "script": {
+                "$ref": "#/$defs/Script",
+                "default": "normal"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "text"
+            ],
+            "type": "object"
           }
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4607,6 +5023,17 @@
               "$ref": "#/$defs/ItemOutcome"
             },
             "type": "array"
+          },
+          "receipt": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/CitationReceipt"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Evidence of the records and options actually used, not an archive."
           },
           "rtf": {
             "type": [

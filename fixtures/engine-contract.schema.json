@@ -303,6 +303,102 @@
         "better-bibtex"
       ]
     },
+    "CitationProjectCheck": {
+      "type": "object",
+      "properties": {
+        "bibliography": {
+          "description": "The checked bibliography's content, without its location or text.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Fingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "checked_at_ms": {
+          "description": "Present only for a complete successful read made by this citation call.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "revision": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision"
+      ]
+    },
+    "CitationReceipt": {
+      "description": "Immutable citation evidence. Historical source material is not stored here.",
+      "type": "object",
+      "properties": {
+        "content_hash": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "formatting": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FormattingProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ibis_version": {
+          "type": "string"
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "meaning_version": {
+          "description": "Citation meaning changes independently of package and wire versions.",
+          "type": "integer",
+          "format": "uint32",
+          "minimum": 0
+        },
+        "project": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationProjectCheck"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "request": {
+          "description": "Resolved output and ordered records, with their actual cite fingerprints.",
+          "$ref": "#/$defs/CitationRequest"
+        },
+        "sample": {
+          "description": "The visible sample marker is part of the attested content.",
+          "type": "boolean"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/CitationSourceCheck"
+          }
+        }
+      },
+      "required": [
+        "request",
+        "sources",
+        "content_hash",
+        "ibis_version",
+        "meaning_version"
+      ]
+    },
     "CitationRequest": {
       "type": "object",
       "properties": {
@@ -339,6 +435,10 @@
             "null"
           ],
           "default": null
+        },
+        "strict": {
+          "description": "Refuse a citation with losses, refusals or unhealthy sources.",
+          "type": "boolean"
         }
       },
       "additionalProperties": false,
@@ -401,6 +501,17 @@
             "$ref": "#/$defs/ItemOutcome"
           }
         },
+        "receipt": {
+          "description": "Evidence of the records and options actually used, not an archive.",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationReceipt"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "rtf": {
           "type": [
             "string",
@@ -424,6 +535,42 @@
         "losses",
         "notices",
         "content_hash"
+      ]
+    },
+    "CitationSourceCheck": {
+      "type": "object",
+      "properties": {
+        "last_successful_read_ms": {
+          "description": "Absent for caller-supplied snapshots, which do not establish a source read.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint64",
+          "minimum": 0
+        },
+        "library": {
+          "$ref": "#/$defs/LibraryId"
+        },
+        "refresh_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "warnings": {
+          "type": "integer",
+          "format": "uint",
+          "minimum": 0
+        }
+      },
+      "required": [
+        "library",
+        "warnings"
       ]
     },
     "CitationWarning": {
@@ -733,6 +880,11 @@
       "description": "Why a request failed, when the code alone cannot tell a caller what to change.\nFront ends choose their words from it; they never guess a reason from the code.",
       "oneOf": [
         {
+          "description": "Strict citation policy found losses, refusals or unhealthy evidence.",
+          "type": "string",
+          "const": "strict-citation"
+        },
+        {
           "description": "No style has the requested id; `styles` lists them.",
           "type": "string",
           "const": "unknown-style"
@@ -889,6 +1041,22 @@
       "required": [
         "cite",
         "full"
+      ]
+    },
+    "FormattingProvenance": {
+      "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
+      "type": "object",
+      "properties": {
+        "bundle": {
+          "$ref": "#/$defs/Fingerprint"
+        },
+        "processor": {
+          "$ref": "#/$defs/Fingerprint"
+        }
+      },
+      "required": [
+        "processor",
+        "bundle"
       ]
     },
     "GoldenCase": {

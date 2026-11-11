@@ -23,9 +23,9 @@ pub const MAX_HITS: usize = 25;
 pub const MAX_STYLES: usize = 200;
 /// Entries kept of any one list (authors, keywords).
 pub const MAX_LIST: usize = 20;
-/// Bytes of JSON one tool result may take, its text and its structured copy of
-/// the answer together. Search returns fewer hits rather than more; anything
-/// else larger is refused.
+/// Bytes one tools/call reply may send, including both answer copies, the
+/// envelope, metadata and newline. Search reduces its hits to fit the answer;
+/// an oversized final reply is refused.
 pub const MAX_ANSWER: usize = 256 * 1024;
 /// Said with every answer that holds library text, because anyone can write a
 /// title: a library can come from a colleague, a download or a web page.
@@ -67,7 +67,11 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "cite",
         title: "Format a citation",
+<<<<<<< HEAD
         description: "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings. To cite CSL-JSON you were given instead, pass it as `records`.",
+=======
+        description: "mcp-cite-description",
+>>>>>>> origin/feat/receipts-strict
         input: cite_input,
         output: cite_output,
         reads_library: |arguments| !arguments.contains_key("records"),
@@ -93,7 +97,7 @@ pub(super) fn list() -> Value {
             json!({
                 "name": tool.name,
                 "title": tool.title,
-                "description": tool.description,
+                "description": crate::catalogue::text(tool.description, None, &[]).unwrap_or_else(|| tool.description.into()),
                 "inputSchema": (tool.input)(),
                 "outputSchema": (tool.output)(),
                 "annotations": read_only,
@@ -146,12 +150,14 @@ pub(super) fn call(engine: &Engine, problem: Option<&Refusal>, tool: &Tool, argu
     });
     match answered {
         Ok(result) => result,
-        Err(Refusal { code, advice }) => {
-            let name = serde_json::to_value(code).unwrap_or(Value::Null);
-            let text = format!("error: {}. {advice}", name.as_str().unwrap_or("internal"));
-            json!({"content": [{"type": "text", "text": text}], "isError": true})
-        }
+        Err(refusal) => tool_error(refusal),
     }
+}
+
+pub(super) fn tool_error(Refusal { code, advice }: Refusal) -> Value {
+    let name = serde_json::to_value(code).unwrap_or(Value::Null);
+    let text = format!("error: {}. {advice}", name.as_str().unwrap_or("internal"));
+    json!({"content": [{"type": "text", "text": text}], "isError": true})
 }
 
 fn answer(
@@ -467,6 +473,7 @@ fn cite_input() -> Value {
             "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
+            "strict": {"type": "boolean", "description": crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}
         },
         "additionalProperties": false
@@ -482,12 +489,17 @@ fn cite_output() -> Value {
             "notices": {"type": "array"},
             "losses": {"type": "array", "description": "What was asked for but could not be shown."},
             "warnings": {"type": "array"},
+            "receipt": {"type":"object"},
             "destination": {"type": "object", "description": "What Ibis does for the app named by for_app, with pasting on and permitted."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}},
             "source_health": health_output(false)
         },
+<<<<<<< HEAD
         "required": ["text", "notices", "losses", "provenance", "source_health"]
+=======
+        "required": ["text", "notices", "losses", "receipt", "provenance"]
+>>>>>>> origin/feat/receipts-strict
     })
 }
 
@@ -646,12 +658,44 @@ fn language_and_form(
             .map_err(|_| Refusal::bad("form must be one of the values in this tool's input schema."))?,
         None => CitationForm::default(),
     };
+<<<<<<< HEAD
     Ok((locale, form))
 }
 
 /// A complete citation as an agent receives it, or the refusal that says why not.
 fn written(result: &CitationResult, count: usize, keyed: bool) -> Result<Value, Refusal> {
 >>>>>>> origin/feat/cite-records
+=======
+    let strict = arguments
+        .get("strict")
+        .map(|strict| serde_json::from_value::<bool>(strict.clone()))
+        .transpose()
+        .map_err(|_| Refusal::bad(crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()))?
+        .unwrap_or(false);
+    let items = items
+        .iter()
+        .enumerate()
+        .map(|(index, item)| {
+            citation_item(engine, item).map_err(|refusal| Refusal {
+                advice: format!("Item {}: {}", index + 1, refusal.advice).into(),
+                ..refusal
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    let count = items.len();
+    let result = engine.cite(
+        &CitationRequest {
+            items,
+            form,
+            keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
+            output,
+            input_language: None,
+            strict,
+            output_locale: locale,
+        },
+        &Cancellation::default(),
+    )?;
+>>>>>>> origin/feat/receipts-strict
     // Only a complete citation is handed on; anything less is an error the
     // agent can see, never a partial text it might paste.
     // Fixed-code warnings, notices and losses carry no library data; an agent needs them to know
@@ -661,15 +705,20 @@ fn written(result: &CitationResult, count: usize, keyed: bool) -> Result<Value, 
     };
     // Removing a hidden character from a key would name another record, or none.
     let text = view::scrub(content.text);
-    if (keyed && text != content.text) || text.trim().is_empty() {
+    if text != content.text || text.trim().is_empty() {
         return Err(Refusal::bad(
-            "A citation key here has hidden characters, so a key syntax cannot write it safely; use a style, or ask the user to fix the key.",
+            crate::catalogue::text("mcp-citation-hidden", None, &[]).unwrap_or_default(),
         ));
     }
     let mut answer = json!({
         "text": text,
         "notices": result.notices,
         "losses": result.losses,
+<<<<<<< HEAD
+=======
+        "receipt": result.receipt,
+        "provenance": PROVENANCE,
+>>>>>>> origin/feat/receipts-strict
     });
     if !result.warnings.is_empty() {
         answer["warnings"] = json!(result.warnings);
@@ -677,6 +726,7 @@ fn written(result: &CitationResult, count: usize, keyed: bool) -> Result<Value, 
     if let Some(language) = &result.language {
         answer["language"] = json!(language);
     }
+<<<<<<< HEAD
 <<<<<<< HEAD
     with_library_notes(answer, engine, &source_health)
 =======
@@ -715,6 +765,31 @@ fn cite_records(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value
     answer["provenance"] = json!(RECORDS_PROVENANCE);
     Ok(answer)
 >>>>>>> origin/feat/cite-records
+=======
+    let receipt = result
+        .receipt
+        .as_ref()
+        .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
+    let mut notes = Vec::new();
+    for (present, id) in [
+        (
+            receipt.sources.iter().any(|source| source.refresh_error.is_some()),
+            "mcp-citation-source-failed",
+        ),
+        (
+            receipt.sources.iter().any(|source| source.warnings > 0),
+            "mcp-citation-source-warnings",
+        ),
+    ] {
+        if present {
+            notes.push(crate::catalogue::text(id, None, &[]).unwrap_or_default());
+        }
+    }
+    if !notes.is_empty() {
+        answer["library_notes"] = json!(notes);
+    }
+    Ok(answer)
+>>>>>>> origin/feat/receipts-strict
 }
 
 /// One entry of `items`, checked against the library it will be cited from:

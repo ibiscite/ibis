@@ -5,17 +5,6 @@ use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
 
-/// A request-local choice; never a saved preference or inferred retry policy.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProjectPolicy {
-    /// The check is advice: what it could not settle is a warning.
-    #[default]
-    Normal,
-    /// A key citation needs a complete current read.
-    Strict,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectAssessmentState {
@@ -115,20 +104,14 @@ impl Engine {
         request: &KeyCitationRequest,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
-        self.cite_writing_project_keys_with_policy(project, request, ProjectPolicy::Normal, cancel)
-    }
-
-    pub fn cite_writing_project_keys_with_policy(
-        &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
-        request: &KeyCitationRequest,
-        policy: ProjectPolicy,
-        cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
         let mut request = request.clone();
         request.output = project.output.clone();
         let request = self.key_citation_request(&request, cancel)?;
+<<<<<<< HEAD
         self.writing_project_citation(project, &request, policy, true, cancel)
+=======
+        self.cite_writing_project(project, &request, cancel)
+>>>>>>> origin/feat/receipts-strict
     }
 
     /// The project definition is immutable for this request. Its output is the
@@ -139,6 +122,7 @@ impl Engine {
         request: &CitationRequest,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
+<<<<<<< HEAD
         self.cite_writing_project_with_policy(project, request, ProjectPolicy::Normal, cancel)
     }
 
@@ -160,6 +144,8 @@ impl Engine {
         by_key: bool,
         cancel: &Cancellation,
     ) -> Result<WritingProjectCitation, EngineError> {
+=======
+>>>>>>> origin/feat/receipts-strict
         ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
             .map_err(|_| error(ErrorCode::BadInput))?;
         let mut request = request.clone();
@@ -167,6 +153,11 @@ impl Engine {
         let prepared = self.prepare_consulting(&request, by_key, cancel)?;
         let source_health = prepared.source_health().clone();
         let mut assessment = None;
+        let mut evidence = CitationProjectCheck {
+            revision: project.revision(),
+            bibliography: None,
+            checked_at_ms: None,
+        };
         let checked = if prepared.uses_citation_keys() {
             project
                 .bibliography
@@ -175,8 +166,10 @@ impl Engine {
                     cancel.check()?;
                     let read = ProjectRead::read(path, None);
                     cancel.check()?;
+                    evidence.bibliography = read.fingerprint().cloned();
+                    evidence.checked_at_ms = read.current_complete().then(now_ms);
                     let keys = prepared.project_checks(&read);
-                    assessment = Some(prepared.project_evidence(&read, policy));
+                    assessment = Some(prepared.project_evidence(&read));
                     Ok::<_, EngineError>(ProjectResult {
                         name: project_name(path),
                         keys,
@@ -188,12 +181,21 @@ impl Engine {
         } else {
             None
         };
-        if policy == ProjectPolicy::Strict && prepared.uses_citation_keys() && project.bibliography.is_none() {
-            let mut required = prepared.project_evidence(&ProjectRead::default(), policy);
+        if request.strict && prepared.uses_citation_keys() && project.bibliography.is_none() {
+            let mut required = prepared.project_evidence(&ProjectRead::default());
             required.message = Some("Choose a project bibliography before requesting a strict check.".to_owned());
             assessment = Some(required);
         }
         let mut citation = prepared.into_result();
+        if request.strict
+            && (assessment.as_ref().is_some_and(|check| !check.can_copy())
+                || checked.as_ref().is_some_and(|check| !check.settled()))
+        {
+            return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::StrictCitation));
+        }
+        if let Some(receipt) = &mut citation.receipt {
+            receipt.project = Some(evidence);
+        }
         if let Some(check) = assessment.as_ref().filter(|check| !check.can_copy()) {
             let error = if check.state == ProjectAssessmentState::Conflict {
                 CitationError::ConflictingKey

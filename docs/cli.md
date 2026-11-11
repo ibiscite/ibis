@@ -121,7 +121,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
 | `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
 | `--nightly` | Read the writing project from Ibis Nightly's settings |
-| `--strict-project` | Require a current complete bibliography read for project key citations |
+| `--strict` | Refuse citations with losses, refusals or source problems |
 | `--for-app APP_ID` | Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
@@ -464,17 +464,37 @@ bibliography, use `--form bibliography-only`. Outputs that emit citation keys ch
 the named bibliography; formatted outputs and record exports do not. The check is
 advice: a missing, uncertain or unreadable entry still gives the citation and
 reports findings with exit 1. Only a key whose entry in the bibliography names a
-different work (another DOI) withholds the copyable citation. `--strict-project`
-also withholds it until the bibliography has a complete current read; it never
-changes a saved project. No project or CLI action grants paste permission.
+different work (another DOI) withholds the copyable citation. `--strict` instead returns an error until the bibliography has a complete
+current read with every emitted key found unambiguously; it never changes a
+saved project. No project or CLI action grants paste permission.
 
 With `--json`, `cite --project` returns a typed wrapper in `data`: `id`, `name`,
-`revision`, the ordinary `citation`, `assessment` (`ready`, `paused` for a strict
-request or `conflict`), and `project` (the bibliography check, or `null`). A paused or conflicting
-assessment returns typed refusals and no copyable citation text. The definition's opaque `revision` changes when its name, output or
+`revision`, the ordinary `citation`, `assessment` (`ready` or `conflict`), and
+`project` (the bibliography check, or `null`). A conflicting assessment returns
+typed refusals and no copyable citation text; strict requests return an error
+envelope instead. The definition's opaque `revision` changes when its name, output or
 bibliography changes. `ibis projects schema --json` describes the wrapper.
 Project lists and results show only bibliography file names, never their folders.
 Plain `cite` keeps its existing result shape.
+
+### Receipts and strict citations
+
+Complete citations in `--json`, RPC and MCP carry `receipt`: ordered opaque record
+identities and their cite fingerprints, resolved request options, source read times
+and findings, the canonical content hash and formatting versions. A caller-supplied
+snapshot has no source read time. CSL receipts include the actual language and
+digests of the shipped processor and style/locale bundle. Project citations add the
+definition's revision, the checked bibliography's fingerprint and its successful
+check time.
+Receipt record and annotation identities contain no native source keys or paths;
+they are evidence, not selectors to send back to the engine. Receipts describe what
+was used; they do not archive records or promise historical recreation.
+
+`ibis cite --strict` returns an error without citation text for any loss, refusal,
+source warning or failed source refresh. `--request` accepts it as a flag or as
+`"strict": true` in the request, as does RPC; MCP's `cite` tool accepts `strict`.
+With `--project`, strict mode also requires a current complete bibliography check
+with each emitted key found unambiguously. It changes no saved setting.
 
 ### Output for an app
 

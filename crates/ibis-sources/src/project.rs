@@ -246,6 +246,11 @@ impl ProjectRead {
         self.read.as_deref()
     }
 
+    /// Identify the bytes actually checked without retaining or exporting them.
+    pub fn fingerprint(&self) -> Option<&Fingerprint> {
+        self.read.as_ref().map(|read| &read.digest)
+    }
+
     pub fn name(&self) -> String {
         self.path
             .as_deref()

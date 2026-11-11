@@ -175,7 +175,11 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
+<<<<<<< HEAD
     "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings. To cite CSL-JSON you were given instead, pass it as `records`.",
+=======
+    "description": "Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings.",
+>>>>>>> origin/feat/receipts-strict
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -273,6 +277,7 @@
           "description": "A language for a style, such as de-DE, from the styles tool.",
           "type": "string"
         },
+<<<<<<< HEAD
         "records": {
           "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read.",
           "items": {
@@ -280,6 +285,11 @@
           },
           "minItems": 1,
           "type": "array"
+=======
+        "strict": {
+          "description": "Refuse losses, refusals or source problems.",
+          "type": "boolean"
+>>>>>>> origin/feat/receipts-strict
         },
         "style": {
           "description": "Any style id from the styles tool, instead of format.",
@@ -315,7 +325,11 @@
         "provenance": {
           "type": "string"
         },
+<<<<<<< HEAD
         "source_health": {
+=======
+        "receipt": {
+>>>>>>> origin/feat/receipts-strict
           "type": "object"
         },
         "text": {
@@ -329,8 +343,13 @@
         "text",
         "notices",
         "losses",
+<<<<<<< HEAD
         "provenance",
         "source_health"
+=======
+        "receipt",
+        "provenance"
+>>>>>>> origin/feat/receipts-strict
       ],
       "type": "object"
     },
