@@ -32,7 +32,7 @@ function demoPage(platform) {
   const document = { ...element("document"), documentElement: { dataset: { platform } }, createElement: element,
     createElementNS: (_namespace, tag) => element(tag), querySelector: selector => selector === "[data-picker]" ? figure : result };
   runInNewContext(`${keyScript}\n${demoScript}\nsetupDemo();`, { document, createDemo, references, formats,
-    typePaths: { book: [], article: [] }, matchMedia: () => ({ matches: false }) });
+    typePaths: { book: [], article: [] }, iconPaths: { check: "", plus: "", close: "" }, matchMedia: () => ({ matches: false }) });
   const panel = placeholder.replacement, [add, copy] = panel.querySelector(".picker-actions").children, input = panel.querySelector("input");
   return { add, copy, input, panel, figure, result, reopen: figure.querySelector("button") };
 }

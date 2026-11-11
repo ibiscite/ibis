@@ -1,0 +1,65 @@
+{
+  "current": [
+    {
+      "text": "Zotero libraries, open or closed, and BibTeX, BibLaTeX, CSL-JSON, RIS and CSV files."
+    },
+    {
+      "text": "Citation keys for Pandoc, LaTeX, Typst and other writing tools."
+    },
+    {
+      "text": "Formatted citations and reference entries with the official CSL styles."
+    },
+    {
+      "text": "Several references in one citation, page ranges and narrative or author-omitted forms."
+    },
+    {
+      "text": "Prefix, suffix and Keep My Order.",
+      "note": "New in 0.3.2: “see” before a reference, “emphasis added” after it."
+    },
+    {
+      "text": "A remembered format per app, Change Last Citation and selected text as search."
+    },
+    {
+      "text": "Cited Since Opening: copy or save the references you cited as a bibliography."
+    }
+  ],
+  "nightly": [
+    {
+      "text": "Every locator type",
+      "note": "Chapter, section, line and more, not just pages."
+    },
+    {
+      "text": "Zotero document markers for LibreOffice",
+      "note": "RTF and ODF Scan markers for references from Zotero."
+    },
+    {
+      "text": "A live Appearance picture in Settings",
+      "note": "See your accent and theme as you change them."
+    }
+  ],
+  "planned": [
+    {
+      "text": "Complete citation forms and optional writing projects."
+    },
+    {
+      "text": "Search Zotero highlights and notes, with the page they came from."
+    },
+    {
+      "text": "Check a manuscript for missing citation keys before building it."
+    },
+    {
+      "text": "Pasting on Linux desktops."
+    }
+  ],
+  "notYet": [
+    {
+      "text": "No live Zotero fields in Word or automatic bibliography updates there."
+    },
+    {
+      "text": "No ibid. or automatic numbering across a document."
+    },
+    {
+      "text": "No searching inside PDFs."
+    }
+  ]
+}

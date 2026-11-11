@@ -16,7 +16,7 @@ function appearance() {
   function show() { for (const group of groups) {
     const toggle = group.querySelector('[role="switch"]'), reset = group.querySelector(".appearance-system");
     toggle.setAttribute("aria-checked", String(dark())); toggle.title = `Switch to ${dark() ? "light" : "dark"} appearance`;
-    reset.disabled = !root.dataset.theme; reset.textContent = reset.disabled ? "System" : "Use system";
+    reset.disabled = !root.dataset.theme; reset.textContent = reset.disabled ? reset.dataset.system : reset.dataset.useSystem;
   } }
   function choose(choice) {
     if (choice) root.dataset.theme = choice; else delete root.dataset.theme;
@@ -32,29 +32,12 @@ function appearance() {
   media.addEventListener("change", show); show();
 }
 function platforms() {
-  const blocks = [...document.querySelectorAll(".platform[data-os]")];
   const touchMac = /Mac/.test(navigator.platform) && navigator.maxTouchPoints > 1;
   if (/Android|iPhone|iPad|iPod/i.test(navigator.userAgent) || touchMac) return;
   const detected = { macos: "mac", windows: "windows", linux: "linux" }[document.documentElement.dataset.platform];
   if (!detected) return;
-  const names = { mac: "Mac", windows: "Windows", linux: "Linux" }, choice = document.createElement("p");
-  choice.className = "platform-switch"; blocks[0].before(choice);
-  let selected = detected;
-  function show(os, focus = false) {
-    selected = os;
-    if (matchMedia("(max-width: 61.99rem)").matches) { blocks.forEach(block => { block.hidden = false; }); choice.hidden = true; document.querySelector("[data-get]").textContent = "Get the early preview"; return; }
-    choice.hidden = false;
-    blocks.forEach(block => { block.hidden = block.dataset.os !== os; });
-    const buttons = Object.keys(names).filter(value => value !== os).map(value => {
-      const button = document.createElement("button"); button.type = "button"; button.textContent = names[value];
-      button.addEventListener("click", () => show(value, true)); return button;
-    });
-    choice.replaceChildren(`For ${names[os]}${os === detected ? ", your system" : ""}. Also for `, buttons[0], " and ", buttons[1], ".");
-    document.querySelector("[data-get]").textContent = `Get Ibis for ${names[os]}`;
-    if (focus) buttons[0].focus();
-  }
-  show(detected);
-  matchMedia("(max-width: 61.99rem)").addEventListener("change", () => show(selected));
+  const get = document.querySelector("[data-get]");
+  if (get?.dataset[detected]) get.textContent = get.dataset[detected];
 }
 // The browser's own share sheet, or a copied link where there is none; no third-party buttons.
 function share() {
@@ -64,7 +47,7 @@ function share() {
   button.addEventListener("click", async () => {
     try {
       if (navigator.share) await navigator.share({ title: "Ibis", text: document.querySelector("h1").textContent, url });
-      else { await navigator.clipboard.writeText(url); status.textContent = "Link copied"; setTimeout(() => { status.textContent = ""; }, 2000); }
+      else { await navigator.clipboard.writeText(url); status.textContent = status.dataset.copied; setTimeout(() => { status.textContent = ""; }, 2000); }
     } catch { /* Cancelled or blocked; nothing changed. */ }
   });
 }
@@ -72,7 +55,7 @@ function share() {
 function chips() {
   if (!matchMedia("(hover: hover)").matches) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)");
-  for (const chip of document.querySelectorAll("main .key:not(code)")) {
+  for (const chip of document.querySelectorAll("main .key:not(code):not(button)")) {
     const key = chip.textContent.slice(1), forms = [`[@${key}]`, `\\cite{${key}}`, `@${key}`];
     let timer;
     chip.addEventListener("pointerenter", () => {
@@ -97,7 +80,7 @@ function navigation() {
     pending = false;
     const visible = target => { const box = target.getBoundingClientRect(); return box.top < window.innerHeight && box.bottom > 0; };
     const bottom = window.scrollY + window.innerHeight >= document.documentElement.scrollHeight - 1;
-    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1);
+    const current = pinned && visible(pinned) ? pinned : bottom ? targets.at(-1) : targets.filter(target => target.getBoundingClientRect().top <= window.innerHeight * .25).at(-1) || targets[0];
     links.forEach((link, index) => { if (targets[index] === current) {
       if (!link.hasAttribute("aria-current")) {
         link.setAttribute("aria-current", "location");
@@ -111,9 +94,65 @@ function navigation() {
   const schedule = () => { if (!pending) { pending = true; requestAnimationFrame(show); } };
   window.addEventListener("scroll", schedule, { passive: true }); window.addEventListener("resize", schedule); show();
 }
+// Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
+function writingApps() {
+  const where = document.querySelector("[data-where]");
+  if (!where) return;
+  const tabs = [...where.querySelectorAll('[role="tab"]')], panel = where.querySelector('[role="tabpanel"]');
+  const output = panel.querySelector("[data-out]"), explanation = panel.querySelector("[data-explanation]");
+  function show(tab) {
+    for (const item of tabs) { item.setAttribute("aria-selected", String(item === tab)); item.tabIndex = item === tab ? 0 : -1; }
+    panel.setAttribute("aria-labelledby", tab.id);
+    output.textContent = tab.dataset.output; explanation.textContent = tab.dataset.explain;
+    output.classList.remove("landed"); void output.offsetWidth; output.classList.add("landed");
+  }
+  tabs.forEach((tab, i) => {
+    tab.addEventListener("click", () => show(tab));
+    tab.addEventListener("keydown", event => {
+      const next = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      if (next === undefined) return;
+      event.preventDefault(); tabs[next].focus(); show(tabs[next]);
+    });
+  });
+}
+// Copy a command: the button says Copied for a moment, and screen readers hear it.
+function copyButtons() {
+  if (!navigator.clipboard) { document.querySelectorAll(".copy").forEach(button => { button.hidden = true; }); return; }
+  for (const button of document.querySelectorAll(".copy")) button.addEventListener("click", async () => {
+    const label = button.querySelector("span"), idle = label.textContent;
+    try { await navigator.clipboard.writeText(button.dataset.copy); label.textContent = button.dataset.copied; button.dataset.state = "copied"; }
+    catch { label.textContent = button.dataset.failed; }
+    setTimeout(() => { label.textContent = idle; delete button.dataset.state; }, 1500);
+  });
+}
+// A teaching sketch of the typed shorthand; the app's engine owns the real parser.
+function shorthand() {
+  const box = document.querySelector("[data-shorthand]");
+  if (!box) return;
+  const refs = [{ key: "vale2024lanterns", label: "Vale 2024", words: "vale lantern lanterns gardens" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen clouds clockwork" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed maps islands" }];
+  const input = box.querySelector("[data-shorthand-input]"), parts = box.querySelector("[data-shorthand-parts]"), out = box.querySelector("[data-shorthand-out]");
+  const part = (label, value) => { const span = document.createElement("span"); span.className = "part"; const name = document.createElement("span"); name.textContent = label; span.append(name, ` ${value}`); return span; };
+  function render() {
+    const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean), terms = [];
+    let prefix, locator;
+    words.forEach((word, i) => {
+      if (i === 0 && ["see", "cf.", "cf", "e.g."].includes(word)) prefix = word === "cf" ? "cf." : word;
+      else if (["ch", "chap", "chapter"].includes(word) && /^\d+$/.test(words[i + 1] || "")) locator = `chap. ${words[i + 1]}`;
+      else if (/^\d+([-–]\d+)?$/.test(word)) { if (!locator?.startsWith("chap")) locator = /[-–]/.test(word) ? `pp. ${word.replace("-", "–")}` : `p. ${word}`; }
+      else terms.push(word);
+    });
+    const ref = terms.length ? refs.find(r => terms.every(t => r.words.includes(t))) : undefined;
+    if (!ref) { parts.replaceChildren(parts.dataset.empty); out.textContent = "…"; return; }
+    parts.replaceChildren(...[prefix && part(parts.dataset.before, prefix), part(parts.dataset.reference, ref.label), locator && part(parts.dataset.locator, locator)].filter(Boolean));
+    out.textContent = `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]`;
+  }
+  input.addEventListener("input", render);
+  box.querySelectorAll("[data-try]").forEach(button => button.addEventListener("click", () => { input.value = button.textContent; render(); input.focus(); }));
+  render();
+}
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
-  appearance(); platforms(); navigation(); share(); chips();
+  appearance(); platforms(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();
   console.info("Curious how this page works? Ibis is open source: https://github.com/ibiscite/ibis");
   let lastMove = performance.now();
   const markMove = () => { lastMove = performance.now(); };
@@ -130,7 +169,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const image of event.currentTarget.querySelectorAll("img")) image.src = image.src.split("#")[0] + `#again-${++replay}`;
   });
-  import("./demo.js").then(async ({ setupDemo }) => {
+  if (document.querySelector("[data-picker]")) import("./demo.js").then(async ({ setupDemo }) => {
     const quiet = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-2"));
     await new Promise(resolve => {
       const wait = () => { if (performance.now() - lastMove < quiet) requestAnimationFrame(wait); else resolve(); };

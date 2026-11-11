@@ -1,4 +1,6 @@
 /* Page composition; visual values come from the app's copied tokens.css. */
+/* One top line for the sidebar and every page title, so the logo and the h1 start together. */
+:root { --website-top: clamp(1.75rem, 5vh, 3rem); }
 :root { color-scheme: light dark; }
 :root[data-theme="light"] { color-scheme: light; }
 :root[data-theme="dark"] { color-scheme: dark; }
@@ -71,7 +73,7 @@ section { padding-block: var(--website-section-pad); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6); margin-top: var(--space-8); }
 .button { position: relative; display: inline-flex; align-items: center; min-height: var(--website-button-height); padding: var(--space-2) var(--space-4); border-radius: var(--r-control); background: var(--text); color: var(--website-bg); font: var(--strong) var(--type-reading-size) var(--font); text-decoration: none; }
 .button:hover { background: color-mix(in srgb, var(--text) 84%, var(--website-bg)); }
-.button svg { width: 1em; height: 1em; margin-right: var(--space-2); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linejoin: round; }
+.button svg { width: 1em; height: 1em; margin-inline-end: var(--space-2); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linejoin: round; }
 .button.quiet { border: 0; background: none; box-shadow: inset 0 0 0 var(--border-width) var(--separator); color: var(--text); cursor: pointer; }
 .button:hover .star path { fill: currentColor; }
 .button::after { content: ""; position: absolute; inset: calc((var(--website-button-height) - var(--touch-target)) / 2) 0; } /* Slim to see, full height to touch. */
@@ -87,8 +89,8 @@ section { padding-block: var(--website-section-pad); }
 .platform-switch:not([hidden]) ~ .platform h3 { display: none; }
 .platform ~ .small { margin-top: var(--space-6); }
 .platform h3 { margin: 0; font-size: var(--type-heading-size); }
-.install { margin: 0; padding-left: var(--space-6); font: var(--type-reading-size)/1.6 var(--font); }
-.install li { padding-left: var(--space-1); margin-bottom: var(--space-2); }
+.install { margin: 0; padding-inline-start: var(--space-6); font: var(--type-reading-size)/1.6 var(--font); }
+.install li { padding-inline-start: var(--space-1); margin-bottom: var(--space-2); }
 .rows { list-style: none; padding: 0; margin: var(--website-block-gap) 0; border-top: var(--border-width) solid var(--separator); }
 .rows li { border-bottom: var(--border-width) solid var(--separator); }
 .rows a { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: var(--space-1) var(--space-6); min-height: var(--touch-target); padding: var(--space-4) var(--space-2); border-radius: var(--r-small); color: var(--text); text-decoration: none; }
@@ -96,7 +98,7 @@ section { padding-block: var(--website-section-pad); }
 .rows a:hover strong { text-decoration: underline; }
 .rows strong { font-family: var(--font); }
 .rows span { font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
-.rows .arrow { flex: none; width: var(--space-4); height: var(--space-4); margin-left: auto; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); }
+.rows .arrow { flex: none; width: var(--space-4); height: var(--space-4); margin-inline-start: auto; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); }
 .setup { list-style: none; margin: var(--website-block-gap) 0; padding: 0; counter-reset: setup; }
 .setup > li { counter-increment: setup; padding-block: var(--space-4); border-top: var(--border-width) solid var(--separator); }
 .setup h3 { margin: 0 0 var(--space-2); font-size: var(--type-heading-size); }
@@ -113,16 +115,16 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 .colophon a { padding-block: var(--space-2); }
 @media (min-width: 62rem) {
   footer > .text { position: relative; }
-  footer > .text::before { content: ""; position: absolute; top: calc(-1 * var(--border-width)); left: calc(var(--website-gap) / -2); width: calc(var(--website-gap) / 2); height: var(--border-width); background: var(--separator); } /* The footer rule meets the margin rule. */
-  .site::before { content: ""; position: absolute; inset-block: 0; left: calc(var(--website-pad) + var(--website-margin) + var(--website-gap) / 2); width: var(--border-width); background: var(--separator); }
+  footer > .text::before { content: ""; position: absolute; top: calc(-1 * var(--border-width)); inset-inline-start: calc(var(--website-gap) / -2); width: calc(var(--website-gap) / 2); height: var(--border-width); background: var(--separator); } /* The footer rule meets the margin rule. */
+  .site::before { content: ""; position: absolute; inset-block: 0; inset-inline-start: calc(var(--website-pad) + var(--website-margin) + var(--website-gap) / 2); width: var(--border-width); background: var(--separator); }
   .row { grid-template-columns: var(--website-margin) minmax(0, 1fr); }
   .row > .text { grid-column: 2; }
-  .index { position: absolute; z-index: var(--z-chrome); top: clamp(3rem, 10vh, 7rem); bottom: 0; left: var(--website-pad); width: var(--website-margin); padding: 0; text-align: right; }
+  .index { position: absolute; z-index: var(--z-chrome); top: var(--website-top); bottom: 0; inset-inline-start: var(--website-pad); width: var(--website-margin); padding: 0; text-align: end; }
   .index-sticky { position: sticky; top: var(--space-6); max-height: calc(100svh - 3rem); overflow-y: auto; }
-  .logo { --logo-width: 13rem; margin-left: auto; overflow: clip; }
-  .logo img { margin-right: var(--logo-edge); } /* Clipping only clear space keeps the sidebar from scrolling sideways. */
+  .logo { --logo-width: 13rem; margin-inline-start: auto; overflow: clip; }
+  .logo img { margin-inline-end: var(--logo-edge); } /* Clipping only clear space keeps the sidebar from scrolling sideways. */
   .index ul { display: block; } .index nav a { justify-content: flex-end; font-size: var(--type-reading-size); }
-  .intro { padding-block: clamp(3rem, 10vh, 7rem) var(--website-section-pad); }
+  .intro { padding-block: var(--website-top) var(--website-section-pad); }
   .margin { display: none; } .journey { grid-column: 2; max-width: 43rem; }
 }
 /* Shared controls use the app's timings, never a website motion copy. */
@@ -161,7 +163,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 }
 @media (max-width: 39.99rem) {
   /* The note shares the logo's row, so the phone header is one line plus the chip bar. */
-  .index-note { position: absolute; top: calc(var(--space-4) + 7.5rem * 200 / 418 / 2); right: var(--website-pad); translate: 0 -50%; }
+  .index-note { position: absolute; top: calc(var(--space-4) + 7.5rem * 200 / 418 / 2); inset-inline-end: var(--website-pad); translate: 0 -50%; }
   .rows a { display: grid; grid-template-columns: 1fr auto; column-gap: var(--space-4); }
   .rows a > span { grid-column: 1; }
   .rows .arrow { grid-column: 2; grid-row: 1 / span 2; align-self: center; }
@@ -199,3 +201,61 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
 @keyframes peck { 40% { rotate: -12deg; } }
 @keyframes receipt { from { opacity: .4; } }
 @media (forced-colors: active) { a[aria-current="location"] .key { forced-color-adjust: none; background: Highlight; color: HighlightText; } .key { outline: var(--border-width) solid LinkText; } .site::before { background: CanvasText; } }
+/* Pages: the current page's key fills, as the current section's does. */
+.index a[aria-current="page"] { color: var(--text); }
+.index a[aria-current="page"] .label { font-weight: 500; }
+a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-bg); box-shadow: none; }
+/* Where you write: the sidebar's key chips as tabs, over the draft sentence. Slim to see, full height to touch. */
+.chips { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-2); margin: var(--space-4) 0; }
+.chips .key, .try button { position: relative; border: 0; cursor: pointer; padding: .2em .45em; font: var(--type-body-size)/1.5 var(--mono); }
+.chips .key::after, .try button::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2) 0; }
+.chips .key:hover, .try button:hover { box-shadow: inset 0 0 0 var(--border-width) currentColor; }
+.chips .key[aria-selected="true"] { background: var(--scarlet); color: var(--website-bg); box-shadow: none; }
+.try button { color: var(--scarlet); background: var(--website-accent-soft); border-radius: var(--website-chip-radius); margin-inline-start: var(--space-1); }
+.try { line-height: 2.4; }
+.where-doc { margin-bottom: var(--website-paragraph-gap); padding-block: var(--space-4); border-block: var(--border-width) solid var(--separator); }
+.where-doc .draft { margin-bottom: var(--space-2); }
+.where-doc .draft .key, #shorthand .draft .key { display: inline-block; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.where-doc .small { margin: 0; }
+/* Today: one drawn mark per state, filled for what you can use now. */
+.roadmap li { position: relative; padding-inline-start: var(--space-5); }
+.roadmap li::before { content: ""; position: absolute; inset-inline-start: 0; top: calc(var(--space-4) + .45em); width: .5rem; height: .5rem; border-radius: 50%; background: var(--scarlet); }
+.roadmap strong { font-family: var(--font); }
+[data-status="nightly"] li::before { background: none; box-shadow: inset 0 0 0 var(--border-width) var(--scarlet); }
+[data-status="planned"] li::before { background: var(--separator); }
+[data-status="notYet"] li::before { background: none; box-shadow: inset 0 0 0 var(--border-width) var(--text-secondary); }
+/* Code blocks: copy the command with one press; terminals are dark in both modes. */
+.code { position: relative; margin: var(--space-3) 0 var(--website-paragraph-gap); }
+.code pre { margin: 0; padding: var(--space-4); padding-inline-end: calc(var(--space-4) + 4.5rem); border-radius: var(--r-control); background: var(--fill-control); overflow-x: auto; font: var(--type-body-size)/1.6 var(--mono); }
+.code code { display: inline; padding: 0; background: none; color: inherit; font: inherit; white-space: pre; }
+.terminal pre { background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
+.terminal .prompt { opacity: .55; }
+.terminal .stderr { color: color-mix(in srgb, var(--scarlet) 55%, white); }
+.copy { display: inline-flex; align-items: center; gap: var(--space-1); position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); min-height: var(--control-h); padding: 0 var(--space-3); border: 0; border-radius: var(--r-small); background: color-mix(in srgb, currentColor 12%, transparent); color: var(--text); font: var(--type-body-size)/1 var(--font); cursor: pointer; opacity: .8; }
+.terminal .copy { color: light-dark(var(--website-bg), var(--text)); }
+.copy:hover, .copy:focus-visible { opacity: 1; }
+.copy::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2) 0; }
+/* The typed shorthand: each part of the search, labelled. */
+.label-nightly { display: inline-block; margin-inline-start: var(--space-2); padding: .1em .45em; border-radius: var(--website-chip-radius); background: var(--fill-control); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--mono); vertical-align: .2em; }
+.shorthand-field { display: block; margin: var(--space-4) 0 var(--space-3); }
+.shorthand-field input { box-sizing: border-box; width: 100%; min-height: var(--touch-target); margin-top: var(--space-1); padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--r-control); box-shadow: inset 0 0 0 var(--border-width) var(--separator); background: var(--website-bg); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
+.shorthand-field input:hover { box-shadow: inset 0 0 0 var(--border-width) var(--text-secondary); }
+.shorthand-parts { display: flex; flex-wrap: wrap; gap: var(--space-2); min-height: 2rem; }
+.part { display: inline-flex; gap: var(--space-1); align-items: baseline; padding: .15em .55em; border-radius: var(--website-chip-radius); box-shadow: inset 0 0 0 var(--border-width) var(--separator); font: var(--type-body-size)/1.5 var(--font); }
+.part span { color: var(--text-secondary); font-size: .85em; }
+@media (prefers-reduced-motion: no-preference) {
+  .chips .key, .try button, .copy { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
+  .chips .key:active, .try button:active, .copy:active { scale: var(--website-press); }
+  .landed { animation: receipt var(--dur-2) var(--ease-out); }
+}
+@media (forced-colors: active) { a[aria-current="page"] .key, .chips .key[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } .code pre { border: var(--border-width) solid CanvasText; } }
+/* Long real output scrolls sideways, as code does elsewhere; Copy keeps the block's own colour so it sits cleanly over it. */
+.terminal .copy { background: light-dark(color-mix(in srgb, var(--text) 85%, var(--website-bg)), color-mix(in srgb, var(--text) 16%, var(--website-bg))); opacity: 1; }
+.code:not(.terminal) .copy { background: color-mix(in srgb, var(--fill-control) 60%, var(--website-bg)); }
+/* Inner pages start with content sooner: their title takes the section-heading size. */
+main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) * 1.5), 3.6vw, calc(var(--type-search-size) * 2.2)); margin-bottom: var(--website-block-gap); }
+.copy .icon { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
+.copy .icon-check, .copy[data-state="copied"] .icon-copy { display: none; }
+.copy[data-state="copied"] .icon-check { display: block; }
+/* Row text sits on the column edge like every paragraph; the hover fill bleeds outward instead of pushing the text in. */
+.rows a { margin-inline: calc(-1 * var(--space-2)); }

@@ -1,0 +1,43 @@
+  <section id="download" class="row intro" aria-labelledby="download-h">
+    <p class="margin"><span class="key">@get</span></p>
+    <div class="text"><h1 id="download-h">Get Ibis</h1>
+      <p class="lede">Free, for people happy to meet rough edges.</p>
+      <p><strong>It is not a stable release.</strong> The apps aren’t signed by Apple or Microsoft yet, so your computer warns you the first time you open Ibis. Read your system’s notes before you download.</p>
+        <p class="small" data-download-privacy>No account, no uploads, no telemetry; sources read without changes. <a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">Privacy</a></p>
+      <div class="platform" data-os="mac">
+        <h3>Mac</h3>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg"><strong>Mac with Apple silicon</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li>
+          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg"><strong>Mac with Intel</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <p class="small">Which Mac? Choose Apple menu → About This Mac. “Chip: Apple M…” means Apple silicon; “Processor: Intel” means Intel.</p>
+        <ol class="install"><li>Open the disk image and drag Ibis to Applications.</li>
+          <li>Open Ibis. If macOS says it can’t check the app, make sure you downloaded it here, then choose System Settings → Privacy &amp; Security → Open Anyway.</li></ol>
+      </div>
+      <div class="platform" data-os="windows">
+        <h3>Windows</h3>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe"><strong>Installer</strong><span>64-bit PCs</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ol class="install"><li>Run the installer. If the WebView2 Runtime is missing, it downloads it once.</li>
+          <li>If SmartScreen warns you, check you downloaded it here, then choose More info → Run anyway, if offered. Smart App Control or a work computer may block it: keep protection on and ask IT, or wait for a signed build.</li></ol>
+      </div>
+      <div class="platform" data-os="linux">
+        <h3>Linux</h3>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage"><strong>AppImage</strong><span>Most distributions, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li>
+          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.deb"><strong>Debian or Ubuntu</strong><span>.deb package, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ol class="install"><li>Allow the AppImage to run as a program, then open it. Some systems need <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md">FUSE support</a>.</li>
+          <li>On Wayland, open Ibis from your app launcher; its shortcut isn’t available there yet. Ibis Nightly lets you <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md#bind-a-system-shortcut">set one in your desktop’s settings</a>.</li></ol>
+      </div>
+      <p class="small">Files come from GitHub. <a href="https://github.com/ibiscite/ibis/releases/latest">Release notes</a> · <a href="https://github.com/ibiscite/ibis/releases/tag/nightly">Ibis Nightly</a>, with newer unfinished work, installs as a separate app.</p>
+    </div>
+  </section>
+
+  <section id="setup" class="row" aria-labelledby="setup-h">
+    <p class="margin"><span class="key">@setup</span></p>
+    <div class="text"><h2 id="setup-h">Two steps to your first citation</h2>
+      <p class="lede">No account needed. Ibis works with the library you already have.</p>
+      <ol class="setup">
+        <li><h3>Choose your library</h3><p>Choose Zotero, open or closed. To read it while it is open, turn on “Allow other applications on this computer to communicate with Zotero” in Zotero’s Settings → Advanced. Or choose a <code>.bib</code> file; <a href="https://github.com/ibiscite/ibis#use-with-zotero">Better BibTeX can keep one up to date</a>.</p></li>
+        <li><h3>Press your shortcut</h3><p>By default it’s <kbd>{{shortcut-mac}}</kbd> on macOS, and <kbd>{{shortcut-other}}</kbd> on Windows and Linux X11, if it is available. Type a few words, choose with the arrow keys and press Enter, just like in <a class="key" href="/#try">@try</a>. On macOS and Windows, Ibis then pastes into the app you came from (a Mac asks you to allow it once); on Linux it copies, and you paste.</p></li>
+      </ol>
+      <p class="small">Ibis reads your library without changing it. Searching and copying work offline after setup; update checks are opt-in. <a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">App privacy</a> · <a href="https://github.com/ibiscite/ibis#install">Full installation guide</a>.</p>
+    </div>
+  </section>
+

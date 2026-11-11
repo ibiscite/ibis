@@ -1,0 +1,70 @@
+<div itemscope itemtype="https://schema.org/SoftwareApplication">
+  <meta itemprop="name" content="Ibis"><meta itemprop="applicationCategory" content="ReferenceApplication"><meta itemprop="operatingSystem" content="Windows, macOS, Linux"><meta itemprop="isAccessibleForFree" content="true">
+  <div class="row intro"><div class="text">
+    <h1>{{headline}}</h1>
+    <p class="lede">For the moment between an idea and its source.</p>
+    <p>Ibis is a small, free app<a class="fn-mark" href="#preview-note" aria-label="Note: early preview">†</a> for researchers, students and anyone who writes with references. It finds a reference in Zotero or a BibTeX file and takes it to the place you write, on Windows, macOS and Linux.</p>
+    <p class="actions"><a class="button" href="/get/" data-get data-mac="Get Ibis for Mac" data-windows="Get Ibis for Windows" data-linux="Get Ibis for Linux">Get the early preview</a> <a href="#try">or try it right here <span class="key">@try</span></a></p>
+    <p class="small" data-download-privacy>No account, no uploads, no telemetry; sources read without changes. <a href="https://github.com/ibiscite/ibis/blob/main/PRIVACY.md">Privacy</a></p>
+    <p class="footnote" id="preview-note"><span aria-hidden="true">†</span> Still an early preview, built in public. Expect rough edges, and <a href="#why">tell me what you need</a>: it helps decide what comes next.</p>
+  </div></div>
+
+  <section id="try" class="row" aria-labelledby="try-h" data-flow="copy">
+    <p class="margin"><span class="key">@try</span></p>
+    <div class="text"><h2 id="try-h">From your library to your sentence</h2>
+      <p>A citation key is a short label for a reference, such as <code class="citation-key">vale2024lanterns</code>. Tools like Pandoc, LaTeX and Typst use it to find the full reference.</p>
+      <p class="small" data-practice-task>Search for “lantern”, choose the lantern gardens reference, then press Enter.</p></div>
+    <ol class="journey">
+      <li><p class="action">You need a source.</p><p class="draft">Lantern gardens follow the rhythm of imaginary cities<span class="caret" aria-hidden="true"></span></p></li>
+      <li><div><p class="action">Press your Ibis shortcut. Search by author, title, year or journal, or combine them, and choose with the arrow keys.</p>
+        <p class="action flow-copy">Press Enter. Ibis copies the key. Paste into the sentence below.</p></div>
+        <figure class="picker" data-picker>
+          <figcaption>Try it with made-up references, the same three as the app’s “Try sample references”. Copying and pasting here stay inside this page; the app copies to your clipboard and pastes when available.</figcaption>
+          <div class="picker-panel" data-app-tokens data-platform="macos">
+            <div class="picker-search"><div class="picker-field"><span class="picker-mark" aria-hidden="true"><img class="logo-light" src="assets/ibis-mark.svg" alt="" width="24" height="24"><img class="logo-dark" src="assets/ibis-mark-on-dark.svg" alt="" width="24" height="24"></span><span class="picker-query">lantern</span></div><div class="picker-controls"><span class="picker-format picker-static-control">Pandoc⌄</span></div></div>
+            <div class="picker-middle"><p class="picker-meta"><span>Best matches</span><span>1 result</span></p>
+              <ul class="picker-results"><li><div class="pick is-selected" title="Vale · 2024 · Journal of Invented Landscapes">
+                <span class="tile" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M5 2.5h7l3 3v12H5z"/><path d="M8 8.5h4.5M8 11.5h4.5M8 14.5h3"/></svg></span>
+                <span class="ref"><strong>Lantern gardens and the rhythm of imaginary cities</strong><span class="sub">Vale · Journal of Invented Landscapes</span></span><span class="ref-year">2024</span>
+              </div></li></ul>
+            </div>
+            <div class="picker-shelf" data-copied><div class="picker-citation"><span class="picker-beak" aria-hidden="true"></span><code dir="ltr" title="[@vale2024lanterns]">[@vale2024lanterns]</code><span class="picker-beak picker-beak-end" aria-hidden="true"></span></div><span class="picker-status" aria-hidden="true">Copied</span></div>
+            <div class="picker-foot"><span class="picker-library" title="Sample references · 3"><span class="picker-dot" aria-hidden="true"></span><span>Sample references · 3</span></span><div class="picker-actions"><span class="picker-static-control picker-primary"><span class="picker-action-label">Copy as Pandoc</span><span class="key-caps" aria-hidden="true"><span class="key-cap"><kbd data-single data-label="↵">↵</kbd></span></span></span></div></div>
+          </div>
+        </figure></li>
+      <li><p class="action flow-copy">You paste it. Pandoc, LaTeX or Typst builds the reference list.</p>
+        <p class="draft" data-result>Lantern gardens follow the rhythm of imaginary cities <code class="key">[@vale2024lanterns]</code>.</p></li>
+    </ol>
+    <div class="text after"><p class="small">Ibis finds and copies the key; it does not generate your document’s bibliography. It also copies formatted citations in APA, Chicago, Harvard and MLA, and IEEE reference entries.</p></div>
+  </section>
+
+  <section id="where" class="row" aria-labelledby="where-h">
+    <p class="margin"><span class="key">@where</span></p>
+    <div class="text"><h2 id="where-h">Same shortcut, the right citation for each app</h2>
+      <p class="lede">Ibis reads where you are writing and gives that app what it expects.</p>
+      <p class="small">Pick where you write to see what Enter puts there for page 12 of the lantern gardens paper.</p>
+      <div data-where>{{writing-apps}}</div>
+      <p class="small">Enter pastes into the app you came from on macOS and Windows. On Linux, and wherever pasting isn’t safe, Ibis copies instead and says why.</p></div>
+  </section>
+
+  <section id="why" class="row" aria-labelledby="why-h">
+    <p class="margin"><span class="key">@why</span></p>
+    <div class="text"><h2 id="why-h">A reference within reach</h2>
+      <blockquote class="pull"><img src="assets/ibis-quote-beak.svg" alt="" width="22" height="19"><p class="lede">Write in any app you like, and bring your references with you.</p></blockquote>
+      <p>I wanted the freedom to write wherever I want: an editor, a notes app or a plain text file. I just wanted my references one direct shortcut away, without depending on multiple apps, and something that works everywhere: Windows, macOS and Linux, because I move between all three.</p>
+      <p>Ibis is still early. I’m trying to make it very fast, easy to set up and easy to fit to the way you write, and I’d like your help shaping it.</p>
+      <p>Where do you write? How do you keep your references? What pulls you out of the flow? A workflow or a missing piece is enough to shape what gets built.</p>
+      <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/discussions"><strong>Share what you need</strong><span>Ideas, workflows and questions</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li>
+        <li><a href="https://github.com/ibiscite/ibis/issues/new/choose"><strong>Report a problem</strong><span>Something broke or confused you</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li>
+        <li><a href="https://github.com/ibiscite/ibis/blob/main/CONTRIBUTING.md"><strong>Contribute</strong><span>Examples, tests, docs or code</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li></ul>
+      <p class="signature">— <a class="key" href="https://github.com/diyanko">@diyanko</a></p>
+    </div>
+  </section>
+
+  <div class="row closing"><div class="text">
+    <p class="lede">Like where it’s heading?</p>
+    <p class="actions"><a class="button" href="https://github.com/ibiscite/ibis"><svg class="star" viewBox="0 0 16 16" aria-hidden="true"><path d="m8 1.8 1.9 3.9 4.3.6-3.1 3 .7 4.3L8 11.6l-3.8 2 .7-4.3-3.1-3 4.3-.6z"/></svg>Star on GitHub</a>
+      <button class="button quiet share" type="button" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5v8M5 4.5l3-3 3 3M5.5 7H4v7.5h8V7h-1.5"/></svg>Share Ibis</button>
+      <span class="share-status small" aria-live="polite" data-copied="Link copied"></span></p>
+  </div></div>
+</div>
