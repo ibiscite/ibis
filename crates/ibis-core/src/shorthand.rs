@@ -68,7 +68,9 @@ mod tests {
     use super::*;
     use crate::contract::LocatorTerm;
 
-    fn read_all(query: &str) -> Option<(String, Option<String>, Option<(LocatorTerm, String)>)> {
+    type ShorthandParts = (String, Option<String>, Option<(LocatorTerm, String)>);
+
+    fn read_all(query: &str) -> Option<ShorthandParts> {
         read(query).map(|s| (s.search, s.prefix, s.locator.map(|l| (l.locator.term, l.locator.value))))
     }
 
