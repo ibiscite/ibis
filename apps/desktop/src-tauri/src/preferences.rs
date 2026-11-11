@@ -284,11 +284,10 @@ impl SettingsFile {
                         && (previous.library != desired.library
                             || (previous.profile != desired.profile
                                 && matches!(desired.library, Some(settings::LibrarySetting::Zotero(_)))))
+                        && app.state::<crate::library::LoadRequests>().0.load(Ordering::SeqCst) == library_request
                     {
-                        if app.state::<crate::library::LoadRequests>().0.load(Ordering::SeqCst) == library_request {
-                            crate::library::apply_file_settings(&app, desired.library.clone(), desired.profile.clone());
-                            previous.library = desired.library.clone();
-                        }
+                        crate::library::apply_file_settings(&app, desired.library.clone(), desired.profile.clone());
+                        previous.library = desired.library.clone();
                     }
                     if current.profile == desired.profile {
                         previous.profile = desired.profile.clone();

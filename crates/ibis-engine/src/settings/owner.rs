@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
-use super as settings;
 use super::{Loaded, Settings, SettingsError};
+use crate::settings;
 
 type Work = Box<dyn FnOnce(&Path, u64) -> Option<Vec<u8>> + Send>;
 struct Job {

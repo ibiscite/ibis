@@ -927,14 +927,15 @@ mod tests {
     }
 
     #[test]
-    fn an_editors_preset_writing_previews_checks_and_copies_the_selected_format() {
+    fn an_editors_preset_writing_previews_checks_and_copies_the_selected_format()
+    -> Result<(), Box<dyn std::error::Error>> {
         use crate::library::engine_file::{FileLibrary, FileSelection};
         use serde_json::json;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir()?;
         let source = directory.path().join("library.bib");
         let bibliography = directory.path().join("thesis.bib");
-        std::fs::write(&source, "@book{demo,title={Synthetic book}}\n").unwrap();
-        std::fs::write(&bibliography, "@book{other,title={Other book}}\n").unwrap();
+        std::fs::write(&source, "@book{demo,title={Synthetic book}}\n")?;
+        std::fs::write(&bibliography, "@book{other,title={Other book}}\n")?;
         let writing = settings::writings::Writing {
             name: "Thesis".into(),
             format: OutputSpec::Preset { name: "pandoc".into() },
@@ -951,18 +952,14 @@ mod tests {
         let pending = Pending::default();
         let (id, answer) = pending
             .begin_context(&pick, "apa", Some(writing), &AtomicBool::new(false), || {})
-            .unwrap();
-        let request = pending.current().unwrap();
-        let file = FileLibrary::open(&source).unwrap();
-        let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false})).unwrap();
-        let rows = serde_json::to_value(
-            file.search(&query, 10, None, &ibis_engine::Cancellation::default())
-                .unwrap(),
-        )
-        .unwrap();
+            .ok_or("editor request missing")?;
+        let request = pending.current().ok_or("editor request missing")?;
+        let file = FileLibrary::open(&source).unwrap_or_else(|error| panic!("{error}"));
+        let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
+        let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
         let row = &rows["results"][0];
         let selection: FileSelection =
-            serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null})).unwrap();
+            serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
         let preview = file
             .preview_for(
                 file.reserve_preview(),
@@ -971,7 +968,7 @@ mod tests {
                 false,
                 Some(&request),
             )
-            .unwrap();
+            .unwrap_or_else(|error| panic!("{error}"));
         assert!(
             file.prepared_for(&preview.ticket, &request),
             "Enter accepts the preview prepared for this request"
@@ -979,7 +976,7 @@ mod tests {
         let check = request.bibliography();
         assert_eq!(
             file.prepared_project_warnings(&preview.ticket, &preview.content_hash, check.as_ref())
-                .unwrap(),
+                .unwrap_or_else(|error| panic!("{error}")),
             ["demo is missing from thesis.bib."]
         );
         let copied = file
@@ -987,9 +984,10 @@ mod tests {
                 assert_eq!(content.text, "[@demo]");
                 Ok(())
             })
-            .unwrap();
+            .unwrap_or_else(|error| panic!("{error}"));
         assert!(pending.answer(id, &copied.text, || {}));
-        assert_eq!(answer.recv().unwrap().as_deref(), Some("[@demo]"));
+        assert_eq!(answer.recv()?.as_deref(), Some("[@demo]"));
+        Ok(())
     }
 
     #[test]

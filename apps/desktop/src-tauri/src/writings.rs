@@ -768,15 +768,15 @@ mod tests {
         let mut settings = Settings::default();
         let target = known("example.editor", 1);
         let name = create(&mut settings, &target, "Thesis");
-        let earlier = owner_for(&settings, &target, None, 1).unwrap();
+        let earlier = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
         definitions::update(
             &mut settings,
             &name,
             crate::output::stored(Some("apa")).spec().clone(),
             None,
         )
-        .unwrap();
-        let current = owner_for(&settings, &target, None, 1).unwrap();
+        .unwrap_or_else(|error| panic!("{error}"));
+        let current = owner_for(&settings, &target, None, 1).unwrap_or_else(|error| panic!("{error}"));
         assert_ne!(earlier, current, "a file edit must retire an already open chooser");
     }
 
@@ -920,7 +920,10 @@ mod tests {
         std::fs::copy(&path, path.with_extension("json.bak")).unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
         assert!(read_settings(&path).is_err());
-        assert_eq!(std::fs::read_to_string(&path).unwrap(), "not settings");
+        assert_eq!(
+            std::fs::read_to_string(&path).unwrap_or_else(|error| panic!("{error}")),
+            "not settings"
+        );
         assert!(!settings.writings.is_empty());
     }
 }

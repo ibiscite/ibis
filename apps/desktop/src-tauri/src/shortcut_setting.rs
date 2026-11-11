@@ -67,10 +67,10 @@ pub(crate) fn apply_file_shortcut<R: tauri::Runtime>(app: &AppHandle<R>, shortcu
                         error: note.map(str::to_owned),
                         desktop: None,
                     };
-                    if let Some(current) = handle.try_state::<Mutex<ShortcutStatus>>() {
-                        if let Ok(mut current) = current.lock() {
-                            *current = status.clone();
-                        }
+                    if let Some(current) = handle.try_state::<Mutex<ShortcutStatus>>()
+                        && let Ok(mut current) = current.lock()
+                    {
+                        *current = status.clone();
                     }
                     report(handle.emit("shortcut:status", status.clone()), NativeIssue::Shortcut);
                     crate::tray::show_shortcut(&handle, Some(&status.shortcut));
@@ -393,7 +393,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_refused_file_shortcut_is_announced_and_keeps_the_working_registration() {
+    fn a_refused_file_shortcut_is_announced_and_keeps_the_working_registration()
+    -> Result<(), Box<dyn std::error::Error>> {
         use tauri::Listener;
         let app = tauri::test::mock_builder()
             .manage(Mutex::new(ShortcutStatus {
@@ -402,20 +403,28 @@ mod tests {
                 error: None,
                 desktop: None,
             }))
-            .build(tauri::test::mock_context(tauri::test::noop_assets()))
-            .unwrap();
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
         let (sent, events) = std::sync::mpsc::channel();
         app.listen("shortcut:status", move |event| {
             let _ = sent.send(event.payload().to_owned());
         });
         publish_file_refusal(app.handle(), ShortcutRefusal::InUse);
         let published: serde_json::Value =
-            serde_json::from_str(&events.recv_timeout(std::time::Duration::from_secs(1)).unwrap()).unwrap();
+            serde_json::from_str(&events.recv_timeout(std::time::Duration::from_secs(1))?)?;
         assert_eq!(published["shortcut"], "Command+Shift+Y");
         assert_eq!(published["registered"], true);
-        assert!(published["error"].as_str().unwrap().contains("settings.json"));
+        assert!(
+            published["error"]
+                .as_str()
+                .ok_or("shortcut error missing")?
+                .contains("settings.json")
+        );
         let state = app.state::<Mutex<ShortcutStatus>>();
-        assert_eq!(state.lock().unwrap().error.as_deref(), published["error"].as_str());
+        assert_eq!(
+            state.lock().unwrap_or_else(|error| panic!("{error}")).error.as_deref(),
+            published["error"].as_str()
+        );
+        Ok(())
     }
 
     #[test]

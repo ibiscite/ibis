@@ -311,17 +311,16 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
     text.plugin_note = pasted_into
         .as_ref()
         .is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(id));
-    if pasted_into.is_some() {
-        if let Some(choice) = notice.take_format(owner.latest_token, pasted_into.as_ref())
-            && choice.from == ibis_engine::format::FormatFrom::Suggestion
-        {
-            let mut first = false;
-            let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
-                first = ibis_engine::format::accept_suggestion(settings, pasted_into.as_ref(), &choice);
-            });
-            if saved.is_ok() && first {
-                text.suggested_format = choice.id;
-            }
+    if pasted_into.is_some()
+        && let Some(choice) = notice.take_format(owner.latest_token, pasted_into.as_ref())
+        && choice.from == ibis_engine::format::FormatFrom::Suggestion
+    {
+        let mut first = false;
+        let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
+            first = ibis_engine::format::accept_suggestion(settings, pasted_into.as_ref(), &choice);
+        });
+        if saved.is_ok() && first {
+            text.suggested_format = choice.id;
         }
     }
     text.appearance = app
