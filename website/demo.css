@@ -60,7 +60,7 @@
 /* Match KeyCaps and the app's filled, label-type kbd at every width. */
 .picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
 .picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
-.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
+.picker-actions kbd, .key-strip kbd { display: inline-block; min-inline-size: var(--key); block-size: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
 .picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
@@ -72,6 +72,8 @@
 .picker-actions kbd[data-single] { padding-inline: 0; }
 .picker-actions kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
 .picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-small); }
+.picker-actions kbd.pressed, .key-strip kbd.pressed { background: var(--fill-control-pressed); }
+.picker-primary kbd.pressed { background: var(--on-fill-p); }
 .demo-hint kbd { font-size: .95em; }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
 .picker-status:empty { display: none; }

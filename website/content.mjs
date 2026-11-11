@@ -34,11 +34,15 @@ export async function content(html, page = pages[0], input = new URL(".", import
   const lists = Object.entries(headings).map(([key, title]) => `<section id="${key}" class="row" aria-labelledby="${key}-h"><p class="margin"><span class="key">@${key.toLowerCase()}</span></p><div class="text"><h2 id="${key}-h">${title}</h2><ul class="roadmap" data-status="${key}">${status[key].map(item => `<li><strong>${escape(item.text)}</strong>${item.note ? `<span>${escape(item.note)}</span>` : ""}</li>`).join("")}</ul></div></section>`).join("\n");
   const apps = JSON.parse(await read("content/writing-apps.json"));
   const writing = `<div class="chips" role="tablist" aria-label="Where you write">${apps.map((app, i) => `<button class="key" type="button" role="tab" id="app-${app.id}" aria-controls="writing-example" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}" title="${escape(app.name)}" data-output="${escape(app.output)}" data-explain="${escape(app.name)}: ${escape(app.note)}">@${app.id}</button>`).join("")}</div><div class="where-doc" id="writing-example" role="tabpanel" aria-labelledby="app-${apps[0].id}"><p class="draft">Lantern gardens follow the rhythm of imaginary cities <code class="key" data-out>${escape(apps[0].output)}</code><span class="caret" aria-hidden="true"></span></p><p class="small" data-explanation>${escape(apps[0].name)}: ${escape(apps[0].note)}</p></div>`;
+  const order = sections.filter((item, index) => sections.findIndex(other => other.href.split("#")[0] === item.href.split("#")[0]) === index);
+  const next = order[(order.findIndex(item => item.href.split("#")[0] === page.path) + 1) % order.length];
   const values = { body: "", title: page.title, description: page.description, path: page.path, headline, version,
+    "next-page": page === notFound ? "" : `<div class="row next-page"><div class="text"><ul class="rows"><li><a href="${next.href}"><strong>${escape(next.label)}</strong><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M8.5 3.5 13 8l-4.5 4.5"/></svg></a></li></ul></div></div>`,
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
     navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
     page: page.file ?? "missing", status: lists, terminal: transcripts(await read("content/terminal.txt")), "writing-apps": writing,
     "shorthand-result": escape(apps[0].output),
+    "picker-shortcut": escape(keys.DEFAULT_PICKER_SHORTCUT),
     "shortcut-mac": escape(keys.keyLabel(keys.DEFAULT_PICKER_SHORTCUT, true)),
     "shortcut-other": escape(keys.keyLabel(keys.DEFAULT_PICKER_SHORTCUT, false)),
   };

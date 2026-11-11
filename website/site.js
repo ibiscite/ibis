@@ -38,6 +38,49 @@ function platforms() {
   if (!detected) return;
   const get = document.querySelector("[data-get]");
   if (get?.dataset[detected]) get.textContent = get.dataset[detected];
+  if (detected !== "mac") for (const cap of document.querySelectorAll("[data-shortcut-other]")) {
+    if (cap.dataset.shortcutOther) cap.textContent = cap.dataset.shortcutOther;
+  }
+}
+function outboundLinks() {
+  for (const link of document.querySelectorAll("main a[href], footer a[href], .index-note a[href]")) {
+    if (link.closest(".rows, .button, .key")) continue;
+    const url = new URL(link.href, location.href);
+    if (!/^https?:$/.test(url.protocol) || url.origin === location.origin) continue;
+    const mark = document.createElement("span"); mark.className = "outbound"; mark.setAttribute("aria-hidden", "true");
+    link.append(mark);
+  }
+}
+const textEntry = target => target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+// One shortcut owner across all four pages; the app's matcher owns layouts and modifiers.
+function pickerKeys({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator }, open) {
+  const mac = document.documentElement.dataset.platform === "macos", held = new Map();
+  function show(event) {
+    for (const cap of document.querySelectorAll("kbd[data-accelerator]")) cap.classList.toggle("pressed", [...held.values()].some(press =>
+      matchesAccelerator({ ...press, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey }, cap.dataset.accelerator, mac)));
+  }
+  document.addEventListener("keydown", event => {
+    if (event.isComposing || event.keyCode === 229) return;
+    held.set(event.code || event.key, { key: event.key, code: event.code });
+    if (!event.repeat && !textEntry(event.target) && matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac)) {
+      event.preventDefault();
+      if (document.querySelector("[data-picker]")) open(); else location.assign("/#try");
+    }
+    show(event);
+  });
+  document.addEventListener("keyup", event => { held.delete(event.code || event.key); show(event); });
+  const release = () => { held.clear(); for (const cap of document.querySelectorAll("kbd.pressed")) cap.classList.remove("pressed"); };
+  window.addEventListener("blur", release);
+  document.addEventListener("visibilitychange", () => { if (document.hidden) release(); });
+}
+function peck() {
+  const logo = document.querySelector(".logo");
+  if (!logo || matchMedia("(prefers-reduced-motion: reduce)").matches || logo.classList.contains("pecking")) return;
+  const finish = () => {
+    logo.classList.remove("pecking"); logo.removeEventListener("animationend", finish); logo.removeEventListener("animationcancel", finish);
+  };
+  logo.addEventListener("animationend", finish); logo.addEventListener("animationcancel", finish);
+  logo.classList.add("pecking");
 }
 // The browser's own share sheet, or a copied link where there is none; no third-party buttons.
 function share() {
@@ -120,7 +163,7 @@ function copyButtons() {
   if (!navigator.clipboard) { document.querySelectorAll(".copy").forEach(button => { button.hidden = true; }); return; }
   for (const button of document.querySelectorAll(".copy")) button.addEventListener("click", async () => {
     const label = button.querySelector("span"), idle = label.textContent;
-    try { await navigator.clipboard.writeText(button.dataset.copy); label.textContent = button.dataset.copied; button.dataset.state = "copied"; }
+    try { await navigator.clipboard.writeText(button.dataset.copy); label.textContent = button.dataset.copied; button.dataset.state = "copied"; peck(); }
     catch { label.textContent = button.dataset.failed; }
     setTimeout(() => { label.textContent = idle; delete button.dataset.state; }, 1500);
   });
@@ -129,7 +172,7 @@ function copyButtons() {
 function shorthand() {
   const box = document.querySelector("[data-shorthand]");
   if (!box) return;
-  const refs = [{ key: "vale2024lanterns", label: "Vale 2024", words: "vale lantern lanterns gardens" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen clouds clockwork" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed maps islands" }];
+  const refs = JSON.parse(box.dataset.references);
   const input = box.querySelector("[data-shorthand-input]"), parts = box.querySelector("[data-shorthand-parts]"), out = box.querySelector("[data-shorthand-out]");
   // Each typed word over what it means, underlined by its role.
   const gloss = (role, typed, meaning) => { const item = document.createElement("li"); item.dataset.role = role; const word = document.createElement("b"), note = document.createElement("span"); word.textContent = typed; note.textContent = meaning; item.append(word, note); return item; };
@@ -143,20 +186,45 @@ function shorthand() {
       else terms.push(word);
     });
     const ref = terms.length ? refs.find(r => terms.every(t => r.words.includes(t))) : undefined;
-    if (!ref) { parts.replaceChildren(parts.dataset.empty); out.textContent = "…"; return; }
+    if (!ref) { parts.replaceChildren(parts.dataset.empty); out.textContent = out.dataset.empty; return; }
     parts.replaceChildren(...[prefix && gloss("before", prefix, parts.dataset.before), gloss("reference", terms.join(" "), ref.label), locator && gloss("locator", typedLocator, locator)].filter(Boolean));
     out.textContent = `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]`;
     out.classList.remove("landed"); void out.offsetWidth; out.classList.add("landed");
   }
-  input.addEventListener("input", render);
-  box.querySelectorAll("[data-try]").forEach(button => button.addEventListener("click", () => { input.value = button.textContent; render(); }));
+  const buttons = [...box.querySelectorAll("[data-try]")], examples = [...buttons.map(button => button.textContent.trim()), input.value];
+  const still = matchMedia("(prefers-reduced-motion: reduce)"), pace = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-1"));
+  let stopped = document.activeElement === input, timer, index = 0, resume = begin;
+  function schedule(next, delay) {
+    clearTimeout(timer); resume = next;
+    if (!stopped && !still.matches && !document.hidden) timer = setTimeout(next, delay);
+  }
+  function begin() {
+    if (stopped || still.matches || document.hidden) return;
+    input.value = ""; render();
+    const example = examples[index];
+    function type() {
+      if (stopped || still.matches || document.hidden) return;
+      input.value = example.slice(0, input.value.length + 1); render();
+      if (input.value === example) { index = (index + 1) % examples.length; schedule(begin, 3000); }
+      else schedule(type, pace * (.65 + Math.random() * .7));
+    }
+    schedule(type, pace);
+  }
+  const stop = () => { stopped = true; clearTimeout(timer); };
+  input.addEventListener("focus", stop);
+  input.addEventListener("input", () => { stop(); render(); });
+  buttons.forEach(button => button.addEventListener("click", () => { stop(); input.value = button.textContent; render(); }));
+  for (const event of ["pointerdown", "pointermove", "keydown", "scroll"]) document.addEventListener(event, () => schedule(begin, 3000), { passive: true });
+  document.addEventListener("visibilitychange", () => schedule(resume, 3000));
+  still.addEventListener("change", () => schedule(resume, 3000));
   render();
+  schedule(begin, 3000);
 }
 // A link from another page lands on its section at once; smooth scrolling is only for moves within the page.
 globalThis.addEventListener?.("load", () => requestAnimationFrame(() => document.documentElement.classList.add("smooth")));
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
-  appearance(); platforms(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();
+  appearance(); platforms(); outboundLinks(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();
   console.info("Curious how this page works? Ibis is open source: https://github.com/ibiscite/ibis");
   let lastMove = performance.now();
   const markMove = () => { lastMove = performance.now(); };
@@ -173,12 +241,17 @@ document.addEventListener("DOMContentLoaded", () => {
     if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
     for (const image of event.currentTarget.querySelectorAll("img")) image.src = image.src.split("#")[0] + `#again-${++replay}`;
   });
-  if (document.querySelector("[data-picker]")) import("./demo.js").then(async ({ setupDemo }) => {
+  const demo = document.querySelector("[data-picker]") ? import("./demo.js").then(async ({ setupDemo }) => {
     const quiet = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-2"));
     await new Promise(resolve => {
       const wait = () => { if (performance.now() - lastMove < quiet) requestAnimationFrame(wait); else resolve(); };
       requestAnimationFrame(wait);
     });
-    setupDemo();
-  }).catch(() => { /* The static illustration remains available. */ });
+    const picker = setupDemo({ onCopy: peck, onPaste: peck });
+    if (location.hash === "#try" && !textEntry(document.activeElement)) picker.open();
+    return picker;
+  }).catch(() => { /* The static illustration remains available. */ }) : Promise.resolve();
+  import("./keys.js").then(keys => pickerKeys(keys, () => demo.then(picker => {
+    if (!textEntry(document.activeElement)) picker?.open();
+  }))).catch(() => { /* The page and static key caps remain available. */ });
 });

@@ -1,19 +1,28 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { stripTypeScriptTypes } from "node:module";
 import { test } from "node:test";
 import { join, resolve } from "node:path";
+import { content } from "../website/content.mjs";
 const script = await readFile(new URL("../website/site.js", import.meta.url), "utf8");
+const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const keys = runInNewContext(`${keyScript}\n({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator })`);
 const apps = JSON.parse(await readFile(new URL("../website/content/writing-apps.json", import.meta.url), "utf8"));
 const control = () => ({ attrs: {}, handlers: {}, setAttribute(k, v) { this.attrs[k] = v; },
   getAttribute(k) { return this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; },
   removeAttribute(k) { delete this.attrs[k]; }, toggleAttribute(k, value) { if (value) this.attrs[k] = ""; else delete this.attrs[k]; },
   replaceChildren(...children) { this.children = children; },
   addEventListener(k, fn) { this.handlers[k] = fn; }, focus() { this.focused = true; } });
+const classes = () => {
+  const values = new Set();
+  return { contains: value => values.has(value), add: value => values.add(value), remove: value => values.delete(value),
+    toggle(value, on) { if (on) values.add(value); else values.delete(value); } };
+};
 function context(choice = null, platform = "MacIntel", userAgent = "Desktop", maxTouchPoints = 0) {
   const stored = choice instanceof Map ? choice : new Map(choice ? [["ibis-theme", choice]] : []);
   const media = { matches: false, addEventListener(_name, fn) { this.change = fn; } };
-  const ctx = { document: { documentElement: { dataset: {} }, addEventListener() {} },
+  const ctx = { document: { documentElement: { dataset: {} }, addEventListener() {}, querySelector: () => null },
     navigator: { platform, userAgent, maxTouchPoints },
     localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) }, matchMedia: () => media };
   runInNewContext(script, ctx);
@@ -77,6 +86,130 @@ test("Get keeps every platform visible without adding platform toggles", () => {
   }
 });
 
+test("the home key strip uses platform text from its template", async () => {
+  const html = await content(await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8"));
+  const cap = html.match(/<kbd\b[^>]*data-shortcut-other="([^"]+)"[^>]*>([^<]+)<\/kbd>/);
+  for (const [platform, expected] of [["MacIntel", cap[2]], ["Win32", cap[1]], ["Linux", cap[1]]]) {
+    const { ctx } = context(null, platform), kbd = { textContent: cap[2], dataset: { shortcutOther: cap[1] } };
+    ctx.document.querySelector = () => null; ctx.document.querySelectorAll = () => [kbd]; ctx.platforms();
+    assert.equal(kbd.textContent, expected);
+  }
+});
+
+test("outbound prose and footer links have silent marks; local links, rows, buttons and key chips do not", () => {
+  const { ctx } = context();
+  const links = [
+    ["https://other.test/article", false, true], ["https://other.test/privacy", false, true],
+    ["https://ibis.test/get/", false, false], ["https://ibis.test/#try", false, false],
+    ["mailto:hello@example.test", false, false],
+    ...["rows", "button", "key"].map(() => ["https://other.test/", true, false]),
+  ].map(([href, excluded, marked]) => ({ ...control(), href, marked, closest: () => excluded, append(node) { this.mark = node; } }));
+  ctx.document.querySelectorAll = () => links; ctx.document.createElement = control;
+  ctx.location = new URL("https://ibis.test/"); ctx.URL = URL;
+  ctx.outboundLinks();
+  for (const link of links) {
+    assert.equal(!!link.mark, link.marked, link.href);
+    if (link.mark) { assert.equal(link.mark.className, "outbound"); assert.equal(link.mark.attrs["aria-hidden"], "true"); }
+  }
+});
+
+test("the picker shortcut opens and focuses home from every inner page, and leaves text entry alone", () => {
+  for (const platform of ["MacIntel", "Win32", "Linux"]) for (const path of ["/", "/get/", "/today/", "/cli/"]) {
+    const { ctx } = context(null, platform), events = {}, window = control(), destinations = [];
+    let opened = 0;
+    ctx.window = window; ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+    ctx.document.querySelectorAll = () => [];
+    ctx.document.querySelector = () => path === "/" ? {} : null;
+    ctx.location = { assign: value => destinations.push(value) };
+    ctx.pickerKeys(keys, () => { opened++; });
+    const press = extra => ({ key: "Y", code: "KeyY", shiftKey: true, altKey: false,
+      metaKey: platform === "MacIntel", ctrlKey: platform !== "MacIntel", target: { closest: () => null },
+      preventDefault() { this.prevented = true; }, ...extra });
+    for (const extra of [{ target: { closest: () => ({}) } }, { repeat: true }, { isComposing: true }, { shiftKey: false }]) {
+      const event = press(extra); events.keydown(event); assert.ok(!event.prevented);
+    }
+    assert.equal(opened, 0); assert.deepEqual(destinations, []);
+    const event = press(); events.keydown(event); assert.equal(event.prevented, true);
+    assert.equal(opened, path === "/" ? 1 : 0);
+    assert.deepEqual(destinations, path === "/" ? [] : ["/#try"]);
+  }
+});
+
+test("shortcut, Enter and Shift+Enter caps stay pressed until their keys are released or the window blurs", () => {
+  const { ctx } = context(), events = {}, window = control();
+  const caps = ["CmdOrCtrl+Shift+Y", "Enter", "Shift+Enter"].map(accelerator => ({ dataset: { accelerator }, classList: classes() }));
+  ctx.window = window; ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.document.querySelectorAll = () => caps; ctx.document.querySelector = () => ({});
+  ctx.pickerKeys(keys, () => {});
+  const event = (key, shiftKey = false, metaKey = false) => ({ key, code: key, shiftKey, metaKey, ctrlKey: false, altKey: false, target: {}, preventDefault() {} });
+  const check = expected => assert.deepEqual(caps.map(cap => cap.classList.contains("pressed")), expected);
+  events.keydown(event("Enter")); check([false, true, false]);
+  events.keydown(event("Shift", true)); check([false, false, true]);
+  events.keyup(event("Shift")); check([false, true, false]);
+  events.keyup(event("Enter")); check([false, false, false]);
+  events.keydown(event("Y", true, true)); check([true, false, false]);
+  window.handlers.blur(); check([false, false, false]);
+});
+
+test("the bird pecks once per successful action, ignores overlapping actions and respects reduced motion", () => {
+  const { ctx, media } = context(), logo = { ...control(), classList: classes(), removeEventListener(name) { delete this.handlers[name]; } };
+  let starts = 0;
+  const add = logo.classList.add; logo.classList.add = value => { starts++; add(value); };
+  ctx.document.querySelector = () => logo;
+  ctx.peck(); ctx.peck(); assert.equal(starts, 1);
+  logo.handlers.animationend(); assert.equal(logo.classList.contains("pecking"), false);
+  ctx.peck(); assert.equal(starts, 2);
+  logo.handlers.animationcancel(); media.matches = true; ctx.peck(); assert.equal(starts, 2);
+});
+
+function shorthandPage() {
+  const { ctx, media } = context(), events = {}, timers = new Map();
+  let serial = 0;
+  const input = { ...control(), value: "see vale 417" }, parts = { ...control(), dataset: { before: "before", empty: "No match" } }, out = { dataset: { empty: "…" }, classList: classes() };
+  const buttons = ["fen ch 2", "reed 12-14", "see vale 33"].map(textContent => ({ ...control(), textContent }));
+  const box = { dataset: { references: JSON.stringify([{ key: "vale2024lanterns", label: "Vale 2024", words: "vale" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed" }]) },
+    querySelector: selector => ({ "[data-shorthand-input]": input, "[data-shorthand-parts]": parts, "[data-shorthand-out]": out })[selector], querySelectorAll: () => buttons };
+  ctx.document.querySelector = () => box;
+  ctx.document.createElement = () => ({ ...control(), dataset: {}, append(...children) { this.children = children; } });
+  ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.setTimeout = (fn, delay) => { const id = ++serial; timers.set(id, { fn, delay }); return id; };
+  ctx.clearTimeout = id => timers.delete(id);
+  ctx.getComputedStyle = () => ({ getPropertyValue: () => "120ms" });
+  const tick = () => { const [id, timer] = timers.entries().next().value; timers.delete(id); timer.fn(); return timer.delay; };
+  return { ctx, media, events, timers, input, parts, out, buttons, tick };
+}
+
+test("idle shorthand types the next examples with live gloss, then stops permanently on focus, input or Try", () => {
+  const page = shorthandPage(); page.ctx.shorthand();
+  assert.equal(page.timers.values().next().value.delay, 3000);
+  for (const [example, citation] of [["fen ch 2", "[@fen2023clouds, chap. 2]"], ["reed 12-14", "[@reed2025maps, pp. 12–14]"],
+    ["see vale 33", "[see @vale2024lanterns, p. 33]"], ["see vale 417", "[see @vale2024lanterns, p. 417]"]]) {
+    page.tick();
+    for (let i = 0; i < example.length; i++) { page.tick(); assert.equal(page.input.value, example.slice(0, i + 1)); }
+    assert.equal(page.out.textContent, citation);
+    assert.equal(page.parts.children.at(-1).children[0].textContent, example.startsWith("fen") ? "ch 2" : example.split(" ").at(-1));
+  }
+  for (const action of ["focus", "input", "try"]) {
+    const p = shorthandPage(); p.ctx.shorthand(); p.tick(); p.tick();
+    if (action === "try") p.buttons[1].handlers.click(); else p.input.handlers[action]();
+    const value = p.input.value; assert.equal(p.timers.size, 0, action);
+    p.ctx.document.hidden = true; p.events.visibilitychange(); p.ctx.document.hidden = false; p.events.visibilitychange();
+    assert.equal(p.timers.size, 0); assert.equal(p.input.value, value);
+  }
+});
+
+test("idle shorthand pauses while hidden, waits after interaction and stays still under reduced motion", () => {
+  const p = shorthandPage(); p.ctx.shorthand(); p.tick(); p.tick();
+  const partial = p.input.value;
+  p.ctx.document.hidden = true; p.events.visibilitychange(); assert.equal(p.timers.size, 0);
+  assert.equal(p.input.value, partial);
+  p.ctx.document.hidden = false; p.events.visibilitychange();
+  assert.equal(p.timers.values().next().value.delay, 3000);
+  p.events.pointerdown(); assert.equal(p.timers.size, 1); assert.equal(p.timers.values().next().value.delay, 3000);
+  p.media.matches = true; p.media.change(); assert.equal(p.timers.size, 0);
+  const still = shorthandPage(); still.media.matches = true; still.ctx.shorthand(); assert.equal(still.timers.size, 0);
+});
+
 test("writing tabs rewrite one citation, keep their labels and support both arrows, Home and End", () => {
   const { ctx } = context();
   const tabs = apps.map(app => ({ ...control(), id: `app-${app.id}`, textContent: `@${app.id}`,
@@ -132,12 +265,14 @@ test("Copy copies only the command and reports clipboard refusal", async () => {
     const label = { textContent: "Copy" };
     const { ctx } = context(), button = { ...control(), querySelector: () => label, dataset: { copy: 'ibis cite vale2024lanterns --locator "p. 12" --file sample.bib', copied: "Copied", failed: "Select to copy" } };
     const written = [], timers = [];
+    let pecks = 0; ctx.peck = () => { pecks++; };
     ctx.navigator.clipboard = { async writeText(value) { if (!allowed) throw Error("blocked"); written.push(value); } };
     ctx.document.querySelectorAll = () => [button];
     ctx.setTimeout = fn => { timers.push(fn); };
     ctx.copyButtons(); await button.handlers.click();
     assert.deepEqual(written, allowed ? [button.dataset.copy] : []);
     assert.equal(label.textContent, allowed ? "Copied" : "Select to copy");
+    assert.equal(pecks, allowed ? 1 : 0);
     timers[0](); assert.equal(label.textContent, "Copy");
   }
   const { ctx } = context(), button = control();
@@ -172,6 +307,9 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
         assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${path} fits ${width} ${colorScheme}`);
         assert.equal(await page.getByRole("heading", { level: 1 }).count(), 1);
         assert.equal(await page.locator('.index nav a[aria-current]').count(), 1);
+        assert.equal(await page.getByRole("link", { name: "Source on GitHub", exact: true }).count(), 1);
+        assert.equal(await page.locator('footer .outbound').count(), 3);
+        assert.equal(await page.locator('.rows .outbound, .button .outbound, .key .outbound, a[href^="/#"] .outbound, a[href^="#"] .outbound').count(), 0);
         if (chosenDark !== undefined) assert.equal(await page.getByRole("switch").getAttribute("aria-checked"), chosenDark);
         if (path === "/get/") {
           assert.equal(await page.locator('.platform a[href*="/releases/download/"]:visible').count(), 5);
@@ -185,7 +323,20 @@ test("four routes fit phone and desktop in both themes; navigation, picker, Copy
           assert.equal(await page.evaluate(() => window.copiedCommand), command);
           assert.equal(await button.innerText(), "Copied");
         }
-        if (path !== "/") continue;
+        if (path !== "/") {
+          const shortcut = await page.evaluate(() => document.documentElement.dataset.platform === "macos" ? "Meta+Shift+Y" : "Control+Shift+Y");
+          if (path === "/cli/") {
+            await page.locator("[data-shorthand-input]").focus();
+            await page.keyboard.press(shortcut);
+            assert.equal(new URL(page.url()).pathname, "/cli/");
+            await page.locator("h1").click();
+          }
+          await page.keyboard.press(shortcut);
+          await page.waitForURL("https://ibis.test/#try");
+          await page.getByRole("combobox").waitFor();
+          assert.equal(await page.getByRole("combobox").evaluate(node => node === document.activeElement), true);
+          continue;
+        }
         assert.equal(await page.locator(".picker-primary").isVisible(), true);
         assert.equal(await page.locator(".picker-library").isVisible(), true);
         const query = page.getByRole("combobox");

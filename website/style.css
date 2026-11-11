@@ -52,7 +52,11 @@ code, .key { display: inline-block; color: var(--scarlet); background: var(--web
 a:hover .key, a.key:hover { box-shadow: inset 0 0 0 var(--border-width) currentColor; text-decoration: none; }
 a[aria-current="location"] .key { background: var(--scarlet); color: var(--website-bg); box-shadow: none; }
 p:not(.actions) code, p:not(.actions) .key, li code { display: inline; padding: .1em .35em; font-size: .85em; line-height: inherit; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-kbd { font: inherit; padding: 0 .3em; border-radius: var(--r-small); background: var(--fill-control); box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
+kbd { display: inline-block; direction: ltr; unicode-bidi: isolate; font: inherit; padding: 0 .3em; border-radius: var(--r-small); background: var(--fill-control); box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
+.key-strip { display: flex; align-items: center; gap: var(--space-2); }
+.key-strip > span { color: var(--text-secondary); font: var(--type-body-size)/1 var(--font); }
+kbd.pressed { background: var(--fill-control-pressed); }
+.outbound { display: inline-block; inline-size: var(--space-3); block-size: var(--space-3); margin-inline-start: var(--space-1); background: currentColor; mask: url("/arrow-up-right.svg") center / contain no-repeat; }
 .intro { padding-block: var(--space-8) var(--website-section-pad); }
 section { padding-block: var(--website-section-pad); }
 .text.after { margin: 0; }
@@ -177,6 +181,9 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .row > .text, .journey, .text, .picker { max-width: none; }
 }
 @media (prefers-reduced-motion: no-preference) {
+  kbd { transition: background-color var(--dur-1) var(--ease-out), translate var(--dur-1) var(--ease-out); }
+  kbd.pressed { translate: 0 var(--border-width); }
+  .logo.pecking { transform-origin: 20% 80%; animation: peck calc(2 * var(--dur-2)) var(--ease-out); }
   html.smooth { scroll-behavior: smooth; }
   .key, .button, .rows a { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out); }
   .index nav .key { transition-duration: var(--dur-2); }
@@ -267,3 +274,5 @@ main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) 
 .copy .icon { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .copy .icon-check, .copy[data-state="copied"] .icon-copy { display: none; }
 .copy[data-state="copied"] .icon-check { display: block; }
+/* Elements focused only so screen readers announce them (the demo's result, the skip target) show no ring; controls keep theirs. */
+[tabindex="-1"]:focus { outline: none; }

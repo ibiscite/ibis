@@ -8,7 +8,7 @@ function icon(kind) {
   for (const drawing of typePaths[kind]) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", drawing); svg.append(path); }
   return svg;
 }
-export function setupDemo() {
+export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   // The hosted demo has no native updater; like an app build without an
   // update key, it omits the update controls offered in the app's More menu.
   const figure = document.querySelector("[data-picker]"), result = document.querySelector("[data-result]");
@@ -37,6 +37,7 @@ export function setupDemo() {
     for (const label of keyCapLabels(accelerator, mac)) {
       const cap = el("span", { className: "key-cap" });
       const kbd = el("kbd", { textContent: label });
+      kbd.dataset.accelerator = accelerator;
       kbd.dataset.label = label; if ([...label].length === 1) kbd.dataset.single = "";
       cap.append(kbd); caps.append(cap);
     }
@@ -58,9 +59,12 @@ export function setupDemo() {
   // The app's default shortcut also opens this example, so visitors learn it by using it.
   // The event key includes the layout’s Command layer (Dvorak–QWERTY ⌘);
   // only a layer without Latin letters keeps its US place (#196).
-  const opens = event => matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac);
   if (touch) hint.textContent = "Tap a row to choose it, or its tile to combine references, then tap Enter to copy.";
   else hint.append(el("kbd", { textContent: keyLabel(DEFAULT_PICKER_SHORTCUT, mac) }), " opens this from anywhere on the page, as in the app. Click a row to choose; double-click to copy; click its tile to combine references. ", ...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
+  if (!touch) {
+    const accelerators = [DEFAULT_PICKER_SHORTCUT, ...KEY_TABLE.filter(row => labels[row.action]).flatMap(row => row.keys)];
+    hint.querySelectorAll("kbd").forEach((cap, index) => { cap.dataset.accelerator = accelerators[index]; });
+  }
   const decoration = className => { const node = el("span", { className }); node.setAttribute("aria-hidden", "true"); return node; };
   const mark = decoration("picker-mark"), beak = decoration("picker-beak"), closingBeak = decoration("picker-beak picker-beak-end");
   mark.append(el("img", { className: "logo-light", src: "assets/ibis-mark.svg", alt: "", width: 24, height: 24 }),
@@ -130,9 +134,9 @@ export function setupDemo() {
   }
   function performCopy() {
     if (!model.copy()) return;
-    render(); if (paste.isConnected) paste.focus();
+    render(); onCopy(); if (paste.isConnected) paste.focus();
   }
-  function performPaste() { model.paste(); render(); result.focus({ preventScroll: true }); }
+  function performPaste() { model.paste(); render(); onPaste(); result.focus({ preventScroll: true }); }
   input.addEventListener("input", () => { model.setQuery(input.value); render(); list.scrollTop = 0; });
   clear.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
   clearEmpty.addEventListener("click", () => { model.setQuery(""); render(); list.scrollTop = 0; input.focus(); });
@@ -144,12 +148,11 @@ export function setupDemo() {
     if (!event.isComposing && event.keyCode !== 229 && matchesAccelerator(event, "CmdOrCtrl+V", mac) && state.copied && state.copied !== state.pasted && event.target !== input) { event.preventDefault(); performPaste(); }
   });
   reopen.addEventListener("click", () => { state.open = true; render(); input.focus(); });
-  document.addEventListener("keydown", event => {
-    if (event.isComposing || event.repeat || !opens(event)) return;
-    event.preventDefault(); state.open = true; render();
+  function open() {
+    state.open = true; render();
     figure.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "instant" : "smooth" });
     input.focus({ preventScroll: true }); input.select();
-  });
+  }
   panel.addEventListener("keydown", event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (event.repeat && event.key === "Enter") { event.preventDefault(); return; }
@@ -173,4 +176,5 @@ export function setupDemo() {
   figure.querySelector(".picker-panel").replaceWith(panel);
   figure.append(reopen, hint, announce); render();
   if (anchorBottom < 0) window.scrollBy({ top: section.getBoundingClientRect().bottom - anchorBottom, behavior: "instant" });
+  return { open };
 }

@@ -54,6 +54,20 @@ test("home offers a download, working picker illustration, four writing apps and
   assert.match(html, /id="why"/);
   assert.match(html, /github.com\/diyanko/);
   assert.match(html, /ibiscite\/ibis\/discussions/);
+  const strip = html.match(/<p class="key-strip">([\s\S]*?)<\/p>/)[1];
+  assert.deepEqual([...strip.matchAll(/<kbd\b[^>]*>([^<]+)<\/kbd>/g)].map(m => m[1]), ["⇧⌘Y", "type a few words", "↵"]);
+  assert.match(strip, /data-shortcut-other="Ctrl\+Shift\+Y"/);
+  assert.doesNotMatch(html.match(/<section id="try"[\s\S]*?<\/section>/)[0], /A citation key is/);
+});
+
+test("each page ends with the next page in the sidebar's reading order", async () => {
+  for (const [path, href, label] of [["", "/get/", "Get Ibis"], ["get/", "/today/", "Today"],
+    ["today/", "/cli/", "Scripts & agents"], ["cli/", "/#try", "Try it"]]) {
+    const html = await page(path), main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
+    const next = main.match(/<div class="row next-page">([\s\S]*?)<\/div><\/div>\s*$/)[1];
+    assert.match(next, /<ul class="rows">/);
+    assert.deepEqual([...next.matchAll(/<a href="([^"]+)"><strong>([^<]+)<\/strong>/g)].map(m => [m[1], text(m[2])]), [[href, label]]);
+  }
 });
 
 test("Get shows every download, installation notes and shared setup steps without toggles", async () => {
@@ -69,10 +83,13 @@ test("Get shows every download, installation notes and shared setup steps withou
   const setup = html.match(/<ol class="setup">([\s\S]*?)<\/ol>/)[1];
   assert.deepEqual([...setup.matchAll(/<h3>([^<]+)<\/h3>/g)].map(m => m[1]), ["Choose your library", "Press your shortcut"]);
   assert.match(setup, /Zotero/);
-  assert.match(setup, /<kbd>[^<]+<\/kbd> on macOS/);
-  assert.match(setup, /<kbd>[^<]+<\/kbd> on Windows and Linux X11/);
+  assert.match(setup, /<kbd\b[^>]*>[^<]+<\/kbd> on macOS/);
+  assert.match(setup, /<kbd\b[^>]*>[^<]+<\/kbd> on Windows and Linux X11/);
   assert.match(platforms[0][0], /System Settings → Privacy &amp; Security → Open Anyway/);
   assert.match(platforms[1][0], /More info → Run anyway/);
+  const windows = platforms[1][0];
+  assert.doesNotMatch(windows.match(/<ol class="install">([\s\S]*?)<\/ol>/)[1], /Smart App Control|work computer/);
+  assert.match(windows, /<p class="small">[^<]*Smart App Control[^<]*work computer[^<]*<a href="https:\/\/github.com\/ibiscite\/ibis\/blob\/main\/docs\/compatibility.md/);
   assert.equal((html.match(/releases\/tag\/nightly/g) || []).length, 1);
   assert.doesNotMatch(html, /<details\b|<summary\b/);
 });
