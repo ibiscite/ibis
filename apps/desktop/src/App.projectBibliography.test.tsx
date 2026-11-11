@@ -1,3 +1,4 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -230,7 +231,7 @@ test("Enter while the project bibliography is still reading copies once the read
   let reading = true;
   const calls = backend({
     project_status: () => file({ state: reading ? "reading" : "ready", revision: reading ? 1 : 2 }),
-    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false, context_version: reading ? [1, 1] : [1, 2] }),
+    picker_destination: () => (fixtureDestination({ app: null, app_id: null, app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, context_version: reading ? [1, 1] : [1, 2], format: formatAnswer("pandoc", "yours") })),
     search: () => [result("a", "First")],
     // The engine refuses a key output whose project read has not finished.
     preview_file_citation: () => reading ? Promise.reject({ code: "cancelled" }) : receipt("[@a]"),

@@ -78,7 +78,7 @@ fn open_label(shortcut: Option<&str>) -> String {
 }
 
 /// Name a changed shortcut in the menu at once.
-pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
+pub(crate) fn show_shortcut<R: tauri::Runtime>(app: &AppHandle<R>, shortcut: Option<&str>) {
     if let Some(item) = app.try_state::<OpenMenuItem>() {
         report(item.0.set_text(open_label(shortcut)), NativeIssue::Shortcut);
     }

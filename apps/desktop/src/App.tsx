@@ -63,7 +63,7 @@ import { PickerShown } from "./features/picker/pickerShown";
 export type PickerApi = Pick<typeof nativeApi,
   "chooseLibrary" | "useZotero" | "libraryStatus" | "reloadLibrary" | "previewFileCitation" | "copyFileCitation" | "pickerPreferences" | "savePickerPreferences" | "pickerPreferencesSaved" |
   "hidePicker" | "pickerPresentation" | "pickerVisible" | "setPinned" | "onLibraryChanged" | "onPickerShown" | "onPickerHidden" | "quit" | "search" | "shortcutStatus"> &
-  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writingProjects" | "editWritingProject" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingProjectsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
+  Partial<Pick<typeof nativeApi, "pickerMoving" | "onLibraryFileDropped" | "onLibraryFileRefused" | "onFileDrag" | "delightView" | "onPickerPreparing" | "recentReferences" | "openLibrarySource" | "librarySource" | "useSampleLibrary" | "useZoteroLibraries" | "zoteroGroups" | "zoteroProfiles" | "useZoteroProfile" | "checkZoteroSharing" | "pickerDestination" | "writings" | "editWriting" | "projectStatus" | "retryProject" | "chooseProject" | "stopProject" | "copyProjectEntry" | "onProjectChanged" | "onWritingsChanged" | "onProjectNotSaved" | "rememberAppOutput" | "forgetAppOutput" | "onWindowSizeSaved" | "readWindowPositionUndo" | "undoWindowPosition" | "dismissWindowPositionUndo" | "onWindowReset" | "findZotero" | "findSources" | "openFoundLibrary" | "rowContext" | "showCopiedNotice" | "loginItem" | "setLoginItem" | "onUpdateProgress" | "updateChecks" | "setUpdateChecks" | "onUpdateChecks" | "updateAvailable" | "onUpdateAvailable" | "updatePickerActivity" | "checkForUpdates" | "onShortcutStatus" | "openSettings" | "onPreferencesChanged" | "takeSearchRequest" | "onSearchRequested" | "alignmentTick" | "resetWindowPosition" | "editorRequest" | "onEditorRequest" | "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">>;
 
 export type PickerPreview = { query?: string; copied?: Copied };
 
@@ -95,7 +95,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const { density, quitAfterSaving: quitPreferences } = preferences;
   const destination = useDestination(session, state, api, { fallback: preferences.format, chooseDefault: preferences.chooseFormat, report });
   const { format } = destination;
-  const quitAfterSaving = () => destination.quitAfterSaving(quitPreferences);
+  const quitAfterSaving = () => quitPreferences(session.afterSaves(2_000));
   const libraryState = usePickerLibrary(api, report, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
   const project = useProjectBibliography(api, report, perform);
@@ -191,7 +191,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
-    quitAfterSaving, commandKeys,
+    quitAfterSaving, commandKeys, findOpen: destination.findOpen,
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -236,13 +236,13 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         onQueryChange={(value) => { delights.dismiss(); pointer.resetHover(); setQuery(value); }}
         expanded={results.length > 0 && showCitations}
         activeDescendant={commands.mode ? commands.list.length ? `command-${commands.active}` : undefined : showCitations && results[active] ? `result-${active}` : undefined}
-        format={format} formatButtonRef={formatButtonRef}
+        format={format} formatLabel={destination.formatLabel} formatButtonRef={formatButtonRef}
         app={destination.app} formatSource={destination.source} formatPick={destination.pick}
-        writingProject={destination.writingProject} onWritingProjects={api.writingProjects && !editor.label ? menus.openProjects : undefined}
+        writing={destination.writing} usualFormat={destination.usualFormat} onUseUsual={destination.useUsual} onWritings={api.writings && !editor.label ? menus.openProjects : undefined}
         onFormatOpenChange={onFormatOpenChange}
         pasteChoices={destination.pasteChoices}
         onPasteChange={(paste) => { const asked = state.pendingCopy?.question === "open"; send({ type: "question", answer: "cancel" }); destination.choosePaste(paste, asked); }}
-        formatDisabled={!destination.ready || destination.saving}
+        formatDisabled={!destination.canChooseFormat}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat}
       />
@@ -265,7 +265,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           onDismissCopied={() => send({ type: "dismiss" })} />
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
-          shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={rows}
+          shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={{ ...rows, onChoose: (index, reference, action) => {
+            if (destination.findOpen && action === "copy" && searchState.ready) source.openReference(reference.id, false);
+            else rows.onChoose(index, reference, action);
+          } }}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
           project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} />
       </PickerScroll>
@@ -281,7 +284,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         cancelCopy={cancelCopy} command={commands.footer} />
-      <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={{ ...api, editWriting: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
         label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}

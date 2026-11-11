@@ -57,3 +57,16 @@ test("a failure to change it says so", async () => {
   fireEvent.click(toggle);
   await screen.findByText("The endpoint could not be changed. Try again.");
 });
+
+test("an outside file change retires an older endpoint read and updates the open row", async () => {
+  let release!: (status: EndpointStatus) => void;
+  let changed!: (status: EndpointStatus) => void;
+  row({ editorEndpoint: () => new Promise((resolve) => { release = resolve; }),
+    onEditorEndpoint: async (listener) => { changed = listener; return () => {}; } });
+  await act(async () => changed(on));
+  expect(await screen.findByText(on.url!)).toBeTruthy();
+  await act(async () => release(off));
+  expect(screen.getByRole<HTMLInputElement>("switch", { name: "Cite from your editor" }).checked).toBe(true);
+  await act(async () => changed(off));
+  expect(screen.queryByText(on.url!)).toBeNull();
+});

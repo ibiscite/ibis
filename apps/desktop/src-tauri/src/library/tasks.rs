@@ -5,7 +5,7 @@ use std::collections::BTreeMap;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Condvar, Mutex};
 
-use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
+use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 #[cfg(debug_assertions)]
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
@@ -177,6 +177,7 @@ fn observe_current(
 enum OpenIntent {
     Remember,
     Read,
+    ReadOnly,
     Refresh,
 }
 
@@ -380,6 +381,19 @@ pub(crate) fn start_open(app: &AppHandle, source: Source, remember: bool) {
     run_open(app, request, source, reload, intent, None);
 }
 
+/// Apply the explicit file choice through the normal replacement request path.
+/// This starts a read only; it never saves a second, guessed library choice.
+pub(crate) fn apply_file_settings(app: &AppHandle, source: Option<LibrarySetting>, profile: Option<String>) {
+    let Some(source) = source.map(Source::from) else {
+        super::state::clear(&app.state(), &app.state());
+        publish_current(app);
+        return;
+    };
+    if let Some((request, reload, _)) = begin_open(&app.state(), &app.state(), source.clone()) {
+        run_open(app, request, source, reload, OpenIntent::ReadOnly, profile);
+    }
+}
+
 /// Read Zotero with this profile from now on. The request is numbered here, so
 /// a newer choice replaces it; it is saved only by a closed read that used it.
 pub(crate) fn use_zotero_profile(app: &AppHandle, name: String) {
@@ -458,7 +472,11 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
             let file_io = matches!(source, Source::File(_) | Source::Samples(_));
             let worker_cancel = cancel.token.clone();
             let read_profile = if matches!(source, Source::Zotero(_)) {
-                reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                if matches!(intent, OpenIntent::ReadOnly) {
+                    reading_profile
+                } else {
+                    reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                }
             } else {
                 None
             };
@@ -764,7 +782,7 @@ mod engine_read_cancellation {
         let replacement = ibis_engine::Cancellation::default();
         let request = |id, cancel| OpenRequest {
             request: id,
-            source: Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into()),
+            source: Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into()),
             reload: true,
             intent: OpenIntent::Refresh,
             profile: None,

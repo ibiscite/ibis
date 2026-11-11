@@ -5,10 +5,10 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
+use crate::settings::backup;
+use crate::settings::{self, PrimaryRead, SettingsError};
 pub use backup::{Backup, BackupError, BackupProblem, Note, Plan, shown};
 use ibis_core::contract::ErrorCode;
-use ibis_core::settings::backup;
-use ibis_core::settings::{self, PrimaryRead, SettingsError};
 
 const MAX_IN_FLIGHT: usize = 8;
 const DEADLINE: Duration = Duration::from_secs(2);
@@ -113,12 +113,12 @@ pub fn message(error: &BackupError) -> String {
     format!("{sentence} Nothing was changed.")
 }
 
-fn settings_code(problem: &SettingsError) -> ErrorCode {
+pub fn settings_code(problem: &SettingsError) -> ErrorCode {
     match problem {
         SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
         SettingsError::Backup(inner) => settings_code(inner),
         SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Unreadable(_) => ErrorCode::SourceUnavailable,
+        SettingsError::Unreadable(_) | SettingsError::Changed => ErrorCode::SourceUnavailable,
     }
 }
 
@@ -126,6 +126,7 @@ fn settings_code(problem: &SettingsError) -> ErrorCode {
 /// fixed descriptions reach diagnostics or messages about failed saves.
 pub fn settings_problem(problem: &settings::SettingsError) -> &'static str {
     match problem {
+        settings::SettingsError::Changed => "settings.json changed while saving; try again",
         settings::SettingsError::Unreadable(_) => "settings.json could not be read",
         settings::SettingsError::Invalid(_) => "settings.json is not valid",
         settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {

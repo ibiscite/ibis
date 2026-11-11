@@ -1,7 +1,25 @@
 use super::*;
+
+#[test]
+fn forgetting_a_captured_app_restores_your_format_despite_identifier_case() {
+    let word = AppId {
+        system: ibis_core::destination::System::Macos,
+        id: "com.microsoft.Word".into(),
+    };
+    let mut settings = Settings {
+        output: Some("modern-language-association".into()),
+        ..Settings::default()
+    };
+    settings.remember_app_output(&word, "apa".into());
+    assert_eq!(choose(&settings, Some(&word)).from, FormatFrom::App);
+    settings.forget_app_output(&word);
+    let restored = choose(&settings, Some(&word));
+    assert_eq!(restored.from, FormatFrom::Yours);
+    assert_eq!(restored.id.as_deref(), Some("modern-language-association"));
+}
+use crate::settings::writings::Writing;
 use ibis_core::contract::KeySyntax;
 use ibis_core::destination::System::{Macos, Windows};
-use ibis_core::settings::writing_projects::WritingProject;
 
 fn app(system: ibis_core::destination::System, id: &str) -> AppId {
     AppId { system, id: id.into() }
@@ -96,22 +114,22 @@ fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() {
     let word = app(Macos, "com.microsoft.word");
     let mut settings = Settings::default();
     settings.remember_app_output(&word, "apa".into());
-    let thesis: WritingProject = serde_json::from_value(serde_json::json!({
-        "id": "thesis", "revision": "r1", "name": "Thesis",
-        "output": {"kind": "csl", "style": "chicago-notes-bibliography"},
+    let thesis: Writing = serde_json::from_value(serde_json::json!({
+        "name": "Thesis",
+        "format": {"kind": "csl", "style": "chicago-notes-bibliography"},
     }))
     .unwrap_or_else(|error| panic!("{error}"));
-    settings.writing_projects.push(thesis);
+    settings.writings.push(thesis);
     settings
-        .writing_project_apps
-        .insert("macos:com.microsoft.word".into(), "thesis".into());
+        .writing_apps
+        .insert("macos:com.microsoft.word".into(), "Thesis".into());
     let chosen = choose(&settings, Some(&word));
     assert_eq!(chosen.from, FormatFrom::Writing);
     assert_eq!(chosen.id.as_deref(), Some("chicago-notes-bibliography"));
     assert_eq!(
         chosen.writing,
         Some(WritingName {
-            id: "thesis".into(),
+            id: "Thesis".into(),
             name: "Thesis".into()
         })
     );
@@ -160,4 +178,37 @@ fn a_writing_chosen_for_this_session_answers_without_a_captured_app() {
         (chosen.id.as_deref(), chosen.from, chosen.writing),
         (Some("typst"), FormatFrom::Writing, Some(writing))
     );
+}
+
+#[test]
+fn a_first_successful_suggested_paste_is_reported_once_per_kind_and_survives_reopen() {
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("settings.json");
+    let word = app(Macos, "com.microsoft.word");
+    let markdown = app(Macos, "md.obsidian");
+    let mut settings = Settings::default();
+    let first = choose(&settings, Some(&word));
+    assert!(accept_suggestion(&mut settings, Some(&word), &first));
+    assert_eq!(choose(&settings, Some(&word)).from, FormatFrom::App);
+    let pages = app(Macos, "com.apple.iwork.pages");
+    let next = choose(&settings, Some(&pages));
+    assert!(!accept_suggestion(&mut settings, Some(&pages), &next));
+    assert_eq!(choose(&settings, Some(&pages)).from, FormatFrom::App);
+    crate::settings::save(&path, &settings).unwrap();
+    let mut settings = crate::settings::load(&path).settings;
+    let keys = choose(&settings, Some(&markdown));
+    assert!(accept_suggestion(&mut settings, Some(&markdown), &keys));
+    assert!(!accept_suggestion(&mut settings, Some(&markdown), &keys));
+}
+
+#[test]
+fn a_delayed_paste_never_overwrites_a_newer_format_or_reports_the_old_suggestion() {
+    let word = app(Macos, "com.microsoft.word");
+    let mut settings = Settings::default();
+    let old = choose(&settings, Some(&word));
+    settings.remember_app_output(&word, "modern-language-association".into());
+    let before = settings.clone();
+    assert!(!accept_suggestion(&mut settings, Some(&word), &old));
+    assert_eq!(settings, before);
+    assert_eq!(usual(&settings, Some(&word)).from, FormatFrom::Suggestion);
 }

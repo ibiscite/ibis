@@ -10,12 +10,12 @@ import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
 
 export type SessionPorts = Pick<typeof nativeApi, "copyFileCitation" | "hidePicker" | "pickerPresentation" | "search" | "previewFileCitation">
-  & Partial<Pick<typeof nativeApi, "showCopiedNotice" | "pickerDestination" | "rememberAppOutput" | "editWritingProject">> & {
+  & Partial<Pick<typeof nativeApi, "showCopiedNotice" | "pickerDestination" | "rememberAppOutput" | "editWriting">> & {
   pinned: () => boolean;
   refresh: () => void; reportHide: (failed: boolean) => void;
   report: (operation: Operation, failed: boolean) => void;
   /** Saves the default format, for a pick with no app to remember it for. */
-  chooseDefault: (output: OutputId) => void;
+  chooseDefault: (output: OutputId) => void | Promise<void>;
   /** Recent citations, the answer to an empty query. */
   recent?: () => ReturnType<typeof nativeApi.search>;
 };
@@ -74,7 +74,17 @@ export function createSessionController(initial = initialSession()) {
       }
       case "consume": dispatch({ type: "consume-held", output: effect.output }); break;
       case "report": ports.report(effect.operation, effect.failed); break;
-      case "choose-default": ports.chooseDefault(effect.output); break;
+      case "choose-default": {
+        const { opening, choice } = state.destination.output;
+        try {
+          const saving = ports.chooseDefault(effect.output);
+          await afterSaves(() => Promise.resolve(saving));
+          const current = state.destination.output;
+          if (opening === current.opening && choice === current.choice) dispatch({ type: "read-destination", reset: false });
+        } catch { /* The preference owner reports the refusal; this citation keeps its choice. */ }
+        finally { dispatch({ type: "destination-save-settled" }); }
+        break;
+      }
       case "read-destination": {
         const { request } = effect;
         // A reopening reads after outstanding saves, so it sees the durable choice.
@@ -123,14 +133,11 @@ export function createSessionController(initial = initialSession()) {
       }
     }
   };
-  // Each part connects the ports it owns; together they are the session's I/O.
-  return { dispatch, connect: (next: Partial<SessionPorts>) => { ports = { ...ports, ...next }; }, getSnapshot: () => state,
-    /** A writing project change from the sheet or the format menu; its answer is the caller's. */
-    editProject: async (context: string, action: ProjectEdit) => {
+  const editDestination = async <T,>(action: () => Promise<T>) => {
       dispatch({ type: "project-edit" });
       const { opening, choice } = state.destination.output;
       try {
-        const view = await afterSaves(() => ports.editWritingProject!(context, action));
+        const view = await afterSaves(action);
         dispatch({ type: "read-destination", reset: false });
         return view;
       } catch (error) {
@@ -139,7 +146,12 @@ export function createSessionController(initial = initialSession()) {
       } finally {
         dispatch({ type: "destination-save-settled" });
       }
-    },
+  };
+  // Each part connects the ports it owns; together they are the session's I/O.
+  return { dispatch, connect: (next: Partial<SessionPorts>) => { ports = { ...ports, ...next }; }, getSnapshot: () => state,
+    /** Saving a writing or forgetting a format retires its old copy at once. */
+    editDestination,
+    editProject: (context: string, action: ProjectEdit) => editDestination(() => ports.editWriting!(context, action)),
     /** Waits for destination saves, at most `ms`, before quitting. */
     afterSaves: async (ms: number) => {
       let timer: ReturnType<typeof setTimeout> | undefined;

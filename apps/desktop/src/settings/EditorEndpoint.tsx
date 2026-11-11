@@ -10,6 +10,7 @@ export type EditorEndpointApi = {
   editorEndpoint: () => Promise<EndpointStatus>;
   setEditorEndpoint: (on: boolean) => Promise<EndpointStatus>;
   copyEditorEndpoint: () => Promise<null>;
+  onEditorEndpoint?: (listener: (status: EndpointStatus) => void) => Promise<() => void>;
 };
 
 const PROBLEMS: Record<EndpointProblem, MessageId> = {
@@ -33,9 +34,18 @@ export function EditorEndpointRow({ api, highlighted }: { api: EditorEndpointApi
   };
   // biome-ignore lint/correctness/useExhaustiveDependencies: read once when the page opens.
   useEffect(() => { take(api.editorEndpoint()); return () => { asked.current += 1; }; }, [api]);
+  useEffect(() => {
+    let alive = true;
+    const events = api.onEditorEndpoint?.((next) => {
+      if (!alive) return;
+      asked.current += 1;
+      setStatus(next); setFailed(false); setCopied(false);
+    });
+    return () => { alive = false; void events?.then((stop) => stop()); };
+  }, [api.onEditorEndpoint]);
   const problem = failed ? "citations-editor-not-saved" : status?.problem ? PROBLEMS[status.problem] : undefined;
   return <>
-    <Row id="editor-endpoint" {...rowDetails("editor-endpoint", text)} highlighted={highlighted} problem={problem ? text(problem) : undefined}>
+    <Row id="editor-endpoint" {...rowDetails("editor-endpoint", text)} highlighted={highlighted} changed={status?.on ?? false} onReset={() => take(api.setEditorEndpoint(false))} problem={problem ? text(problem) : undefined}>
       <Switch aria-labelledby="editor-endpoint" aria-describedby="editor-endpoint-description" isDisabled={!status && !failed}
         isSelected={status?.on ?? false} onChange={(on) => take(api.setEditorEndpoint(on))} />
     </Row>

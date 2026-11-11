@@ -21,6 +21,7 @@ import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
+import { FormatSettings } from "./FormatSettings";
 import { Switch } from "../ui/Switch";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
@@ -61,6 +62,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
+  const [keyFormatVisible, setKeyFormatVisible] = useState(false);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
   const [version, setVersion] = useState("");
@@ -243,8 +245,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged((revision) => {
-      void queue.refresh(revision, () => active);
+    const preferenceEvents = api.onPreferencesChanged((revision, fields) => {
+      void queue.refresh(revision, () => active, fields);
     });
     readAll(false);
     void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });
@@ -296,7 +298,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const change = (next: Partial<PickerPreferences>) => {
     if (!preferences) return;
     edits.current += 1;
-    cause.current = next.output !== undefined ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
+    cause.current = next.output !== undefined ? "default-format" : next.key_output !== undefined ? "key-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
       : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "recent-citations";
     setProblemRow(null);
@@ -335,7 +337,34 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
-  const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
+  const changeLogin = (on: boolean) => {
+    if (loginBusy.current) return;
+    setProblemRow(null); readProblem("login", false); loginBusy.current = true;
+    const request = ++loginReads.current;
+    setLoginSaving(true);
+    void queue.enqueue(() => api.setLoginItem(on)).then((next) => { if (live.current && request === loginReads.current) setLogin(next); })
+      .catch(() => { if (live.current && request === loginReads.current) setProblemRow({ id: "login", message: "settings-choice-failed" }); })
+      .finally(() => { if (live.current && request === loginReads.current) setLoginSaving(false); loginBusy.current = false; });
+  };
+  const changeAutomatic = (on: boolean) => {
+    setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
+    const saved = updates;
+    void api.setUpdateChecks(on).catch(() => {
+      if (live.current && operation === updateReads.current) { setUpdates(saved); setProblemRow({ id: "automatic", message: "settings-choice-failed" }); }
+    }).finally(() => { if (live.current) setUpdatesSaving(false); });
+  };
+  const resettable: Record<string, [string, Partial<PickerPreferences>]> = {
+    "default-format": ["output", { output: "apa" }], "key-format": ["key_output", { key_output: "pandoc" }],
+    appearance: ["appearance", { appearance: "system" }], accent: ["accent", { accent: "system" }],
+    rows: ["density", { density: "comfortable" }], "text-size": ["larger_text", { larger_text: false }],
+    "paste-label": ["paste", { paste: true }], "menu-bar": ["menu_bar", { menu_bar: true }],
+    "small-surprises": ["small_surprises", { small_surprises: true }], "recent-citations": ["recent_citations", { recent_citations: true }],
+  };
+  const feedback = (id: string) => ({ highlighted: highlighted === id,
+    changed: Boolean(resettable[id] && preferences && Object.entries(resettable[id][1]).some(([field, value]) =>
+      (preferences[field as keyof PickerPreferences] ?? value) !== value)),
+    onReset: resettable[id] ? () => change(resettable[id]![1]) : undefined,
+    problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
@@ -415,16 +444,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           <>
             {shortcutSetting}
             <Group id="startup">
-                <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")}>
+                <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")} changed={login?.enabled ?? false} onReset={() => changeLogin(false)}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
-                    onChange={(on) => {
-                      setProblemRow(null); readProblem("login", false); loginBusy.current = true;
-                      const request = ++loginReads.current;
-                      setLoginSaving(true);
-                      void queue.enqueue(() => api.setLoginItem(on)).then((next) => { if (live.current && request === loginReads.current) setLogin(next); })
-                        .catch(() => { if (live.current && request === loginReads.current) setProblemRow({ id: "login", message: "settings-choice-failed" }); })
-                        .finally(() => { if (live.current && request === loginReads.current) setLoginSaving(false); loginBusy.current = false; });
-                    }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
+                    onChange={changeLogin} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
                 </Row>
                 {platform === "macos" && <Row id="menu-bar" label={text("general-menu-bar-label")} description={text("general-menu-bar-description")} {...feedback("menu-bar")}>
                   <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected={preferences?.menu_bar ?? true}
@@ -459,16 +481,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}
-        {page === "citations" && <Group id="citation-choices">
-          {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
+        {page === "citations" && <><Group id="citation-choices">
+          {preferences && <Row id="default-format" label={text("citations-documents")} description={text("citations-default-description")} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
+          </Row>}
+          {preferences && (keyFormatVisible || preferences.key_output) && <Row id="key-format" label={text("citations-keys")} {...feedback("key-format")}>
+            <DefaultFormat preferences={preferences} kind="keys" change={change} />
           </Row>}
           {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
             <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
           </Row>}
           {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow highlighted={highlighted === "editor-endpoint"}
-            api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint }} />}
-        </Group>}
+            api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint, onEditorEndpoint: api.onEditorEndpoint }} />}
+        </Group><FormatSettings api={api} onKeyVisibility={setKeyFormatVisible} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
         {page === "about" && (
           <>
@@ -492,15 +517,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
             <Group id="about-updates" title={text("about-updates")}>
-              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")}>
+              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")} changed={updates === true} onReset={() => changeAutomatic(false)}>
                 {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
-                    isDisabled={updatesSaving || updates === null} onChange={(on) => {
-                      setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
-                      const saved = updates;
-                      void api.setUpdateChecks(on).catch(() => {
-                        if (live.current && operation === updateReads.current) { setUpdates(saved); setProblemRow({ id: "automatic", message: "settings-choice-failed" }); }
-                      }).finally(() => { if (live.current) setUpdatesSaving(false); });
-                    }} />}
+                    isDisabled={updatesSaving || updates === null} onChange={changeAutomatic} />}
               </Row>
             </Group>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>

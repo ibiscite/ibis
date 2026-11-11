@@ -82,7 +82,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   // While opening Zotero is the fix, ⌘O opens Zotero: the footer's fix and More
   // then name the same target, and the words always name what ⌘O does.
   const zoteroFix = Boolean(library?.zotero && (library.error || library.stale) && zoteroWaits(library.problem));
-  const openSource = (appOnly = false, reveal = altHeld) => {
+  const openSource = (appOnly = false, reveal = sourceOpen.source.kind === "zotero" || altHeld) => {
     leaveOverlays();
     appOnly ||= zoteroFix && sourceOpen.source.kind === "zotero";
     if (missingSource && !appOnly) { chooseFile(); return; }
@@ -101,9 +101,9 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   const sourceAvailable = source.kind !== "zotero" || sourceItem !== null || Boolean(library?.zotero && zoteroWaits(library.problem));
   const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
   /** A reference's menu opens that reference, and recovers its file like More does. */
-  const openReference = (id: unknown) => {
+  const openReference = (id: unknown, reveal = sourceOpen.source.kind === "zotero") => {
     if (missingSource || sourceOpen.failure) openSource();
-    else sourceOpen.run(false, false, id);
+    else sourceOpen.run(reveal, false, id);
   };
   return { sourceAvailable, libraryChoices, sourceInChoices, sourceOpen, source, sourceAction, sourceChoice, chooseSources, dismissChooser, performSourceChoice, chooseFile, openSource, openReference };
 }

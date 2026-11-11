@@ -19,7 +19,7 @@ has its own page; read only the one your change touches:
 | [Components](../apps/desktop/src/ui/README.md) | Each shared part in `ui/`, its states, and menus | C9 C21, D7 |
 | [Picker](design/picker.md) | Search bar, results, search rules, shelf, footer, keys, window behaviour | C2 C5–C8 C11 |
 | [Inspector and Reader](design/inspector-and-reader.md) | The details panel and the planned PDF reader | C19 C20 |
-| [Copying, pasting and notices](design/delivery.md) | What Enter does, the format rule, writing projects, notices and their words | |
+| [Copying, pasting and notices](design/delivery.md) | What Enter does, the format rule, writings, notices and their words | |
 | [First run and choice screens](design/choice-screens.md) | Welcome, no library, empty and failed libraries | C12 |
 | [Settings](design/settings.md) | The Settings window and its pages | C18, D17 |
 | [Source checks and sheets](design/sources-and-sheets.md) | The project bibliography check, passages (planned), Cited Since Opening | |

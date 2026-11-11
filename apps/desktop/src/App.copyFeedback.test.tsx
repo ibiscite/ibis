@@ -1,10 +1,10 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
 import { App } from "./App";
 import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
 import { emit } from "@tauri-apps/api/event";
 import type { PickerDestination } from "./api";
-import { noFormatChosen } from "./testing/format";
 
 // Keep the 2.4-second confirmation alive while assertions run, even when other
 // workers are busy. Use one clock from mount through unmount; switching clocks
@@ -99,7 +99,7 @@ test.each([
 
 test("a preferences event superseding the permission return keeps the prepared output for the next copy", async () => {
   let granted = false;
-  let destination: PickerDestination = { app: "Example Editor", app_id: "example.editor", app_identity: null, format: noFormatChosen, automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+  let destination: PickerDestination = fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("typst", "app") });
   let delayReturn = false;
   let finishReturn!: (value: PickerDestination) => void;
   const copies: PreviewRequest[] = [];
@@ -118,14 +118,14 @@ test("a preferences event superseding the permission return keeps the prepared o
   });
   await copy();
   await act(async () => { await emit("picker:hidden"); });
-  destination = { ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
+  destination = fixtureDestination({ ...destination, app: "Example Writer", app_id: "example.writer", app_identity: null, format: formatAnswer("cite", "app") });
   delayReturn = true;
   granted = true;
   await act(async () => { await emit("picker:shown"); });
   expect(calls.filter((call) => call === "picker_destination")).toHaveLength(2);
   await act(async () => { await emit("preferences:changed"); });
   expect(calls.filter((call) => call === "picker_destination")).toHaveLength(3);
-  await act(async () => { finishReturn({ ...destination, app: "Stale Editor", app_id: "example.stale" }); });
+  await act(async () => { finishReturn(fixtureDestination({ ...destination, app: "Stale Editor", app_id: "example.stale", format: formatAnswer("pandoc", "yours") })); });
   expect(screen.getByRole("button", { name: "Copy as Typst · This paste" })).toBeTruthy();
   expect(copies).toHaveLength(1);
   await copy();

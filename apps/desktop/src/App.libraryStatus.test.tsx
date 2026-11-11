@@ -223,7 +223,7 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
   fireEvent.click(fix);
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: true, reveal: false, presentation: 0 }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: null, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: true, reveal: true, presentation: 0 }]);
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledTimes(2));
   expect(opened.mock.calls[1]).toEqual(opened.mock.calls[0]);
@@ -297,7 +297,7 @@ test("Command-O opens the searched source and More lists it first", async () => 
   await screen.findByText("Selected invented reference");
   openKey();
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
-  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: false, presentation: 0 }]);
+  expect(opened.mock.calls[0]).toEqual([{ item: picked.id, expectedRevision: "1", expectedSourceGeneration: "1", zoteroOnly: false, reveal: true, presentation: 0 }]);
   fireEvent.click(screen.getByRole("button", { name: "More" }));
   const menu = await screen.findByRole("menu");
   expect(within(menu).getAllByRole("menuitem")[0]?.textContent).toContain("Show in Zotero");

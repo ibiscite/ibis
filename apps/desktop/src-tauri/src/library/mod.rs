@@ -32,6 +32,6 @@ pub(crate) use state::{Library, LoadRequests};
 pub(crate) use status::{LibraryState, LibraryStatus, status as snapshot_status};
 pub(crate) use tasks::accepts_library_file;
 pub(crate) use tasks::{
-    choose_library_file, current_status, refresh_settings_notice, refresh_zotero, reload_library_file,
-    retry_zotero_on_focus, start_open, use_zotero_library,
+    apply_file_settings, choose_library_file, current_status, refresh_settings_notice, refresh_zotero,
+    reload_library_file, retry_zotero_on_focus, start_open, use_zotero_library,
 };

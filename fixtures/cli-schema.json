@@ -2661,17 +2661,6 @@
               "output": {
                 "$ref": "#/$defs/OutputSpec"
               },
-              "output_question": {
-                "anyOf": [
-                  {
-                    "$ref": "#/$defs/OutputQuestion"
-                  },
-                  {
-                    "type": "null"
-                  }
-                ],
-                "description": "The app keeps `output` until a person answers this question in Ibis."
-              },
               "writing": {
                 "anyOf": [
                   {
@@ -2909,14 +2898,6 @@
               "full-first-note",
               "year-suffix-withheld",
               "input-language-unsupported"
-            ],
-            "type": "string"
-          },
-          "OutputQuestion": {
-            "description": "An app ID that cannot tell Ibis which output its document needs.",
-            "enum": [
-              "browser",
-              "editor"
             ],
             "type": "string"
           },

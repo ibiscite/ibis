@@ -2,6 +2,7 @@ import type { PickerCommand, ShortcutRefusal } from "../bindings";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
+  copyCitation: "shortcuts-action-copy-only",
   chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-action-open", changeLast: "shortcuts-action-change-last", copy: "shortcuts-action-copy",
   add: "shortcuts-action-add", move: "shortcuts-action-move", peek: "shortcuts-action-peek", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
@@ -43,6 +44,8 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "citations-unlisted",
+  "settings-changed", "settings-reset", "settings-reset-row", "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-file-description",
   "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
   "restore-label", "restore-description", "restore-button", "restore-from", "restore-same", "restore-confirm", "restore-cancel", "restore-restarting",
   "backup-change", "backup-note-library", "backup-note-shortcut", "backup-note-repairs",

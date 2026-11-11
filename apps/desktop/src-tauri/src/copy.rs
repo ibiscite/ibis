@@ -251,6 +251,11 @@ pub(crate) async fn preview_file_citation(
     );
     let current_project = current_project.filter(|_| key_output);
     let result = tauri::async_runtime::spawn_blocking(move || {
+        let current_project = editor
+            .as_ref()
+            .and_then(|request| request.bibliography())
+            .or(current_project);
+        let current_project = current_project.filter(|_| key_output);
         let mut preview = file.preview_for(reservation, items, &output, keep_order, editor.as_ref())?;
         preview.warnings.extend(file.prepared_project_warnings(
             &preview.ticket,
@@ -346,11 +351,16 @@ fn commit_shown(
     if editor.current().is_none() {
         // The citation uses the project as saved: a change made elsewhere since
         // the preview, by the command line for one, retires it before the commit.
-        crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
+        crate::writings::refresh(&app, captured.as_ref().map(|(id, _, _)| id)).map_err(CommandError::from)?;
     }
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
     let file = open_file(&library)?;
+    let format = captured.as_ref().and_then(|(id, _, _)| {
+        let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
+        let chosen = ibis_engine::format::choose(&settings.settings, Some(id));
+        (settings.problem.is_none() && chosen.output == *recited.output()).then(|| (id.clone(), chosen))
+    });
     let captured = captured.map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
         if !file.sample {
@@ -366,10 +376,21 @@ fn commit_shown(
         if !file.prepared_for(recited.ticket(), &request) {
             return Err(CommandError::SnapshotChanged);
         }
+        let current = request.bibliography();
+        if let Some(refused) = file
+            .prepared_project_evidence(recited.ticket(), recited.content_hash(), current.as_ref())?
+            .filter(|assessment| !assessment.can_copy())
+        {
+            return Err(refused
+                .message
+                .unwrap_or_else(|| "A bibliography key identifies another work.".into())
+                .into());
+        }
+        let warnings = file.prepared_project_warnings(recited.ticket(), recited.content_hash(), current.as_ref())?;
         // The text leaves the commit barrier first; the editor is answered with no
         // lock held, because ending a request takes these locks the other way round.
         let mut text = None;
-        let copied = file.copy_recited(recited, |content| {
+        let mut copied = file.copy_recited(recited, |content| {
             text = Some((
                 content.text.to_owned(),
                 content.html.map(str::to_owned),
@@ -377,6 +398,7 @@ fn commit_shown(
             ));
             Ok(())
         })?;
+        copied.warnings.extend(warnings);
         let (text, html, rtf) = text.ok_or(CommandError::SnapshotChanged)?;
         if !editor.answer(request.id, &text, || file.invalidate_preview()) {
             return Err("Your editor stopped waiting for this citation.".into());
@@ -394,6 +416,11 @@ fn commit_shown(
             .map_err(CommandError::from)?;
             session.lock().add(copied.cited.clone());
             record(&copied);
+        }
+        if matches!(request.output, ibis_core::contract::OutputSpec::Key { .. }) {
+            let _ = app
+                .state::<crate::preferences::SettingsFile>()
+                .update(|settings| settings.key_formats_used = true);
         }
         return Ok(copied);
     }
@@ -416,6 +443,15 @@ fn commit_shown(
         },
     )?;
     record(&copied);
+    if matches!(recited.output(), ibis_core::contract::OutputSpec::Key { .. }) {
+        let _ = app
+            .state::<crate::preferences::SettingsFile>()
+            .update(|settings| settings.key_formats_used = true);
+    }
+    if let Some((id, chosen)) = format {
+        app.state::<crate::notice::Notice>()
+            .remember_format(copied.delivery, id, chosen);
+    }
     Ok(copied)
 }
 

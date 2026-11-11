@@ -17,7 +17,7 @@ mod generated;
 mod human;
 mod settings_backup;
 mod toggle;
-mod writing_projects;
+mod writings;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OutputMode {
@@ -186,7 +186,7 @@ fn command() -> Command {
                             "format",
                             "style",
                             "for-app",
-                            "project",
+                            "writing",
                             "form",
                             "locale",
                             "bibliography",
@@ -219,16 +219,18 @@ fn command() -> Command {
                         .help("Format with any CSL style instead; list them with: ibis styles"),
                 )
                 .arg(
-                    Arg::new("project").long("project").value_name("PROJECT_ID")
+                    Arg::new("writing").long("writing").value_name("NAME")
                         .help_heading(OUTPUT)
                         .conflicts_with_all(["format", "style", "for-app", "request"])
-                        .help("Use this writing project's output and bibliography; list IDs with: ibis projects list"),
+                        .help("Use this writing's output and bibliography; list names with: ibis writings list"),
                 )
                 .arg(Arg::new("nightly").long("nightly").action(ArgAction::SetTrue)
-                    .requires("from-app-settings").help("Read the writing project or the app's formats from Ibis Nightly's settings"))
-                .group(clap::ArgGroup::new("from-app-settings").args(["project", "for-app"]).multiple(false))
-                .arg(Arg::new("strict-project").long("strict-project").action(ArgAction::SetTrue)
-                    .requires("project").help("Require a current complete bibliography read for project key citations"))
+                    .requires("from-app-settings").help("Read the writing or the app's formats from Ibis Nightly's settings"))
+                .group(clap::ArgGroup::new("from-app-settings").args(["writing", "for-app", "document"]).multiple(false))
+                .arg(Arg::new("document").long("document").value_name("PATH")
+                    .value_parser(clap::value_parser!(PathBuf))
+                    .conflicts_with_all(["writing", "request", "for-app"])
+                    .help("Use an explicit document's bibliography/csl front matter to select a writing"))
                 .arg(
                     Arg::new("for-app")
                         .long("for-app")
@@ -432,7 +434,7 @@ fn command() -> Command {
                 ),
         )
         .subcommand(settings_backup::command())
-        .subcommand(writing_projects::command())
+        .subcommand(writings::command())
         .subcommand(
             Command::new("completions").about("Print shell completions").arg(
                 Arg::new("shell")
@@ -821,8 +823,8 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "settings" {
         return Ok(Execution::Result(settings_backup::run(args)?, None));
     }
-    if name == "projects" {
-        return Ok(Execution::Result(writing_projects::run(engine, args)?, None));
+    if name == "writings" {
+        return Ok(Execution::Result(writings::run(engine, args)?, None));
     }
     if name == "completions" {
         let shell = args
@@ -1130,9 +1132,10 @@ fn run_method<R: BufRead>(
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Cite => {
-            let project = writing_projects::chosen(args)?;
-            let output = if let Some(project) = &project {
-                ibis_engine::outputs::resolve(&project.output)?
+            let context = writings::chosen(args)?;
+            let writing = context.writing;
+            let output = if let Some(writing) = &writing {
+                ibis_engine::outputs::resolve(&writing.format)?
             } else {
                 match (args.get_one::<String>("style"), args.get_one::<String>("format")) {
                     (Some(style), _) => OutputSpec::Csl { style: style.clone() },
@@ -1152,10 +1155,13 @@ fn run_method<R: BufRead>(
             let destination = match args.get_one::<String>("for-app") {
                 Some(app) => {
                     // The app's own settings decide, as in the picker (decision 0042).
-                    let settings = app_libraries::format_settings(args.get_flag("nightly"))?;
+                    let settings = context
+                        .settings
+                        .as_ref()
+                        .ok_or_else(|| EngineError::new(ErrorCode::Internal))?;
                     let named = (args.contains_id("style") || args.contains_id("format")).then_some(&output);
                     Some(destination(app, System::HERE, |app| {
-                        ibis_engine::format::choose_with(&settings, Some(app), named)
+                        ibis_engine::format::choose_with(settings, Some(app), named)
                     }))
                 }
                 None => None,
@@ -1200,11 +1206,11 @@ fn run_method<R: BufRead>(
                 output: output_name(&output),
                 form,
             };
-            let writing_project = project
+            let mut writing_result = writing
                 .as_ref()
-                .map(|project| {
-                    engine.cite_writing_project_keys_with_policy(
-                        project,
+                .map(|writing| {
+                    engine.cite_writing_keys(
+                        writing,
                         &KeyCitationRequest {
                             keys: keys.clone(),
                             output: output.clone(),
@@ -1212,13 +1218,15 @@ fn run_method<R: BufRead>(
                             output_locale: args.get_one::<String>("locale").cloned(),
                             keep_order: args.get_flag("keep-order"),
                         },
-                        writing_projects::policy(args),
                         &cancel,
                     )
                 })
                 .transpose()?;
-            let mut result = if let Some(project) = &writing_project {
-                Ok(project.citation.clone())
+            if let Some(writing) = &mut writing_result {
+                writing.citation.destination = destination.clone();
+            }
+            let mut result = if let Some(writing) = &writing_result {
+                Ok(writing.citation.clone())
             } else {
                 engine.cite_keys(
                     &KeyCitationRequest {
@@ -1263,7 +1271,7 @@ fn run_method<R: BufRead>(
             })?;
             result.destination = destination;
             let result = engine.finalize(DispatchResult::citation(result, keys.len())?)?;
-            let result = writing_projects::with_check(result, writing_project)?;
+            let result = writings::with_check(result, writing_result)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
         Method::Project => {
@@ -1513,13 +1521,13 @@ fn emit(
             .data
             .pointer("/assessment/state")
             .and_then(Value::as_str)
-            .is_some_and(|state| matches!(state, "paused" | "conflict"));
+            .is_some_and(|state| state == "conflict");
         if !project_blocked {
             for line in human::citation_report(citation, citing, result.text.is_some()) {
                 say(&line);
             }
         }
-        if let Some(project) = result.data.get("project").filter(|value| !value.is_null())
+        if let Some(project) = result.data.get("bibliography").filter(|value| !value.is_null())
             && let Some(report) = human::project_report(project)
         {
             say(&report);

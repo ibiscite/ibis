@@ -86,7 +86,7 @@ test("several Zotero libraries follow the highlighted reference rather than the 
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "ArrowDown" });
   commandO();
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
-  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }]);
+  expect(open.mock.calls[0]).toEqual([{ item: group.id, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: true, presentation: 0 }]);
 });
 
 test("Shift-Command-O offers files and Zotero, while Command-O there opens the current source", async () => {
@@ -209,7 +209,7 @@ test.each(["file", "zotero-running", "zotero-closed"])("empty choices show each 
   expect(goals).toEqual(["Use Zotero", "Choose a Library File…", ...kind === "file" ? ["Open ⁨thesis.bib⁩"] : kind === "zotero-closed" ? ["Open Zotero"] : []]);
   expect(footer().queryByRole("button", { name: /Open Zotero|Open .*thesis/ })).toBeNull();
   commandO();
-  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: false, presentation: 0 }));
+  await waitFor(() => expect(open).toHaveBeenCalledExactlyOnceWith({ item: null, expectedRevision: "1", expectedSourceGeneration: "source-1", zoteroOnly: false, reveal: zotero, presentation: 0 }));
 });
 
 test("an empty file's failed open leaves one file-choice goal and keeps cancellation usable", async () => {

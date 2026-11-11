@@ -68,7 +68,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "cite",
         title: "Format a citation",
-        description: "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+        description: "Write a citation or reference list from search refs, with optional locators. Keep refs exact. Use `format` (pandoc, autocite, typst, apa) or any CSL id in `style`; default apa. Use text as returned and report notices, losses and warnings.",
         input: cite_input,
         output: cite_output,
         reads_library: true,
@@ -469,6 +469,7 @@ fn cite_output() -> Value {
             "losses": {"type": "array", "description": "What was asked for but could not be shown."},
             "warnings": {"type": "array"},
             "destination": {"type": "object", "description": "What Ibis does for the app named by for_app, with pasting on and permitted."},
+            "bibliography": {"type": "object", "description": "The selected writing's .bib checks; filenames only."},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}}
         },
@@ -514,6 +515,7 @@ fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> R
                 .to_owned(),
         },
     };
+    let mut writing = None;
     let destination = match arguments.get("for_app") {
         Some(app) => {
             let app = app
@@ -524,25 +526,40 @@ fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> R
             // a format or style named here stands in for your usual one.
             let settings = match formats {
                 Formats::File(path) => {
-                    let loaded = ibis_core::settings::load(path);
-                    if loaded.problem.is_some() {
-                        return Err(Refusal::new(ErrorCode::SourceUnavailable, UNREADABLE_FORMATS));
+                    let loaded = crate::settings::load(path);
+                    if let Some(problem) = loaded.problem {
+                        return Err(Refusal::new(
+                            crate::settings_backup::settings_code(&problem),
+                            UNREADABLE_FORMATS,
+                        ));
                     }
                     loaded.settings
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
-                Formats::Defaults => ibis_core::settings::Settings::default(),
+                Formats::Defaults => crate::settings::Settings::default(),
             };
             let named = (arguments.contains_key("format") || arguments.contains_key("style")).then_some(&output);
-            Some(destination(app, System::HERE, |app| {
+            let destination = destination(app, System::HERE, |app| {
                 crate::format::choose_with(&settings, Some(app), named)
-            }))
+            });
+            writing = destination
+                .writing
+                .as_ref()
+                .and_then(|selected| crate::settings::writings::find(&settings, &selected.name).ok().cloned());
+            Some(destination)
         }
         None => None,
     };
     let output = destination
         .as_ref()
         .map_or(output, |destination| destination.output.clone());
+    // Resolve settings overrides through the same privacy boundary as direct
+    // tool arguments: a remembered export must never expose hidden fields.
+    if outputs::named(&output).is_some_and(|output| output.exports_records || output.zotero_items) {
+        return Err(Refusal::bad(
+            "This format exports records or Zotero markers. Choose a citation format.",
+        ));
+    }
     let locale = match arguments.get("locale") {
         None => None,
         Some(locale) => Some(
@@ -581,17 +598,20 @@ fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> R
         .collect::<Result<Vec<_>, _>>()?;
     let count = items.len();
     let keyed = matches!(output, OutputSpec::Key { .. });
-    let result = engine.cite(
-        &CitationRequest {
-            items,
-            form,
-            keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
-            output,
-            input_language: None,
-            output_locale: locale,
-        },
-        &Cancellation::default(),
-    )?;
+    let request = CitationRequest {
+        items,
+        form,
+        keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
+        output,
+        input_language: None,
+        output_locale: locale,
+    };
+    let (result, bibliography) = if let Some(writing) = writing {
+        let result = engine.cite_writing(&writing, &request, &Cancellation::default())?;
+        (result.citation, result.bibliography)
+    } else {
+        (engine.cite(&request, &Cancellation::default())?, None)
+    };
     // Only a complete citation is handed on; anything less is an error the
     // agent can see, never a partial text it might paste.
     // Fixed-code warnings, notices and losses carry no library data; an agent needs them to know
@@ -617,6 +637,9 @@ fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> R
     }
     if let Some(destination) = destination {
         answer["destination"] = json!(destination);
+    }
+    if let Some(bibliography) = bibliography {
+        answer["bibliography"] = json!(bibliography);
     }
     if let Some(language) = &result.language {
         answer["language"] = json!(language);

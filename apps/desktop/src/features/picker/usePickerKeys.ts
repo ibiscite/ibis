@@ -17,6 +17,7 @@ import type { usePointerSelection } from "../../pointerSelection";
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
   quitAfterSaving, onEmptyEnter, commandKeys,
+  findOpen = false,
 }: {
   api: PickerApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
@@ -32,6 +33,7 @@ export function usePickerKeys({
   onEmptyEnter?: () => void;
   /** ">" in the search: the command list answers ↑ ↓ and Enter instead of the references. */
   commandKeys?: { current: ((event: KeyboardEvent) => boolean) | null };
+  findOpen?: boolean;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
   const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
@@ -50,7 +52,7 @@ export function usePickerKeys({
       if (formatOpen) closeNearestLayer(event); else openFormat();
     } else if (command === "changeLast") changeLast();
     else if (command === "chooseSource") chooseSources();
-    else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
+    else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource" ? true : undefined);
     else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null, session.getSnapshot().presentation)); }
     else runFromMenu("quit", quitAfterSaving);
   };
@@ -78,7 +80,8 @@ export function usePickerKeys({
       toggleHighlighted();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      copyChosen();
+      if (findOpen && !e.altKey) { if (results.length > 0) openSource(false, false); }
+      else copyChosen();
     }
   };
   const lastShowing = useRef<number | null>(null);

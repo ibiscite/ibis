@@ -1,16 +1,14 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
 use super::CommandError;
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
-use ibis_core::{
-    contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
-    },
-    settings::{ZoteroLibraries, ZoteroLibrary},
+use ibis_core::contract::{
+    CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
+    KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
 };
 use ibis_engine::{
     Cancellation, Engine, Method, PreparedCitation,
     request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
+    settings::{ZoteroLibraries, ZoteroLibrary},
 };
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -682,7 +680,7 @@ impl FileLibrary {
         }
         Ok(project
             .filter(|_| citation.uses_citation_keys())
-            .map(|project| citation.project_evidence(&project.read, ibis_engine::ProjectPolicy::Normal)))
+            .map(|project| citation.project_evidence(&project.read)))
     }
 
     pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
@@ -1130,6 +1128,9 @@ pub(crate) struct Recited {
 }
 
 impl Recited {
+    pub(crate) fn output(&self) -> &OutputSpec {
+        self.citation.request_output()
+    }
     pub(crate) fn ticket(&self) -> &str {
         &self.ticket
     }

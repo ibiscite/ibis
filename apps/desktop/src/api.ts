@@ -7,7 +7,7 @@ import { commands, type CommandError, type LibraryStatus, type PreferenceChange,
 export type { Sources } from "./bindings";
 export type {
   AppPaste, Copied, Density, EntryCopy, LibraryStatus, Locator, LocatorQuery, LoginItem, LoginItemProblem, PastedList, PickerDestination, PickerPreferences, ProjectStatus, SearchQuery, SearchResult, SessionBibliography, SessionEdit, SessionReferencesView, ShortcutStatus, ZoteroGroup, ZoteroLibrary, ZoteroProfiles,
-  WritingProjectView, WritingProjectsView, WritingProjectEdit,
+  WritingView, WritingsView, WritingEdit,
 } from "./bindings";
 /** What the notice after a copy says: pasted into an app, or copied and why. */
 export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copiedNotice>>>;
@@ -28,8 +28,8 @@ export const {
   chooseProject,
   stopProject,
   copyProjectEntry,
-  writingProjects,
-  editWritingProject,
+  writings,
+  editWriting,
   editorRequest,
   sessionReferences,
   editSessionReferences,
@@ -49,6 +49,7 @@ export const {
   pickerPreferences,
   pickerDestination,
   rememberAppOutput,
+  forgetAppOutput,
   loginItem,
   setLoginItem,
   findZotero,
@@ -175,8 +176,8 @@ export function onProjectChanged(handler: (version: [number, number] | null) => 
 }
 
 /** Saved-definition metadata can change without retargeting the current task. */
-export function onWritingProjectsChanged(handler: () => void): Promise<UnlistenFn> {
-  return listen("writing-projects:changed", handler);
+export function onWritingsChanged(handler: () => void): Promise<UnlistenFn> {
+  return listen("writings:changed", handler);
 }
 
 /** A chosen project bibliography could not be saved, so the old choice stands. */

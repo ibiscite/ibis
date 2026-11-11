@@ -1,12 +1,12 @@
 # 0040 One owner for shared settings
 
 2026-11-07 (consolidation step 6; design attacked by Sol before code). Settings,
-formats per app, the selected writing project and restoring a backup all change
+formats per app, the selected writing and restoring a backup all change
 through one owner per settings file, `ibis_engine::settings::Owner`.
 
 - **The owner orders writes by when they were asked for.**
   - `submit` takes a complete edit and returns at once, never waiting for disk.
-  - One worker applies edits one at a time, in that order. Each runs as the core
+  - One worker applies edits one at a time, in that order. Each runs as the engine
     transaction: the cross-process lock, a fresh read, the change, validation
     and an atomic write.
   - A later choice therefore always lands after an earlier one, and nothing
@@ -43,9 +43,8 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
     and paste approvals.
   - `apps.json` keeps only what is about pasting: the delivery choice (paste or
     copy only), the identity binding and the one-time plugin note (decision 0031).
-  - A browser or editor's first-paste answer saves its format first, then its
-    delivery. If the delivery save fails, the format stays and the answer says
-    the delivery was not saved.
+  - A successful suggested paste remembers its format (decision 0042). Delivery
+    approval remains separate; a format never grants it.
 - **System effects stay with the app.** It registers the shortcut, shows the
   menu bar item, sizes windows and applies larger text; the owner only saves.
 

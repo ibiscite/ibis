@@ -2151,6 +2151,7 @@ dependencies = [
  "ibis-core",
  "ibis-csl",
  "ibis-sources",
+ "libc",
  "notify",
  "schemars 1.2.3",
  "serde",
@@ -2159,6 +2160,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.21",
  "unic-langid",
+ "unicode-normalization",
 ]
 
 [[package]]

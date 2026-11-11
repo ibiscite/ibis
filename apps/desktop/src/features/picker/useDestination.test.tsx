@@ -4,19 +4,21 @@ import { useState, useSyncExternalStore } from "react";
 import type { OutputToken } from "./destination";
 import { createSessionController } from "./sessionController";
 import { useDestination as useSessionDestination } from "./useDestination";
-import type { PickerDestination, WritingProjectsView } from "../../api";
+import type { PickerDestination, WritingsView } from "../../api";
 import type { OutputId } from "../../format/outputs";
-import { noFormatChosen } from "../../testing/format";
+import { fixtureDestination, formatAnswer } from "../../testing/format";
 
 afterEach(cleanup);
 /** The destination in its own picker session; `consumeHeld` is what a finished copy does. */
 function useDestination(api: Parameters<typeof useSessionDestination>[2], settings: Parameters<typeof useSessionDestination>[3]) {
   const [session] = useState(() => createSessionController());
   const state = useSyncExternalStore(session.subscribe, session.getSnapshot);
-  return { ...useSessionDestination(session, state, api, settings),
+  const native = api.pickerDestination;
+  const connected = { ...api, pickerDestination: native ? async () => fixtureDestination(await native()) : undefined };
+  return { ...useSessionDestination(session, state, connected, settings),
     consumeHeld: (output: OutputToken) => session.dispatch({ type: "consume-held", output }) };
 }
-const browser: PickerDestination = { app: "Example Browser", app_id: "example.browser", app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: "browser", paste: null, paste_question: false, can_choose_paste: false };
+const browser: PickerDestination = fixtureDestination({ app: "Example Browser", app_id: "example.browser", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") });
 const pending = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -27,31 +29,31 @@ function options() {
 }
 
 const refused = () => vi.fn(async (): Promise<null> => { throw new Error("synthetic save failure"); });
-const noApp: PickerDestination = { ...browser, app: null, app_id: null, output_question: null };
+const noApp: PickerDestination = fixtureDestination({ ...browser, app: null, app_id: null, format: formatAnswer("pandoc", "yours") });
 
 test("a project's format beats the app and a failed project save keeps both old settings", async () => {
   const settings = options();
   const rememberAppOutput = vi.fn(async () => null);
-  const editWritingProject = vi.fn(async (): Promise<never> => { throw new Error("synthetic failure"); });
+  const editWriting = vi.fn(async (): Promise<never> => { throw new Error("synthetic failure"); });
   const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
-  const target: PickerDestination = { ...browser, remembered: "typst", writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
-  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput, editWritingProject }, settings));
+  const target: PickerDestination = fixtureDestination({ ...browser, writing: project, writing_context: "opening-a", context_version: [1, 0], format: formatAnswer(project.output!, "writing") });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput, editWriting }, settings));
   await act(async () => result.current.read());
   expect(result.current.format).toBe("cite");
   expect(result.current.shouldAsk).toBe(false);
   await act(async () => result.current.choose("pandoc"));
-  expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "output", id: "thesis", output: "pandoc" });
+  expect(editWriting).toHaveBeenCalledWith("opening-a", { kind: "output", id: "thesis", output: "pandoc" });
   expect(result.current.format).toBe("cite");
   expect(rememberAppOutput).not.toHaveBeenCalled();
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
 
 test("a failed format save keeps the project's format and says why", async () => {
-  const message = "The writing project could not be saved. Try again.";
+  const message = "The writing could not be saved. Try again.";
   const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
-  const target: PickerDestination = { ...browser, writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
+  const target = fixtureDestination({ ...browser, writing: project, writing_context: "opening-a", context_version: [1, 0], format: formatAnswer(project.output!, "writing") });
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target,
-    editWritingProject: async () => { throw message; } }, options()));
+    editWriting: async () => { throw message; } }, options()));
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   await waitFor(() => expect(result.current.ready).toBe(true));
@@ -72,7 +74,7 @@ test("switching projects with the same output retires the old copy token", async
 test("settling a reopened destination preserves an immutable token captured after that opening began", async () => {
   const reopening = pending<PickerDestination>();
   let reopened = false;
-  const initial: PickerDestination = { ...browser, remembered: "cite", context_version: [1, 0] };
+  const initial: PickerDestination = fixtureDestination({ ...browser, context_version: [1, 0], format: formatAnswer("cite", "app") });
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => reopened ? reopening.promise : initial, rememberAppOutput: vi.fn() }, options()));
   await act(async () => result.current.read());
   const retired = Object.freeze(result.current.copyToken());
@@ -80,14 +82,14 @@ test("settling a reopened destination preserves an immutable token captured afte
   act(() => result.current.read());
   const waiting = Object.freeze(result.current.copyToken());
   expect(result.current.isCurrentCopy(retired)).toBe(false);
-  await act(async () => { reopening.resolve({ ...initial, remembered: "typst", context_version: [2, 0] }); });
+  await act(async () => { reopening.resolve(fixtureDestination({ ...initial, context_version: [2, 0], format: formatAnswer("typst", "app") })); });
   expect(result.current.format).toBe("typst");
   expect(result.current.isCurrentCopy(waiting)).toBe(true);
   expect(result.current.isCurrentCopy(retired)).toBe(false);
 });
 
 test("finishing a bibliography read in the selected project does not retire a waiting copy token", async () => {
-  let target: PickerDestination = { ...browser, remembered: "cite", context_version: [1, 0] };
+  let target: PickerDestination = fixtureDestination({ ...browser, context_version: [1, 0], format: formatAnswer("cite", "app") });
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, rememberAppOutput: vi.fn() }, options()));
   await act(async () => result.current.read());
   const waiting = Object.freeze(result.current.copyToken());
@@ -100,7 +102,7 @@ test("finishing a bibliography read in the selected project does not retire a wa
 test("an activation event retires old intent before its read and a late older event cannot retire fresh intent", async () => {
   const next = pending<PickerDestination>();
   let changed = false;
-  const initial: PickerDestination = { ...browser, remembered: "cite", context_version: [2, 0] };
+  const initial: PickerDestination = fixtureDestination({ ...browser, context_version: [2, 0], format: formatAnswer("cite", "app") });
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => changed ? next.promise : initial, rememberAppOutput: vi.fn() }, options()));
   await act(async () => result.current.read());
   const old = Object.freeze(result.current.copyToken());
@@ -117,28 +119,28 @@ test("an activation event retires old intent before its read and a late older ev
 test("a bibliography read started before selecting another project cannot settle that project's save or retire fresh intent", async () => {
   const firstProject = { id: "project-a", name: "Project A", output: "cite", bibliography: "a.bib" };
   const secondProject = { id: "project-b", name: "Project B", output: "typst", bibliography: "b.bib" };
-  const first: PickerDestination = { ...browser, writing_project: firstProject, writing_context: "opening-a", context_version: [1, 0] };
-  const second: PickerDestination = { ...browser, writing_project: secondProject, writing_context: "opening-b", context_version: [2, 0] };
-  const oldRead = pending<PickerDestination>(), newRead = pending<PickerDestination>(), save = pending<WritingProjectsView>();
-  const editWritingProject = vi.fn(() => save.promise);
+  const first = fixtureDestination({ ...browser, writing: firstProject, writing_context: "opening-a", context_version: [1, 0], format: formatAnswer(firstProject.output!, "writing") });
+  const second = fixtureDestination({ ...browser, writing: secondProject, writing_context: "opening-b", context_version: [2, 0], format: formatAnswer(secondProject.output!, "writing") });
+  const oldRead = pending<PickerDestination>(), newRead = pending<PickerDestination>(), save = pending<WritingsView>();
+  const editWriting = vi.fn(() => save.promise);
   let reads = 0;
   const { result } = renderHook(() => useDestination({
     pickerDestination: async () => ++reads === 1 ? first : reads === 2 ? oldRead.promise : newRead.promise,
-    rememberAppOutput: vi.fn(), editWritingProject,
+    rememberAppOutput: vi.fn(), editWriting,
   }, options()));
   await act(async () => result.current.read());
   const retired = Object.freeze(result.current.copyToken());
   act(() => result.current.projectChanged([1, 1]));
   await waitFor(() => expect(reads).toBe(2));
-  let editing!: Promise<WritingProjectsView>;
+  let editing!: Promise<WritingsView>;
   act(() => { editing = result.current.editProject!("opening-a", { kind: "select", id: secondProject.id }); });
-  await waitFor(() => expect(editWritingProject).toHaveBeenCalledWith("opening-a", { kind: "select", id: secondProject.id }));
+  await waitFor(() => expect(editWriting).toHaveBeenCalledWith("opening-a", { kind: "select", id: secondProject.id }));
   await act(async () => { oldRead.resolve({ ...first, context_version: [1, 1] }); });
   // The earlier file read is not the owner of the project mutation now in progress.
   expect.soft(result.current.ready).toBe(false);
   expect(result.current.isCurrentCopy(retired)).toBe(false);
   await act(async () => {
-    save.resolve({ projects: [firstProject, secondProject], selected: secondProject.id, context: "opening-b", session_only: false });
+    save.resolve({ writings: [firstProject, secondProject], selected: secondProject.id, context: "opening-b", session_only: false });
     await editing;
   });
   await waitFor(() => expect(reads).toBe(3));
@@ -164,18 +166,18 @@ test("a pick is remembered for the app, says so, and never changes the default",
 
 test("a format comes from the app's memory, then its suggestion, then the default", async () => {
   // Rust works out the suggestion, a formatted app's style from the default included.
-  let destination: PickerDestination = { ...browser, output_question: null, automatic: "ieee" };
+  let destination: PickerDestination = fixtureDestination({ ...browser, format: formatAnswer("ieee", "suggestion") });
   const { result, rerender } = renderHook(({ fallback }) => useDestination({ pickerDestination: async () => destination,
     rememberAppOutput: vi.fn(async () => null) }, { ...options(), fallback }), { initialProps: { fallback: "ieee" as OutputId } });
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "ieee", source: "suggested" });
   rerender({ fallback: "pandoc" });
   expect(result.current).toMatchObject({ format: "ieee", source: "suggested" });
-  destination = { ...destination, remembered: "typst" };
+  destination = fixtureDestination({ ...destination, format: formatAnswer("typst", "app") });
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "typst", source: "remembered" });
   // An id this Ibis does not list is as good as none.
-  destination = { ...browser, output_question: null, remembered: "a-later-output" };
+  destination = fixtureDestination({ ...browser, format: formatAnswer("pandoc", "yours") });
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
 });
@@ -209,7 +211,7 @@ test("an unread destination may be a real app, so a pick holds for this paste an
 
 test("the format a changed citation was written in applies once and is never remembered", async () => {
   const remember = vi.fn(async () => null);
-  const writer = { ...browser, output_question: null, can_choose_paste: true };
+  const writer = { ...browser, can_choose_paste: true };
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => writer, rememberAppOutput: remember }, options()));
   act(() => result.current.read());
   await waitFor(() => expect(result.current.ready).toBe(true));
@@ -226,7 +228,7 @@ test("a choice made during a slow destination read wins over that read", async (
   const { result } = renderHook(() => useDestination({ pickerDestination: () => read.promise, rememberAppOutput: vi.fn() }, settings));
   act(() => result.current.read());
   act(() => result.current.choose("typst"));
-  await act(async () => read.resolve({ ...browser, remembered: "cite" }));
+  await act(async () => read.resolve(fixtureDestination({ ...browser, format: formatAnswer("cite", "app") })));
   expect(result.current.format).toBe("typst");
   expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
@@ -260,25 +262,10 @@ test("a held pick and its save failure are dropped on reopening, which shows wha
   await act(async () => result.current.read());
   await act(async () => result.current.choose("cite"));
   expect(result.current.source).toBe("held");
-  destination = { ...browser, remembered: "typst" };
+  destination = fixtureDestination({ ...browser, format: formatAnswer("typst", "app") });
   await act(async () => result.current.read());
   expect(result.current).toMatchObject({ format: "typst", source: "remembered" });
   expect(settings.report).toHaveBeenCalledWith("appChoice", false);
-});
-
-test("a delivery answer to an open first-paste question accepts its format, so it is not asked again", async () => {
-  let destination: PickerDestination = { ...browser, can_choose_paste: true };
-  const rememberAppOutput = vi.fn(async (_id: string, output: PickerDestination["remembered"]) => {
-    destination = { ...destination, remembered: output, paste: "copy-only" };
-    return null;
-  });
-  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination, rememberAppOutput }, options()));
-  await act(async () => result.current.read());
-  expect(result.current.shouldAsk).toBe(true);
-  await act(async () => result.current.choosePaste("copy-only", true));
-  await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
-  expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", "pandoc", "copy-only", null);
-  expect(result.current).toMatchObject({ shouldAsk: false, source: "remembered" });
 });
 
 test("a delivery answer with no open question leaves the format to follow the default", async () => {
@@ -288,7 +275,7 @@ test("a delivery answer with no open question leaves the format to follow the de
   await act(async () => result.current.choosePaste("copy-only"));
   await waitFor(() => expect(result.current.ready && !result.current.saving).toBe(true));
   expect(rememberAppOutput).toHaveBeenCalledExactlyOnceWith("example.browser", null, "copy-only", null);
-  expect(result.current.shouldAsk).toBe(true);
+  expect(result.current.shouldAsk).toBe(false);
 });
 
 test("a held format is never promoted by a delivery answer, even with a question open", async () => {
@@ -306,7 +293,7 @@ test("a held format is never promoted by a delivery answer, even with a question
 });
 
 test("a delivery answer keeps a held format and sends no format of its own", async () => {
-  let destination: PickerDestination = { ...browser, output_question: null, paste_question: true, can_choose_paste: false };
+  let destination: PickerDestination = { ...browser, paste_question: true, can_choose_paste: false };
   const rememberAppOutput = vi.fn(async (_id: string, output: unknown) => {
     if (output) throw new Error("synthetic save failure");
     destination = { ...destination, paste: "paste", paste_question: false, can_choose_paste: false, can_paste: true };
@@ -324,7 +311,7 @@ test("a delivery answer keeps a held format and sends no format of its own", asy
 });
 
 test("recovery keeps a proven app's delivery choices available and a format save cannot clear its warning", async () => {
-  const destination: PickerDestination = { ...browser, output_question: null, unreadable: true, can_choose_paste: true };
+  const destination: PickerDestination = { ...browser, unreadable: true, can_choose_paste: true };
   const settings = options();
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination,
     rememberAppOutput: vi.fn(async () => null) }, settings));
@@ -344,7 +331,7 @@ test("a stale save completion cannot mark a different app as remembered", async 
   act(() => result.current.read());
   await waitFor(() => expect(result.current.ready).toBe(true));
   act(() => result.current.choose("cite"));
-  destination = { ...browser, app: "Example Editor", app_id: "example.editor" };
+  destination = fixtureDestination({ ...browser, app: "Example Editor", app_id: "example.editor", format: formatAnswer("pandoc", "yours") });
   act(() => result.current.read());
   await act(async () => save.resolve(null));
   await waitFor(() => expect(result.current.app).toBe("Example Editor"));
@@ -375,29 +362,6 @@ test("an old successful copy cannot consume a newer held pick", async () => {
   expect(result.current).toMatchObject({ format: "cite", source: "held" });
 });
 
-test("a remembered format answers the question through a Settings refresh", async () => {
-  let destination = browser;
-  const settings = options();
-  const { result } = renderHook(() => useDestination({ pickerDestination: async () => destination,
-    rememberAppOutput: vi.fn(async () => { destination = { ...browser, remembered: "pandoc" }; return null; }) }, settings));
-  await act(async () => result.current.read());
-  expect(result.current.shouldAsk).toBe(true);
-  await act(async () => result.current.choose("pandoc"));
-  expect(result.current.shouldAsk).toBe(false);
-  await act(async () => result.current.read(false));
-  expect(result.current.shouldAsk).toBe(false);
-  expect(settings.chooseDefault).not.toHaveBeenCalled();
-});
-
-test("a held pick answers the question for one citation, then it comes back", async () => {
-  const { result } = renderHook(() => useDestination({ pickerDestination: async () => browser, rememberAppOutput: refused() }, options()));
-  await act(async () => result.current.read());
-  await act(async () => result.current.choose("apa"));
-  expect(result.current.shouldAsk).toBe(false);
-  act(() => result.current.consumeHeld(result.current.copyToken()));
-  expect(result.current.shouldAsk).toBe(true);
-});
-
 test("returning from permission keeps the prepared output once while reading the changed destination", async () => {
   let destination = browser;
   const rememberAppOutput = vi.fn(async () => null);
@@ -405,7 +369,7 @@ test("returning from permission keeps the prepared output once while reading the
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   const oldCopy = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
+  destination = fixtureDestination({ ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: formatAnswer("cite", "app") });
   await act(async () => result.current.read(true, true));
   expect(result.current.app).toBe("Example Writer");
   expect(result.current).toMatchObject({ format: "typst", source: "held" });
@@ -427,7 +391,7 @@ test("superseding destination reads preserve the permission return's output and 
   await act(async () => result.current.choose("typst"));
   act(() => result.current.read(true, true));
   const token = result.current.copyToken();
-  destination = { ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: noFormatChosen, remembered: "cite" };
+  destination = fixtureDestination({ ...browser, app: "Example Writer", app_id: "example.writer", app_identity: null, format: formatAnswer("cite", "app") });
   await act(async () => result.current.read(false));
   await act(async () => returning.resolve(browser));
   expect(result.current.app).toBe("Example Writer");
@@ -440,38 +404,6 @@ test("superseding destination reads preserve the permission return's output and 
   await act(async () => result.current.read(false));
   expect(result.current.format).toBe("pandoc");
   expect(result.current.isCurrentCopy(token)).toBe(false);
-});
-
-test("a preserved browser output answers the question through refreshes until that citation is consumed", async () => {
-  const returning = pending<PickerDestination>();
-  let destination = browser;
-  let reads = 0;
-  const rememberAppOutput = refused();
-  const settings = options();
-  const { result } = renderHook(() => useDestination({
-    pickerDestination: () => ++reads === 2 ? returning.promise : Promise.resolve(destination),
-    rememberAppOutput,
-  }, settings));
-  await act(async () => result.current.read());
-  expect(result.current.shouldAsk).toBe(true);
-  await act(async () => result.current.choose("typst"));
-  const oldCopy = result.current.copyToken();
-  act(() => result.current.read(true, true));
-  const token = result.current.copyToken();
-  destination = { ...browser, app: "Another Browser", app_id: "example.another-browser" };
-  await act(async () => result.current.read(false));
-  await act(async () => returning.resolve(browser));
-  expect(result.current.app).toBe("Another Browser");
-  expect(result.current).toMatchObject({ format: "typst", source: "held" });
-  expect(result.current.shouldAsk).toBe(false);
-  expect(result.current.isCurrentCopy(token)).toBe(true);
-  act(() => result.current.consumeHeld(oldCopy));
-  expect(result.current.shouldAsk).toBe(false);
-  act(() => result.current.consumeHeld(token));
-  expect(result.current).toMatchObject({ format: "pandoc", source: "default" });
-  expect(result.current.shouldAsk).toBe(true);
-  expect(rememberAppOutput).toHaveBeenCalledTimes(1);
-  expect(settings.chooseDefault).not.toHaveBeenCalled();
 });
 
 test("a late destination read cannot replace the newer one's Paste", async () => {
@@ -497,4 +429,54 @@ test("a new read withdraws Paste at once, and a failed read leaves Copy", async 
   pickerDestination.mockRejectedValueOnce(new Error("synthetic unavailable destination"));
   await act(async () => result.current.read(false));
   expect(result.current.canPaste).toBe(false);
+});
+
+
+test("the native format answer is displayed without an app-specific reinterpretation", async () => {
+  const target = fixtureDestination({ ...browser, format: formatAnswer("apa", "yours") });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target }, options()));
+  await act(async () => result.current.read());
+  expect(result.current).toMatchObject({ format: "apa", source: "default", shouldAsk: false });
+});
+
+test("an unlisted engine format is labelled as custom and cannot copy a fallback format", async () => {
+  const target = fixtureDestination({ ...browser, format: { ...formatAnswer("apa", "writing"), id: null } });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target }, options()));
+  await act(async () => result.current.read());
+  expect(result.current).toMatchObject({ ready: false, formatLabel: "Custom format" });
+  expect(result.current.readProblem).toContain("cannot use");
+});
+
+test("forgetting an app retires its copy immediately, waits for the saved answer, and a late completion cannot use its old token", async () => {
+  const forgotten = pending<null>();
+  let target = fixtureDestination({ ...browser, format: formatAnswer("cite", "app") });
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => target, forgetAppOutput: () => forgotten.promise }, options()));
+  await act(async () => result.current.read());
+  const previous = result.current.copyToken();
+  act(() => result.current.useUsual!());
+  expect(result.current.ready).toBe(false);
+  expect(result.current.isCurrentCopy(previous)).toBe(false);
+  target = fixtureDestination({ ...browser, format: formatAnswer("apa", "yours") });
+  await act(async () => forgotten.resolve(null));
+  await waitFor(() => expect(result.current).toMatchObject({ ready: true, format: "apa" }));
+});
+
+test("closing and reopening waits for an app-less default save and reads the engine's saved format", async () => {
+  const saved = pending<void>();
+  let target = fixtureDestination({ format: formatAnswer("apa", "yours") });
+  const native = vi.fn(async () => target);
+  const settings = { ...options(), chooseDefault: (id: OutputId) => saved.promise.then(() => {
+    target = fixtureDestination({ format: formatAnswer(id, "yours") });
+  }) };
+  const { result } = renderHook(() => useDestination({ pickerDestination: native }, settings));
+  await act(async () => result.current.read());
+  act(() => result.current.choose("ieee"));
+  const old = result.current.copyToken();
+  expect(result.current.saving).toBe(true);
+  act(() => result.current.read());
+  expect(result.current.ready).toBe(false);
+  expect(result.current.isCurrentCopy(old)).toBe(false);
+  expect(native).toHaveBeenCalledOnce();
+  await act(async () => saved.resolve());
+  await waitFor(() => expect(result.current).toMatchObject({ ready: true, saving: false, format: "ieee" }));
 });

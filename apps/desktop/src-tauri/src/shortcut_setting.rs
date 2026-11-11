@@ -14,7 +14,89 @@ use crate::preferences::SettingsFile;
 
 /// Serialize registration, publication and saving, including across window closes.
 #[derive(Default)]
-pub(crate) struct Changing(tauri::async_runtime::Mutex<()>);
+pub(crate) struct Changing(tauri::async_runtime::Mutex<()>, std::sync::atomic::AtomicU64);
+
+/// Outside edits use the same replacement lock as Settings. A newer request
+/// invalidates queued native work before it can replace a working shortcut.
+pub(crate) fn apply_file_shortcut<R: tauri::Runtime>(app: &AppHandle<R>, shortcut: Option<String>, _revision: u64) {
+    use std::sync::atomic::Ordering;
+    let Some(changing) = app.try_state::<Changing>() else {
+        return;
+    };
+    if app.try_state::<crate::picker::Registered>().is_none() || crate::picker::desktop_owned() {
+        return;
+    }
+    let generation = changing.1.fetch_add(1, Ordering::SeqCst) + 1;
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let changing = app.state::<Changing>();
+        let _changing = changing.0.lock().await;
+        if changing.1.load(Ordering::SeqCst) != generation {
+            return;
+        }
+        let Some(file) = app.try_state::<SettingsFile>() else {
+            return;
+        };
+        let path = file.path.clone();
+        let expected = shortcut.clone();
+        let current = tauri::async_runtime::spawn_blocking(move || {
+            let loaded = ibis_engine::settings::load(&path);
+            loaded.problem.is_none() && loaded.settings.shortcut.here() == expected.as_deref()
+        })
+        .await
+        .unwrap_or(false);
+        if !current {
+            return;
+        }
+        let handle = app.clone();
+        let (sent, received) = std::sync::mpsc::channel();
+        let _ = app.run_on_main_thread(move || {
+            if handle.state::<Changing>().1.load(Ordering::SeqCst) != generation {
+                let _ = sent.send(());
+                return;
+            }
+            let result = shortcut
+                .as_deref()
+                .map_or_else(|| Ok(default_shortcut()), check_shortcut)
+                .and_then(|requested| replace_shortcut(&handle, requested).map_err(|_| ShortcutRefusal::InUse));
+            match result {
+                Ok(note) => {
+                    let status = ShortcutStatus {
+                        shortcut: shortcut.unwrap_or_else(|| shortcut_label().into()),
+                        registered: true,
+                        error: note.map(str::to_owned),
+                        desktop: None,
+                    };
+                    if let Some(current) = handle.try_state::<Mutex<ShortcutStatus>>() {
+                        if let Ok(mut current) = current.lock() {
+                            *current = status.clone();
+                        }
+                    }
+                    report(handle.emit("shortcut:status", status.clone()), NativeIssue::Shortcut);
+                    crate::tray::show_shortcut(&handle, Some(&status.shortcut));
+                }
+                Err(problem) => {
+                    publish_file_refusal(&handle, problem);
+                }
+            }
+            let _ = sent.send(());
+        });
+        let _ = tauri::async_runtime::spawn_blocking(move || received.recv()).await;
+    });
+}
+
+fn publish_file_refusal<R: tauri::Runtime>(app: &AppHandle<R>, problem: ShortcutRefusal) {
+    let status = app.try_state::<Mutex<ShortcutStatus>>().and_then(|current| {
+        let mut current = current.lock().ok()?;
+        current.error = Some(format!(
+            "The shortcut in settings.json could not be applied: {problem}."
+        ));
+        Some(current.clone())
+    });
+    if let Some(status) = status {
+        report(app.emit("shortcut:status", status), NativeIssue::Shortcut);
+    }
+}
 
 /// Command identifiers shared with KEY_TABLE and the refusal's translated name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, schemars::JsonSchema)]
@@ -253,6 +335,7 @@ pub(crate) async fn set_shortcut(
         return Err(ShortcutRefusal::Unavailable);
     }
     let _changing = changing.0.lock().await;
+    changing.1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     let (sender, receiver) = std::sync::mpsc::channel();
     let handle = app.clone();
     let change = shortcut.clone();
@@ -308,6 +391,32 @@ fn save_shortcut(file: &SettingsFile, shortcut: Option<String>) -> Result<(), Sh
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_file_shortcut_is_announced_and_keeps_the_working_registration() {
+        use tauri::Listener;
+        let app = tauri::test::mock_builder()
+            .manage(Mutex::new(ShortcutStatus {
+                shortcut: "Command+Shift+Y".into(),
+                registered: true,
+                error: None,
+                desktop: None,
+            }))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let (sent, events) = std::sync::mpsc::channel();
+        app.listen("shortcut:status", move |event| {
+            let _ = sent.send(event.payload().to_owned());
+        });
+        publish_file_refusal(app.handle(), ShortcutRefusal::InUse);
+        let published: serde_json::Value =
+            serde_json::from_str(&events.recv_timeout(std::time::Duration::from_secs(1)).unwrap()).unwrap();
+        assert_eq!(published["shortcut"], "Command+Shift+Y");
+        assert_eq!(published["registered"], true);
+        assert!(published["error"].as_str().unwrap().contains("settings.json"));
+        let state = app.state::<Mutex<ShortcutStatus>>();
+        assert_eq!(state.lock().unwrap().error.as_deref(), published["error"].as_str());
+    }
 
     #[test]
     fn azerty_help_shortcut_conflicts_use_the_recorded_physical_key() {
@@ -370,7 +479,7 @@ mod tests {
             let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
             assert_eq!(save_shortcut(&file, Some(case.shortcut)), Ok(()));
-            let saved = ibis_core::settings::load(&file.path);
+            let saved = ibis_engine::settings::load(&file.path);
             let (shortcut, label, error) =
                 crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), validate);
             assert_eq!(shortcut, default_shortcut(), "{}", case.name);
@@ -443,7 +552,7 @@ mod tests {
             let requested = check_shortcut_for(&case.shortcut, Modifiers::SUPER, false)
                 .unwrap_or_else(|error| panic!("{}: {error:?}", case.name));
             assert_eq!(save_shortcut(&file, Some(case.shortcut.clone())), Ok(()));
-            let saved = ibis_core::settings::load(&file.path);
+            let saved = ibis_engine::settings::load(&file.path);
             assert!(saved.problem.is_none());
             let (restarted, label, error) =
                 crate::picker::configured_shortcut_with(saved.settings.shortcut.here(), |text| {

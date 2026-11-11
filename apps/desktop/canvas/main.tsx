@@ -19,10 +19,10 @@ import tokenSource from "../src/tokens.css?raw";
 import "../src/ui/Foundation.css";
 import "./board.css";
 import { Parts } from "./parts";
-import { WritingProjectsDialog } from "../src/features/picker/WritingProjects";
+import { WritingsDialog } from "../src/features/picker/Writings";
 import { SessionReferencesDialog } from "../src/features/picker/SessionReferences";
 import { inventedSource, PageSources } from "../src/features/reader/source";
-import type { WritingProjectsView } from "../src/api";
+import type { WritingsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
 import "../src/ui/CopyReceipt.css";
@@ -31,7 +31,7 @@ import "../src/notice.css";
 import pickerStyles from "../src/styles.css?inline";
 import { noFormatChosen } from "../src/testing/format";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writings", "writings-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -62,7 +62,7 @@ const fixtures: Partial<Record<Scenario, {
   "reference-details": { keys: [{ key: "Enter", shiftKey: true }], click: 'button[aria-label^="Edit "]' },
   reader: { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button[aria-expanded="false"].inspector-action'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
-  "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
+  "writings-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { click: ".pin-button" },
@@ -83,7 +83,7 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
   const projectContext = scenario.startsWith("project-");
-  const project = writingProjects.active!;
+  const project = writings.active!;
   const refusal = scenario === "project-check-conflict" ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
     source_generation: "1", source_is_requested: true,
@@ -124,12 +124,12 @@ function pickerApi(scenario: Scenario, settings: SettingsApi, openSettings: (pag
       if (text === undefined) throw new Error("Unknown synthetic preview");
       return { text, warnings: [] };
     },
-    pickerDestination: projectContext ? async () => ({ app: "Invented Editor", app_id: "invented.editor", app_identity: null, format: noFormatChosen,
-      automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
-      writing_project: project, writing_context: "invented-opening", context_version: [1, 0] }) : undefined,
+    pickerDestination: projectContext ? async () => ({ app: "Invented Editor", app_id: "invented.editor", app_identity: null, find_open: false, usual_format: "apa", format: noFormatChosen,
+      unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+      writing: project, writing_context: "invented-opening", context_version: [1, 0] }) : undefined,
     rememberAppOutput: projectContext ? async () => null : undefined,
-    writingProjects: projectContext ? async () => writingProjects : undefined,
-    editWritingProject: projectContext ? async () => writingProjects : undefined,
+    writings: projectContext ? async () => writings : undefined,
+    editWriting: projectContext ? async () => writings : undefined,
     retryProject: projectContext ? noop : undefined,
     chooseProject: projectContext ? noop : undefined,
     pickerPreferences: settings.pickerPreferences, savePickerPreferences: settings.savePickerPreferences, pickerPreferencesSaved: settings.pickerPreferencesSaved,
@@ -256,7 +256,7 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
   if (scenario === "states") return <States theme={theme} />;
   if (scenario === "tokens") return <Tokens theme={theme} />;
   if (scenario === "parts") return <ThemedParts theme={theme} />;
-  if (scenario.startsWith("writing-projects")) return <WritingProjectsBoard picker={picker} variant={scenario} />;
+  if (scenario.startsWith("writings")) return <WritingsBoard picker={picker} variant={scenario} />;
   if (scenario === "cited-since-opening") return <CitedSinceOpeningBoard picker={picker} />;
   return scenario.startsWith("settings-")
     ? <SettingsApp api={settings} initialPage={scenario.slice(9)} />
@@ -264,19 +264,19 @@ function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement
 }
 
 const inventedProject = { id: "thesis", name: "Thesis", output: "autocite", bibliography: "thesis.bib" };
-const writingProjects: WritingProjectsView = { context: "invented-opening", session_only: false, selected: "thesis", active: inventedProject, projects: [
+const writings: WritingsView = { context: "invented-opening", session_only: false, selected: "thesis", active: inventedProject, writings: [
   inventedProject,
   { id: "notes", name: "Field Notes", output: "pandoc", bibliography: null },
 ] };
 
 /** The real project sheet over the real picker, with invented local choices. */
-function WritingProjectsBoard({ picker, variant }: { picker: PickerApi; variant: Scenario }) {
+function WritingsBoard({ picker, variant }: { picker: PickerApi; variant: Scenario }) {
   const [open, setOpen] = useState(true);
-  const view = writingProjects;
+  const view = writings;
   return <><style>{pickerStyles}</style><App api={picker} preview={{ query: "invented" }} />
-    {open && <WritingProjectsDialog format="autocite" onClose={() => setOpen(false)} api={{
-      writingProjects: async () => view,
-      editWritingProject: async () => variant === "writing-projects-pending" ? new Promise<WritingProjectsView>(() => {}) : view,
+    {open && <WritingsDialog format="autocite" onClose={() => setOpen(false)} api={{
+      writings: async () => view,
+      editWriting: async () => variant === "writings-pending" ? new Promise<WritingsView>(() => {}) : view,
       chooseProject: async () => {}, stopProject: async () => {},
     }} />}
   </>;

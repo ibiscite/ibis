@@ -1,7 +1,5 @@
 //! Native-only preparation/commit; the serialized method surface has no clipboard operation.
-use super::{
-    Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectPolicy, ProjectRead, error,
-};
+use super::{Cancellation, Engine, ProjectAssessment, ProjectAssessmentState, ProjectKey, ProjectRead, error};
 use ibis_core::contract::*;
 use std::sync::Arc;
 
@@ -15,9 +13,8 @@ pub struct PreparedCitation {
 impl PreparedCitation {
     /// Caller owns the selected bibliography and binds it to this task's
     /// immutable context. Rechecking never consumes or changes the preview.
-    /// A check is advice: only a key known to name a different work, or a
-    /// strict request without a complete current read, withholds the citation.
-    pub fn project_evidence(&self, read: &ProjectRead, policy: ProjectPolicy) -> ProjectAssessment {
+    /// A check is advice: only a key known to name a different work withholds the citation.
+    pub fn project_evidence(&self, read: &ProjectRead) -> ProjectAssessment {
         let checks = self.project_checks(read);
         let conflicts: Vec<_> = if self.uses_citation_keys() {
             self.request
@@ -40,13 +37,6 @@ impl PreparedCitation {
                 ProjectAssessmentState::Conflict,
                 Some(format!(
                     "A key in {name} identifies a different work. Resolve the conflict before citing it."
-                )),
-            )
-        } else if policy == ProjectPolicy::Strict && self.uses_citation_keys() && !read.current_complete() {
-            (
-                ProjectAssessmentState::Paused,
-                Some(format!(
-                    "A current successful check of {name} is required. Retry before citing."
                 )),
             )
         } else {

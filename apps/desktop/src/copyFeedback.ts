@@ -6,6 +6,7 @@ import type { CopiedReason, Delivered as WireDelivered } from "./bindings";
 import { englishMessages } from "./i18n";
 import { say } from "./i18n";
 import { currentPlatform, platformOf, type Platform } from "./platform";
+import { listedOutput, outputName } from "./format/outputs";
 
 /**
  * After a copy: hide the picker and say "Copied" in the small notice window,
@@ -91,7 +92,7 @@ export function noticeTitle({ delivered }: Pick<Notice, "delivered">, platform =
  * text arrives, so screen readers that follow other windows announce it
  * politely without the notice taking focus.
  */
-export function renderNotice(root: HTMLElement, platform: NoticePlatform): (message: Notice) => void {
+export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChangeFormat?: () => void): (message: Notice) => void {
   root.replaceChildren();
   const notice = document.createElement("div");
   notice.className = "copied-notice copy-receipt";
@@ -115,7 +116,17 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform): (mess
   code.dir = "auto";
   root.append(notice);
   return (message: Notice) => {
-    title.textContent = noticeTitle(message, platform);
+    const suggested = message.delivered.outcome === "pasted" ? listedOutput(message.suggested_format) : null;
+    title.textContent = suggested ? say("copied-notice-suggested", { format: outputName(suggested) }) : noticeTitle(message, platform);
+    if (suggested && onChangeFormat) {
+      title.append(" · ");
+      const change = document.createElement("button");
+      change.type = "button";
+      change.className = "copy-receipt-change";
+      change.textContent = say("copied-notice-change");
+      change.onclick = onChangeFormat;
+      title.append(change);
+    }
     if (message.milestone) {
       const milestone = document.createElement("span");
       milestone.setAttribute("aria-hidden", "true");

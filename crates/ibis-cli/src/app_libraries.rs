@@ -7,8 +7,8 @@
 
 use crate::Failure;
 use ibis_core::contract::ErrorCode;
-use ibis_core::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use ibis_engine::request::ZoteroLibrary;
+use ibis_engine::settings::{self, LibrarySetting, PrimaryRead, SettingsError, ZoteroLibrary as Chosen};
 use std::path::{Path, PathBuf};
 
 /// The apps whose settings are read, in order: the first one with a settings
@@ -124,6 +124,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
 /// A fixed description: never the settings' own text, which may hold private values.
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
+        SettingsError::Changed => "its settings changed while saving; try again".into(),
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
         }
@@ -143,10 +144,5 @@ fn problem_text(problem: &SettingsError) -> String {
 }
 
 fn problem_code(problem: &SettingsError) -> ErrorCode {
-    match problem {
-        SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
-        SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Backup(inner) => problem_code(inner),
-        SettingsError::Unreadable(_) => ErrorCode::SourceUnavailable,
-    }
+    ibis_engine::settings_backup::settings_code(problem)
 }

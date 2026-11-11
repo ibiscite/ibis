@@ -40,7 +40,7 @@ watch no files. Library IDs in the output are opaque tokens: they say nothing ab
 the library (`libraries` reports its `kind` and `capabilities`), never reveal a path
 and last across runs on one computer, thanks to a private key Ibis saves once in its
 configuration folder. Library commands write only that key; explicit `settings`
-and `projects` commands also write the app settings you choose.
+and `writings` commands also write the app settings you choose.
 
 When you name no library, `search`, `show`, `cite`, `libraries` and `call` of the first
 three read the one chosen in the Ibis app, as if you had given `--app-libraries`. They read the stable app's
@@ -65,7 +65,7 @@ forgets its command fails loudly. `ibis settings` alone lists its own commands t
 | `cite KEY…` | A citation. `--format ID` writes one of the outputs `outputs` lists (default `pandoc`): a key syntax, or a common style; `--style` writes any CSL style (see `styles`); `--bibliography` writes bibliography entries in a style. `--for-app ID` uses the output for that app ([below](#output-for-an-app)). `--locator`, `--prefix`, `--suffix` and `--omit-author` apply to the key before them. |
 | `cite --request` | A citation from one canonical `CitationRequest` JSON object on stdin. |
 | `project BIB KEY…` | Check exact keys against one project `.bib`, read-only ([below](#a-projects-own-bibliography)). |
-| `projects list\|create\|rename\|update\|remove` | Manage local writing projects; `cite KEY --project ID` uses one for this request ([below](#writing-projects)). |
+| `writings list\|create\|rename\|update\|remove` | Manage optional writings; `cite KEY --writing NAME` or explicit `--document PATH` selects one for this request ([below](#writings)). |
 | `entry KEY` | A reference's original BibTeX entry, with what it needs to stand alone. |
 | `libraries` | The open libraries, their item counts and each warning in words. |
 | `outputs` | Every output `cite` writes, each with its id, its one short name (a style's full title is its `description`) and a short example: the key syntaxes, then the common styles. The app, `--format` and MCP's `format` take these ids. |
@@ -117,9 +117,9 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--request` | Read the whole request from stdin as JSON; see: ibis schema cite |
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
-| `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
-| `--nightly` | Read the writing project or the app's formats from Ibis Nightly's settings |
-| `--strict-project` | Require a current complete bibliography read for project key citations |
+| `--writing NAME` | Use this writing's output and bibliography; list names with: ibis writings list |
+| `--nightly` | Read the writing or the app's formats from Ibis Nightly's settings |
+| `--document PATH` | Use an explicit document's bibliography/csl front matter to select a writing |
 | `--for-app APP_ID` | Use the format Ibis uses for this app from its settings, a macOS bundle ID or Windows executable; --style or --format stands in for your usual format |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
@@ -206,43 +206,43 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--dry-run` | Show what would change and change nothing |
 | `--nightly` | Use Ibis Nightly's settings instead of the stable app's |
 
-**`ibis projects`**: Remember a writing project's citation output and optional bibliography
+**`ibis writings`**: Remember a writing's citation output and optional bibliography
 
-**`ibis projects list`**: List project IDs, names, outputs and bibliography file names
+**`ibis writings list`**: List writing names, formats and bibliography file names
 
-**`ibis projects schema`**: The JSON Schema of cite --project's result
+**`ibis writings schema`**: The JSON Schema of cite --writing's result
 
-**`ibis projects create`**: Create a writing project
+**`ibis writings create`**: Create a writing
 
 | Option | Does |
 | --- | --- |
-| `NAME` | A unique name for this writing project |
+| `NAME` | A unique name for this writing |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
+| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
 
-**`ibis projects rename`**: Rename a project, keeping its ID
-
-| Option | Does |
-| --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
-| `NAME` | A unique name for this writing project |
-
-**`ibis projects remove`**: Remove a project and its app selections; keep its bibliography file
+**`ibis writings rename`**: Rename a writing
 
 | Option | Does |
 | --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
+| `NAME` | The writing name printed by ibis writings list |
+| `NAME` | A unique name for this writing |
 
-**`ibis projects update`**: Change a project's output or bibliography
+**`ibis writings remove`**: Remove a writing and its app selections; keep its bibliography file
 
 | Option | Does |
 | --- | --- |
-| `PROJECT_ID` | The stable project ID printed by ibis projects list |
+| `NAME` | The writing name printed by ibis writings list |
+
+**`ibis writings update`**: Change a writing's output or bibliography
+
+| Option | Does |
+| --- | --- |
+| `NAME` | The writing name printed by ibis writings list |
 | `--format FORMAT` | Output ID from ibis outputs: a key syntax or a common style |
 | `--style STYLE_ID` | Any bundled CSL style ID; list them with: ibis styles |
-| `--bibliography FILE` | The read-only project bibliography to check, as a .bib file |
-| `--no-bibliography` | Stop checking a bibliography in this project |
+| `--bibliography FILE` | The read-only writing bibliography to check, as a .bib file |
+| `--no-bibliography` | Stop checking a bibliography in this writing |
 
 **`ibis completions`**: Print shell completions
 
@@ -276,8 +276,8 @@ The envelope looks like this:
 ```
 
 - `ibis` is the envelope version. It changes only when the envelope itself changes.
-- `data` is the method's result, described by `ibis schema METHOD`; `cite --project`
-  uses the wrapper described by `ibis projects schema`.
+- `data` is the method's result, described by `ibis schema METHOD`; `cite --writing`
+  uses the wrapper described by `ibis writings schema`.
 - `error.code` is stable and is the thing to branch on. The sentence that explains it,
   naming the argument, key or file at fault, goes to stderr as one `ibis: …` line, in
   both modes. Sentences may be reworded; codes are not.
@@ -382,48 +382,48 @@ To use the file with other tools, point them at the same `.bib`: Overleaf projec
 upload it beside the document, Quarto names it under `bibliography:` in the front matter,
 and Typst uses `#bibliography("thesis.bib")`. Quarto and Typst can use several files; the
 check covers only the one you name.
-### Writing projects
+### Writings
 
-A writing project remembers its citation output and an optional bibliography to
-check, separately from the libraries searched. The CLI uses a project only when
-you name its stable ID; it never inherits the project's selection in a GUI app.
+A writing is an optional name, format and read-only bibliography in `settings.json`.
+The CLI uses it only when explicitly named or selected by supplied document context;
+ordinary citations never inherit the writing selected in a GUI app. `--for-app ID`
+explicitly uses that app's writing, including its bibliography.
 
 ```sh
-ibis projects create "Field Guide" --format autocite --bibliography refs.bib
-ibis projects list --json
-ibis cite vale2024lanterns --file library.bib --project PROJECT_ID
-ibis projects rename PROJECT_ID "Revised Field Guide"
-ibis projects update PROJECT_ID --style apa --no-bibliography
-ibis projects remove PROJECT_ID
+ibis writings create "Field Guide" --format autocite --bibliography refs.bib
+ibis writings list --json
+ibis cite vale2024lanterns --file library.bib --writing "Field Guide"
+ibis cite vale2024lanterns --file library.bib --document chapter.qmd
+ibis writings rename "Field Guide" "Revised Field Guide"
+ibis writings update "Revised Field Guide" --style apa --no-bibliography
+ibis writings remove "Revised Field Guide"
 ```
 
-`create` requires `--format` (an output ID from `ibis outputs`, including common
-styles) or `--style` (any bundled CSL style). `update` keeps the fields you omit;
-`--no-bibliography` clears its check. Renaming keeps the ID. Removing a project
-removes its app selections and keeps every bibliography file. Definitions and
-app selections stay on this computer and are excluded from settings backups.
-Use `--nightly` on a `projects` command or alongside `cite --project` to choose
-Nightly's definitions; otherwise the stable app wins, or Nightly when only it has
-settings. A busy settings writer refuses immediately; retry the command after
-the other save finishes. Failed saves leave the old definitions intact.
+`create` requires `--format` or `--style`; `update` keeps fields you omit.
+Renaming updates saved app selections. Removing a writing keeps its bibliography.
+Definitions and app selections stay on this computer and are excluded from backups.
+Use `--nightly` to choose Nightly's definitions. Failed or busy saves keep the old file.
+A handwritten definition needs no generated ID or revision:
 
-`--project` conflicts with `--format`, `--style`, `--for-app` and `--request`, so a
-script cannot accidentally mix two output authorities. For a project's formatted
-bibliography, use `--form bibliography-only`. Outputs that emit citation keys check
-the named bibliography; formatted outputs and record exports do not. The check is
-advice: a missing, uncertain or unreadable entry still gives the citation and
-reports findings with exit 1. Only a key whose entry in the bibliography names a
-different work (another DOI) withholds the copyable citation. `--strict-project`
-also withholds it until the bibliography has a complete current read; it never
-changes a saved project. No project or CLI action grants paste permission.
+```json
+{"name":"Thesis","format":"apa","bibliography":"/invented/work/refs.bib"}
+```
 
-With `--json`, `cite --project` returns a typed wrapper in `data`: `id`, `name`,
-`revision`, the ordinary `citation`, `assessment` (`ready`, `paused` for a strict
-request or `conflict`), and `project` (the bibliography check, or `null`). A paused or conflicting
-assessment returns typed refusals and no copyable citation text. The definition's opaque `revision` changes when its name, output or
-bibliography changes. `ibis projects schema --json` describes the wrapper.
-Project lists and results show only bibliography file names, never their folders.
-Plain `cite` keeps its existing result shape.
+`--writing NAME` conflicts with `--format`, `--style`, `--for-app` and `--request`.
+`--document PATH` reads only the explicitly supplied Markdown/Quarto document's
+`bibliography` and `csl` front matter. A unique matching saved writing is selected;
+ambiguous contexts refuse. A nearby file, document name, title or URL never selects
+one. Simple quoted or plain scalar front matter values are supported.
+
+Outputs that emit keys check the writing's `.bib`; formatted outputs and record
+exports do not. An unreadable, missing or uncertain entry reports findings with
+exit 1 while keeping the citation. A key known to identify another work refuses
+the citation. Writings never grant paste permission.
+
+With `--json`, a writing citation returns `name`, the ordinary `citation`,
+`assessment` (`ready` or `conflict`) and `bibliography` (the check, or `null`).
+`ibis writings schema --json` describes it. Results show bibliography file names,
+never folders. Plain `cite` keeps its existing result shape.
 
 ### Output for an app
 
@@ -441,7 +441,7 @@ with the reason. MCP's `for_app` gives the same answer.
 `--json` adds `data.destination`: the app, its `name` when Ibis knows it, the `output`,
 `from` (which level chose it: `writing`, `app`, `yours` or `suggestion`) and `writing`
 when one did, `delivery` (`paste`, or `copy` and its `reason`, with pasting on and
-permitted) and `output_question` for an app that asks which output a document needs.
+permitted). A writing citation keeps this answer under `data.citation.destination`.
 Plain output is the citation alone, with a note on stderr.
 
 ## JSON-RPC server

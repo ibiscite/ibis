@@ -1,10 +1,8 @@
 #![allow(clippy::unwrap_used)]
-use ibis_core::{
-    contract::*,
-    settings::{Settings, writing_projects},
-};
+use ibis_core::contract::*;
+use ibis_engine::settings::{Settings, writings};
 use ibis_engine::{
-    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, ProjectPolicy, ProjectRead,
+    Cancellation, Engine, KeyCheck, LibraryKind, ProjectAssessmentState as Assessment, ProjectRead,
     request::KeyCitationRequest,
 };
 use serde_json::json;
@@ -12,7 +10,7 @@ use std::sync::Arc;
 
 fn engine() -> Engine {
     let id = ItemRef {
-        library: LibraryId::digest(b"invented-writing-project"),
+        library: LibraryId::digest(b"invented-writing"),
         key: "book".into(),
     };
     let object = LibraryObject::Record(Record {
@@ -25,11 +23,10 @@ fn engine() -> Engine {
 }
 
 #[test]
-fn a_strict_key_project_without_a_bibliography_cannot_claim_a_successful_check() {
+fn a_writing_without_a_bibliography_cites_without_requesting_setup() {
     let engine = engine();
-    let mut settings = Settings::default();
-    let project = writing_projects::create(
-        &mut settings,
+    let writing = writings::create(
+        &mut Settings::default(),
         "Atlas".into(),
         OutputSpec::Key {
             syntax: KeySyntax::Pandoc,
@@ -39,20 +36,16 @@ fn a_strict_key_project_without_a_bibliography_cannot_claim_a_successful_check()
     )
     .unwrap();
     let request: KeyCitationRequest =
-        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
-    let normal = engine
-        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Normal, &Cancellation::default())
+        serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"csl","style":"apa"}})).unwrap();
+    let result = engine
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
-    assert_eq!(normal.citation.text, "[@vale2024]");
-    let strict = engine
-        .cite_writing_project_keys_with_policy(&project, &request, ProjectPolicy::Strict, &Cancellation::default())
-        .unwrap();
-    assert!(strict.citation.text.is_empty());
-    assert_eq!(strict.assessment.unwrap().state, Assessment::Paused);
+    assert_eq!(result.citation.text, "[@vale2024]");
+    assert!(result.bibliography.is_none());
 }
 
 #[test]
-fn one_explicit_project_controls_output_and_checks_its_bibliography() {
+fn one_explicit_writing_controls_output_and_checks_its_bibliography() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
@@ -62,7 +55,7 @@ fn one_explicit_project_controls_output_and_checks_its_bibliography() {
     )
     .unwrap();
     let mut settings = Settings::default();
-    let project = writing_projects::create(
+    let writing = writings::create(
         &mut settings,
         "Atlas".into(),
         OutputSpec::Key {
@@ -75,13 +68,12 @@ fn one_explicit_project_controls_output_and_checks_its_bibliography() {
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"csl","style":"apa"}})).unwrap();
     let result = engine
-        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
     assert_eq!(result.citation.text, "\\cite{vale2024}");
-    assert_eq!(result.id, project.id);
-    assert_eq!(result.revision, project.revision());
+    assert_eq!(result.name, writing.name);
     assert!(matches!(
-        result.project.as_ref().unwrap().keys[0].check,
+        result.bibliography.as_ref().unwrap().keys[0].check,
         KeyCheck::In { .. }
     ));
     let json = serde_json::to_string(&result).unwrap();
@@ -123,7 +115,7 @@ fn prepared_bibliography_checks_keep_the_original_key_after_a_source_rename() {
 }
 
 #[test]
-fn a_project_key_preset_checks_the_bibliography_for_its_canonical_output() {
+fn a_writing_key_preset_checks_the_bibliography_for_its_canonical_output() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
@@ -133,7 +125,7 @@ fn a_project_key_preset_checks_the_bibliography_for_its_canonical_output() {
     )
     .unwrap();
     let mut settings = Settings::default();
-    let project = writing_projects::create(
+    let writing = writings::create(
         &mut settings,
         "Atlas".into(),
         OutputSpec::Preset {
@@ -145,18 +137,21 @@ fn a_project_key_preset_checks_the_bibliography_for_its_canonical_output() {
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"csl","style":"apa"}})).unwrap();
     let result = engine
-        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
     assert_eq!(result.citation.text, "@vale2024");
-    assert!(matches!(result.project.unwrap().keys[0].check, KeyCheck::In { .. }));
+    assert!(matches!(
+        result.bibliography.unwrap().keys[0].check,
+        KeyCheck::In { .. }
+    ));
 }
 
 #[test]
-fn a_project_record_export_does_not_check_a_bibliography() {
+fn a_writing_record_export_does_not_check_a_bibliography() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
     let mut settings = Settings::default();
-    let project = writing_projects::create(
+    let writing = writings::create(
         &mut settings,
         "Atlas".into(),
         OutputSpec::Preset {
@@ -168,14 +163,14 @@ fn a_project_record_export_does_not_check_a_bibliography() {
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
     let result = engine
-        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
     assert!(serde_json::from_str::<serde_json::Value>(&result.citation.text).is_ok());
-    assert!(result.project.is_none());
+    assert!(result.bibliography.is_none());
 }
 
 #[test]
-fn a_project_doi_conflict_never_returns_copyable_key_output() {
+fn a_writing_doi_conflict_never_returns_copyable_key_output() {
     let engine = engine();
     let snapshot = engine.snapshot().unwrap();
     let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
@@ -192,7 +187,7 @@ fn a_project_doi_conflict_never_returns_copyable_key_output() {
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("refs.bib");
     std::fs::write(&path, "@book{vale2024,title={Other work},doi={10.1000/other}}\n").unwrap();
-    let project = writing_projects::create(
+    let writing = writings::create(
         &mut Settings::default(),
         "Atlas".into(),
         OutputSpec::Preset { name: "pandoc".into() },
@@ -202,7 +197,7 @@ fn a_project_doi_conflict_never_returns_copyable_key_output() {
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
     let result = engine
-        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
     assert!(
         result.citation.copy_content(1).is_none(),
@@ -211,10 +206,10 @@ fn a_project_doi_conflict_never_returns_copyable_key_output() {
 }
 
 #[test]
-fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
+fn an_unreadable_writing_bibliography_is_a_warning() {
     let engine = engine();
     let directory = tempfile::tempdir().unwrap();
-    let project = writing_projects::create(
+    let writing = writings::create(
         &mut Settings::default(),
         "Atlas".into(),
         OutputSpec::Preset { name: "pandoc".into() },
@@ -224,36 +219,11 @@ fn an_unreadable_project_bibliography_is_a_warning_and_strict_requests_pause() {
     let request: KeyCitationRequest =
         serde_json::from_value(json!({"keys":[{"key":"vale2024"}],"output":{"kind":"key","syntax":"pandoc"}})).unwrap();
     let result = engine
-        .cite_writing_project_keys(&project, &request, &Cancellation::default())
+        .cite_writing_keys(&writing, &request, &Cancellation::default())
         .unwrap();
     assert_eq!(result.citation.text, "[@vale2024]");
     assert_eq!(result.assessment.unwrap().state, Assessment::Ready);
-    assert_eq!(result.project.unwrap().keys[0].check, KeyCheck::CouldNotCheck);
-
-    let prepared = prepared(&engine);
-    let unreadable = ProjectRead::read(&directory.path().join("unavailable.bib"), None);
-    assert_eq!(
-        prepared.project_evidence(&unreadable, ProjectPolicy::Strict).state,
-        Assessment::Paused
-    );
-    assert_eq!(
-        prepared.result().text,
-        "[@vale2024]",
-        "assessing a pause never destroys a native preview"
-    );
-
-    // A complete read is enough: a different key written twice is only that key's warning.
-    let path = directory.path().join("refs.bib");
-    std::fs::write(
-        &path,
-        "@book{vale2024,title={Invented Atlas}}\n@book{twice,}\n@book{twice,}\n",
-    )
-    .unwrap();
-    let complete = ProjectRead::read(&path, None);
-    assert_eq!(
-        prepared.project_evidence(&complete, ProjectPolicy::Strict).state,
-        Assessment::Ready
-    );
+    assert_eq!(result.bibliography.unwrap().keys[0].check, KeyCheck::CouldNotCheck);
 }
 
 fn prepared(engine: &Engine) -> ibis_engine::PreparedCitation {
@@ -264,7 +234,7 @@ fn prepared(engine: &Engine) -> ibis_engine::PreparedCitation {
 }
 
 #[test]
-fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
+fn a_doi_conflict_in_a_damaged_file_is_refused() {
     let engine = engine();
     let snapshot = engine.snapshot().unwrap();
     let LibraryObject::Record(mut record) = snapshot.objects()[0].object.clone() else {
@@ -287,9 +257,7 @@ fn every_policy_refuses_a_doi_conflict_in_a_damaged_file() {
     )
     .unwrap();
     let conflicting = ProjectRead::read(&path, None);
-    for policy in [ProjectPolicy::Normal, ProjectPolicy::Strict] {
-        let assessment = prepared.project_evidence(&conflicting, policy);
-        assert_eq!(assessment.state, Assessment::Conflict);
-        assert!(!assessment.can_copy());
-    }
+    let assessment = prepared.project_evidence(&conflicting);
+    assert_eq!(assessment.state, Assessment::Conflict);
+    assert!(!assessment.can_copy());
 }

@@ -137,8 +137,6 @@ fn the_answer_says_whether_the_app_pastes_or_copies() -> Result {
     assert_eq!(terminal["delivery"]["action"], "copy");
     assert_eq!(terminal["delivery"]["reason"], "terminal");
 
-    assert_eq!(destination("com.apple.Safari")?["output_question"], "browser");
-
     let unknown = destination("com.example.unknown")?;
     assert_eq!(unknown["name"], Value::Null);
     assert_eq!(unknown["delivery"]["action"], "copy");
@@ -155,7 +153,7 @@ fn plain_output_stays_the_citation_and_the_note_goes_to_stderr() -> Result {
     assert!(errors.contains("Ibis pastes into Obsidian"), "{errors}");
 
     let (_, _, errors) = run(&["cite", "taylor2026", "--for-app", "com.google.Chrome"])?;
-    assert!(errors.contains("asks once which output Chrome needs"), "{errors}");
+    assert!(errors.contains("Ibis pastes into Chrome"), "{errors}");
 
     // Without the flag nothing changes.
     let (_, _, errors) = run(&["cite", "taylor2026"])?;

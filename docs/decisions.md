@@ -40,7 +40,7 @@ the anchor older links use.
 [0016](decisions/0016-settings.md): `settings.json`, atomic saves, no migrations before 1.0, backups and restore.
 
 ## 0031 What Ibis remembers per app
-[0031](decisions/0031-what-ibis-remembers-per-app.md): writing projects, a format per app, `apps.json`, recent citations and app-ID evidence.
+[0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
 
 ## 0019 Updates
 [0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming.

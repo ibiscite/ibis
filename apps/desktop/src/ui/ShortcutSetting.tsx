@@ -39,14 +39,12 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
     </td></tr>}
   </>;
   return <SettingsGroup id={id}>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><SettingsRow id={rowId} label={text("shortcuts-open")} highlighted={highlighted}
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><SettingsRow id={rowId} label={text("shortcuts-open")} highlighted={highlighted} changed={Boolean(status && !status.desktop && !isDefault)}
       description={status?.desktop?.guidance ?? (status ? text("shortcuts-description") : undefined)}
       problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
       {controls}
+      {status && !status.desktop && !isDefault && <Button size="small" isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>}
     </SettingsRow></ShortcutEcho>
-    {status && !status.desktop && !isDefault && <SettingsRow id="default-shortcut" label={defaultLabel}>
-      <Button isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>
-    </SettingsRow>}
 
   </SettingsGroup>;
 }

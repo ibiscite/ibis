@@ -34,7 +34,7 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
 
 test("the native preferences smoke can virtually open Copy as and choose Typst with the keyboard", async () => {
   const saved: unknown[] = [];
-  backend({ picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
+  backend({ picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { key_output?: string }).key_output ?? null); return null; } });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
   await screen.findByText("No matching references");

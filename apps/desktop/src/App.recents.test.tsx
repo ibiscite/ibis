@@ -1,3 +1,4 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -6,7 +7,7 @@ import { backend, chooseFromMore, prepared, resetApp, result } from "./testing/a
 
 afterEach(resetApp);
 const writer = "invented.writer";
-const destination = () => ({ app: "Invented Writer", app_id: writer, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null });
+const destination = () => (fixtureDestination({ app: "Invented Writer", app_id: writer, unreadable: false, can_paste: false, format: formatAnswer("pandoc", "yours") }));
 const a = result("a", "Recent A"), b = result("b", "Recent B"), c = result("c", "New C");
 
 test("a failed Forget retry keeps the privacy warning visible until legacy history is deleted", async () => {

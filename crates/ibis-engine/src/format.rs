@@ -8,25 +8,18 @@
 //! so a style chosen in Word never reaches a LaTeX file. The answer says which
 //! level won, for the picker's header ("MLA · for Word", "Thesis").
 use crate::outputs;
+use crate::settings::Settings;
 use ibis_core::contract::{KeySyntax, OutputSpec};
-use ibis_core::destination::{AppId, OutputClass, OutputQuestion, lookup};
+use ibis_core::destination::{AppId, OutputClass, lookup};
 pub use ibis_core::destination::{FormatChoice, FormatFrom, FormatKind, WritingName};
-use ibis_core::settings::Settings;
 
 /// The kind of `app`, what is suggested for it when nothing is chosen, and
 /// whether Ibis knows its kind; an app it does not counts as documents.
 fn kind(app: Option<&AppId>) -> (FormatKind, &'static str, bool) {
-    let entry = app.and_then(lookup);
-    match (
-        entry.and_then(|entry| entry.output),
-        entry.and_then(|entry| entry.output_question),
-    ) {
-        (Some(OutputClass::Key(syntax)), _) => (FormatKind::Keys, key_id(syntax), true),
-        (Some(OutputClass::Formatted), _) | (None, Some(OutputQuestion::Browser)) => {
-            (FormatKind::Documents, outputs::DEFAULT_STYLE, true)
-        }
-        (None, Some(OutputQuestion::Editor)) => (FormatKind::Keys, outputs::DEFAULT, true),
-        (None, None) => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
+    match app.and_then(lookup).and_then(|entry| entry.output) {
+        Some(OutputClass::Key(syntax)) => (FormatKind::Keys, key_id(syntax), true),
+        Some(OutputClass::Formatted) => (FormatKind::Documents, outputs::DEFAULT_STYLE, true),
+        None => (FormatKind::Documents, outputs::DEFAULT_STYLE, false),
     }
 }
 
@@ -52,18 +45,24 @@ fn choice(entry: &outputs::OutputInfo, from: FormatFrom, kind: FormatKind) -> Fo
 
 /// The format for a citation into `app` (none when no app was captured).
 pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
-    let (kind, suggestion, _) = kind(app);
-    if let Some(project) = app.and_then(|app| writing_for(settings, app)) {
-        let writing = WritingName {
-            id: project.id.clone(),
-            name: project.name.clone(),
+    let (kind, _, _) = kind(app);
+    if let Some(writing) = app.and_then(|app| writing_for(settings, app)) {
+        let name = WritingName {
+            id: writing.name.clone(),
+            name: writing.name.clone(),
         };
-        return for_writing(&project.output, writing, app);
+        return for_writing(&writing.format, name, app);
     }
     // This app's format was chosen in it, so it holds whatever its kind.
     if let Some(entry) = app.and_then(|app| settings.app_output(app)).and_then(outputs::find) {
         return choice(entry, FormatFrom::App, kind);
     }
+    usual(settings, app)
+}
+
+/// Your format for this kind, or its suggestion, without an app override.
+pub fn usual(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
+    let (kind, suggestion, _) = kind(app);
     let yours = match kind {
         FormatKind::Documents => settings.output.as_deref(),
         FormatKind::Keys => settings.key_output.as_deref(),
@@ -120,14 +119,11 @@ fn kind_of(output: &OutputSpec) -> FormatKind {
     }
 }
 
-fn writing_for<'s>(
-    settings: &'s Settings,
-    app: &AppId,
-) -> Option<&'s ibis_core::settings::writing_projects::WritingProject> {
+fn writing_for<'s>(settings: &'s Settings, app: &AppId) -> Option<&'s crate::settings::writings::Writing> {
     let id = settings
-        .writing_project_apps
+        .writing_apps
         .get(&format!("{}:{}", system(app), app.normalized()))?;
-    settings.writing_projects.iter().find(|project| &project.id == id)
+    settings.writings.iter().find(|writing| &writing.name == id)
 }
 
 fn system(app: &AppId) -> &'static str {
@@ -140,3 +136,23 @@ fn system(app: &AppId) -> &'static str {
 
 #[cfg(test)]
 mod tests;
+
+/// Confirm the exact suggested format after successful paste. A newer choice
+/// makes this an inert stale completion. The return value asks for the one-time
+/// explanation; saving the returned settings makes it durable across launches.
+pub fn accept_suggestion(settings: &mut Settings, app: Option<&AppId>, captured: &FormatChoice) -> bool {
+    if captured.from != FormatFrom::Suggestion || choose(settings, app) != *captured {
+        return false;
+    }
+    let Some(id) = captured.id.as_ref() else {
+        return false;
+    };
+    if let Some(app) = app {
+        settings.remember_app_output(app, id.clone());
+    }
+    if settings.suggestion_reports.contains(&captured.kind) {
+        return false;
+    }
+    settings.suggestion_reports.push(captured.kind);
+    true
+}

@@ -2,7 +2,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type PastePermission, type PreferenceChange, type ShortcutStatus } from "../bindings";
+import { commands, type EndpointStatus, type PastePermission, type PreferenceChange, type ShortcutStatus } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
@@ -29,14 +29,18 @@ export const settingsApi = {
   editorEndpoint: commands.editorEndpoint,
   setEditorEndpoint: commands.setEditorEndpoint,
   copyEditorEndpoint: commands.copyEditorEndpoint,
+  onEditorEndpoint: (handler: (status: EndpointStatus) => void): Promise<UnlistenFn> => listen<EndpointStatus>("editor:endpoint", (event) => handler(event.payload)),
   backUpSettings: commands.backUpSettings,
   chooseSettingsBackup: commands.chooseSettingsBackup,
   restoreSettingsBackup: commands.restoreSettingsBackup,
   cancelSettingsRestore: commands.cancelSettingsRestore,
+  formatSettings: commands.formatSettings,
+  forgetAppFormat: commands.forgetAppFormat,
+  openSettingsFile: commands.openSettingsFile,
   onShortcutStatus: (handler: (status: ShortcutStatus) => void): Promise<UnlistenFn> => listen<ShortcutStatus>("shortcut:status", (event) => handler(event.payload)),
   version: getVersion,
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
-  onPreferencesChanged: (handler: (revision: number) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision)),
+  onPreferencesChanged: (handler: (revision: number, fields?: string[]) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision, event.payload.fields)),
   /** The window size writer's outcome; a refused write is the only news here. */
   onWindowSaved: (handler: (saved: boolean) => void): Promise<UnlistenFn> => listen<{ saved: boolean }>("picker:window-saved", (event) => handler(event.payload.saved)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
@@ -45,5 +49,5 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
 };
 
-type Optional = "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint";
+type Optional = "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint" | "onEditorEndpoint" | "formatSettings" | "forgetAppFormat" | "openSettingsFile";
 export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;

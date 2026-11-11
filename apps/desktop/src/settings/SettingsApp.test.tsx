@@ -82,14 +82,14 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
-  // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
+  // A changed row offers Reset; Check for Updates stays under the version.
   const rowOf = (node: Element) => node.closest(".ui-settings-row")!;
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
   expect(check.closest(".ui-about-hero")).toBeTruthy();
-  expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
+  expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(2);
   expect(document.querySelectorAll("#about-updates .ui-settings-row")).toHaveLength(1);
   fireEvent.click(check);
-  fireEvent.click(automatic);
+  fireEvent.click(screen.getByRole("button", { name: pseudo.text("settings-reset-row", { setting: pseudo.text("about-automatic") }) }));
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
   await act(async () => state.closes[0]!());
   mounted.unmount();
@@ -1436,25 +1436,25 @@ test("the Ibis default-format menu saves one output by its name, restores refusa
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
   const choose = async (name: string) => {
-    fireEvent.click(await screen.findByRole("button", { name: /^Default format / }));
+    fireEvent.click(await screen.findByRole("button", { name: /^In documents / }));
     expect(await screen.findByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name }));
     await act(async () => state.closes.at(-1)!());
   };
-  await choose("Typst");
-  expect(state.preferences).toMatchObject({ output: "typst" });
+  await choose("MLA");
+  expect(state.preferences).toMatchObject({ output: "modern-language-association" });
   await choose("APA");
   expect(state.preferences.output).toBe("apa");
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
-  await choose("LaTeX \\cite");
+  await choose("MLA");
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Default format APA" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "In documents APA" })).toBeTruthy();
   expect(document.querySelector("select")).toBeNull();
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   fireEvent.click(screen.getByRole("option", { name: "Citations" }));
-  expect(await screen.findByRole("button", { name: "Default format APA" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "In documents APA" })).toBeTruthy();
 });
 
 
@@ -1498,7 +1498,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 
 test.each([
-  ["no remembered format.", "Default format", "Citations", "default-format"],
+  ["no remembered format.", "In documents", "Citations", "default-format"],
   ["Follow the system", "Appearance", "Appearance", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, label, page, id) => {
   const { api } = fakeApi({ granted: true });

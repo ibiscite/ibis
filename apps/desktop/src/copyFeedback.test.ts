@@ -207,7 +207,7 @@ test("the app's timer fades the notice out, and showing it again brings it back"
 
 test("the notice window grants only copied text reading and event subscriptions", () => {
   expect(noticeCapability.windows).toEqual(["notice"]);
-  expect([...noticeCapability.permissions].sort()).toEqual(["allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
+  expect([...noticeCapability.permissions].sort()).toEqual(["allow-change-suggested-format", "allow-copied-notice", "core:event:allow-listen", "core:event:allow-unlisten"]);
 });
 
 test("every receipt uses one card and only a paste is marked done", () => {

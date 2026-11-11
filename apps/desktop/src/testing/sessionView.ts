@@ -10,7 +10,7 @@ import { initialSearch, type SearchInputs } from "../features/picker/search";
 import type { SessionEvent, SessionState, SessionView } from "../features/picker/session";
 import { searchQuery, type PickerInputs } from "../features/picker/view";
 import { testStates } from "../test-fixtures";
-import { noFormatChosen } from "./format";
+import { formatAnswer } from "./format";
 
 /** Arranges `state` so that the session's view is `v`; send the event it returns to apply it. */
 export function arrangeView(state: SessionState, v: SessionView): [SessionState, SessionEvent] {
@@ -33,10 +33,10 @@ export function arrangeView(state: SessionState, v: SessionView): [SessionState,
     resultsQuery: queryKey, resultsRevision: library.revision };
   const version = v.projectVersion ? v.projectVersion.split(":").map(Number) as [number, number] : null;
   const app = v.appId ?? null;
-  const destination: PickerDestination | null = app === null && !v.writingProjectId && !version ? null : {
-    app, app_id: app, app_identity: null, format: noFormatChosen, automatic: null, remembered: null, unreadable: false, can_paste: false,
-    output_question: v.shouldAsk ? "browser" : null, paste: null, paste_question: false, can_choose_paste: false,
-    writing_project: v.writingProjectId ? { id: v.writingProjectId, name: v.writingProjectId, output: null, bibliography: "references.bib" } : null,
+  const destination: PickerDestination | null = app === null && !v.writingId && !version ? null : {
+    app, app_id: app, app_identity: null, find_open: false, usual_format: "apa", format: formatAnswer(v.format, v.writingId ? "writing" : "yours"), unreadable: false, can_paste: false,
+    paste: null, paste_question: Boolean(v.shouldAsk), can_choose_paste: false,
+    writing: v.writingId ? { id: v.writingId, name: v.writingId, output: null, bibliography: "references.bib" } : null,
     writing_context: null, context_version: version,
   };
   const shownChoice = selected ? [...state.selected.values()] : chosen.length > 1 ? chosen : chosen.map((r) => ({ ...r, locator }));

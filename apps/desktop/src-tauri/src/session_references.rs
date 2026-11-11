@@ -256,7 +256,7 @@ pub(crate) async fn export_session_bibliography(
         let text = file.commit_session_bibliography(&items, &style, &content_hash, |content| {
             export_text(extension, &content).ok_or_else(|| "Save it as .rtf, .html or .txt.".to_owned())
         })?;
-        ibis_core::settings::backup::save(&path, &text, replace).map_err(|error| {
+        ibis_engine::settings::backup::save(&path, &text, replace).map_err(|error| {
             CommandError::from(if error.kind() == std::io::ErrorKind::AlreadyExists {
                 "A file with that name is already there. Choose another name."
             } else {
@@ -293,7 +293,7 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
                 .filter(|_| chose)
             {
                 let history = app.state::<SessionReferences>();
-                let loaded = ibis_core::settings::load(&settings_path);
+                let loaded = ibis_engine::settings::load(&settings_path);
                 let saved = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
                 if !on && saved {
                     let _ = history.forget();

@@ -71,8 +71,8 @@ pub(crate) fn register_shortcut(
 /// Swap the registered shortcut for `requested`, from Settings. The new key is
 /// registered before the working one is released, so a refusal keeps it.
 /// Runs on the main thread, where layout queries are answered.
-pub(crate) fn replace_shortcut(
-    app: &AppHandle,
+pub(crate) fn replace_shortcut<R: tauri::Runtime>(
+    app: &AppHandle<R>,
     requested: OpeningShortcut,
 ) -> Result<Option<&'static str>, &'static str> {
     let state = app.state::<Registered>();

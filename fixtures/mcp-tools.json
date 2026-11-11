@@ -166,7 +166,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+    "description": "Write a citation or reference list from search refs, with optional locators. Keep refs exact. Use `format` (pandoc, autocite, typst, apa) or any CSL id in `style`; default apa. Use text as returned and report notices, losses and warnings.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -277,6 +277,10 @@
     "name": "cite",
     "outputSchema": {
       "properties": {
+        "bibliography": {
+          "description": "The selected writing's .bib checks; filenames only.",
+          "type": "object"
+        },
         "destination": {
           "description": "What Ibis does for the app named by for_app, with pasting on and permitted.",
           "type": "object"

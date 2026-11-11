@@ -1,8 +1,8 @@
 import { afterEach, expect, test, vi } from "vitest";
 
-const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), copiedNotice: vi.fn(async () => ({ delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]" })) }));
+const native = vi.hoisted(() => ({ listen: vi.fn(async (_name: string, _handler: unknown) => () => {}), changeSuggestedFormat: vi.fn(async () => null), copiedNotice: vi.fn(async () => ({ delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]" })) }));
 vi.mock("@tauri-apps/api/event", () => ({ listen: native.listen }));
-vi.mock("./bindings", () => ({ commands: { copiedNotice: native.copiedNotice } }));
+vi.mock("./bindings", async (actual) => ({ ...await actual<typeof import("./bindings")>(), commands: { copiedNotice: native.copiedNotice, changeSuggestedFormat: native.changeSuggestedFormat } }));
 
 afterEach(() => {
   vi.restoreAllMocks();
@@ -42,4 +42,19 @@ test("the notice follows Ibis's own Light or Dark, not only the system's", async
   const show = native.listen.mock.calls.find(([name]) => name === "notice:show")![1] as (event: { payload: unknown }) => void;
   show({ payload: { delivered: { outcome: "copied", reason: "paste-unavailable" }, text: "[@synthetic]" } });
   expect(document.documentElement.dataset.appearance).toBe("system");
+});
+
+test("a first suggested paste names the format and offers Change only for that notice", async () => {
+  document.body.innerHTML = '<div id="notice"></div>';
+  native.copiedNotice.mockResolvedValueOnce({ delivered: { outcome: "pasted", app: "Word" }, text: "(García, 2021)", suggested_format: "apa" } as never);
+  vi.resetModules();
+  await import("./notice");
+  await vi.waitFor(() => expect(document.querySelector(".copied-notice strong")?.textContent).toContain("Pasted in APA"));
+  const change = document.querySelector<HTMLButtonElement>(".copied-notice button")!;
+  expect(change.textContent).toBe("Change");
+  change.click();
+  expect(native.changeSuggestedFormat).toHaveBeenCalledOnce();
+  const show = native.listen.mock.calls.find(([name]) => name === "notice:show")![1] as (event: { payload: unknown }) => void;
+  show({ payload: { delivered: { outcome: "pasted", app: "Word" }, text: "(García, 2021)" } });
+  expect(document.querySelector(".copied-notice button")).toBeNull();
 });

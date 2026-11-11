@@ -5,24 +5,11 @@ use std::path::{Path, PathBuf};
 
 const MAX_KEYS: usize = 1000;
 
-/// A request-local choice; never a saved preference or inferred retry policy.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum ProjectPolicy {
-    /// The check is advice: what it could not settle is a warning.
-    #[default]
-    Normal,
-    /// A key citation needs a complete current read.
-    Strict,
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ProjectAssessmentState {
     /// The citation may be used; its key checks say what to look at.
     Ready,
-    /// A strict request without a complete current read.
-    Paused,
     /// A key known to name a different work.
     Conflict,
 }
@@ -47,15 +34,13 @@ impl ProjectAssessment {
 /// intact. Paths are native input only; the check names just its bibliography.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
-pub struct WritingProjectCitation {
-    pub id: String,
+pub struct WritingCitation {
     pub name: String,
-    pub revision: String,
     pub citation: CitationResult,
-    pub project: Option<ProjectResult>,
+    pub bibliography: Option<ProjectResult>,
     pub assessment: Option<ProjectAssessment>,
 }
-impl WritingProjectCitation {
+impl WritingCitation {
     pub fn schema() -> serde_json::Value {
         schemars::schema_for!(Self).into()
     }
@@ -107,54 +92,33 @@ pub fn project_name(path: &Path) -> String {
 impl Engine {
     /// Resolve keys through the same path as an ordinary citation, then apply
     /// one explicit project's output and bibliography. GUI selection is absent.
-    pub fn cite_writing_project_keys(
+    pub fn cite_writing_keys(
         &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
+        writing: &crate::settings::writings::Writing,
         request: &KeyCitationRequest,
         cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
-        self.cite_writing_project_keys_with_policy(project, request, ProjectPolicy::Normal, cancel)
-    }
-
-    pub fn cite_writing_project_keys_with_policy(
-        &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
-        request: &KeyCitationRequest,
-        policy: ProjectPolicy,
-        cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
+    ) -> Result<WritingCitation, EngineError> {
         let mut request = request.clone();
-        request.output = project.output.clone();
+        request.output = writing.format.clone();
         let request = self.key_citation_request(&request, cancel)?;
-        self.cite_writing_project_with_policy(project, &request, policy, cancel)
+        self.cite_writing(writing, &request, cancel)
     }
 
-    /// The project definition is immutable for this request. Its output is the
-    /// authority; callers choose another request rather than mixing outputs.
-    pub fn cite_writing_project(
+    /// This immutable writing owns the request's format. Its optional .bib is
+    /// advice unless an emitted key is known to identify a different work.
+    pub fn cite_writing(
         &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
+        writing: &crate::settings::writings::Writing,
         request: &CitationRequest,
         cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
-        self.cite_writing_project_with_policy(project, request, ProjectPolicy::Normal, cancel)
-    }
-
-    pub fn cite_writing_project_with_policy(
-        &self,
-        project: &ibis_core::settings::writing_projects::WritingProject,
-        request: &CitationRequest,
-        policy: ProjectPolicy,
-        cancel: &Cancellation,
-    ) -> Result<WritingProjectCitation, EngineError> {
-        ibis_core::settings::writing_projects::validate(std::slice::from_ref(project))
-            .map_err(|_| error(ErrorCode::BadInput))?;
+    ) -> Result<WritingCitation, EngineError> {
+        crate::settings::writings::validate(std::slice::from_ref(writing)).map_err(|_| error(ErrorCode::BadInput))?;
         let mut request = request.clone();
-        request.output = project.output.clone();
+        request.output = writing.format.clone();
         let prepared = self.prepare_citation(&request, cancel)?;
         let mut assessment = None;
         let checked = if prepared.uses_citation_keys() {
-            project
+            writing
                 .bibliography
                 .as_ref()
                 .map(|path| {
@@ -162,7 +126,7 @@ impl Engine {
                     let read = ProjectRead::read(path, None);
                     cancel.check()?;
                     let keys = prepared.project_checks(&read);
-                    assessment = Some(prepared.project_evidence(&read, policy));
+                    assessment = Some(prepared.project_evidence(&read));
                     Ok::<_, EngineError>(ProjectResult {
                         name: project_name(path),
                         keys,
@@ -174,18 +138,8 @@ impl Engine {
         } else {
             None
         };
-        if policy == ProjectPolicy::Strict && prepared.uses_citation_keys() && project.bibliography.is_none() {
-            let mut required = prepared.project_evidence(&ProjectRead::default(), policy);
-            required.message = Some("Choose a project bibliography before requesting a strict check.".to_owned());
-            assessment = Some(required);
-        }
         let mut citation = prepared.into_result();
-        if let Some(check) = assessment.as_ref().filter(|check| !check.can_copy()) {
-            let error = if check.state == ProjectAssessmentState::Conflict {
-                CitationError::ConflictingKey
-            } else {
-                CitationError::NotCitable
-            };
+        if assessment.as_ref().is_some_and(|check| !check.can_copy()) {
             citation = CitationResult::new(
                 String::new(),
                 None,
@@ -195,7 +149,10 @@ impl Engine {
                     .outcomes
                     .into_iter()
                     .map(|outcome| match outcome {
-                        ItemOutcome::Rendered { item } => ItemOutcome::Refused { item, error },
+                        ItemOutcome::Rendered { item } => ItemOutcome::Refused {
+                            item,
+                            error: CitationError::ConflictingKey,
+                        },
                         refused => refused,
                     })
                     .collect(),
@@ -204,12 +161,10 @@ impl Engine {
             )
             .with_warnings(citation.warnings);
         }
-        Ok(WritingProjectCitation {
-            id: project.id.clone(),
-            name: project.name.clone(),
-            revision: project.revision(),
+        Ok(WritingCitation {
+            name: writing.name.clone(),
             citation,
-            project: checked,
+            bibliography: checked,
             assessment,
         })
     }
