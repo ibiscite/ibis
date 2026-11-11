@@ -83,6 +83,13 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **A read-only PDF preview** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions/0036-reader-trust-boundary.md)) for PDFs already in Zotero or a `.bib` `file` field, so checking a page never needs Zotero; Ibis never imports, edits or annotates them. EPUB and web snapshots follow.
 - **Files outside a reference manager:** a folder of PDFs or of Markdown notes can be searched, previewed and quoted.
 - **Agents and passages:** opt-in per library, off by default; private links never reach them.
+- **Rules to settle before building 0.5** (from the removed source-workflow research):
+  - **Presentation:** do passages appear as a References/Passages scope or unfolded under a reference, and does Enter open a passage? Decide with a comprehension walkthrough first.
+  - **Open buttons** name their target ("Open annotation in Zotero", "Open PDF at page", "Open reference"). A failed open offers the others and never silently opens something else.
+  - **Pages:** a Roman page label is never sent as a PDF index, and "Citation page unknown" is said plainly.
+  - **Briefs:** never overwrite a file, repeat the reference for each passage, treat the question as literal text, and stay readable without Ibis or Zotero.
+  - **Testing:** check with real Zotero users and bibliography-only users that they can tell a quote from a comment, and with someone who reads a brief without Ibis.
+- **Add a note instead of a citation** ([#55](https://github.com/ibiscite/ibis/issues/55)), like Zotero's Add Note.
 - **Is this in my library?** for a pasted identifier or reference list; results say whether a reference has a PDF or a saved web page.
 
 ### 0.6 Your document
@@ -115,6 +122,8 @@ No new features. People test everything, then the maintainer moves to 1.0. Gates
 - Run bounded Codex exploration with existing access and independent assertions, plus free Google Docs/Overleaf readback in isolated synthetic sessions; arrange self-hosted Mac/Windows sessions, permissions, LibreOffice and dedicated free test accounts without paid runners or models (from testing).
 - Before numbered releases, run a risk-ordered computer-use check of the nightly on Mac, Windows and Ubuntu, at most 45 scenarios, restoring settings and recording pass/fail/blocked/skipped with failure evidence (from testing).
 - Publish release SBOMs, make stable releases immutable, and write the update-key loss/rotation procedure (from releasing).
+- Qualify non-US keyboard layouts (Cyrillic and others fall back to the US key position today), sleep and wake, and Windows 10 (WebView2 is supported there to at least October 2028) (from compatibility).
+- Before claiming support: replay the VS Code "Citation Picker for Zotero" requests against Ibis's editor endpoint, and claim Zotero 10 for the ODF Scan flow only after Ibis's own LibreOffice round trip passes on it (from compatibility).
 
 ## After 1.0, maybe
 
