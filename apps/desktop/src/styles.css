@@ -9,8 +9,9 @@ button, input, select { font: inherit; color: inherit; }
 /* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
    focus (:focus-visible), 2 px with a 1 px gap, in the system accent. Contrast
    and forced colours make it a solid CanvasText ring. Menu rows show a fill instead
-   (Menu.css): a ring there is clipped by the list and covers its neighbours. */
-:focus-visible:not(.ui-button, .menu-item) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
+   (Menu.css): a ring there is clipped by the list and covers its neighbours.
+   Something only the app focuses (a sheet, a list, tabindex -1) never shows one. */
+:focus-visible:not(.ui-button, .menu-item, [tabindex="-1"]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
 main {
   height: 100dvh;
   container-type: inline-size;

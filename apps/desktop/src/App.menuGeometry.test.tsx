@@ -85,9 +85,9 @@ test("More is gone before the probe's keys-sheet and Copy as steps", async () =>
     fireEvent.keyDown(search, { key: "/", ctrlKey: true });
     const keys = await screen.findByRole("dialog", { name: "Keyboard Shortcuts" });
     fireEvent.keyDown(keys, { key: "Escape" });
-    const format = screen.getByRole("button", { name: /^Copy as/ });
+    const format = screen.getByRole("button", { name: /^Citation format/ });
     fireEvent.click(format);
-    const formatMenu = await screen.findByRole("menu", { name: /^Copy as/ });
+    const formatMenu = await screen.findByRole("menu", { name: /^Citation format/ });
     expect(document.querySelectorAll('[role="menu"]')).toHaveLength(1);
     expect(more.getAttribute("aria-expanded")).toBe("false");
     expect(format.getAttribute("aria-expanded")).toBe("true");
@@ -108,7 +108,7 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
   const search = screen.getByRole("combobox");
   for (const layer of ["More", "output"]) {
     if (layer === "More") fireEvent.keyDown(search, { key: "k", ctrlKey: true });
-    else fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
+    else fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
     const menu = await screen.findByRole("menu");
     fireEvent.keyDown(layer === "More" ? menu : screen.getByRole("searchbox"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());

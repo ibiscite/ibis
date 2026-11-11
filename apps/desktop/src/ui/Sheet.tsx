@@ -1,4 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
+import { Button as AriaButton } from "react-aria-components";
+import { Icon } from "../icons";
 import { IconButton } from "./IconButton";
 import { useLayer } from "./layers";
 import { useScrollEdges } from "./ScrollArea";
@@ -74,7 +76,21 @@ export function SheetRow({ children }: { children: ReactNode }) {
   return <li className="ui-settings-row ui-sheet-row">{children}</li>;
 }
 
-/** A part of a sheet's body under a divider, named by its heading. */
+/** One choice in a sheet's list, as System Settings lists choices: the whole row
+ * is the button, its name and a quiet detail at the start, a check at the end
+ * on the chosen one. */
+export function SheetChoice({ label, detail, accessibleLabel, selected, disabled, onPress }: {
+  label: string; detail?: ReactNode; accessibleLabel?: string; selected: boolean; disabled?: boolean; onPress: () => void;
+}) {
+  return <li className="ui-settings-row ui-sheet-row ui-sheet-choice-row">
+    <AriaButton className="ui-sheet-choice" aria-label={accessibleLabel} aria-pressed={selected} isDisabled={disabled} onPress={onPress}>
+      <span className="ui-settings-row-text"><span dir="auto">{label}</span>{detail && <span className="ui-settings-description" dir="auto">{detail}</span>}</span>
+      <span className="ui-sheet-check" aria-hidden="true">{selected && <Icon name="check" />}</span>
+    </AriaButton>
+  </li>;
+}
+
+/** A part of a sheet's body named by its heading, as a Settings group is. */
 export function SheetSection({ label, heading, children }: { label: string; heading?: ReactNode; children: ReactNode }) {
   return <section className="ui-sheet-section" aria-label={label}>{heading}{children}</section>;
 }

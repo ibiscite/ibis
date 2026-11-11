@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import { backend, chooseFromMore, resetApp } from "./testing/app";
+import { backend, chooseFromMore, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -32,13 +32,20 @@ test.each(["welcome", "empty", "loaded"])("%s: the native smoke's More and Quit 
   await waitFor(() => expect(calls.filter((command) => command === "quit")).toHaveLength(1));
 });
 
-test("the native preferences smoke can virtually open Copy as and choose Typst with the keyboard", async () => {
+test("with a result ready to copy, the citation format is a distinct named control and can be changed by key", async () => {
   const saved: unknown[] = [];
-  backend({ picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
+  const calls = backend({
+    search: ({ query }) => query.text ? [result("invented", "Invented reference")] : [],
+    picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; },
+  });
   render(<App />);
-  fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "zzqx no such reference" } });
-  await screen.findByText("No matching references");
-  const button = await screen.findByRole<HTMLButtonElement>("button", { name: "Copy as Pandoc" });
+  const search = screen.getByLabelText("Search references");
+  fireEvent.change(search, { target: { value: "invented" } });
+  const copy = await within(screen.getByRole("group", { name: "Keys" })).findByRole("button", { name: "Copy as Pandoc" });
+  expect(screen.getAllByRole("button", { name: "Copy as Pandoc" })).toEqual([copy]);
+  const button = screen.getByRole<HTMLButtonElement>("button", { name: "Citation format Pandoc" });
+  const status = screen.getByRole("status", { name: "Citation format" });
+  expect(status.textContent).toMatch(/^Pandoc\./);
   expect(button.tagName).toBe("BUTTON");
   expect(button.type).toBe("button");
   expect(button.disabled).toBe(false);
@@ -53,7 +60,10 @@ test("the native preferences smoke can virtually open Copy as and choose Typst w
   fireEvent.keyDown(choice, { key: "Enter" });
   fireEvent.keyUp(choice, { key: "Enter" });
   await waitFor(() => expect(saved).toEqual(["typst"]));
-  expect(await screen.findByRole("button", { name: "Copy as Typst" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Citation format Typst" })).toBe(button);
+  expect(status.textContent).toMatch(/^Typst\./);
+  expect(document.activeElement).toBe(search);
+  expect(calls).not.toContain("copy_file_citation");
 });
 
 test("More holds working actions, leaving preferences and update checks to Settings", async () => {

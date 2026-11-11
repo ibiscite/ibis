@@ -16,7 +16,7 @@ test("the format chooser blocks update readiness and closing rearms a fresh idle
     return value === null ? ++ticket : value;
   } });
   await act(async () => { render(<App />); });
-  const format = screen.getByRole("button", { name: /^Copy as/ });
+  const format = screen.getByRole("button", { name: /^Citation format/ });
   await act(async () => { fireEvent.click(format); });
   expect(screen.getByRole("menu")).toBeTruthy();
   reports.length = 0;

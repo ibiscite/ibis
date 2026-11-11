@@ -230,7 +230,7 @@ const invented = () => book;
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     const fixed = fixtures[scenario];
-    const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Copy as"]'] : [fixed?.click ?? []].flat();
+    const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Citation format"]'] : [fixed?.click ?? []].flat();
     const keys = [...fixed?.keys ?? []];
     if (!clicks.length && !keys.length) return;
     // Act on the real controls once they are ready; no polling or stale completion.

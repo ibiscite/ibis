@@ -59,7 +59,7 @@ test("the first unknown-app Enter asks in the format chooser; approval needs fre
 test.each(["first Enter", "recognised app's format chooser"])("Copy only through %s is remembered across reopening and its receipt stays true", async (route) => {
   const h = await open((h) => { h.target.verified = route !== "first Enter"; });
   if (route === "first Enter") await enter();
-  else await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Copy as / })); });
+  else await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Citation format / })); });
   expect(screen.getByRole("menuitem", { name: "Paste into Example Writer from Now On" })).toBeTruthy();
   await answer("Copy Only");
   expect(h.copy.calls).toHaveLength(0);
