@@ -62,9 +62,20 @@ fn canonical_citation_golden_cases_replay_through_the_cli() -> Result<(), Box<dy
                     }
                 });
         assert_eq!(code, expected_code, "{}", case.name);
-        let mut expected = ibis_engine::wire::encode(&serde_json::to_value(&case.expected)?, 16 * 1024 * 1024)?;
+        // A citation also says its library was read cleanly.
+        let mut expected = serde_json::to_value(&case.expected)?;
+        if let Some(data) = expected.get_mut("data") {
+            data["source_health"] = serde_json::json!({"status":"ok","findings":[]});
+        }
+        let mut expected = ibis_engine::wire::encode(&expected, 16 * 1024 * 1024)?;
         expected.push(b'\n');
-        assert_eq!(output, expected, "{}", case.name);
+        let mut actual: serde_json::Value = serde_json::from_slice(&output)?;
+        if let Some(data) = actual.get_mut("data").and_then(serde_json::Value::as_object_mut) {
+            data.remove("receipt");
+        }
+        let mut actual = ibis_engine::wire::encode(&actual, 16 * 1024 * 1024)?;
+        actual.push(b'\n');
+        assert_eq!(actual, expected, "{}", case.name);
         // Errors also say what went wrong on stderr, in one line; successes stay silent there.
         if case.expected.error().is_some() {
             let errors = String::from_utf8(errors)?;

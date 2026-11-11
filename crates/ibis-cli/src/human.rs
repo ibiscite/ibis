@@ -409,7 +409,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
     for warning in warnings {
         let label = citing.label(warning.item);
         let kind = match warning.code {
-            CitationWarningCode::SourceField => "warning",
+            CitationWarningCode::SourceField | CitationWarningCode::Unknown => "warning",
             CitationWarningCode::SentenceCaseExpected => "note",
         };
         let said = catalogue::sentence("warning", warning.code, Audience::Cli, &[("reference", &label)]);
@@ -419,7 +419,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         .into_iter()
         .filter_map(|outcome| match outcome {
             ItemOutcome::Refused { item, error } => Some((item, error)),
-            ItemOutcome::Rendered { .. } => None,
+            ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })
         .collect();
     // The formatter refuses a whole citation it cannot print in full, so no one key is to blame.
@@ -440,7 +440,12 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         }
     }
     for loss in losses {
-        let what = cli(&catalogue::id("loss", loss.field), &[]);
+        // A newer engine's field or reason is named as needing a check, never as one Ibis knows.
+        let what = if loss.field == LossField::Unknown {
+            cli("cli-loss-something", &[])
+        } else {
+            cli(&catalogue::id("loss", loss.field), &[])
+        };
         let target = loss
             .item
             .map(|item| format!(" for {}", citing.label(item)))
@@ -448,6 +453,7 @@ pub(super) fn citation_report(data: &Value, citing: &Citing, printed: bool) -> V
         let id = match loss.reason {
             LossReason::Unsupported => "cli-loss-left-out",
             LossReason::Flattened => "cli-loss-flattened",
+            LossReason::Unknown => "cli-loss-unknown",
         };
         lines.push(cli(id, &[("output", &output), ("what", &what), ("target", &target)]));
     }
@@ -665,4 +671,27 @@ pub(super) fn key_failure(
 /// The sentence for each reason an engine error gives.
 pub(super) fn reason_sentence(reason: ErrorReason) -> String {
     catalogue::sentence("reason", reason, Audience::Cli, &[])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A loss a newer engine reports is said to need a check, never named as one Ibis knows.
+    #[test]
+    fn a_loss_from_a_newer_engine_asks_for_a_check() {
+        let citing = Citing {
+            labels: vec!["vale2024".into()],
+            flags: vec![vec![]],
+            output: "APA".into(),
+            form: CitationForm::Normal,
+        };
+        let data = serde_json::json!({"losses": [{"item": 0, "field": "invented-field", "reason": "invented-reason"}]});
+        assert_eq!(
+            citation_report(&data, &citing, true),
+            [
+                "APA changed part of the citation for 'vale2024' in a way this version of Ibis can’t name. Check the citation."
+            ]
+        );
+    }
 }

@@ -63,6 +63,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | Option | Does |
 | --- | --- |
 | `--json` | Print the versioned JSON envelope, including errors and findings |
+| `--contract VERSION` | The JSON contract version your client expects; one this Ibis does not speak is refused |
 | `--zotero` | Read the local Zotero personal library, open or closed |
 | `--app-libraries` | Read the libraries chosen in the Ibis app, read-only; search, show, cite and libraries do this when no library is named |
 
@@ -88,11 +89,12 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | --- | --- |
 | `KEY…` | Citation keys, in the order they appear in the citation |
 | `--request` | Read the whole request from stdin as JSON; see: ibis schema cite |
+| `--records` | Cite every CSL-JSON record in the array on stdin, with no library; see: ibis schema records |
 | `--format FORMAT` | Output to write: a key syntax or a common style [default: pandoc]; list them with: ibis outputs |
 | `--style STYLE_ID` | Format with any CSL style instead; list them with: ibis styles |
 | `--project PROJECT_ID` | Use this writing project's output and bibliography; list IDs with: ibis projects list |
 | `--nightly` | Read the writing project from Ibis Nightly's settings |
-| `--strict-project` | Require a current complete bibliography read for project key citations |
+| `--strict` | Refuse citations with losses, refusals or source problems |
 | `--for-app APP_ID` | Use the output Ibis uses for this app, a macOS bundle ID or Windows executable; --style and --format apply when it has none of its own |
 | `--bibliography` | Format bibliography entries, in --style or a style --format names |
 | `--form FORM` | Citation form [default: normal] |
@@ -242,15 +244,30 @@ control characters; JSON preserves source strings.
 {"ibis":1,"ok":false,"error":{"code":"not-found"}}
 ```
 
+`ibis` is the contract version, now 1. `--contract 1` selects it; unsupported
+versions are refused with the supported versions. Within a version, results
+may gain fields and codes: ignore unknown fields and review unknown codes.
+Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
+Unknown request fields are `bad-input`.
+
 `ibis schema METHOD` describes `data`. Branch on `error.code` and optional
 `reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
-before using citation text. Empty search is success. The current data schema
-can change between pre-1.0 versions.
+before using citation text. Empty search is success.
+
+Library results (`libraries`, `search`, `show`, `cite`, `entry`, `project`)
+carry `source_health` in JSON, RPC and MCP: `{"status":"ok","findings":[]}`
+or status `findings` with one entry per problem. It describes the same
+published state and only the libraries read: search's selected libraries,
+every library for a key, or the item's own library.
+
+`refresh-failed` means the result used the last good read; it gives `error`
+and `last_successful_read_ms`. `source-warnings` gives the `count` of entries
+skipped or read with problems. Later refreshes cannot change a result's health.
 
 | Exit | Meaning / error code |
 | --- | --- |
-| 0 | Success. |
-| 1 | Findings: refusals, losses, source warnings or refresh failure. |
+| 0 | Success, including empty results. |
+| 1 | Findings: refusals, losses, source warnings or `source_health` problems in libraries read. |
 | 2 | `usage` |
 | 3 | `bad-input` |
 | 4 | `not-found` |
@@ -275,6 +292,41 @@ hash. Changed/deleted/ambiguous items are refused. JSON retains partial results;
 plain output prints text only for a complete citation. See
 [citation limits](compatibility.md#writing-apps) and
 [supported editing](parity.md#shaping-one-citation).
+
+### Records you send
+
+`ibis cite --records` cites the CSL-JSON array on stdin without opening a
+library, changing or remembering data, or needing a temporary file.
+
+```sh
+ibis cite --records --format apa < refs.json
+ibis cite --records --style apa --bibliography < refs.json
+```
+
+It cites every record in order, with `cite`'s format, style, form, bibliography
+and locale options; `--keep-order` is refused. The `records` method (`ibis call
+records`, RPC, or MCP's `cite` with `records`) also takes `items`: record IDs
+with locators, prefixes and suffixes. MCP records refuse `keep_order` too.
+`ibis schema records` lists the fields.
+
+- Each record needs its own `id` and a CSL `type`; numeric IDs are preserved.
+  Only `citation-key` is a key: without one, style formatting works but key
+  output refuses the record with `missing-key`.
+- A record that isn't valid CSL-JSON refuses the whole request (`bad-input`,
+  `rejected-record`), and stderr names it, so no record is left out unseen. Two
+  records with one `id`, `1` and `"1"` included, give `duplicate-record`.
+- A `file` field is dropped unread: a path or `file:` URL is never looked at. Links
+  with a login and local links are removed, as they are from library files. Fields
+  outside CSL are dropped.
+- At most 1,000 records, 512 KiB of them, nested at most 16 deep; beyond that is
+  `resource-limit`, as is input over 1 MiB. JSON nested more than 128 levels can't be
+  read at all and is `bad-input`.
+- A field that can't be read as sent, a field outside CSL or a removed link is
+  dropped with a warning, and the citation exits 1, as it does for a library file.
+
+Input is one UTF-8 JSON value, read to EOF with a 1 MiB limit. stdout holds
+the citation or `--json` envelope; reasons go to stderr. RPC cancellation
+answers `cancelled` without affecting the next request.
 
 ### A project's own bibliography
 
@@ -320,13 +372,37 @@ the old definition. Projects stay out of settings backups.
 `--project` conflicts with `--format`, `--style`, `--for-app` and `--request`.
 For bibliography entries use `--form bibliography-only`. Only key outputs
 check the project bibliography. Missing/uncertain/unreadable entries still
-produce a citation with findings; a known conflicting DOI withholds text.
-`--strict-project` also requires a complete current read.
+produce a citation with exit 1; a known conflicting DOI withholds text.
+`--strict` returns an error unless a complete current read finds every emitted
+key unambiguously. It changes no saved setting and grants no paste permission.
 
 JSON wraps `citation` with project `id`, `name`, `revision`, `assessment`
-(`ready`, `paused`, `conflict`) and `project` check or null. Paused/conflicting
-results have no copyable text. `ibis projects schema` describes the wrapper.
-Only bibliography file names are shown. Plain `cite` has no wrapper.
+(`ready` or `conflict`) and `project` check or null. Conflicts have typed
+refusals and no copyable text; strict failures return an error envelope.
+Revision changes with name, output or bibliography. `ibis projects schema`
+describes the wrapper. Only bibliography file names are shown. Plain `cite`
+has no wrapper.
+
+### Receipts and strict citations
+
+Complete citations in JSON, RPC and MCP carry `receipt`: ordered opaque record
+identities, cite fingerprints, resolved options, source read times/findings,
+content hash and formatting versions. Caller snapshots have no source read
+time. Caller-record receipts list no library reads and have clean `source_health`.
+CSL receipts add the actual language and processor/style/locale bundle digests.
+Projects add the definition revision, bibliography fingerprint and successful
+check time.
+
+Record and annotation identities contain no native keys or paths and cannot
+select records in a later request. Receipts describe what was used; they do
+not archive records or promise historical recreation.
+
+`ibis cite --strict` returns an error without text for any loss, refusal,
+source warning or failed refresh. `--request` also accepts `"strict": true`,
+as do RPC requests and MCP's `cite`. Caller records apply it to supplied data,
+including unreadable-field warnings. Project key outputs also require a
+complete current bibliography check finding every emitted key unambiguously.
+Strict mode changes no saved setting.
 
 ### Output for an app
 
@@ -350,6 +426,11 @@ an eight-request queue. Arrays receive Invalid Request, not batch execution.
 Errors put Ibis codes in `error.data`; stdout contains only protocol frames.
 If libraries fail at startup, it writes a framed error and exits.
 
+Every method in `ibis schema` is served. Replies are written whole or not at
+all. Frames over 1 MiB get a parse error and stop the server; invalid JSON
+in a complete frame gets a parse error and reading continues. At EOF, read
+requests finish before exit. Process exit codes do not apply per request.
+
 ## AI agents (MCP)
 
 `ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
@@ -359,7 +440,7 @@ read-only tools over stdio:
 | --- | --- |
 | `search` | `query`, optional `limit` (1–25, default 10); short hits with checked `ref` values and `complete`. |
 | `show` | `ref`; bibliographic fields. |
-| `cite` | Items with `ref` and optional locator/affixes/author omission; format or style, locale, form, order and optional `for_app`; citation text, notices, losses and warnings. |
+| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings and receipt. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 
 Refs contain identity and a short content check; changed records are refused.

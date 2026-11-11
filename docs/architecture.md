@@ -21,6 +21,10 @@ generated TypeScript bindings. The CLI exposes commands, JSON-RPC and MCP;
 see [the CLI reference](cli.md) for their contracts. The desktop also provides
 the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
 
+JSON contract version 1 is selected with `--contract 1`. Library results carry
+`source_health` from the same published state and only the libraries they read;
+later refresh failures cannot change it. RPC and MCP carry the same health.
+
 ## Data and identity
 
 `ibis_core::contract` defines records, attachments, notes, annotations,
@@ -97,6 +101,15 @@ against current data and requires the shown content hash. Changed or removed
 items, ambiguous keys and changed Zotero generations refuse the copy.
 `copy_content(expected_items)` also requires every requested item to succeed.
 
+Complete citations carry [receipts](cli.md#receipts-and-strict-citations) of
+the records, options, reads and formatting versions used. `--strict` returns
+an error without text for any loss, refusal, source warning or failed refresh.
+
+Caller-supplied CSL-JSON records need their own `id`; invalid or duplicate
+records refuse the whole request. Numeric IDs survive transport parsing.
+No library is opened or remembered. `cite --records` and MCP records refuse
+`--keep-order`/`keep_order`; [record limits](cli.md#records-you-send) apply.
+
 The locator parser is shared by search, the picker's Page field and CLI.
 It recognises all 29 CSL locator terms, ranges and quoted literal labels.
 A typed label overrides the field's default type; an incomplete label is an
@@ -104,10 +117,10 @@ error. Canonical locators stay distinct from raw editor text.
 
 Writing projects save an output and optional bibliography, with a stable ID.
 The picker remembers selection per app; CLI requests name a project explicitly.
-Bibliography checking is advice except for a known conflicting DOI, or a
-strict request without a complete current read. Project generations and
-bibliography revisions retire old previews and pending delivery. See
-[project commands](cli.md#writing-projects).
+Bibliography checking is advice unless a DOI conflicts. For key outputs,
+`--strict` also requires a complete current read finding every emitted key
+unambiguously. Project generations and bibliography revisions retire old
+previews and pending delivery. See [project commands](cli.md#writing-projects).
 
 <a id="task-contexts-planned"></a>
 Cross-client task-context plans are in [the roadmap](../ROADMAP.md#consolidation-now-alongside-finishing-03).

@@ -13,6 +13,15 @@ use std::{
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
+fn without_read_times(mut citation: CitationResult) -> CitationResult {
+    if let Some(receipt) = &mut citation.receipt {
+        for source in &mut receipt.sources {
+            source.last_successful_read_ms = None;
+        }
+    }
+    citation
+}
+
 fn run(engine: Engine, args: Vec<String>, input: Vec<u8>) -> TestResult<Vec<u8>> {
     let mut output = vec![];
     let mut errors = vec![];
@@ -132,7 +141,11 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
             assert_eq!(envelope["ok"], true);
             let actual: CitationResult = serde_json::from_value(envelope["data"].clone())?;
             assert_oracle(&actual, case, &context)?;
-            assert_eq!(actual, result, "{context} human CLI changed the canonical result");
+            assert_eq!(
+                without_read_times(actual),
+                without_read_times(result.clone()),
+                "{context} human CLI changed the canonical result"
+            );
             requests.push(json!({"jsonrpc":"2.0", "id":index, "method":"cite", "params":request}));
             typed.push(result);
         }
@@ -169,8 +182,8 @@ fn source_files_match_pinned_zotero_through_cli_and_framed_stdio() -> TestResult
                 );
                 let result: CitationResult = serde_json::from_value(frame["result"].clone())?;
                 assert_eq!(
-                    result,
-                    *typed.get(index).ok_or("unexpected reply")?,
+                    without_read_times(result.clone()),
+                    without_read_times(typed.get(index).ok_or("unexpected reply")?.clone()),
                     "{extension} stdio changed the canonical result"
                 );
                 assert_oracle(&result, &cases[index], extension)?;

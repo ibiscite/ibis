@@ -15,6 +15,18 @@ use std::sync::Arc;
 use std::time::Duration;
 use thiserror::Error;
 
+/// Identify the exact shipped formatting material, without unpacking the catalogue.
+pub fn provenance() -> ibis_core::contract::FormattingProvenance {
+    use ibis_core::contract::{Fingerprint, FormattingProvenance};
+    static PROVENANCE: std::sync::OnceLock<FormattingProvenance> = std::sync::OnceLock::new();
+    PROVENANCE
+        .get_or_init(|| FormattingProvenance {
+            processor: Fingerprint::of_bytes(include_bytes!("../vendor/citeproc.mjs")),
+            bundle: Fingerprint::of_bytes(include_bytes!("../vendor/csl-bundle.bin")),
+        })
+        .clone()
+}
+
 /// Fixed diagnostics never include reference content or JavaScript exceptions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum FormatError {
