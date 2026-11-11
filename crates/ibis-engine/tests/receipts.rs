@@ -1,6 +1,6 @@
 //! A receipt describes the citation a client received, even after newer work.
 #![allow(clippy::unwrap_used)]
-use ibis_core::contract::{CitationResult, ErrorCode, LibraryObject};
+use ibis_core::contract::{CitationResult, CitationWarningCode, ErrorCode, LibraryObject, Snapshot};
 use ibis_engine::{Cancellation, DispatchResult, Engine, Method, mcp};
 use serde_json::{Value, json};
 
@@ -62,7 +62,11 @@ fn a_successful_citation_has_the_same_receipt_in_engine_rpc_and_mcp() {
     let (_dir, engine, request) = library();
     let data = call(&engine, &request).unwrap().data;
     let receipt = &data["receipt"];
-    assert_eq!(receipt["request"]["items"][0]["item"], request["items"][0]["item"]);
+    assert_ne!(receipt["request"]["items"][0]["item"], request["items"][0]["item"]);
+    assert_eq!(
+        receipt["request"]["items"][0]["item"]["library"],
+        request["items"][0]["item"]["library"]
+    );
     assert_eq!(
         receipt["request"]["items"][0]["expected_cite"],
         request["items"][0]["expected_cite"]
@@ -88,6 +92,153 @@ fn a_successful_citation_has_the_same_receipt_in_engine_rpc_and_mcp() {
     .unwrap();
     assert!(formatted.data["receipt"]["formatting"]["processor"].is_string());
     assert!(formatted.data["receipt"]["formatting"]["bundle"].is_string());
+}
+
+#[test]
+fn receipt_identities_never_expose_native_source_keys_or_paths() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("invented.json");
+    let native_id = "file:///Users/invented/Private/draft.pdf";
+    std::fs::write(
+        &path,
+        json!([{"id":native_id,"citation-key":"safe2026","type":"book","title":"Invented Draft"}]).to_string(),
+    )
+    .unwrap();
+    let engine = Engine::new().unwrap().without_file_watches();
+    engine.open_file_observed(&path, &Cancellation::default()).unwrap();
+    let item = engine.snapshot().unwrap().objects()[0].clone();
+    assert!(item.object.id().key.contains(native_id));
+    let mcp = tool(&engine, json!({"items":[{"ref":"safe2026"}],"format":"pandoc"}));
+    assert_eq!(mcp["isError"], false);
+    assert_eq!(mcp["structuredContent"]["text"], "[@safe2026]");
+    assert!(!mcp.to_string().contains("/Users/invented"));
+    assert!(!mcp.to_string().contains("draft.pdf"));
+    let request = json!({"items":[{"item":item.object.id()}],"output":{"kind":"preset","name":"pandoc"}});
+    let data = call(&engine, &request).unwrap().data;
+    let receipt = &data["receipt"];
+    assert_eq!(data["text"], "[@safe2026]");
+    let public_id = &receipt["request"]["items"][0]["item"];
+    assert_ne!(public_id, &request["items"][0]["item"]);
+    assert_eq!(
+        receipt["request"]["items"][0]["expected_cite"],
+        json!(item.fingerprints.cite)
+    );
+    assert_eq!(call(&engine, &request).unwrap().data["receipt"], *receipt);
+    let rpc = rpc(&engine, &request);
+    assert_eq!(rpc["result"]["receipt"], *receipt);
+    assert_eq!(mcp["structuredContent"]["receipt"], *receipt);
+    let cancel = Cancellation::default();
+    let prepared = engine
+        .prepare_citation(&serde_json::from_value(request.clone()).unwrap(), &cancel)
+        .unwrap();
+    let recited = serde_json::to_value(engine.recite(&prepared, &cancel).unwrap()).unwrap();
+    assert_eq!(recited["receipt"], *receipt);
+    for reply in [&data, &rpc, &mcp, &recited] {
+        let serialized = reply.to_string();
+        assert!(!serialized.contains(native_id));
+        assert!(!serialized.contains("/Users/invented"));
+        assert!(!serialized.contains("draft.pdf"));
+    }
+}
+
+#[test]
+fn receipt_annotation_identities_never_expose_native_keys() {
+    use ibis_core::contract::{Annotation, Attachment, Availability, ItemRef};
+    let (_dir, engine, mut request) = library();
+    let record = engine.snapshot().unwrap().objects()[0].object.clone();
+    let parent = record.id().clone();
+    let attachment = Attachment {
+        id: ItemRef {
+            library: parent.library.clone(),
+            key: "private-attachment".into(),
+        },
+        parent: Some(parent.clone()),
+        title: "Invented attachment".into(),
+        media_type: "application/pdf".into(),
+        availability: Availability::OnDisk,
+        content_hash: None,
+    };
+    let annotation = Annotation {
+        id: ItemRef {
+            library: parent.library,
+            key: "private-native-annotation".into(),
+        },
+        parent: attachment.id.clone(),
+        text: String::new(),
+        comment: String::new(),
+        page_label: Some("12".into()),
+        page_index: Some(11),
+    };
+    request["items"][0]["annotation"] = json!(annotation.id);
+    request["items"][0]["locator"] = json!({"term":"page","value":"12"});
+    let engine = Engine::from_snapshot(std::sync::Arc::new(
+        Snapshot::new(vec![
+            record,
+            LibraryObject::Attachment(attachment),
+            LibraryObject::Annotation(annotation),
+        ])
+        .unwrap(),
+    ));
+    let result = call(&engine, &request).unwrap();
+    assert_eq!(result.data["text"], "[@one, p. 12]");
+    let receipt = &result.data["receipt"];
+    assert_ne!(
+        receipt["request"]["items"][0]["annotation"],
+        request["items"][0]["annotation"]
+    );
+    assert!(!receipt.to_string().contains("private-native-annotation"));
+    assert!(receipt["request"]["items"][0]["expected_annotation_cite"].is_string());
+}
+
+#[test]
+fn strict_refuses_item_source_warnings_even_without_library_warnings() {
+    let (_dir, engine, mut request) = library();
+    let mut record = match engine.snapshot().unwrap().objects()[0].object.clone() {
+        LibraryObject::Record(record) => record,
+        _ => panic!("expected record"),
+    };
+    record.warnings = vec![CitationWarningCode::SourceField];
+    let engine = Engine::from_snapshot(std::sync::Arc::new(
+        Snapshot::new(vec![LibraryObject::Record(record)]).unwrap(),
+    ));
+    request["items"][0].as_object_mut().unwrap().remove("expected_cite");
+    let ordinary = call(&engine, &request).unwrap();
+    assert_eq!(ordinary.data["text"], "[@one]");
+    assert_eq!(ordinary.data["warnings"], json!([{"item":0,"code":"source-field"}]));
+    assert_eq!(ordinary.data["receipt"]["sources"][0]["warnings"], 0);
+    request["strict"] = json!(true);
+    assert_eq!(call(&engine, &request).unwrap_err().code, ErrorCode::BadInput);
+    let refused = rpc(&engine, &request);
+    assert_eq!(refused["error"]["data"]["reason"], "strict-citation");
+    assert!(refused.get("result").is_none());
+    let mcp = tool(
+        &engine,
+        json!({"items":[{"ref":"one"}],"format":"pandoc","strict":true}),
+    );
+    assert_eq!(mcp["isError"], true);
+    assert!(mcp.get("structuredContent").is_none());
+}
+
+#[test]
+fn mcp_early_protocol_errors_fit_the_reply_limit() {
+    let engine = Engine::new().unwrap().without_file_watches();
+    let request = json!({"jsonrpc":"2.0","id":1,"method":"tools/call","params":{
+        "name":"cite","arguments":{"items":[{"ref":"one"}]},
+        "_meta":{"io.modelcontextprotocol/protocolVersion":"x".repeat(300_000)}
+    }});
+    let reply = mcp::handle(&engine, &mut mcp::Session::default(), &request).unwrap();
+    assert!(serde_json::to_vec(&reply).unwrap().len() < mcp::MAX_ANSWER);
+    assert_eq!(reply["id"], request["id"]);
+    assert!(reply.get("error").is_some());
+    assert!(reply.get("result").is_none());
+    assert_eq!(reply["error"]["code"], -32603);
+    assert_eq!(reply["error"]["message"], "Reply too large");
+    let input = format!("{request}\n");
+    let mut output = Vec::new();
+    mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
+    assert!(output.len() <= mcp::MAX_ANSWER);
+    assert!(output.ends_with(b"\n"));
+    assert_eq!(serde_json::from_slice::<Value>(&output).unwrap(), reply);
 }
 
 #[test]

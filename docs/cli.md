@@ -428,14 +428,16 @@ Plain `cite` keeps its existing result shape.
 
 ### Receipts and strict citations
 
-Complete citations in `--json`, RPC and MCP carry `receipt`: ordered records and
-their cite fingerprints, resolved request options, source read times and findings,
-the canonical content hash and formatting versions. A caller-supplied snapshot has
-no source read time. CSL receipts include the actual language and digests of the
-shipped processor and style/locale bundle. Project citations add the definition's
-revision, the checked bibliography's fingerprint and its successful check time.
-Receipts describe what was used; they do not archive records or promise historical
-recreation.
+Complete citations in `--json`, RPC and MCP carry `receipt`: ordered opaque record
+identities and their cite fingerprints, resolved request options, source read times
+and findings, the canonical content hash and formatting versions. A caller-supplied
+snapshot has no source read time. CSL receipts include the actual language and
+digests of the shipped processor and style/locale bundle. Project citations add the
+definition's revision, the checked bibliography's fingerprint and its successful
+check time.
+Receipt record and annotation identities contain no native source keys or paths;
+they are evidence, not selectors to send back to the engine. Receipts describe what
+was used; they do not archive records or promise historical recreation.
 
 `ibis cite --strict` returns an error without citation text for any loss, refusal,
 source warning or failed source refresh. `--request` accepts it as a flag or as

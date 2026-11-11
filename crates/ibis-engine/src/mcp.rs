@@ -112,6 +112,29 @@ const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// One message in, at most one message out. Notifications get no answer.
 pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
+    let mut reply = handle_message(engine, session, message)?;
+    // Every reply, including early protocol errors, shares the transport limit.
+    // Count the terminating newline without allocating an oversized serialization.
+    if crate::wire::serialized_size(&reply, MAX_ANSWER - 1).is_err() {
+        if let Some(result) = reply.get_mut("result").filter(|result| result.get("isError").is_some()) {
+            let mut refused = tools::tool_error(
+                ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
+            );
+            for field in ["resultType", "_meta"] {
+                if let Some(value) = result.get_mut(field) {
+                    refused[field] = value.take();
+                }
+            }
+            *result = refused;
+        } else {
+            let id = reply.get_mut("id").map(Value::take).unwrap_or(Value::Null);
+            reply = error(id, -32603, "Reply too large");
+        }
+    }
+    Some(reply)
+}
+
+fn handle_message(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
     let Some(object) = message.as_object() else {
         // Batches are not part of this revision.
         return Some(error(Value::Null, -32600, "Invalid Request"));
@@ -230,19 +253,7 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
         result["resultType"] = json!("complete");
         result["_meta"] = json!({SERVER_INFO_KEY: server_info()});
     }
-    let mut reply = json!({"jsonrpc": "2.0", "id": id, "result": result});
-    // Metadata and the frame itself count toward the bytes the client receives.
-    if method == "tools/call" && reply.to_string().len() + 1 > tools::MAX_ANSWER {
-        let mut refused = tools::tool_error(
-            ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
-        );
-        if modern {
-            refused["resultType"] = json!("complete");
-            refused["_meta"] = json!({SERVER_INFO_KEY: server_info()});
-        }
-        reply["result"] = refused;
-    }
-    Some(reply)
+    Some(json!({"jsonrpc": "2.0", "id": id, "result": result}))
 }
 
 fn supported_versions() -> Vec<&'static str> {

@@ -72,6 +72,10 @@ pub(super) fn attach(
         let source_failure = sources.iter().any(|source| source.refresh_error.is_some());
         if source_failure
             || sources.iter().any(|source| source.warnings > 0)
+            || result
+                .warnings
+                .iter()
+                .any(|warning| warning.code == CitationWarningCode::SourceField)
             || !result.losses.is_empty()
             || result.copy_content(request.items.len()).is_none()
         {
@@ -87,9 +91,18 @@ pub(super) fn attach(
     }
     // A partial result cannot attest to the requested citation.
     if result.copy_content(request.items.len()).is_some() {
+        // Native source keys may be paths. Evidence keeps opaque identities;
+        // PreparedCitation owns the original request used for revalidation.
+        let mut public_request = request.clone();
+        for pick in &mut public_request.items {
+            for id in std::iter::once(&mut pick.item).chain(pick.annotation.iter_mut()) {
+                let bytes = serde_json::to_vec(id).map_err(|_| error(ErrorCode::Internal))?;
+                id.key = format!("item_{}", Fingerprint::of_bytes(&bytes).as_str());
+            }
+        }
         result.receipt = Some(CitationReceipt {
             sample: false,
-            request: request.clone(),
+            request: public_request,
             sources: sources.clone(),
             content_hash: result.content_hash.clone(),
             ibis_version: ibis_core::VERSION.into(),
