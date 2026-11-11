@@ -226,26 +226,25 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 [data-status="notYet"] li::before { background: none; box-shadow: inset 0 0 0 var(--border-width) var(--text-secondary); }
 /* Code blocks: copy the command with one press; terminals are dark in both modes. */
 .code { position: relative; margin: var(--space-3) 0 var(--website-paragraph-gap); }
-.code pre { margin: 0; padding: var(--space-4); padding-inline-end: calc(var(--space-4) + 4.5rem); border-radius: var(--r-control); background: var(--fill-control); overflow-x: auto; font: var(--type-body-size)/1.6 var(--mono); }
+.code pre { margin: 0; padding: var(--space-4); padding-inline-end: calc(var(--space-4) + var(--control-h) + var(--space-2)); border-radius: var(--r-control); background: var(--fill-control); overflow-x: auto; font: var(--type-body-size)/1.6 var(--mono); }
 .code code { display: inline; padding: 0; background: none; color: inherit; font: inherit; white-space: pre; }
-.terminal pre { background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
+.code pre { background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
 .terminal .prompt { opacity: .55; }
 .terminal .stderr { color: color-mix(in srgb, var(--scarlet) 55%, white); }
-.copy { display: inline-flex; align-items: center; gap: var(--space-1); position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); min-height: var(--control-h); padding: 0 var(--space-3); border: 0; border-radius: var(--r-small); background: color-mix(in srgb, currentColor 12%, transparent); color: var(--text); font: var(--type-body-size)/1 var(--font); cursor: pointer; opacity: .8; }
-.terminal .copy { color: light-dark(var(--website-bg), var(--text)); }
+.copy { display: inline-grid; place-items: center; position: absolute; top: var(--space-2); inset-inline-end: var(--space-2); width: var(--control-h); min-height: var(--control-h); padding: 0; border: 0; border-radius: var(--r-small); background: color-mix(in srgb, currentColor 12%, transparent); color: var(--text); font: var(--type-body-size)/1 var(--font); cursor: pointer; opacity: .8; }
+.code .copy { color: light-dark(var(--website-bg), var(--text)); }
 .copy:hover, .copy:focus-visible { opacity: 1; }
 .copy::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2) 0; }
 /* The typed shorthand: each part of the search, labelled. */
 .label-nightly { display: inline-block; margin-inline-start: var(--space-2); padding: .1em .45em; border-radius: var(--website-chip-radius); background: var(--fill-control); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--mono); vertical-align: .2em; }
-/* The shorthand: a search like the picker's, then each typed word over what it means. */
-.shorthand-search { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-5) 0 var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--r-win); background: var(--website-bg); box-shadow: var(--shadow-card); }
-.shorthand-search:focus-within { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-width); }
-.shorthand-search .mark { flex: none; display: grid; }
-.shorthand-search img { width: var(--space-6); height: var(--space-6); }
-.shorthand-search .logo-dark { display: none; }
-.shorthand-search input { flex: 1; min-width: 0; min-height: var(--touch-target); border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/1.3 var(--font); outline: none; }
-.gloss { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); min-height: 3.5rem; margin: 0 0 var(--space-5); padding: 0 var(--space-4) 0 calc(var(--space-4) + var(--space-6) + var(--space-3)); list-style: none; font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
-.gloss li { display: grid; gap: var(--space-1); }
+/* The shorthand: the demo picker's own search bar (same parts, same app tokens), then each typed word over what it means. */
+.shorthand-picker { margin: var(--space-5) 0 var(--space-3); }
+.shorthand-picker .picker-panel { height: auto; }
+.shorthand-picker .picker-search { border-bottom: 0; }
+.shorthand-picker input:focus-visible { outline: none; }
+.shorthand-picker .picker-panel:focus-within { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-width); }
+.gloss { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); min-height: 3.5rem; margin: 0 0 var(--space-5); padding: 0; padding-inline-start: calc(var(--inset) + var(--row-pad) + var(--tile) + var(--row-gap)); list-style: none; font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
+.gloss li { display: grid; justify-items: center; gap: var(--space-1); text-align: center; }
 .gloss b { padding-bottom: var(--space-1); border-bottom: var(--ring-width) solid var(--role); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
 .gloss [data-role="before"] { --role: var(--text-secondary); }
 .gloss [data-role="reference"] { --role: var(--scarlet); }
@@ -257,8 +256,7 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 }
 @media (forced-colors: active) { a[aria-current="page"] .key, .chips .key[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } .code pre { border: var(--border-width) solid CanvasText; } }
 /* Long real output scrolls sideways, as code does elsewhere; Copy keeps the block's own colour so it sits cleanly over it. */
-.terminal .copy { background: light-dark(color-mix(in srgb, var(--text) 85%, var(--website-bg)), color-mix(in srgb, var(--text) 16%, var(--website-bg))); opacity: 1; }
-.code:not(.terminal) .copy { background: color-mix(in srgb, var(--fill-control) 60%, var(--website-bg)); }
+.code .copy { background: light-dark(color-mix(in srgb, var(--text) 85%, var(--website-bg)), color-mix(in srgb, var(--text) 16%, var(--website-bg))); opacity: 1; }
 /* Inner pages start with content sooner: their title takes the section-heading size. */
 main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) * 1.5), 3.6vw, calc(var(--type-search-size) * 2.2)); margin-bottom: var(--website-block-gap); }
 .copy .icon { width: 1em; height: 1em; fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
@@ -266,3 +264,6 @@ main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) 
 .copy[data-state="copied"] .icon-check { display: block; }
 /* Row text sits on the column edge like every paragraph; the hover fill bleeds outward instead of pushing the text in. */
 .rows a { margin-inline: calc(-1 * var(--space-2)); }
+.copy span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.code.single .copy { top: 50%; translate: 0 -50%; }
+.code .prompt { opacity: .55; }

@@ -98,7 +98,7 @@ test("CLI prints the captured transcript verbatim, explains stdout and offers in
   // Each separate terminal block contributes one line break to the transcript.
   const visible = blocks.map(m => text(m[1]) + "\n").join("");
   assert.equal(visible, terminal);
-  const commands = [...html.matchAll(/<div class="code(?: terminal)?">[\s\S]*?<pre><code>([\s\S]*?)<\/code><\/pre>([\s\S]*?)<\/div>/g)];
+  const commands = [...html.matchAll(/<div class="code(?: \w+)*">[\s\S]*?<pre><code>([\s\S]*?)<\/code><\/pre>([\s\S]*?)<\/div>/g)];
   assert.equal(commands.length, blocks.length + 2); // MCP and the Homebrew installer.
   for (const [, code, controls] of commands) {
     const command = text(code).split("\n")[0].replace(/^\$ /, "");
