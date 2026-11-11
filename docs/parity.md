@@ -1,94 +1,67 @@
-# Parity with Zotero's citation dialog and Better BibTeX
+# Citation features and editor protocol
 
-The promise: nobody needs Zotero's citation dialog or Better BibTeX's Cite as
-You Write (CAYW) while citing. This list is how we check it. Every behaviour of
-Zotero's dialog (Zotero 7 and later, including the 2025 redesign) and of BBT's
-CAYW endpoint is listed once with its status in Ibis, the owning issue and the
-test that proves it. "To add" means the issue must add that test before it
-closes. Change a row in the same pull request that changes the behaviour.
-
-Status: **done** (shipped and tested), **planned** (in scope, owning issue
-open), **excluded** (out of scope, with the reason).
-
-Sources: [Zotero word processor plugin
-guide](https://www.zotero.org/support/word_processor_plugin_usage), the [new
-citation dialog beta
-notes](https://forums.zotero.org/discussion/122544/available-for-beta-testing-new-citation-dialog/p1)
-and [BBT's CAYW
-documentation](https://retorque.re/zotero-better-bibtex/citing/cayw/index.html).
+This page records implemented citation editing and CAYW support. It does not
+claim complete replacement of Zotero's citation dialog. Plans live in
+[ROADMAP.md](../ROADMAP.md); platforms and writing-app limits are in
+[compatibility](compatibility.md).
 
 ## Finding references
 
-| Behaviour | Status | Issue | Proof |
-| --- | --- | --- | --- |
-| Search by title, creator and year as you type | done | #1204 | `crates/ibis-core/tests/snapshot_search.rs` |
-| Results from My Library and group libraries | done | #1286 | `zotero_sources.rs::chosen_group_libraries_publish_separately_and_a_new_choice_replaces_the_old` |
-| Browse by library and collection ("Library mode") | planned (0.5) | #1313 | to add |
-| Items selected in Zotero (dialog list; CAYW `selected`) | planned (0.5) | #1314 | to add |
-| Suggestions before typing | planned | #45 (recent per app), #1070 (recently added) | to add |
-| "Cited" items of the open document first | excluded | — | Ibis does not read documents; recent citations for the app you are in (#45) cover the same need |
-| "Open documents" list | excluded | — | Belongs to Zotero's word processor plugins |
-| Typing `ibid` (or `ebd.`) picks the last cited work | planned | #45 | to add |
-| Open the item in Zotero | planned (0.5) | #359 | to add |
-| Locator typed after the search (`p. 34`, `pp. 45-48`, `ch. 3`, `S. 12`) | done in the picker and engine | #24 | `engine_file/parity_tests.rs::picker_rows_list_the_engines_search_hits_in_order`, `App.test.tsx::typed locators stay with selected references across later searches` |
-| Any of the 29 locator types typed in full or short form; full words also without a space (`chap12`, `page123`) | done through search | #24 | `locator.rs::every_csl_locator_type_can_be_typed`, `engine_file/parity_tests.rs::picker_rows_list_the_engines_search_hits_in_order` |
-| Short labels joined to a number (`p15`) | excluded | — | `p53` is a protein and `sec61` a gene; Ibis reads `p 15` and `p.15` |
-| Textual locator in quotation marks (`note "the epigraph"`) | done through search | #24 | `locator.rs::every_csl_locator_type_can_be_typed`, `engine_file/parity_tests.rs::quoted_page_search_preserves_canonical_text_through_preview_and_copy` |
+The picker searches title, creator, year, key and recognised identifiers in
+the selected personal/group Zotero libraries or library file. Empty search can
+show app recents and recently added references. It can open a selected Zotero
+item through its Zotero URI.
+
+Search accepts trailing typed locators: `p. 34`, `pp. 45-48`, `ch. 3`, or
+`note "the epigraph"`. All 29 CSL locator terms are recognised. Short labels
+need a separator (`p 15` or `p.15`); `p15` remains search text.
 
 ## Shaping one citation
 
-| Behaviour | Status | Issue | Proof |
-| --- | --- | --- | --- |
-| Several references in one citation, in the order picked | done | — | `citation.rs::request_preserves_duplicates_order_and_mixed_intent` |
-| Drag to reorder | planned (picker) | #947 | to add |
-| "Keep sources sorted" for styles that sort; off keeps my order | done: picker's Keep My Order, `ibis cite --keep-order`, MCP `keep_order` | #1762 | `parity_tests.rs::kept_order_gives_the_engines_text_and_a_style_sorts_without_it`, `cite_options.rs::flags_print_what_each_output_shows_and_report_what_it_cannot`, `mcp.rs::cite_formats_by_key_or_by_id`, `App.citationDetails.test.tsx::Keep My Order changes the engine preview and survives a short reopen` |
-| The same reference twice | done | — | `fixtures/cases/03-duplicate-order.json` |
-| Locator type and value per reference, all 29 CSL types | done through search and the picker's typed locator (`locator_input`, where a typed label names the type); the editor's type pop-up waits for the shelf redesign | #1315 | `citation.rs::all_29_csl_locator_terms_roundtrip`, `locator.rs::locator_fields_distinguish_literal_values_from_incomplete_or_invalid_labels`, `parity_tests.rs::typed_locators_of_every_type_and_kept_order_match_the_engine` |
-| Page ranges and literal page labels | done in search and the Page editor | #24 | `engine_file/parity_tests.rs::labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy`, `engine_file/parity_tests.rs::quoted_page_search_preserves_canonical_text_through_preview_and_copy` |
-| Locators with no type | planned | #24 | to add |
-| Empty locator refused rather than dropped | done | — | `syntax_rules.rs::empty_locators_are_refused_before_any_syntax_can_drop_them` |
-| Prefix and suffix per reference, with italic, bold, sub- and superscript, kept as literal text in every CSL style and output | done in the engine and the picker (plain text); ambiguous Org suffixes are typed losses | #1762 | `format.rs::affixes_keep_their_text_and_styling_in_every_representation`, `format.rs::styled_dollar_sequences_stay_literal_in_prefixes_and_suffixes`, `key_syntaxes.rs::an_org_suffix_that_reads_as_a_locator_is_not_carried` |
-| Omit author (suppress author) | done | — | `syntax_rules.rs::biblatex_suppressed_author_uses_star_form_for_one_reference` |
-| Narrative citation, Smith (2020); Zotero lacks it | done for key syntaxes and for one reference in CSL author-date and MLA styles; numeric styles, several references, contradictory author suppression and APA creator lists with multiple entries refused | #1315 | `format.rs::narrative_citations_name_the_author_then_cite_the_rest`, `format.rs::narrative_citations_refuse_author_suppression`, `format.rs::apa_narrative_refuses_name_lists_that_need_a_different_conjunction` |
-| Author only, year only and full citation | done for key syntaxes, CSL styles and each reference in the picker, refused where a style can't say it (IEEE, year-only MLA); the name alone reports a locator it cannot print | #1315 | `format.rs` form tests, `syntax_contract.rs`, `parity_tests.rs::page_and_range_with_each_picker_form_match_canonical_output`, `cite_options.rs::flags_print_what_each_output_shows_and_report_what_it_cannot` |
-| Mixed forms in one citation | done where the syntax can say it, refused otherwise; MyST uses one role per citation | #1207 | `mixed_pandoc_forms_are_explicitly_refused_in_one_request`, `key_syntaxes.rs::mixed_myst_forms_never_share_the_first_references_role` |
-| Cite a PDF annotation, citing its page | planned; both Zotero readers skip annotations | #54, #1208 | `prepared.rs::annotation_uses_printed_label_and_rechecks_its_file` covers synthetic engine input only; reader-to-picker test to add |
-| Add a note instead of a citation (replaces the yellow "Add Note") | planned (0.5) | #55 | to add |
-| Edit the citation text by hand | excluded | — | Breaks "what you see is what's pasted"; use prefix, suffix and forms |
-| Ibid, subsequent and disambiguation across a document | excluded | — | Needs the whole document; Ibis reports a notice instead (`format.rs::bibliography_reports_document_year_suffixes_withheld`) |
-| Footnote or endnote placement | excluded | — | The word processor decides |
-| Insert or edit a bibliography | done as "Cited since opening": copied, not inserted, because Ibis cannot see the document | #356 | `session_references.rs::the_bibliography_is_formatted_as_rich_and_plain_text_together`, `App.sessionReferences.test.tsx` |
-| Item edited in Zotero shows up on the next citation | done | — | `crates/ibis-sources/tests/source_watch.rs` |
+The picker supports ordered selections, repeated references, Page, citation
+form, plain-text prefix/suffix and Keep My Order. Typed labels
+in Page can name another locator type. Empty or incomplete locators are
+refused. Engine requests also support styled affixes.
+
+Forms are normal, narrative, author-only, year-only, full and bibliography-only.
+Each output lists its supported forms through `ibis outputs`; unsupported
+combinations are refused or report field losses. For example, Pandoc narrative
+requires one reference. CSL narrative has style and creator-list restrictions.
+Mixed forms are supported only where the output can represent them.
+
+Cited since opening collects copied references for an editable, copyable or
+exportable bibliography. It does not inspect the document. Ibis cannot edit
+live citation fields, place footnotes or establish document-wide numbering and
+disambiguation.
+
+Contract evidence lives in `citation.rs`, `syntax_rules.rs`, `key_syntaxes.rs`
+and the formatted fixtures. Picker/engine agreement is checked in desktop
+`engine_file/parity_tests.rs`; CLI flags in `cite_options.rs`; MCP in its
+citation tool tests.
 
 ## Better BibTeX Cite as You Write
 
-The endpoint is #42. Under [decision 0008](decisions/0008-offline-by-default.md)
-it listens only on `127.0.0.1`, on its own port (23124), and is off until switched
-on in Settings › Citations, which shows the address to paste into the editor. That
-address holds a token, and a request without it, from a browser or through another
-host name is refused. The formats below render from the same `CitationRequest` as
-everything else, and the picker previews in the editor's format, so CAYW output is
-exactly what the picker shows. Which editors pass is in the
-[compatibility guide](compatibility.md#editors-cite-as-you-write).
+The optional endpoint listens on `127.0.0.1:23124`. Settings shows an address
+with a token. Missing/wrong tokens, browser headers and other host names are
+refused. It is off by default. See [editor setup](compatibility.md#editors-cite-as-you-write).
 
-| Parameter or format | Status | Issue | Proof |
-| --- | --- | --- | --- |
-| `probe` answers `ready` without opening the picker (`No` while no library is open) | done | #42 | `editor_endpoint.rs::a_probe_answers_without_opening_the_picker` |
-| Opens the picker and returns the citation; hiding the picker or an editor that gives up answers with nothing | done | #42 | `editor_endpoint.rs::a_pick_opens_the_picker_and_returns_what_the_person_chose`, `hiding_the_picker_answers_with_nothing`, `an_editor_that_gives_up_ends_its_request` |
-| `format=biblatex` with `command` (default `autocite`; also `parencite`, `textcite`, `cite`; any other is refused) | done | #42 | `syntax_rules.rs::biblatex_multicite_keeps_one_locator_per_reference`, `cayw.rs::every_listed_format_has_its_output` |
-| `format=natbib` with `command`; aliases `latex`, `cite`, `citep`, `citet` | done | #42 | `natbib_sources.rs`, `cayw.rs::every_listed_format_has_its_output` |
-| `format=pandoc` with `brackets`; without it `@key` as BBT gives, with brackets kept where a locator or affix needs them | done | #42 | `key_syntaxes.rs::bare_pandoc_drops_brackets_only_when_nothing_needs_them` |
-| `format=typst` | done as a syntax | #42 | `syntax_rules.rs::typst_prefix_escapes_heading_and_list_markers`, `syntax_rules.rs::typst_prefix_escapes_hyphen_list_markers` |
-| `format=mmd`, `asciidoctor-bibtex`, `jupyter` | done as syntaxes (`multi-markdown`, `ascii-doc`, `jupyter`); AsciiDoc locators support pages only | #1207 | `key_syntaxes.rs` |
-| `format=scannable-cite` | done for references read from Zotero (`zu:0:` personal, `zg:GROUP:` group); any other reference, or text a marker cannot carry, refuses the citation | #1531 | `scannable.rs` tests, `zotero_sources.rs::zotero_markers_name_each_item_in_the_library_it_was_read_from`, `cayw.rs::every_listed_format_has_its_output` |
-| ConTeXt `\cite`; key form, author, year and full entry, with notes for one reference | done as a syntax (`context`), checked in ConTeXt itself; narrative refused | #1207 | `key_syntaxes.rs`, `scripts/syntax-tools.mjs` |
-| `format=formatted-citation`, `formatted-bibliography` (BBT uses Zotero's Quick Copy style; Ibis uses the default style chosen in Settings) | done | #42 | `cayw.rs::every_listed_format_has_its_output`, `editor_endpoint.rs::a_formatted_request_takes_the_persons_style_and_a_numeric_one_its_entry` |
-| `format=json` (the picks themselves) | done as `cayw-json` (BBT's `pick` shape, without Zotero item ids) | #1207 | `key_syntaxes.rs` |
-| Picks carry locator, prefix, suffix and suppress author | done: the picker's own editor sets them | #42 | `cayw_clients.rs::the_vs_code_citation_picker_gets_each_format_it_offers` (recorded requests) |
-| `clipboard` also copies the result | done | #42 | `cayw.rs::options_that_change_nothing_are_allowed_and_clipboard_is_kept` |
-| `selected` cites what is selected in Zotero | planned; refused until then | #1314 | `cayw.rs::a_format_or_option_ibis_cannot_honour_is_refused_not_replaced` |
-| `format=translate` (any Zotero export translator) | excluded | — | Export translators belong to Better BibTeX (ROADMAP non-goals) |
-| `format=eta` (user templates) | excluded | — | Arbitrary templates cannot be checked; capability tables cannot describe them |
-| Locator label overrides in the query (`page=`, `Section=sec.`) | excluded | — | Labels come from the style or the syntax; a plain-text override would bypass typed losses |
-| `minimize`, `select`, `texstudio` | excluded | — | Window gimmicks; editors paste the returned text |
-| `application` | excluded | — | Not documented by BBT |
+| Request | Behaviour |
+| --- | --- |
+| `probe` | `ready` with a library, otherwise `No`; does not open the picker. |
+| Citation request | Opens the picker in the requested output; returns the chosen citation. Hiding/cancelling or a disconnected editor ends the request. |
+| `biblatex` | `command`: `autocite` (default), `parencite`, `textcite`, `cite`. |
+| `natbib`, `latex`, `cite`, `citep`, `citet` | Natbib/LaTeX command handling. |
+| `pandoc` | `brackets` controls brackets where fields do not require them. |
+| `typst`, `mmd`, `asciidoctor-bibtex`, `jupyter`, `scannable-cite` | Corresponding engine syntax; AsciiDoc locators are pages only; scan markers require Zotero items. |
+| `formatted-citation`, `formatted-bibliography` | Uses the style chosen in Ibis Settings. |
+| `json` | CAYW pick shape without Zotero item IDs. |
+| `clipboard` | Also copies the result. |
+
+Picks carry locator, prefix, suffix and author suppression. Unknown or
+unsupported options, including `selected`, `translate`, `eta` and label
+overrides, are refused. `minimize`, `select`, `texstudio` and `application`
+are accepted without effect.
+
+`cayw.rs` checks request parsing and syntax; `editor_endpoint.rs` checks picker
+ownership, cancellation and formatted output; `cayw_clients.rs` replays recorded
+client requests. Interactive editor coverage remains narrower than the protocol.
