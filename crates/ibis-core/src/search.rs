@@ -1707,32 +1707,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "manual synthetic repetitive-query measurement; no timing assertion"]
-    fn repetitive_query_measurement() {
-        use std::time::{Duration, Instant};
-        let index = build_index(
-            (0..5_000)
-                .map(|n| reference(&format!("key{n}"), "Synthetic research", "Example", 2024))
-                .collect(),
-        );
-        for query in ["research".to_owned(), "research ".repeat(1_000)] {
-            let mut elapsed = Duration::ZERO;
-            for _ in 0..10 {
-                let started = Instant::now();
-                let hits = index.search(&query, 20, None, &|| false).unwrap_or_default();
-                elapsed += started.elapsed();
-                assert_eq!(hits.len(), 20);
-                assert_eq!(hits[0].score, 20 * query.split_whitespace().count() as u32);
-            }
-            eprintln!(
-                "records=5000 query_bytes={} samples=10 mean_us={}",
-                query.len(),
-                elapsed.as_micros() / 10
-            );
-        }
-    }
-
-    #[test]
     fn exact_key_ranks_first_and_year_matches_whole_number() {
         let refs = [
             reference("smith2020", "On smith2020 data", "Other", 2019),
