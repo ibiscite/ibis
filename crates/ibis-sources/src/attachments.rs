@@ -407,19 +407,9 @@ fn availability(path: &Path) -> Availability {
     if !metadata.is_file() {
         return Availability::Unknown;
     }
-    #[cfg(target_os = "macos")]
-    {
-        use std::os::macos::fs::MetadataExt;
-        if metadata.st_flags() & 0x4000_0000 != 0 {
-            return Availability::CloudPlaceholder;
-        }
-    }
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        if metadata.file_attributes() & (0x1000 | 0x0004_0000 | 0x0040_0000) != 0 {
-            return Availability::CloudPlaceholder;
-        }
+    // The library reader's rule, which leaves out a bit ordinary files carry too.
+    if crate::file::needs_download(&metadata) {
+        return Availability::CloudPlaceholder;
     }
     #[cfg(unix)]
     {

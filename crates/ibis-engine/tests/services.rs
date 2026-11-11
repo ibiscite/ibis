@@ -294,6 +294,7 @@ fn human_key_arguments_are_resolved_only_inside_the_engine() {
         output: case.request.output,
         form: CitationForm::Normal,
         output_locale: None,
+        keep_order: false,
     };
     let result = engine.cite_keys(&request, &Cancellation::default()).unwrap();
     assert_eq!(result.text, "[@Example2026]");

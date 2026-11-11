@@ -351,6 +351,7 @@ fn duplicate_bibtex_keys_refuse_instead_of_pasting_the_first_entry() {
             output: OutputSpec::Csl { style: "apa".into() },
             form: CitationForm::Normal,
             output_locale: None,
+            keep_order: false,
         },
         &Cancellation::default(),
     );
