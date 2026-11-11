@@ -158,6 +158,12 @@ merge-queue entries. Unknown paths or unreadable change lists select all.
 checks because its options are generated; other top-level Markdown is docs-only.
 Script tests, workflow lint and dependency policy run for docs changes too.
 
+Licences, bans, sources and commit identities always block; every non-merge
+commit needs a sign-off. RustSec advisories block only changes to a
+`Cargo.toml`, `Cargo.lock` or `deny.toml`, release tags and the weekly check,
+which keeps one issue up to date; other changes get a warning. Ubuntu package
+downloads are cached.
+
 [CI](../.github/workflows/ci.yml) reports one required `CI result`. The queue
 checks against current main. Passing identical trees can be reused, except
 where the queue adds macOS crate/script tests omitted on pull requests.
