@@ -439,9 +439,10 @@ fn cite_input() -> Value {
             "records": {"type": "array", "items": {"type": "object"}, "minItems": 1, "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read."},
             "format": {"type": "string", "enum": format_ids(), "description": "An output: a key syntax for the document's own citation processor, or one of the common styles."},
             "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
-            "locale": {"type": "string", "description": "The language to write a formatted citation in, such as de-DE, from the styles tool. Leave out for the style's own."},
+            "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
             "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
-            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable name. Uses the output Ibis uses for that app; format or style apply when it has none of its own."}
+            "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
+            "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}
         },
         "additionalProperties": false
     })
@@ -464,12 +465,13 @@ fn cite_output() -> Value {
     })
 }
 
-/// Every output the engine lists, but those that export whole records: those
-/// would hand an agent notes and fields it is never shown.
+/// Every output the engine lists, but those that export whole records, which
+/// would hand an agent notes and fields it is never shown, and Zotero's scan
+/// markers, which are for a person's own Word or LibreOffice document.
 fn format_ids() -> Vec<&'static str> {
     outputs::outputs()
         .iter()
-        .filter(|output| !output.exports_records)
+        .filter(|output| !output.exports_records && !output.zotero_items)
         .map(|output| output.id.as_str())
         .collect()
 }
@@ -508,6 +510,12 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         .as_ref()
         .map_or(output, |destination| destination.output.clone());
     let (locale, form) = language_and_form(arguments, &output)?;
+    let keep_order = match arguments.get("keep_order") {
+        None => false,
+        Some(keep) => keep
+            .as_bool()
+            .ok_or_else(|| Refusal::bad("keep_order must be true or false."))?,
+    };
     let items = items
         .iter()
         .enumerate()
@@ -524,7 +532,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusa
         &CitationRequest {
             items,
             form,
-            keep_order: matches!(output, OutputSpec::Key { .. }),
+            keep_order: keep_order || matches!(output, OutputSpec::Key { .. }),
             output,
             input_language: None,
             output_locale: locale,
@@ -620,6 +628,11 @@ fn written(result: &CitationResult, count: usize, keyed: bool) -> Result<Value, 
 fn cite_records(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
     if arguments.contains_key("items") || arguments.contains_key("for_app") {
         return Err(Refusal::bad("Give records or items, not both; for_app needs items."));
+    }
+    if arguments.contains_key("keep_order") {
+        return Err(Refusal::bad(
+            "keep_order needs items; it is not supported with records.",
+        ));
     }
     let records = arguments
         .get("records")

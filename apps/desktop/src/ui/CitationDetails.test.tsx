@@ -56,7 +56,8 @@ test("before the engine answers the reference's own form shows and every form ca
 test("with no form to choose, one quiet line replaces the pop-up", () => {
   const reason = "Reference entries have no name forms. Choose another style.";
   render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: null, forms: [
-    { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason },
+    { form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "author-only", example: null, reason },
+    { form: "year-only", example: null, reason }, { form: "full", example: null, reason },
   ] }} />);
   expect(screen.getAllByText(reason)).toHaveLength(1);
   expect(screen.queryByRole("button", { name: /^Show as / })).toBeNull();
@@ -96,4 +97,19 @@ test("the fields use role tokens and retain pointer and touch targets", () => {
   expect(css).toContain("@media (pointer: coarse)");
   expect(css).toContain("min-height: var(--control-h)");
   expect(css).not.toMatch(/#[0-9a-f]{3,8}\b|\b\d+px\b/);
+});
+
+test("Show as offers every form the engine answers for, each with its example or its reason", async () => {
+  render(<CitationDetails prefix="" suffix="" onPrefixChange={vi.fn()} onSuffixChange={vi.fn()} page="" form="normal" onPageChange={vi.fn()} onFormChange={vi.fn()} choices={{ current_form: "normal", forms: [
+    { form: "normal", example: "(Taylor, 2026)", reason: null }, { form: "narrative", example: "Taylor (2026)", reason: null },
+    { form: "author-only", example: "Taylor", reason: null }, { form: "year-only", example: "(2026)", reason: null },
+    { form: "full", example: null, reason: "Only when cited alone" },
+  ] }} />);
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  const items = await screen.findAllByRole("menuitemradio");
+  expect(items.map((item) => item.textContent)).toEqual([
+    expect.stringContaining("(Taylor, 2026)"), expect.stringContaining("Taylor (2026)"), expect.stringContaining("Name only"),
+    expect.stringContaining("(2026)"), expect.stringContaining("Only when cited alone"),
+  ]);
+  expect(items.map((item) => item.getAttribute("aria-disabled") === "true")).toEqual([false, false, false, false, true]);
 });

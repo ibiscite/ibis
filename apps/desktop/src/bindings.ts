@@ -270,7 +270,7 @@ export const DEFAULT_OUTPUT = "pandoc" as const;
 
 export const DEFAULT_STYLE = "apa" as const;
 
-export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
+export const OUTPUTS = [{"description":null,"entries":false,"example":"[@key]","id":"pandoc","name":"Pandoc","style":false},{"description":null,"entries":false,"example":"@key","id":"pandoc-bare","name":"Pandoc without brackets","style":false},{"description":null,"entries":false,"example":"\\autocite{key}","id":"autocite","name":"BibLaTeX \\autocite","style":false},{"description":null,"entries":false,"example":"\\parencite{key}","id":"parencite","name":"BibLaTeX \\parencite","style":false},{"description":null,"entries":false,"example":"\\textcite{key}","id":"textcite","name":"BibLaTeX \\textcite","style":false},{"description":null,"entries":false,"example":"\\citep{key}","id":"natbib","name":"natbib","style":false},{"description":null,"entries":false,"example":"\\cite{key}","id":"cite","name":"LaTeX \\cite","style":false},{"description":null,"entries":false,"example":"\\cite[key]","id":"context","name":"ConTeXt","style":false},{"description":null,"entries":false,"example":"@key","id":"typst","name":"Typst","style":false},{"description":null,"entries":false,"example":"[cite:@key]","id":"org-cite","name":"Org mode","style":false},{"description":null,"entries":false,"example":"{cite:p}`key`","id":"myst","name":"MyST","style":false},{"description":null,"entries":false,"example":"[#key][]","id":"multi-markdown","name":"MultiMarkdown","style":false},{"description":null,"entries":false,"example":"cite:[key]","id":"ascii-doc","name":"AsciiDoc","style":false},{"description":null,"entries":false,"example":"<cite data-cite=\"key\">key</cite>","id":"jupyter","name":"Jupyter","style":false},{"description":null,"entries":false,"example":"{% cite key %}","id":"jekyll-scholar","name":"Jekyll Scholar","style":false},{"description":null,"entries":false,"example":"[{\"citationKey\":\"key\"}]","id":"cayw-json","name":"CAYW JSON","style":false},{"description":null,"entries":false,"example":"key","id":"keys","name":"Keys only","style":false},{"description":null,"entries":false,"example":null,"id":"csl-json","name":"CSL-JSON","style":false},{"description":null,"entries":false,"example":"{ | Example, 2026 | | | zu:0:ABCD2345 }","id":"scannable-cite","name":"Zotero RTF/ODF Scan","style":false},{"description":"APA (7th edition)","entries":false,"example":"(García, 2021)","id":"apa","name":"APA","style":true},{"description":null,"entries":false,"example":"(García 2021)","id":"chicago-author-date","name":"Chicago (author-date)","style":true},{"description":"Chicago (notes and bibliography)","entries":false,"example":"Ana García, “Synthetic Sleep Study,” Journal of Tests 4 (2021).","id":"chicago-notes-bibliography","name":"Chicago (notes)","style":true},{"description":"MLA (9th edition)","entries":false,"example":"(García)","id":"modern-language-association","name":"MLA","style":true},{"description":"Harvard (Cite Them Right)","entries":false,"example":"(García, 2021)","id":"harvard-cite-them-right","name":"Harvard","style":true},{"description":null,"entries":true,"example":"A. García, “Synthetic sleep study,” Journal of Tests, vol. 4, 2021.","id":"ieee","name":"IEEE","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"vancouver-nlm","name":"Vancouver","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic sleep study. Journal of Tests 4, (2021).","id":"nature","name":"Nature","style":true},{"description":null,"entries":true,"example":"García A. Synthetic sleep study. Journal of Tests. 2021;4.","id":"american-medical-association","name":"AMA","style":true},{"description":null,"entries":true,"example":"García, A. Synthetic Sleep Study. Journal of Tests 2021, 4.","id":"american-chemical-society","name":"ACS","style":true},{"description":"GB/T 7714-2025 (numeric)","entries":true,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-numeric","name":"GB/T 7714 (numeric)","style":true},{"description":"GB/T 7714-2025 (author-date)","entries":false,"example":"（García，2021）","id":"china-national-standard-gb-t-7714-2025-author-date","name":"GB/T 7714 (author-date)","style":true},{"description":"GB/T 7714-2025 (notes)","entries":false,"example":"García A. Synthetic sleep study[J]. Journal of Tests，2021，4.","id":"china-national-standard-gb-t-7714-2025-note","name":"GB/T 7714 (notes)","style":true}] as const;
 
 /** A fixed page linked from About. The web page never chooses the address. */
 export type AboutLink = "website" | "source" | "problem" | "licences";
@@ -333,6 +333,15 @@ export type Copied = {
 	warnings: string[];
 };
 
+/**
+ * Why a citation was copied: the engine's decision before pasting, or a
+ * paste that failed once it began.
+ */
+export type CopiedReason = CopyReason | DeliveryFailure;
+
+/** Why a citation was copied instead of pasted. */
+export type CopyReason = "paste-off" | "unsupported-system" | "no-target" | "copy-only" | "target-changed" | "clipboard-changed" | "paste-expired" | "secure-field" | "elevated-app" | "terminal" | "remote-desktop" | "virtual-machine" | "nonstandard-shortcut" | "no-permission" | "unknown-app" | "secure-input" | "paste-unavailable" | "accessibility-required" | "selection-not-shown" | "citation-not-selected";
+
 export type DelightFact = "touch" | "scarlet" | "mummies" | "national" | "flight";
 
 export type DelightStatus = "paste-tip" | "library100" | "library1000" | "library10000";
@@ -354,12 +363,12 @@ export type Delivered = {
 	outcome: "pasted";
 } | {
 	outcome: "copied";
-	/**
-	 * Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
-	 * `key-release-failed`. Every copy says why (docs/design/delivery.md).
-	 */
-	reason: string;
+	/** Why Ibis did not paste. Every copy says why (docs/design/delivery.md). */
+	reason: CopiedReason;
 };
+
+/** A paste that began and could not finish. */
+export type DeliveryFailure = "key-release-failed";
 
 /** How much each result row shows (ADR 0020). */
 export type Density = "compact" | "comfortable";
@@ -435,8 +444,11 @@ export type FileSelection = {
 	id: ItemRef;
 	/** A canonical locator captured from search; its value is never parsed again. */
 	locator?: Locator | null;
-	/** Raw Page editor text, mutually exclusive with a captured locator. */
-	page_input?: string | null;
+	/**
+	 * Raw locator field text and its chosen type, mutually exclusive with a
+	 * captured locator.
+	 */
+	locator_input?: LocatorInput | null;
 	/** Literal text; only the engine escapes and formats it. */
 	prefix?: string | null;
 	suffix?: string | null;
@@ -550,6 +562,15 @@ export type Locator = {
 	label: LocatorTerm;
 	/** Canonical value, including literal text preserved by the engine. */
 	value: string;
+};
+
+/**
+ * What a person typed in a reference's locator field, with the type its pop-up
+ * shows. Only the engine reads it: a typed label (`ch. 3`) names the type.
+ */
+export type LocatorInput = {
+	label: LocatorTerm;
+	text: string;
 };
 
 /** The engine's interpretation, shown so the person can search as typed. */
@@ -787,7 +808,7 @@ export type ReferenceDetails = {
 	forms: FormOption[];
 };
 
-export type ReferenceForm = "normal" | "narrative" | "year-only";
+export type ReferenceForm = "normal" | "narrative" | "author-only" | "year-only" | "full";
 
 /**
  * One setting a restore changes. Values are as the settings file writes

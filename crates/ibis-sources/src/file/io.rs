@@ -73,7 +73,7 @@ fn placeholder(windows_attributes: u32, darwin_flags: u32) -> bool {
     windows_attributes & (0x1000 | 0x400000) != 0 || darwin_flags & 0x40000000 != 0
 }
 
-pub(super) fn needs_download(metadata: &std::fs::Metadata) -> bool {
+pub(crate) fn needs_download(metadata: &std::fs::Metadata) -> bool {
     #[cfg(windows)]
     {
         use std::os::windows::fs::MetadataExt;

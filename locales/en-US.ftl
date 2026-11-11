@@ -138,6 +138,10 @@ refusal-cancelled = The citation was cancelled.
 refusal-formatter-unavailable = The citation could not be written just now. Try again.
 refusal-annotation-mismatch = The annotation given for { $reference } belongs to another reference.
 refusal-not-citable = { $reference } is not a reference, such as a note, so it cannot be cited.
+refusal-not-from-zotero = { $reference } was not read from a Zotero library, so Zotero cannot find it.
+    .cli = Read your Zotero library with --zotero, or choose another output.
+    .agent = Use another format, or ask the person to cite it from their Zotero library.
+    .app = Cite it from your Zotero library, or choose another output.
 
 ## What a citation could not say in full.
 
@@ -833,6 +837,7 @@ picker-type-to-find-hint = Search by title, author, year, citation key or DOI.
 picker-more = More
 picker-keep-my-order = Keep My Order
 picker-change-last-citation = Change Last Citation
+picker-forget-recent = Forget Recent Citations
 picker-change-citation = Change Citation · { $format }
 picker-keep-open = Keep Window Open
 picker-keep-open-menu = Keep Window Open

@@ -115,7 +115,7 @@ fn store(copy: &Copy, control: &Control) -> Result<Vec<StoredKey>, ClosedError> 
     if check != "ok" {
         return Err(ClosedError::Damaged);
     }
-    let keys = bbt::read_store(&db, 7).map_err(|_| ClosedError::Damaged);
+    let keys = bbt::read_store(&db).map_err(|_| ClosedError::Damaged);
     control.check()?;
     keys
 }

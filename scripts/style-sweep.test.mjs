@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { compareSweeps, readSweep, report } from "./style-sweep.mjs";
+import { lint } from "./pr-lint.mjs";
+import { baseline, changedStyles, compareSweeps, pinTitle, pullRequestBody, readSweep, report, styleNotes } from "./style-sweep.mjs";
 
 const output = (text) => ({ citations: [text], bibliography: `${text}.` });
 const sweep = (entries) => new Map(Object.entries(entries));
@@ -50,4 +51,65 @@ test("text with an empty part is listed for a person to check", () => {
   const result = compareSweeps(new Map(), next, []);
   assert.deepEqual(result.suspicious, ["hole"]);
   assert.match(report(result, new Map(), next), /looks incomplete, to check by hand:\*\* `hole`/);
+});
+
+test("moved pins name the pull request, and unmoved pins open none", () => {
+  const pins = { styles: { tag: "v1.0.16" }, locales: { tag: "v0.0.106" }, zotero: { commit: "a".repeat(40) } };
+  assert.equal(pinTitle(pins, pins), null);
+  const moved = { styles: { tag: "v1.0.22" }, locales: { tag: "v0.0.107" }, zotero: { commit: "b".repeat(40) } };
+  const title = pinTitle(pins, moved);
+  assert.equal(title, "fix: update to CSL styles v1.0.22, locales v0.0.107, citeproc bbbbbbb");
+  assert.deepEqual(lint({ title, branch: "styles/newest" }).errors, []);
+  assert.equal(pinTitle(pins, { ...pins, locales: { tag: "v0.0.107" } }), "fix: update to locales v0.0.107");
+});
+
+test("the release notes name each style whose output changed, or say none did", () => {
+  const previous = sweep({ same: output("x"), moved: output("x"), gone: output("x") });
+  const next = sweep({ same: output("x"), moved: output("y"), fresh: output("z") });
+  const notes = styleNotes(compareSweeps(previous, next, []), "v0.3.1");
+  assert.match(notes, /^\*\*Citation styles\*\*\n\n- Output changed since v0\.3\.1 in 1 style: `moved`\n- New: `fresh`\n- Removed or renamed[^\n]*: `gone`\n$/);
+  assert.equal(styleNotes(compareSweeps(previous, previous, []), "v0.3.1"), "**Citation styles**\n\nEvery style writes what it wrote in v0.3.1.\n");
+});
+
+test("upstream text cannot close the diff's code block or start an unprefixed line", () => {
+  const previous = sweep({ tricky: output("x") });
+  const next = sweep({ tricky: { citations: ["line one\n```\n# Injected heading"], bibliography: "x." } });
+  const text = report(compareSweeps(previous, next, []), previous, next);
+  assert.match(text, /\n````diff\n/);
+  assert.match(text, /\n\+ line one\n\+ ```\n\+ # Injected heading\n````\n/);
+});
+
+test("the pull request body puts the handoff first and keeps each diff whole within its limit", () => {
+  const styles = Array.from({ length: 20 }, (_, index) => `s${index}`);
+  const previous = new Map(styles.map((style) => [style, output("x")]));
+  const next = new Map(styles.map((style) => [style, output("y".repeat(5_000))]));
+  const result = compareSweeps(previous, next, []);
+  const body = pullRequestBody(result, previous, next, "https://example.org/run/1");
+  assert.ok(body.startsWith("## Handoff\n"));
+  assert.match(body, /Full report: https:\/\/example\.org\/run\/1/);
+  assert.ok(body.length < 60_000, `${body.length}`);
+  assert.equal(body.match(/<details>/g).length, body.match(/<\/details>/g).length);
+  assert.match(body, /The diffs of \d+ more styles are in the full report\./);
+});
+
+
+test("a release compares with the last published release, never a failed tag", () => {
+  const published = ["v0.3.1", "v0.2.10", "v0.3.0", "nightly", "stable", "v0.10.0"];
+  assert.equal(baseline("v0.3.3", published), "v0.3.1", "v0.3.2 was tagged but never published");
+  assert.equal(baseline("v0.11.0", published), "v0.10.0");
+  assert.equal(baseline("v0.2.0", published), null);
+  assert.equal(baseline("nightly", published), null);
+});
+
+test("the release names every changed style, attaching the list when it is long", () => {
+  const styles = Array.from({ length: 250 }, (_, index) => `s${index}`);
+  const previous = new Map(styles.map((style) => [style, output("x")]));
+  const next = new Map(styles.map((style) => [style, output("y")]));
+  const result = compareSweeps(previous, next, []);
+  const notes = styleNotes(result, "v0.3.1", "https://example.org/changed-styles.txt");
+  assert.match(notes, /in 250 styles: 250 styles, listed in \[changed-styles\.txt\]\(https:\/\/example\.org\/changed-styles\.txt\)/);
+  const listed = changedStyles(result, "v0.3.1").split("\n");
+  assert.ok(styles.every((style) => listed.includes(style)));
+  const few = compareSweeps(sweep({ a: output("x") }), sweep({ a: output("y") }), []);
+  assert.match(styleNotes(few, "v0.3.1", "unused"), /in 1 style: `a`\n$/);
 });

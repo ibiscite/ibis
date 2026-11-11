@@ -72,6 +72,41 @@ fn no_open_library_is_an_error_and_never_an_empty_result() {
 }
 
 #[test]
+fn mcp_records_cite_without_a_library_and_keep_their_identity_and_provenance() {
+    let engine = Engine::new().unwrap();
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"records":[
+            {"id":"x","type":"book","title":"Invented X","citation-key":"plain"},
+            {"id":"record:x","type":"book","title":"Invented Prefixed","citation-key":"prefixed"}
+        ],"format":"pandoc"}),
+    );
+    assert_eq!(answer(&result)["text"], "[@plain; @prefixed]");
+    let provenance = answer(&result)["provenance"].as_str().unwrap();
+    assert!(provenance.contains("records sent with this request"), "{result}");
+    assert!(provenance.contains("not instructions"), "{result}");
+    assert!(answer(&result).get("library_notes").is_none(), "{result}");
+    assert!(engine.libraries().unwrap().libraries.is_empty());
+}
+
+#[test]
+fn mcp_records_refuse_keep_order_instead_of_silently_ignoring_it() {
+    let engine = Engine::new().unwrap();
+    for keep_order in [json!(true), json!(false), json!("yes")] {
+        let result = tool(
+            &engine,
+            "cite",
+            json!({"records":[{"id":"x","type":"book","title":"Invented X"}],
+                "keep_order":keep_order}),
+        );
+        let text = refusal(&result);
+        assert!(text.starts_with("error: bad-input."), "{result}");
+        assert!(text.contains("keep_order"), "{result}");
+    }
+}
+
+#[test]
 fn an_empty_library_says_so() {
     let (_dir, _path, engine) = library(b"");
     let result = tool(&engine, "search", json!({"query":"lantern"}));

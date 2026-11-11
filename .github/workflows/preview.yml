@@ -381,6 +381,49 @@ jobs:
       - name: Report 100k open/refresh budgets (release)
         run: node scripts/preview-budgets.mjs
 
+  # Before a numbered release is published, renders every CSL style with the
+  # previous release's engine and bundle and with this one's; the release notes
+  # name the styles whose output changed (#19, scripts/style-sweep.mjs release).
+  style-changes:
+    name: Citation style changes
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.update_test
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: Render every style at the previous release and at this one
+        env:
+          OUT: ${{ runner.temp }}/style-changes
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          # The last release people got, not a tag whose publication failed.
+          previous=$(gh api "repos/$REPO/releases?per_page=100" --paginate \
+            --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' \
+            | node scripts/style-sweep.mjs baseline "$GITHUB_REF_NAME")
+          git rev-parse --verify --quiet "refs/tags/$previous" >/dev/null
+          status=0
+          node scripts/style-sweep.mjs release "$previous" "$OUT" || status=$?
+          if [ -f "$OUT/report.md" ]; then cat "$OUT/report.md" >> "$GITHUB_STEP_SUMMARY"; fi
+          rm -f "$OUT"/*.jsonl
+          exit "$status"
+      - name: Keep the release notes' style list
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: style-changes
+          path: ${{ runner.temp }}/style-changes
+          if-no-files-found: error
+
   windows-paste:
     name: Paste into Notepad (Windows)
     if: github.event_name != 'schedule' && !inputs.update_test
@@ -592,7 +635,7 @@ jobs:
   publish:
     name: Publish release
     if: startsWith(github.ref, 'refs/tags/v') && (github.event_name == 'push' || inputs.publish)
-    needs: [build, install, release-checks]
+    needs: [build, install, release-checks, style-changes]
     # The Latest read and publish must not interleave.
     concurrency:
       group: publish-numbered-release
@@ -635,6 +678,12 @@ jobs:
           path: dist
           pattern: ibis-*
           merge-multiple: true
+
+      - name: Download the style changes
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: style-changes
+          path: style-changes
 
       - name: Verify checksums and tag-bound provenance before publication
         env:

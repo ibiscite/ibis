@@ -1,5 +1,5 @@
 //! Libraries other programs export without citation keys: RIS and Ibis's CSV
-//! template (decision 0041). Each record becomes CSL data whose identity is a
+//! template (decision 0043). Each record becomes CSL data whose identity is a
 //! versioned hash of that data, so it lasts across refreshes and fresh exports.
 use std::collections::{BTreeMap, HashSet};
 

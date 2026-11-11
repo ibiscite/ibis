@@ -196,6 +196,7 @@ fn command() -> Command {
                             "prefix",
                             "suffix",
                             "omit-author",
+                            "keep-order",
                         ])
                         .help("Read the whole request from stdin as JSON; see: ibis schema cite"),
                 )
@@ -268,6 +269,13 @@ fn command() -> Command {
                     "full",
                     "bibliography-only",
                 ]))
+                .arg(
+                    Arg::new("keep-order")
+                        .long("keep-order")
+                        .action(ArgAction::SetTrue)
+                        .help_heading(OUTPUT)
+                        .help("Keep the keys in the order given where a style would sort them"),
+                )
                 .arg(
                     Arg::new("locale")
                         .long("locale")
@@ -1258,6 +1266,7 @@ fn run_method<R: BufRead>(
                             output: output.clone(),
                             form,
                             output_locale: args.get_one::<String>("locale").cloned(),
+                            keep_order: args.get_flag("keep-order"),
                         },
                         writing_projects::policy(args),
                         &cancel,
@@ -1273,6 +1282,7 @@ fn run_method<R: BufRead>(
                         output,
                         form,
                         output_locale: args.get_one::<String>("locale").cloned(),
+                        keep_order: args.get_flag("keep-order"),
                     },
                     &cancel,
                 )

@@ -10,7 +10,9 @@ import "./CitationDetails.css";
 const FORMS = [
   { value: "normal", label: say("form-normal") },
   { value: "narrative", label: say("form-narrative") },
+  { value: "author-only", label: say("form-author-only") },
   { value: "year-only", label: say("form-year-only") },
+  { value: "full", label: say("form-full") },
 ] as const;
 
 /** The same per-reference fields wherever a citation is being prepared. Only the

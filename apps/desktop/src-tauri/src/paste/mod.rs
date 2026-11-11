@@ -17,7 +17,7 @@ use ibis_core::destination::AppPaste;
 #[cfg(test)]
 use ibis_core::destination::PastePermission;
 use ibis_core::destination::{AppId, CopyReason, System, lookup};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 
 pub(crate) mod capture;
@@ -468,19 +468,32 @@ pub(crate) enum Delivered {
         app: Option<String>,
     },
     Copied {
-        /// Why Ibis did not paste: a `CopyReason` code such as `terminal`, or
-        /// `key-release-failed`. Every copy says why (docs/design/delivery.md).
-        reason: String,
+        /// Why Ibis did not paste. Every copy says why (docs/design/delivery.md).
+        reason: CopiedReason,
     },
+}
+
+/// Why a citation was copied: the engine's decision before pasting, or a
+/// paste that failed once it began.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(untagged)]
+pub(crate) enum CopiedReason {
+    Decided(CopyReason),
+    Delivery(DeliveryFailure),
+}
+
+/// A paste that began and could not finish.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum DeliveryFailure {
+    /// The paste keys went down but could not be released.
+    KeyReleaseFailed,
 }
 
 impl Delivered {
     pub(crate) fn copied(reason: CopyReason) -> Self {
         Self::Copied {
-            reason: serde_json::to_value(reason)
-                .ok()
-                .and_then(|code| code.as_str().map(str::to_owned))
-                .unwrap_or_else(|| "paste-unavailable".into()),
+            reason: CopiedReason::Decided(reason),
         }
     }
 }
