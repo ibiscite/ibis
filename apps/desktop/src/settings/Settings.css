@@ -36,11 +36,11 @@
 .paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .paste-guide-switch {
   position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);
-  transition: background-color var(--dur-panel) var(--ease);
+  transition: background-color var(--dur-2) var(--ease-out);
 }
 .paste-guide-switch > span {
   position: absolute; top: var(--border-width); inset-inline-start: var(--border-width); width: 13px; height: 13px; border-radius: var(--r-full);
-  background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-panel) var(--ease);
+  background: var(--thumb); box-shadow: var(--shadow-thumb); transition: transform var(--dur-2) var(--ease-out);
 }
 .paste-guide-switch[data-on] { background: var(--accent); }
 .paste-guide-switch[data-on] > span { background: var(--text-on-accent); transform: translateX(11px); }

@@ -69,9 +69,9 @@ impl Server {
                 } else if empty {
                     json!([])
                 } else if inventory {
-                    json!({"SYNTH001":1})
+                    json!({"SYNTH234":1})
                 } else {
-                    json!([{"key":"SYNTH001","version":1,"data":{"key":"SYNTH001","version":1,"itemType":"book","title":"Invented atlas","date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
+                    json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":"Invented atlas","date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
                 };
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);

@@ -40,8 +40,9 @@ pub(crate) struct FileSelection {
     pub(crate) cite: Fingerprint,
     /// A canonical locator captured from search; its value is never parsed again.
     pub(crate) locator: Option<Locator>,
-    /// Raw Page editor text, mutually exclusive with a captured locator.
-    pub(crate) page_input: Option<String>,
+    /// Raw locator field text and its chosen type, mutually exclusive with a
+    /// captured locator.
+    pub(crate) locator_input: Option<LocatorInput>,
     pub(crate) form: Option<ReferenceForm>,
     /// Literal text; only the engine escapes and formats it.
     pub(crate) prefix: Option<String>,
@@ -59,12 +60,64 @@ pub(crate) struct SessionBibliography {
     /// that the rest can still be used.
     pub(crate) left_out: Vec<String>,
 }
+/// What a person typed in a reference's locator field, with the type its pop-up
+/// shows. Only the engine reads it: a typed label (`ch. 3`) names the type.
+#[derive(Deserialize, schemars::JsonSchema)]
+pub(crate) struct LocatorInput {
+    pub(crate) label: LocatorTerm,
+    pub(crate) text: String,
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum ReferenceForm {
     Normal,
     Narrative,
+    AuthorOnly,
     YearOnly,
+    Full,
+}
+impl ReferenceForm {
+    const ALL: [(Self, CitationForm); 5] = [
+        (Self::Normal, CitationForm::Normal),
+        (Self::Narrative, CitationForm::Narrative),
+        (Self::AuthorOnly, CitationForm::AuthorOnly),
+        (Self::YearOnly, CitationForm::YearOnly),
+        (Self::Full, CitationForm::Full),
+    ];
+    fn citation(self) -> CitationForm {
+        Self::ALL
+            .iter()
+            .find(|(wire, _)| *wire == self)
+            .map_or(CitationForm::Normal, |(_, form)| *form)
+    }
+}
+/// How to correct a locator field the engine could not read.
+fn field_hint(error: ibis_core::locator::FieldError) -> String {
+    use ibis_core::locator::FieldError;
+    let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = error;
+    let missing = matches!(error, FieldError::MissingValue(_));
+    if term == LocatorTerm::Page {
+        return if missing {
+            "Page needs a page or range. Enter one after the label, or clear Page."
+        } else {
+            "Page needs a valid page or range after its label. Correct it, or clear Page."
+        }
+        .into();
+    }
+    let name = serde_json::to_value(term)
+        .ok()
+        .and_then(|value| value.as_str().map(|name| name.replace('-', " ")))
+        .unwrap_or_default();
+    let mut chars = name.chars();
+    let name: String = chars
+        .next()
+        .map(|first| first.to_uppercase().chain(chars).collect())
+        .unwrap_or_default();
+    if missing {
+        format!("{name} needs a value. Enter one after the label, or clear the locator.")
+    } else {
+        format!("{name} needs a valid value after its label. Correct it, or clear the locator.")
+    }
 }
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct CitationSpan {
@@ -695,7 +748,7 @@ impl FileLibrary {
             .iter()
             .flat_map(|item| {
                 [
-                    item.page_input.as_deref(),
+                    item.locator_input.as_ref().map(|input| input.text.as_str()),
                     item.locator.as_ref().map(|locator| locator.value.as_str()),
                     item.prefix.as_deref(),
                     item.suffix.as_deref(),
@@ -722,37 +775,25 @@ impl FileLibrary {
             .into_iter()
             .enumerate()
             .map(|(index, item)| {
-                let locator = match (item.locator, item.page_input) {
+                let locator = match (item.locator, item.locator_input) {
                     (Some(_), Some(_)) => {
                         return Err(CommandError::from(format!(
-                            "Reference {}: Page editor input and a captured locator cannot be combined.",
+                            "Reference {}: a typed locator and a captured locator cannot be combined.",
                             index + 1
                         )));
                     }
                     (locator, None) => locator.map(Into::into),
-                    (None, Some(input)) => Some(ibis_core::contract::Locator {
-                        term: LocatorTerm::Page,
-                        value: ibis_core::locator::page_value(&input).map_err(|error| {
-                            let hint = match error {
-                                ibis_core::locator::PageValueError::MissingValue => {
-                                    "Page needs a page or range. Enter one after the label, or clear Page."
-                                }
-                                ibis_core::locator::PageValueError::InvalidValue => {
-                                    "Page needs a valid page or range after its label. Correct it, or clear Page."
-                                }
-                            };
-                            CommandError::from(format!("Reference {}: {hint}", index + 1))
-                        })?,
-                    }),
+                    (None, Some(input)) => Some(ibis_core::locator::read_field(input.label, &input.text).map_err(
+                        |error| CommandError::from(format!("Reference {}: {}", index + 1, field_hint(error))),
+                    )?),
                 };
                 Ok(CitationItem {
                     item: item.id,
                     expected_cite: Some(item.cite),
-                    form: match item.form {
-                        Some(ReferenceForm::Narrative) => Some(CitationForm::Narrative),
-                        Some(ReferenceForm::YearOnly) => Some(CitationForm::YearOnly),
-                        _ => None,
-                    },
+                    form: item
+                        .form
+                        .map(ReferenceForm::citation)
+                        .filter(|form| *form != CitationForm::Normal),
                     suppress_author: false,
                     locator,
                     prefix: literal(item.prefix),
@@ -911,18 +952,15 @@ impl FileLibrary {
         } else {
             match citation.item_form(item) {
                 Some(CitationForm::Normal) if textcite => Some(ReferenceForm::Narrative),
-                Some(CitationForm::Normal) => Some(ReferenceForm::Normal),
-                Some(CitationForm::Narrative) => Some(ReferenceForm::Narrative),
-                Some(CitationForm::YearOnly) => Some(ReferenceForm::YearOnly),
-                _ => None,
+                Some(form) => ReferenceForm::ALL
+                    .iter()
+                    .find(|(_, citation)| *citation == form)
+                    .map(|(wire, _)| *wire),
+                None => None,
             }
         };
         let mut forms = Vec::new();
-        for (wire, form) in [
-            (ReferenceForm::Normal, CitationForm::Normal),
-            (ReferenceForm::Narrative, CitationForm::Narrative),
-            (ReferenceForm::YearOnly, CitationForm::YearOnly),
-        ] {
+        for (wire, form) in ReferenceForm::ALL {
             cancel.check().map_err(CommandError::from)?;
             let semantic_reason = if entry {
                 Some("Reference entries have no name forms. Choose another style.")
@@ -945,6 +983,12 @@ impl FileLibrary {
                 .form_example(&self.engine, &original_output, item, form, &cancel)
                 .map_err(CommandError::from)?;
             let supported = result.outcomes.contains(&ItemOutcome::Rendered { item });
+            // Refused in a group, a form may still work for this reference alone.
+            let alone = !supported
+                && result.outcomes.len() > 1
+                && citation
+                    .form_alone(&self.engine, &original_output, item, form, &cancel)
+                    .map_err(CommandError::from)?;
             forms.push(FormOption {
                 form: wire,
                 example: supported.then(|| {
@@ -967,10 +1011,10 @@ impl FileLibrary {
                     }
                 }),
                 reason: (!supported).then(|| {
-                    match form {
-                        CitationForm::YearOnly => "Only when cited alone",
-                        CitationForm::Narrative => "Only when cited alone",
-                        _ => "Not in this output",
+                    if alone {
+                        "Only when cited alone"
+                    } else {
+                        "Not in this output"
                     }
                     .into()
                 }),
