@@ -404,7 +404,7 @@ fn an_id_belongs_to_the_system_whose_table_knows_it() {
 }
 
 #[test]
-fn a_destination_says_what_the_app_gets_and_how() {
+fn a_destination_says_what_the_app_gets_and_how() -> Result<(), serde_json::Error> {
     let default = OutputSpec::Key {
         syntax: KeySyntax::Typst,
         command: None,
@@ -415,6 +415,11 @@ fn a_destination_says_what_the_app_gets_and_how() {
     assert_eq!(word.name.as_deref(), Some("Microsoft Word"));
     assert_eq!(word.delivery, Decision::Paste);
     assert_eq!(word.output, OutputSpec::Csl { style: "ieee".into() });
+    let mut newer = serde_json::to_value(&word)?;
+    newer["added"] = serde_json::json!(true);
+    newer["app"]["added"] = serde_json::json!(true);
+    newer["output"]["added"] = serde_json::json!(true);
+    assert_eq!(serde_json::from_value::<Destination>(newer)?, word);
 
     let terminal = at("com.apple.Terminal", System::Windows);
     assert_eq!(terminal.delivery, Decision::Copy(CopyReason::Terminal));
@@ -432,4 +437,5 @@ fn a_destination_says_what_the_app_gets_and_how() {
     }
     let linux = at("com.example.unknown", System::Linux);
     assert_eq!(linux.delivery, Decision::Copy(CopyReason::UnsupportedSystem));
+    Ok(())
 }

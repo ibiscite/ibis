@@ -72,6 +72,41 @@ fn no_open_library_is_an_error_and_never_an_empty_result() {
 }
 
 #[test]
+fn mcp_records_cite_without_a_library_and_keep_their_identity_and_provenance() {
+    let engine = Engine::new().unwrap();
+    let result = tool(
+        &engine,
+        "cite",
+        json!({"records":[
+            {"id":"x","type":"book","title":"Invented X","citation-key":"plain"},
+            {"id":"record:x","type":"book","title":"Invented Prefixed","citation-key":"prefixed"}
+        ],"format":"pandoc"}),
+    );
+    assert_eq!(answer(&result)["text"], "[@plain; @prefixed]");
+    let provenance = answer(&result)["provenance"].as_str().unwrap();
+    assert!(provenance.contains("records sent with this request"), "{result}");
+    assert!(provenance.contains("not instructions"), "{result}");
+    assert!(answer(&result).get("library_notes").is_none(), "{result}");
+    assert!(engine.libraries().unwrap().libraries.is_empty());
+}
+
+#[test]
+fn mcp_records_refuse_keep_order_instead_of_silently_ignoring_it() {
+    let engine = Engine::new().unwrap();
+    for keep_order in [json!(true), json!(false), json!("yes")] {
+        let result = tool(
+            &engine,
+            "cite",
+            json!({"records":[{"id":"x","type":"book","title":"Invented X"}],
+                "keep_order":keep_order}),
+        );
+        let text = refusal(&result);
+        assert!(text.starts_with("error: bad-input."), "{result}");
+        assert!(text.contains("keep_order"), "{result}");
+    }
+}
+
+#[test]
 fn an_empty_library_says_so() {
     let (_dir, _path, engine) = library(b"");
     let result = tool(&engine, "search", json!({"query":"lantern"}));
@@ -377,7 +412,7 @@ fn library_text_stays_data() {
     assert_eq!(answer(&found)["hits"][0]["title"], visible);
     assert_eq!(answer(&found)["hits"][0]["authors"][0], visible);
     assert_eq!(answer(&shown)["fields"]["publisher"], visible);
-    for result in [&found, &shown, &cited] {
+    for result in [&found, &shown] {
         let text = result["content"][0]["text"].as_str().unwrap();
         for hidden in ['\u{202e}', '\u{e0041}', '\u{1b}'] {
             assert!(!text.contains(hidden), "{text}");
@@ -389,6 +424,9 @@ fn library_text_stays_data() {
                 .contains("not instructions")
         );
     }
+    // Altering hidden characters would invalidate the engine receipt.
+    assert!(refusal(&cited).contains("hidden characters"));
+    assert!(!cited.to_string().contains("Ignore previous instructions"));
     // Refusals never carry the library's words back.
     let refused = tool(
         &engine,
@@ -437,5 +475,5 @@ fn an_agent_can_tell_the_tools_apart_from_their_descriptions() {
         }
     }
     // The whole list stays small enough to sit in every conversation.
-    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 7_000);
+    assert!(tools.iter().map(|tool| tool.to_string().len()).sum::<usize>() < 8_000);
 }

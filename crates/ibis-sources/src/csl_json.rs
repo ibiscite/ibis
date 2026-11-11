@@ -5,7 +5,52 @@ use ibis_core::contract::{CitationKey, CitationKeySource, ItemRef, LibraryId, Re
 use serde_json::Value;
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+/// CSL-JSON records a caller sent, requiring an `id` before applying the file
+/// reader's rules without touching a file. A `file` field is dropped unread:
+/// no path or `file:` URL is ever probed. Each warning's `line` is the record's place in
+/// the list, counted from one. Private links are removed as they are for files.
+pub fn request_records(library: &LibraryId, records: &[Value]) -> Result<RequestRecords, SourceError> {
+    // One record a line, after one opening line: each record's line is its place plus one.
+    let mut text = String::from("[\n");
+    for (index, record) in records.iter().enumerate() {
+        if index > 0 {
+            text.push_str(",\n");
+        }
+        text.push_str(&serde_json::to_string(record).map_err(|_| SourceError::InvalidData)?);
+    }
+    text.push_str("\n]");
+    // Even when no record is kept, each refusal names its record.
+    let parsed = read_str(library, &text, Input::Request)?;
+    Ok(RequestRecords {
+        records: parsed.records,
+        warnings: parsed
+            .warnings
+            .into_iter()
+            .map(|warning| SourceWarning {
+                line: warning.line.map(|line| line.saturating_sub(1)),
+                ..warning
+            })
+            .collect(),
+    })
+}
+
+/// What [`request_records`] read: the records it kept and why any were not.
+#[derive(Debug, Clone, Default)]
+pub struct RequestRecords {
+    pub records: Vec<Record>,
+    pub warnings: Vec<SourceWarning>,
+}
+
 pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary, SourceError> {
+    read_str(library, text, Input::Library)
+}
+
+enum Input {
+    Library,
+    Request,
+}
+
+fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibrary, SourceError> {
     use serde_json::value::RawValue;
     if text.trim().is_empty() {
         return Ok(ParsedLibrary::default());
@@ -67,6 +112,16 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
                 .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
         };
         let id = fields.get("id").and_then(|value| id_string(value));
+        // Only library files may use a citation key in place of an ID.
+        if matches!(input, Input::Request) && id.is_none() {
+            let cause = if fields.contains_key("id") {
+                WarningCause::Value
+            } else {
+                WarningCause::MissingField
+            };
+            result.warnings.push(because(WarningCode::Syntax, cause, "id"));
+            continue;
+        }
         let numeric_native = fields
             .get("id")
             .filter(|value| {
@@ -216,7 +271,9 @@ pub(crate) fn load_str(library: &LibraryId, text: &str) -> Result<ParsedLibrary,
             }
         }
     }
-    if nonempty && result.records.is_empty() && repeated.is_empty() {
+    // A file in which no record could be read is not a library; requests keep
+    // their diagnostics so the engine can explain why it refuses every record.
+    if matches!(input, Input::Library) && nonempty && result.records.is_empty() && repeated.is_empty() {
         return Err(SourceError::InvalidData);
     }
     if limited {
@@ -559,6 +616,23 @@ fn item_spans(text: &str) -> Vec<(usize, usize, usize)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn request_records_require_ids_before_the_library_key_fallback() -> Result<(), SourceError> {
+        let parsed = request_records(
+            &LibraryId::digest(b"invented-csl"),
+            &[
+                serde_json::json!({"id": "valid", "type": "book"}),
+                serde_json::json!({"type": "book", "citation-key": "missing"}),
+            ],
+        )?;
+        assert_eq!(parsed.records.len(), 1);
+        assert_eq!(
+            parsed.warnings,
+            [SourceWarning::at(WarningCode::Syntax, Some(2)).because(WarningCause::MissingField, Some("id"))]
+        );
+        Ok(())
+    }
 
     #[test]
     fn warnings_name_only_known_csl_fields() -> Result<(), SourceError> {

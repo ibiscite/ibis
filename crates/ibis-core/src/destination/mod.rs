@@ -246,11 +246,12 @@ pub fn output_for(app: Option<&AppId>, default: &OutputSpec, style: &str) -> Out
 /// with pasting on and permitted, as they are by default. A choice remembered
 /// in the app for one app is that person's and stays out of this answer.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Destination {
+    #[serde(deserialize_with = "crate::contract::response::additive")]
     pub app: AppId,
     /// The app's name, when Ibis knows it.
     pub name: Option<String>,
+    #[serde(deserialize_with = "crate::contract::response::additive")]
     pub output: OutputSpec,
     pub delivery: Decision,
     /// The app keeps `output` until a person answers this question in Ibis.
