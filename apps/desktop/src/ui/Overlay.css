@@ -1,4 +1,4 @@
-/* [C9] Every floating part (menus, pop-overs, sheets, the peek card, held keys,
+/* [C9] Every floating part (menus, pop-overs, the peek card, held keys,
    the reader's controls) is one raised layer: --surface-overlay, its material
    and its shadow, all from tokens.css, which already answers Reduce
    Transparency, Increase Contrast and forced colours. No part sets its own. */

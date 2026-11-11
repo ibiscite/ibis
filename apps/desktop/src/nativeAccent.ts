@@ -1,5 +1,4 @@
 import { listen } from "@tauri-apps/api/event";
-import "./nativeAccent.css";
 
 function luminance(rgb: number[]): number {
   const linear = rgb.map((c) => c <= .04045 ? c / 12.92 : ((c + .055) / 1.055) ** 2.4);

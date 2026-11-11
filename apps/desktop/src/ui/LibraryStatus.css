@@ -6,15 +6,21 @@
 .library-status-controls > .notice-slot { --notice-start: var(--title-start); position: absolute; inset: 0; }
 /* The native button owns its visible status and a non-collapsing hit target. */
 .library-status-target { flex: 1; min-width: var(--control-h); position: relative; isolation: isolate; }
-/* The quiet button's padding sits in the footer's inset, so the dot stays on
-   the tiles' edge (docs/design/picker.md, Footer) and the hover fill still has room. */
-.ui-button.library-status-trigger { max-width: calc(100% + var(--space-2) + var(--border-width)); margin-inline-start: calc(-1 * (var(--space-2) + var(--border-width))); justify-content: start; }
+/* The selector's plate starts on the window inset and its words on the row
+   padding, as a result row's do, so the dot centres on the icon slot and the
+   name starts on the label column (docs/design/picker.md, Footer). A status
+   doesn't give on a press: its dot and words never move off their columns. */
+.ui-button.library-status-trigger {
+  max-width: calc(100% + var(--row-pad)); margin-inline-start: calc(-1 * var(--row-pad));
+  padding-inline-start: calc(var(--row-pad) - var(--border-width)); justify-content: start;
+}
+.ui-button.library-status-trigger[data-variant]:is([data-pressed], [aria-expanded="true"]) > * { scale: none; }
 .library-announcement > p { margin: 0; }
 .library-status-controls[data-health="stop"] .library-name, .library-status-controls[data-health="look"] .library-name { color: var(--text); }
 .library-status-controls .library-status { min-width: 0; }
 .library-status-controls .library-inline-action { flex: none; }
 .library-action-error { flex-basis: 100%; margin: 0; color: var(--text); font-size: var(--type-body-size); }
-/* In the footer's grid (PickerFooter.css): quiet notes span a row of their own,
+/* In the footer's grid (ui/Footer.css): quiet notes span a row of their own,
    and the action's label truncates on one line instead of pushing More aside. */
 .library-bar > :is(.ui-quiet-status, .library-action-error) { grid-column: 1 / -1; }
 .library-bar .ui-button.footer-action { min-width: 0; }

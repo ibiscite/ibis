@@ -8,7 +8,7 @@ import { say } from "./i18n";
 import { setPlatform } from "./nativeAppearance";
 import "./tokens.css";
 import "./ui/CopyReceipt.css";
-import "./notice.css";
+import "./ui/CopiedNotice.css";
 
 const root = document.getElementById("notice");
 if (root) {

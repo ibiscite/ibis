@@ -4,7 +4,7 @@ import type { Density, SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
-import pickerStyles from "../styles.css?raw";
+import pickerStyles from "../ui/Window.css?raw";
 import foundationStyles from "../ui/Foundation.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
 import iconButtonStyles from "../ui/IconButton.css?raw";
@@ -30,15 +30,15 @@ export function PickerPicture({ density = "comfortable", appearance, split = fal
   const html = renderToStaticMarkup(<>
     <PickerHeader inputRef={createRef()} query="" onQueryChange={ignore}
       expanded={false} activeDescendant={undefined} format="pandoc" showFormat={false} styles={false}
-      onFormatChange={ignore} pinned={false} onTogglePin={ignore} />
+      onFormatChange={ignore} />
     <div className="results-area"><ul id="results">{(["look-sample-title", "look-sample-title-2", "look-sample-title-3"] as const).map((title, index) =>
       <ResultRow key={title} record={{ ...record, title: text(title) }} index={index} active={index === 0} added={false} density={density} hoverAllowed={false} library={null}
         handlers={{ onPointerDown: ignore, onClick: ignore, onContext: ignore, onTileClick: ignore }} />
     )}</ul></div>
   </>);
   const scheme = split ? "light" : appearance === "light" || appearance === "dark" ? appearance : undefined;
-  const shape = frame && { "--preview-window-w": `${frame[0] / 16}rem`, "--preview-window-h": `${frame[1] / 16}rem` } as CSSProperties;
-  return <span className="ui-picker-picture" style={shape} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
+  // The window's shape as two custom properties; without a frame they are unset and the default applies.
+  return <span className="ui-picker-picture" style={{ "--preview-window-w": frame && `${frame[0] / 16}rem`, "--preview-window-h": frame && `${frame[1] / 16}rem` } as CSSProperties} data-density={density} data-split={split || undefined} aria-hidden="true" inert>
     <Snapshot html={html} density={density} scheme={scheme} />
     {split && <Snapshot html={html} density={density} scheme="dark" dark />}
   </span>;

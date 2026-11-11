@@ -8,7 +8,6 @@ import { currentPlatform } from "./platform";
 import { shortcutLabel } from "./keys";
 import { ChoiceList, type Choice } from "./ui/ChoiceList";
 import { IbisMark } from "./ui/IbisMark";
-import "./LibrarySetup.css";
 
 type SetupApi = {
   chooseLibrary: () => Promise<unknown>;

@@ -297,7 +297,7 @@ test("the non-empty Library button keeps one separate announcement, and its age 
 
 test("no sizing rule reaches the hidden spoken detail, so the footer never widens the page", () => {
   // `.library-bar p { width: 100% }` once matched it and beat .visually-hidden (#531).
-  const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8")
+  const styles = readFileSync(new FileURL("./ui/Footer.css", import.meta.url), "utf8")
     .replace(/\/\*[\s\S]*?\*\//g, "");
   const bar = document.createElement("section");
   bar.className = "library-bar";
@@ -306,8 +306,10 @@ test("no sizing rule reaches the hidden spoken detail, so the footer never widen
   const hidden = container.querySelector(".library-detail");
   expect(hidden).not.toBeNull();
   const sizing = [...styles.matchAll(/([^{}]+)\{([^}]*)\}/g)]
-    .filter(([, , body]) => /(^|[;\s])(width|min-width|margin|padding|position)\s*:/.test(body ?? ""))
-    .flatMap(([, selector]) => (selector ?? "").split(",").map((part) => part.trim()))
+    // A width or position that can widen it; min-width: 0 only lets it shrink.
+    .filter(([, , body]) => /(^|[;\s])(width|margin|padding|position)\s*:|min-width\s*:(?!\s*0[;\s]|\s*0$)/.test(body ?? ""))
+    // Top-level commas only: `:not(.a, .b)` is one selector.
+    .flatMap(([, selector]) => (selector ?? "").split(/,(?![^()]*\))/).map((part) => part.trim()))
     .filter((selector) => selector.includes("library") && !selector.startsWith("@"));
   const reaching = sizing.filter((selector) => { try { return hidden?.matches(selector); } catch { return false; } });
   expect(reaching).toEqual([]);
@@ -315,7 +317,7 @@ test("no sizing rule reaches the hidden spoken detail, so the footer never widen
 });
 
 test("the footer shortens the age, then the name, and only then the state words, with an ellipsis", () => {
-  const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+  const styles = readFileSync(new FileURL("./ui/Footer.css", import.meta.url), "utf8");
   const rule = (selector: string) => styles.match(new RegExp(`^\\${selector} \\{([^}]*)\\}`, "m"))?.[1] ?? "";
   const shrink = (selector: string) => Number(rule(selector).match(/flex-shrink: ([\d.]+)|flex: 0 ([\d.]+) auto/)?.slice(1).find(Boolean));
   // The age has no width of its own: it only fills what the name and state leave.
@@ -345,7 +347,7 @@ test("the visible age is hidden from screen readers, which read the detail inste
 // Where the dot and words sit across the footer ([C3]: the tiles' and titles' columns)
 // is measured on every screen by canvas/geometry.ts in WebKit and Chromium.
 test("the status dot is centred on its words' x-height", () => {
-  const styles = readFileSync(new FileURL("./styles.css", import.meta.url), "utf8");
+  const styles = readFileSync(new FileURL("./ui/Footer.css", import.meta.url), "utf8");
   expect(styles).toMatch(/^\.library-status \{[^}]*align-items: baseline;/m);
   const dot = styles.match(/^\.status-dot \{([^}]*)\}/m)?.[1];
   expect(dot).toMatch(/translate: 0 calc\(var\(--status-dot\) \/ 2 - \.5ex\);/);

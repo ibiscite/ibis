@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import { App, type PickerApi } from "../src/App";
 import { Button } from "../src/ui/Button";
 import { KeyCaps } from "../src/ui/KeyCaps";
-import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { Group, Row, Section } from "../src/ui/Layout";
 import { useAppearance } from "../src/ui/appearance";
 import { englishMessages } from "../src/i18n";
 import type { LibraryStatus, SearchResult } from "../src/bindings";
@@ -26,9 +26,9 @@ import type { WritingProjectsView } from "../src/api";
 import { renderNotice } from "../src/copyFeedback";
 import { currentPlatform } from "../src/platform";
 import "../src/ui/CopyReceipt.css";
-import "../src/notice.css";
+import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
-import pickerStyles from "../src/styles.css?inline";
+import pickerStyles from "../src/ui/Window.css?inline";
 
 export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
@@ -64,7 +64,7 @@ const fixtures: Partial<Record<Scenario, {
   "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
   "library-menu": { click: ".library-bar button" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
-  pinned: { click: ".pin-button" },
+  pinned: { keys: [{ key: "P", code: "KeyP", shiftKey: true, [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   "no-matches": { rows: [] },
   missing: { query: "", library: { state: "error", has_snapshot: false, references: 0, problem: "missing", error: "the library file is unavailable; download any online-only file to this computer first" } },
   "zotero-closed": { query: "", library: { state: "error", has_snapshot: false, references: 0, zotero: true, name: "Zotero", problem: "zotero_closed", error: "Zotero’s library cannot be read while it is closed" } },
@@ -168,9 +168,9 @@ function States({ theme }: { theme: Theme }) {
   // One control in every row, each state drawn by the part's own attribute through its
   // render prop, so the picture is the real rule.
   const labels = ["canvas-hovered", "canvas-pressed", "canvas-focused"] as const;
-  return <div className="canvas-parts"><SettingsGroup id="canvas-states">{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <SettingsRow key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
+  return <div className="canvas-parts"><Section id="canvas-states"><Group>{(["hovered", "pressed", "focus-visible"] as const).map((state, index) => <Row key={state} id={`canvas-${state}`} label={englishMessages.text(labels[index]!)}>
     <Button variant="secondary" render={(native) => <button {...native} {...{ [`data-${state}`]: true }} />}>Check Now<KeyCaps accelerator="CmdOrCtrl+K" /></Button>
-  </SettingsRow>)}</SettingsGroup></div>;
+  </Row>)}</Group></Section></div>;
 }
 
 const tokenNames = [...new Set([...tokenSource.matchAll(/(--[a-z][\w-]*):/g)].map((match) => match[1]!))];
@@ -230,7 +230,7 @@ const invented = () => book;
 function Canvas({ host, scenario, settings, picker, theme }: { host: HTMLElement; scenario: Scenario; settings: SettingsApi; picker: PickerApi; theme: Theme }) {
   useEffect(() => {
     const fixed = fixtures[scenario];
-    const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Copy as"]'] : [fixed?.click ?? []].flat();
+    const clicks = scenario === "more" ? ['button[aria-label="More"]'] : scenario === "format-menu" ? ['button[aria-label^="Citation format"]'] : [fixed?.click ?? []].flat();
     const keys = [...fixed?.keys ?? []];
     if (!clicks.length && !keys.length) return;
     // Act on the real controls once they are ready; no polling or stale completion.
