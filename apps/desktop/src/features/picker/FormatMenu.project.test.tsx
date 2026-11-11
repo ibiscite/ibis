@@ -13,11 +13,11 @@ function Example({ projects = () => undefined }: { projects?: () => void }) {
 
 test("the selected project stays visible and the format menu explains where changes go", () => {
   render(<Example />);
-  const format = screen.getByRole("button", { name: /^Copy as .*Thesis$/ });
+  const format = screen.getByRole("button", { name: /^Citation format .*Thesis$/ });
   expect(format.textContent).toContain("Thesis");
   expect(format.textContent).not.toContain("Example Browser");
   fireEvent.click(format);
-  expect(screen.getByRole("menu").textContent).toContain("New writing…");
+  expect(screen.getByRole("dialog").textContent).toContain("New writing…");
   expect(screen.getAllByText(/Saved for .*Thesis/).length).toBeGreaterThan(0);
   expect(screen.getByText(/Your pick changes this writing’s format/)).toBeTruthy();
 });
@@ -25,8 +25,8 @@ test("the selected project stays visible and the format menu explains where chan
 test("Writings opens its sheet without choosing a citation format", () => {
   const projects = vi.fn();
   render(<Example projects={projects} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "New writing…" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+  fireEvent.click(screen.getByRole("option", { name: "New writing…" }));
   expect(projects).toHaveBeenCalledOnce();
-  expect(screen.queryByRole("menu")).toBeNull();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });

@@ -28,7 +28,7 @@ try {
     const errors = [], resizes = [];
     // Exit must finish even if a modal temporarily hides the old menu from ARIA.
     const moreMenu = page.getByRole("menu", { name: "More", exact: true, includeHidden: true });
-    const formatMenu = page.getByRole("menu", { name: /^Copy as/, includeHidden: true });
+    const formatMenu = page.getByRole("menu", { name: /^Citation format/, includeHidden: true });
     const keysDialog = page.getByRole("dialog", { name: "Keyboard Shortcuts", exact: true });
     page.setDefaultTimeout(5000);
     page.on("pageerror", (error) => errors.push(error.message));
@@ -265,7 +265,7 @@ try {
     assert.deepEqual(page.viewportSize(), frame, "the keys sheet keeps the opening frame");
     await keysDialog.press("Escape");
     await keysDialog.waitFor({ state: "detached" });
-    await page.getByRole("button", { name: /^Copy as/ }).click();
+    await page.getByRole("button", { name: /^Citation format/ }).click();
     await formatMenu.waitFor();
     await dismissMenu(formatMenu, page.getByRole("searchbox", { name: "Filter formats", exact: true }));
     assert.deepEqual(page.viewportSize(), frame, "the format pop-up keeps the opening frame");

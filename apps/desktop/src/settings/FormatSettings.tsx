@@ -3,7 +3,7 @@ import type { FormatSettingsView } from "../bindings";
 import { outputName, listedOutput } from "../format/outputs";
 import { useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
-import { SettingsGroup as Group, SettingsRow as Row } from "../ui/SettingsGroup";
+import { Group, Row, Section } from "../ui/Layout";
 import type { SettingsApi } from "./api";
 
 /** App choices and writings come from the engine's settings snapshot. A late
@@ -38,18 +38,18 @@ export function FormatSettings({ api, onKeyVisibility }: { api: SettingsApi; onK
     }, () => { if (ticket === request.current) setProblem(true); }).finally(() => setBusy(false));
   };
   return <>
-    {view && view.apps.length > 0 && <Group id="remembered-formats" title={text("citations-apps")}>
+    {view && view.apps.length > 0 && <Section id="remembered-formats" title={text("citations-apps")}><Group>
       {view.apps.map((app) => <Row key={app.id} id={`format-${app.id}`} label={app.app} description={listedOutput(app.format) ? outputName(listedOutput(app.format)!) : text("citations-unlisted")} changed>
         <Button isDisabled={busy} onPress={() => forget(app.id)}>{text("citations-forget")}</Button>
       </Row>)}
-    </Group>}
-    {view && view.writings.length > 0 && <Group id="saved-writings" title={text("citations-writings")}>
+    </Group></Section>}
+    {view && view.writings.length > 0 && <Section id="saved-writings" title={text("citations-writings")}><Group>
       {view.writings.map((writing) => <Row key={writing.id} id={`writing-${writing.id}`} label={writing.name}
         description={`${listedOutput(writing.output) ? outputName(listedOutput(writing.output)!) : text("citations-unlisted")}${writing.bibliography ? ` · ${writing.bibliography}` : ""}`} />)}
-    </Group>}
-    {api.openSettingsFile && <Group id="settings-file"><Row id="open-settings-file" label={text("settings-open-file")} description={text("settings-file-description")}>
+    </Group></Section>}
+    {api.openSettingsFile && <Section id="settings-file"><Group><Row id="open-settings-file" label={text("settings-open-file")} description={text("settings-file-description")}>
       <Button onPress={() => { void api.openSettingsFile!().catch(() => setProblem(true)); }}>{text("settings-open-file")}</Button>
-    </Row></Group>}
+    </Row></Group></Section>}
     {problem && <p role="alert">{text("settings-read-failed")}</p>}
   </>;
 }

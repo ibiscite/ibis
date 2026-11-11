@@ -6,18 +6,18 @@ import { App } from "./App";
 import type { PickerDestination } from "./api";
 import { isStyle, listedOutput } from "./format/outputs";
 import { OUTPUTS } from "./bindings";
-import { backend, prepared, resetApp, result, type PreviewRequest } from "./testing/app";
+import { backend, prepared, resetApp, result, type PreviewRequest, toggleKeepOpen } from "./testing/app";
 
 afterEach(resetApp);
 const WORD: PickerDestination = fixtureDestination({ app: "Example Word", app_id: "example.word", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("apa", "suggestion") });
 const BROWSER: PickerDestination = fixtureDestination({ app: "Example Browser", app_id: "example.browser", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") });
-const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Copy as / });
-const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Copy as ".length);
+const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
+const formatShown = () => formatButton().getAttribute("aria-label")!.slice("Citation format ".length);
 const openFormats = () => { if (formatButton().getAttribute("aria-expanded") !== "true") fireEvent.click(formatButton()); };
 async function pick(name: string) {
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
-  fireEvent.click(screen.getByRole("menuitemradio", { name }));
+  fireEvent.click(screen.getByRole("option", { name }));
 }
 const refuseSave = () => { throw new Error("synthetic save failure"); };
 function opened(destination: () => PickerDestination, overrides: Parameters<typeof backend>[0] = {}) {
@@ -81,9 +81,9 @@ test("a pick that cannot be saved says it is for this paste, then the saved form
   expect((await screen.findByText(/could not save the choice for this app/)).getAttribute("role")).toBe("alert");
   openFormats();
   expect(screen.getByText("Typst applies to this paste only. Pick a format to remember it for this app.")).toBeTruthy();
-  fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   await waitFor(() => expect(previews.at(-1)).toMatchObject({ output: "typst" }));
-  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   await copy(previews, copies);
   await waitFor(() => expect(formatShown()).toBe("LaTeX \\cite · Example Browser"));
   expect(calls).not.toContain("picker_preferences_saved");
@@ -126,10 +126,10 @@ test("the menu says why the next paste uses its format and where a pick goes", a
     await waitFor(() => expect(formatShown()).toBe(shown));
     await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
     openFormats();
-    const menu = await screen.findByRole("menu");
+    const menu = await screen.findByRole("dialog");
     expect(screen.getByText(note).id).toBe(menu.getAttribute("aria-describedby"));
-    fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   };
   await says("APA · Example Word", "Suggested for Example Word. Your pick is remembered for this app.");
   destination = fixtureDestination({ ...WORD, format: formatAnswer("typst", "app") });
@@ -146,9 +146,9 @@ test("an unreadable per-app file says defaults apply and offers the app's own pa
   expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy Only in the format menu");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
-  expect(await screen.findByRole("menuitem", { name: "Copy Only" })).toBeTruthy();
-  expect(screen.getByRole("menuitem", { name: "Paste into Example Word from Now On" })).toBeTruthy();
-  fireEvent.keyDown(await screen.findByRole("searchbox"), { key: "Escape" });
+  expect(await screen.findByRole("option", { name: "Copy Only" })).toBeTruthy();
+  expect(screen.getByRole("option", { name: "Paste into Example Word from Now On" })).toBeTruthy();
+  fireEvent.keyDown(await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ }), { key: "Escape" });
   expect(calls).not.toContain("remember_app_output");
 });
 
@@ -191,7 +191,7 @@ test("a successful copy consumes a held format even after the highlighted row ch
     },
   });
   await screen.findByText("First");
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await pick("Typst");
   await waitFor(() => expect(formatShown()).toBe("Typst · This paste"));
   const search = screen.getByLabelText("Search references");
@@ -210,9 +210,9 @@ test("one format shortcut opens the formats without copying or changing any defa
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   expect(formatButton().getAttribute("aria-keyshortcuts")).toBe("Control+Shift+F");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "F", ctrlKey: true, shiftKey: true });
-  const menu = await screen.findByRole("menu");
+  const menu = await screen.findByRole("dialog");
   expect(within(menu).queryByRole("menuitemcheckbox")).toBeNull();
-  expect(within(menu).getAllByRole("menuitemradio")).toHaveLength(OUTPUTS.length);
+  expect(within(menu).getAllByRole("option").filter((row) => row.closest('[aria-label="Recent"], [aria-label="Key formats"], [aria-label="Citation styles"]'))).toHaveLength(OUTPUTS.length);
   expect(calls).not.toContain("copy_file_citation");
   expect(calls).not.toContain("picker_preferences_saved");
   expect(remembered).toEqual([]);
@@ -223,7 +223,7 @@ test("an unrelated Settings refresh does not extend a held format", async () => 
   const copying = new Promise((done) => { finish = done; });
   const { calls } = opened(() => (fixtureDestination({ ...BROWSER, format: formatAnswer("cite", "app") })), { copy_file_citation: () => copying, remember_app_output: refuseSave });
   await screen.findByText("First");
-  fireEvent.click(screen.getByRole("button", { name: "Keep Window Open" }));
+  await toggleKeepOpen();
   await pick("Typst");
   await waitFor(() => expect(formatShown()).toBe("Typst · This paste"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });

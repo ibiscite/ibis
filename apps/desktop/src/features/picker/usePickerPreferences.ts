@@ -10,9 +10,9 @@ type PreferencesApi = Pick<typeof nativeApi, "pickerPreferences" | "savePickerPr
 
 export function usePickerPreferences(
   { pickerPreferences, savePickerPreferences, pickerPreferencesSaved, quit }: PreferencesApi,
-  { styles, report, perform, presentation }: {
+  { styles, report, perform }: {
     /** Immutable picker visibility identity; old feedback never enters a new presentation. */
-    presentation: number;
+    presentation?: number;
     /** Whether formatted citation styles can be offered. */
     styles: boolean;
     report: (operation: Operation, failed?: boolean) => void;
@@ -27,7 +27,6 @@ export function usePickerPreferences(
   const [format, setFormat] = useState<OutputId>(defaultOutput);
   const formatField = useRef<"output" | "key_output">("output");
   const [density, setDensity] = useState<Density>("comfortable");
-  const [densityFeedback, setDensityFeedback] = useState<{ presentation: number; density: Density } | null>(null);
   const [largerText, setLargerText] = useState(false);
   const [queue] = useState(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await pickerPreferences().catch(() => null) }),
@@ -38,8 +37,6 @@ export function usePickerPreferences(
     setSmallSurprises(value.small_surprises ?? true);
     setRecentCitations(value.recent_citations ?? true);
     setDensity(value.density);
-    // A silent external view change retires its label so the next user choice can repeat it.
-    setDensityFeedback((current) => current?.density === value.density ? current : null);
     setLargerText(value.larger_text);
   }, []);
   useEffect(() => queue.subscribe((event) => {
@@ -75,16 +72,6 @@ export function usePickerPreferences(
     setFormat(output);
     return savePreferences(isStyle(output) ? { output } : { key_output: output });
   };
-  const changeDensity = (next: Density) => {
-    if (next === density) return;
-    setDensity(next);
-    setDensityFeedback({ presentation, density: next });
-    savePreferences({ density: next });
-  };
-  const toggleLargerText = () => {
-    setLargerText(!largerText);
-    savePreferences({ larger_text: !largerText });
-  };
   useEffect(() => {
     document.documentElement.dataset.density = density;
     document.documentElement.dataset.textSize = largerText ? "larger" : "normal";
@@ -99,5 +86,5 @@ export function usePickerPreferences(
   /** A choice saved in Settings: older replies and failed choices of its fields give way, then the picker reads. */
   const preferencesChanged = (revision: number | undefined, fields: string[] | undefined, mounted: () => boolean) => { void queue.refresh(revision ?? -1, mounted, fields); };
 
-  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, densityAnnouncement: densityFeedback?.presentation === presentation ? densityFeedback.density : undefined, largerText, chooseFormat, changeDensity, toggleLargerText, quitAfterSaving, loadPreferences };
+  return { preferencesChanged, ready, available, smallSurprises, recentCitations, format, density, largerText, chooseFormat, quitAfterSaving, loadPreferences };
 }

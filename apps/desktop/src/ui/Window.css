@@ -1,0 +1,78 @@
+/* The picker window (ui/Window.css): the page's base and the window's frame, its
+   bands (search, the middle scroller with notices and results, shelf, footer) and
+   their insets. The screens fill these bands; their spacing lives here. */
+@import "../tokens.css";
+@import "./Material.css";
+
+:root { font-synthesis: none; font-family: var(--font); color: var(--text); background: var(--surface); }
+
+* { box-sizing: border-box; }
+body { margin: 0; overflow: hidden; }
+button, input, select { font: inherit; color: inherit; }
+/* No glow, no edge rings (docs/design.md rule 8): the one ring is keyboard
+   focus (:focus-visible), 2 px with a 1 px gap, in the system accent. Contrast
+   and forced colours make it a solid CanvasText ring. Menu rows show a fill instead
+   (Menu.css): a ring there is clipped by the list and covers its neighbours.
+   Something only the app focuses (a sheet, a list, tabindex -1) never shows one. */
+:focus-visible:not(.ui-button, .menu-item, [tabindex="-1"]) { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); box-shadow: none; }
+main {
+  height: 100dvh;
+  container-type: inline-size;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+/* The inspector opens beside the list, in the middle row only. */
+main:has(> .picker-content) {
+  display: grid;
+  grid-template: "search search" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
+}
+/* The frame is native-owned. These bands retain their full control targets. */
+main > .shelf { grid-area: shelf; }
+main > footer { grid-area: footer; }
+
+.results-area { flex: 1; min-height: 0; margin-block: var(--inset); padding-inline: var(--inset); }
+
+.notices:empty { display: none; }
+.notices { padding: 0 calc(var(--inset) + var(--row-pad)); overflow-wrap: anywhere; }
+.notices p { margin: var(--space-3) 0; }
+.copy-notice { display: flow-root; padding-bottom: var(--space-2); }
+.dismiss { float: right; margin: var(--space-2) 0 var(--space-2) var(--space-2); }
+
+@media (max-width: 460px) {
+  .results-area { flex: none; overflow: visible; }
+}
+/* Notices and results share one middle scroller. Search, shelf and footer are
+   separate bands; the inspector sits beside the list and grows none of them. */
+.picker-content { grid-area: middle; position: relative; display: flex; flex-direction: column; align-items: stretch; min-width: 0; min-height: var(--type-label-line); overflow: auto; overscroll-behavior: contain; container-type: size; }
+/* Notices keep their full content height and scroll with the middle region. */
+.picker-content > .notices { flex: none; }
+/* Notices have no height bound. Share their scroll owner instead of reserving
+   a nested results viewport that the notice and shelf can push out of view. */
+.picker-content:has(> .notices:not(:empty)) > .results-area { flex: none; min-height: 0; overflow: visible; }
+/* Below room for a heading and useful result rows, share the middle viewport.
+   The shelf is a separate band and no longer contributes to this threshold. */
+@container (max-height: 8rem) {
+  .picker-content > .results-area { flex: none; min-height: 0; overflow: visible; }
+}
+/* Setup/recovery/hints always contribute their whole natural height. */
+.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
+
+/* Remembered picker preferences (ADR 0020). */
+:root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
+
+/* The viewport never adds a second scrollbar: short-window content scrolls
+   between the full-height search and footer controls. */
+@media (max-height: 400px) {
+  main { height: 100dvh; min-height: 0; overflow: hidden; }
+  main > .picker-content .results-area { flex: none; min-height: 0; overflow: visible; }
+}
+
+/* The notices band. */
+/* Full refusal text belongs to the middle scroller, beside the one-line shelf.
+   It must contribute its natural height, including at 200% text. */
+.notices { min-width: 0; inline-size: 100%; align-self: stretch; box-sizing: border-box; font: var(--type-body-size) / var(--type-body-line) var(--font); }
+.picker-content:has(> .notices > .citation-problem) { overflow-anchor: none; scroll-behavior: auto; }
+.notices > .citation-problem { min-width: 0; inline-size: 100%; max-inline-size: 100%; box-sizing: border-box; max-block-size: none; white-space: normal; overflow: visible; overflow-wrap: anywhere; user-select: text; }
+.project-context-status { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin-block: var(--space-2); }
+.project-context-status > .project-context-message { flex: 1 1 var(--status-min); min-width: 0; margin: 0; overflow-wrap: anywhere; }

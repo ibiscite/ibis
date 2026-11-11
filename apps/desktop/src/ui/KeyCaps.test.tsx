@@ -1,8 +1,8 @@
 import { cleanup, render } from "@testing-library/react";
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, test, vi, onTestFinished } from "vitest";
 import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
-import { MoreMenu } from "../features/picker/MoreMenu";
+import { PickerMenu } from "../features/picker/PickerMenu";
 import { KeysDialog } from "../features/picker/KeysDialog";
 import { setPlatform } from "../nativeAppearance";
 
@@ -30,7 +30,8 @@ test("footer and More pair actual system keys with their accessible shortcuts", 
   vi.spyOn(navigator, "platform", "get").mockReturnValue("MacIntel");
   const footer = () => <PickerFooter library={null} groupName={() => ""} hints={{ enter: "Copy", shiftEnter: "Add", escape: "Hide" }} altHeld={false}
     actions={{ copy: vi.fn(), add: vi.fn(), escape: vi.fn() }}
-    more={<MoreMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} keys="CmdOrCtrl+K">{null}</MoreMenu>} />;
+    more={<PickerMenu isOpen={false} onOpenChange={vi.fn()} buttonRef={{ current: null }} searchRef={{ current: null }} libraryDetail={null} pinned={false} keepOrder={null}
+      actions={{ pin: vi.fn(), keys: vi.fn(), settings: null, format: null, chooseSource: vi.fn(), revealSource: null, quit: vi.fn() }} />} />;
   setPlatform("Win32");
   const { container, rerender } = render(footer());
   const check = (more: string, moreCaps: string[], copyCap: string) => {
@@ -85,10 +86,14 @@ test("keys read left to right in a right-to-left page, as the systems print them
 test("the shortcuts list keeps native chords unbroken and left-to-right in a wrapping cell", () => {
   const capRule = readFileSync(new FileURL("./KeysSheet.css", import.meta.url), "utf8");
   const sharedCaps = readFileSync(new FileURL("./KeyCaps.css", import.meta.url), "utf8");
-  const { container } = render(<><style>{capRule + sharedCaps}</style><div dir="rtl" style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}><KeysDialog bindings={[
+  // The sheet is a view of the window, so the window's own direction and wrapping reach it.
+  document.body.dir = "rtl";
+  Object.assign(document.body.style, { whiteSpace: "normal", overflowWrap: "anywhere" });
+  onTestFinished(() => { document.body.removeAttribute("dir"); document.body.removeAttribute("style"); });
+  render(<><style>{capRule + sharedCaps}</style><KeysDialog bindings={[
     { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
-  ]} isMac onClose={vi.fn()} /></div></>);
-  const cap = container.querySelector("kbd")!;
+  ]} isMac onClose={vi.fn()} /></>);
+  const cap = document.querySelector("kbd")!;
   expect(cap.textContent).toBe("⇧⌘P");
   expect(getComputedStyle(cap.closest(".key-caps")!).direction).toBe("ltr");
   expect(cap.closest("[aria-keyshortcuts]")?.getAttribute("aria-keyshortcuts")).toBe("Meta+Shift+P");

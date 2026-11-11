@@ -5,7 +5,7 @@ import { Button } from "../../ui/Button";
 import { PageStrip } from "../../ui/PageStrip";
 import { confirmOffset, formatPages, parsePages } from "./pages";
 import type { PageSource } from "./source";
-import "./Reader.css";
+import "../../ui/Reader.css";
 import "../../ui/Overlay.css";
 
 /** A reference's pages beside its details (decision 0038): thumbnails, the

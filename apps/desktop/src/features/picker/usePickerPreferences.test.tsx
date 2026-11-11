@@ -58,7 +58,7 @@ test("a global key choice during a stale Settings read wins and sends only its f
   expect(setPickerPreferences).toHaveBeenCalledWith({ key_output: "cite" }, 1);
 });
 
-test("a queued view save never replays an output acknowledged before it reaches the native lock", async () => {
+test("a queued key-format save never replays a style acknowledged before it reaches the native lock", async () => {
   const output = deferred<{ preferences: PickerPreferences }>();
   const setPickerPreferences = vi.fn()
     .mockImplementationOnce(() => output.promise)
@@ -70,10 +70,10 @@ test("a queued view save never replays an output acknowledged before it reaches 
     pickerPreferences: async () => ({ ...preferences, output: "apa" }), ...owner(setPickerPreferences), quit: async () => undefined }, context));
   await act(async () => { result.current.loadPreferences(() => true); });
   act(() => { void result.current.chooseFormat("chicago-author-date"); });
-  act(() => result.current.toggleLargerText());
+  act(() => { void result.current.chooseFormat("cite"); });
   await act(async () => { output.resolve({ preferences: { ...preferences, output: "chicago-author-date" } }); });
-  expect(setPickerPreferences.mock.calls[1]).toEqual([{ larger_text: true }, 2]);
-  expect(result.current.format).toBe("ieee");
+  expect(setPickerPreferences.mock.calls[1]).toEqual([{ key_output: "cite" }, 2]);
+  expect(result.current.format).toBe("cite");
 });
 
 test("a failed later output stays applied in the picker and is never sent again", async () => {
@@ -96,9 +96,7 @@ test("a failed later output stays applied in the picker and is never sent again"
   await act(async () => { first.resolve(); });
   expect(writes).toBe(3);
   expect(state.output).toBe("ieee");
-  await act(async () => { result.current.toggleLargerText(); });
-  // The next choice carries only its own field: the saved IEEE is never written over later.
-  expect(setPickerPreferences.mock.calls.at(-1)?.[0]).toEqual({ larger_text: true });
-  expect(state.output).toBe("ieee");
+  // The failed choice stays applied here, and nothing sends it again.
   expect(result.current.format).toBe("typst");
+  expect(setPickerPreferences).toHaveBeenCalledTimes(3);
 });

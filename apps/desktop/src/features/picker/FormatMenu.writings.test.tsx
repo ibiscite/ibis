@@ -15,16 +15,16 @@ function Example({ writing, reset }: { writing?: string; reset: () => void }) {
 test("the app format offers to use the usual format again", () => {
   const reset = vi.fn();
   render(<Example reset={reset} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Use APA in Word again" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+  fireEvent.click(screen.getByRole("option", { name: "Use APA in Word again" }));
   expect(reset).toHaveBeenCalledOnce();
 });
 
 test("a writing offers to stop using it in the captured app", () => {
   const reset = vi.fn();
   render(<Example writing="Thesis" reset={reset} />);
-  fireEvent.click(screen.getByRole("button", { name: /^Copy as/ }));
-  fireEvent.click(screen.getByRole("menuitem", { name: "Stop using Thesis in Word" }));
+  fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
+  fireEvent.click(screen.getByRole("option", { name: "Stop using Thesis in Word" }));
   expect(reset).toHaveBeenCalledOnce();
   expect(screen.queryByText("Use APA in Word again")).toBeNull();
 });

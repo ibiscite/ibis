@@ -15,24 +15,26 @@ test("the keys sheet presents compact groups with shared key caps and leaves out
   expect(within(dialog).queryByText("Go to the first or last item")).toBeNull();
 });
 
-test("the keys sheet keeps its focus cycle and closes with Escape or its backdrop", () => {
+test("the keys sheet keeps its focus cycle and closes with Escape or Back", () => {
   const onClose = vi.fn();
   const view = render(<KeysDialog bindings={KEY_TABLE} isMac onClose={onClose} />);
-  const dialog = screen.getByRole("dialog"), close = within(dialog).getByRole("button", { name: "Close" });
+  const dialog = screen.getByRole("dialog"), close = within(dialog).getByRole("button", { name: "Back" });
+  const body = within(dialog).getByRole("group", { name: "Keyboard Shortcuts" });
   expect(document.activeElement).toBe(dialog);
+  // The body, then Back in the footer, and round again.
   fireEvent.keyDown(dialog, { key: "Tab" });
+  expect(document.activeElement).toBe(body);
+  fireEvent.keyDown(body, { key: "Tab" });
   expect(document.activeElement).toBe(close);
   fireEvent.keyDown(close, { key: "Tab" });
-  expect(document.activeElement).toBe(within(dialog).getByRole("group", { name: "Keyboard Shortcuts" }));
-  fireEvent.keyDown(document.activeElement!, { key: "Tab" });
+  expect(document.activeElement).toBe(body);
+  fireEvent.keyDown(body, { key: "Tab", shiftKey: true });
   expect(document.activeElement).toBe(close);
-  fireEvent.keyDown(close, { key: "Tab", shiftKey: true });
-  expect(document.activeElement).not.toBe(close);
   fireEvent.keyDown(document.activeElement!, { key: "Escape" });
   expect(onClose).toHaveBeenCalledTimes(1);
   fireEvent.pointerDown(dialog);
   expect(onClose).toHaveBeenCalledTimes(1);
-  fireEvent.pointerDown(view.container.firstElementChild!);
+  fireEvent.click(close);
   expect(onClose).toHaveBeenCalledTimes(2);
   view.unmount();
   render(<KeysDialog bindings={KEY_TABLE} isMac onClose={onClose} />);

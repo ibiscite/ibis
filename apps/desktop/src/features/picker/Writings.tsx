@@ -4,7 +4,8 @@ import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
-import { Sheet, SheetButtons, SheetList, SheetRow, SheetSection } from "../../ui/Sheet";
+import { Buttons, ChoiceRow, Group, Note, Row, Section } from "../../ui/Layout";
+import { Sheet, SheetStatus } from "../../ui/Sheet";
 import { listedOutput, outputName, type OutputId } from "../../format/outputs";
 
 export type WritingsApi = {
@@ -100,61 +101,61 @@ export function WritingsDialog({ api, format, onClose }: { api: WritingsApi; for
     void action().then(read, (error) => { if (alive.current) setProblem(failure(error, say("writing-bibliography-not-saved"))); });
   };
   const selected = view?.active;
-  const selectedFormat = selected ? listedOutput(selected.output) : null;
   const saveName = () => {
     if (!form || form.kind === "remove" || !form.name.trim() || busy) return;
     edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: format }
       : { kind: "rename", id: form.id, name: form.name.trim() });
   };
-  return <Sheet title={say("writing-title")} closeLabel={say("writing-close")} description={say("writing-about")} busy={busy} onClose={close}>
-        {view?.session_only && <p className="ui-sheet-note">{say("writing-session-only")}</p>}
+  const selectedFormat = selected && listedOutput(selected.output);
+  const creating = !form && view ? [{ label: say("writing-create"), disabled: busy, onPress: () => { setProblem(null); setForm({ kind: "new", name: "" }); } }] : undefined;
+  return <Sheet title={say("writing-title")} closeLabel={say("writing-close")} description={say("writing-about")} busy={busy} onClose={close}
+    leadingActions={creating}>
+        {view?.session_only && <p>{say("writing-session-only")}</p>}
         {!view && !problem && <p role="status">{say("writing-loading")}</p>}
         {view && <>
-          <Button label={say("writing-none")} aria-pressed={view.selected === null} data-selected={view.selected === null || undefined} isDisabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
           {view.writings.length === 0 && <p>{say("writing-empty")}</p>}
-          <SheetList label={say("writing-title")}>
+          <Group label={say("writing-title")}>
+            <ChoiceRow label={say("writing-none")} selected={view.selected === null} disabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
             {view.writings.map((project) => {
               const choice = listedOutput(project.output);
-              return <SheetRow key={project.id}>
-                <Button label={project.name} aria-label={say("writing-use", { name: project.name })} aria-pressed={project.id === view.selected}
-                  data-selected={project.id === view.selected || undefined}
-                  isDisabled={busy || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />
-                {project.id === view.selected && <span className="ui-sheet-note">{say("writing-selected-label")}</span>}
-                <span className="ui-sheet-note" dir="auto">{choice ? outputName(choice) : say("writing-unsupported")}</span>
-              </SheetRow>;
+              return <ChoiceRow key={project.id} label={project.name} accessibleLabel={say("writing-use", { name: project.name })}
+                description={choice ? outputName(choice) : say("writing-unsupported")} selected={project.id === view.selected}
+                disabled={busy || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />;
             })}
-          </SheetList>
-          {selected && <SheetSection label={say("writing-selected")} heading={<h3 dir="auto">{selected.name}</h3>}>
-            {selectedFormat && <p>{say("writing-format", { name: outputName(selectedFormat) })}</p>}
-            <p dir="auto">{selected.bibliography ? say("writing-bibliography", { name: selected.bibliography }) : say("writing-no-bibliography")}</p>
-            <SheetButtons>
-              {api.chooseProject && <Button label={say("writing-choose-bibliography")} isDisabled={busy} onPress={() => bibliography(api.chooseProject)} />}
-              {selected.bibliography && api.stopProject && <Button label={say("writing-remove-bibliography")} isDisabled={busy} onPress={() => bibliography(api.stopProject)} />}
+          </Group>
+          {selected && <Section label={say("writing-selected")} title={selected.name} level={3}>
+            {selectedFormat && <Note>{say("writing-format", { name: outputName(selectedFormat) })}</Note>}
+            <Group label={say("writing-selected")}>
+              <Row item label={selected.bibliography ? say("writing-bibliography", { name: selected.bibliography }) : say("writing-no-bibliography")}>
+                {api.chooseProject && <Button size="small" label={say("writing-choose-bibliography")} isDisabled={busy} onPress={() => bibliography(api.chooseProject)} />}
+                {selected.bibliography && api.stopProject && <Button size="small" label={say("writing-remove-bibliography")} isDisabled={busy} onPress={() => bibliography(api.stopProject)} />}
+              </Row>
+            </Group>
+            <Buttons>
               <Button label={say("writing-rename")} isDisabled={busy} onPress={() => setForm({ kind: "rename", id: selected.id, name: selected.name })} />
               <Button label={say("writing-remove")} isDisabled={busy} onPress={() => setForm({ kind: "remove", id: selected.id, name: selected.name })} />
-            </SheetButtons>
-          </SheetSection>}
-          {!form && <Button label={say("writing-create")} isDisabled={busy} onPress={() => { setProblem(null); setForm({ kind: "new", name: "" }); }} />}
+            </Buttons>
+          </Section>}
         </>}
-        {form && <div>
+        {form && <Section label={form.kind === "remove" ? say("writing-remove") : say("writing-name")}>
           {form.kind === "remove" ? <>
             <p>{say("writing-remove-question", { name: isolate(form.name) })}</p>
-            <SheetButtons>
+            <Buttons>
               <Button label={say("writing-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
               <Button label={say("writing-confirm-remove")} isDisabled={busy} onPress={() => edit({ kind: "remove", id: form.id })} />
-            </SheetButtons>
-          </> : <form onSubmit={(event) => { event.preventDefault(); saveName(); }}>
+            </Buttons>
+          </> : <form className="ui-section" onSubmit={(event) => { event.preventDefault(); saveName(); }}>
             <TextField label={say("writing-name")} value={form.name} maxLength={80} isDisabled={busy} autoFocus onChange={(name) => setForm({ ...form, name })} />
-            {form.kind === "new" && <p className="ui-sheet-note">{say("writing-starts-with", { format: outputName(format) })}</p>}
-            <SheetButtons>
+            {form.kind === "new" && <Note>{say("writing-starts-with", { format: outputName(format) })}</Note>}
+            <Buttons>
               <Button label={say("writing-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
               <Button variant="primary" label={form.kind === "new" ? say("writing-confirm-create") : say("writing-save-name")} isDisabled={busy || !form.name.trim()} onPress={saveName} />
-            </SheetButtons>
+            </Buttons>
           </form>}
-        </div>}
-        <div className="ui-sheet-status">
+        </Section>}
+        <SheetStatus>
           {busyVisible && <Progress label={say("writing-saving")} />}
           {problem && <p role="alert">{problem}</p>}
-        </div>
+        </SheetStatus>
   </Sheet>;
 }
