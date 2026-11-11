@@ -90,6 +90,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
   - **Briefs:** never overwrite a file, repeat the reference for each passage, treat the question as literal text, and stay readable without Ibis or Zotero.
   - **Testing:** check with real Zotero users and bibliography-only users that they can tell a quote from a comment, and with someone who reads a brief without Ibis.
 - **Add a note instead of a citation** ([#55](https://github.com/ibiscite/ibis/issues/55)), like Zotero's Add Note.
+- **Changed-key warning** (maintainer, 2026-11-11: important; design the UX and edge cases first): warn when a key you cited before now belongs to a renamed or changed item. Warn only when the same item is provable (a plain `.bib` rename can't be tracked); remember a key only after its copy succeeded; offer a way to forget a remembered key.
 - **Is this in my library?** for a pasted identifier or reference list; results say whether a reference has a PDF or a saved web page.
 
 ### 0.6 Your document
@@ -98,7 +99,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
-- Opt-in DOI lookup for references not in the library (network decision first).
+- **Opt-in online lookup** (maintainer, 2026-11-11): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
 
 ### 0.7 Everywhere you work
 
@@ -109,6 +110,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - A library on another computer over the person's own SSH ([#1542](https://github.com/ibiscite/ibis/issues/1542)).
 - Adding a missing item to Zotero through its official local write API (opt-in, decided first).
 - More translations; EndNote XML and Word Sources.xml files; ARM64 builds; search by meaning.
+- **Annotations from other reference managers** (maintainer, 2026-11-11: support as many apps and systems as possible): Paperpile, JabRef, BibDesk/Skim, EndNote, Mendeley and Citavi, each read from the manager's own data, since `.bib` and RIS carry no annotations.
 
 ### 1.0 Stable
 
