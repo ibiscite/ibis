@@ -254,6 +254,7 @@ impl FileLibrary {
             keep_order: false,
             output: OutputSpec::Csl { style: style.into() },
             input_language: None,
+            strict: false,
             output_locale: None,
         };
         let citation = self
@@ -682,7 +683,7 @@ impl FileLibrary {
         }
         Ok(project
             .filter(|_| citation.uses_citation_keys())
-            .map(|project| citation.project_evidence(&project.read, ibis_engine::ProjectPolicy::Normal)))
+            .map(|project| citation.project_evidence(&project.read)))
     }
 
     pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
@@ -809,6 +810,7 @@ impl FileLibrary {
             output: output.clone(),
             form: CitationForm::Normal,
             input_language: None,
+            strict: false,
             output_locale: None,
         };
         if let Some(editor) = editor {

@@ -3,6 +3,7 @@ name: CI
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
   merge_group:
   # Pushes to main reuse the queue's run, so this daily run on main is what
@@ -10,6 +11,7 @@ on:
   # main's caches from expiring.
   schedule:
     - cron: "17 5 * * *"
+    - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
 # On a pull request, a newer push cancels the run in progress. On main, a run
@@ -230,6 +232,17 @@ jobs:
       - name: Install web dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Choose Ubuntu package cache (web)
+        id: apt
+        working-directory: .
+        run: bash scripts/ci-ubuntu-deps.sh cache-key web >> "$GITHUB_OUTPUT"
+
+      - name: Cache Ubuntu package downloads (web)
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-ubuntu-24.04-web-${{ steps.apt.outputs.key }}
+
       # Every script test, as scripts/check.mjs runs them locally.
       - name: Script tests
         working-directory: .
@@ -287,10 +300,26 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Prepare Ubuntu package cache (Linux)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        id: apt
+        run: |
+          sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
+          bash scripts/ci-ubuntu-deps.sh cache-key desktop >> "$GITHUB_OUTPUT"
+
+      - name: Cache Ubuntu package downloads (desktop)
+        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
+        with:
+          path: /var/cache/apt/archives
+          key: apt-ubuntu-24.04-desktop-${{ steps.apt.outputs.key }}
+
       - name: Install system WebView libraries (Linux)
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
         working-directory: .
-        run: scripts/ci-ubuntu-deps.sh desktop
+        run: |
+          bash scripts/ci-ubuntu-deps.sh desktop
+          sudo chmod -R a+rX /var/cache/apt/archives
 
       - name: Check generated brand assets (Linux)
         if: env.NATIVE == 'true' && runner.os == 'Linux'
@@ -443,6 +472,9 @@ jobs:
     name: Dependency policy and commit identities
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write # Only the weekly main run reports advisory failures.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -457,17 +489,55 @@ jobs:
           package-manager-cache: false
 
       - name: Public commit identities
-        run: node scripts/check-agent-identity.mjs
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          node scripts/check-agent-identity.mjs
+          bash scripts/ci-commit-signoffs.sh
 
       - name: Validate workflow expressions
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
         with:
           args: -color -shellcheck= -pyflakes=
 
-      - name: Licenses, advisories, sources
+      - name: Licenses, bans and sources
         uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
         with:
           arguments: --all-features --locked
+          command: check licenses bans sources
+
+      - name: Decide whether advisories block
+        id: advisory_policy
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          SCHEDULE: ${{ github.event.schedule }}
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: bash scripts/ci-advisories.sh policy >> "$GITHUB_OUTPUT"
+
+      - name: RustSec advisories
+        id: advisories
+        timeout-minutes: 5 # A database outage must leave time to report the warning.
+        continue-on-error: true # The next step warns or fails using the path policy.
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          arguments: --all-features --locked
+          command: check advisories
+
+      - name: Report advisory failure
+        if: ${{ !cancelled() && steps.advisories.outcome == 'failure' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          REF: ${{ github.ref }}
+          OUTCOME: ${{ steps.advisories.outcome }}
+          BLOCKING: ${{ steps.advisory_policy.outputs.blocking }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/ci-advisories.sh report
 
   # One check that stands for every required job, for the ruleset to require
   # instead of six names. A matrix job skipped because a job it needs failed

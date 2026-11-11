@@ -112,6 +112,29 @@ const CAPABILITIES_KEY: &str = "io.modelcontextprotocol/clientCapabilities";
 
 /// One message in, at most one message out. Notifications get no answer.
 pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
+    let mut reply = handle_message(engine, session, message)?;
+    // Every reply, including early protocol errors, shares the transport limit.
+    // Count the terminating newline without allocating an oversized serialization.
+    if crate::wire::serialized_size(&reply, MAX_ANSWER - 1).is_err() {
+        if let Some(result) = reply.get_mut("result").filter(|result| result.get("isError").is_some()) {
+            let mut refused = tools::tool_error(
+                ibis_core::contract::EngineError::new(ibis_core::contract::ErrorCode::ResourceLimit).into(),
+            );
+            for field in ["resultType", "_meta"] {
+                if let Some(value) = result.get_mut(field) {
+                    refused[field] = value.take();
+                }
+            }
+            *result = refused;
+        } else {
+            let id = reply.get_mut("id").map(Value::take).unwrap_or(Value::Null);
+            reply = error(id, -32603, "Reply too large");
+        }
+    }
+    Some(reply)
+}
+
+fn handle_message(engine: &Engine, session: &mut Session, message: &Value) -> Option<Value> {
     let Some(object) = message.as_object() else {
         // Batches are not part of this revision.
         return Some(error(Value::Null, -32600, "Invalid Request"));
@@ -119,7 +142,7 @@ pub fn handle(engine: &Engine, session: &mut Session, message: &Value) -> Option
     let id = object.get("id").cloned();
     let valid_id = id
         .as_ref()
-        .is_none_or(|id| id.is_string() || id.is_i64() || id.is_u64());
+        .is_none_or(|id| id.as_str().is_some_and(|id| id.len() <= 1024) || id.is_i64() || id.is_u64());
     let reply_id = id.clone().filter(|_| valid_id).unwrap_or(Value::Null);
     if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
         return Some(error(reply_id, -32600, "Invalid Request"));

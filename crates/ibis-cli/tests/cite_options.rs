@@ -49,6 +49,38 @@ fn picked(key: &str, options: &Value) -> Result<Value> {
 }
 
 #[test]
+fn strict_prints_only_complete_lossless_citations_and_json_errors_have_no_text() -> Result {
+    let (code, text, errors) = run(&["cite", "--strict", "taylor2026"], b"")?;
+    assert_eq!((code, text.as_str(), errors.as_str()), (0, "[@taylor2026]\n", ""));
+    let (code, text, errors) = run(
+        &["cite", "--strict", "--format", "keys", "taylor2026", "--locator", "12"],
+        b"",
+    )?;
+    assert_eq!(code, 3);
+    assert!(text.is_empty());
+    assert!(errors.contains("Strict"), "{errors}");
+    let (code, output, _) = run(
+        &[
+            "cite",
+            "--strict",
+            "--format",
+            "keys",
+            "taylor2026",
+            "--locator",
+            "12",
+            "--json",
+        ],
+        b"",
+    )?;
+    assert_eq!(code, 3);
+    let error: Value = serde_json::from_str(&output)?;
+    assert_eq!(error["ok"], false);
+    assert_eq!(error["error"]["reason"], "strict-citation");
+    assert!(error.get("data").is_none());
+    Ok(())
+}
+
+#[test]
 fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
     let plain = |text: &str| json!([{"text":text,"italic":false,"bold":false,"script":"normal"}]);
     // Each key, the flags typed after it, and the options the picker attaches to that item.
@@ -141,8 +173,20 @@ fn per_key_flags_match_the_picker_request_in_every_output() -> Result {
             let (code, from_flags, _) = run(&human, b"")?;
             let (request_code, from_request, _) =
                 run(&["cite", "--request", "--json"], &serde_json::to_vec(&request)?)?;
-            assert_eq!((code, &from_flags), (request_code, &from_request), "{human:?}");
-            let envelope: Value = serde_json::from_str(&from_flags)?;
+            let mut envelope: Value = serde_json::from_str(&from_flags)?;
+            let mut requested: Value = serde_json::from_str(&from_request)?;
+            // Each CLI invocation performs a separate successful source read.
+            for result in [&mut envelope, &mut requested] {
+                for source in result["data"]["receipt"]["sources"]
+                    .as_array_mut()
+                    .into_iter()
+                    .flatten()
+                {
+                    assert!(source["last_successful_read_ms"].as_u64().ok_or("read time")? > 0);
+                    source["last_successful_read_ms"] = Value::Null;
+                }
+            }
+            assert_eq!((code, &envelope), (request_code, &requested), "{human:?}");
             assert_eq!(envelope["ok"], true, "{human:?}: {from_flags}");
         }
     }

@@ -26,6 +26,7 @@ fn cite(engine: &Engine, style: &str, form: CitationForm) -> CitationResult {
                 keys: vec!["k1".into()],
                 output: OutputSpec::Csl { style: style.into() },
                 form,
+                strict: false,
                 output_locale: None,
                 keep_order: false,
             },

@@ -88,6 +88,12 @@ reason-unknown-format = This file is not in a format Ibis reads: { -library-form
     .cli = Choose another file with --file.
     .agent = Ask the person to choose another file.
     .app = Choose another file.
+reason-duplicate-record = Two records sent with the request have the same id, counting 1 and "1" as one, so Ibis cannot tell which is meant.
+    .cli = Give each record its own id.
+    .agent = Give each record its own id.
+reason-rejected-record = A record sent with the request is not valid CSL-JSON, so Ibis cites none rather than leave it out.
+    .cli = Each record needs an id and a CSL type; fix or remove it.
+    .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
 
 ## A reference a citation could not include. { $reference } names it.
 
@@ -215,6 +221,8 @@ cli-options-refused = Cannot cite { $reference } with { $options } in { $output 
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
+cli-loss-unknown = { $output } changed { $what }{ $target } in a way this version of Ibis can’t name. Check the citation.
+cli-loss-something = part of the citation
 cli-project-without-bibliography = no .bib file
 cli-doctor-about = Check your libraries and settings offline, without writing or sending anything
 cli-doctor-summary = Ibis { $version } · contract { $contract } · { $methods } engine methods, { $outputs } key outputs, { $styles } citation styles
@@ -1215,3 +1223,14 @@ library-more-not-listed =
         [one] 1 more is not listed.
        *[other] { $count } more are not listed.
     }
+reason-strict-citation = Strict mode requires a complete citation without losses or source problems.
+    .cli = Check the reported source or citation options, or retry without --strict to review the findings.
+    .agent = Fix the source or citation options, or ask the user to review an ordinary citation’s findings.
+    .app = Check the source and citation options before trying again.
+
+cli-strict-help = Refuse citations with losses, refusals or source problems
+mcp-strict-help = Refuse losses, refusals or source problems.
+mcp-citation-hidden = This citation contains hidden characters and cannot be returned unchanged. Ask the user to fix the source or choose another output.
+mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
+mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
+mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.

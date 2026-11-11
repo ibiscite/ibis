@@ -13,5 +13,6 @@ pub use model::*;
 mod added;
 pub use added::added_date;
 
+pub(crate) mod response;
 mod schema;
 pub use schema::{GoldenCase, schema};

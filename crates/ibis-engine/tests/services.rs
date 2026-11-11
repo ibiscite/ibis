@@ -29,10 +29,9 @@ fn typed_methods_and_dispatch_share_one_snapshot() {
         })
         .unwrap();
     assert_eq!(shown, *case.library.objects()[0]);
-    assert_eq!(
-        engine.cite(&case.request, &cancel).unwrap(),
-        *case.expected.data().unwrap()
-    );
+    let mut cited = engine.cite(&case.request, &cancel).unwrap();
+    cited.receipt = None; // Formatting seeds predate request-specific evidence.
+    assert_eq!(cited, *case.expected.data().unwrap());
     assert_eq!(engine.libraries().unwrap().libraries.len(), 1);
     assert_eq!(
         engine
@@ -293,6 +292,7 @@ fn human_key_arguments_are_resolved_only_inside_the_engine() {
         keys: vec!["Example2026".into()],
         output: case.request.output,
         form: CitationForm::Normal,
+        strict: false,
         output_locale: None,
         keep_order: false,
     };
