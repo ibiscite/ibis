@@ -26,14 +26,33 @@ without_security() {
     }' "$1"
 }
 
-case ${1:-} in
-  desktop) ;;
-  web) if python3 -c 'import yaml' 2>/dev/null; then exit 0; fi ;;
-  *) echo 'Usage: ci-ubuntu-deps.sh desktop|web' >&2; exit 2 ;;
+profile=${1:-}
+if [ "$profile" = cache-key ]; then profile=${2:-}; fi
+case $profile in
+  desktop)
+    packages=(libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof)
+    ;;
+  web) packages=(python3-yaml) ;;
+  *) echo 'Usage: ci-ubuntu-deps.sh [cache-key] desktop|web' >&2; exit 2 ;;
 esac
+# The cache is stable across runs and changes exactly with this profile's list.
+if [ "$1" = cache-key ]; then
+  printf '%s\n' "${packages[@]}" | sha256sum | awk '{ print "key=" $1 }'
+  exit 0
+fi
+if [ "$profile" = web ] && python3 -c 'import yaml' 2>/dev/null; then exit 0; fi
 sources=${2:-/etc/apt/sources.list.d/ubuntu.sources}
 scratch=$(mktemp -d)
 trap 'rm -rf -- "$scratch"' EXIT
+# Container images otherwise delete downloaded .debs in post-invoke hooks,
+# even when Keep-Downloaded-Packages is true. Override only for these commands.
+cat > "$scratch/keep-downloads.conf" <<'EOF'
+#clear DPkg::Post-Invoke;
+#clear APT::Update::Post-Invoke;
+APT::Keep-Downloaded-Packages "true";
+Binary::apt::APT::Keep-Downloaded-Packages "true";
+EOF
+apt+=(-c "$scratch/keep-downloads.conf")
 without_security "$sources" > "$scratch/ubuntu.sources"
 if ! grep -q '^URIs:' "$scratch/ubuntu.sources"; then
   echo 'Expected the Ubuntu archive in the sources.' >&2
@@ -43,7 +62,6 @@ case $1 in
   desktop)
     # Keep the hosted runner's Azure-first order and its fallback mirrors.
     apt=(sudo "${apt[@]}")
-    packages=(libwebkit2gtk-4.1-dev librsvg2-dev librsvg2-bin fonts-inter libsoup-3.0-dev libjavascriptcoregtk-4.1-dev patchelf xvfb xauth imagemagick fonts-noto-core fonts-noto-cjk xdotool x11-utils openbox xterm python3-pyatspi xclip at-spi2-core iproute2 lsof)
     ;;
   web)
     # Give the pinned container the runner's Azure archive as well. Retain
@@ -53,7 +71,6 @@ case $1 in
       echo 'Expected Ubuntu archive missing from the web container sources.' >&2
       exit 1
     fi
-    packages=(python3-yaml)
     ;;
 esac
 apt+=(-o "Dir::Etc::sourcelist=$scratch/ubuntu.sources" -o Dir::Etc::sourceparts=-)
