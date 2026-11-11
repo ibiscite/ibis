@@ -11,7 +11,7 @@ import { IbisMark } from "../src/ui/IbisMark";
 import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
 import { NoticeSlot, QuietNotice } from "../src/ui/NoticeSlot";
 import { Segmented } from "../src/ui/Segmented";
-import { SettingsGroup, SettingsRow } from "../src/ui/SettingsGroup";
+import { Group, Row, Section as LayoutSection } from "../src/ui/Layout";
 import { ShelfSegment } from "../src/ui/ShelfSegment";
 import { ToolbarMenu } from "../src/ui/ToolbarMenu";
 import { SideResults } from "../src/ui/SideNavigation";
@@ -92,11 +92,11 @@ export function Parts() {
       <State name="count hovered"><Band hovered=".shelf-count">{count}</Band></State>
     </Section>
     <section><h2>Settings rows</h2>
-      <SettingsGroup id="canvas-group" title="Group title">
-        <SettingsRow id="canvas-switch" label="A setting" description="One line that explains it"><Switch aria-label="A setting" isSelected onChange={ignore} /></SettingsRow>
-        <SettingsRow id="canvas-button" label="An action"><Button>Check Now</Button></SettingsRow>
-        <SettingsRow id="canvas-highlight" label="Found by search" highlighted><Button>Reset</Button></SettingsRow>
-      </SettingsGroup>
+      <LayoutSection id="canvas-group" title="Group title"><Group>
+        <Row id="canvas-switch" label="A setting" description="One line that explains it"><Switch aria-label="A setting" isSelected onChange={ignore} /></Row>
+        <Row id="canvas-button" label="An action"><Button>Check Now</Button></Row>
+        <Row id="canvas-highlight" label="Found by search" highlighted><Button>Reset</Button></Row>
+      </Group></LayoutSection>
     </section>
     <section><h2>Choice rows</h2><ChoiceList title="A choice screen" line="One line of context." choices={choices} onChoose={ignore} /></section>
     <section><h2>Notices</h2>

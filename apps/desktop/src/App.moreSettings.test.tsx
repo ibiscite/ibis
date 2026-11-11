@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { SettingsApp } from "./settings/SettingsApp";
 import { settingsApi } from "./settings/api";
-import { backend, chooseFromMore, resetApp, type Handler } from "./testing/app";
+import { backend, resetApp, type Handler } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -84,8 +84,9 @@ test("a hidden picker ignores update availability without showing, checking or s
   await act(async () => { render(<App />); });
   await act(async () => { await emit("update:available", true); await emit("update:automatic", true); });
   expect(document.documentElement.dataset.pickerHidden).toBe("");
-  await chooseFromMore("Rows: Comfortable");
-  expect(screen.queryByRole("menuitem", { name: /[Uu]pdates/ })).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: /^More/ }));
+  await screen.findByRole("dialog", { name: "Actions" });
+  expect(screen.queryByRole("option", { name: /[Uu]pdates/ })).toBeNull();
   expect(calls).not.toContain("check_for_updates");
   expect(calls).not.toContain("update_checks");
   expect(calls).not.toContain("login_item");

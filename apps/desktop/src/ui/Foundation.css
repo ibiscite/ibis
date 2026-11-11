@@ -9,6 +9,11 @@
 ::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
 ::-webkit-scrollbar-thumb { border: calc(var(--space-1) / 2) solid transparent; border-radius: var(--r-full); background: var(--scrollbar-thumb) padding-box; }
 
+/* One body size for text no part sizes itself, in every window, and one
+   placeholder colour for every field. */
+body { font-size: var(--type-body-size); line-height: var(--type-body-line); }
+::placeholder { color: var(--text-placeholder); opacity: 1; }
+
 /* An icon takes its row's colour, so hover and selection can never strand it. */
 svg { color: inherit; }
 

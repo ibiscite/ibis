@@ -40,8 +40,8 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   const openMore = () => {
     cancelCopy();
     closeOverlays();
-    // React Aria records the invoker before mounting its modal focus scope.
-    moreButton.current?.focus();
+    // From a hidden field (the welcome hides Search), More itself is where Esc returns.
+    if (focusLost()) moreButton.current?.focus();
     setOverlay("more");
   };
   const openLibrary = () => {

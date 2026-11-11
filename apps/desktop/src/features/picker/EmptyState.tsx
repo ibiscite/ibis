@@ -10,7 +10,7 @@ import { Button } from "../../ui/Button";
 import { IbisMark } from "../../ui/IbisMark";
 import { zoteroWaits } from "./PickerLibraryStatus";
 import { useWhileShown } from "./useWhileShown";
-import "./EmptyState.css";
+import "../../ui/EmptyState.css";
 import { libraryMessages } from "../../libraryWords";
 
 // The empty-state contract keeps fast library opens free of transient content.

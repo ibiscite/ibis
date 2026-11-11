@@ -1,5 +1,5 @@
 import * as nativeApi from "./api";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { idKey } from "./features/picker/choice";
 import { keysFor, matchesAccelerator } from "./keys";
 import { isMac } from "./platform";
@@ -10,6 +10,8 @@ import { usePointerSelection } from "./pointerSelection";
 import { usePickerAppearance } from "./ui/appearance";
 import { isStyle, styleOf } from "./format/outputs";
 import { PickerHeader } from "./features/picker/PickerHeader";
+import type { FormatPreview } from "./features/picker/FormatMenu";
+import { previewOf } from "./format/outputs";
 import { PickerScroll } from "./features/picker/PickerScroll";
 import { Notices } from "./features/picker/Notices";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
@@ -133,7 +135,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
-  const { input, formatButtonRef, currentPin, pinned, setFormatOpen, focusHome } = menus;
+  const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
   const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
@@ -188,6 +190,10 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
+  // The format chooser's preview reads the chosen references' keys and never asks
+  // the engine: an engine preview would replace the ticket the shelf copies with.
+  const previewKeys = output.ask?.selection.map((item) => item.id.key).filter(Boolean).join("\u0000") ?? "";
+  const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
@@ -227,7 +233,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
       onScrollCapture={pointer.resetHover}
     >
       <PickerHeader
-        hidden={welcomeShown} pinned={pinned} onTogglePin={() => { keys.run("pin"); focusHome(); }}
+        hidden={welcomeShown} yours={preferences.format} preview={formatPreview}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
         pageToken={<PickerPageToken
@@ -259,7 +265,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
           onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
           onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
           disabled={!destination.ready || destination.saving || !ready || searchPending} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} densityAnnouncement={preferences.densityAnnouncement} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
+        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
           error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
           citationProblem={listProblem} confirmation={state.copyNotice}
           onDismissCopied={() => send({ type: "dismiss" })} />
@@ -280,7 +286,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
         copyChosen={rows.copyChosen} destination={destination} recents={recents} preferences={preferences}
         operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
-        cancelCopy={cancelCopy} command={commands.footer} />
+        command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWritingProject: destination.editProject }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}

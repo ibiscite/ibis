@@ -133,13 +133,13 @@ test.each(["none", "More", "keys", "keys from More"] as const)("welcome Escape d
     if (overlay === "keys") fireEvent.keyDown(opener, { key: "/", ctrlKey: true });
     else fireEvent.click(opener);
     if (overlay === "keys from More") {
-      const item = await screen.findByRole("menuitem", { name: "Keyboard Shortcuts" });
+      const item = await screen.findByRole("option", { name: "Keyboard Shortcuts" });
       act(() => item.focus());
       fireEvent.click(item);
     }
-    const layer = await screen.findByRole(overlay === "More" ? "menu" : "dialog");
+    const layer = await screen.findByRole("dialog", overlay === "More" ? { name: "Actions" } : {});
     fireEvent.keyDown(layer, { key: "Escape" });
-    await waitFor(() => expect(screen.queryByRole(overlay === "More" ? "menu" : "dialog")).toBeNull());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(calls).not.toContain("hide_picker");
     expect(input.value).toBe("lantern");
     if (overlay === "keys from More") await waitFor(() => expect(document.activeElement).toBe(opener));

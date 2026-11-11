@@ -47,6 +47,18 @@ export function writesEntries(id: OutputId): boolean {
   return outputOf(id).entries;
 }
 
+/** What a format would show for the chosen keys, without asking the engine: a key
+ * syntax writes the first key into its own pattern ("\\autocite{garcia2021}",
+ * "+2" when there are more); a style shows its pattern on the engine's invented
+ * example, since only the engine can format real references. Null when there is
+ * neither a pattern nor a key. */
+export function previewOf(id: OutputId, keys: readonly string[]): { text: string; more: number; example: boolean } | null {
+  const output = outputOf(id);
+  if (!output.example) return null;
+  if (output.style || !keys[0]) return { text: output.example, more: 0, example: true };
+  return { text: output.example.replace(/\bkey\b/g, keys[0]), more: keys.length - 1, example: false };
+}
+
 /** The outputs in the engine's order: key syntaxes, then common styles. */
 export const keyOutputs = OUTPUTS.filter((output) => !output.style);
 export const styleOutputs = OUTPUTS.filter((output) => output.style);
