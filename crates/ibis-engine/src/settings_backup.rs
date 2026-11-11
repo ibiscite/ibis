@@ -2,16 +2,11 @@
 //! finishes before returning. Paths and restore plans remain native.
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::time::Duration;
 
 pub use backup::{Backup, BackupError, BackupProblem, Note, Plan, shown};
 use ibis_core::contract::ErrorCode;
 use ibis_core::settings::backup;
 use ibis_core::settings::{self, PrimaryRead, SettingsError};
-
-const MAX_IN_FLIGHT: usize = 8;
-const DEADLINE: Duration = Duration::from_secs(2);
 
 pub fn export_file(path: PathBuf, version: &str) -> Result<String, BackupError> {
     let loaded = within(move || settings::load(&path)).ok_or_else(settings_timeout)?;
@@ -156,69 +151,9 @@ pub fn settings_message(problem: &settings::SettingsError) -> String {
     }
 }
 
-/// Run read-only file work for at most two seconds. At most eight calls run
-/// at once: a stalled call keeps its place until it finishes, bounding retries.
+/// Run read-only file work for at most two seconds, in the pool library reads
+/// share: at most eight calls at once, and a stalled call keeps its place
+/// until it finishes.
 pub fn within<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-    bounded(&IN_FLIGHT, work)
-}
-
-fn bounded<T: Send + 'static>(in_flight: &'static AtomicUsize, work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
-    struct Place(&'static AtomicUsize);
-    impl Drop for Place {
-        fn drop(&mut self) {
-            self.0.fetch_sub(1, Ordering::AcqRel);
-        }
-    }
-    let place = Place(in_flight);
-    if in_flight.fetch_add(1, Ordering::AcqRel) >= MAX_IN_FLIGHT {
-        return None;
-    }
-    let (sender, receiver) = std::sync::mpsc::channel();
-    std::thread::Builder::new()
-        .name("ibis-settings-file".into())
-        .spawn(move || {
-            let _place = place;
-            let _ = sender.send(work());
-        })
-        .ok()?;
-    receiver.recv_timeout(DEADLINE).ok()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::sync::Mutex;
-
-    #[test]
-    fn stuck_file_calls_have_a_fixed_limit_until_they_finish() {
-        static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-        let within = |work: fn() -> i32| bounded(&IN_FLIGHT, work);
-        let (release, wait) = std::sync::mpsc::channel::<()>();
-        let wait = std::sync::Arc::new(Mutex::new(wait));
-        let stuck: Vec<_> = (0..MAX_IN_FLIGHT)
-            .map(|_| {
-                let wait = wait.clone();
-                std::thread::spawn(move || bounded(&IN_FLIGHT, move || drop(wait.lock().map(|w| w.recv()))))
-            })
-            .collect();
-        for call in stuck {
-            assert!(
-                call.join().ok().flatten().is_none(),
-                "a stalled call gives up at the deadline"
-            );
-        }
-        assert!(within(|| 1).is_none(), "no new worker while eight are stuck");
-        for _ in 0..MAX_IN_FLIGHT {
-            let _ = release.send(());
-        }
-        let started = std::time::Instant::now();
-        while within(|| 1).is_none() {
-            assert!(
-                started.elapsed() < DEADLINE * 2,
-                "places come back once the calls finish"
-            );
-            std::thread::yield_now();
-        }
-    }
+    ibis_sources::inspect_io(work)
 }
