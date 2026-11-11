@@ -2,8 +2,9 @@
 //! and only what a request names is unpacked, so the bundle costs disk, not
 //! memory. `scripts/csl-bundle.mjs` writes it; a test checks every file's hash.
 use crate::FormatError;
-use serde::Deserialize;
+use schemars::JsonSchema;
 use serde::de::IgnoredAny;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -15,7 +16,7 @@ const MAGIC: &[u8] = b"IBISCSL1";
 const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
 /// Which upstream release a part of the bundle was built from.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
 pub struct Release {
     pub repo: String,
     pub tag: String,
@@ -73,22 +74,57 @@ struct StyleRow {
 }
 
 /// One entry in the style list.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct StyleEntry {
     pub id: String,
     pub title: String,
     /// The style's own last-changed date, `YYYY-MM-DD`: its only version marker.
     pub updated: String,
-    /// The independent style this one borrows its rules from.
+    /// The independent style whose rules this one uses.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub parent: Option<String>,
+    /// The language this style is written in unless a request names another.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub default_locale: Option<String>,
+    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub format: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub fields: Vec<String>,
+    /// One of the styles offered first.
     pub curated: bool,
 }
 
+/// Someone a style names as its author or contributor. Their email stays in the
+/// file: a credit needs only the name and the page they chose to give.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct Person {
+    pub name: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub uri: Option<String>,
+}
+
+/// What a style's own `<info>` says about who made it and on what terms,
+/// for the "About citation styles" view. A dependent style's are its own.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+pub struct StyleCredits {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub summary: Option<String>,
+    pub authors: Vec<Person>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub contributors: Vec<Person>,
+    /// The licence sentence and the address of the licence.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rights: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub license: Option<String>,
+    /// Web pages documenting the rules the style follows.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub documentation: Vec<String>,
+}
+
 /// One language styles can be written in.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
 pub struct LocaleEntry {
     pub tag: String,
     pub native: String,
@@ -409,6 +445,40 @@ pub fn styles(query: &str, limit: usize, offset: usize) -> Result<StylePage, For
     })
 }
 
+/// One style's own entry and credits, after renames; a dependent style's are its
+/// own, not its parent's. Unknown is `UnsupportedStyle`.
+pub fn style_credits(id: &str) -> Result<(StyleEntry, StyleCredits), FormatError> {
+    let id = renamed(id)?;
+    let row = rows()?
+        .into_iter()
+        .find(|row| row.id == id)
+        .ok_or(FormatError::UnsupportedStyle)?;
+    let xml = file(row.block, row.offset, row.length)?;
+    let curated = header()?.curated.iter().find(|style| style.id() == id);
+    let info = crate::credits::Info::read(&xml);
+    let style = StyleEntry {
+        curated: curated.is_some(),
+        title: curated.map_or(row.title, |style| style.title().to_owned()),
+        id: row.id,
+        updated: row.updated,
+        parent: row.parent,
+        default_locale: row.locale,
+        format: row.format,
+        fields: row.fields,
+    };
+    Ok((
+        style,
+        StyleCredits {
+            summary: info.summary,
+            authors: info.authors,
+            contributors: info.contributors,
+            rights: info.rights,
+            license: info.license,
+            documentation: info.documentation,
+        },
+    ))
+}
+
 /// Every file with its manifest path, for the verification test and the sweep.
 pub fn files() -> Result<Vec<(String, String)>, FormatError> {
     let mut cache: Option<(usize, Vec<u8>)> = None;
@@ -519,6 +589,34 @@ mod tests {
             assert!(locale_xml(asked).unwrap().unwrap().contains(found), "{asked}");
         }
         assert_eq!(locale_xml("xx-INVENTED"), Ok(None));
+    }
+
+    #[test]
+    fn credits_name_a_styles_own_authors_and_licence_and_follow_renames() {
+        let (style, apa) = style_credits("apa").unwrap();
+        assert_eq!(style.id, "apa");
+        assert!(style.curated);
+        assert!(!apa.authors.is_empty());
+        assert!(
+            apa.authors
+                .iter()
+                .all(|person| !person.name.is_empty() && !person.name.contains('@'))
+        );
+        assert_eq!(
+            apa.license.as_deref(),
+            Some("http://creativecommons.org/licenses/by-sa/3.0/")
+        );
+        // A dependent style credits itself and points at the rules it borrows.
+        let dependent = rows().unwrap().into_iter().find(|row| row.parent.is_some()).unwrap();
+        let (style, _) = style_credits(&dependent.id).unwrap();
+        assert_eq!(style.parent, dependent.parent);
+        assert_eq!(style.updated, dependent.updated);
+        let (old, new) = header().unwrap().renames.iter().next().unwrap();
+        assert_eq!(&style_credits(old).unwrap().0.id, new);
+        assert_eq!(
+            style_credits("invented-style").err(),
+            Some(FormatError::UnsupportedStyle)
+        );
     }
 
     #[test]

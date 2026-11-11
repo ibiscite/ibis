@@ -217,6 +217,81 @@ fn entry_refusal(reason: EntryRefusal) -> &'static str {
     }
 }
 
+/// `ibis styles --about`: the Citation Style Language project's credit, or one
+/// style's own authors, licence and rules.
+pub(super) fn style_credits(mut result: DispatchResult) -> DispatchResult {
+    let data = &result.data;
+    let say = |id: &str, args: &[(&str, &str)]| ibis_engine::catalogue::text(id, None, args).unwrap_or_default();
+    let names = |people: &Value| {
+        people.as_array().filter(|people| !people.is_empty()).map(|people| {
+            people
+                .iter()
+                .filter_map(|person| {
+                    let name = field(person.get("name")?.as_str()?);
+                    Some(match person.get("uri").and_then(Value::as_str) {
+                        Some(uri) => format!("{name} ({})", field(uri)),
+                        None => name,
+                    })
+                })
+                .collect::<Vec<_>>()
+                .join(", ")
+        })
+    };
+    let text = (|| {
+        let Some(credits) = data.get("credits") else {
+            let release = |part: &str| data.pointer(&format!("/{part}/tag")).and_then(Value::as_str).map(field);
+            return Some(say(
+                "cli-styles-credit",
+                &[
+                    ("styles", &release("styles_release")?),
+                    ("locales", &release("locales_release")?),
+                ],
+            ));
+        };
+        let style = data.pointer("/styles/0")?;
+        let mut lines = vec![format!(
+            "{}\t{}",
+            field(style.get("id")?.as_str()?),
+            field(style.get("title")?.as_str()?)
+        )];
+        lines.push(say(
+            "cli-styles-updated",
+            &[("date", &field(style.get("updated")?.as_str()?))],
+        ));
+        if let Some(summary) = credits.get("summary").and_then(Value::as_str) {
+            lines.push(field(summary));
+        }
+        if let Some(parent) = style.get("parent").and_then(Value::as_str) {
+            lines.push(say("cli-styles-rules", &[("parent", &field(parent))]));
+        }
+        for (key, message) in [
+            ("authors", "cli-styles-authors"),
+            ("contributors", "cli-styles-contributors"),
+        ] {
+            if let Some(names) = credits.get(key).and_then(names) {
+                lines.push(say(message, &[("names", &names)]));
+            }
+        }
+        match (
+            credits.get("rights").and_then(Value::as_str),
+            credits.get("license").and_then(Value::as_str),
+        ) {
+            (Some(rights), Some(license)) => lines.push(format!("{} ({})", field(rights), field(license))),
+            (Some(text), None) | (None, Some(text)) => lines.push(field(text)),
+            (None, None) => {}
+        }
+        if let Some(links) = credits.get("documentation").and_then(Value::as_array) {
+            let links: Vec<String> = links.iter().filter_map(Value::as_str).map(field).collect();
+            if !links.is_empty() {
+                lines.push(say("cli-styles-documentation", &[("links", &links.join(", "))]));
+            }
+        }
+        Some(lines.join("\n"))
+    })();
+    result.text = text;
+    result
+}
+
 /// Citation languages for `ibis styles --locales`.
 pub(super) fn locale_list(mut result: DispatchResult) -> DispatchResult {
     let lines: Option<Vec<String>> = result.data.get("locales").and_then(Value::as_array).map(|locales| {

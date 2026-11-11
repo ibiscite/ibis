@@ -1,5 +1,5 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
-use super::{Engine, LocaleInfo, StyleInfo, StylesResult, UpstreamRelease, error};
+use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
@@ -94,43 +94,38 @@ impl Cancellation {
 }
 impl Engine {
     pub fn styles(&self, request: &StylesRequest) -> Result<StylesResult, EngineError> {
-        if !(1..=20_000).contains(&request.limit) || request.query.as_ref().is_some_and(|query| query.len() > 1024) {
+        if !(1..=20_000).contains(&request.limit)
+            || request.query.as_ref().is_some_and(|query| query.len() > 1024)
+            || request
+                .id
+                .as_ref()
+                .is_some_and(|id| id.len() > 1024 || request.query.is_some())
+        {
             return Err(error(ErrorCode::BadInput));
         }
-        let page = ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset)
+        // One style asks for an empty page, which still carries the releases and languages.
+        let (query, limit) = match &request.id {
+            Some(_) => ("", 0),
+            None => (request.query.as_deref().unwrap_or(""), request.limit),
+        };
+        let page = ibis_csl::styles(query, limit, request.offset).map_err(formatter_error)?;
+        let credits = request
+            .id
+            .as_deref()
+            .map(ibis_csl::style_credits)
+            .transpose()
             .map_err(formatter_error)?;
-        let release = |release: ibis_csl::Release| UpstreamRelease {
-            repo: release.repo,
-            tag: release.tag,
-            commit: release.commit,
+        let (styles, total) = match &credits {
+            Some((style, _)) => (vec![style.clone()], 1),
+            None => (page.styles, page.total),
         };
         Ok(StylesResult {
-            styles: page
-                .styles
-                .into_iter()
-                .map(|style| StyleInfo {
-                    id: style.id,
-                    title: style.title,
-                    updated: style.updated,
-                    curated: style.curated,
-                    parent: style.parent,
-                    default_locale: style.default_locale,
-                    format: style.format,
-                    fields: style.fields,
-                })
-                .collect(),
-            total: page.total,
-            locales: page
-                .locales
-                .into_iter()
-                .map(|locale| LocaleInfo {
-                    tag: locale.tag,
-                    native: locale.native,
-                    english: locale.english,
-                })
-                .collect(),
-            styles_release: release(page.styles_release),
-            locales_release: release(page.locales_release),
+            styles,
+            total,
+            locales: page.locales,
+            styles_release: page.styles_release,
+            locales_release: page.locales_release,
+            credits: credits.map(|(_, credits)| credits),
         })
     }
     pub(super) fn formatted(
