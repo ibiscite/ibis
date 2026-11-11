@@ -365,6 +365,16 @@ pull request run nothing ([RELEASING.md](../RELEASING.md#how-a-release-is-built)
 `node scripts/check.mjs` makes the same choice locally, and `--plan` prints it for
 `scripts/land.sh`, which compiles and type checks what the change selects and
 leaves test suites to CI.
+
+Licences, bans, sources and commit identities always block; every non-merge
+commit needs a sign-off, while two-parent commits whose subject starts with
+`Merge` are exempt. RustSec advisories block changes to any `Cargo.toml` or
+`Cargo.lock`, or to `deny.toml`, and release/tag and weekly checks; other
+changes get a warning. The weekly full check on main opens or updates one issue
+with its report. Ubuntu downloads are cached by the package-list script, with
+separate desktop and web caches; misses retain the 15-minute cap and exclude the
+security pocket.
+
 Workflow logic that a test covers lives in a script under `scripts/`, and the
 test runs that script; no test matches workflow text with regular expressions
 (decision 0035). Rules only the structure can show, such as "CI result" running

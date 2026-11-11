@@ -370,6 +370,13 @@ jobs:
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
+      - name: Check release advisories
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          arguments: --all-features --locked
+          command: check advisories
+
       - name: Test core and sources in release mode
         run: cargo test -p ibis-core -p ibis-sources --release --locked
 
