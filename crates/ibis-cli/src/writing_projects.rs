@@ -7,9 +7,7 @@ use ibis_core::settings::{
     self,
     writing_projects::{self as projects, ProjectError, WritingProject},
 };
-use ibis_engine::{
-    DispatchResult, Engine, ProjectAssessmentState, ProjectPolicy, WritingProjectCitation, request::StylesRequest,
-};
+use ibis_engine::{DispatchResult, Engine, ProjectAssessmentState, WritingProjectCitation, request::StylesRequest};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
@@ -97,14 +95,6 @@ pub(crate) fn chosen(args: &ArgMatches) -> Result<Option<WritingProject>, Failur
     };
     let (_, settings) = load(args.get_flag("nightly"))?;
     projects::find(&settings, id).cloned().map(Some).map_err(failure)
-}
-
-pub(crate) fn policy(args: &ArgMatches) -> ProjectPolicy {
-    if args.get_flag("strict-project") {
-        ProjectPolicy::Strict
-    } else {
-        ProjectPolicy::Normal
-    }
 }
 
 fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Failure> {
