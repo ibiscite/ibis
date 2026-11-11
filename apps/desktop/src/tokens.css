@@ -296,7 +296,7 @@
   --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
   --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
   --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
-  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-section-pad: clamp(1.5rem, 3vw, 2.25rem);
   --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
   --website-button-height: 2.25rem;
 }
