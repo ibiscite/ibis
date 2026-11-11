@@ -1,11 +1,14 @@
 import { KEY_TABLE, keysFor, keyLabel, keyCapLabels, commandKey, matchesAccelerator } from "./keys.js";
-import { typePaths, iconPaths } from "./icon-paths.js";
+import { typePaths, iconPaths, iconStroke, iconViewBox } from "./icon-paths.js";
 import { createDemo, references, formats } from "./demo-model.mjs";
 const el = (tag, props = {}, ...children) => { const node = Object.assign(document.createElement(tag), props); node.append(...children); return node; };
-function icon(kind, className = "") {
+function icon(kind, className = "", size = "control") {
   const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  svg.setAttribute("viewBox", "0 0 20 20"); svg.setAttribute("aria-hidden", "true");
-  svg.setAttribute("class", className);
+  svg.setAttribute("viewBox", iconViewBox); svg.setAttribute("aria-hidden", "true");
+  svg.setAttribute("class", `ui-icon ${className}`); svg.dataset.size = size;
+  svg.setAttribute("fill", "none"); svg.setAttribute("stroke", "currentColor");
+  svg.setAttribute("stroke-width", iconStroke[size]);
+  svg.setAttribute("stroke-linecap", "round"); svg.setAttribute("stroke-linejoin", "round");
   for (const drawing of typePaths[kind] ?? [iconPaths[kind]]) { const path = document.createElementNS(svg.namespaceURI, "path"); path.setAttribute("d", drawing); svg.append(path); }
   return svg;
 }
@@ -26,7 +29,7 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   select.setAttribute("aria-label", words("formatLabel"));
   // A drawn chevron beside the select: native arrows ignore its height on iOS, and Safari drops background chevrons.
   const format = el("label", { className: "picker-format" }, select);
-  format.insertAdjacentHTML("beforeend", '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="m4.5 6.5 3.5 3.5 3.5-3.5"/></svg>');
+  format.append(icon("chevrons"));
   const list = el("ul", { id: "demo-results", className: "picker-results" });
   list.setAttribute("role", "listbox");
   const count = el("span"), output = el("code"), statusLabel = el("span"), status = el("span", { className: "picker-status" }, icon("check"), statusLabel);
@@ -85,10 +88,10 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   const clearEmpty = el("button", { type: "button", textContent: words("clear") });
   const empty = el("div", { className: "picker-empty" }, el("strong", { textContent: words("noMatches") }),
     el("p", { textContent: words("searchHelp") }), clearEmpty);
-  empty.insertAdjacentHTML("afterbegin", '<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="20" cy="20" r="12"/><path d="m29 29 12 12"/></svg>');
+  empty.prepend(icon("find", "", "tile"));
   panel.querySelector(".picker-middle").append(empty);
   const rows = new Map(references.map((ref, index) => {
-    const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind));
+    const tile = el("button", { type: "button", className: "tile", tabIndex: -1 }, icon(ref.kind, "", "tile"));
     const row = el("div", { id: `demo-ref-${index}`, className: "pick", title: `${ref.title} · ${ref.authors} · ${ref.year} · ${ref.key}` }, tile,
       el("span", { className: "ref" }, el("strong", { textContent: ref.title }), el("span", { className: "sub", textContent: `${ref.authors} · ${ref.where}` })), el("span", { className: "ref-year", textContent: String(ref.year) }));
     row.setAttribute("role", "option");
@@ -112,7 +115,7 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     for (const { row, item, tile, ref } of rows.values()) {
       item.hidden = !found.includes(ref); const selected = ref === current;
       row.classList.toggle("is-selected", selected); row.setAttribute("aria-selected", String(selected));
-      const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(...(added ? [icon("check")] : [icon(ref.kind, "tile-kind"), icon("plus", "tile-add")]));
+      const added = state.added.includes(ref.key); tile.classList.toggle("is-added", added); tile.replaceChildren(...(added ? [icon("check", "", "tile")] : [icon(ref.kind, "tile-kind", "tile"), icon("plus", "tile-add", "tile")]));
       tile.setAttribute("aria-label", words(added ? "removeNamed" : "addNamed", ref)); tile.setAttribute("aria-pressed", String(added));
       row.setAttribute("aria-label", words(added ? "rowAdded" : "row", ref));
     }

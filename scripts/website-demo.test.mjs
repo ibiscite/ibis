@@ -7,6 +7,7 @@ import { createDemo, references, formats } from "../website/demo-model.mjs";
 
 // Like the page-control tests, run the real script against a small synthetic DOM.
 const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const iconScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/icon-paths.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
 const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
 const labels = Object.fromEntries([...template.match(/<figure class="picker"[\s\S]*?>/)[0].matchAll(/data-([\w-]+)="([^"]*)"/g)]
@@ -15,6 +16,7 @@ function demoPage(platform) {
   let copies = 0, pastes = 0;
   const element = tag => ({ tag, children: [], attrs: {}, handlers: {}, dataset: {}, className: "", classList: { toggle() {} },
     append(...children) { this.children.push(...children); },
+    prepend(...children) { this.children.unshift(...children); },
     replaceChildren(...children) { this.children = children; },
     get textContent() { return this.children.map(child => typeof child === "string" ? child : child.textContent).join(""); },
     set textContent(text) { this.children = [text]; },
@@ -36,9 +38,9 @@ function demoPage(platform) {
   figure.closest = selector => selector === "section" ? section : list;
   const document = { ...element("document"), documentElement: { dataset: { platform } }, createElement: element,
     createElementNS: (_namespace, tag) => element(tag), querySelector: selector => selector === "[data-picker]" ? figure : result };
-  const picker = runInNewContext(`${keyScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
+  const picker = runInNewContext(`${keyScript}\n${iconScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
     onCopy: () => { copies++; }, onPaste: () => { pastes++; },
-    typePaths: { book: [], article: [] }, iconPaths: { check: "", plus: "", close: "" }, matchMedia: () => ({ matches: false }) });
+    matchMedia: () => ({ matches: false }) });
   const panel = placeholder.replacement, [add, copy] = panel.querySelector(".picker-actions").children, input = panel.querySelector("input");
   return { add, copy, input, panel, figure, result, picker, feedback: () => ({ copies, pastes }), reopen: figure.querySelector("button") };
 }

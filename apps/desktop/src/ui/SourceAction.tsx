@@ -1,20 +1,20 @@
 import { useMemo, useState } from "react";
 import type { SystemIcon } from "../bindings";
-import { ChoiceIcon } from "../icons";
+import { Icon, type IconSize } from "../icons";
 import { Button } from "./Button";
 import "./SourceAction.css";
 
 /** Native raster bytes only; the source name and action survive missing or
  * undecodable system icons. No external URL or third-party logo asset. */
-export function SourceIcon({ icon, file = false }: { icon: SystemIcon | null; file?: boolean }) {
+export function SourceIcon({ icon, file = false, size = "control" }: { icon: SystemIcon | null; file?: boolean; size?: IconSize }) {
   const [failed, setFailed] = useState<SystemIcon | null>(null);
   const url = useMemo(() => {
     if (!icon || !["image/png", "image/jpeg"].includes(icon.mime) || icon.bytes.length === 0 || icon.bytes.length > 65536 ||
       !icon.bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) return null;
     return `data:${icon.mime};base64,${btoa(icon.bytes.map((byte) => String.fromCharCode(byte)).join(""))}`;
   }, [icon]);
-  return <span className="source-icon" aria-hidden="true">
-    {url && failed !== icon ? <img src={url} alt="" draggable={false} onError={() => setFailed(icon)} /> : <ChoiceIcon name={file ? "file" : "library"} />}
+  return <span className="source-icon" data-size={size} aria-hidden="true">
+    {url && failed !== icon ? <img src={url} alt="" draggable={false} onError={() => setFailed(icon)} /> : <Icon name={file ? "file" : "library"} size={size} />}
   </span>;
 }
 

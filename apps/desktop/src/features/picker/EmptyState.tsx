@@ -182,7 +182,7 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
     : query ? say("picker-no-matches-hint") : library.sample ? say("setup-sample-search-help") : say("picker-type-to-find-hint");
   return (
     <div className="empty-state empty-template">
-      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" className="empty-icon" />}
+      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" size="tile" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">

@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import axe from "axe-core";
 import { LibrarySetup } from "./LibrarySetup";
+import type { SourcePresentation } from "./bindings";
 
 afterEach(() => { cleanup(); vi.restoreAllMocks(); delete document.documentElement.dataset.system; });
 const perform = async (_action: string, run: () => Promise<unknown>) => { await run(); };
@@ -13,6 +14,30 @@ const press = (row: HTMLElement) => {
   fireEvent.keyDown(row, { key: "Enter", code: "Enter" });
   fireEvent.keyUp(row, { key: "Enter", code: "Enter" });
 };
+
+test("the Zotero card uses its system icon, falls back on failure and ignores a retired read", async () => {
+  const pending: ((source: SourcePresentation) => void)[] = [];
+  const read = vi.fn(() => new Promise<SourcePresentation>((resolve) => pending.push(resolve)));
+  const api = { chooseLibrary: async () => {}, useZotero: async () => {}, librarySource: read };
+  const view = render(<LibrarySetup api={api} perform={perform} />);
+  expect(read).toHaveBeenCalledWith(null, "", "", true, false);
+  expect(option(/^Use Zotero/).querySelector("svg")).toBeTruthy();
+  const failed = vi.fn(async (): Promise<SourcePresentation> => { throw Error("icon unavailable"); });
+  view.rerender(<LibrarySetup api={{ ...api, librarySource: failed }} perform={perform} />);
+  await act(async () => {});
+  const source: SourcePresentation = { kind: "zotero", name: "Zotero", icon: { mime: "image/png", bytes: [137, 80, 78, 71] }, status_icon: null };
+  await act(async () => pending[0]!(source));
+  expect(option(/^Use Zotero/).querySelector("img")).toBeNull();
+  view.unmount();
+  const reopened = render(<LibrarySetup api={api} perform={perform} />);
+  await act(async () => pending[1]!(source));
+  const image = option(/^Use Zotero/).querySelector("img")!;
+  expect(image.getAttribute("src")).toBe("data:image/png;base64,iVBORw==");
+  fireEvent.error(image);
+  expect(option(/^Use Zotero/).querySelector("img")).toBeNull();
+  expect(option(/^Use Zotero/).querySelector("svg")).toBeTruthy();
+  reopened.unmount();
+});
 
 test("initial setup never searches and manual source choices are immediately usable", async () => {
   const chooseLibrary = vi.fn(async () => undefined), useZotero = vi.fn(async () => undefined);
