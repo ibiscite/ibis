@@ -104,6 +104,9 @@ pub struct KeyCitationRequest {
     pub output: OutputSpec,
     #[serde(default)]
     pub form: CitationForm,
+    /// Keep the keys' order where a style would sort them. Key syntaxes always keep it.
+    #[serde(default)]
+    pub keep_order: bool,
     #[serde(default)]
     pub output_locale: Option<String>,
 }

@@ -262,7 +262,18 @@ fn prepare_with_style(
         return Err(FormatError::InvalidRequest);
     }
 
-    let bibliography = traits.numeric || matches!(request.form, CitationForm::BibliographyOnly | CitationForm::Full);
+    // Reference entries when the style numbers them, or when every reference
+    // asks for its entry, through the request's form or its own.
+    let entry = |form: CitationForm| matches!(form, CitationForm::BibliographyOnly | CitationForm::Full);
+    let bibliography = traits.numeric
+        || if request.items.is_empty() {
+            entry(request.form)
+        } else {
+            request
+                .items
+                .iter()
+                .all(|pick| entry(pick.form.unwrap_or(request.form)))
+        };
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();

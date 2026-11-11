@@ -2520,7 +2520,8 @@
               "cancelled",
               "formatter-unavailable",
               "annotation-mismatch",
-              "not-citable"
+              "not-citable",
+              "not-from-zotero"
             ],
             "type": "string"
           },
@@ -3763,6 +3764,10 @@
               "output": {
                 "$ref": "#/$defs/OutputSpec",
                 "description": "The output a request names for it."
+              },
+              "zotero_items": {
+                "description": "It names Zotero items, so it writes only references read from Zotero\nand refuses any other (Zotero's RTF/ODF Scan markers).",
+                "type": "boolean"
               }
             },
             "required": [

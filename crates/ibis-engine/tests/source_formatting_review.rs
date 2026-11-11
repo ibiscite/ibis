@@ -27,6 +27,7 @@ fn cite(engine: &Engine, style: &str, form: CitationForm) -> CitationResult {
                 output: OutputSpec::Csl { style: style.into() },
                 form,
                 output_locale: None,
+                keep_order: false,
             },
             &Cancellation::default(),
         )

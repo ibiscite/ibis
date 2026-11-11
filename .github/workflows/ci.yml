@@ -117,17 +117,42 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+  # The crates on every system, beside the app's own builds: Windows finds
+  # real bugs in the crates, so it runs on pull requests in parallel with the
+  # desktop jobs; macOS almost never finds one Linux misses, so pull requests
+  # leave it to the merge queue.
   test:
-    name: Test (ubuntu-24.04)
+    name: Test (${{ matrix.os }})
     needs: changes
     if: needs.changes.outputs.core == 'true'
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: >-
+          ${{ github.event_name == 'pull_request'
+          && fromJSON('["ubuntu-24.04", "windows-2025"]')
+          || fromJSON('["ubuntu-24.04", "windows-2025", "macos-15"]') }}
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+
+      - name: Check Windows updater activation contracts
+        if: runner.os == 'Windows'
+        run: |
+          command -v pwsh
+          python -B scripts/update-e2e.py --self-test
+
+      - name: Test the Windows offline observer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/check-offline.tests.ps1
 
       - name: Cache Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
@@ -140,6 +165,7 @@ jobs:
         run: cargo clippy --all-targets --locked
 
       - name: Check the declared minimum Rust version
+        if: runner.os == 'Linux'
         run: |
           rustup toolchain install 1.90.0 --profile minimal
           cargo +1.90.0 check --locked --all-targets
@@ -150,14 +176,17 @@ jobs:
       # Installed only now: with Pandoc present, cargo test also runs the
       # syntax_contract consumer tests, which fail on Ubuntu's older Pandoc.
       - name: Install Pandoc
+        if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pandoc
 
       - name: Compare rendering from BibTeX and from CSL export
+        if: runner.os == 'Linux'
         env:
           IBIS_REQUIRE_PANDOC: "1"
         run: cargo test -p ibis --test fidelity --locked
 
       - name: Enforce 100k search budget (release)
+        if: runner.os == 'Linux'
         # Compilation and the ordinary test processes finish before measurement;
         # this binary runs alone, with its first search retained in the samples.
         run: cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
@@ -258,17 +287,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check Windows updater activation contracts
-        if: env.CORE == 'true' && runner.os == 'Windows'
-        run: |
-          command -v pwsh
-          python -B scripts/update-e2e.py --self-test
-
-      - name: Test the Windows offline observer
-        if: env.CORE == 'true' && runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/check-offline.tests.ps1
-
       - name: Install system WebView libraries (Linux)
         if: env.NATIVE == 'true' && (runner.os == 'Linux')
         working-directory: .
@@ -340,14 +358,6 @@ jobs:
           python3 scripts/smoke-native.py --journey --app target/debug/ibis-desktop --output screenshots/journey-macOS || status=$?
           if [ "$status" = 2 ]; then echo "::warning::The macOS journey was unavailable on this runner."; exit 0; fi
           exit "$status"
-
-      # Windows finds real bugs in the crates. macOS almost never finds one
-      # that Linux misses, so pull requests leave it to the merge queue.
-      - name: Lint and test the core (macOS and Windows)
-        if: env.CORE == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
-        run: |
-          cargo clippy --all-targets --locked
-          cargo test --locked
 
       - name: Test the scripts (macOS and Windows)
         if: env.SCRIPTS == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))

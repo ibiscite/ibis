@@ -236,6 +236,7 @@ is not a test of every app. Reports help: use the "Writing app report" form.
 | LaTeX, Overleaf | BibLaTeX or LaTeX keys | Same: the project's `.bib` must contain the key. |
 | Typst | Typst keys (`@key`) | The project needs a `.bib` or Hayagriva file. |
 | Word, LibreOffice, Google Docs with Zotero citations | Nothing; use Zotero's plugin | Pasted text never joins Zotero's managed bibliography or changes with the style. |
+| Word or LibreOffice, citing now and making them Zotero citations later | Zotero RTF/ODF Scan markers (`scannable-cite`), for references read from Zotero | `{ See \| Example, 2026 \| p. 12 \| \| zu:0:ABCD2345 }`: Zotero's RTF Scan, or the ODF Scan add-on for LibreOffice, turns them into live Zotero citations. Zotero 7 to 9; Ibis claims Zotero 10 once its own LibreOffice round trip passes there. A marker Ibis cannot write correctly is refused, as Zotero would only notice a wrong one when the document is refreshed. |
 | Word for the web, Pages, Notion, email | A formatted citation | Zotero has no plugin for these. Italics survive where the app accepts HTML. RTF arrives in 0.3 and bibliography entries in every style in 0.4. |
 | Chat and plain-text fields | A formatted citation | Plain text drops italics. |
 

@@ -1,9 +1,10 @@
 // Release notes for a numbered release (#450), used by .github/workflows/preview.yml.
 //
-//   node scripts/release-notes.mjs <tag> <generated-notes-file>
+//   node scripts/release-notes.mjs <tag> <generated-notes-file> [<style-notes-file>]
 //     Prints the notes for the release: one plain line, a download table, the
 //     unsigned-install note, then the Release Please change list without its
-//     greeting, commit hashes or long links. Notes that already have a
+//     greeting, commit hashes or long links, and the citation styles whose
+//     output changed (scripts/style-sweep.mjs release). Notes that already have a
 //     download table are printed unchanged, so publishing twice is harmless.
 
 import { readFileSync } from "node:fs";
@@ -46,7 +47,7 @@ export function changes(generated) {
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }
 
-export function releaseNotes(tag, generated, repo = "ibiscite/ibis") {
+export function releaseNotes(tag, generated, repo = "ibiscite/ibis", styles = "") {
   if (/^## Download$/m.test(generated)) return generated;
   const base = `https://github.com/${repo}/releases/download/${tag}`;
   const rows = DOWNLOADS.map(([system, file, extra = ""]) => `| ${system} | [${file}](${base}/${file})${extra} |`);
@@ -74,7 +75,7 @@ ${upgrade}
 Tell us what works and what doesn't: [report a problem or suggest an idea](https://github.com/${repo}/issues/new/choose).
 
 ## Changes
-${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}
+${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}${styles.trim() ? `\n${styles.trim()}\n` : ""}
 <details>
 <summary>Verify a download</summary>
 
@@ -86,10 +87,11 @@ ${list ? `\n${list}\n` : "\nSee the commits since the previous release.\n"}
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const [tag, file] = process.argv.slice(2);
+  const [tag, file, styles] = process.argv.slice(2);
   if (!/^v\d+\.\d+\.\d+$/.test(tag ?? "") || !file) {
-    console.error("usage: node scripts/release-notes.mjs vX.Y.Z <generated-notes-file>");
+    console.error("usage: node scripts/release-notes.mjs vX.Y.Z <generated-notes-file> [<style-notes-file>]");
     process.exit(2);
   }
-  process.stdout.write(releaseNotes(tag, readFileSync(file, "utf8"), process.env.GITHUB_REPOSITORY || undefined));
+  const styleNotes = styles ? readFileSync(styles, "utf8") : "";
+  process.stdout.write(releaseNotes(tag, readFileSync(file, "utf8"), process.env.GITHUB_REPOSITORY || undefined, styleNotes));
 }

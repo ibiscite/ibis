@@ -1,4 +1,4 @@
-//! RIS exports and the CSV template as libraries (#1531, decision 0041), from
+//! RIS exports and the CSV template as libraries (#1531, decision 0043), from
 //! the invented files in `fixtures/ris/` and `fixtures/csv/`.
 #![allow(clippy::unwrap_used)]
 

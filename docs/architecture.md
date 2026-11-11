@@ -113,7 +113,7 @@ queries; malformed or oversized values are ignored before arXiv/DOI equivalence.
   - Zotero 10's local write API exists; Ibis stays read-only until an opt-in decision says otherwise.
 - **BibTeX/BibLaTeX:** each entry is parsed independently, so a broken entry produces a warning with its line while the rest loads, on open and reload alike; work is bounded so hostile files cannot hang the engine. Long-lived clients watch files and only replace them after two identical reads. A watch failure keeps the successfully read snapshot usable and reports the fixed `live-refresh-off` warning; manual Reload remains available. One-shot CLI calls install no watches.
 - **CSL-JSON:** `citation-key` is the key; `id` names the record inside its file and is never a key. A record with only an `id` formats, and key output refuses it with `missing-key`. Key export writes `citation-key` beside the source `id`, unchanged, writes a record cited twice once, and refuses a second record with the same `id`, which only another library can hold. A repeated `id`, however written (`1` and `"1"` are the same), makes every record under it unavailable with a warning, as for repeated BibTeX keys.
-- **RIS and the CSV template** ([decision 0041](decisions/0041-ris-and-csv-libraries.md)): no citation keys; formatted citations only. RIS is recognised by its `TY` line (`.ris`, `.txt` or any name), the CSV template by its suffix and its checked header. A record's identity is a versioned hash of the CSL data read from it, so it survives refreshes and fresh exports; damaged records are skipped by line, as for BibTeX. Each format's file names are listed once, in `ibis-sources` (`file.rs`, `NAMES`); reading, Copy Entry, project bibliographies and the app's chooser, drop and Open take them from there, so a new format is one entry and its reader.
+- **RIS and the CSV template** ([decision 0043](decisions/0043-ris-and-csv-libraries.md)): no citation keys; formatted citations only. RIS is recognised by its `TY` line (`.ris`, `.txt` or any name), the CSV template by its suffix and its checked header. A record's identity is a versioned hash of the CSL data read from it, so it survives refreshes and fresh exports; damaged records are skipped by line, as for BibTeX. Each format's file names are listed once, in `ibis-sources` (`file.rs`, `NAMES`); reading, Copy Entry, project bibliographies and the app's chooser, drop and Open take them from there, so a new format is one entry and its reader.
 
 File reads carry the canonical identity from the observation that supplied their
 bytes; a symlink retarget during that observation is refused. Strict Reload reads
@@ -174,7 +174,7 @@ mount, Windows provider states and iCloud provider states separately.
 
 - **Request:** ordered items (the same reference may appear twice); a citation form (normal, narrative, author only, year only, full, bibliography only) and "keep my order"; per item a typed locator (one of the 29 CSL 1.0.2 locator terms), rich-text prefix and suffix (italic, bold, sub, superscript), author suppression, and the annotation it came from if any; an output spec or named preset; an input language for parsing typed locators and an output locale.
 - **Result:** text, HTML, RTF and a display tree; one outcome per item; typed losses; notices such as "needs the whole document"; a content hash that copy and paste must match.
-- **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, ConTeXt, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON.
+- **Key syntaxes** are pure Rust, each with a capability table (which fields and forms it carries, its escaping, a fixture checked against its own tool): Pandoc, BibLaTeX (any command, multicite), natbib, LaTeX `\cite`, ConTeXt, Typst, org-cite, MyST, MultiMarkdown, AsciiDoc, Jupyter, Jekyll Scholar, Scannable Cite, bare keys, CSL-JSON, Better BibTeX's CAYW JSON. Scannable Cite (Zotero's RTF/ODF Scan markers) names Zotero items rather than keys, so `syntax::scannable` writes it from the engine's own record of which Zotero library each reference was read from (`zu:0:` for the personal library, `zg:GROUP:` for a group, never a user ID); anything a marker cannot say, which it has no escape for, refuses the whole citation.
 - **Formatted output:** Zotero's citeproc-js runs in embedded QuickJS (`rquickjs`) with collation from ICU4X, so the command line and the app give byte-identical output on every system. One formatter runtime runs on its own thread with a bounded FIFO queue, queued cancellation and running cancellation through QuickJS's interrupt handler. Memory and time limits bound each request, including its queue wait; the runtime is restarted after an interruption. Every official style and locale ships in the binary as one compressed bundle pinned to an upstream release; a request unpacks only what it names, a dependent style runs its parent's rules in its own default language, and rules come from what a style declares, never from its name. A result states the language it is written in; the interface language has no say in it. Before formatting, Ibis applies Zotero's own data conversions (Extra fields, creators, dates, URL stripping for printed articles with pages); differential fixtures compare the result with pinned Zotero output. The formatter, and AI agents unless the person has turned notes on for them (decision 0033), then get only `ibis_core::citable` fields: note field overrides become fields, and notes, annotations and private links are dropped.
 - **What a citation cannot know:** selected items (or even the whole library) cannot establish a document's numbering, year suffixes or ibid. Numeric styles give the reference entry with a notice (today's fallback), note styles give the full first note, and 2020a/2020b suffixes are withheld with a notice. Byte-identical output across front ends is necessary, not sufficient: correctness is checked against Zotero.
 
@@ -196,20 +196,25 @@ longer carries the pre-engine library model, file loaders or citation renderer.
 Shared names, dates, settings choices, discovery and transport rules remain
 where clients still use them.
 
-The picker's small per-reference editor (#1366) sends its captured page and
-Normal, Narrative or Omit author intent through the native preview request.
-The native adapter uses `ibis_core::locator::page_value` only for the separate
-`page_input` field containing raw Page editor text, removing an optional
-page label once before constructing the request. A captured canonical locator
+The picker's small per-reference editor (#1366, #1762) sends its locator, form,
+prefix and suffix through the native preview request, and the order choice as
+`keep_order`, as `ibis cite --keep-order` and the MCP `keep_order` do.
+A typed locator travels as `locator_input`, the field's text with the type its
+pop-up shows; the native adapter reads it only with `ibis_core::locator::read_field`.
+A recognised label at its start names the type itself (`ch. 3` in a Page field
+is chapter 3), and any other text is the value as written, so printed labels
+such as `xii` or `S12` stay literal. A captured canonical locator
 is passed through unchanged, including quoted values such as `S.12` or
 `pages of notes`; form-only edits never turn it back into raw input. Sending
-both a captured locator and raw Page input is refused. Recognised labels with missing or
-invalid values are refused before preparation; they never fall back to literal
+both a captured locator and typed input is refused. Recognised labels with missing or
+invalid values are refused before preparation, naming the type that needs a value;
+they never fall back to literal
 text. The shared numeric grammar accepts Unicode numeric characters, counts
 characters for numeric bounds and keeps four-digit years ambiguous in unlabelled
-searches. Its input length limit still bounds Page validation. The editor keeps
-the raw input. Narrative maps to an item form; Omit author maps to author
-suppression. A single BibLaTeX narrative pick selects `textcite` from the output
+searches. Its input length limit still bounds locator validation. The editor keeps
+the raw input. Each form (normal, narrative, author-only, year-only, full) maps
+to an item form; a citation whose every reference asks for its full entry is
+written as entries. A single BibLaTeX narrative pick selects `textcite` from the output
 family. Other form support and field losses come from the engine; unsupported
 mixed narrative groups are refused, never split into invented clusters. Indexed loss messages
 identify the reference and field. Page/form edits invalidate pending copy and
@@ -269,7 +274,9 @@ style used stays unpacked. The bundle is read from disk only when used, so an id
 or hidden app that formats nothing pays nothing. Sizes, memory and timings are
 measured on the pull request that changes the bundle (#19's are on its pull request).
 
-`style_sweep` renders six invented records in every style, in every form. Author
+`style_sweep` renders six invented records in every style, in every form: weekly
+against upstream's newest, and before each release against the previous one, whose
+notes name the styles that changed (`scripts/style-sweep.mjs`). Author
 only, year only and narrative are offered only for the styles checked against
 Zotero; other styles refuse them until their output for those forms is verified.
 
