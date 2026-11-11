@@ -181,8 +181,9 @@ fn a_writing_chosen_for_this_session_answers_without_a_captured_app() {
 }
 
 #[test]
-fn a_first_successful_suggested_paste_is_reported_once_per_kind_and_survives_reopen() {
-    let directory = tempfile::tempdir().unwrap();
+fn a_first_successful_suggested_paste_is_reported_once_per_kind_and_survives_reopen()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
     let path = directory.path().join("settings.json");
     let word = app(Macos, "com.microsoft.word");
     let markdown = app(Macos, "md.obsidian");
@@ -194,11 +195,12 @@ fn a_first_successful_suggested_paste_is_reported_once_per_kind_and_survives_reo
     let next = choose(&settings, Some(&pages));
     assert!(!accept_suggestion(&mut settings, Some(&pages), &next));
     assert_eq!(choose(&settings, Some(&pages)).from, FormatFrom::App);
-    crate::settings::save(&path, &settings).unwrap();
+    crate::settings::save(&path, &settings)?;
     let mut settings = crate::settings::load(&path).settings;
     let keys = choose(&settings, Some(&markdown));
     assert!(accept_suggestion(&mut settings, Some(&markdown), &keys));
     assert!(!accept_suggestion(&mut settings, Some(&markdown), &keys));
+    Ok(())
 }
 
 #[test]

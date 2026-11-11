@@ -308,10 +308,10 @@ fn rebind(
         if let Some(previous) = target_folder.take() {
             let _ = watcher.unwatch(&previous);
         }
-        if let Some(desired) = desired {
-            if watcher.watch(&desired, notify::RecursiveMode::NonRecursive).is_ok() {
-                *target_folder = Some(desired);
-            }
+        if let Some(desired) = desired
+            && watcher.watch(&desired, notify::RecursiveMode::NonRecursive).is_ok()
+        {
+            *target_folder = Some(desired);
         }
     }
     if let Ok(mut paths) = tracked.lock() {
@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn first_run_watches_outside_edits_once_and_ignores_its_own_writes() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("temporary folder: {error}"));
         let path = directory.path().join("new-profile/settings.json");
         let owner = Owner::open(path.clone());
         let (sender, edits) = mpsc::channel();

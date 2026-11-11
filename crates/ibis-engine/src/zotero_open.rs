@@ -2,6 +2,54 @@
 //! validated Zotero item URI is accepted; uncertainty falls back to the item.
 use ibis_core::zotero::api::Transport;
 
+pub fn pdf_uri(item: &str) -> Option<String> {
+    with_transport(item, &mut ibis_sources::zotero_source::LocalZotero::default())
+}
+
+fn key(value: &str) -> bool {
+    value.len() == 8
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
+}
+
+fn with_transport(item: &str, transport: &mut impl Transport) -> Option<String> {
+    let item = item.strip_prefix("zotero://select/")?;
+    let (library, parent) = item.split_once("/items/")?;
+    if !key(parent) {
+        return None;
+    }
+    let api = if library == "library" {
+        "users/0".to_owned()
+    } else {
+        let group = library.strip_prefix("groups/")?;
+        if group.is_empty() || !group.bytes().all(|byte| byte.is_ascii_digit()) || group.parse::<u64>().ok()? == 0 {
+            return None;
+        }
+        format!("groups/{group}")
+    };
+    let response = transport
+        .get(&format!("{api}/items/{parent}/children?itemType=attachment&limit=100"))
+        .ok()?;
+    if response.status != 200 || response.header("Zotero-API-Version") != Some("3") || response.body.len() > 1024 * 1024
+    {
+        return None;
+    }
+    let entries: Vec<serde_json::Value> = serde_json::from_slice(&response.body).ok()?;
+    let attachment = entries.iter().take(100).find_map(|entry| {
+        let data = entry.get("data")?;
+        if data.get("itemType")?.as_str()? != "attachment"
+            || data.get("contentType")?.as_str()? != "application/pdf"
+            || data.get("parentItem")?.as_str()? != parent
+        {
+            return None;
+        }
+        let id = entry.get("key")?.as_str()?;
+        key(id).then_some(id)
+    })?;
+    Some(format!("zotero://open-pdf/{library}/items/{attachment}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -65,52 +113,4 @@ mod tests {
         );
         assert!(with_transport("zotero://select/groups/0/items/ABCD1234", &mut group).is_none());
     }
-}
-
-pub fn pdf_uri(item: &str) -> Option<String> {
-    with_transport(item, &mut ibis_sources::zotero_source::LocalZotero::default())
-}
-
-fn key(value: &str) -> bool {
-    value.len() == 8
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_uppercase() || byte.is_ascii_digit())
-}
-
-fn with_transport(item: &str, transport: &mut impl Transport) -> Option<String> {
-    let item = item.strip_prefix("zotero://select/")?;
-    let (library, parent) = item.split_once("/items/")?;
-    if !key(parent) {
-        return None;
-    }
-    let api = if library == "library" {
-        "users/0".to_owned()
-    } else {
-        let group = library.strip_prefix("groups/")?;
-        if group.is_empty() || !group.bytes().all(|byte| byte.is_ascii_digit()) || group.parse::<u64>().ok()? == 0 {
-            return None;
-        }
-        format!("groups/{group}")
-    };
-    let response = transport
-        .get(&format!("{api}/items/{parent}/children?itemType=attachment&limit=100"))
-        .ok()?;
-    if response.status != 200 || response.header("Zotero-API-Version") != Some("3") || response.body.len() > 1024 * 1024
-    {
-        return None;
-    }
-    let entries: Vec<serde_json::Value> = serde_json::from_slice(&response.body).ok()?;
-    let attachment = entries.iter().take(100).find_map(|entry| {
-        let data = entry.get("data")?;
-        if data.get("itemType")?.as_str()? != "attachment"
-            || data.get("contentType")?.as_str()? != "application/pdf"
-            || data.get("parentItem")?.as_str()? != parent
-        {
-            return None;
-        }
-        let id = entry.get("key")?.as_str()?;
-        key(id).then_some(id)
-    })?;
-    Some(format!("zotero://open-pdf/{library}/items/{attachment}"))
 }

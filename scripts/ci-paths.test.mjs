@@ -62,8 +62,8 @@ test("crate code reads the app or the website only where app changes still run i
   // Each file allowed to name these folders, and why that is safe.
   const allowed = {
     "crates/ibis-core/src/locator.rs": 'the locator abbreviation "apps" (appendices), not a path',
-    "crates/ibis-core/tests/settings_backup.rs": "the settings file apps.json, not the repository's apps folder",
     "crates/ibis-engine/tests/engine_boundary.rs": "reads only the app's Cargo.toml, a crate input above",
+    "crates/ibis-engine/tests/persistence_settings_backup.rs": "the settings file apps.json, not the repository's apps folder",
     "crates/ibis-engine/tests/settings_backup.rs": "the settings file apps.json in a temporary folder, not the repository's apps folder",
   };
   assert.deepEqual(readers, Object.keys(allowed), "a new reader must run on app changes too, or widen `core` in ci-paths.mjs");
