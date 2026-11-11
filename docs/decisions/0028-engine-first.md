@@ -67,3 +67,33 @@ project keys and the last-good source snapshot above still apply.
 Saved Text, Recreate the Earlier Citation, Create Current Citation) is
 withdrawn until people ask for it. Receipts (#1538) and exporting what a
 document cites (0.6) remain.
+
+2026-11-10 (#1538, the maintainer's issue): **compatibility rules for the engine
+contract.**
+
+- **Three versions stay separate.** The package version (0.3.2) names a build.
+  The contract version, the envelope's `ibis` field (now 1), names the wire
+  contract. The formatter, style and locale releases say what printed text a
+  style gives; receipts report them. None stands in for another.
+- **A client chooses the contract explicitly** with `--contract 1` on any
+  command, `serve` and `mcp` included; a version Ibis does not speak is refused
+  with the list it does. There is one version and no negotiation. `ibis schema`
+  gives each method's contract version and `doctor` reports it.
+- **Requests stay strict.** A field no method reads is `bad-input`, for every
+  method, never ignored.
+- **Responses are forward-compatible.** A client accepts fields it does not
+  know. A loss, refusal, outcome, notice, warning or finding it does not know
+  reads as needing review, never as success. The Rust contract types do this
+  with an `Unknown` value that the schema does not list and the engine never
+  sends. A failure is a failure whatever its code; the Rust types still refuse
+  an error code or reason they don't know.
+- **Additive means only this:** a new optional field in a result, a new code in
+  an existing list, a new method, or a new optional request field whose absence
+  keeps the old answer.
+- **Anything else is a new contract version:** removing or renaming a field or
+  code, changing a field's type or meaning, changing the envelope, or changing
+  what the same request means for the same library (which records it cites, its
+  outcomes and losses, or the output it asks for).
+- **Old clients keep working.** The golden cases in `fixtures/cases` are
+  contract 1 requests with their answers, and they replay through every front
+  end with the same citations.

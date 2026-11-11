@@ -47,7 +47,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "parent",
@@ -109,7 +108,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "title",
@@ -131,6 +129,7 @@
     },
     "CitationError": {
       "description": "Fixed citation diagnostics contain no source data, paths, keys or request text.\nA front-end boundary maps a wholly invalid/cancelled request to its envelope error.",
+<<<<<<< HEAD
       "type": "string",
       "enum": [
         "empty-selection",
@@ -152,6 +151,32 @@
         "annotation-mismatch",
         "not-citable",
         "not-from-zotero"
+=======
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "empty-selection",
+            "too-many-items",
+            "invalid-locator",
+            "invalid-rich-text",
+            "output-too-large",
+            "unsupported-form",
+            "missing-item",
+            "changed-item",
+            "missing-key",
+            "ambiguous-key",
+            "conflicting-key",
+            "invalid-key",
+            "unsupported-output",
+            "invalid-locale",
+            "cancelled",
+            "formatter-unavailable",
+            "annotation-mismatch",
+            "not-citable"
+          ]
+        }
+>>>>>>> origin/feat/contract-version
       ]
     },
     "CitationForm": {
@@ -263,7 +288,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "value",
         "source"
@@ -421,10 +445,14 @@
     },
     "CitationWarningCode": {
       "description": "Fixed codes only; source diagnostics never include field text or locations.",
-      "type": "string",
-      "enum": [
-        "source-field",
-        "sentence-case-expected"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "source-field",
+            "sentence-case-expected"
+          ]
+        }
       ]
     },
     "Collection": {
@@ -453,7 +481,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -654,6 +681,7 @@
       ]
     },
     "EngineError": {
+      "description": "Like every result, an error accepts fields it does not know (decision 0028).",
       "type": "object",
       "properties": {
         "code": {
@@ -670,7 +698,6 @@
           ]
         }
       },
-      "additionalProperties": false,
       "required": [
         "code"
       ]
@@ -849,7 +876,6 @@
           "$ref": "#/$defs/Fingerprint"
         }
       },
-      "additionalProperties": false,
       "required": [
         "cite",
         "full"
@@ -1053,7 +1079,6 @@
               "const": "record"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1070,7 +1095,6 @@
               "const": "attachment"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1087,7 +1111,6 @@
               "const": "note"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1104,7 +1127,6 @@
               "const": "annotation"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1121,7 +1143,6 @@
               "const": "collection"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1138,7 +1159,6 @@
               "const": "tag"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1155,7 +1175,6 @@
               "const": "saved-search"
             }
           },
-          "additionalProperties": false,
           "required": [
             "kind",
             "data"
@@ -1240,21 +1259,29 @@
       ]
     },
     "LossField": {
-      "type": "string",
-      "enum": [
-        "locator",
-        "prefix",
-        "suffix",
-        "author-suppression",
-        "rich-text",
-        "order"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "locator",
+            "prefix",
+            "suffix",
+            "author-suppression",
+            "rich-text",
+            "order"
+          ]
+        }
       ]
     },
     "LossReason": {
-      "type": "string",
-      "enum": [
-        "unsupported",
-        "flattened"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "unsupported",
+            "flattened"
+          ]
+        }
       ]
     },
     "Note": {
@@ -1278,20 +1305,23 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "text"
       ]
     },
     "Notice": {
-      "type": "string",
-      "enum": [
-        "needs-document-context",
-        "reference-entry",
-        "full-first-note",
-        "year-suffix-withheld",
-        "input-language-unsupported"
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "needs-document-context",
+            "reference-entry",
+            "full-first-note",
+            "year-suffix-withheld",
+            "input-language-unsupported"
+          ]
+        }
       ]
     },
     "OutputQuestion": {
@@ -1413,7 +1443,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "csl"
@@ -1436,7 +1465,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name",
@@ -1464,7 +1492,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "field",
         "operator",
@@ -1485,7 +1512,6 @@
           }
         }
       },
-      "additionalProperties": false,
       "required": [
         "objects",
         "fingerprints"
@@ -1501,7 +1527,6 @@
           "$ref": "#/$defs/LibraryObject"
         }
       },
-      "additionalProperties": false,
       "required": [
         "object",
         "fingerprints"
@@ -1557,7 +1582,6 @@
           "type": "string"
         }
       },
-      "additionalProperties": false,
       "required": [
         "id",
         "name"

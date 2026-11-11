@@ -717,7 +717,7 @@ fn refusal(result: &CitationResult) -> Refusal {
                 ];
                 Some(crate::catalogue::sentence("refusal", *error, Audience::Agent, &args))
             }
-            ItemOutcome::Rendered { .. } => None,
+            ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })
         .collect();
     if reasons.is_empty() {

@@ -97,7 +97,6 @@ fn is_digest(value: &str) -> bool {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Fingerprints {
     pub cite: Fingerprint,
     pub full: Fingerprint,
@@ -114,14 +113,12 @@ pub enum CitationKeySource {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct CitationKey {
     pub value: String,
     pub source: CitationKeySource,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Record {
     pub id: ItemRef,
     /// Source-added metadata; affects recents/display, never citation meaning.
@@ -177,7 +174,6 @@ pub enum Availability {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Attachment {
     pub id: ItemRef,
     pub parent: Option<ItemRef>,
@@ -189,7 +185,6 @@ pub struct Attachment {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Note {
     pub id: ItemRef,
     pub parent: Option<ItemRef>,
@@ -198,7 +193,6 @@ pub struct Note {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Annotation {
     pub id: ItemRef,
     /// The attachment, not an invented bibliographic parent.
@@ -211,7 +205,6 @@ pub struct Annotation {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Collection {
     pub id: ItemRef,
     pub parent: Option<ItemRef>,
@@ -220,7 +213,6 @@ pub struct Collection {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Tag {
     pub id: ItemRef,
     pub name: String,
@@ -229,7 +221,6 @@ pub struct Tag {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct SearchCondition {
     pub field: String,
     pub operator: String,
@@ -237,7 +228,6 @@ pub struct SearchCondition {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct SavedSearch {
     pub id: ItemRef,
     pub name: String,
@@ -246,7 +236,7 @@ pub struct SavedSearch {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(tag = "kind", content = "data", rename_all = "kebab-case", deny_unknown_fields)]
+#[serde(tag = "kind", content = "data", rename_all = "kebab-case")]
 pub enum LibraryObject {
     Record(Record),
     Attachment(Attachment),
@@ -310,7 +300,6 @@ impl LibraryObject {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct SnapshotObject {
     pub object: LibraryObject,
     pub fingerprints: Fingerprints,
@@ -330,7 +319,6 @@ impl SnapshotObject {
 /// existing picker sessions retain their original value.
 // Objects are shared, so combining libraries never copies or re-fingerprints them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
-#[serde(deny_unknown_fields)]
 pub struct Snapshot {
     objects: Arc<[Arc<SnapshotObject>]>,
     fingerprints: Fingerprints,
@@ -531,7 +519,6 @@ impl Snapshot {
 impl<'de> Deserialize<'de> for Snapshot {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
         struct Wire {
             objects: Vec<SnapshotObject>,
             fingerprints: Fingerprints,
@@ -987,6 +974,21 @@ mod tests {
         let mut value = serde_json::to_value(snapshot).unwrap();
         value["objects"][0]["fingerprints"]["cite"] = json!("0".repeat(64));
         assert!(serde_json::from_value::<Snapshot>(value).is_err());
+    }
+
+    #[test]
+    fn a_newer_engines_objects_parse_with_their_extra_fields() {
+        let snapshot = Snapshot::new(vec![LibraryObject::Record(record())]).unwrap();
+        let mut hit = serde_json::to_value(&snapshot.objects()[0]).unwrap();
+        hit["added"] = json!(1);
+        hit["object"]["data"]["added"] = json!(true);
+        hit["fingerprints"]["added"] = json!("x");
+        let parsed: SnapshotObject = serde_json::from_value(hit).unwrap();
+        assert_eq!(&parsed, snapshot.objects()[0].as_ref());
+        // A request's item reference stays strict.
+        let mut item = serde_json::to_value(&record().id).unwrap();
+        item["added"] = json!(1);
+        assert!(serde_json::from_value::<ItemRef>(item).is_err());
     }
 
     #[test]

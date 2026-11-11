@@ -7,11 +7,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::path::PathBuf;
 
-#[derive(Clone, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Every action is a struct, even with no fields: serde refuses unknown fields
+/// only in those, and an argument nothing reads must be refused, not ignored.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum LibrariesRequest {
-    #[default]
-    List,
+    List {},
     /// Read Zotero. `libraries` replaces the chosen libraries (at first the
     /// personal library only); omitted, the current choice is read again.
     OpenZotero {
@@ -28,10 +29,10 @@ pub enum LibrariesRequest {
         reload: bool,
     },
     /// The Zotero profiles on this computer, by name; reads no library.
-    ZoteroProfiles,
+    ZoteroProfiles {},
     /// The Zotero group libraries known now, by name: asked of Zotero while
     /// it runs, otherwise those its closed copy listed when last read.
-    ZoteroGroups,
+    ZoteroGroups {},
     OpenFile {
         path: PathBuf,
     },
@@ -39,6 +40,11 @@ pub enum LibrariesRequest {
         #[serde(default)]
         library: Option<LibraryId>,
     },
+}
+impl Default for LibrariesRequest {
+    fn default() -> Self {
+        Self::List {}
+    }
 }
 /// A Zotero library: the personal library ("My Library") or a group by its
 /// Zotero group ID.
