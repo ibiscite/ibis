@@ -131,23 +131,25 @@ function shorthand() {
   if (!box) return;
   const refs = [{ key: "vale2024lanterns", label: "Vale 2024", words: "vale lantern lanterns gardens" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen clouds clockwork" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed maps islands" }];
   const input = box.querySelector("[data-shorthand-input]"), parts = box.querySelector("[data-shorthand-parts]"), out = box.querySelector("[data-shorthand-out]");
-  const part = (label, value) => { const span = document.createElement("span"); span.className = "part"; const name = document.createElement("span"); name.textContent = label; span.append(name, ` ${value}`); return span; };
+  // Each typed word over what it means, underlined by its role.
+  const gloss = (role, typed, meaning) => { const item = document.createElement("li"); item.dataset.role = role; const word = document.createElement("b"), note = document.createElement("span"); word.textContent = typed; note.textContent = meaning; item.append(word, note); return item; };
   function render() {
     const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean), terms = [];
-    let prefix, locator;
+    let prefix, locator, typedLocator;
     words.forEach((word, i) => {
       if (i === 0 && ["see", "cf.", "cf", "e.g."].includes(word)) prefix = word === "cf" ? "cf." : word;
-      else if (["ch", "chap", "chapter"].includes(word) && /^\d+$/.test(words[i + 1] || "")) locator = `chap. ${words[i + 1]}`;
-      else if (/^\d+([-–]\d+)?$/.test(word)) { if (!locator?.startsWith("chap")) locator = /[-–]/.test(word) ? `pp. ${word.replace("-", "–")}` : `p. ${word}`; }
+      else if (["ch", "chap", "chapter"].includes(word) && /^\d+$/.test(words[i + 1] || "")) { locator = `chap. ${words[i + 1]}`; typedLocator = `${word} ${words[i + 1]}`; }
+      else if (/^\d+([-–]\d+)?$/.test(word)) { if (!locator?.startsWith("chap")) { locator = /[-–]/.test(word) ? `pp. ${word.replace("-", "–")}` : `p. ${word}`; typedLocator = word; } }
       else terms.push(word);
     });
     const ref = terms.length ? refs.find(r => terms.every(t => r.words.includes(t))) : undefined;
     if (!ref) { parts.replaceChildren(parts.dataset.empty); out.textContent = "…"; return; }
-    parts.replaceChildren(...[prefix && part(parts.dataset.before, prefix), part(parts.dataset.reference, ref.label), locator && part(parts.dataset.locator, locator)].filter(Boolean));
+    parts.replaceChildren(...[prefix && gloss("before", prefix, parts.dataset.before), gloss("reference", terms.join(" "), ref.label), locator && gloss("locator", typedLocator, locator)].filter(Boolean));
     out.textContent = `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]`;
+    out.classList.remove("landed"); void out.offsetWidth; out.classList.add("landed");
   }
   input.addEventListener("input", render);
-  box.querySelectorAll("[data-try]").forEach(button => button.addEventListener("click", () => { input.value = button.textContent; render(); input.focus(); }));
+  box.querySelectorAll("[data-try]").forEach(button => button.addEventListener("click", () => { input.value = button.textContent; render(); }));
   render();
 }
 document.addEventListener("DOMContentLoaded", () => {

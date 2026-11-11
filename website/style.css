@@ -237,12 +237,19 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 .copy::after { content: ""; position: absolute; inset: calc(50% - var(--touch-target) / 2) 0; }
 /* The typed shorthand: each part of the search, labelled. */
 .label-nightly { display: inline-block; margin-inline-start: var(--space-2); padding: .1em .45em; border-radius: var(--website-chip-radius); background: var(--fill-control); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--mono); vertical-align: .2em; }
-.shorthand-field { display: block; margin: var(--space-4) 0 var(--space-3); }
-.shorthand-field input { box-sizing: border-box; width: 100%; min-height: var(--touch-target); margin-top: var(--space-1); padding: var(--space-2) var(--space-3); border: 0; border-radius: var(--r-control); box-shadow: inset 0 0 0 var(--border-width) var(--separator); background: var(--website-bg); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
-.shorthand-field input:hover { box-shadow: inset 0 0 0 var(--border-width) var(--text-secondary); }
-.shorthand-parts { display: flex; flex-wrap: wrap; gap: var(--space-2); min-height: 2rem; }
-.part { display: inline-flex; gap: var(--space-1); align-items: baseline; padding: .15em .55em; border-radius: var(--website-chip-radius); box-shadow: inset 0 0 0 var(--border-width) var(--separator); font: var(--type-body-size)/1.5 var(--font); }
-.part span { color: var(--text-secondary); font-size: .85em; }
+/* The shorthand: a search like the picker's, then each typed word over what it means. */
+.shorthand-search { display: flex; align-items: center; gap: var(--space-3); margin: var(--space-5) 0 var(--space-4); padding: var(--space-3) var(--space-4); border-radius: var(--r-win); background: var(--website-bg); box-shadow: var(--shadow-card); }
+.shorthand-search:focus-within { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-width); }
+.shorthand-search .mark { flex: none; display: grid; }
+.shorthand-search img { width: var(--space-6); height: var(--space-6); }
+.shorthand-search .logo-dark { display: none; }
+.shorthand-search input { flex: 1; min-width: 0; min-height: var(--touch-target); border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/1.3 var(--font); outline: none; }
+.gloss { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); min-height: 3.5rem; margin: 0 0 var(--space-5); padding: 0 var(--space-4) 0 calc(var(--space-4) + var(--space-6) + var(--space-3)); list-style: none; font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
+.gloss li { display: grid; gap: var(--space-1); }
+.gloss b { padding-bottom: var(--space-1); border-bottom: var(--ring-width) solid var(--role); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
+.gloss [data-role="before"] { --role: var(--text-secondary); }
+.gloss [data-role="reference"] { --role: var(--scarlet); }
+.gloss [data-role="locator"] { --role: var(--text); }
 @media (prefers-reduced-motion: no-preference) {
   .chips .key, .try button, .copy { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
   .chips .key:active, .try button:active, .copy:active { scale: var(--website-press); }

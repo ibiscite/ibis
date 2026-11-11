@@ -99,11 +99,12 @@ test("CLI prints the captured transcript verbatim, explains stdout and offers in
   const visible = blocks.map(m => text(m[1]) + "\n").join("");
   assert.equal(visible, terminal);
   const commands = [...html.matchAll(/<div class="code(?: terminal)?">[\s\S]*?<pre><code>([\s\S]*?)<\/code><\/pre>([\s\S]*?)<\/div>/g)];
-  assert.equal(commands.length, blocks.length + 3); // MCP and the two installers.
+  assert.equal(commands.length, blocks.length + 2); // MCP and the Homebrew installer.
   for (const [, code, controls] of commands) {
     const command = text(code).split("\n")[0].replace(/^\$ /, "");
     const buttons = [...controls.matchAll(/<button\b[^>]*data-copy="([^"]+)"[^>]*>[\s\S]*?<span>([^<]+)<\/span><\/button>/g)];
     assert.deepEqual(buttons.map(m => [text(m[1]), m[2]]), [[command, "Copy"]]);
   }
-  for (const text of ["standard output", "standard error", "pbcopy", "clip", "wl-copy", "brew install ibiscite/tap/ibis", "winget install", "ibis mcp", "docs/cli.md"]) assert.ok(html.includes(text), text);
+  for (const text of ["standard output", "standard error", "pbcopy", "clip", "wl-copy", "brew install ibiscite/tap/ibis", "ibis mcp", "docs/cli.md"]) assert.ok(html.includes(text), text);
+  assert.ok(!html.includes("winget"), "winget is offered only once Ibis is in its catalogue");
 });
