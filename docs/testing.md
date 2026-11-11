@@ -159,7 +159,9 @@ checks because its options are generated; other top-level Markdown is docs-only.
 Script tests, workflow lint and dependency policy run for docs changes too.
 
 Licences, bans, sources and commit identities always block; every non-merge
-commit needs a sign-off. RustSec advisories block only changes to a
+commit needs a sign-off, except those with author email
+`347725936+ibis-release[bot]@users.noreply.github.com` and committer
+`GitHub <noreply@github.com>`. RustSec advisories block only changes to a
 `Cargo.toml`, `Cargo.lock` or `deny.toml`, release tags and the weekly check,
 which keeps one issue up to date; other changes get a warning. Ubuntu package
 downloads are cached.
