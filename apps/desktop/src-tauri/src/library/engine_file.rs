@@ -624,7 +624,7 @@ impl FileLibrary {
         Ok(SearchReply {
             revision,
             results,
-            interpretation: reply.locator.map(Into::into),
+            interpretation: reply.shorthand.map(Into::into),
             list: reply
                 .list
                 .map(|list| super::search::PastedList { missing: list.missing }),

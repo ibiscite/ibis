@@ -17,9 +17,13 @@
           "type": "integer"
         },
         "query": {
-          "description": "A few distinctive words: an author surname, title words, a year or a citation key.",
+          "description": "Distinctive words: an author surname, title words, a year or a key.",
           "minLength": 1,
           "type": "string"
+        },
+        "shorthand": {
+          "description": "Read \"see\" before and \"417\" after the words into cited_with.",
+          "type": "boolean"
         }
       },
       "required": [
@@ -30,6 +34,10 @@
     "name": "search",
     "outputSchema": {
       "properties": {
+        "cited_with": {
+          "description": "prefix and locator for the cite item",
+          "type": "object"
+        },
         "complete": {
           "description": "False when more references match than these; use more distinctive words.",
           "type": "boolean"
@@ -50,7 +58,7 @@
                 "type": "boolean"
               },
               "ref": {
-                "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone.",
+                "description": "Pass to show or cite: the key, or an id when no key is unique.",
                 "type": "string"
               },
               "title": {},
@@ -85,6 +93,9 @@
           "type": "array"
         },
         "provenance": {
+          "type": "string"
+        },
+        "searched_for": {
           "type": "string"
         }
       },
@@ -143,7 +154,7 @@
           "type": "string"
         },
         "ref": {
-          "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone.",
+          "description": "Pass to show or cite: the key, or an id when no key is unique.",
           "type": "string"
         },
         "title": {},
@@ -166,7 +177,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Write a citation or reference list from refs that search returned, with page locators if needed. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
+    "description": "Write a citation or reference list from search's refs. Pass each ref exactly as search gave it. Give a `format` such as pandoc, autocite or typst for a document that is processed later, or apa for finished text; any other CSL style goes in `style`. With neither, it is written in apa. Use the returned text as it is, and tell the user about anything in notices, losses or warnings.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {
@@ -175,7 +186,7 @@
           "type": "string"
         },
         "form": {
-          "description": "How it reads. bibliography-only writes reference-list entries and needs a style.",
+          "description": "bibliography-only writes reference-list entries and needs a style.",
           "enum": [
             "normal",
             "narrative",
@@ -187,7 +198,7 @@
           "type": "string"
         },
         "format": {
-          "description": "An output: a key syntax for the document's own citation processor, or one of the common styles.",
+          "description": "A key syntax for the document's own processor, or a common style.",
           "enum": [
             "pandoc",
             "pandoc-bare",
@@ -232,7 +243,7 @@
                 "type": "string"
               },
               "omit_author": {
-                "description": "Leave out the author, for when the sentence already names them.",
+                "description": "Leave out the author the sentence already names.",
                 "type": "boolean"
               },
               "prefix": {
@@ -325,7 +336,7 @@
       "openWorldHint": false,
       "readOnlyHint": true
     },
-    "description": "Find the style ids cite accepts by journal or style name, among every official CSL style, and list the languages a citation can be written in. With no query, the common styles come first.",
+    "description": "Find the style ids cite accepts by journal or style name, and the languages a citation can be written in. With no query, the common styles come first.",
     "inputSchema": {
       "additionalProperties": false,
       "properties": {

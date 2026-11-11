@@ -90,7 +90,7 @@ export type SessionEvent =
   | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
-  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
+  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null; prefix?: string }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
   /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
@@ -309,7 +309,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         selected.delete(key);
         removed = { token: s.context + 1, reference: previous, before: order.slice(0, index), after: order.slice(index + 1) };
       } else {
-        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null });
+        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null, ...event.prefix ? { prefix: event.prefix } : {} });
         if (removed && idKey(removed.reference.id) === key) removed = null;
       }
       return [changed(s, { selected, removed, selectionChanged: true, changing: selected.size > 0 ? s.changing : null }), []];

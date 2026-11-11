@@ -1,12 +1,12 @@
 import { useMemo, useRef, type ComponentProps } from "react";
 import type { ResultList } from "./ResultList";
 import type { PickerApi } from "../../App";
-import type { Locator, SearchResult } from "../../api";
+import type { SearchResult } from "../../api";
 import type { usePointerSelection } from "../../pointerSelection";
 import type { usePickerSession } from "./usePickerSession";
 import type { useLibrarySearch } from "./useLibrarySearch";
 import type { useOperations } from "./useOperations";
-import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
+import { choiceKey, idKey, type CitationDetailsChange, type CitationReference, asTyped, type Typed } from "./choice";
 import type { OutputId } from "../../format/outputs";
 
 export function useCitationRows({
@@ -31,12 +31,13 @@ export function useCitationRows({
   const { active, selected } = state;
   const { rowContext } = api;
   const { resetPointer } = pointer;
-  const highlightedChoice = choiceKey(results.slice(active, active + 1).map((r) => ({ ...r, locator: interpretation?.locator })));
+  const highlightedChoice = choiceKey(results.slice(active, active + 1).map((r) => asTyped(r, interpretation)));
   const latestHighlight = useRef(highlightedChoice);
   latestHighlight.current = highlightedChoice;
-  const toggle = (result?: SearchResult) => send({ type: "toggle", result, locator: interpretation?.locator });
-  const changeLocator = (reference: CitationReference, locator: Readonly<Locator> | null) => {
-    send({ type: "reference", reference, change: { locator: locator ? { ...locator } : null }, selectedOnly: true });
+  const toggle = (result?: SearchResult) => send({ type: "toggle", result, locator: interpretation?.locator, prefix: interpretation?.prefix ?? undefined });
+  /** Gives a reference already in the citation what was typed with the search. */
+  const changeLocator = (reference: CitationReference, typed: NonNullable<Typed>) => {
+    send({ type: "reference", reference, change: { locator: typed.locator ? { ...typed.locator } : reference.locator, ...typed.prefix ? { prefix: typed.prefix } : {} }, selectedOnly: true });
     focusHome();
   };
   const changeReference = (reference: CitationReference, change: CitationDetailsChange) => {
@@ -59,7 +60,7 @@ export function useCitationRows({
     if (!ready) return;
     pointer.choose(i);
     if (action === "toggle") toggle(r);
-    else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+    else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([asTyped(r, interpretation)]));
     focusHome();
   };
   const onContext: NonNullable<ComponentProps<typeof ResultList>["onContext"]> = (i, r) => {
@@ -67,12 +68,12 @@ export function useCitationRows({
     resetPointer();
     setActive(i);
     const scope = rowScope, visibility = session.getSnapshot().visibility, request = ++contextRequest.current;
-    const owns = () => scope === latestRowScope.current && visibility === session.getSnapshot().visibility && request === contextRequest.current && latestHighlight.current === choiceKey([{ ...r, locator: interpretation?.locator }]);
+    const owns = () => scope === latestRowScope.current && visibility === session.getSnapshot().visibility && request === contextRequest.current && latestHighlight.current === choiceKey([asTyped(r, interpretation)]);
     void rowContext(selected.has(idKey(r.id))).then((action) => {
       if (!owns()) return;
       report("rowContext", false);
       if (action === "toggle") toggle(r);
-      else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([{ ...r, locator: interpretation?.locator }]));
+      else if (action === "copy") requestCopy(selected.size > 0 || list ? chosenKey : choiceKey([asTyped(r, interpretation)]));
       if (action !== null || document.hasFocus()) focusHome();
     }).catch(() => { if (owns()) { report("rowContext"); if (document.hasFocus()) focusHome(); } });
   };

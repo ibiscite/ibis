@@ -36,27 +36,41 @@ pub(super) fn with_summary(
     result
 }
 
+/// The search's rows, or what it means that there are none.
+fn search_summary(hits: &[Value], holdings: Holdings) -> Option<String> {
+    if hits.is_empty() {
+        return match holdings {
+            Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
+            Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
+            Holdings::References => Some("No references found.".into()),
+        };
+    }
+    let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
+    // Closest matches are said to be so, never shown as full matches.
+    if hits
+        .iter()
+        .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
+    {
+        return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
+    }
+    Some(rows)
+}
+
 fn summary(method: Method, data: &Value, holdings: Holdings, names: &BTreeMap<String, String>) -> Option<String> {
     match method {
         Method::Show => reference(data),
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
-            if hits.is_empty() {
-                return match holdings {
-                    Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
-                    Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
-                    Holdings::References => Some("No references found.".into()),
-                };
-            }
-            let rows = hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n");
-            // Closest matches are said to be so, never shown as full matches.
-            if hits
-                .iter()
-                .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
-            {
-                return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
-            }
-            Some(rows)
+            // What was read around the words, said once before the rows, as the picker shows it.
+            let read = data.get("shorthand").map(|read| {
+                let prefix = read.get("prefix").and_then(Value::as_str);
+                let locator = read.pointer("/locator/typed").and_then(Value::as_str);
+                let words = read.get("search").and_then(Value::as_str).unwrap_or_default();
+                let cited = [prefix, locator].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+                format!("Cited with: {}; searched for: {}\n", field(&cited), field(words))
+            });
+            let summary = search_summary(hits, holdings)?;
+            Some(format!("{}{summary}", read.unwrap_or_default()))
         }
         Method::Libraries => {
             let libraries = data.get("libraries")?.as_array()?;
