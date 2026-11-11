@@ -41,11 +41,12 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
   useEffect(() => {
     if (!editing || !previewReceipt || index < 0) return;
     let live = true;
-    void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
+    const controller = new AbortController();
+    void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index, controller.signal).then(
       (value) => { if (live) setDetails({ receipt: previewReceipt, output, value }); },
       (error) => { if (live && !isCancelled(error)) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
     );
-    return () => { live = false; };
+    return () => { live = false; controller.abort(); };
   }, [editing, previewReceipt, index, output]);
   const problem = failure && <p role="alert" tabIndex={0} className="inspector-citation inspector-problem"><Icon name="warning" />{failure}</p>;
   if (!editing) {

@@ -96,6 +96,12 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
+Inspector examples and bibliography work (including Copy and Save) own separate
+cancellation tokens. Closing or replacing their view stops formatting and its
+fallback passes; it leaves the citation receipt usable. MCP reads cancellation
+notifications while a bounded tool worker runs, tracks each request ID's owner,
+and sends no result after that owner is cancelled.
+
 A prepared citation pins its request and fingerprints. Copy re-cites it
 against current data and requires the shown content hash. Changed or removed
 items, ambiguous keys and changed Zotero generations refuse the copy.

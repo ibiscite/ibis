@@ -93,11 +93,13 @@ fn a_session_runs_over_newline_delimited_stdio() {
         + "not json\n";
     let mut output = Vec::new();
     mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
-    let replies: Vec<Value> = String::from_utf8(output)
+    let mut replies: Vec<Value> = String::from_utf8(output)
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
+    // Tool replies can follow later protocol replies; JSON-RPC pairs by ID.
+    replies.sort_by_key(|reply| reply["id"].as_u64().unwrap_or(u64::MAX));
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
     // An unknown requested revision is answered with the newest handshake revision.

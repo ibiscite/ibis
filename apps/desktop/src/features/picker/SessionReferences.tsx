@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PickerApi } from "../../App";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
+import { isCancelled } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
 import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
@@ -28,16 +29,26 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const [problem, setProblem] = useState<string | null>(null);
   const listing = useRef(0);
   const formatting = useRef(0);
+  const activeFormatting = useRef<AbortController | null>(null);
+  const delivery = useRef(0);
+  const activeDelivery = useRef<AbortController | null>(null);
 
   const show = useCallback((next: SessionReferencesView) => {
     setView(next);
     const request = ++formatting.current;
+    activeFormatting.current?.abort();
+    const controller = new AbortController();
+    activeFormatting.current = controller;
     setBibliography(null);
-    sessionBibliography(style).then(
+    sessionBibliography(style, controller.signal).then(
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
       (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
   }, [sessionBibliography, style]);
   const load = useCallback((read: () => Promise<SessionReferencesView>) => {
+    formatting.current += 1;
+    activeFormatting.current?.abort();
+    delivery.current += 1;
+    activeDelivery.current?.abort();
     const request = ++listing.current;
     setProblem(null);
     read().then((next) => { if (request === listing.current) show(next); },
@@ -45,7 +56,10 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   }, [show]);
   useEffect(() => {
     load(sessionReferences);
-    return () => { listing.current += 1; formatting.current += 1; };
+    return () => {
+      listing.current += 1; formatting.current += 1; delivery.current += 1;
+      activeFormatting.current?.abort(); activeDelivery.current?.abort();
+    };
   }, [load, sessionReferences]);
 
   const edit = (change: SessionEdit) => {
@@ -53,10 +67,15 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     load(() => editSessionReferences(change));
   };
   /** Copy or save what is on screen; a list that moved on is shown again instead. */
-  const deliver = (act: () => Promise<string | null>, failure: string) => {
+  const deliver = (act: (signal: AbortSignal) => Promise<string | null>, failure: string) => {
+    const request = ++delivery.current;
+    activeDelivery.current?.abort();
+    const controller = new AbortController();
+    activeDelivery.current = controller;
     setStatus(null);
     setProblem(null);
-    act().then((done) => { if (done) setStatus(done); }, (error) => {
+    act(controller.signal).then((done) => { if (request === delivery.current && done) setStatus(done); }, (error) => {
+      if (request !== delivery.current || isCancelled(error)) return;
       if (changed(error)) { setProblem(say("session-changed")); load(sessionReferences); } else setProblem(said(error, failure));
     });
   };
@@ -71,12 +90,12 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
       ...view && view.rows.length + view.absent > 0 ? [{ label: say("session-reset"), onPress: () => edit({ kind: "reset" }) }] : [],
     ]}
     actions={[
-      { label: say("session-save"), disabled: !hash, onPress: () => deliver(async () => {
-        const saved = await exportSessionBibliography(style, hash!);
+      { label: say("session-save"), disabled: !hash, onPress: () => deliver(async (signal) => {
+        const saved = await exportSessionBibliography(style, hash!, signal);
         return saved === null ? null : say("session-saved", { name: isolate(saved) });
       }, say("session-not-saved")) },
-      { label: say("session-copy"), primary: true, disabled: !hash, onPress: () => deliver(async () => {
-        await copySessionBibliography(style, hash!);
+      { label: say("session-copy"), primary: true, disabled: !hash, onPress: () => deliver(async (signal) => {
+        await copySessionBibliography(style, hash!, signal);
         return say("session-copied");
       }, say("session-not-copied")) },
     ]}>

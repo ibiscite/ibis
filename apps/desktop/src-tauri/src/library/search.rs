@@ -74,6 +74,13 @@ impl SearchRequests {
 #[derive(Default)]
 pub(crate) struct PreviewRequests(SearchRequests);
 
+/// These operations may end while their citation receipt remains usable.
+#[derive(Default)]
+pub(crate) struct FormattingRequests {
+    pub(crate) details: PreviewRequests,
+    pub(crate) bibliography: PreviewRequests,
+}
+
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PreviewIntent {

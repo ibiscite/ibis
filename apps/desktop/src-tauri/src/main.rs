@@ -167,6 +167,7 @@ fn main() {
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
         .manage(PreviewRequests::default())
+        .manage(library::FormattingRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())

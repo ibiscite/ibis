@@ -6,6 +6,25 @@ import { backend, chooseForm, chooseFromMore, prepared, receipt, resetApp, resul
 
 afterEach(resetApp);
 
+test("closing slow inspector formatting lets citation B finish before the abandoned examples", async () => {
+  let busy = false;
+  let started = false;
+  backend({ search: () => [result("a", "First work"), result("b", "Second work")],
+    citation_details: ({ intent }) => {
+      if (intent?.cancel) { busy = false; return null; }
+      started = busy = true;
+      return new Promise(() => {});
+    },
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === "b" ? "Citation B" : "Citation A"),
+  });
+  render(<App />);
+  await openCitationDetails();
+  await waitFor(() => expect(started).toBe(true));
+  closeCitationDetails();
+  fireEvent.click(screen.getByText("Second work"));
+  expect(await screen.findByText("Citation B")).toBeTruthy();
+});
+
 test.each([96, 280].flatMap((height) => [false, true].flatMap((built) =>
   ["observer", "window"].map((reflow) => ({ height, built, reflow })),
 )))("a delayed long refusal keeps priority over automatic row scrolling (%j)", async ({ height, built, reflow }) => {
@@ -483,7 +502,7 @@ test("late form metadata cannot overwrite the examples for a newer Page edit or 
   const requests: { ticket: string; item: number }[] = [];
   backend({ search: () => [result("a", "Synthetic metadata work")],
     preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.locator_input?.text ?? "original"}`),
-    citation_details: (args) => { requests.push({ ticket: args.ticket, item: Number(args.item) }); return new Promise((resolve) => replies.push(resolve)); },
+    citation_details: (args) => { if (args.intent?.cancel) return null; requests.push({ ticket: args.ticket, item: Number(args.item) }); return new Promise((resolve) => replies.push(resolve)); },
   });
   render(<App />);
   const page = await openCitationDetails();
@@ -716,7 +735,7 @@ test("an unavailable form is dimmed with its reason under it and cannot be picke
 test("examples from the last answer stay while a page is typed, so the Form menu never empties", async () => {
   const replies: ((value: unknown) => void)[] = [];
   backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.locator_input?.text ?? ""}`),
-    citation_details: () => new Promise((resolve) => replies.push(resolve)) });
+    citation_details: ({ intent }) => intent?.cancel ? null : new Promise((resolve) => replies.push(resolve)) });
   render(<App />);
   const page = await openCitationDetails();
   await waitFor(() => expect(replies).toHaveLength(1));
@@ -731,7 +750,7 @@ test("pressing another segment moves the inspector to it and retires the first r
   const replies: { item: number; resolve: (value: unknown) => void }[] = [];
   backend({ search: () => [result("a", "First work"), result("b", "Second work")],
     preview_file_citation: (request) => ({ ...receipt("(First; Second)"), spans: [{ item: 0, text: "First" }, { item: null, text: "; " }, { item: 1, text: "Second" }].slice(0, request.items.length * 2 - 1) }),
-    citation_details: (args) => new Promise((resolve) => replies.push({ item: Number(args.item), resolve })) });
+    citation_details: (args) => args.intent?.cancel ? null : new Promise((resolve) => replies.push({ item: Number(args.item), resolve })) });
   render(<App />);
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
   fireEvent.click(screen.getByText("Second work"), { ctrlKey: true });
@@ -802,7 +821,7 @@ test("an output with no forms keeps its one line while a page is typed, with no 
   const reason = "Reference entries have no name forms. Choose another style.";
   const replies: ((value: unknown) => void)[] = [];
   backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Entry ${items[0]?.locator_input?.text ?? ""}`),
-    citation_details: () => new Promise((resolve) => replies.push(resolve)) });
+    citation_details: ({ intent }) => intent?.cancel ? null : new Promise((resolve) => replies.push(resolve)) });
   render(<App />);
   const page = await openCitationDetails();
   await waitFor(() => expect(replies).toHaveLength(1));
