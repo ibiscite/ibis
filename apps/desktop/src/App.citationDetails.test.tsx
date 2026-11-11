@@ -269,8 +269,8 @@ test("a label-only Page refuses copy until corrected", async () => {
   const copied: string[] = [];
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
-      if (items[0]?.page_input === "pp.") throw { code: "failed", message };
-      return receipt(items[0]?.page_input ? "Synthetic normalized output" : "Original output");
+      if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
+      return receipt(items[0]?.locator_input?.text ? "Synthetic normalized output" : "Original output");
     },
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; },
   });
@@ -311,12 +311,12 @@ test.each(["pointer", "Enter", " "])("Edit activated with %s focuses Page and ed
     expect(document.activeElement).toBe(page);
     expect(screen.getByRole("region", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
     fireEvent.change(page, { target: { value } });
-    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.page_input).toBe(value));
+    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.locator_input?.text).toBe(value));
     closeCitationDetails();
   }
   expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: null, page_input: "16" },
-    { id: result("b", "").id, locator: null, page_input: "29" },
+    { id: result("a", "").id, locator: null, locator_input: { label: "page", text: "16" } },
+    { id: result("b", "").id, locator: null, locator_input: { label: "page", text: "29" } },
   ]);
   expect(calls).not.toContain("copy_file_citation");
 });
@@ -355,7 +355,7 @@ test("editing the highlighted reference freezes its page and form for preview an
   expect(document.activeElement).toBe(page);
   await chooseForm("Name in the sentence");
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: null, page_input: "12–15", form: "narrative" },
+    { id: result("a", "").id, locator: null, locator_input: { label: "page", text: "12–15" }, form: "narrative" },
   ]));
   const search = screen.getByLabelText("Search references");
   fireEvent.change(search, { target: { value: "second" } });
@@ -363,7 +363,7 @@ test("editing the highlighted reference freezes its page and form for preview an
   expect((page as HTMLInputElement).value).toBe("12–15");
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]?.items).toMatchObject([{ id: result("a", "").id, locator: null, page_input: "12–15", form: "narrative" }]);
+  expect(copies[0]?.items).toMatchObject([{ id: result("a", "").id, locator: null, locator_input: { label: "page", text: "12–15" }, form: "narrative" }]);
 });
 
 test("each shelf reference keeps independent details and an empty Page removes only that page", async () => {
@@ -387,7 +387,7 @@ test("each shelf reference keeps independent details and an empty Page removes o
   await chooseForm("Name in the sentence");
   fireEvent.change(screen.getByRole("textbox", { name: "Page" }), { target: { value: "" } });
   await waitFor(() => expect(previews.at(-1)?.items).toMatchObject([
-    { id: result("a", "").id, locator: null, page_input: "iv–vi", form: "narrative" },
+    { id: result("a", "").id, locator: null, locator_input: { label: "page", text: "iv–vi" }, form: "narrative" },
     { id: result("b", "").id, locator: null, form: "narrative" },
   ]));
   closeCitationDetails();
@@ -403,7 +403,7 @@ test("losses keep a visible count and an unsupported form blocks copying until c
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
       if (items[0]?.form === "narrative") throw { code: "failed", message: "Reference 1: Narrative cannot be expressed in this output." };
-      return receipt("Synthetic output", null, items[0]?.page_input ? [warning] : []);
+      return receipt("Synthetic output", null, items[0]?.locator_input?.text ? [warning] : []);
     } });
   render(<App />);
   const page = await openCitationDetails();
@@ -471,10 +471,10 @@ test("page and form survive changing output and remain editable", async () => {
   fireEvent.click(within(search.closest("header")!).getByRole("button", { name: "Citation format Pandoc" }));
   fireEvent.click(screen.getByRole("option", { name: "Typst" }));
   await waitFor(() => expect(previews.at(-1)?.output).toBe("typst"));
-  expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, page_input: "42", form: "narrative" });
+  expect(previews.at(-1)?.items[0]).toMatchObject({ locator: null, locator_input: { label: "page", text: "42" }, form: "narrative" });
   page = await openCitationDetails();
   fireEvent.change(page, { target: { value: "42–45" } });
-  await waitFor(() => expect(previews.at(-1)?.items[0]?.page_input).toBe("42–45"));
+  await waitFor(() => expect(previews.at(-1)?.items[0]?.locator_input?.text).toBe("42–45"));
   expect(previews.at(-1)?.items[0]?.form).toBe("narrative");
 });
 
@@ -482,7 +482,7 @@ test("late form metadata cannot overwrite the examples for a newer Page edit or 
   const replies: ((value: unknown) => void)[] = [];
   const requests: { ticket: string; item: number }[] = [];
   backend({ search: () => [result("a", "Synthetic metadata work")],
-    preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.page_input ?? "original"}`),
+    preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.locator_input?.text ?? "original"}`),
     citation_details: (args) => { requests.push({ ticket: args.ticket, item: Number(args.item) }); return new Promise((resolve) => replies.push(resolve)); },
   });
   render(<App />);
@@ -637,7 +637,7 @@ test("Esc closes the Form menu first, then the inspector", async () => {
 
 test("Enter in Page does what the footer says, once, and a held key does not repeat it", async () => {
   const copied: string[] = [];
-  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Citation ${items[0]?.page_input ?? ""}`.trim()),
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Citation ${items[0]?.locator_input?.text ?? ""}`.trim()),
     copy_file_citation: (args) => { const saved = prepared(args); copied.push(saved.preview.text); return { text: saved.preview.text, warnings: [] }; } });
   render(<App />);
   const page = await openCitationDetails();
@@ -653,7 +653,7 @@ test("Enter in Page does what the footer says, once, and a held key does not rep
 test("a refused page stays visible in place, and Enter in Page copies nothing", async () => {
   const message = "Reference 1: Page needs a page or range.";
   const calls = backend({ search: () => [result("a", "Synthetic work")], preview_file_citation: ({ items }) => {
-    if (items[0]?.page_input === "pp.") throw { code: "failed", message };
+    if (items[0]?.locator_input?.text === "pp.") throw { code: "failed", message };
     return receipt("Original output");
   } });
   render(<App />);
@@ -715,7 +715,7 @@ test("an unavailable form is dimmed with its reason under it and cannot be picke
 
 test("examples from the last answer stay while a page is typed, so the Form menu never empties", async () => {
   const replies: ((value: unknown) => void)[] = [];
-  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.page_input ?? ""}`),
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Page ${items[0]?.locator_input?.text ?? ""}`),
     citation_details: () => new Promise((resolve) => replies.push(resolve)) });
   render(<App />);
   const page = await openCitationDetails();
@@ -757,7 +757,7 @@ test("a form picked while no receipt exists shows the form asked for, and an old
     citation_details: () => ({ current_form: "normal", forms: [{ form: "normal", example: "(Smith, 2020)", reason: null }, { form: "narrative", example: null, reason: "Cite it alone." }, { form: "year-only", example: "(2020)", reason: null }] }),
     preview_file_citation: (request) => {
       previews.push(request);
-      if (request.items[0]?.page_input === "pp.") throw { code: "failed", message: "Reference 1: Page needs a page or range." };
+      if (request.items[0]?.locator_input?.text === "pp.") throw { code: "failed", message: "Reference 1: Page needs a page or range." };
       return receipt("(Smith, 2020)");
     } });
   render(<App />);
@@ -801,12 +801,12 @@ test.each([1, 2])("removing the edited reference closes the panel and returns to
 test("an output with no forms keeps its one line while a page is typed, with no pop-up in between", async () => {
   const reason = "Reference entries have no name forms. Choose another style.";
   const replies: ((value: unknown) => void)[] = [];
-  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Entry ${items[0]?.page_input ?? ""}`),
+  backend({ search: () => [result("a", "Invented work")], preview_file_citation: ({ items }) => receipt(`Entry ${items[0]?.locator_input?.text ?? ""}`),
     citation_details: () => new Promise((resolve) => replies.push(resolve)) });
   render(<App />);
   const page = await openCitationDetails();
   await waitFor(() => expect(replies).toHaveLength(1));
-  const none = { current_form: null, forms: [{ form: "normal", example: null, reason }, { form: "narrative", example: null, reason }, { form: "year-only", example: null, reason }] };
+  const none = { current_form: null, forms: (["normal", "narrative", "author-only", "year-only", "full"] as const).map((form) => ({ form, example: null, reason })) };
   await act(async () => replies[0]!(none));
   expect(screen.getByText(reason)).toBeTruthy();
   fireEvent.change(page, { target: { value: "9" } });

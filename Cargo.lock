@@ -2056,6 +2056,7 @@ dependencies = [
  "ibis-core",
  "ibis-engine",
  "ibis-sources",
+ "insta",
  "serde_json",
  "tempfile",
 ]
@@ -2199,7 +2200,6 @@ dependencies = [
  "ibis-core",
  "nix",
  "rusqlite",
- "rustix",
  "ryu-js",
  "serde_json",
  "tempfile",

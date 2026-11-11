@@ -9,6 +9,14 @@
   color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-view:focus { outline: none; }
+/* One entrance for palettes and sheets: a region rises into place, takes keys
+   immediately and leaves immediately. Reduce Motion keeps only a short fade. */
+.ui-view { animation: ui-view-in var(--dur-3) var(--ease-out); }
+@keyframes ui-view-in { from { opacity: 0; translate: 0 var(--space-2); } }
+@media (prefers-reduced-motion: reduce) {
+  .ui-view { animation: ui-view-fade var(--dur-1) linear; }
+}
+@keyframes ui-view-fade { from { opacity: 0; } }
 .ui-view-head {
   flex: none; display: flex; align-items: center; min-height: calc(var(--field-h) + 2 * var(--inset) + var(--border-width));
   padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);

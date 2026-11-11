@@ -48,12 +48,13 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             "\\autocite{demo}".to_owned(),
         ),
     ];
-    // Every key output the engine lists, remembered, writes its own example.
+    // Every key output the engine lists, remembered, writes its own example;
+    // Zotero's markers write only for references read from Zotero.
     cases.extend(ibis_engine::outputs::outputs().iter().filter_map(|output| {
         let example = output
             .example
             .as_ref()
-            .filter(|_| matches!(output.output, OutputSpec::Key { .. }))?;
+            .filter(|_| matches!(output.output, OutputSpec::Key { .. }) && !output.zotero_items)?;
         Some((crate::output::listed(&output.id)?, example.replace("key", "demo")))
     }));
     assert!(cases.len() > 10, "every key output");

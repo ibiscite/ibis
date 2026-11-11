@@ -16,6 +16,8 @@ export const rowWords = { itemType: (type: string): string | null => say("row-it
 
 /** "et al." in its own isolate, so it keeps its reading order beside a right-to-left name. */
 const etAl = <bdi>{say("row-et-al")}</bdi>;
+/** A spoken pause between parts that sit apart on screen but make one accessible name. */
+const pause = <span className="visually-hidden">, </span>;
 
 type RowHandlers = {
   onPointerDown: (e: React.PointerEvent) => void;
@@ -152,22 +154,22 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
             <span className="result-authors" dir="auto">
               {abbreviatedAuthors(r) ? <><span aria-hidden="true">{r.first_author} {etAl}</span><span className="visually-hidden">{r.authors}</span></> : r.authors}
             </span>
-            {!compact && r.container && r.authors && <span className="result-separator" aria-hidden="true">{" · "}</span>}
+            {!compact && r.container && r.authors && <><span className="result-separator" aria-hidden="true">{" · "}</span>{pause}</>}
             {!compact && r.container && <span className="result-container" dir="auto">{r.container}</span>}
           </span>
-          {library && <span className="result-library">{library}</span>}
+          {library && <>{pause}<span className="result-library">{library}</span></>}
         </span>
-        {why && <span className="result-why">{say("picker-matched-in", { field: why })}</span>}
+        {why && <>{pause}<span className="result-why">{say("picker-matched-in", { field: why })}</span></>}
         {/* Only some search words matched this row: it says so itself, not only its group. */}
-        {r.partial && <span className="result-why">{say("picker-closest-match")}</span>}
+        {r.partial && <>{pause}<span className="result-why">{say("picker-closest-match")}</span></>}
         {/* The engine decides a word matched only with a spelling change; the row says so. */}
-        {r.typo && !r.partial && <span className="result-why">{say("picker-spelling-match")}</span>}
-        {project && <span className="result-project">{project}</span>}
+        {r.typo && !r.partial && <>{pause}<span className="result-why">{say("picker-spelling-match")}</span></>}
+        {project && <>{pause}<span className="result-project">{project}</span></>}
         {/* The type in words; the tile's icon is decorative. */}
-        {rowWords.itemType(r.item_type) && <span className="visually-hidden">{rowWords.itemType(r.item_type)}</span>}
-        {added && <span className="visually-hidden">{say("picker-added-to-citation")}</span>}
+        {rowWords.itemType(r.item_type) && <span className="visually-hidden">, {rowWords.itemType(r.item_type)}</span>}
+        {added && <span className="visually-hidden">, {say("picker-added-to-citation")}</span>}
         {/* The key is searchable and spoken but not drawn: the shelf shows the citation (C4). */}
-        <span className="result-key visually-hidden" dir="ltr">{r.key}</span>
+        {pause}<span className="result-key visually-hidden" dir="ltr">{r.key}</span>
       </span>
     </Option>
   );

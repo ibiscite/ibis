@@ -87,5 +87,8 @@ the anchor older links use.
 ## 0042 Formats, apps and writings
 [0042](decisions/0042-formats-apps-and-writings.md): one visible format; a writing you chose beats this app's format beats your format; Ibis finds inside Zotero; Settings and a live settings file stay in step.
 
+## 0043 RIS and CSV libraries
+[0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.

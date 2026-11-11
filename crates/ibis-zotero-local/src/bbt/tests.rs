@@ -186,9 +186,8 @@ fn the_closed_store_is_read_from_its_citationkey_table() -> Result {
                                         (3, 'IJKL2345', 1, '', 0),
                                         (4, 'MNPQ6789', 1, NULL, 0);",
     )?;
-    assert_eq!(read_store(&store, 8), Err(BbtError::Unavailable));
     assert_eq!(
-        read_store(&store, 7)?,
+        read_store(&store)?,
         vec![
             StoredKey {
                 library_id: 1,
@@ -209,14 +208,14 @@ fn the_closed_store_is_read_from_its_citationkey_table() -> Result {
 fn an_older_or_damaged_store_is_refused() -> Result {
     let older = rusqlite::Connection::open_in_memory()?;
     older.execute_batch("CREATE TABLE \"better-bibtex\" (name TEXT, data TEXT);")?;
-    assert_eq!(read_store(&older, 7), Err(BbtError::Unavailable));
+    assert_eq!(read_store(&older), Err(BbtError::Unavailable));
 
     let damaged = rusqlite::Connection::open_in_memory()?;
     damaged.execute_batch(
         "CREATE TABLE citationkey (itemKey TEXT, libraryID INTEGER, citationKey TEXT);
          INSERT INTO citationkey VALUES ('not a key', 1, 'Synthetic2026');",
     )?;
-    assert_eq!(read_store(&damaged, 7), Err(BbtError::Malformed));
+    assert_eq!(read_store(&damaged), Err(BbtError::Malformed));
     Ok(())
 }
 

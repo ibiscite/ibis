@@ -294,6 +294,8 @@ test("Window size shows a dragged size as Custom, applies once, and goes back on
   const choose = vi.mocked(api.setWindowSize).mockRejectedValueOnce(new Error("refused"));
   render(<SettingsApp api={api} initialPage="look" />);
   await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));
+  // The chosen Custom keeps the group's tab stop and stays enabled, so the keyboard reaches every size.
+  expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("disabled", false);
   fireEvent.click(screen.getByRole("radio", { name: "Large" }));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
   await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));

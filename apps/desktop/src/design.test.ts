@@ -92,6 +92,9 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "tertiary ink stays on placeholders and resting glyphs, never words a person reads",
     breaks: ({ property, value, selector }) => property === "color" && value === "var(--text-tertiary)" && !/placeholder|-glyph|-icon|-remove/.test(selector),
     planted: ".planted-label { color: var(--text-tertiary); }" },
+  { says: "shadows and edges drawn as shadows take their lengths and colours from tokens", applies: parts,
+    breaks: ({ property, value }) => /^(box|text)-shadow$/.test(property) && (length.test(value) || colour.test(value)),
+    planted: ".planted { box-shadow: 0 2px 8px rgb(0 0 0 / 20%); }" },
   { says: "a one-shot movement takes the motion tokens; only a looping indicator keeps its own period", applies: parts,
     breaks: ({ property, value }) => /^(transition|animation)(-duration)?$/.test(property) && /(^|[\s,])(?!0m?s\b)\d*\.?\d+m?s\b/.test(value) && !/infinite/.test(value),
     planted: ".planted { transition: opacity 300ms ease; }" },
@@ -120,7 +123,7 @@ function unanswered(found: readonly Declaration[]) {
 
 test("every movement has a Reduce Motion answer, nested groups included", () => {
   expect([...new Set(unanswered(all.filter((d) => !d.file.startsWith("website/"))))]).toEqual([]);
-  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur); } } }";
+  const motion = "@supports (display: grid) { @media (min-width: 1px) { .planted { transition: transform var(--dur-1); } } }";
   expect(unanswered(declarations("planted.css", motion))).toEqual(["planted.css: .planted: transition"]);
   expect(unanswered(declarations("planted.css", `${motion} @media (prefers-reduced-motion: reduce) { .planted { transition: none; } }`))).toEqual([]);
 });
@@ -139,7 +142,7 @@ test("every token a stylesheet reads is defined, and every token is read", () =>
 });
 
 test("the motion tokens stay within 280 ms", () => {
-  for (const name of ["--dur", "--dur-panel"]) {
+  for (const name of ["--dur-1", "--dur-2", "--dur-3"]) {
     const value = all.filter((d) => d.file === "tokens.css" && d.property === name).map((d) => Number.parseFloat(d.value));
     expect(value.length, name).toBeGreaterThan(0);
     for (const ms of value) expect(ms, name).toBeLessThanOrEqual(280);

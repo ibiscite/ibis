@@ -77,19 +77,10 @@ impl fmt::Debug for DiscoveryRoots {
     }
 }
 
-/// How a candidate was found; this does not establish database availability.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Origin {
-    Manual,
-    Preferences,
-    Default,
-}
-
 /// A path for explicit downstream use, never included in Debug output.
 #[derive(Clone, PartialEq, Eq)]
 pub struct DataDirectory {
     path: PathBuf,
-    origin: Origin,
     name: String,
 }
 
@@ -103,17 +94,12 @@ impl DataDirectory {
     pub fn name(&self) -> &str {
         &self.name
     }
-
-    pub fn origin(&self) -> Origin {
-        self.origin
-    }
 }
 
 impl fmt::Debug for DataDirectory {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("DataDirectory")
             .field("path", &"[redacted]")
-            .field("origin", &self.origin)
             .field("name", &self.name)
             .finish()
     }
@@ -156,12 +142,12 @@ pub struct Discovery {
 }
 
 impl Discovery {
-    fn add(&mut self, path: PathBuf, origin: Origin, name: Option<&str>) {
+    fn add(&mut self, path: PathBuf, name: Option<&str>) {
         if self.directories.iter().any(|candidate| candidate.path == path) {
             return;
         }
         let name = self.unique_name(name.map(clean_name).filter(|name| !name.is_empty()));
-        self.directories.push(DataDirectory { path, origin, name });
+        self.directories.push(DataDirectory { path, name });
     }
 
     /// Profile names are the file's to choose, so two can look alike.
@@ -181,19 +167,10 @@ impl Discovery {
     }
 }
 
-/// Discover configured candidates without probing their contents. An absolute
-/// manual override is returned alone and bypasses all profile reads, even when
-/// the roots are unavailable. Bad configuration never silently becomes default.
-pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
+/// Discover configured candidates without probing their contents. Bad
+/// configuration never silently becomes default.
+pub fn discover(roots: &DiscoveryRoots) -> Discovery {
     let mut result = Discovery::default();
-    if let Some(path) = manual {
-        if absolute(path, roots.platform) {
-            result.add(path.to_path_buf(), Origin::Manual, None);
-        } else {
-            result.warn(Warning::InvalidPath);
-        }
-        return result;
-    }
     if !roots.home.is_absolute() || !roots.profiles.is_absolute() {
         result.warn(Warning::InvalidPath);
         return result;
@@ -202,7 +179,7 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
     let profiles = match registry.and_then(|text| text.map(|text| profile_paths(&text, roots)).transpose()) {
         Ok(Some(profiles)) => profiles,
         Ok(None) => {
-            result.add(roots.home.join("Zotero"), Origin::Default, None);
+            result.add(roots.home.join("Zotero"), None);
             return result;
         }
         Err(warning) => {
@@ -216,10 +193,10 @@ pub fn discover(roots: &DiscoveryRoots, manual: Option<&Path>) -> Discovery {
                 .map_err(|()| Warning::UnsupportedPreferences)
         }) {
             Ok(Some(path)) if absolute(Path::new(&path), roots.platform) => {
-                result.add(PathBuf::from(path), Origin::Preferences, name.as_deref())
+                result.add(PathBuf::from(path), name.as_deref())
             }
             Ok(Some(_)) => result.warn(Warning::InvalidPath),
-            Ok(None) => result.add(roots.home.join("Zotero"), Origin::Default, name.as_deref()),
+            Ok(None) => result.add(roots.home.join("Zotero"), name.as_deref()),
             Err(warning) => result.warn(warning),
         }
     }

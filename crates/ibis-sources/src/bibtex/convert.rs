@@ -393,14 +393,7 @@ fn date_json(date: Issued) -> Value {
     }
     result
 }
-pub(super) fn days_in_month(year: i32, month: u8) -> u8 {
-    match month {
-        2 if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
-}
+pub(super) use crate::days_in_month;
 
 // ---------- Names ----------
 

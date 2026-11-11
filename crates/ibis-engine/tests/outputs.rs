@@ -113,6 +113,21 @@ fn each_example_is_what_the_engine_writes() {
                 &Cancellation::default(),
             )
             .unwrap();
+        // Zotero's markers name Zotero items: this library is not Zotero's,
+        // so they refuse, saying why (written from Zotero in zotero_sources.rs).
+        if output.zotero_items {
+            assert_eq!(
+                result.outcomes,
+                [ItemOutcome::Refused {
+                    item: 0,
+                    error: CitationError::NotFromZotero
+                }],
+                "{}",
+                output.id
+            );
+            assert_eq!(result.text, "");
+            continue;
+        }
         // Only a numbered style writes reference entries, and says so.
         assert_eq!(
             result.notices.contains(&Notice::ReferenceEntry),
@@ -141,7 +156,9 @@ fn each_example_is_what_the_engine_writes() {
 fn listed_forms_are_exactly_the_forms_the_engine_writes() {
     let (engine, id) = engine();
     let mut wrong = vec![];
-    for output in outputs::outputs() {
+    // Zotero's markers write nothing for this library; their forms are
+    // tested in `ibis_core::syntax::scannable`.
+    for output in outputs::outputs().iter().filter(|output| !output.zotero_items) {
         for form in CitationForm::ALL {
             // A form is listed when it can be written for one reference: with a
             // page, MLA's narrative form has something to write after the name;

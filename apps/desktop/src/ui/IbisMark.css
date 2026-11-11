@@ -1,7 +1,7 @@
 /* Normal modes keep the generated brand colours and orientation, including RTL. */
 .ibis-mark { display: block; flex: none; transform: none; forced-color-adjust: none; color: var(--scarlet); }
 .ibis-mark:is(.welcome-mark, .opened-mark) { width: var(--mark-greeting); height: var(--mark-greeting); margin: 0 auto var(--space-2); }
-.ibis-mark[data-motion="peck"] { transform-origin: center bottom; animation: ibis-peck var(--dur-panel) var(--ease); }
+.ibis-mark[data-motion="peck"] { transform-origin: center bottom; animation: ibis-peck var(--dur-2) var(--ease-out); }
 @keyframes ibis-peck { 0%, 100% { transform: rotate(0); } 50% { transform: rotate(8deg); } }
 @media (prefers-reduced-motion: reduce) {
   .ibis-mark[data-motion="peck"] { animation: none; }

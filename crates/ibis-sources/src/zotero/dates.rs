@@ -147,12 +147,7 @@ fn era_edtf(value: &str) -> Option<String> {
 }
 
 fn days_in_month(year: i32, month: i32) -> i32 {
-    match month {
-        2 if year % 4 == 0 && (year % 100 != 0 || year % 400 == 0) => 29,
-        2 => 28,
-        4 | 6 | 9 | 11 => 30,
-        _ => 31,
-    }
+    i32::from(u8::try_from(month).map_or(31, |month| crate::days_in_month(year, month)))
 }
 
 fn edtf_parts(value: &str) -> Option<(Vec<i32>, bool)> {
