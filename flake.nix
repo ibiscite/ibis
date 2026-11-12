@@ -19,7 +19,9 @@
             src = import ./nix/source.nix { inherit lib; };
             cargoLock.lockFile = ./Cargo.lock;
             cargoBuildFlags = [ "--package" "ibis" "--bin" "ibis" ];
-            cargoTestFlags = [ "--package" "ibis" ];
+            # The tests need sockets, processes and a home directory that the Nix
+            # build sandbox does not provide; CI runs them on every pull request.
+            doCheck = false;
             nativeBuildInputs = [ pkgs.installShellFiles ];
             postInstall = ''
               installShellCompletion --cmd ibis \

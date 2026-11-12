@@ -18,12 +18,8 @@
   pnpmDepsHash ? lib.fileContents ./pnpm-deps-hash,
 }:
 let
-  # Match packageManager exactly; Nixpkgs supplies the packaging machinery.
-  pnpm = pnpm_11.override {
-    version = lib.removePrefix "pnpm@" (builtins.fromJSON (builtins.readFile ../apps/desktop/package.json)).packageManager;
-    hash = "sha512-XN6SW08HX3Jetx+64YpC/+eEUkeJ8ZthxzHLhyHsKKruFg4BqNWvT+2ypCzb8wDv4j2zVrDUoXtNY+EfirfJVg==";
-    nodejs-slim = nodejs_24;
-  };
+  # Nixpkgs' pnpm 11 reads the lockfile apps/desktop/package.json pins.
+  pnpm = pnpm_11;
 in
 rustPlatform.buildRustPackage (finalAttrs: {
   pname = "ibis-desktop";
