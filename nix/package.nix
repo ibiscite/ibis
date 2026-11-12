@@ -38,6 +38,8 @@ rustPlatform.buildRustPackage (finalAttrs: {
   buildAndTestSubdir = "apps/desktop";
   cargoBuildFlags = [ "--locked" ];
   cargoTestFlags = [ "--package" "ibis-desktop" ];
+  # The sandbox has no /usr/bin/true; CI runs this test on every pull request.
+  checkFlags = [ "--skip=library::open_source::tests::failed_launches_return_only_the_fixed_failure" ];
   tauriBuildFlags = [ "--config" (builtins.toJSON (builtins.fromJSON (builtins.readFile ./tauri.conf.json))) ];
 
   nativeBuildInputs = [ cargo-tauri.hook nodejs_24 pnpm pnpmConfigHook pkg-config jq wrapGAppsHook3 ];
