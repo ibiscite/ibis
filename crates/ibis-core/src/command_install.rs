@@ -99,6 +99,16 @@ fn is_command(path: &Path) -> bool {
     }
 }
 
+struct CommandOwner(File);
+
+impl Drop for CommandOwner {
+    fn drop(&mut self) {
+        // A concurrent fork can retain this file description after we close it.
+        // Release its lock when the operation ends, before closing our handle.
+        let _ = self.0.unlock();
+    }
+}
+
 impl CommandInstall {
     pub fn new(home: PathBuf, path: Vec<PathBuf>, bundled: PathBuf, app: Option<PathBuf>, version: String) -> Self {
         Self {
@@ -279,10 +289,10 @@ impl CommandInstall {
 
     // Lock the existing app-owned directory itself: no persistent lock artifact
     // and no lock file that can become stale after a crash. try_lock never waits.
-    fn owner(&self) -> io::Result<File> {
+    fn owner(&self) -> io::Result<CommandOwner> {
         let owner = File::open(self.home.join(".local/share/ibis"))?;
         owner.try_lock().map_err(io::Error::from)?;
-        Ok(owner)
+        Ok(CommandOwner(owner))
     }
 
     pub fn remove(&self) -> io::Result<CommandStatus> {
@@ -305,6 +315,25 @@ impl CommandInstall {
 mod tests {
     use super::*;
     use std::os::unix::fs::{PermissionsExt, symlink};
+
+    #[test]
+    fn an_inherited_descriptor_cannot_keep_a_finished_install_locked() {
+        let dir = tempfile::tempdir().unwrap_or_else(|e| panic!("fixture: {e}"));
+        let bundled = dir.path().join("bundled-ibis");
+        fs::write(&bundled, b"invented CLI").unwrap_or_else(|e| panic!("bundle: {e}"));
+        let install = CommandInstall::new(dir.path().join("home"), vec![], bundled, None, "1.2.3".into());
+        install.install().unwrap_or_else(|e| panic!("install: {e}"));
+        let owner = install.owner().unwrap_or_else(|e| panic!("owner: {e}"));
+        // A concurrent fork can retain the same open file description until exec.
+        let inherited = owner.0.try_clone().unwrap_or_else(|e| panic!("inherited owner: {e}"));
+        assert!(matches!(install.remove(), Err(error) if error.kind() == io::ErrorKind::WouldBlock));
+        drop(owner);
+        assert_eq!(
+            install.remove().unwrap_or_else(|e| panic!("remove: {e}")).state,
+            CommandState::NotInstalled
+        );
+        drop(inherited);
+    }
 
     #[test]
     fn non_executable_path_files_are_skipped_without_overwriting_them() {

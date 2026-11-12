@@ -33,7 +33,10 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
         });
     let selected = app.or({
         if cfg!(target_os = "macos") {
-            sibling.as_deref()
+            // Launch Services opens app bundles; adjacent executables run directly.
+            sibling
+                .as_deref()
+                .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
         } else {
             image.as_deref()
         }
