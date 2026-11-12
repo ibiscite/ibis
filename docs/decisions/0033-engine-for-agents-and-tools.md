@@ -34,3 +34,29 @@ comments through `ibis` and `ibis mcp` only after the person turns this on for a
 library in the app. It is off by default, can be turned off at any time and
 never includes private links. Without it, agents get references and citations
 only. This replaces the earlier exclusion of notes and annotations from MCP.
+
+
+2026-11-11, #1867 slice 1: desktop packages carry the same-commit command.
+macOS and Linux deb/rpm offer one Settings row for a non-elevated `~/.local/bin`
+symlink and copy the exact PATH profile line when needed; Ibis never edits profiles.
+The explicit install creates the user link even when Finder's inherited PATH
+omits it, so adding the profile line completes terminal setup without needing
+to change launchd's environment.
+AppImage uses a durable owned copy, with a receipt for version and removal.
+Foreign commands are preserved and never executed by Settings. Windows
+installers manage the per-user PATH and uninstall cleanup. The Linux
+alternatives integration was cut on 2026-11-12 after repeated review findings:
+deb/rpm keep the bundled CLI but register nothing on PATH as root. Stable and
+Nightly use the same explicit per-user Settings action, preserving an existing
+command from the other channel.
+Agent setup will reuse `ibis_core::command_install` in slice 2.
+
+Release builds apply `tauri.bundle.conf.json`, plus
+`tauri.linux.bundle.conf.json` on Linux, after staging the CLI with
+`scripts/build-cli.sh`. These packaging overlays keep native development/tests
+independent of a release sidecar. CI must inspect the installed command in
+.app/.dmg, MSI/NSIS, deb/rpm and AppImage; check versions against the app;
+verify the nested macOS signature; and exercise per-user Settings install/removal
+and Windows PATH install/upgrade/uninstall (including preexisting PATH entries,
+Stable/Nightly coexistence and AppImage exit). No installer builds are needed
+for the config and outcome tests.

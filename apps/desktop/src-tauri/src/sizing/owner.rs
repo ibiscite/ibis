@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
+use super::{Frame, remember};
 use ibis_core::settings::PickerWindow;
 
 pub(super) const SAVE_DELAY: Duration = Duration::from_millis(500);
@@ -15,12 +16,15 @@ pub(super) struct Display {
     pub scale: f64,
     pub origin: (f64, f64),
     pub room: (f64, f64),
+    pub usable: (f64, f64),
 }
 
 #[derive(Clone, Debug)]
 pub(super) struct Sample {
     pub display: Display,
-    pub frame: PickerWindow,
+    pub frame: Frame,
+    /// A previous display confirmed absent by the current native inventory.
+    pub removed_display: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -47,6 +51,8 @@ pub(super) struct Undo {
 #[derive(Default)]
 pub(super) struct Owner {
     pub windows: BTreeMap<String, PickerWindow>,
+    /// Without stable display identity, size choices last only until quit.
+    session: Option<PickerWindow>,
     pub revision: u64,
     pub last: Option<Sample>,
     pub constraints: Option<Display>,
@@ -125,6 +131,30 @@ fn constrained(size: (u32, u32), room: (f64, f64)) -> (u32, u32) {
 }
 
 impl Owner {
+    pub fn window(&self, display: &str) -> Option<&PickerWindow> {
+        if display.is_empty() {
+            self.session.as_ref()
+        } else {
+            self.windows.get(display)
+        }
+    }
+
+    fn keep(&mut self, display: &str, mut frame: PickerWindow, now: Instant) {
+        if display.is_empty() {
+            frame.position = None;
+        }
+        if self.window(display) == Some(&frame) {
+            return;
+        }
+        if display.is_empty() {
+            self.session = Some(frame);
+            self.undo = None;
+        } else {
+            self.windows.insert(display.to_owned(), frame);
+            self.queue_save(now);
+        }
+    }
+
     pub fn prepared(&mut self, sample: Sample) {
         self.constraints = Some(sample.display.clone());
         self.last = Some(sample);
@@ -162,6 +192,22 @@ impl Owner {
 
     pub fn observe(&mut self, sample: Sample, now: Instant, settled: bool) -> Option<Display> {
         if self.applying || self.stopping {
+            return None;
+        }
+        let relocated = self
+            .last
+            .as_ref()
+            .is_some_and(|last| sample.removed_display.as_deref() == Some(last.display.key.as_str()));
+        let (x, y) = (f64::from(sample.frame.x), f64::from(sample.frame.y));
+        if relocated
+            && (x >= sample.display.usable.0
+                || y >= sample.display.usable.1
+                || x + f64::from(sample.frame.width) <= 0.0
+                || y + f64::from(sample.frame.height) <= 0.0)
+        {
+            // X11 may identify the remaining monitor before the WM relocates
+            // the frame. Keep last on the removed display so the later move
+            // still preserves the destination's remembered position/default.
             return None;
         }
         let size = (sample.frame.width, sample.frame.height);
@@ -203,17 +249,28 @@ impl Owner {
                 .last
                 .as_ref()
                 .is_none_or(|last| (last.frame.width, last.frame.height) != size);
+        let position_changed = self.last.as_ref().is_none_or(|last| {
+            last.display.key != sample.display.key || (last.frame.x, last.frame.y) != (sample.frame.x, sample.frame.y)
+        });
         if changed {
             let mut frame = sample.frame;
-            frame.custom_size =
-                size_changed || self.windows.get(&sample.display.key).is_some_and(|old| old.custom_size);
-            if !size_changed && let Some(old) = self.windows.get(&sample.display.key) {
+            frame.custom_size = size_changed || self.window(&sample.display.key).is_some_and(|old| old.custom_size);
+            if !size_changed && let Some(old) = self.window(&sample.display.key) {
                 frame.width = old.width;
                 frame.height = old.height;
             }
-            if self.windows.get(&sample.display.key) != Some(&frame) {
-                self.windows.insert(sample.display.key.clone(), frame);
-                self.queue_save(now);
+            let mut frame = remember(frame, sample.display.usable);
+            // A work-area, origin or DPI change is not a deliberate move.
+            // Preserve the original fraction through the OS's automatic clamp,
+            // and never turn a default placement into a remembered position.
+            let topology = self.last.as_ref().is_some_and(|last| {
+                last.display.key == sample.display.key && last.display != sample.display || relocated
+            });
+            if !position_changed || topology || self.automatic.is_some() {
+                frame.position = self.window(&sample.display.key).and_then(|old| old.position);
+            }
+            if frame.position.is_some() || frame.custom_size {
+                self.keep(&sample.display.key, frame, now);
             }
         }
         if let Some(display) = &constraints {
@@ -229,11 +286,12 @@ impl Owner {
     }
 
     /// A size chosen in Settings, kept for this display like a dragged one.
-    pub fn choose(&mut self, display: &str, frame: PickerWindow, now: Instant) {
-        if self.windows.get(display) != Some(&frame) {
-            self.windows.insert(display.to_owned(), frame);
-            self.queue_save(now);
+    pub fn choose(&mut self, display: &str, frame: Frame, room: (f64, f64), now: Instant) {
+        let mut frame = remember(frame, room);
+        if self.window(display).and_then(|saved| saved.position).is_none() {
+            frame.position = None;
         }
+        self.keep(display, frame, now);
     }
 
     pub fn queue_save(&mut self, now: Instant) {
@@ -250,13 +308,20 @@ impl Owner {
         if self.stopping {
             return None;
         }
-        self.windows.remove(display);
+        let saved = if display.is_empty() {
+            self.session.as_mut()
+        } else {
+            self.windows.get_mut(display)
+        };
+        if let Some(frame) = saved {
+            frame.position = None;
+        }
         self.queue_save(now);
         self.pending_save.clone()
     }
 
     pub fn reset(&mut self, display: &str, previous: Sample, now: Instant) -> Option<u64> {
-        let saved = self.windows.get(display).copied();
+        let saved = self.window(display).copied();
         let revision = self.forget(display, now)?.revision;
         self.undo = Some(Undo {
             revision,
@@ -278,12 +343,16 @@ impl Owner {
         let Some(undo) = self.undo_for(revision) else {
             return false;
         };
-        match undo.saved {
-            Some(frame) => {
-                self.windows.insert(undo.display, frame);
-            }
-            None => {
-                self.windows.remove(&undo.display);
+        if undo.display.is_empty() {
+            self.session = undo.saved;
+        } else {
+            match undo.saved {
+                Some(frame) => {
+                    self.windows.insert(undo.display, frame);
+                }
+                None => {
+                    self.windows.remove(&undo.display);
+                }
             }
         }
         self.queue_save(now);

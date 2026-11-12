@@ -241,10 +241,6 @@ fn obsolete_zotero_reloads_cannot_change_retained_search_results_or_health() -> 
     let checked = OpenIntent::Refresh
         .install(&library, &requests, request, loaded)
         .ok_or("checked")?;
-    assert!(
-        checked.choice_not_saved,
-        "automatic refresh never saves the choice again"
-    );
     assert_eq!(checked.note.as_deref(), Some(warning));
     for fails in [false, true] {
         let before = serde_json::to_value(file.engine.libraries().map_err(|_| "health")?)?;
@@ -702,7 +698,6 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
         .unwrap_or_else(|| panic!("recovery is current"));
     assert_eq!(retried, source);
     assert_eq!(recovered.references, 2);
-    assert!(recovered.choice_not_saved);
     assert_eq!(recovered.note.as_deref(), Some(note));
 
     let (request, _, _) = begin_open(&library, &requests, source.clone()).unwrap_or_else(|| panic!("reload"));
@@ -710,7 +705,6 @@ fn automatic_focus_recovery_keeps_the_unsaved_choice_but_explicit_reload_clears_
         .install(&library, &requests, request, changed())
         .unwrap_or_else(|| panic!("explicit reload is current"));
     assert_eq!(reloaded.references, 2);
-    assert!(!reloaded.choice_not_saved);
     assert!(reloaded.note.is_none(), "explicit Reload retains its existing behavior");
 }
 
@@ -726,7 +720,6 @@ fn an_explicit_reread_that_finds_nothing_changed_clears_the_unsaved_choice_warni
         let reread = intent
             .install(&library, &requests, request, Ok(Loaded::Unchanged))
             .unwrap_or_else(|| panic!("reread is current"));
-        assert!(!reread.choice_not_saved);
         assert!(reread.note.is_none());
     }
     // A quiet check keeps it: it never saves the choice.
@@ -738,7 +731,10 @@ fn an_explicit_reread_that_finds_nothing_changed_clears_the_unsaved_choice_warni
     let checked = OpenIntent::Refresh
         .install(&library, &requests, request, Ok(Loaded::Unchanged))
         .unwrap_or_else(|| panic!("check is current"));
-    assert!(checked.choice_not_saved);
+    assert_eq!(
+        checked.note.as_deref(),
+        Some("the library opened but could not be saved for next time")
+    );
 }
 
 #[cfg(debug_assertions)]

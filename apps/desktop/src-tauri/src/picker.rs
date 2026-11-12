@@ -26,13 +26,13 @@ pub(crate) use full_screen::FullScreenGuard;
 pub(crate) use layout::{character, us_character};
 #[cfg(target_os = "macos")]
 pub(crate) use layout::{command_key, typing};
-#[cfg(target_os = "macos")]
-pub(crate) use registration::follow_layout;
 #[cfg(test)]
 pub(crate) use registration::replace_with;
 pub(crate) use registration::{
     Registered, SHORTCUT_BACKEND_UNAVAILABLE, on_layout_with, register_shortcut, replace_shortcut,
 };
+#[cfg(target_os = "macos")]
+pub(crate) use registration::{follow_layout, registered_shortcut};
 
 /// Whether the global shortcut is working, shown in the interface.
 #[derive(Default, Clone, Serialize, schemars::JsonSchema)]

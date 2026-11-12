@@ -2,7 +2,7 @@
 // No trust changes, app execution, repository secrets or personal app data.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, copyFileSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -31,6 +31,8 @@ test("two real signed DMGs and update archives retain the same requirement", { s
       mkdirSync(join(app, "Contents", "MacOS"), { recursive: true });
       writeFileSync(join(dir, "main.c"), `int main(void) { return ${version}; }\n`);
       run("clang", [join(dir, "main.c"), "-o", join(app, "Contents", "MacOS", "test")]);
+      copyFileSync(join(app, "Contents", "MacOS", "test"), join(app, "Contents", "MacOS", "ibis"));
+      run("codesign", ["--force", "--sign", "-", join(app, "Contents", "MacOS", "ibis")]);
       writeFileSync(join(app, "Contents", "Info.plist"), `<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.ibiscite.ibis.nightly</string><key>CFBundleExecutable</key><string>test</string><key>CFBundlePackageType</key><string>APPL</string><key>CFBundleVersion</key><string>${version}</string></dict></plist>`);
       run("codesign", ["--force", "--sign", "-", app]);
       const dist = join(dir, `dist${version}`);
@@ -47,6 +49,7 @@ test("two real signed DMGs and update archives retain the same requirement", { s
       run("tar", ["-xzf", join(dist, "Ibis-macOS-Apple-silicon.app.tar.gz"), "-C", extracted]);
       const signed = join(extracted, "Ibis Signing Test.app");
       run("bash", [script, "requirement", signed, "com.ibiscite.ibis.nightly", leaf]);
+      run("codesign", ["--verify", "--strict", `-R=certificate leaf = H"${leaf}"`, join(signed, "Contents", "MacOS", "ibis")]);
       // codesign writes its display output to stderr.
       const display = spawnSync("codesign", ["-d", "-r-", signed], { encoding: "utf8" });
       assert.equal(display.status, 0);

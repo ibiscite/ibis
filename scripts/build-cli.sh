@@ -5,6 +5,7 @@
 # published (Intel macOS is cross-built on Apple silicon).
 # TARGET: the app's Rust target; RUNNER_OS; GITHUB_ENV receives CLI_TARGET.
 set -eo pipefail
+APP_TARGET=$TARGET
 if [ "$RUNNER_OS" = Windows ]; then
   # Link the C runtime in, as the app does, so ibis.exe runs on a PC without
   # the Visual C++ Redistributable.
@@ -25,4 +26,14 @@ if [ "$RUNNER_OS" = Windows ] && grep -qai 'vcruntime140.dll' "target/$TARGET/re
 fi
 if [ "$TARGET" != x86_64-apple-darwin ]; then
   "target/$TARGET/release/ibis" --version
+fi
+
+# Tauri strips the app target suffix when placing a sidecar next to the app.
+# Linux bundles the same static bytes as a resource for per-user Settings setup.
+mkdir -p apps/desktop/src-tauri/binaries
+suffix=
+if [ "$RUNNER_OS" = Windows ]; then suffix=.exe; fi
+cp "target/$TARGET/release/ibis$suffix" "apps/desktop/src-tauri/binaries/ibis-$APP_TARGET$suffix"
+if [ "$RUNNER_OS" = Linux ]; then
+  cp "target/$TARGET/release/ibis" apps/desktop/src-tauri/binaries/ibis
 fi

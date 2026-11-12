@@ -5,15 +5,13 @@ import { IconButton } from "../src/ui/IconButton";
 import { StatusMark } from "../src/ui/StatusMark";
 import { Icon } from "../src/icons";
 import { iconPaths } from "../src/icon-paths";
-import { ChipGroup } from "../src/ui/ChipGroup";
 import { ChoiceList } from "../src/ui/ChoiceList";
 import { IbisMark } from "../src/ui/IbisMark";
 import { KeyCaps, KeyHint } from "../src/ui/KeyCaps";
 import { NoticeSlot, QuietNotice } from "../src/ui/NoticeSlot";
 import { Segmented } from "../src/ui/Segmented";
+import { CitationToken } from "../src/ui/CitationToken";
 import { Group, Row, Section as LayoutSection } from "../src/ui/Layout";
-import { ShelfSegment } from "../src/ui/ShelfSegment";
-import { ToolbarMenu } from "../src/ui/ToolbarMenu";
 import { SideResults } from "../src/ui/SideNavigation";
 import { SourceAction } from "../src/ui/SourceAction";
 import { Switch } from "../src/ui/Switch";
@@ -38,12 +36,9 @@ function Band({ hovered, children }: { hovered?: string; children: ReactNode }) 
   useLayoutEffect(() => { if (hovered) band.current?.querySelector(hovered)?.setAttribute("data-hovered", "true"); }, [hovered]);
   return <div ref={band} className="shelf canvas-band"><div className="shelf-output"><div className="shelf-citation">{children}</div></div></div>;
 }
-const segment = (state: "rest" | "hovered" | "expanded" | "focus-visible") => <ShelfSegment reference={state} referenceKey="vale2021" aria-label="Edit Vale 2021"
-  aria-expanded={state === "expanded"} remove={{ label: "Remove Vale 2021", onPress: ignore }}
-  render={state === "focus-visible" ? (native) => <button {...native} data-focus-visible /> : undefined}><bdi className="preview-text">(Vale 2021)</bdi></ShelfSegment>;
-const count = <ToolbarMenu label="References in the citation" value="2" selectedKey="" onAction={ignore}
-  button={{ className: "shelf-count", quiet: true, label: "2 references", content: "2 references" }}
-  sections={[{ id: "references", items: [{ id: "a", label: "Vale 2021" }, { id: "b", label: "Reed 2019" }] }]} />;
+const token = (state: "rest" | "hovered" | "expanded" | "focus-visible", words = "Vale 2021", handle?: string) => <CitationToken reference={state} referenceKey="vale2021" aria-label="Edit Vale 2021"
+  aria-expanded={state === "expanded"} handle={handle}
+  render={state === "focus-visible" ? (native) => <button {...native} data-focus-visible /> : undefined}><bdi className="preview-text">{words}</bdi></CitationToken>;
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return <section><h2>{title}</h2><div className="canvas-parts-row">{children}</div></section>;
@@ -51,8 +46,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 
 /** Every shared part, drawn by its own component. A new part belongs here. */
 export function Parts() {
-  const fallback = useRef<HTMLDivElement>(null);
-  return <div className="canvas-parts" ref={fallback}>
+  return <div className="canvas-parts">
     {variants.map((variant) => <Section key={variant} title={`Button: ${variant}`}>
       {states.map((state) => <State key={state} name={state}>
         <Button variant={variant} isDisabled={state === "disabled"} render={(native) => <button {...native} {...{ [`data-${state}`]: state === "rest" ? undefined : true }} />}>Copy as Pandoc</Button>
@@ -81,15 +75,13 @@ export function Parts() {
       <State name="hint"><KeyHint label="More" keys="CmdOrCtrl+K" /></State>
     </Section>
     <Section title="Chips and source action">
-      <State name="chips"><ChipGroup label="Libraries" items={[{ id: "a", label: "invented.bib", textValue: "invented.bib", removeLabel: "Remove invented.bib" }, { id: "b", label: "Zotero", textValue: "Zotero", removeLabel: "Remove Zotero" }]} onRemove={ignore} fallbackFocusRef={fallback} /></State>
       <State name="source"><SourceAction label="Open invented.bib" keys="CmdOrCtrl+O" icon={null} file open={ignore} /></State>
     </Section>
-    <Section title="Shelf: segments and the reference count">
+    <Section title="Citation tokens">
       {(["rest", "hovered", "expanded", "focus-visible"] as const).map((state) => <State key={state} name={state}>
-        <Band hovered={state === "hovered" ? ".shelf-segment" : undefined}>{segment(state)}</Band>
+        <Band hovered={state === "hovered" ? ".citation-token" : undefined}>{token(state)}</Band>
       </State>)}
-      <State name="count"><Band>{count}</Band></State>
-      <State name="count hovered"><Band hovered=".shelf-count">{count}</Band></State>
+      <State name="with a handle (IEEE)"><Band><span className="shelf-shared">[</span>{token("rest", "1", "Vale 2021")}<span className="shelf-shared">]</span></Band></State>
     </Section>
     <section><h2>Settings rows</h2>
       <LayoutSection id="canvas-group" title="Group title"><Group>

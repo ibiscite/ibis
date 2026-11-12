@@ -106,7 +106,7 @@ export function layoutGeometry() {
     inspector: box(document.querySelector(".inspector")), inspectorScroll: box(document.querySelector(".inspector-body")),
     notices: [...document.querySelectorAll(".notices")].map(box),
     alerts: [...document.querySelectorAll('.notices [role="alert"]')].map(box),
-    segments: [...document.querySelectorAll(".shelf-segment")].map(box),
+    segments: [...document.querySelectorAll(".citation-token")].map(box),
   };
 }
 

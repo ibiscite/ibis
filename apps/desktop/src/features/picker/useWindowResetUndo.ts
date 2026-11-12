@@ -1,10 +1,10 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import { say } from "../../i18n";
 
 /** The native geometry owner owns the snapshot. This hook owns only which
  * immutable ticket is visible; old reads and actions cannot consume a new one. */
-export function useWindowResetUndo(api: PickerApi) {
+export function useWindowResetUndo(api: typeof nativeApi) {
   const { readWindowPositionUndo, undoWindowPosition, dismissWindowPositionUndo, onWindowReset } = api;
   const [ticket, setTicket] = useState<number | null>(null);
   const current = useRef<number | null>(null);

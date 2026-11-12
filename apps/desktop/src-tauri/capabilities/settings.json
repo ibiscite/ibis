@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "settings",
-  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. No library, copy, file system or shell access, and no network beyond that one 127.0.0.1 listener.",
+  "description": "Settings window: read and change saved choices, the login item, update checks, the paste permission and the shortcut, and back up or restore settings through system file dialogs, and switch the loopback editor endpoint on or off and copy its address. No library, copy, file system or shell access, and no network beyond that one 127.0.0.1 listener. Can inspect and install/remove the bundled command at its fixed user location, and copy its fixed PATH profile line.",
   "windows": [
     "settings"
   ],
@@ -36,6 +36,9 @@
     "allow-back-up-settings",
     "allow-choose-settings-backup",
     "allow-restore-settings-backup",
-    "allow-cancel-settings-restore"
+    "allow-cancel-settings-restore",
+    "allow-cli-status",
+    "allow-set-cli-installed",
+    "allow-copy-cli-profile"
   ]
 }

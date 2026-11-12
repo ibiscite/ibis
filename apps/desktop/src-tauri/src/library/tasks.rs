@@ -14,7 +14,6 @@ use tauri_plugin_dialog::DialogExt;
 use crate::diagnostics::{NativeIssue, application_message, report};
 use crate::picker::{ChooserOpen, reveal_picker};
 use crate::preferences::SettingsFile;
-use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
 #[cfg(test)]
@@ -79,12 +78,7 @@ pub(super) fn refresh_tray(app: &AppHandle) {
     // library lock, then read fresh state so delayed menu work cannot go stale.
     report(
         app.run_on_main_thread(move || {
-            let current = current_status(&handle);
-            if let Some(item) = handle.try_state::<LibraryMenuItem>() {
-                report(item.0.set_text(library_line(&current)), NativeIssue::TrayLibrary);
-            }
-            #[cfg(target_os = "macos")]
-            crate::menu_bar::show_reading(&handle, current.state == LibraryState::Reloading);
+            crate::tray::refresh_library(&handle);
         }),
         NativeIssue::TrayLibrary,
     );
@@ -781,7 +775,6 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             problem: Some(LibraryProblem::Other),
             error_reason: None,
             kept_references: false,
-            choice_not_saved: false,
             note: None,
             settings_notice: None,
             snapshot_zotero: false,

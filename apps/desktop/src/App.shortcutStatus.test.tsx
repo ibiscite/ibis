@@ -6,7 +6,7 @@ import { App } from "./App";
 import * as api from "./api";
 import { backend, resetApp } from "./testing/app";
 
-afterEach(resetApp);
+afterEach(async () => { await resetApp(); vi.restoreAllMocks(); });
 
 const noLibrary = { state: "none", has_snapshot: false, zotero: false, name: null, snapshot_name: null, references: 0, warnings: 0, error: null, problem: null, note: null };
 const welcome = async () => (await screen.findByRole("heading", { name: "Where do your references live?" })).closest("section")!;
@@ -148,7 +148,9 @@ test("the shortcut status is read only once its change listener is in place", as
   let ready: () => void = () => undefined;
   const reads = vi.fn(async () => ({ shortcut: "Command+Shift+Y", registered: true, error: null }));
   const onShortcutStatus = () => new Promise<() => void>((resolve) => { ready = () => resolve(() => undefined); });
-  render(<App api={{ ...api, shortcutStatus: reads, onShortcutStatus }} />);
+  vi.spyOn(api, "shortcutStatus").mockImplementation(reads);
+  vi.spyOn(api, "onShortcutStatus").mockImplementation(onShortcutStatus);
+  render(<App />);
   await screen.findByLabelText("Search references");
   expect(reads).not.toHaveBeenCalled();
   await act(async () => { ready(); });
@@ -166,7 +168,8 @@ test("a remount's abandoned shortcut subscription failing later reports nothing"
       ? new Promise<() => void>((_, reject) => { fail = () => reject(new Error("gone")); })
       : Promise.resolve(() => undefined);
   };
-  render(<StrictMode><App api={{ ...api, onShortcutStatus }} /></StrictMode>);
+  vi.spyOn(api, "onShortcutStatus").mockImplementation(onShortcutStatus);
+  render(<StrictMode><App /></StrictMode>);
   await screen.findByLabelText("Search references");
   await waitFor(() => expect(subscriptions).toBe(2));
   await act(async () => { fail(); await new Promise((resolve) => setTimeout(resolve, 0)); });
