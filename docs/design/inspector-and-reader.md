@@ -14,6 +14,7 @@ The regions that unfold beside the list ([the model](../design.md#the-model), de
   - **Keep My Order** at the foot, only when the style sorts.
   - A refusal or warning about the reference shows in words at the foot.
 - **Keys**: focus starts in the Page field. Tab moves through it in order, never trapped. Enter in a field does what the footer says. Esc closes an open menu, then the details, and focus returns to the token. Pressing another token moves them; pressing the same one closes them.
+- Closing or replacing the details stops their examples immediately, keeping the citation available to copy. Abandoned examples must not delay the next citation.
 
 ## Inspector
 

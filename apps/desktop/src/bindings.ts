@@ -81,7 +81,7 @@ export const commands = {
 	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply, boolean, boolean]>("recent_references", { forget }),
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
-	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
+	citationDetails: (ticket: string, contentHash: string, item: number, intent: PreviewIntent) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
@@ -118,18 +118,18 @@ export const commands = {
 	 * The list as a formatted bibliography, for the person to look at before
 	 * copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: string) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style }),
+	sessionBibliography: (style: string, intent: PreviewIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
 	/**
 	 * Copy what was shown. Prepared again from the list as it is now, and refused
 	 * unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	copySessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
 	/**
 	 * Save what was shown, as rich text, a web page or plain text. This is the one
 	 * way the list leaves memory, and only because the person asked. `None` when
 	 * the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
+	exportSessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**
