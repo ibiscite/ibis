@@ -25,6 +25,20 @@ const type = (text: string) => fireEvent.change(search(), { target: { value: tex
 const focusableControls = () => [...document.querySelectorAll<HTMLElement>("main button, main input, main [tabindex='0']")]
   .filter((node) => !node.closest("[hidden], [inert], [aria-hidden='true']") && !node.matches(":disabled") && node.tabIndex >= 0);
 
+test("Back shortcuts in Picker search leave the query and view alone", async () => {
+  const calls = backend({ search: () => [result("a", "Invented reference")] });
+  render(<App />);
+  await screen.findByText("Invented reference");
+  type("invented");
+  expect(fireEvent.keyDown(search(), { key: "ArrowLeft", altKey: true })).toBe(false);
+  press("Backspace", { repeat: true });
+  expect(fireEvent.mouseDown(search(), { button: 3 })).toBe(false);
+  expect(fireEvent.mouseUp(search(), { button: 3 })).toBe(false);
+  expect(search().value).toBe("invented");
+  expect(screen.queryByRole("dialog")).toBeNull();
+  expect(hides(calls)).toBe(0);
+});
+
 async function chosenCitation(overrides = {}) {
   const calls = backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], ...overrides });
   render(<App />);
@@ -75,7 +89,7 @@ test.each(["empty search", "choose library"])("every control of the %s screen hi
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
   if (screenName === "choose library") {
-    press("o", { ctrlKey: true, shiftKey: true });
+    await chooseFromMore("Choose Library…");
     await screen.findByRole("option", { name: /^Use Zotero/ });
   }
   const before = hides(calls);
@@ -105,6 +119,43 @@ test("Esc walks the stack one layer at a time: palette, search, window", async (
   expect(hides(calls)).toBe(0);
   press("Escape");
   await waitFor(() => expect(hides(calls)).toBe(1));
+});
+
+test.each(["palette", "sheet"].flatMap((kind) => ["header", "Escape", "keyboard", "mouse"].map((method) => [kind, method])))
+  ("Back from a %s by %s restores the parent's query, selection, scroll and focus", async (kind, method) => {
+  await chosenCitation({ search: ({ query }: { query: string }) => [result("picked", "Invented reference"), result("second", query ? "Filtered invented reference" : "Another invented reference"),
+    ...Array.from({ length: 24 }, (_, index) => result(`extra-${index}`, `Invented result ${index}`))] });
+  type("invented");
+  await screen.findByText("Filtered invented reference");
+  act(() => search().focus());
+  press("ArrowDown");
+  const active = search().getAttribute("aria-activedescendant");
+  const selected = screen.getByRole("button", { name: /^Remove/ }).getAttribute("aria-label");
+  const scroller = document.querySelector<HTMLElement>(".results-area")!;
+  scroller.scrollTop = 180;
+  // jsdom has no layout: model the browser scrolling a highlighted result
+  // back into view, so a focus-only jump cannot pass as restored scroll.
+  const reveal = vi.fn(function(this: HTMLElement) { if (this.closest(".results-area")) scroller.scrollTop = 0; });
+  const previousReveal = HTMLElement.prototype.scrollIntoView;
+  HTMLElement.prototype.scrollIntoView = reveal;
+  try {
+    const parent = kind === "palette" ? screen.getByRole("button", { name: /^More/ }) : search();
+    act(() => parent.focus());
+    if (kind === "palette") fireEvent.click(parent);
+    else press("/", { ctrlKey: true });
+    const view = await screen.findByRole("dialog");
+    if (kind === "palette") fireEvent.change(within(view).getByRole("combobox"), { target: { value: "quit" } });
+    // Use the header Back, shared by palettes and sheets; the footer is the keyboard stop.
+    if (method === "header") fireEvent.click(view.querySelector(".ui-view-back")!);
+    else if (method === "mouse") fireEvent.mouseDown(view, { button: 3 });
+    else press(method === "keyboard" ? "ArrowLeft" : "Escape", method === "keyboard" ? { altKey: true } : {});
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(search().value).toBe("invented");
+    expect(search().getAttribute("aria-activedescendant")).toBe(active);
+    expect(screen.getByRole("button", { name: /^Remove/ }).getAttribute("aria-label")).toBe(selected);
+    expect(scroller.scrollTop).toBe(180);
+    expect(document.activeElement).toBe(parent);
+  } finally { HTMLElement.prototype.scrollIntoView = previousReveal; }
 });
 
 test("Esc closes the inspector back to its chip, and Search keeps focus if it was there", async () => {
@@ -147,7 +198,7 @@ test("Esc steps out of the inspector's menu, then the inspector, then the search
 test("the chooser comes after the sheet, and closing it leaves Search in charge", async () => {
   const { calls } = await chosenCitation();
   type("invented");
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => screen.getByRole("option", { name: /^Use Zotero/ }).focus());
   press("/", { ctrlKey: true });
@@ -208,7 +259,8 @@ test("the footer's Esc action steps back through the same stack", async () => {
   act(() => search().focus());
   type("invented");
   await screen.findByRole("button", { name: /^Clear search/i });
-  fireEvent.keyDown(window, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(window, { key: "Shift", shiftKey: true });
   fireEvent.click(await within(screen.getByRole("group", { name: /keys/i })).findByRole("button", { name: "Clear Search" }));
   expect(search().value).toBe("");
 });
@@ -227,7 +279,7 @@ test("after a blank click the next key goes to Search, keeping its native effect
   backend();
   render(<App />);
   await waitFor(() => expect(document.activeElement).toBe(search()));
-  for (const key of [{ key: "s" }, { key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "ArrowLeft", altKey: true }, { key: "å", altKey: true }, { key: "Process" }, { key: "Enter", keyCode: 229 }, { key: "?" }]) {
+  for (const key of [{ key: "s" }, { key: "v", ctrlKey: true }, { key: "v", metaKey: true }, { key: "Backspace" }, { key: "Home" }, { key: "å", altKey: true }, { key: "Process" }, { key: "Enter", keyCode: 229 }, { key: "?" }]) {
     act(() => search().blur());
     expect(document.activeElement).toBe(document.body);
     expect(fireEvent.keyDown(document.body, key)).toBe(true); // not cancelled
@@ -259,7 +311,7 @@ test("Esc from Choose Library over the welcome screen returns to a control that 
   await screen.findByRole("option", { name: /^Use Zotero/ });
   const more = await screen.findByRole("button", { name: /^More/ });
   act(() => more.focus());
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await act(async () => { await new Promise(requestAnimationFrame); });
   const row = screen.getAllByRole("option")[0]!;
   act(() => row.focus());
@@ -463,7 +515,7 @@ test("the chooser owns the middle area: the sample library's block leaves while 
   render(<App />);
   const exit = await screen.findByText(/your own library/i);
   act(() => search().focus());
-  press("o", { ctrlKey: true, shiftKey: true });
+  await chooseFromMore("Choose Library…");
   await screen.findByRole("option", { name: /^Use Zotero/ });
   expect(exit.isConnected).toBe(false);
   press("Escape");

@@ -73,7 +73,7 @@ export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<type
   const closeSheet = (sheet: "keys" | "session" | "projects") => {
     closed(sheet);
     const back = sheetReturn.current;
-    if (back?.isConnected && !back.closest("[hidden]")) back.focus();
+    if (back?.isConnected && !back.closest("[hidden]")) back.focus({ preventScroll: true });
     else focusHome();
   };
   return { input, formatButtonRef, moreButton, overlay, menuOpen: overlay === "more", libraryMenuOpen: overlay === "library", formatOpen: overlay === "format", keysOpen: overlay === "keys", sessionOpen: overlay === "session", projectsOpen: overlay === "projects",

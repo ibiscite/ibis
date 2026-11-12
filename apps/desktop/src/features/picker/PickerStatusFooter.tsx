@@ -89,7 +89,7 @@ export function PickerStatusFooter({
           keys: () => run("keys"),
           format: () => run("format"),
           chooseSource: () => run("chooseSource"),
-          revealSource: api.openLibrarySource && sourceState.sourceAvailable ? () => run("revealSource") : null,
+          revealSource: api.openLibrarySource && sourceState.sourceAvailable && source.kind === "file" ? () => run("revealSource") : null,
           peek,
           changeLast: actions.canChangeLast ? () => run("changeLast") : null,
           settings: openSettings ? () => run("settings") : null,

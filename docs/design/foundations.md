@@ -64,12 +64,19 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Icons
 
-- One `Icon` primitive uses Lucide 1.72.0 (ISC, with the bundled Feather MIT notices) from `brand/icons/`, built by `python3 brand/build.py`. Controls, menus and rows use `--icon` (16px); tiles and toolbar use `--icon-tile` (20px). Both render a 1.5px stroke, centred on the label line; parts never resize glyphs. These pixel sizes stay fixed under Larger Text.
+- One `Icon` primitive uses Lucide (ISC, with the bundled Feather MIT notices; source versions in `brand/README.md`) from `brand/icons/`, built by `python3 brand/build.py`. Controls, menus and rows use `--icon` (16px); tiles and toolbar use `--icon-tile` (20px). Both render a 1.5px stroke, centred on the label line; parts never resize glyphs. These pixel sizes stay fixed under Larger Text.
 - Missing glyphs are drawn only when no Lucide glyph fits: use its 24-unit grid, nominal 2-unit stroke, round caps and joins, no fill, and one path including any subpaths. The icon guard checks the source; the canvas checks rendered sizes and strokes ([decision 0044](../decisions/0044-lucide-icon-primitive.md)).
-- App and file icons come from the system, such as the installed Zotero icon (bundle id `org.zotero.zotero`, read through NSWorkspace), including on the Zotero setup card. A missing app or failed icon read shows the books glyph.
+- App icons come from the system, including the installed Zotero icon on its setup card (bundle id `org.zotero.zotero`, read through NSWorkspace). Rasterize at the displayed size before exporting; a failed read or decode keeps the action's distinct fallback.
 - Ibis never ships Zotero's logo or other apps' artwork.
 - Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Toggled-on keeps the same outline; the control's fill carries state.
 - Settings page icons use Apple's icon shape: a white glyph from the set above on a `--page-*` tile, one family for every page. Mac icon layers are flat, with no added bevels or shadows.
+
+| Source action | Icon (shared `Icon` glyph) |
+| --- | --- |
+| Show in Zotero / Open Zotero | Installed app icon; fallback `app-window` |
+| Open thesis.bib | `file-text` (`article` in the shared set) |
+| Show in Finder / Show in Folder | `folder-search` |
+| Choose Library… / Choose a Library File… | `library-big`, in More, footer recovery and empty choices |
 
 ## The bird
 

@@ -1,7 +1,6 @@
-import { useEffect, useId, useLayoutEffect, useRef, type ReactNode } from "react";
-import { useLayer } from "./layers";
+import { useId, useLayoutEffect, useRef, type ReactNode, type RefObject } from "react";
 import { Button } from "./Button";
-import { ViewFrame } from "./ViewFrame";
+import { ViewFrame, leaveView } from "./ViewFrame";
 import { useScrollEdges } from "./ScrollArea";
 import "./Layout.css";
 import "./Sheet.css";
@@ -13,13 +12,19 @@ const footerAction = (action: SheetAction) => <Button key={action.label} variant
 
 const FOCUSABLE = "button:not([disabled]):not([tabindex='-1']), input:not([disabled]), [tabindex='0']";
 
+/** A sheet's owner can retain its place alongside its draft, without keeping I/O mounted. */
+export type SheetMemory = { focus: string | null; selection?: [number | null, number | null]; scroll: number };
+const focusName = (node: HTMLElement) => node.getAttribute("aria-label")
+  ?? node.getAttribute("aria-labelledby")?.split(" ").map((id) => document.getElementById(id)?.textContent ?? "").join(" ")
+  ?? (node instanceof HTMLInputElement ? node.labels?.[0]?.textContent : node.textContent) ?? "";
+
 /** A sheet: a view of the window (ui/ViewFrame), as the palette is. Its name in
  * plain in the header, one body that alone scrolls, and the footer as its action
  * bar in the picker footer's words: leading actions, trailing actions with the
  * primary last (with ↵), then Back with Esc, each plain text as the footer's are. Esc, a hide or Back close it; Tab stays inside, and a control that
  * disappears or is disabled hands the keyboard back to the sheet, so no key acts
  * behind it. */
-export function Sheet({ title, closeLabel, description, actions, leadingActions, busy, onClose, children }: {
+export function Sheet({ title, closeLabel, description, actions, leadingActions, busy, onClose, children, memory }: {
   title: string; closeLabel: string;
   /** One quiet sentence at the top of the body that says what the sheet is for; it describes the dialog. */
   description?: ReactNode;
@@ -30,19 +35,38 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
   busy?: boolean;
   onClose: () => void;
   children: ReactNode;
+  memory?: RefObject<SheetMemory | null>;
 }) {
   const dialog = useRef<HTMLDivElement>(null);
   const body = useRef<HTMLDivElement>(null);
   const titleId = useId(), aboutId = useId();
   useScrollEdges(body);
-  useEffect(() => { dialog.current?.focus(); }, []);
-  useLayer("sheet", true, () => onClose());
+  useLayoutEffect(() => { dialog.current?.focus(); }, []);
+  const dismiss = () => {
+    if (memory) {
+      const focused = document.activeElement;
+      memory.current = { focus: focused instanceof HTMLElement && focused !== dialog.current && dialog.current?.contains(focused) ? focusName(focused) : null,
+        selection: focused instanceof HTMLInputElement ? [focused.selectionStart, focused.selectionEnd] : undefined,
+        scroll: body.current?.scrollTop ?? 0 };
+    }
+    if (dialog.current) leaveView(dialog.current);
+    onClose();
+  };
   // Any render can remove or disable the focused control.
   useLayoutEffect(() => {
     const focused = document.activeElement;
     if (!dialog.current?.contains(focused) || (focused as HTMLButtonElement).disabled) dialog.current?.focus();
+    const saved = memory?.current;
+    if (saved) {
+      const target = [...dialog.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []].find((node) => focusName(node) === saved.focus);
+      if (saved.focus !== null && !target) return; // The draft's controls may follow an asynchronous read.
+      target?.focus({ preventScroll: true });
+      if (target instanceof HTMLInputElement && saved.selection && saved.selection[0] !== null && saved.selection[1] !== null) target.setSelectionRange(saved.selection[0], saved.selection[1]);
+      if (body.current) body.current.scrollTop = saved.scroll;
+      memory!.current = null;
+    }
   });
-  return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: onClose }}
+  return <ViewFrame title={title} titleId={titleId} frameRef={dialog} back={{ label: closeLabel, onBack: dismiss }}
     role="dialog" aria-modal="true" aria-describedby={description ? aboutId : undefined}
     // Clicking plain text inside keeps focus here, so Escape still closes it.
     tabIndex={-1} actions={actions?.length ? actions.map(footerAction) : undefined} leadingActions={leadingActions?.length ? leadingActions.map(footerAction) : undefined}

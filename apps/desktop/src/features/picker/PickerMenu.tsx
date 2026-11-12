@@ -44,14 +44,14 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const mac = platform === "macos";
   const action = (id: string, label: string, run: (() => void) | null | undefined, more: Partial<Action> = {}): Action[] =>
     run ? [{ id, label, run, keywords: say(`palette-words-${id}` as never), ...more }] : [];
-  const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command) });
+  const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command, mac) || undefined });
   const sections: (PaletteSection & { items: Action[] })[] = [
     // The footer's status already names the library under More; the group's name
     // says it again only for screen readers, with the last outcome first.
     { id: "library", label: say("palette-library"), name: [lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ") || undefined, items: [
-      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys, detail: lastOutcome ?? undefined }) : [],
-      ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
-      ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library" />, ...keyed("chooseSource") }),
+      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} glyph={source.glyph} />, keys: source.keys, detail: lastOutcome ?? undefined }) : [],
+      ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="folder-search" />, ...keyed("revealSource") }),
+      ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library-big" />, ...keyed("chooseSource") }),
     ] },
     // The bibliography keys are checked against, named by its state.
     { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [

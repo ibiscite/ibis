@@ -32,7 +32,6 @@ import { useUpdateProgress } from "./features/picker/useUpdateProgress";
 import { usePickerLibrary } from "./features/picker/usePickerLibrary";
 import { usePickerMenus } from "./features/picker/usePickerMenus";
 import { useUpdateOfferActivity } from "./features/picker/useUpdateOfferActivity";
-import { usePickerSearchFocus } from "./features/picker/usePickerSearchFocus";
 import { useCitationCopy } from "./features/picker/useCitationCopy";
 import { useLibrarySetup } from "./features/picker/useLibrarySetup";
 import { usePickerMove } from "./features/picker/usePickerMove";
@@ -137,7 +136,6 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
-  const { searchFocused, setSearchFocused } = usePickerSearchFocus(input);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
@@ -164,7 +162,7 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
   const { resultArea, followKeyboard } = useResultScroll({
-    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
+    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
   });
   useCitationFeedback(copied, preview, send);
   const rows = useCitationRows({
@@ -178,12 +176,12 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     focusSearch: focusHome,
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
-  const inspector = useCitationInspector();
+  const inspector = useCitationInspector(cancelCopy);
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
   const listProblem = inspector.panel ? null : citationProblem;
   const actions = usePickerActions({
-    api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
+    api, pickerSession, menus, libraryState, searchState, destination, shown,
     // The footer names what Enter copies now, or after the running search.
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
@@ -228,8 +226,6 @@ export function App({ api: sourceApi = nativeApi, preview }: { api?: PickerApi; 
     <PickerShown value={state.shown}>
     <main
       data-selection={showCitations && selected.size > 0 || undefined}
-      onFocus={(e) => setSearchFocused(e.target === input.current)}
-      onBlur={() => setSearchFocused(false)}
       onScrollCapture={pointer.resetHover}
     >
       <PickerHeader

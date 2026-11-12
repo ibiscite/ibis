@@ -44,7 +44,8 @@ M is the height of the bird.
 
 `icons/*.svg` contains Lucide 1.72.0 drawings from `lucide-static@1.72.0`,
 under ISC, with the original Feather MIT notices retained in
-[`icons/LICENSE-lucide`](icons/LICENSE-lucide). All 27 interface glyphs are
+[`icons/LICENSE-lucide`](icons/LICENSE-lucide). The added `app-window`, `folder-search`
+and `library-big` drawings come from `lucide@1.8.0` under the same licence. All interface glyphs are
 Lucide's; none needed a custom drawing. The Ibis bird and logos remain our artwork.
 
 Sources keep Lucide's 24-unit grid, nominal 2-unit stroke, round caps and joins
@@ -54,12 +55,13 @@ The check path runs from its short leg to its long leg for that animation.
 The build writes `apps/desktop/src/icon-paths.ts`; never edit it by hand.
 `Icon` renders 16px or 20px with a 1.5px stroke at both sizes.
 `node scripts/check-icons.mjs` enforces the source contract. Inspect every
-source at 1× and 2× after a change. System app and file icons are separate;
+source at 1× and 2× after a change. System app icons are separate;
 no Zotero artwork ships with Ibis.
 
 | Ibis glyph | Lucide glyph |
 | --- | --- |
 | `about` | `info` |
+| `app-window` | `app-window` |
 | `article` | `file-text` |
 | `back` | `chevron-left` |
 | `book` | `book` |
@@ -71,8 +73,10 @@ no Zotero artwork ships with Ibis.
 | `error` | `circle-x` |
 | `file` | `file` |
 | `find` | `search` |
+| `folder-search` | `folder-search` |
 | `general` | `sliders-horizontal` |
 | `library` | `library` |
+| `library-big` | `library-big` |
 | `look` | `contrast` |
 | `other` | `box` |
 | `pin` | `pin` |

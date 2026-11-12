@@ -2,6 +2,8 @@
 
 Every sheet uses [`ui/Sheet`](../../apps/desktop/src/ui/README.md), built on the same `ViewFrame` as the palettes. Its content composes the [layout parts](../design.md#how-the-design-changes); the screen supplies no spacing or separate overlay frame.
 
+Back centres its chevron on the rows' icon column, with the title on their label column and the same gutter. Its target is at least 32 px (44 px with a coarse pointer): transparent at rest, neutral row hover, shared pressed feedback and the shared keyboard-only focus ring; selection colour belongs to rows. The footer's Back and Esc keep one baseline without wrapping. Back or Esc restores the parent's query, selection, scroll and focus; reveal the parent before returning focus, without scrolling it.
+
 ## Source checks and passage reuse (planned)
 
 Approved directions from ROADMAP.md; planned behaviour. No new notebook, source writes or cloud access; agents get notes and annotations only once the person turns that on for a library (decision 0033), and never private links.

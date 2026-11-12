@@ -27,7 +27,7 @@ export function AddGlyph({ added }: { added: boolean }) {
   return <Icon name={added ? "check" : "plus"} size="tile" className="add-glyph" />;
 }
 
-export type ChoiceIconName = "library" | "sample" | "file" | "find" | "retry" | "swap" | "write";
+export type ChoiceIconName = "library" | "library-big" | "sample" | "file" | "find" | "retry" | "swap" | "write";
 export function ChoiceIcon({ name }: { name: ChoiceIconName }) {
   return <Icon name={name} size="tile" className="type-icon" />;
 }

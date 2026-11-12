@@ -130,6 +130,28 @@ async function openWritingProjects() {
   return screen.findByRole("dialog", { name: "Writing Projects" });
 }
 
+test("Back and return keep a sheet's typed draft, selection, scroll and focus", async () => {
+  backend({ search: () => [result("a", "Synthetic source")],
+    writing_projects: () => ({ projects: [], selected: null, active: null, context: "opening-1", session_only: false }) });
+  render(<App />);
+  await screen.findByText("Synthetic source");
+  await openWritingProjects();
+  fireEvent.click(await screen.findByRole("button", { name: "New Writing Project…" }));
+  const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Project name" });
+  fireEvent.change(field, { target: { value: "Unfinished field guide" } });
+  act(() => { field.focus(); field.setSelectionRange(3, 8); });
+  const body = document.querySelector<HTMLElement>(".ui-sheet-body")!;
+  body.scrollTop = 120;
+  fireEvent.keyDown(field, { key: "ArrowLeft", altKey: true });
+  expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull();
+  await openWritingProjects();
+  const restored = await screen.findByRole<HTMLInputElement>("textbox", { name: "Project name" });
+  expect(restored.value).toBe("Unfinished field guide");
+  expect(document.activeElement).toBe(restored);
+  expect([restored.selectionStart, restored.selectionEnd]).toEqual([3, 8]);
+  expect(document.querySelector<HTMLElement>(".ui-sheet-body")!.scrollTop).toBe(120);
+});
+
 test("a fresh Enter after selecting a project waits for its delayed destination and copies the new format once", async () => {
   const first = writingDestination("Project A", "cite", [1, 0]);
   const second = writingDestination("Project B", "typst", [2, 0]);

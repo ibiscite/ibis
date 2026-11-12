@@ -1,25 +1,25 @@
 import { useMemo, useState } from "react";
 import type { SystemIcon } from "../bindings";
-import { Icon, type IconSize } from "../icons";
+import { Icon, type IconName, type IconSize } from "../icons";
 import { Button } from "./Button";
 import "./SourceAction.css";
 
 /** Native raster bytes only; the source name and action survive missing or
  * undecodable system icons. No external URL or third-party logo asset. */
-export function SourceIcon({ icon, file = false, size = "control" }: { icon: SystemIcon | null; file?: boolean; size?: IconSize }) {
+export function SourceIcon({ icon, file = false, glyph, size = "control" }: { icon: SystemIcon | null; file?: boolean; glyph?: IconName; size?: IconSize }) {
   const [failed, setFailed] = useState<SystemIcon | null>(null);
   const url = useMemo(() => {
-    if (!icon || !["image/png", "image/jpeg"].includes(icon.mime) || icon.bytes.length === 0 || icon.bytes.length > 65536 ||
+    if (file || glyph || !icon || !["image/png", "image/jpeg"].includes(icon.mime) || icon.bytes.length === 0 || icon.bytes.length > 65536 ||
       !icon.bytes.every((byte) => Number.isInteger(byte) && byte >= 0 && byte <= 255)) return null;
     return `data:${icon.mime};base64,${btoa(icon.bytes.map((byte) => String.fromCharCode(byte)).join(""))}`;
-  }, [icon]);
+  }, [icon, file, glyph]);
   return <span className="source-icon" data-size={size} aria-hidden="true">
-    {url && failed !== icon ? <img src={url} alt="" draggable={false} onError={() => setFailed(icon)} /> : <Icon name={file ? "file" : "library"} size={size} />}
+    {url && failed !== icon ? <img src={url} alt="" draggable={false} onError={() => setFailed(icon)} /> : <Icon name={glyph ?? (file ? "article" : "app-window")} size={size} />}
   </span>;
 }
 
 export type SourceActionProps = {
-  label: string; keys?: string; icon: SystemIcon | null; file?: boolean; busy?: boolean; open: () => void;
+  label: string; keys?: string; icon: SystemIcon | null; file?: boolean; glyph?: IconName; busy?: boolean; open: () => void;
 };
 
 /** Shorten in the middle so the name's start and its extension both survive. */
@@ -35,9 +35,9 @@ export function shortenedLabel(label: string, limit = 44): string {
 
 /** The footer source/fix action shares Copy's component; like every footer
  * control but Copy, it is quiet (docs/design/picker.md, "Quiet bands"). */
-export function SourceAction({ label, keys, icon, file, busy = false, open }: SourceActionProps) {
+export function SourceAction({ label, keys, icon, file, glyph, busy = false, open }: SourceActionProps) {
   const shown = shortenedLabel(label);
   return <Button variant="quiet" size="small" label={shown} keys={keys} className="source-action library-inline-action"
     aria-busy={busy || undefined} title={shown === label ? undefined : label}
-    aria-label={label} onPress={open} icon={busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} />} />;
+    aria-label={label} onPress={open} icon={busy ? <span className="source-spinner" aria-hidden="true" /> : <SourceIcon icon={icon} file={file} glyph={glyph} />} />;
 }

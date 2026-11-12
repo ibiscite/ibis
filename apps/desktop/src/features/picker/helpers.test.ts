@@ -72,8 +72,8 @@ test("every command has one key on each system, and ⌘/ opens the keys wherever
     expect(commandFor(press("k", "KeyK", command), null, mac)).toBe("more");
     expect(commandFor(press(",", "Comma", command), null, mac)).toBe("settings");
     expect(commandFor(press("o", "KeyO", command), null, mac)).toBe("source");
-    expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe("revealSource");
-    expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe("chooseSource");
+    expect(commandFor(press("o", "KeyO", { ...command, altKey: true }), null, mac)).toBe(mac ? "revealSource" : null);
+    expect(commandFor(press("o", "KeyO", { ...command, shiftKey: true }), null, mac)).toBe(mac ? "chooseSource" : "revealSource");
     expect(commandFor(press("q", "KeyQ", command), null, mac)).toBe("quit");
     expect(commandFor(press("e", "KeyE", command), field, mac)).toBe("changeLast");
   }

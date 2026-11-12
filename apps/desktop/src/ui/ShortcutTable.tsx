@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { KeyBinding } from "../keys";
-import { ariaKeys, keyLabel } from "../keys";
+import { ariaKeys, bindingKeys, keyLabel } from "../keys";
 import { useInterfaceMessages } from "../i18n";
 import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 import { useKeyPulse } from "./Delights";
@@ -37,6 +37,6 @@ export function ShortcutGroup({ region, bindings, isMac, title, children, plain 
   return <tbody id={ids ? `shortcuts-${region}` : undefined}>
     <tr><th scope="rowgroup" colSpan={2}>{title ?? text(SHORTCUT_REGIONS[region])}</th></tr>
     {children}
-    {bindings.filter((binding) => binding.region === region).map((binding) => <ShortcutRow key={binding.action} binding={binding} isMac={isMac} plain={plain} ids={ids} />)}
+    {bindings.filter((binding) => binding.region === region && bindingKeys(binding, isMac).length).map((binding) => <ShortcutRow key={binding.action} binding={{ ...binding, keys: bindingKeys(binding, isMac) }} isMac={isMac} plain={plain} ids={ids} />)}
   </tbody>;
 }

@@ -73,8 +73,8 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
     {source && <Button variant="quiet" className="inspector-action" isDisabled={source.busy} onPress={() => { onClose(); onOpenSource?.(reference); }}>
       <span>{source.label}</span>{source.keys && <span className="inspector-keys" aria-hidden="true">{keyLabel(source.keys, currentPlatform() === "macos")}</span>}
     </Button>}
-    <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Backspace Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
-      <span>{say("key-remove-from-citation")}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Backspace", currentPlatform() === "macos")}</span>
+    <Button variant="quiet" className="inspector-action" aria-keyshortcuts="Delete" isDisabled={!selected} onPress={() => onRemove(reference)}>
+      <span>{say("key-remove-from-citation")}</span><span className="inspector-keys" aria-hidden="true">{keyLabel("Delete", currentPlatform() === "macos")}</span>
     </Button></div>;
   return <Inspector ref={ref} id={id} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
     heading={reference ? reference.title || heading : heading} byline={byline || undefined} closeLabel={say("key-close")} onClose={onClose}
@@ -83,7 +83,7 @@ export function CitationInspector({ ref, id, panel, heading, reference, index, s
       onPageChange={(value) => onChange(reference, { locator: value ? { label: "page", value, input: "editor" } : null })} onClose={() => setReading(false)} /> : undefined}
     onKeyDown={(event) => {
       const target = event.target as HTMLElement;
-      if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
+      if (event.key !== "Delete" || event.repeat || composing(event) || target.matches("input, textarea, [contenteditable]") || !reference || !selected) return;
       event.preventDefault(); onRemove(reference);
     }}>
     {reference && onChange && <CitationDetails autoFocus page={reference.locator?.label === "page" ? reference.locator.value : ""} form={form} choices={choices}
