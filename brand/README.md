@@ -42,12 +42,50 @@ M is the height of the bird.
 
 ## Interface icons
 
-`icons/*.svg` is the editable outline set: 20 pt grid, 16 pt live area,
-one 1.5 pt stroke with round caps and joins, one path per glyph. The build
-writes `apps/desktop/src/icon-paths.ts`; never edit that output by hand.
-`node scripts/check-icons.mjs` enforces the drawing contract. Inspect every
-source at 1× and 2× after a change. App and file icons supplied by the system
-are not part of this set; no Zotero artwork ships with Ibis.
+`icons/*.svg` contains Lucide 1.72.0 drawings from `lucide-static@1.72.0`,
+under ISC, with the original Feather MIT notices retained in
+[`icons/LICENSE-lucide`](icons/LICENSE-lucide). All 27 interface glyphs are
+Lucide's; none needed a custom drawing. The Ibis bird and logos remain our artwork.
+
+Sources keep Lucide's 24-unit grid, nominal 2-unit stroke, round caps and joins
+and no fill. Circles, rounded rectangles and arcs are normalized to cubic
+subpaths and concatenated into one path for the guard and check-draw animation.
+The check path runs from its short leg to its long leg for that animation.
+The build writes `apps/desktop/src/icon-paths.ts`; never edit it by hand.
+`Icon` renders 16px or 20px with a 1.5px stroke at both sizes.
+`node scripts/check-icons.mjs` enforces the source contract. Inspect every
+source at 1× and 2× after a change. System app and file icons are separate;
+no Zotero artwork ships with Ibis.
+
+| Ibis glyph | Lucide glyph |
+| --- | --- |
+| `about` | `info` |
+| `article` | `file-text` |
+| `back` | `chevron-left` |
+| `book` | `book` |
+| `chapter` | `book-marked` |
+| `check` | `check` |
+| `chevrons` | `chevrons-up-down` |
+| `citations` | `quote` |
+| `close` | `x` |
+| `error` | `circle-x` |
+| `file` | `file` |
+| `find` | `search` |
+| `general` | `sliders-horizontal` |
+| `library` | `library` |
+| `look` | `contrast` |
+| `other` | `box` |
+| `pin` | `pin` |
+| `plus` | `plus` |
+| `report` | `file-chart-column` |
+| `retry` | `rotate-cw` |
+| `sample` | `sparkle` |
+| `shortcuts` | `command` |
+| `swap` | `arrow-right-left` |
+| `thesis` | `graduation-cap` |
+| `warning` | `triangle-alert` |
+| `web` | `panel-top` |
+| `write` | `pencil` |
 
 ## Changing the brand
 

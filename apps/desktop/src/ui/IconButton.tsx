@@ -11,8 +11,9 @@ type Props = Omit<ComponentProps<typeof Button>, "variant" | "children" | "icon"
 export function IconButton({ icon = "close", size = "regular", isSelected, onChange, className = "", ...props }: Props) {
   const shared = { ...props, variant: "icon" as const, size: size === "large" ? "default" as const : "small" as const,
     className: `ui-icon-button ${className}` };
-  return isSelected === undefined ? <Button {...shared}><Icon name={icon} /></Button>
+  const glyph = <Icon name={icon} size={size === "large" ? "tile" : "control"} />;
+  return isSelected === undefined ? <Button {...shared}>{glyph}</Button>
     // React Aria types the toggle's capture events as div events; our renderer
     // in Button always exposes the same native button for both controls.
-    : <ToggleButton {...shared as ComponentProps<typeof ToggleButton>} isSelected={isSelected} onChange={onChange}><Icon name={icon} /></ToggleButton>;
+    : <ToggleButton {...shared as ComponentProps<typeof ToggleButton>} isSelected={isSelected} onChange={onChange}>{glyph}</ToggleButton>;
 }

@@ -1,4 +1,4 @@
-/* An anchored popover (decision 0044): the menus' material and corner and an arrow
+/* An anchored popover (decision 0045): the menus' material and corner and an arrow
    on what it is about. It unfolds from its anchor as every overlay does (Overlay.css). */
 .ui-popover { box-sizing: border-box; display: flex; inline-size: min(var(--inspector-width), calc(100vw - 2 * var(--inset))); max-block-size: calc(100vh - 2 * var(--inset)); padding: 0; border-radius: var(--r-large); font: var(--type-body-size) / var(--type-body-line) var(--font); outline: none; }
 .ui-popover-dialog { flex: 1; min-block-size: 0; overflow: auto; padding: var(--space-3) var(--space-4); outline: none; }

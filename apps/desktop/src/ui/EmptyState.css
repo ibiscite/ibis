@@ -4,7 +4,7 @@
 /* [C11] The hint and no-matches screens sit in the middle of the middle area, as choice screens do. */
 main .picker-content .results-area:has(> .empty-template) { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
 .empty-template { flex: none; width: 100%; margin-block: auto; padding-block: var(--inset); box-sizing: border-box; }
-.empty-icon { display: block; width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin: 0 auto var(--space-3); color: var(--text-tertiary); }
+.empty-icon { display: block; margin: 0 auto var(--space-3); color: var(--text-tertiary); }
 .empty-title { margin: 0; color: var(--text); font-size: var(--type-lead-size); line-height: var(--type-lead-line); font-weight: var(--strong); overflow-wrap: anywhere; }
 .empty-description { max-width: 40ch; margin: var(--space-2) auto 0; font-size: var(--type-body-size); line-height: var(--type-body-line); overflow-wrap: anywhere; }
 .empty-template .empty-actions { margin-top: var(--space-4); }
@@ -28,5 +28,5 @@ main .picker-content .results-area:has(.empty-opening) { display: flex; flex-dir
 @media (max-height: 400px) {
   .empty-state { padding: var(--space-2) var(--space-4); }
   .empty-template { padding-block: var(--space-2); }
-  .empty-icon { width: var(--icon); height: var(--icon); margin-block-end: var(--space-1); }
+  .empty-icon { margin-block-end: var(--space-1); }
 }

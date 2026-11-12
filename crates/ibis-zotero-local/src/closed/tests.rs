@@ -84,7 +84,7 @@ fn all_four_versions_return_neutral_fields_groups_and_ordered_creators() {
             match version {
                 7 | 8 => 123,
                 9 => 125,
-                _ => 130,
+                _ => 131,
             }
         );
         assert_eq!(snapshot.libraries.len(), 2);
@@ -119,12 +119,10 @@ fn all_four_versions_return_neutral_fields_groups_and_ordered_creators() {
 }
 
 #[test]
-fn rejects_old_new_damaged_and_missing_databases() {
-    for (version, error) in [(122, ClosedError::TooOld), (131, ClosedError::TooNew)] {
-        let dir = fixture(10);
-        edit(dir.path(), &format!("UPDATE version SET version={version}"));
-        assert_eq!(read_fixture(dir.path()).err(), Some(error));
-    }
+fn rejects_old_damaged_and_missing_databases() {
+    let old = fixture(10);
+    edit(old.path(), "UPDATE version SET version=122");
+    assert_eq!(read_fixture(old.path()).err(), Some(ClosedError::TooOld));
     let dir = tempfile::tempdir().unwrap_or_else(|_| panic!("synthetic dir"));
     assert_eq!(read_fixture(dir.path()).err(), Some(ClosedError::NotFound));
     std::fs::write(dir.path().join("zotero.sqlite"), b"synthetic damaged database")
@@ -163,4 +161,70 @@ fn cloud_synced_synthetic_directory_returns_a_fixed_warning() {
         read_fixture(&data).map(|s| s.warnings),
         Ok(vec![ClosedWarning::CloudSyncedDirectory])
     );
+}
+
+#[test]
+fn tested_schema_ceiling_reads_without_a_compatibility_warning() {
+    let dir = fixture(10);
+    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(snapshot.libraries[0].items[0].data.key, "SYNTH001");
+    assert!(snapshot.warnings.is_empty());
+}
+
+#[test]
+fn newer_compatible_schema_reads_with_one_source_warning_and_leaves_source_untouched() {
+    let dir = fixture(10);
+    edit(dir.path(), "UPDATE version SET version=132");
+    let before = std::fs::read(dir.path().join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic source bytes"));
+    let snapshot = read_fixture(dir.path()).unwrap_or_else(|e| panic!("{e}"));
+    assert_eq!(
+        snapshot.libraries[0].items[0].data.fields["title"],
+        "The Synthetic Atlas"
+    );
+    assert_eq!(snapshot.warnings, vec![ClosedWarning::NewerThanTested]);
+    assert_eq!(
+        std::fs::read(dir.path().join("zotero.sqlite")).unwrap_or_else(|_| panic!("synthetic source bytes")),
+        before
+    );
+}
+
+#[test]
+fn newer_schema_refuses_missing_columns_and_changed_lookup_shapes() {
+    for (change, table) in [
+        ("ALTER TABLE items DROP COLUMN dateModified", ZoteroTable::Items),
+        (
+            "ALTER TABLE fieldsCombined DROP COLUMN fieldName",
+            ZoteroTable::FieldsCombined,
+        ),
+        ("DROP TABLE itemTypesCombined", ZoteroTable::ItemTypesCombined),
+        (
+            "DROP TABLE itemDataValues; CREATE TABLE itemDataValues(valueID INTEGER PRIMARY KEY, value TEXT UNIQUE)",
+            ZoteroTable::ItemDataValues,
+        ),
+        (
+            "DROP TABLE creatorTypes; CREATE TABLE creatorTypes(creatorTypeID INTEGER PRIMARY KEY, creatorType BLOB)",
+            ZoteroTable::CreatorTypes,
+        ),
+        (
+            "DROP TABLE fieldsCombined; CREATE TABLE fieldsCombined(fieldID INT, fieldName TEXT)",
+            ZoteroTable::FieldsCombined,
+        ),
+        (
+            "ALTER TABLE items ADD COLUMN computed TEXT GENERATED ALWAYS AS (key) VIRTUAL",
+            ZoteroTable::Items,
+        ),
+    ] {
+        let dir = fixture(10);
+        edit(dir.path(), "UPDATE version SET version=132");
+        edit(dir.path(), change);
+        let error = read_fixture(dir.path())
+            .err()
+            .unwrap_or_else(|| panic!("incompatible schema accepted"));
+        assert_eq!(error, ClosedError::TooNew { table });
+        assert_eq!(
+            error.to_string(),
+            "this Zotero database is newer than Ibis knows; update Ibis or open Zotero",
+            "{change}"
+        );
+    }
 }

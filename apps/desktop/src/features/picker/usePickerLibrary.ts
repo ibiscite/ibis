@@ -4,9 +4,9 @@ import type { useOperations } from "./useOperations";
 import { useLibraryStatus } from "./useLibraryStatus";
 
 export function usePickerLibrary(api: typeof nativeApi, { report, setFailures }: Pick<ReturnType<typeof useOperations>, "report" | "setFailures">, cancelCopy: () => void) {
-  const { chooseLibrary, useZotero, findZotero, findSources, openFoundLibrary } = api;
-  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findZotero, findSources, openFoundLibrary }),
-    [chooseLibrary, useZotero, api.useSampleLibrary, findZotero, findSources, openFoundLibrary]);
+  const { chooseLibrary, useZotero, findZotero, findSources, openFoundLibrary, librarySource } = api;
+  const setupApi = useMemo(() => ({ chooseLibrary, useZotero, useSampleLibrary: api.useSampleLibrary, findZotero, findSources, openFoundLibrary, librarySource }),
+    [chooseLibrary, useZotero, api.useSampleLibrary, findZotero, findSources, openFoundLibrary, librarySource]);
   const { library, settledLibrary, libraryVersion, refreshSnapshot } = useLibraryStatus(api, report, cancelCopy);
   // Setup failures belong to setup; recovery answers an earlier Zotero failure.
   const setupDone = library !== undefined && library?.state !== "none";

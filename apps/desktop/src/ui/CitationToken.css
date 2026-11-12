@@ -1,4 +1,4 @@
-/* Citation tokens (decision 0044): a reference's own words on a soft fill, with its
+/* Citation tokens (decision 0045): a reference's own words on a soft fill, with its
    small × inside the same fill, so neither reads as pasted text. Each token keeps
    its own room, so neither it nor its ring covers the brackets and separators
    beside it. Focus and the open state change at once; only arriving and moving
@@ -16,7 +16,6 @@
 .citation-token-handle { flex: none; color: var(--text-secondary); }
 .citation-token-handle::before { content: "· "; }
 .citation-token-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: relative; flex: none; margin-inline-end: var(--space-1); border: 0; border-radius: var(--r-small); color: var(--text-secondary); --ring-offset: var(--ring-inside); }
-.citation-token-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
 @media (hover: hover) {
   .citation-token:has(> .citation-token-button[data-hovered]):not(:has(> .citation-token-button[aria-expanded="true"]))::before { background: var(--fill-control-hover); }
   .citation-token-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-pressed); color: var(--text); }

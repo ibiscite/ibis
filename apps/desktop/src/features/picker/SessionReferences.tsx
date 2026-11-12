@@ -28,6 +28,8 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const [problem, setProblem] = useState<string | null>(null);
   const listing = useRef(0);
   const formatting = useRef(0);
+  const delivering = useRef(0);
+  const pendingDelivery = useRef(false);
 
   const show = useCallback((next: SessionReferencesView) => {
     setView(next);
@@ -37,27 +39,38 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
       (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
   }, [sessionBibliography, style]);
-  const load = useCallback((read: () => Promise<SessionReferencesView>) => {
+  const load = useCallback((read: () => Promise<SessionReferencesView>, problem: string | null = null) => {
     const request = ++listing.current;
-    setProblem(null);
+    setProblem(problem);
     read().then((next) => { if (request === listing.current) show(next); },
       () => { if (request === listing.current) setProblem(say("session-not-read")); });
   }, [show]);
   useEffect(() => {
     load(sessionReferences);
-    return () => { listing.current += 1; formatting.current += 1; };
+    return () => { listing.current += 1; formatting.current += 1; delivering.current += 1; pendingDelivery.current = false; };
   }, [load, sessionReferences]);
 
   const edit = (change: SessionEdit) => {
     setStatus(null);
-    load(() => editSessionReferences(change));
+    const wasDelivering = pendingDelivery.current;
+    pendingDelivery.current = false;
+    delivering.current += 1;
+    load(() => editSessionReferences(change), wasDelivering ? say("session-changed") : null);
   };
   /** Copy or save what is on screen; a list that moved on is shown again instead. */
   const deliver = (act: () => Promise<string | null>, failure: string) => {
+    const request = ++delivering.current;
+    const owns = () => {
+      if (request !== delivering.current) return false;
+      pendingDelivery.current = false;
+      return true;
+    };
     setStatus(null);
     setProblem(null);
-    act().then((done) => { if (done) setStatus(done); }, (error) => {
-      if (changed(error)) { setProblem(say("session-changed")); load(sessionReferences); } else setProblem(said(error, failure));
+    pendingDelivery.current = true;
+    act().then((done) => { if (owns() && done) setStatus(done); }, (error) => {
+      if (!owns()) return;
+      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem(said(error, failure));
     });
   };
   const hash = bibliography?.content_hash;

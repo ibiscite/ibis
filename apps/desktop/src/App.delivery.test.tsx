@@ -2,7 +2,6 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { invoke } from "@tauri-apps/api/core";
 import { App } from "./App";
-import type { Copied, Delivered, FilePreview } from "./bindings";
 import { resetApp, result, inCitation } from "./testing/app";
 import { deliveryHarness } from "./testing/delivery";
 
@@ -384,6 +383,22 @@ test.each(["different text", "identical text"])("another clipboard owner's write
   expectReceipt(harness, "Copied. The clipboard changed since. Copy the citation again.", "[@a]");
 });
 
+test("hiding during recitation preserves newer clipboard content and never delivers the late copy", async () => {
+  const harness = await open();
+  await choose(harness, "first");
+  await enter();
+  expect(harness.copy.pending).toHaveLength(1);
+  await act(async () => { await invoke("hide_picker"); });
+  harness.copyElsewhere("Newer invented clipboard text");
+  await act(async () => { harness.copy.pending[0]!.complete(); });
+
+  expect(harness.clipboard).toMatchObject({ text: "Newer invented clipboard text", owner: "external", sequence: 1 });
+  expect(harness.document.text).toBe("Draft: [citation].");
+  expect(harness.document.pastes).toEqual([]);
+  expect(harness.delivery.calls).toHaveLength(0);
+  expect(harness.receipt.textContent).toBe("");
+});
+
 test.each(["preview", "copy"] as const)("a failed %s leaves the document and clipboard unchanged and gives no success receipt", async (stage) => {
   const harness = await open();
   await type("first");
@@ -400,31 +415,6 @@ test.each(["preview", "copy"] as const)("a failed %s leaves the document and cli
   expect(harness.delivery.calls).toHaveLength(0);
 });
 
-
-test("the fake captures a copy's app and presentation at its successful write", async () => {
-  const harness = deliveryHarness();
-  const pendingPreview = invoke<FilePreview>("preview_file_citation", {
-    items: [], format: "pandoc", style: null, expectedRevision: "1",
-    intent: { page: 1, request: 1, cancel: false },
-  });
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]" }); });
-  const preview = await pendingPreview;
-  const pendingCopy = invoke<Copied>("copy_file_citation", { ticket: preview.ticket, contentHash: preview.content_hash });
-  harness.document.app = "Reopened Writer";
-  await act(async () => { await harness.reopen(); });
-  await act(async () => { harness.copy.pending[0]!.complete(); });
-  const copied = await pendingCopy;
-  // Bypass App's stale-completion guard to prove this native write can paste.
-  // A fake that freezes the old presentation would mask that UI regression.
-  await act(async () => { await invoke("hide_picker"); });
-  const pendingNotice = invoke<Delivered>("show_copied_notice", { text: copied.text, delivery: copied.delivery });
-  await finishDelivery(harness);
-  expect(await pendingNotice).toEqual({ outcome: "pasted", app: "Reopened Writer" });
-  expect(harness.document.text).toBe("Draft: [@a].");
-  expect(harness.document.pastes).toEqual([{ app: "Reopened Writer", text: "[@a]", start: 7, end: 17, delivery: 1 }]);
-  expectReceipt(harness, "Pasted into Reopened Writer", "[@a]");
-});
-
 test("reopening during a pending copy keeps the new query and selection without delivering the late copy", async () => {
   const harness = await open();
   await choose(harness, "first");
@@ -436,7 +426,7 @@ test("reopening during a pending copy keeps the new query and selection without 
   await finishSearch(harness, "second query", [second]);
   await enter(true);
   await act(async () => { harness.copy.pending[0]!.complete(); });
-  expect(harness.clipboard).toMatchObject({ text: "[@a]", owner: "ibis", sequence: 1 });
+  expect(harness.clipboard).toMatchObject({ text: "", owner: null, sequence: 0 });
   expect(harness.visible).toBe(true);
   expect((searchBox() as HTMLInputElement).value).toBe("second query");
   expect(screen.getByRole("status", { name: "Citation selection" }).textContent).toBe("2 references selected for citation");

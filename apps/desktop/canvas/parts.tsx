@@ -99,7 +99,7 @@ export function Parts() {
       results={[{ id: "appearance", label: "Appearance", page: "look", pageLabel: "Look", tile: <PageIcon name="look" /> }, { id: "forget", label: "A setting whose name runs on to a second line in the sidebar", page: "citations", pageLabel: "Citations", tile: <PageIcon name="citations" /> }]} /></section>
     <Section title="Marks and icons">
       <State name="mark"><IbisMark size="welcome" className="canvas-part-mark" /></State>
-      {(Object.keys(iconPaths) as (keyof typeof iconPaths)[]).map((name) => <State key={name} name={name}><Icon name={name} /></State>)}
+      {(Object.keys(iconPaths) as (keyof typeof iconPaths)[]).map((name) => <State key={name} name={name}><Icon name={name} /><Icon name={name} size="tile" /></State>)}
     </Section>
   </div>;
 }

@@ -90,8 +90,11 @@ the anchor older links use.
 ## 0043 RIS and CSV libraries
 [0043](decisions/0043-ris-and-csv-libraries.md): RIS exports and the CSV template are read-only libraries with no citation keys; a record's identity is a hash of its CSL data.
 
-## 0044 The citation line is a token field
-[0044](decisions/0044-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+## 0044 One Lucide icon primitive
+[0044](decisions/0044-lucide-icon-primitive.md): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
+
+## 0045 The citation line is a token field
+[0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.

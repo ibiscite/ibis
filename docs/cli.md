@@ -436,6 +436,8 @@ requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
+Follow the [assistant setup guide](agents.md) to connect your app to Ibis.
+
 `ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
 read-only tools over stdio:
 

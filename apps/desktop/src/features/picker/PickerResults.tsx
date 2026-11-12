@@ -3,7 +3,7 @@ import type { RefObject } from "react";
 import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
 import { say } from "../../i18n";
 import { ResultList } from "./ResultList";
-import { EmptyState } from "./EmptyState";
+import { EmptyState, useZoteroRecovery } from "./EmptyState";
 import { CommandList } from "./CommandList";
 import type { PickerCommandEntry } from "./commands";
 import type { usePickerLibrary } from "./usePickerLibrary";
@@ -50,6 +50,9 @@ export function PickerResults({
   const { narrowed, searchAllLibraries, severalLibraries, libraryOf } = scope;
   const { sourceChoice, performSourceChoice } = source;
   const { chooseLibrary, reloadLibrary } = api;
+  // EmptyState is absent when the retained library has matching rows (or a
+  // command is shown). Recovery belongs to the visible picker in those cases.
+  useZoteroRecovery(library?.has_snapshot ? library : null, api.checkZoteroSharing, !choosingLibrary);
   // A failed refresh keeps the older references searchable, so a search that
   // finds nothing there still says so; only a library with nothing to search
   // hands the middle area to its recovery screen.

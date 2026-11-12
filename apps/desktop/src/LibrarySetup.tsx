@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { ShortcutStatus, Sources, ZoteroPresence } from "./bindings";
+import type { commands, ShortcutStatus, Sources, SystemIcon, ZoteroPresence } from "./bindings";
 import { ChoiceIcon } from "./icons";
 import { keysFor } from "./keys";
 import { useInterfaceMessages } from "./i18n";
@@ -8,6 +8,7 @@ import { currentPlatform } from "./platform";
 import { shortcutLabel } from "./keys";
 import { ChoiceList, type Choice } from "./ui/ChoiceList";
 import { IbisMark } from "./ui/IbisMark";
+import { SourceIcon } from "./ui/SourceAction";
 
 type SetupApi = {
   chooseLibrary: () => Promise<unknown>;
@@ -16,6 +17,7 @@ type SetupApi = {
   findZotero?: () => Promise<ZoteroPresence>;
   findSources?: () => Promise<Sources>;
   openFoundLibrary?: (list: number, index: number) => Promise<unknown>;
+  librarySource?: typeof commands.librarySource;
 };
 
 export type SourceChoice = { label: string; open: () => void; icon?: ReactNode; help?: string };
@@ -25,7 +27,7 @@ type Action = "choose" | "zotero" | "findSources" | "openFound" | "samples";
 
 /** First run, and the screen while no library is chosen: Zotero, a
  * library file through the system chooser, and, only when asked, libraries found
- * nearby. Only names are shown; nothing is read until one is picked (#998). */
+ * nearby. Library contents are read only after one is picked (#998). */
 export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut, onWelcomeChange }: {
   api: SetupApi;
   perform: (action: Action, run: () => Promise<unknown>, isCurrent?: () => boolean) => Promise<void>;
@@ -38,7 +40,17 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   onWelcomeChange?: (shown: boolean) => void;
 }) {
   const { text } = useInterfaceMessages();
-  const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findZotero, findSources, openFoundLibrary } = api;
+  const { chooseLibrary, useZotero, useSampleLibrary: changeSamples, findZotero, findSources, openFoundLibrary, librarySource } = api;
+  const [zoteroIcon, setZoteroIcon] = useState<{ read: typeof librarySource; icon: SystemIcon | null } | null>(null);
+  useEffect(() => {
+    if (!librarySource) return;
+    let current = true;
+    // The app icon is independent of a selected library, including first run.
+    void librarySource(null, "", "", true, false).then((source) => {
+      if (current) setZoteroIcon({ read: librarySource, icon: source.icon });
+    }, () => {});
+    return () => { current = false; };
+  }, [librarySource]);
   const welcome = !empty;
   useLayoutEffect(() => {
     onWelcomeChange?.(welcome);
@@ -87,7 +99,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
       files.length ? say("setup-bib-found", { count: files.length }) : ""].filter(Boolean).join(" ") : say("setup-find-help");
 
   const choices: Choice[] = [
-    { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <ChoiceIcon name="library" />,
+    { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <SourceIcon size="tile" icon={zoteroIcon?.read === librarySource ? zoteroIcon?.icon ?? null : null} />,
       tag: zoteroHere || empty?.zotero ? say("setup-found-on", { platform: currentPlatform() }) : undefined, suggested: welcome && zoteroHere },
     { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="file" /> },
     ...(empty?.source ? [{ id: "source", title: empty.source.label, help: empty.source.help, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),

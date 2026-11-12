@@ -5,6 +5,161 @@ use ibis_core::contract::{ErrorCode, ErrorReason, GoldenCase};
 use ibis_engine::{Cancellation, CitationCommitError, Engine, Method, request::ZoteroLibrary};
 use serde_json::json;
 use std::sync::atomic::Ordering;
+
+#[test]
+fn unaccepted_zotero_reload_keeps_search_and_health_private() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let before = engine.snapshot().unwrap();
+    let health = serde_json::to_value(engine.libraries().unwrap()).unwrap();
+    for fails in [false, true] {
+        let cancel = Cancellation::default();
+        *server.title.lock().unwrap() = "Obsolete atlas".into();
+        server.sharing_off.store(fails, Ordering::SeqCst);
+        let prepared = engine.prepare_zotero_reload(true, None, None, &cancel).unwrap();
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), before.fingerprints());
+        assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), health);
+        // The newer choice cancels the operation whose candidate arrives late.
+        let directory = tempfile::tempdir().unwrap();
+        assert!(
+            engine
+                .open_file_observed(&directory.path().join("unreadable.bib"), &cancel)
+                .is_err()
+        );
+        cancel.cancel();
+        assert_eq!(
+            engine.accept_zotero_reload(prepared).unwrap_err().code,
+            ErrorCode::Cancelled
+        );
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), before.fingerprints());
+        assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), health);
+    }
+    server.sharing_off.store(false, Ordering::SeqCst);
+    let prepared = engine.prepare_zotero_reload(true, None, None, &cancel).unwrap();
+    engine.accept_zotero_reload(prepared).unwrap();
+    assert_ne!(engine.snapshot().unwrap().fingerprints(), before.fingerprints());
+    assert!(
+        engine
+            .libraries()
+            .unwrap()
+            .libraries
+            .iter()
+            .all(|info| info.refresh_error.is_none())
+    );
+}
+
+#[test]
+fn private_zotero_reload_refuses_copy_after_a_detected_switch_before_acceptance() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let snapshot = engine.snapshot().unwrap();
+    let health = serde_json::to_value(engine.libraries().unwrap()).unwrap();
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    case.request.items[0].item = snapshot.objects()[0].object.id().clone();
+    case.request.items[0].expected_cite = Some(snapshot.objects()[0].fingerprints.cite.clone());
+    let citation = engine.prepare_citation(&case.request, &cancel).unwrap();
+    server.instance.store(2, Ordering::SeqCst);
+    server.pause.store(true, Ordering::SeqCst);
+    let refreshing = engine.clone();
+    let refresh =
+        std::thread::spawn(move || refreshing.prepare_zotero_reload(false, None, None, &Cancellation::default()));
+    server.wait_for_payload();
+    // Release the endpoint even if the regression assertion below fails.
+    let copy = engine.recite(&citation, &cancel);
+    let preview = engine.prepare_citation(&case.request, &cancel);
+    server.pause.store(false, Ordering::SeqCst);
+    let reload = refresh.join().unwrap().unwrap();
+    assert!(copy.is_err(), "a detected source switch must not copy old references");
+    assert_eq!(preview.unwrap_err().code, ErrorCode::SourceUnavailable);
+    assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
+    assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), health);
+    assert!(
+        engine.recite(&citation, &cancel).is_err(),
+        "preparation alone cannot make copying ready"
+    );
+    engine.accept_zotero_reload(reload).unwrap();
+    assert!(matches!(
+        engine.recite(&citation, &cancel),
+        Err(CitationCommitError::PreviewChanged)
+    ));
+    let current = engine.prepare_citation(&case.request, &cancel).unwrap();
+    assert_eq!(engine.recite(&current, &cancel).unwrap().text, "[@Synthetic2026]");
+}
+
+#[test]
+fn private_zotero_failure_retires_copy_without_publishing_health_and_a_retry_recovers() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let snapshot = engine.snapshot().unwrap();
+    let health = serde_json::to_value(engine.libraries().unwrap()).unwrap();
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    case.request.items[0].item = snapshot.objects()[0].object.id().clone();
+    let citation = engine.prepare_citation(&case.request, &cancel).unwrap();
+    server.sharing_off.store(true, Ordering::SeqCst);
+    let reload = engine.prepare_zotero_reload(false, None, None, &cancel).unwrap();
+    assert!(
+        engine.recite(&citation, &cancel).is_err(),
+        "a failed read cannot keep a copy ready"
+    );
+    assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), health);
+    assert_eq!(
+        engine.accept_zotero_reload(reload).unwrap_err().reason,
+        Some(ErrorReason::ZoteroSharingOff)
+    );
+    server.sharing_off.store(false, Ordering::SeqCst);
+    let reload = engine.prepare_zotero_reload(false, None, None, &cancel).unwrap();
+    engine.accept_zotero_reload(reload).unwrap();
+    let current = engine.prepare_citation(&case.request, &cancel).unwrap();
+    assert_eq!(engine.recite(&current, &cancel).unwrap().text, "[@Synthetic2026]");
+    assert!(
+        engine.recite(&citation, &cancel).is_err(),
+        "the earlier receipt stays retired"
+    );
+}
+
+#[test]
+fn an_obsolete_private_zotero_read_cannot_retire_the_current_copy() {
+    let server = fixture::Server::new();
+    let engine = Engine::with_zotero_port(server.port).unwrap();
+    let cancel = Cancellation::default();
+    engine
+        .dispatch(Method::Libraries, &json!({"action":"open-zotero"}), &cancel)
+        .unwrap();
+    let snapshot = engine.snapshot().unwrap();
+    let mut case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json")).unwrap();
+    case.request.items[0].item = snapshot.objects()[0].object.id().clone();
+    let citation = engine.prepare_citation(&case.request, &cancel).unwrap();
+    // An unchanged check needs no retirement permission and leaves the shown
+    // citation available throughout its private preparation and acceptance.
+    let unchanged = engine
+        .prepare_zotero_reload_guarded(false, None, None, &cancel, |_retire| Err(ErrorCode::Cancelled.into()))
+        .unwrap();
+    assert_eq!(engine.recite(&citation, &cancel).unwrap().text, "[@Synthetic2026]");
+    engine.accept_zotero_reload(unchanged).unwrap();
+    let health = serde_json::to_value(engine.libraries().unwrap()).unwrap();
+    for sharing_off in [false, true] {
+        server.sharing_off.store(sharing_off, Ordering::SeqCst);
+        let obsolete =
+            engine.prepare_zotero_reload_guarded(true, None, None, &cancel, |_retire| Err(ErrorCode::Cancelled.into()));
+        assert!(matches!(obsolete, Err(failure) if failure.code == ErrorCode::Cancelled));
+        assert_eq!(engine.recite(&citation, &cancel).unwrap().text, "[@Synthetic2026]");
+        assert_eq!(engine.snapshot().unwrap().fingerprints(), snapshot.fingerprints());
+        assert_eq!(serde_json::to_value(engine.libraries().unwrap()).unwrap(), health);
+    }
+}
+
 #[test]
 fn copy_waits_for_a_coherent_read_after_a_detected_switch_and_old_previews_stay_retired() {
     let server = fixture::Server::new();

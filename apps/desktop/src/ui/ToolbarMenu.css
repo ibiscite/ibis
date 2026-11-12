@@ -20,7 +20,7 @@
    unavailable. None ever sets the menu's width. */
 .toolbar-menu-note { flex: none; contain: inline-size; margin: 0; padding-block: var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 .menu-item:has(> .toolbar-menu-sample[data-note]) { flex-wrap: wrap; row-gap: 0; }
-.toolbar-menu-sample[data-note] { contain: inline-size; flex: 1 0 100%; max-width: none; margin: 0; padding-inline-start: calc(var(--icon-small) + var(--space-2)); font-family: var(--font); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: break-word; }
+.toolbar-menu-sample[data-note] { contain: inline-size; flex: 1 0 100%; max-width: none; margin: 0; padding-inline-start: calc(var(--icon) + var(--space-2)); font-family: var(--font); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: break-word; }
 .menu-item[data-focused] .toolbar-menu-sample { color: inherit; }
 .toolbar-menu-filter input {
   box-sizing: border-box; width: 100%; min-height: var(--action-h); border: 0; border-radius: var(--r-control);
@@ -41,7 +41,7 @@
    pop-ups do on the Mac, so its example sits on a second line, whole and
    wrapping, never cut. */
 .toolbar-menu-popover[data-anchor="field"] .menu-item:has(> .toolbar-menu-sample:not(:empty)) { flex-wrap: wrap; row-gap: 0; }
-.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--icon-small) + var(--space-2)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
+.toolbar-menu-popover[data-anchor="field"] .toolbar-menu-sample { contain: inline-size; flex: 1 0 100%; margin: 0; padding-inline-start: calc(var(--icon) + var(--space-2)); line-height: var(--type-label-line); text-align: start; white-space: normal; overflow-wrap: anywhere; }
 /* In the search bar the format pop-up is quiet like the × and pin beside it: no
    plate at rest, its chevrons say it opens; the plate shows on hover and while open. */
 .search-bar .ui-popup-button.ui-button[data-variant] { background: transparent; }

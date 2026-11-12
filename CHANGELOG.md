@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.3.3](https://github.com/ibiscite/ibis/compare/v0.3.2...v0.3.3) (2026-11-11)
+
+
+### Features
+
+* agents get source health, receipts and caller records ([#1848](https://github.com/ibiscite/ibis/issues/1848)) ([546fc46](https://github.com/ibiscite/ibis/commit/546fc469e420b56b9fe1f47e0530cbb8f05c7422))
+* carry every locator type, each form and kept order to the engine ([#1803](https://github.com/ibiscite/ibis/issues/1803)) ([95068bc](https://github.com/ibiscite/ibis/commit/95068bca7bb35f36527e2a8aac3ee2e4212405f5))
+* one design system: palettes as views, layout decided once ([#1846](https://github.com/ibiscite/ibis/issues/1846)) ([3710238](https://github.com/ibiscite/ibis/commit/371023822fa724734ecd0b93beca4308d5fc53ad))
+* one motion foundation for every part ([#1797](https://github.com/ibiscite/ibis/issues/1797)) ([7a42fed](https://github.com/ibiscite/ibis/commit/7a42fed93b82bbc74d877f31d2f8ade32fcec0fe))
+* show Appearance as one live picture and centre About ([#1813](https://github.com/ibiscite/ibis/issues/1813)) ([50a20a0](https://github.com/ibiscite/ibis/commit/50a20a0fd16c3d4141de8942839738188bef130c))
+* **website:** four pages on the original look, with real CLI output ([#1843](https://github.com/ibiscite/ibis/issues/1843)) ([d8a817e](https://github.com/ibiscite/ibis/commit/d8a817e972c28ea1fc98f402f125b14a00ff06d3))
+* write Zotero RTF/ODF Scan markers for references from Zotero ([#1827](https://github.com/ibiscite/ibis/issues/1827)) ([854719f](https://github.com/ibiscite/ibis/commit/854719f8d019ab8c828068a5fe674d76e6280104))
+
+
+### Bug Fixes
+
+* a result row's spoken parts never run together ([#1828](https://github.com/ibiscite/ibis/issues/1828)) ([5cbb54c](https://github.com/ibiscite/ibis/commit/5cbb54c16ba6a9f97f87b75a6d751ac6a56f330f))
+* don't report a printed locator lost when the style shows the page ([#1817](https://github.com/ibiscite/ibis/issues/1817)) ([eb2ecab](https://github.com/ibiscite/ibis/commit/eb2ecabe917c99716f65a4212035499f2c39b141))
+* keep footer status words whole at the smallest window ([#1802](https://github.com/ibiscite/ibis/issues/1802)) ([6d9fd2c](https://github.com/ibiscite/ibis/commit/6d9fd2c77298d83f355dc1d10ff8108257d39212))
+* update rustix past RUSTSEC-2026-0486 ([#1842](https://github.com/ibiscite/ibis/issues/1842)) ([4652953](https://github.com/ibiscite/ibis/commit/46529535fc357fe69bc369e0418d3527bef36691))
+
+
+### Documentation
+
+* describe only what has shipped; plans live in ROADMAP.md ([#1850](https://github.com/ibiscite/ibis/issues/1850)) ([c6e64d0](https://github.com/ibiscite/ibis/commit/c6e64d08d2a6a22876ed437f4b6d4081eff91d46))
+* renumber the RIS and CSV decision to 0043 ([#1800](https://github.com/ibiscite/ibis/issues/1800)) ([020c4c3](https://github.com/ibiscite/ibis/commit/020c4c3735764f32dad3098ea31aa16e15ab5c43))
+* two cloud lanes and a five-wide merge queue ([#1804](https://github.com/ibiscite/ibis/issues/1804)) ([8ef356a](https://github.com/ibiscite/ibis/commit/8ef356a99020e3cd9b4c2c8be5d52dde348cd200))
+* your format applies to apps of its own kind ([#1801](https://github.com/ibiscite/ibis/issues/1801)) ([38af895](https://github.com/ibiscite/ibis/commit/38af895bc655987fb42d0b7077f3a1d084db2276))
+
 ## [0.3.2](https://github.com/ibiscite/ibis/compare/v0.3.1...v0.3.2) (2026-11-10)
 
 

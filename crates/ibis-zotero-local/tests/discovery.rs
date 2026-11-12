@@ -83,6 +83,55 @@ fn missing_registry_uses_the_platform_data_default() {
 }
 
 #[test]
+fn windows_profiles_sharing_a_directory_ignore_case_and_keep_a_stable_identity() {
+    let sandbox = Sandbox::new();
+    let appdata = sandbox.0.join("roaming");
+    let root = profile_root(Platform::Windows, &sandbox.0, &appdata);
+    let roots = DiscoveryRoots::new(Platform::Windows, sandbox.0.clone(), Some(appdata));
+    sandbox.write(
+        &root.join("profiles.ini"),
+        "[Profile0]\nName=First\nIsRelative=1\nPath=first\n[Profile1]\nName=Second\nIsRelative=1\nPath=second\n",
+    );
+    let paths = [r"Z:\École Data\Zotero Library", r"z:\école data\zotero library"];
+    let mut identities = vec![];
+    for paths in [paths, [paths[1], paths[0]]] {
+        for (profile, path) in ["first", "second"].into_iter().zip(paths) {
+            sandbox.write(
+                &root.join(profile).join("prefs.js"),
+                &format!(
+                    "user_pref(\"extensions.zotero.useDataDir\", true);\nuser_pref(\"extensions.zotero.dataDir\", {});",
+                    serde_json::to_string(path).unwrap_or_else(|e| panic!("{e}"))
+                ),
+            );
+        }
+        let found = discover(&roots);
+        assert!(found.warnings.is_empty());
+        assert_eq!(
+            found.directories.len(),
+            1,
+            "one library must not ask for a profile choice"
+        );
+        assert_eq!(
+            found.directories[0].path(),
+            Path::new(paths[0]),
+            "keep the I/O path intact"
+        );
+        identities.push(ibis_zotero_local::discovery::path_identity(
+            found.directories[0].path(),
+            Platform::Windows,
+        ));
+    }
+    assert_eq!(
+        identities[0], identities[1],
+        "registry order cannot change reference identities"
+    );
+    assert_ne!(
+        ibis_zotero_local::discovery::path_identity(Path::new(paths[0]), Platform::Linux),
+        ibis_zotero_local::discovery::path_identity(Path::new(paths[1]), Platform::Linux)
+    );
+}
+
+#[test]
 fn paths_are_redacted_from_debug_and_diagnostics() {
     let secret = PathBuf::from("/synthetic-do-not-print");
     let roots = DiscoveryRoots::new(Platform::Linux, secret.clone(), None);

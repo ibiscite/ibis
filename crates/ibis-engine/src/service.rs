@@ -20,7 +20,7 @@ use std::{
 #[path = "health.rs"]
 pub mod health;
 mod sources;
-pub use sources::PreparedFileReload;
+pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
 mod formatting;
 pub use formatting::Cancellation;
@@ -281,6 +281,7 @@ impl Drop for LibrarySubscription {
         }
     }
 }
+#[derive(Clone)]
 struct State {
     /// Accepted data/diagnostic identity; read errors alone do not replace it.
     accepted: Arc<()>,
@@ -297,6 +298,18 @@ struct Shared {
     subscribers: Mutex<BTreeMap<u64, mpsc::SyncSender<LibraryChange>>>,
     next_subscription: AtomicU64,
     sources: Mutex<sources::Registry>,
+}
+impl Shared {
+    fn new(state: Arc<State>) -> Self {
+        Self {
+            formatter: Mutex::new(None),
+            state: RwLock::new(state),
+            publication: Mutex::new(()),
+            subscribers: Mutex::new(BTreeMap::new()),
+            next_subscription: AtomicU64::new(0),
+            sources: Mutex::new(sources::Registry::default()),
+        }
+    }
 }
 #[derive(Clone)]
 pub struct Engine {
@@ -325,20 +338,13 @@ impl Engine {
                 .objects += 1;
         }
         Self {
-            shared: Arc::new(Shared {
-                formatter: Mutex::new(None),
-                state: RwLock::new(Arc::new(State {
-                    accepted: Arc::new(()),
-                    zotero_generation: 0,
-                    zotero_ready: true,
-                    index: Arc::new(SnapshotIndex::new(snapshot)),
-                    libraries,
-                })),
-                publication: Mutex::new(()),
-                subscribers: Mutex::new(BTreeMap::new()),
-                next_subscription: AtomicU64::new(0),
-                sources: Mutex::new(sources::Registry::default()),
-            }),
+            shared: Arc::new(Shared::new(Arc::new(State {
+                accepted: Arc::new(()),
+                zotero_generation: 0,
+                zotero_ready: true,
+                index: Arc::new(SnapshotIndex::new(snapshot)),
+                libraries,
+            }))),
             resources: Arc::new(sources::Owners::default()),
             watch_files: true,
         }

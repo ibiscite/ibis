@@ -61,6 +61,13 @@ export type ZoteroRecovery = {
   checkSharing?: () => Promise<unknown>;
 };
 
+/** Recover the requested source even while earlier references stay searchable. */
+export function useZoteroRecovery(library: LibraryStatus | null | undefined, checkSharing: ZoteroRecovery["checkSharing"], enabled = true) {
+  const waiting = enabled && library?.state === "error" && library.zotero
+    && (zoteroWaits(library.problem) || library.problem === "zotero_missing");
+  useWhileShown(waiting ? checkSharing : undefined, ZOTERO_CHECK_EVERY);
+}
+
 /** A library that could not be opened and has no earlier snapshot to search:
  * say what happened in plain words and offer the fix as choice rows [C12]. */
 function Recovery({ library, onFind, onReload, setup, source, zotero }: {
@@ -85,7 +92,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   // While this screen waits on Zotero, and only then, notice the fix by itself.
   const waiting = library.zotero && !switching && zoteroWaits(library.problem);
   const missing = library.zotero && library.problem === "zotero_missing";
-  useWhileShown((waiting || missing) && !switching ? zotero?.checkSharing : undefined, ZOTERO_CHECK_EVERY);
+  useZoteroRecovery(library, zotero?.checkSharing, !switching);
   // The chosen row is gone, so the list that replaces it takes focus.
   if (switching) return <div className="empty-state">{setup(true)}</div>;
   const name = shortName(library.name) ?? (library.zotero ? say("setup-zotero") : say("setup-the-library"));
@@ -182,7 +189,7 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
     : query ? say("picker-no-matches-hint") : library.sample ? say("setup-sample-search-help") : say("picker-type-to-find-hint");
   return (
     <div className="empty-state empty-template">
-      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" className="empty-icon" />}
+      {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" size="tile" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
       {query ? <div className="empty-actions">

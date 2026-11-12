@@ -38,7 +38,7 @@
 
   /* Sizes. */
   /* --tile is the icon slot: every row's icon, the bird and the back chevron centre on it. */
-  --tile: var(--space-8); --icon: var(--space-5); --icon-small: var(--space-4); --icon-stroke: 1.5; --icon-compact: .875rem; --key: var(--space-5);
+  --tile: var(--space-8); --icon: 16px; --icon-tile: 20px; --icon-stroke: 1.5; --key: var(--space-5);
   --control-h: var(--space-8); --action-h: 1.75rem; --control-small-h: var(--space-6); --field-h: 2.25rem; --touch-target: 2.75rem; --border-width: 1px;
   --status-dot: var(--space-2);
   /* A control's hit area: 32 px, 44 px under a coarse pointer. */
@@ -51,8 +51,8 @@
   /* Measured from NSSwitch on macOS 26: a wide capsule with a pill thumb. */
   --switch-w: 54px; --switch-h: 24px; --switch-thumb-w: 32px; --switch-thumb-h: 20px;
   /* The search glyph sits on the tile column and the query on the title column. */
-  --lead: calc(var(--row-pad) + (var(--tile) - var(--icon)) / 2);
-  --lead-gap: calc((var(--tile) - var(--icon)) / 2 + var(--row-gap));
+  --lead: calc(var(--row-pad) + (var(--tile) - var(--icon-tile)) / 2);
+  --lead-gap: calc((var(--tile) - var(--icon-tile)) / 2 + var(--row-gap));
   /* [C3] From a row's content edge: where its title starts, and the inset that
      centres a mark of width W on the tile column is (--tile - W) / 2. The footer
      and its notices use the same two columns as the rows above them. */
@@ -307,7 +307,7 @@
   --website-margin: 17rem; --website-gap: clamp(2rem, 4.5vw, 4rem);
   --website-pad: clamp(1.25rem, 3.5vw, 3.5rem);
   --website-paragraph-gap: 1.1rem; --website-block-gap: 1.25rem;
-  --website-section-pad: clamp(2rem, 4vw, 2.75rem);
+  --website-section-pad: clamp(1.5rem, 3vw, 2.25rem);
   --website-chip-radius: 5px; --website-press: .96; --website-reveal: 12px;
   --website-button-height: 2.25rem;
 }
