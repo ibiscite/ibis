@@ -63,7 +63,7 @@ fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
             .map(|run| run.text.as_str())
             .collect();
         assert_eq!(plain, result.text, "{style}: every character belongs to the display");
-        for item in 0..2 {
+        for (item, requested) in request.items.iter().enumerate().take(2) {
             let owned: String = result
                 .display
                 .nodes
@@ -72,7 +72,7 @@ fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
                 .flat_map(|node| &node.content)
                 .map(|run| run.text.as_str())
                 .collect();
-            let id = &request.items[item].item;
+            let id = &requested.item;
             let LibraryObject::Record(record) = &snapshot.get(id).unwrap().object else {
                 panic!("record")
             };
