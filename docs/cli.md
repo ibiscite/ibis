@@ -250,6 +250,10 @@ may gain fields and codes: ignore unknown fields and review unknown codes.
 Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
 Unknown request fields are `bad-input`.
 
+When a new contract version ships, Ibis will keep answering the older version
+for at least two minor releases. Contract changes are listed in the
+[release notes](https://github.com/ibiscite/ibis/releases).
+
 `ibis schema METHOD` describes `data`. Branch on `error.code` and optional
 `reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
 before using citation text. Empty search is success.

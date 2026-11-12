@@ -9,7 +9,7 @@
   },
   "homepage": "https://ibiscite.org",
   "repository": "https://github.com/ibiscite/ibis",
-  "license": "AGPL-3.0-or-later",
+  "license": "MIT",
   "extensions": {
     "com.openai": {
       "requires_local_executor": true,
