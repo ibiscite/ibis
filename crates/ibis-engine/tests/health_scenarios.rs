@@ -89,6 +89,13 @@ fn search_health_follows_the_consulted_snapshots_across_a_failed_refresh() {
     assert_eq!(all.data["hits"], earlier.data["hits"]);
     assert_eq!(all.data["snapshot"], earlier.data["snapshot"]);
 
+    let shorthand = search(json!({"query":"see lantern 417","interpret_locator":true}));
+    assert_eq!(shorthand.data["shorthand"]["prefix"], "see");
+    assert_eq!(shorthand.data["shorthand"]["locator"]["typed"], "417");
+    assert_eq!(shorthand.data["hits"], all.data["hits"]);
+    assert_eq!(shorthand.data["source_health"], stale);
+    assert_eq!(shorthand.exit_code, ExitCode::Findings);
+
     let scoped = search(json!({"query":"retained","libraries":[second.id,second.id]}));
     assert_eq!(scoped.data["source_health"], stale);
     assert_eq!(

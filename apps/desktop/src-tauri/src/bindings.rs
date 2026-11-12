@@ -90,6 +90,7 @@ registry![
     crate::preferences::picker_preferences,
     crate::preferences::save_picker_preferences,
     crate::delights::delight_view,
+    crate::delights::shorthand_hint,
     crate::preferences::picker_preferences_saved,
     crate::destination::picker_destination,
     crate::destination::remember_app_output,

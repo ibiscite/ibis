@@ -6,6 +6,8 @@
   background: var(--surface-overlay); color: var(--text); box-shadow: var(--shadow-overlay);
   -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
 }
+/* A popover's arrow is part of the same layer. */
+.ui-overlay .ui-popover-arrow svg { fill: var(--surface-overlay); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-overlay { border: var(--border-width) solid CanvasText; }
 }

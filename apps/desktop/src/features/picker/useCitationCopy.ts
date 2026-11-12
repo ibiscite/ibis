@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useLayoutEffect, type RefObject } from "react";
-import type { PickerApi } from "../../App";
 import type { SessionState } from "./session";
 import type { createSessionController } from "./sessionController";
 import type { useDestination } from "./useDestination";
@@ -8,7 +8,7 @@ import type { OutputId } from "../../format/outputs";
 import type { MenuCloseReason } from "./FormatMenu";
 
 export function useCitationCopy({ api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   session: ReturnType<typeof createSessionController>;
   state: SessionState;
   destination: ReturnType<typeof useDestination>;

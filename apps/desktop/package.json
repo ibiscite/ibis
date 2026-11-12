@@ -4,7 +4,7 @@
   "version": "0.3.3",
   "type": "module",
   "license": "AGPL-3.0-or-later",
-  "packageManager": "pnpm@11.25.0",
+  "packageManager": "pnpm@11.27.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

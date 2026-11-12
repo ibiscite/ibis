@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect } from "react";
-import type { PickerApi } from "../../App";
 import { keysFor } from "../../keys";
 import { isolate, say } from "../../i18n";
 import { currentPlatform } from "../../platform";
@@ -17,7 +17,7 @@ import { useSourceOpen } from "./useSourceOpen";
 import { zoteroWaits } from "./PickerLibraryStatus";
 
 export function usePickerSource({ api, pickerSession, libraryState, menus, results, altHeld, perform, report }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   libraryState: ReturnType<typeof usePickerLibrary>;
   menus: ReturnType<typeof usePickerMenus>;

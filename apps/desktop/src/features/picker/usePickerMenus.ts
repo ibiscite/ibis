@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import { closeOverlays, focusLost } from "../../ui/layers";
 import type { Operation } from "./Notices";
 import type { useOperations } from "./useOperations";
@@ -10,7 +10,7 @@ import { useWindowResetUndo } from "./useWindowResetUndo";
 /** The picker's own overlay: at most one is open, whichever way it was reached. */
 type Overlay = "more" | "library" | "format" | "keys" | "session" | "projects";
 
-export function usePickerMenus(api: PickerApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
+export function usePickerMenus(api: typeof nativeApi, { perform }: Pick<ReturnType<typeof useOperations>, "perform">,
   { welcomeShown }: Pick<ReturnType<typeof usePickerLibrary>, "welcomeShown">, cancelCopy: () => void) {
   const { setPinned } = api;
   const input = useRef<HTMLInputElement>(null);

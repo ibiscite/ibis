@@ -1,5 +1,8 @@
-import { useRef } from "react";
-import type { PickerApi } from "../../App";
+import type * as nativeApi from "../../api";
+import { useRef, type RefObject } from "react";
+import { keysFor, matchesAccelerator } from "../../keys";
+import { isMac } from "../../platform";
+import type { CitationLineActions } from "./CitationShelf";
 import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
 import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
@@ -16,9 +19,11 @@ import type { usePointerSelection } from "../../pointerSelection";
  * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  quitAfterSaving, onEmptyEnter, commandKeys,
+  quitAfterSaving, onEmptyEnter, commandKeys, citationLine,
 }: {
-  api: PickerApi;
+  /** ⌘↓ goes from Search to the citation's last token. */
+  citationLine?: RefObject<CitationLineActions | null>;
+  api: typeof nativeApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "cancelCopy" | "setActive">;
   menus: ReturnType<typeof usePickerMenus>;
   source: Pick<ReturnType<typeof usePickerSource>, "chooseSources" | "openSource">;
@@ -61,6 +66,11 @@ export function usePickerKeys({
       return;
     }
     if (commandKeys?.current?.(e)) return;
+    if (showCitations && matchesAccelerator(e, keysFor("citationFocus"), isMac) && citationLine?.current?.state().tokens) {
+      e.preventDefault();
+      citationLine.current.focusLast();
+      return;
+    }
     if (e.key === "Enter" && !e.shiftKey) onEmptyEnter?.();
     if (e.key === "ArrowDown" && (results.length === 0 || !showCitations) && focusChoices()) {
       e.preventDefault();

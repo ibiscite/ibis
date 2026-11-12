@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { focusLost } from "./ui/layers";
-import { backend, chooseFromMore, openCitationDetails, resetApp, result, paletteRow } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result, findInCitation, citationDetails, paletteRow } from "./testing/app";
 
 // What a person sees of the layer stack: Esc from anywhere, a key and its menu
 // item doing the same thing, and nothing surviving a close and reopen.
@@ -45,8 +45,7 @@ async function chosenCitation(overrides = {}) {
   await screen.findByText("Invented reference");
   act(() => search().focus());
   press("Enter", { shiftKey: true });
-  const chip = await screen.findByRole("button", { name: /^Edit/ });
-  await screen.findByRole("button", { name: /^Remove/ });
+  const chip = await findInCitation("picked");
   return { calls, chip };
 }
 
@@ -121,7 +120,7 @@ test("Esc walks the stack one layer at a time: palette, search, window", async (
   await waitFor(() => expect(hides(calls)).toBe(1));
 });
 
-test.each(["palette", "sheet"].flatMap((kind) => ["header", "Escape", "keyboard", "mouse"].map((method) => [kind, method])))
+test.each(["palette", "sheet", "details"].flatMap((kind) => (kind === "details" ? ["Escape", "keyboard", "mouse"] : ["header", "Escape", "keyboard", "mouse"]).map((method) => [kind, method])))
   ("Back from a %s by %s restores the parent's query, selection, scroll and focus", async (kind, method) => {
   await chosenCitation({ search: ({ query }: { query: string }) => [result("picked", "Invented reference"), result("second", query ? "Filtered invented reference" : "Another invented reference"),
     ...Array.from({ length: 24 }, (_, index) => result(`extra-${index}`, `Invented result ${index}`))] });
@@ -139,9 +138,9 @@ test.each(["palette", "sheet"].flatMap((kind) => ["header", "Escape", "keyboard"
   const previousReveal = HTMLElement.prototype.scrollIntoView;
   HTMLElement.prototype.scrollIntoView = reveal;
   try {
-    const parent = kind === "palette" ? screen.getByRole("button", { name: /^More/ }) : search();
+    const parent = kind === "palette" ? screen.getByRole("button", { name: /^More/ }) : kind === "details" ? screen.getByRole("button", { name: /^Edit/ }) : search();
     act(() => parent.focus());
-    if (kind === "palette") fireEvent.click(parent);
+    if (kind === "palette" || kind === "details") fireEvent.click(parent);
     else press("/", { ctrlKey: true });
     const view = await screen.findByRole("dialog");
     if (kind === "palette") fireEvent.change(within(view).getByRole("combobox"), { target: { value: "quit" } });
@@ -158,7 +157,7 @@ test.each(["palette", "sheet"].flatMap((kind) => ["header", "Escape", "keyboard"
   } finally { HTMLElement.prototype.scrollIntoView = previousReveal; }
 });
 
-test("Esc closes the inspector back to its chip, and Search keeps focus if it was there", async () => {
+test("Esc closes the details back to their token, and Search keeps focus if it was there", async () => {
   const { calls, chip } = await chosenCitation();
   act(() => chip.focus());
   fireEvent.click(chip);
@@ -176,17 +175,16 @@ test("Esc closes the inspector back to its chip, and Search keeps focus if it wa
   expect(hides(calls)).toBe(0);
 });
 
-test("Esc steps out of the inspector's menu, then the inspector, then the search", async () => {
+test("Esc steps out of the details' menu, then the details, then the search", async () => {
   const { calls, chip } = await chosenCitation();
   type("invented");
   fireEvent.click(chip);
   await screen.findByRole("textbox", { name: "Page" });
-  const form = await screen.findByRole("button", { name: /^Show as/ });
-  fireEvent.click(form);
+  fireEvent.click(await screen.findByRole("button", { name: "Locator type: Page" }));
   await screen.findByRole("menu");
   press("Escape");
   expect(screen.queryByRole("menu")).toBeNull();
-  expect(document.activeElement).toBe(screen.getByRole("button", { name: /^Show as/ }));
+  expect(citationDetails()?.contains(document.activeElement)).toBe(true);
   press("Escape");
   expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull();
   expect(search().value).toBe("invented");
