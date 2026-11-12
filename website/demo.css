@@ -2,14 +2,11 @@
 [data-app-tokens] { color-scheme: inherit; }
 /* App pictures read the generated scope of the canonical desktop tokens.
    Only geometry without a token lives here (docs/design/ C7/C10). */
-.journey { max-width: 45rem; }
-.picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: 30rem; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font); }
+.picker-panel { container: picker / inline-size; display: flex; flex-direction: column; width: 100%; max-width: 45rem; height: auto; padding: 0; overflow: hidden; border-radius: var(--r-win); background: var(--surface); color: var(--text); box-shadow: var(--shadow-card); font: var(--type-body-size)/var(--type-body-line) var(--font); }
 .picker-search { flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-1); min-height: calc(calc(var(--field-h) + 2 * var(--inset)) + var(--border-width)); padding: var(--inset); border-bottom: var(--border-width) solid var(--separator); }
-/* Keep the query beside its mark; controls give it their own row before it
-   becomes too small to edit. The minimum is capped by the actual container. */
-.picker-field { display: flex; align-items: center; gap: var(--space-1); flex: 1; min-width: min(100%, calc(var(--row-pad) + var(--tile) + var(--row-gap) + 12rem)); }
+/* Leave room for the filled format control beside the query on a phone. */
+.picker-field { display: flex; align-items: center; gap: var(--space-1); flex: 1; min-width: min(100%, calc(var(--row-pad) + var(--tile) + var(--row-gap) + 4rem)); }
 .picker-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: var(--space-1); min-width: 0; max-width: 100%; margin-inline-start: auto; }
-@container picker (max-width: 28.75em) { .picker-field { flex-basis: 100%; } }
 /* C3: the 24 px brand drawing sits inside the existing tile column, keeping
    its centre and the query's leading edge aligned with the result rows.
    Reuse the page's light/dark brand-image classes, including local overrides. */
@@ -17,28 +14,31 @@
 .picker-mark img { display: block; width: var(--space-6); height: var(--space-6); object-fit: contain; }
 .picker-mark .logo-dark { display: none; }
 .picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/var(--type-search-line) var(--font); letter-spacing: -.025em; }
+.picker input::placeholder { color: var(--text-secondary); opacity: 1; }
 /* The static query wraps inside its reserved column at large text sizes. */
 .picker-query { overflow-wrap: anywhere; }
-.picker input:focus-visible { border-radius: var(--r-control); }
+.picker input:focus-visible { outline-offset: var(--ring-offset); }
 .picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-body-size)/var(--type-body-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
 .picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
-.picker-format select { appearance: none; min-width: 0; width: 100%; padding-right: calc(var(--space-2) + 1.1em); }
-.picker-format svg { position: absolute; right: var(--space-2); top: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.picker-format select { appearance: none; min-width: 0; width: 100%; padding-inline-end: calc(var(--space-2) + 1.1em); }
+.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-h); padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-secondary); font-size: var(--type-heading-size); }
 .picker button:disabled { color: var(--text-disabled); background: var(--fill-control); cursor: default; }
 .picker-middle { flex: 1; min-height: 0; display: flex; flex-direction: column; padding-block: var(--inset); }
 .picker-meta { flex: none; margin: 0; display: flex; justify-content: space-between; gap: var(--space-2); padding: var(--space-2) var(--row-pad) var(--space-1); margin-inline: var(--inset); color: var(--text-secondary); font-size: var(--type-label-size); }
-.picker-results { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--row-spacing); padding: 0 var(--inset); margin: 0; flex: 1; min-height: 0; align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
+.picker-results { list-style: none; display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--row-spacing); padding: 0 var(--inset); margin: 0; flex: 1; min-height: calc(3 * var(--row-comfortable) + 2 * var(--row-spacing)); align-content: start; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; }
 .pick { position: relative; display: flex; align-items: center; gap: var(--row-gap); min-height: var(--row-comfortable); padding: var(--space-2) var(--row-pad); border-radius: var(--r-control); color: var(--text); cursor: pointer; }
 .pick.is-selected { background: var(--selected); color: var(--selected-text); }
-.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-small); background: var(--fill-control); color: var(--text-secondary); }
-.pick.is-selected .tile { background: color-mix(in srgb, var(--selected-text) 22%, transparent); color: inherit; }
+.pick .tile { position: relative; flex: none; display: grid; place-items: center; width: var(--tile); height: var(--tile); min-height: 0; padding: 0; border: 0; box-shadow: none; border-radius: var(--r-small); background: transparent; color: var(--text-secondary); }
+.pick.is-selected .tile { background: var(--on-selected-fill); color: inherit; }
 .pick .tile.is-added { background: var(--scarlet); color: var(--on-scarlet); }
 .pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet); }
-.tile svg { width: var(--icon); height: var(--icon); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
+.tile .tile-add { display: none; }
+.pick.is-selected .tile .tile-kind { display: none; }
+.pick.is-selected .tile .tile-add { display: block; }
 .ref { flex: 1; min-width: 0; }
 .ref strong, .ref .sub { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .ref strong { font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); letter-spacing: -.01em; }
@@ -48,51 +48,51 @@
 .picker-shelf { flex: none; display: flex; align-items: center; gap: var(--row-gap); margin: 0 var(--inset); height: var(--space-10); padding-inline: var(--row-pad); background: var(--fill-control); border-radius: var(--r-control); }
 .picker-citation { flex: 0 1 auto; min-width: 0; display: grid; grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr); align-items: center; gap: var(--row-gap); font: .8125rem/var(--type-body-line) var(--mono); }
 .picker-shelf[data-copied] .picker-citation { grid-template-columns: minmax(0, var(--tile)) minmax(1ch, 1fr) minmax(0, var(--tile)); }
-.picker-beak { min-width: 0; height: var(--space-5); background: var(--scarlet); mask: url("assets/ibis-quote-beak.svg") right / contain no-repeat; }
+.picker-beak { min-width: 0; height: var(--space-5); background: var(--scarlet); mask: url("assets/ibis-quote-beak.svg") center / contain no-repeat; }
 .picker-beak-end { rotate: 180deg; }
 .picker-beak:dir(rtl) { scale: -1 1; }
 .picker-shelf code { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: none; padding: 0; border-radius: 0; font: .8125rem/var(--type-body-line) var(--mono); color: var(--text); }
-.picker-foot { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: max(2.5rem, calc(var(--key) + 2 * var(--space-1) + 2 * var(--inset))); padding: var(--inset); padding-inline-start: calc(var(--inset) + var(--row-pad)); color: var(--text-secondary); font-size: var(--type-label-size); }
+.picker-foot { flex: none; display: flex; align-items: center; gap: var(--space-2); min-height: max(var(--touch-target), calc(var(--key) + 2 * var(--space-1) + 2 * var(--inset))); padding: var(--inset); padding-inline-start: calc(var(--inset) + var(--row-pad)); color: var(--text-secondary); font-size: var(--type-label-size); }
 .picker-foot :is(button, .picker-static-control) { position: relative; min-height: calc(var(--key) + 2 * var(--space-1)); }
-.picker-foot button::before { content: ""; position: absolute; inset: calc(-1 * var(--space-1)) 0; }
 .picker-actions { flex: none; display: flex; justify-content: flex-end; align-items: center; gap: var(--space-2); margin-inline-start: auto; }
 .picker-actions :is(button, .picker-static-control) { flex: none; display: inline-flex; align-items: center; gap: var(--space-2); min-width: var(--control-h); white-space: nowrap; }
 /* Match KeyCaps and the app's filled, label-type kbd at every width. */
 .picker-actions .key-caps, .picker-actions .key-cap { display: inline-flex; align-items: center; gap: var(--space-1); }
 .picker-actions .key-caps { direction: ltr; unicode-bidi: isolate; white-space: nowrap; }
-.picker-actions kbd { display: inline-block; min-width: var(--key); height: var(--key); margin: 0; padding: 0 calc(var(--space-1) + var(--border-width)); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-small); background: var(--fill-control); box-shadow: none; text-align: center; font: var(--type-label-size)/calc(var(--key) - 2 * var(--border-width)) var(--font); font-weight: 500; }
-.picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: var(--row-gap); }
+.picker-library { flex: 1; min-width: 0; display: flex; align-items: center; gap: calc((var(--tile) - var(--status-dot)) / 2 + var(--row-gap)); }
 .picker-library > span:last-child { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
-.picker-dot { flex: none; width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
+.picker-dot { flex: none; margin-inline-start: calc((var(--tile) - var(--status-dot)) / 2); width: var(--status-dot); height: var(--status-dot); border-radius: var(--r-full); background: var(--status-ok); }
 /* As the app's footer: small quiet actions, only the primary filled. */
 .picker .picker-actions button, .picker .picker-actions .picker-static-control { min-height: var(--control-small-h); padding-block: 0; background: transparent; box-shadow: none; }
+.picker .picker-actions .picker-more { color: var(--text-secondary); }
 .picker .picker-actions :is(button, .picker-static-control):has(kbd) { padding-inline-end: var(--key-gap); }
 .picker .picker-actions button:hover { background: var(--fill-control-hover); }
 .picker .picker-primary, .picker .picker-actions .picker-primary { background: var(--accent); color: var(--text-on-accent); }
 .picker-actions kbd[data-single] { padding-inline: 0; }
 .picker-actions kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
 .picker-primary kbd { background: color-mix(in srgb, var(--text-on-accent) 22%, transparent); border-color: transparent; color: inherit; box-shadow: none; border-radius: var(--r-small); }
-.demo-hint kbd { font-size: .95em; }
+.picker-actions kbd.pressed, .key-strip kbd.pressed { background: var(--fill-control-pressed); }
+.picker-primary kbd.pressed { background: var(--on-fill-p); }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
-.picker-status:empty { display: none; }
-.picker-status:not(:empty)::before { content: "✓"; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--font); }
 .demo-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .picker-empty { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: center; justify-items: center; text-align: center; padding: 2rem 1rem; color: var(--text-secondary); font-size: var(--type-body-size); }
 .picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
 .picker-empty p { margin: var(--space-2) 0 var(--space-4); }
-.picker-empty svg { width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); stroke-width: var(--icon-stroke); }
-.platform-switch { color: var(--text-secondary); font: var(--type-title-size)/1.5 var(--font); }
-.platform-switch button { min-height: 0; padding: .25em 0; border: 0; background: transparent; color: var(--scarlet); font: inherit; text-decoration: underline; cursor: pointer; }
+.picker-empty svg { margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--ring-width) dashed var(--scarlet); }
 .draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--scarlet); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.4 var(--font); }
-.draft .paste-slot::after { content: ""; position: absolute; inset: calc(-1 * var(--space-2)) 0; }
+.picker button, .draft button { position: relative; }
+/* A label overlay steals native select pointer activation: enlarge buttons only. */
+:is(.picker button, .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
+.picker :is(.tile, .picker-clear)::after { inset-inline: min(0px, calc((100% - var(--touch-target)) / 2)); }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
 @media (hover: hover) {
   .pick:not(.is-selected):hover { background: var(--fill-quiet-hover); }
-  .pick .tile:not(.is-added):hover svg { visibility: hidden; }
-  .pick .tile:not(.is-added):hover::after { content: "+"; position: absolute; inset: 0; display: grid; place-items: center; font-size: var(--type-heading-size); }
+  .pick:not(.is-selected):hover .tile:not(.is-added) { background: var(--fill-control); }
+  .pick:hover .tile:not(.is-added) .tile-kind { display: none; }
+  .pick:hover .tile:not(.is-added) .tile-add { display: block; }
   .picker button:not(.tile):not(.picker-clear):not(.picker-primary):not(:disabled):hover, .draft button:hover { background: var(--fill-control-hover); }
   .picker .picker-primary:not(:disabled):hover { background: var(--accent-hover); }
   .draft .paste-slot:hover { background: var(--website-accent-soft); border-style: solid; }
@@ -111,18 +111,15 @@
   .picker-library { gap: 0; }
   .picker-library > span:last-child { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 }
-@media (pointer: coarse) {
-  .picker button, .picker select, .picker-foot button { min-height: var(--touch-target); }
-  .picker-actions :is(button, .picker-static-control) { min-width: var(--touch-target); }
-  .pick .tile { min-height: var(--tile); }
-  .pick .tile::before { content: ""; position: absolute; inset: calc((var(--tile) - var(--touch-target)) / 2); }
-  .platform-switch button { padding-block: .6em; margin-block: -.35em; }
+@media (hover: none) {
+  .draft .paste-slot kbd, .picker-actions .key-caps { display: none; }
+  .picker-action-label { position: static; width: auto; height: auto; overflow: visible; clip-path: none; white-space: nowrap; }
+  .picker .picker-actions :is(button, .picker-static-control):has(kbd) { padding-inline-end: var(--space-1); }
 }
-@media (hover: none) { .draft .paste-slot kbd { display: none; } }
 @media (prefers-reduced-motion: no-preference) {
   .draft .paste-slot { transition: scale var(--dur-1) var(--ease-out); }
   .draft .paste-slot:active { scale: var(--website-press); }
-  .picker-status:not(:empty) { animation: receipt var(--dur-2) var(--ease-out); }
+  .picker-status:not([hidden]) { animation: receipt var(--dur-2) var(--ease-out); }
   /* The brief's 160 ms wash sits halfway between the shared feedback/panel timings. */
   .picker-shelf[data-copied] { animation: shelf-copied calc((var(--dur-1) + var(--dur-2)) / 2) var(--ease-out); }
 }

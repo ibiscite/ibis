@@ -40,9 +40,8 @@
    overlays preserve white checks on citation/selection fills. */
 .ui-button[data-pointer-only] { --control-icon-color: currentColor; --control-icon-hover-color: currentColor; --fill-quiet-hover: var(--on-fill-h); --fill-control-hover: var(--on-fill-p); }
 /* Every action shares its icon slot and plain trailing key text. */
-.ui-button > svg { flex: none; width: var(--icon-small); height: var(--icon-small); }
-.ui-button-icon { display: inline-flex; flex: none; width: var(--icon-small); height: var(--icon-small); }
-.ui-button-icon > :is(svg, img, span) { width: 100%; height: 100%; }
+.ui-button-icon { display: inline-flex; flex: none; width: var(--icon); height: var(--icon); }
+.ui-button-icon > :is(img, span) { width: 100%; height: 100%; }
 .ui-button[data-variant] > .key-hint { color: inherit; flex-wrap: wrap; max-width: 100%; white-space: normal; }
 /* Keys keep their cap inside a button: the shared fill on quiet and secondary
    buttons, the pressed fill on the primary, so its label gains contrast. A trailing cap is

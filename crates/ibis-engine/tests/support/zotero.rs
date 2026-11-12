@@ -4,7 +4,7 @@ use std::{
     io::{Read, Write},
     net::TcpListener,
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread,
@@ -20,6 +20,8 @@ pub struct Server {
     /// Zotero's "Allow other applications" setting, on by default.
     #[allow(dead_code)]
     pub sharing_off: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    pub title: Arc<Mutex<String>>,
     stop: Arc<AtomicBool>,
     worker: Option<thread::JoinHandle<()>>,
 }
@@ -36,6 +38,8 @@ impl Server {
         let empty = empty_group.clone();
         let sharing_off = Arc::new(AtomicBool::new(false));
         let off = sharing_off.clone();
+        let title = Arc::new(Mutex::new("Invented atlas".to_owned()));
+        let item_title = title.clone();
         let (id, wait, seen, stopping) = (instance.clone(), pause.clone(), paused.clone(), stop.clone());
         let worker = thread::spawn(move || {
             while !stopping.load(Ordering::Relaxed) {
@@ -71,7 +75,7 @@ impl Server {
                 } else if inventory {
                     json!({"SYNTH234":1})
                 } else {
-                    json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":"Invented atlas","date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
+                    json!([{"key":"SYNTH234","version":1,"data":{"key":"SYNTH234","version":1,"itemType":"book","title":*item_title.lock().unwrap(),"date":"2026","citationKey":"Synthetic2026","creators":[],"dateModified":"2026-10-26T12:00:00Z"}}])
                 };
                 let body = serde_json::to_vec(&body).unwrap();
                 let id = id.load(Ordering::Relaxed);
@@ -98,6 +102,7 @@ impl Server {
             paused,
             empty_group,
             sharing_off,
+            title,
             stop,
             worker: Some(worker),
         }

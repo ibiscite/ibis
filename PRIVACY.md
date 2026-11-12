@@ -1,235 +1,114 @@
 # Privacy and data flows
 
-Ibis reads your libraries without changing them. This page describes the preview
-and its local data. New Ibis data flows need a recorded decision ([decisions](docs/decisions.md)) and an update here.
+Ibis reads your libraries without changing them. It has no account or
+crash-upload service. This page describes current data flows; plans live in
+[ROADMAP.md](ROADMAP.md).
 
 ## What Ibis reads and writes
 
-- **Reads:** files passed to the `ibis` command, the desktop library you choose,
-  or your selected Zotero libraries through Zotero's local API. First-run setup
-  looks for `.bib` names and modification times in Documents, Desktop, Downloads
-  and a few levels of subfolders; it opens a file only after you choose it. The
-  project bibliography you choose is read when chosen, at launch and when the
-  picker opens, and is never changed; only its file name reaches the picker window.
-- **Clipboard:** copying writes the citation to your system clipboard. Clipboard
-  history, cloud clipboard and other apps may keep it under your system settings.
-  Copy Entry writes the entry as your file has it, including any `file` or `note`
-  field, so check it before adding it to a shared bibliography.
-- **Cited since opening:** which references you copied, by identity only,
-  in memory until you quit or reset the list. Ibis writes it nowhere unless you
-  save the bibliography, to the file you choose.
-- **Automatic paste on macOS:** Ibis checks the active app and process, and opaque
-  Accessibility identities for the focused document and input surface. It reads
-  no document titles, field roles or values, and no text except the selection
-  below. A bounded wait after copying
-  compares only with the original captured identities; it never adopts another
-  window or surface. Tabs and conversations can share those identities. Just
-  before pasting, Ibis checks the time since the last key-down and left, right or other
-  mouse-button press (including middle-click) and refuses if any happened after delivery began. It reads no keys,
-  click targets, coordinates or event contents. Mouse movement does not count;
-  a programmatic tab or conversation change with no input is not detected.
-  Accessibility and permission to send the paste shortcut are separate
-  grants. Only the permission guide's explicit action requests or repairs missing
-  grants. If an app Ibis may paste into leaves out a needed document or surface
-  identity, Ibis automatically enables that app's accessibility support by setting
-  `AXManualAccessibility=true`. It tries this once per live app instance during
-  an Ibis run, then repeats the full identity capture after a successful write.
-  This needs no environment switch and does not grant Ibis macOS Accessibility
-  permission. An unknown app still needs your paste approval first.
-  This can increase that app's CPU/memory use and expose its accessibility tree
-  to the OS; Ibis still reads only identities and process ownership. Refused apps
-  and Copy only never receive this write
-  ([decision 0029](docs/decisions/0029-native-calls.md)).
-- **Selected text (macOS):** when you open Ibis in an app it may paste into, it
-  reads the text you selected there through Accessibility, so short text can
-  become the search and be replaced by the paste. It reads once when Ibis opens
-  and once more just before pasting. Ibis never reads a password field or while
-  secure typing is on, and never reads the clipboard or anything else in the
-  document. A long selection's text stays in the app when the app reports its
-  length; if it does not, Ibis measures the text and drops it. The text goes only to the search box in memory,
-  is never saved, logged or sent anywhere, and comes back only if you edited it.
-  Turning pasting off turns this off.
-- **Settings:** the desktop saves `settings.json`, its previous version as
-  `settings.json.bak`, and `settings.json.tmp` while saving. An interrupted save
-  may leave the temporary file. Settings include the library path or Zotero
-  library IDs, shortcut, copy format, style, display choices and update consent.
-  Optional writing projects add the names you enter, their output, bibliography
-  paths and each app's selected project. These remain on this computer and are
-  excluded from settings backups. The picker receives only bibliography file
-  names, never their paths. Ibis never infers projects from browser URLs or
-  document contents. A stable `settings.json.lock` serializes settings writers;
-  it contains no project or library data. Older or hand-added fields are
-  preserved. The command line shares these settings for explicit project
-  management and writes its results to the terminal.
-- **Library ID key:** the app and the `ibis` command keep one random key,
-  `library-ids.key`, in the app's configuration folder, readable only by you. It
-  makes library IDs last across runs without revealing a path, holds no library
-  data and goes nowhere. Deleting it only changes those IDs, so recent citations
-  no longer find their references.
-- **AI agents:** `ibis mcp` answers only the agent that started it, over its
-  standard input and output. It gives that agent item summaries, CSL data and
-  citations from the libraries named on its command line, never notes,
-  annotations, source paths or links to local files and apps, and it opens no
-  network connection. The agent may send what it receives to its own service.
-- **Notes in citations:** no citation prints a record's note or annotation.
-  Field lines written in a note the way Zotero's Extra field takes them
-  (`original-title: …`, `{:title: …}`) fill fields the record lacks, as in
-  Zotero; the rest of the note is never used.
-- **Start at login (Nightly):** only when enabled, Ibis registers a macOS login
-  item, Windows startup value or Linux autostart file. Turning it off removes the
-  launch entry. Windows may retain a Task Manager approval value that starts
-  nothing by itself.
-- **Installation and updates:** the app and downloaded installer stay where
-  you put them. Installers also create OS installation records and temporary
-  files. Only when you choose an update does Ibis replace the app and stage
-  installer/extraction/backup files. AppImage extraction also writes unpacked
-  app files. Runtime data and caches are described below.
+- **Libraries:** chosen files or selected Zotero personal/group libraries.
+  Setup can inspect Zotero configuration and its local API greeting. When
+  asked to look for libraries, it searches names and modification times of
+  `.bib` files under Documents, Desktop and Downloads; it opens a file only
+  after selection. Closed Zotero databases and Better BibTeX key files are
+  read from private temporary copies that are removed after use.
+- **Project bibliographies:** chosen files are checked without changes.
+  Settings retain their paths; the picker receives only file names.
+- **Clipboard:** copying replaces its contents. Clipboard managers, cloud
+  clipboard and other apps may retain them. Copy Entry preserves original
+  BibTeX fields, including `file` and `note`; inspect it before sharing.
+- **macOS paste:** reads app/process and opaque Accessibility document/surface
+  identities, plus secure-input state and elapsed time since keyboard/button
+  input. It does not read document titles, field values, key contents or click
+  coordinates. For permitted apps missing required identities, Ibis can set
+  `AXManualAccessibility=true` once per live app instance. This can increase
+  that app's resource use and expose its accessibility tree to the OS; it
+  does not grant Ibis Accessibility permission.
+- **Selected text on macOS:** short selections in eligible apps can become
+  the search. Ibis reads at opening and checks again before paste, under
+  secure-input and permission guards. Text stays in memory and is not saved
+  or logged. Turning pasting off disables this read. It never reads clipboard
+  contents to seed the search.
+- **Windows paste:** checks foreground window/process, integrity and password
+  field status through UI Automation. Uncertain or disallowed targets copy
+  instead. Delivery safeguards are in [architecture](docs/architecture.md#desktop-app).
+- **Settings:** `settings.json` holds library choices, formats, appearance,
+  shortcuts, update consent, optional project names/paths and selections per
+  app. Atomic saves use `.tmp`, `.bak` and a writer `.lock`. `apps.json` keeps
+  app paste choices, including an app-location fingerprint for unknown-app
+  approval. [Backups](docs/moving-to-a-new-computer.md) exclude device-local
+  choices and do not grant paste permission.
+- **Library identity:** `library-ids.key` contains a random private key that
+  makes opaque IDs repeatable on one computer. Deleting it changes those IDs.
+- **Recents:** engine-owned `recents.json` stores only library/item identities
+  and app IDs: up to 20 apps and 30 items each, bounded to 256 KiB. No citation
+  text, pages, forms, queries or document contents. Unknown apps, samples and
+  editor requests do not persist recents. Forget Recent Citations clears
+  them; obsolete WebView citation history is removed rather than imported.
+- **Cited since opening:** identities and undo stay in memory. Copy/export
+  writes a bibliography only when requested.
+- **Start at login:** enabling it creates a macOS login item, Windows startup
+  value or Linux autostart file. Disabling it removes the launch entry.
 
-Ibis does not save search queries. Recent citations save only opaque library/item
-identities and the originating app ID in local WebView storage: at most 20 apps
-and 30 identities per app. They contain no citation text, pages, forms or document
-information. More → Forget Recent Citations clears this history. Unknown apps and
-sample references are not remembered. Recently added reads the library's own
-added-date metadata; it is not a record of documents you open.
-The interface uses a WebView, which can write browser data and caches. Crash dumps
-can contain memory, including library text, queries and paths. These are not
-the same as Ibis's settings.
+Ibis does not save searches. WebViews, OS caches, swap and crash dumps can
+contain runtime data. A terminal or launcher may retain standard-error output;
+Ibis writes no diagnostic log file. `IBIS_MAC_PASTE_DIAGNOSTICS=1` enables fixed
+paste stages, numeric errors/timings and ownership booleans, without text,
+paths or native object descriptions. OS reporting follows system settings.
 
 ## Network and diagnostics
 
-- **Telemetry:** none, ever ([decision 0008](docs/decisions/0008-offline-by-default.md)).
-  Ibis never sends your libraries, search queries, selected references,
-  documents, clipboard contents or citation history off your computer.
-- **Web interface:** no file system, clipboard, shell or network plugin
-  permissions. Library reads and clipboard writes go through Ibis's
-  window-scoped commands ([decision 0024](docs/decisions/0024-window-permissions.md)).
-  Its content security policy restricts `connect-src` to local IPC.
-- **Editor endpoint:** off until you switch it on in Settings › Citations. Then Ibis
-  listens on `127.0.0.1:23124` only, for editors on your computer that know the
-  address Settings shows. It answers whether Ibis is ready, and the citation you
-  choose in the picker, nothing else. Web pages are refused, and nothing it receives
-  is kept or leaves your computer.
-- **Zotero:** Ibis connects to `127.0.0.1:23119` on your computer. Setup checks
-  Zotero's greeting; choosing Zotero reads the selected libraries and refreshes
-  them when the picker opens. Zotero's local API must be enabled. For items
-  without a citation key of their own, Ibis asks Better BibTeX on the same port
-  for its keys, read-only (`item.citationkey`), sending only Zotero item keys.
-  While Zotero is closed, Ibis reads Better BibTeX's key files from a private
-  copy instead. These requests do not leave your computer.
-- **App updates:** automatic checks are off until you agree. When enabled,
-  Ibis requests a small GitHub update file a few times a day. **Check for
-  Updates…** makes a check on request. GitHub sees your IP address and Ibis
-  version, not library contents. Downloads require your agreement and a
-  signature matching the app's update key ([decision 0019](docs/decisions/0019-updates.md)).
-- **Windows runtime:** if WebView2 is missing, installation downloads Microsoft's
-  bootstrapper and runtime. Its shared Evergreen runtime is maintained by
-  Microsoft's update service, separately from Ibis's update consent.
-  See [Tauri's installation options](https://v2.tauri.app/distribute/windows-installer/#webview2-installation-options).
-- **While running:** Ibis configures WebView2 to disable background networking
-  and use an unreachable proxy. CI samples the app and its child processes for
-  connections for 60 seconds with app updates off. This is evidence for that
-  test, not a guarantee about every runtime version, crash or system service.
-- **Feedback:** Report a Problem and Suggest an Idea open GitHub in your browser
-  with the app version and OS filled in. Nothing is posted until you submit it.
-- **Diagnostics:** Ibis has no analytics or crash-upload service. Its own
-  diagnostics go to standard error, not an app log file. A terminal, launcher
-  or OS may retain them. Mac paste diagnostics are off unless
-  `IBIS_MAC_PASTE_DIAGNOSTICS=1` is set: one JSON line per delivery attempt with
-  fixed stages, AX error codes, durations in microseconds and owner/equality
-  booleans, plus whether Ibis tried to enable the app's accessibility support.
-  They include no native object descriptions, app/document IDs,
-  titles, roles, values, text or paths. WebView and OS diagnostics, crash reporting, backups
-  and swap follow their own settings; Ibis does not control their retention or
-  upload policies.
+**Telemetry:** none, ever. Ibis never sends your libraries, search queries, selected references,
+documents, clipboard contents or citation history to an Ibis service. Explicit
+MCP responses go to the client that started the server, as listed below.
+
+| Flow | Destination and consent |
+| --- | --- |
+| Running Zotero | `127.0.0.1:23119`, after choosing Zotero. Reads metadata and Better BibTeX keys; requests stay on this computer. |
+| Editor endpoint | Off by default. When enabled, listens on `127.0.0.1:23124`; token-protected, rejects browsers. [Protocol](docs/parity.md#better-bibtex-cite-as-you-write). |
+| App updates | Automatic checks require consent; Check for Updates… checks on request. GitHub receives IP address and app version, not library data. Downloads require agreement and a valid channel signature. |
+| Windows installation | Downloads Microsoft's WebView2 bootstrapper/runtime if missing. Microsoft's runtime updates are separate. |
+| Feedback | Opens GitHub in your browser with app version and OS; you decide whether to submit. |
+| AI clients | `ibis mcp` passes bibliographic fields and citations over stdio to its caller. That client may send them to its own service. [MCP privacy boundary](docs/cli.md#ai-agents-mcp). |
+
+The web interface has window-scoped native commands rather than file,
+clipboard, shell or network plugin permissions. Its CSP limits connections
+to IPC. Ibis configures WebView2 to disable background networking and use an
+unreachable proxy. CI observes app/child connections for 60 seconds with
+updates off; that covers the tested runtime, not every OS service.
 
 ## Local storage locations
 
-In the paths below, replace `<id>` with the identifier for the channel you used:
+Stable uses `com.ibiscite.ibis`; Nightly uses `com.ibiscite.ibis.nightly`.
+Replace `<id>` below with the channel ID. They have separate settings and
+app-specific WebView data.
 
-| Channel | Identifier | Earlier identifier |
+| OS | Settings | WebView data/cache defaults |
 | --- | --- | --- |
-| Ibis (Stable) | `com.ibiscite.ibis` | `io.github.ibiscite.ibis` |
-| Ibis Nightly | `com.ibiscite.ibis.nightly` | `io.github.ibiscite.ibis.nightly` |
+| macOS | `~/Library/Application Support/<id>` | `~/Library/WebKit/<id>`, `~/Library/Caches/<id>`, temporary `$TMPDIR/<id>/WebKit`. |
+| Windows | `%APPDATA%\<id>` | `%LOCALAPPDATA%\<id>`, including `EBWebView` and its Crashpad reports. |
+| Linux | `$XDG_CONFIG_HOME/<id>`, default `~/.config/<id>` | `$XDG_DATA_HOME/<id>`, default `~/.local/share/<id>`. |
 
-Earlier builds used the earlier identifier. Ibis no longer reads or copies
-files stored under it; delete those folders if you no longer need them, and
-any `<id>.migration.lock` file or `<id>.migration-*` folder next to the
-settings folder, which earlier builds left behind.
-Stable and Nightly have separate settings and app-specific browser-data
-folders; system caches may be shared.
-
-| OS | Settings folder | WebView data and cache locations |
-| --- | --- | --- |
-| Windows | `%APPDATA%\<id>` | `%LOCALAPPDATA%\<id>`, including `EBWebView` profiles, caches and `EBWebView\Crashpad\reports` crash dumps. |
-| macOS | `~/Library/Application Support/<id>` | The default persistent WebKit store: `~/Library/WebKit/<id>` and `~/Library/Caches/<id>`; temporary WebKit data under `$TMPDIR/<id>/WebKit`. |
-| Linux | `$XDG_CONFIG_HOME/<id>`, default `~/.config/<id>` | `$XDG_DATA_HOME/<id>`, default `~/.local/share/<id>`. WebKitGTK stores its cookies, website data and cache here together, rather than using a separate Ibis folder in `~/.cache`. |
-
-These paths come from Ibis and its Tauri/WebView defaults. Absolute XDG
-overrides change Linux roots; Windows folder redirection and WebView2 policy
-or environment overrides can change Windows locations. WebKit's exact files
-vary with macOS. Shared system/runtime caches and logs are OS-managed.
-Runtime file inventories and complete uninstall cleanup remain unverified;
-these steps are based on code and platform guidance.
-
-**Other files and OS records:**
-
-- macOS can keep app preferences in `~/Library/Preferences/<id>.plist` and
-  app state in `~/Library/Saved Application State/<id>.savedState`.
-  Crash/diagnostic reports appear in Console, usually under
-  `~/Library/Logs/DiagnosticReports` or `/Library/Logs/DiagnosticReports`.
-- Windows can keep Ibis crash dumps in `%LOCALAPPDATA%\CrashDumps` if local
-  dumps are enabled, or a configured dump folder. Windows Error Reporting
-  can retain reports under `%ProgramData%\Microsoft\Windows\WER`;
-  system event logs have their own retention.
-- Linux launchers may send diagnostics to the journal. Depending on the
-  distribution and configuration, crashes may create a core file, a report in
-  `/var/crash` (Apport), or a dump in `/var/lib/systemd/coredump` plus journal
-  records. These locations are shared with other apps.
-- Installers, AppImage extraction and update staging use temporary storage.
-  Updates use the OS temporary folder (`%TEMP%`, `$TMPDIR` or `/tmp`).
-  Windows uses folders named like `Ibis-<version>-updater-*` or
-  `Ibis Nightly-<version>-updater-*`. macOS/Linux can use
-  `tauri_current_app*` and macOS `tauri_updated_app*` next to the app when
-  needed; Linux can also fall back to the user cache folder. Interrupted updates
-  may leave files behind, including a previous app needed for recovery.
+XDG overrides, folder redirection and runtime policy can change these paths.
+macOS can also keep `<id>.plist` preferences and `<id>.savedState` state.
+Updates/installers use temporary files; interrupted operations may leave
+staging or previous-app copies. OS crash reports and logs have separate
+retention. This is a code/default-path inventory, not a complete runtime
+filesystem audit.
 
 ## Remove Ibis and its local data
 
-First turn off start at login, if enabled, for each channel you are removing.
-Quit through **More > Quit** or the app menu; closing the picker only hides it.
-Keep any settings you want before deleting folders.
+Turn off start at login and quit through More › Quit. Closing only hides the
+picker. Save a settings backup if wanted, uninstall the package or delete the
+app/AppImage, then remove that channel's settings and WebView folders above.
 
-- **Windows:** uninstall Ibis or Ibis Nightly in **Settings > Apps > Installed
-  apps**. Delete that channel's settings and WebView folders from the table.
-  Startup registration uses the value `Ibis` or `Ibis Nightly` under
-  `HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`.
-  An approval value can remain under the matching
-  `Explorer\StartupApproved\Run` key; remove only that app's value if you
-  need to clear it. Do not remove the shared WebView2 Runtime; other apps use it.
-- **macOS:** turn off **Open at Login** in Ibis or remove it from **System
-  Settings > General > Login Items**. Trash the app, then its settings and
-  WebKit/cache folders from the table. Check the app-specific preference and
-  saved-state files above if present.
-- **Linux:** uninstall the package with your package manager, or delete the
-  AppImage and any extracted copy. Remove `<id>.desktop` from
-  `$XDG_CONFIG_HOME/autostart` (default `~/.config/autostart`), and the
-  earlier `io.github.ibiscite.ibis.desktop` or
-  `io.github.ibiscite.ibis.nightly.desktop` that earlier builds wrote there,
-  which Ibis no longer turns off. Then remove that channel's settings and data
-  folders from the table.
+On Linux, remove `<id>.desktop` from `$XDG_CONFIG_HOME/autostart` (default
+`~/.config/autostart`) if present. Windows startup uses the `Ibis` or
+`Ibis Nightly` value under
+`HKEY_CURRENT_USER\Software\Microsoft\Windows\CurrentVersion\Run`; a matching
+`Explorer\StartupApproved\Run` approval value may remain. Remove only the
+app's values. Keep the shared WebView2 Runtime for other apps.
 
-After a successful update or uninstall, remove only confirmed Ibis temporary
-files and crash reports if you want those gone too. On macOS, Console can
-reveal or trash an individual report. On managed systems, ask the administrator about OS logs and dumps.
-Do not delete shared cache, log or crash-report directories wholesale. Check
-all four identifiers only if you used those builds. These steps do not erase
-system backups, clipboard history or OS-managed records, and leave your
-library files and Zotero data in place.
-
-## Planned flows (not shipped; each opt-in)
-
-| Flow | What would be sent | To whom | When |
-| --- | --- | --- | --- |
-| Metadata lookup / reference verification | The identifier you choose, such as a DOI | Crossref / OpenAlex / doi.org | Only on request, after an explanation |
-
-Manual diagnostic export is not a shipped feature.
+Delete only confirmed Ibis staging files or app-specific crash reports.
+System logs, backups, clipboard history and shared caches are governed by
+their owners. These steps leave library files and Zotero data intact.

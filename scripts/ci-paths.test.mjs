@@ -50,7 +50,7 @@ test("changes inside the app skip the crates, and anything the crates read does 
 // Any Rust string with the word "apps" or "website" in it, however a path is built.
 const namesAppOrWebsite = (source) => /"[^"\n]*(?<![\w-])(?:apps|website)(?![\w-])[^"\n]*"/.test(source);
 
-test("crate code reads the app or the website only where app changes still run it", () => {
+test("crate code reads the app or the website only where input changes still run it", () => {
   for (const source of ['root.join("apps").join("desktop/src/App.tsx")', 'concat!("apps", "/desktop/x")', '"../../website/index.html"', 'Path::new("apps/desktop")', 'format!("{root}/apps/desktop")', 'root.join("./apps")', 'PathBuf::from(format!("{root}/apps"))', '"website"']) {
     assert.ok(namesAppOrWebsite(source), source);
   }
@@ -61,12 +61,13 @@ test("crate code reads the app or the website only where app changes still run i
   const readers = files.filter((file) => namesAppOrWebsite(readFileSync(join(root, file), "utf8")));
   // Each file allowed to name these folders, and why that is safe.
   const allowed = {
+    "crates/ibis-cli/tests/website_transcripts.rs": "reads CLI example content and fixtures, which run the crates above",
     "crates/ibis-core/src/locator.rs": 'the locator abbreviation "apps" (appendices), not a path',
     "crates/ibis-engine/tests/engine_boundary.rs": "reads only the app's Cargo.toml, a crate input above",
     "crates/ibis-engine/tests/persistence_settings_backup.rs": "the settings file apps.json, not the repository's apps folder",
     "crates/ibis-engine/tests/settings_backup.rs": "the settings file apps.json in a temporary folder, not the repository's apps folder",
   };
-  assert.deepEqual(readers, Object.keys(allowed), "a new reader must run on app changes too, or widen `core` in ci-paths.mjs");
+  assert.deepEqual(readers, Object.keys(allowed), "a new reader must run when its inputs change, or widen `core` in ci-paths.mjs");
 });
 
 test("website-only changes keep web checks without native jobs", () => {
@@ -75,6 +76,15 @@ test("website-only changes keep web checks without native jobs", () => {
   }
   assert.deepEqual(pr([row("website/site.js"), row("apps/desktop/src-tauri/src/lib.rs")]), appOnly);
   assert.equal(pr([row("websites/site.js")]).native, true, "only the website directory itself");
+});
+
+test("website CLI examples run the crates that verify their outputs", () => {
+  for (const filename of ["website/content/terminal.txt", "website/content/writing-apps.json", "fixtures/website/sample.bib"]) {
+    for (const status of ["added", "modified", "removed"]) assert.deepEqual(pr([{ filename, status }]), full, `${status}: ${filename}`);
+    assert.deepEqual(pr([row("website/old.txt", filename)]), full, `renamed from ${filename}`);
+    assert.deepEqual(pr([row(filename, "website/old.txt")]), full, `renamed to ${filename}`);
+    assert.deepEqual(classify("merge_group", 1, [row(filename)], true), full, "the queue still runs the macOS crate tests");
+  }
 });
 
 test("only allowlisted documentation additions, edits and deletions take the fast path", () => {

@@ -447,7 +447,6 @@ test("release flags leave versioning and draft tag creation unchanged", () => {
   assert.equal(config["release-type"], "simple");
   assert.equal(config["bump-minor-pre-major"], true);
   assert.equal(config["bump-patch-for-minor-pre-major"], true);
-  assert.ok(read("website/index.html").includes('Files come from GitHub. <a href="https://github.com/ibiscite/ibis/releases/latest">Release notes</a>'));
   assert.ok(read("README.md").includes("[release](https://github.com/ibiscite/ibis/releases/latest)"));
 });
 

@@ -21,7 +21,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf-citation > .preview-text { flex: 1; }
 .shelf-citation > p { flex: 1; color: var(--text-secondary); }
 .shelf-output:is([data-state="failed"], [data-state="stale"]) .shelf-citation > p { color: var(--text); border: 0; padding: 0; }
-.shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; width: var(--icon-small); height: var(--icon-small); margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--strong) var(--type-label-size) / 1 var(--font); }
+.shelf-state-icon { display: inline-flex; justify-content: center; align-items: center; flex: none; margin-inline-end: var(--space-1); border: var(--border-width) solid currentColor; border-radius: var(--r-full); font: var(--strong) var(--type-label-size) / 1 var(--font); }
 .shelf-state-icon[data-state="failed"] { color: var(--status-error); }
 .shelf-state-icon[data-state="stale"] { color: var(--status-warning); }
 .shelf-output[data-keys] .preview-text { font-family: var(--mono); }
@@ -35,7 +35,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .shelf[data-copied] .preview-text { flex: 0 1 auto; }
 .shelf[data-copied]::before { animation: shelf-copy-wash var(--dur-2) var(--ease-out); }
 .shelf-copied { display: inline-flex; flex: none; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); color: var(--text); background: var(--status-ok-fill); font: var(--strong) var(--type-label-size) / var(--type-label-line) var(--font); white-space: nowrap; }
-.shelf-copied svg { color: var(--status-ok); width: var(--icon-small); height: var(--icon-small); fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; }
+.shelf-copied svg { color: var(--status-ok); }
 .shelf-copied path { animation: shelf-check var(--dur-2) var(--ease-out); }
 @keyframes shelf-copy-wash { from { opacity: 1; } to { opacity: 0; } }
 @keyframes shelf-check { from { stroke-dasharray: 1; stroke-dashoffset: 1; } to { stroke-dasharray: 1; stroke-dashoffset: 0; } }
@@ -57,5 +57,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
 .inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .inspector-citation[data-keys] { font-family: var(--mono); }
 .inspector-citation .csl-entry { display: inline; }
-.inspector-problem svg { width: var(--icon-small); height: var(--icon-small); margin-inline-end: var(--space-1); color: var(--status-error); vertical-align: text-bottom; }
+.inspector-problem svg { margin-inline-end: var(--space-1); color: var(--status-error); }
 

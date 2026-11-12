@@ -1,7 +1,6 @@
 //! The real native bridge over an invented raw Zotero endpoint, never discovery.
-#[path = "../../../../../../crates/ibis-engine/tests/support/zotero.rs"]
-mod fixture;
 use super::{FileLibrary, FileSelection};
+use crate::library::zotero_fixture as fixture;
 use ibis_core::contract::CitationResult;
 use ibis_engine::{Cancellation, Engine, Method};
 use serde_json::json;
@@ -108,6 +107,75 @@ fn native_zotero_copy_refuses_a_detected_switch_until_coherent_reload() -> Resul
         bridge
             .copy(&preview.ticket, &preview.content_hash, |_| panic!(
                 "an old receipt cannot revive"
+            ))
+            .is_err()
+    );
+    let current = bridge
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
+        .map_err(|e| e.to_string())?;
+    let mut copied = String::new();
+    bridge
+        .copy(&current.ticket, &current.content_hash, |content| {
+            copied = content.text.to_owned();
+            Ok(())
+        })
+        .map_err(|e| e.to_string())?;
+    assert_eq!(copied, "[@Synthetic2026]");
+    Ok(())
+}
+
+#[test]
+fn automatic_private_zotero_reload_refuses_old_copies_as_soon_as_a_switch_is_detected()
+-> Result<(), Box<dyn std::error::Error>> {
+    use crate::library::{
+        load::load_source_guarded,
+        retry::begin_check,
+        source::Source,
+        state::{Library, LoadRequests, install_loaded},
+        tasks::guard_zotero_read,
+    };
+    use std::sync::Mutex;
+    let server = fixture::Server::new();
+    let bridge = Arc::new(opened(&server)?);
+    let source = Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into());
+    let library = Arc::new(Mutex::new(Library {
+        source: Some(source.clone()),
+        requested: Some(source.clone()),
+        file: Some(bridge.clone()),
+        ..Library::default()
+    }));
+    let requests = Arc::new(LoadRequests::default());
+    let preview = bridge
+        .preview(bridge.reserve_preview(), vec![selection(&bridge)?], "pandoc")
+        .map_err(|e| e.to_string())?;
+    let (request, source) = begin_check(&library, &requests).ok_or("automatic check")?;
+    server.instance.store(2, Ordering::SeqCst);
+    server.pause.store(true, Ordering::SeqCst);
+    let (reading, choices, bridge_worker) = (library.clone(), requests.clone(), bridge.clone());
+    let worker = std::thread::spawn(move || {
+        load_source_guarded(
+            source.clone(),
+            false,
+            Some(bridge_worker.clone()),
+            None,
+            &Cancellation::default(),
+            || false,
+            |retire| guard_zotero_read(&reading, &choices, request, &source, Some(&bridge_worker), retire),
+        )
+    });
+    server.wait_for_payload();
+    let refused = bridge.copy(&preview.ticket, &preview.content_hash, |_| {
+        panic!("a detected switch must not write an old citation")
+    });
+    server.pause.store(false, Ordering::SeqCst);
+    let loaded = worker.join().map_err(|_| "private reload worker")?;
+    assert!(refused.is_err());
+    let visible = install_loaded(&library, &requests, request, loaded).ok_or("accepted reload")?;
+    assert!(visible.error.is_none());
+    assert!(
+        bridge
+            .copy(&preview.ticket, &preview.content_hash, |_| panic!(
+                "old receipt revived"
             ))
             .is_err()
     );
@@ -278,9 +346,15 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
             || false,
         )
         .map_err(|e| e.to_string())?;
-        let Loaded::New(mut library) = loaded else {
+        let Loaded::Reload(reload) = loaded else {
             return Err("membership must be installed".into());
         };
+        let mut library = crate::library::state::Library {
+            source: Some(reload.source.clone()),
+            file: Some(reload.file.clone()),
+            ..Default::default()
+        };
+        reload.accept().map_err(|e| e.to_string())?;
         assert_eq!(library.source, Some(source));
         assert_eq!(
             library.source.as_ref().ok_or("source")?.setting(),

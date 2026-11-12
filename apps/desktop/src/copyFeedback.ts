@@ -1,4 +1,5 @@
-import { iconPaths, iconStroke } from "./icon-paths";
+import { iconPaths, iconStroke, iconViewBox } from "./icon-paths";
+import "./ui/Icon.css";
 // What a copy says afterwards, and what a click on a result row does.
 // Pure decisions, kept apart from the picker so they can be tested alone.
 import type { Copied, NoticeMessage } from "./api";
@@ -105,11 +106,17 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
   source.textContent = say("copied-notice-source");
   const mark = document.createElementNS("http://www.w3.org/2000/svg", "svg");
   mark.setAttribute("aria-hidden", "true");
-  mark.setAttribute("viewBox", "0 0 20 20");
-  mark.classList.add("copied-notice-mark", "copy-receipt-mark");
+  mark.setAttribute("viewBox", iconViewBox);
+  mark.setAttribute("data-size", "tile");
+  mark.setAttribute("fill", "none");
+  mark.setAttribute("stroke", "currentColor");
+  mark.setAttribute("stroke-linecap", "round");
+  mark.setAttribute("stroke-linejoin", "round");
+  mark.classList.add("ui-icon", "copied-notice-mark", "copy-receipt-mark");
   const tick = document.createElementNS("http://www.w3.org/2000/svg", "path");
   tick.setAttribute("d", iconPaths.check);
-  mark.setAttribute("stroke-width", String(iconStroke));
+  tick.setAttribute("pathLength", "1");
+  mark.setAttribute("stroke-width", String(iconStroke.tile));
   mark.append(tick);
   const title = document.createElement("strong");
   const code = document.createElement("code");

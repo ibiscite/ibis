@@ -1,366 +1,786 @@
 import assert from "node:assert/strict";
-import { readFile } from "node:fs/promises";
+import { readFile, mkdir } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
+import { stripTypeScriptTypes } from "node:module";
 import { test } from "node:test";
+import { join, resolve } from "node:path";
+import { content } from "../website/content.mjs";
 const script = await readFile(new URL("../website/site.js", import.meta.url), "utf8");
-function context(choice = null) {
-  const stored = new Map(choice ? [["ibis-theme", choice]] : []);
+const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const keys = runInNewContext(`${keyScript}\n({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator })`);
+const apps = JSON.parse(await readFile(new URL("../website/content/writing-apps.json", import.meta.url), "utf8"));
+const control = () => ({ attrs: {}, handlers: {}, setAttribute(k, v) { this.attrs[k] = v; },
+  getAttribute(k) { return this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; },
+  removeAttribute(k) { delete this.attrs[k]; }, toggleAttribute(k, value) { if (value) this.attrs[k] = ""; else delete this.attrs[k]; },
+  replaceChildren(...children) { this.children = children; },
+  addEventListener(k, fn) { this.handlers[k] = fn; }, focus() { this.focused = true; } });
+const classes = () => {
+  const values = new Set();
+  return { contains: value => values.has(value), add: value => values.add(value), remove: value => values.delete(value),
+    toggle(value, on) { if (on) values.add(value); else values.delete(value); } };
+};
+function context(choice = null, platform = "MacIntel", userAgent = "Desktop", maxTouchPoints = 0) {
+  const stored = choice instanceof Map ? choice : new Map(choice ? [["ibis-theme", choice]] : []);
   const media = { matches: false, addEventListener(_name, fn) { this.change = fn; } };
-  const ctx = { document: { documentElement: { dataset: {} }, addEventListener() {} },
-    navigator: { platform: "MacIntel", userAgent: "Desktop", maxTouchPoints: 0 },
-    localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) },
-    matchMedia: () => media };
+  const ctx = { document: { documentElement: { dataset: {} }, addEventListener() {}, querySelector: () => null },
+    navigator: { platform, userAgent, maxTouchPoints },
+    clearTimeout() {}, getComputedStyle: () => ({ direction: "ltr" }),
+    localStorage: { getItem: key => stored.get(key), setItem: (key, value) => stored.set(key, value), removeItem: key => stored.delete(key) }, matchMedia: () => media };
   runInNewContext(script, ctx);
   return { ctx, media, stored };
 }
-const control = () => ({ attrs: {}, handlers: {}, setAttribute(k, v) { this.attrs[k] = v; },
-  addEventListener(k, fn) { this.handlers[k] = fn; }, focus() { this.focused = true; } });
 
-test("appearance is applied before paint; both controls sync, persist and reset focus", () => {
-  const { ctx, media, stored } = context("light");
-  assert.equal(ctx.document.documentElement.dataset.theme, "light");
-  assert.equal(ctx.document.documentElement.dataset.platform, "macos");
-  const groups = Array.from({ length: 2 }, () => {
-    const toggle = control(), reset = control();
-    return { toggle, reset, hidden: true, querySelector: selector => selector.includes("switch") ? toggle : reset };
+test("both appearance controls stay in sync, persist across pages and reset to system", () => {
+  const groups = () => [0, 1].map(() => {
+    const toggle = control(), reset = { ...control(), dataset: { system: "System", useSystem: "Use system" } };
+    return { hidden: true, toggle, reset, querySelector: selector => selector.includes("switch") ? toggle : reset };
   });
-  ctx.document.querySelectorAll = () => groups; ctx.appearance();
-  groups[0].toggle.handlers.click();
+  const mount = ctx => { const controls = groups(); ctx.document.querySelectorAll = () => controls; ctx.appearance(); return controls; };
+  const { ctx, stored } = context("light");
+  const controls = mount(ctx);
+  assert.equal(ctx.document.documentElement.dataset.theme, "light");
+  assert.ok(controls.every(group => !group.hidden && group.toggle.attrs["aria-checked"] === "false"));
+  controls[1].toggle.handlers.click();
   assert.equal(stored.get("ibis-theme"), "dark");
-  for (const group of groups) { assert.equal(group.hidden, false); assert.equal(group.toggle.attrs["aria-checked"], "true"); }
-  groups[1].reset.handlers.click();
+  assert.ok(controls.every(group => group.toggle.attrs["aria-checked"] === "true" && !group.reset.disabled));
+  const next = context(stored), nextControls = mount(next.ctx);
+  assert.equal(next.ctx.document.documentElement.dataset.theme, "dark");
+  assert.ok(nextControls.every(group => group.toggle.attrs["aria-checked"] === "true"));
+  next.media.change();
+  assert.ok(nextControls.every(group => group.toggle.attrs["aria-checked"] === "true"));
+  nextControls[0].reset.handlers.click();
   assert.equal(stored.has("ibis-theme"), false);
-  assert.equal(groups[1].toggle.focused, true);
-  media.matches = true; media.change();
-  assert.equal(groups[0].toggle.attrs["aria-checked"], "true");
+  assert.equal(nextControls[0].toggle.focused, true);
+  assert.equal(next.ctx.document.documentElement.dataset.theme, undefined);
+  assert.ok(nextControls.every(group => group.toggle.attrs["aria-checked"] === "false" && group.reset.disabled));
+  next.media.matches = true; next.media.change();
+  assert.ok(nextControls.every(group => group.toggle.attrs["aria-checked"] === "true"));
+  assert.equal(context(stored).ctx.document.documentElement.dataset.theme, undefined);
   assert.equal(context("untrusted").ctx.document.documentElement.dataset.theme, undefined);
 });
 
-test("navigation updates one current chip, scrolls only the chip bar, and keeps a followed link current", () => {
-  const { ctx } = context();
-  const names = ["how", "download", "setup", "roadmap", "why", "shape"], frames = [], handlers = {}, clicks = [];
-  const links = names.map((name, index) => ({ attrs: {}, getAttribute: () => `#${name}`, hasAttribute(k) { return k in this.attrs; },
-    setAttribute(k, v) { this.attrs[k] = v; }, removeAttribute(k) { delete this.attrs[k]; },
-    getBoundingClientRect: () => ({ left: index * 100 - bar.scrollLeft, right: index * 100 + 80 - bar.scrollLeft }) }));
-  const bar = { scrollLeft: 0, clientWidth: 200, scrollWidth: 600, addEventListener() {}, toggleAttribute() {}, getBoundingClientRect: () => ({ left: 0, right: 200 }) };
-  ctx.window = { scrollY: 0, innerHeight: 1000, addEventListener: (name, fn) => { handlers[name] = fn; } };
-  ctx.requestAnimationFrame = fn => frames.push(fn);
-  ctx.document.documentElement.scrollHeight = 5400;
-  ctx.document.addEventListener = (_name, fn) => clicks.push(fn);
-  ctx.document.querySelectorAll = () => links;
-  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : { id: selector.slice(1),
-    getBoundingClientRect: () => { const top = names.indexOf(selector.slice(1)) * 1000 - ctx.window.scrollY; return { top, bottom: top + 900 }; } };
-  const current = () => links.filter(link => link.hasAttribute("aria-current")).map(link => link.getAttribute());
-  ctx.navigation(); assert.deepEqual(current(), ["#how"]); assert.equal(bar.scrollLeft, 0);
-  ctx.window.scrollY = 3000; handlers.scroll(); handlers.scroll();
-  assert.equal(frames.length, 1); frames.shift()();
-  assert.deepEqual(current(), ["#roadmap"]); assert.equal(bar.scrollLeft, 196, "the chip bar scrolls sideways to reveal the current chip");
-  ctx.window.scrollY = 4400; handlers.scroll(); frames.shift()(); assert.deepEqual(current(), ["#shape"], "the page end selects the last section");
-  clicks.forEach(fn => fn({ target: { closest: () => links[4] } })); handlers.scroll(); frames.shift()();
-  assert.deepEqual(current(), ["#why"], "a followed link stays current at the page end");
-  handlers.wheel(); handlers.scroll(); frames.shift()(); assert.deepEqual(current(), ["#shape"], "scrolling releases the followed link");
-});
-
-test("resizing into a tablet or phone restores all platform downloads", () => {
-  const { ctx, media } = context();
-  const blocks = ["mac", "windows", "linux"].map(os => ({ dataset: { os }, hidden: false, before() {} }));
-  const cta = {}, choice = { replaceChildren(...items) { this.items = items; } };
-  ctx.document.querySelectorAll = () => blocks;
-  ctx.document.querySelector = () => cta;
-  ctx.document.createElement = tag => tag === "p" ? choice : control();
-  ctx.platforms(); assert.deepEqual(blocks.map(block => block.hidden), [false, true, true]);
-  choice.items[3].handlers.click();
-  assert.equal(cta.textContent, "Get Ibis for Linux");
-  media.matches = true; media.change();
-  assert.deepEqual(blocks.map(block => block.hidden), [false, false, false]); assert.equal(choice.hidden, true);
-  assert.equal(cta.textContent, "Get the early preview");
-  media.matches = false; media.change(); assert.deepEqual(blocks.map(block => block.hidden), [true, true, false]);
-  assert.equal(cta.textContent, "Get Ibis for Linux", "explicit platform choice survives a resize");
-});
-
-test("desktop sidebar remains clickable over every scrolled section", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    for (const width of [1180, 1440]) for (const colorScheme of ["light", "dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, reducedMotion: "no-preference" });
-      await page.goto(url.href);
-      const contrast = await page.locator(".index .appearance").evaluate(group => {
-        const rgba = color => { const context = document.createElement("canvas").getContext("2d"); context.fillStyle = color; context.fillRect(0, 0, 1, 1); return [...context.getImageData(0, 0, 1, 1).data]; };
-        const over = (color, background) => { const [r, g, b, alpha] = rgba(color); return [r, g, b].map((v, i) => v * alpha / 255 + background[i] * (1 - alpha / 255)); };
-        const luminance = channels => channels.map(v => v / 255).map(v => v <= .04045 ? v / 12.92 : ((v + .055) / 1.055) ** 2.4).reduce((sum, v, i) => sum + v * [.2126, .7152, .0722][i], 0);
-        const ratio = (a, b) => { a = luminance(a); b = luminance(b); return (Math.max(a, b) + .05) / (Math.min(a, b) + .05); };
-        const background = rgba(getComputedStyle(document.body).backgroundColor).slice(0, 3), opacity = Number(getComputedStyle(group).opacity);
-        const text = over(getComputedStyle(group).color, background).map((v, i) => v * opacity + background[i] * (1 - opacity));
-        const track = over(getComputedStyle(group.querySelector(".appearance-track")).backgroundColor, background);
-        return { text: ratio(text, background), switch: ratio(over(getComputedStyle(group.querySelector(".appearance-thumb")).backgroundColor, track), track) };
-      });
-      assert.ok(contrast.text >= 4.5, "resting theme labels remain readable");
-      assert.ok(contrast.switch >= 3, "theme switch thumb remains distinct");
-      for (const id of ["setup", "shape", "how", "roadmap", "download"]) {
-        await page.locator(`.index nav a[href="#${id}"]`).click({ timeout: 1500 });
-        await page.waitForFunction(id => location.hash === `#${id}`, id, { timeout: 1500 });
-        await page.waitForFunction(id => {
-          const top = document.querySelector(`#${id}`).getBoundingClientRect().top;
-          return top >= 0 && top < innerHeight / 2;
-        }, id, { timeout: 1500 });
-      }
-      await page.locator('.index nav a[href="#how"]').press("Enter");
-      await page.waitForFunction(() => location.hash === "#how");
-      await page.close();
-    }
-  } finally { await browser.close(); }
-});
-
-test("public demo supports keyboard copy/paste and remains visible in narrow and static layouts", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    const surfaces = new Map();
-    for (const width of [320, 390, 1180]) for (const colorScheme of ["light", "dark"]) {
-      const page = await browser.newPage({ viewport: { width, height: 850 }, colorScheme, reducedMotion: "reduce" });
-      const errors = []; page.on("pageerror", error => errors.push(error.message));
-      await page.goto(url.href + "#how");
-      const input = page.getByRole("combobox", { name: "Search the made-up library" });
-      await input.waitFor();
-      const panel = page.locator("[data-picker] .picker-panel");
-      const frame = await panel.boundingBox();
-      assert.equal(frame.height, 480, "the picker opens in its steady 480 px frame");
-      const appearance = await panel.evaluate(node => ({ scheme: getComputedStyle(node).colorScheme, surface: getComputedStyle(node).backgroundColor }));
-      assert.equal(appearance.scheme, "light dark");
-      assert.notEqual(appearance.surface, "rgba(0, 0, 0, 0)");
-      if (colorScheme === "light") surfaces.set(width, appearance.surface);
-      else assert.notEqual(appearance.surface, surfaces.get(width), "system appearance changes the app surface");
-      assert.equal(await page.locator(".picker-mark").isVisible(), true);
-      const modifier = await page.evaluate(() => document.documentElement.dataset.platform === "macos" ? "Meta" : "Control");
-      assert.equal(await input.inputValue(), "lantern");
-      await input.fill("");
-      assert.equal(await page.locator('.picker [role="option"]:visible').count(), 3);
-      await input.press("ArrowDown");
-      assert.match(await page.locator('[role="option"][aria-selected="true"]').innerText(), /clockwork clouds/);
-      assert.equal(await input.getAttribute("aria-activedescendant"), await page.locator('[role="option"][aria-selected="true"]').getAttribute("id"));
-      await input.press("Shift+Enter");
-      assert.match(await page.locator(".picker-shelf code").innerText(), /fen2023clouds/);
-      await input.press("Shift+Enter");
-      await input.fill("lantern");
-      assert.equal(await page.locator('.picker [role="option"]:visible').count(), 1);
-      assert.equal(await page.locator('.picker [role="option"]:visible .ref strong').innerText(), "Lantern gardens and the rhythm of imaginary cities");
-      const format = page.getByRole("combobox", { name: "Copy format" });
-      await format.focus(); await format.selectOption("cite");
-      assert.equal(await format.evaluate(node => node === document.activeElement), true, "changing the native format select preserves its keyboard focus");
-      await format.selectOption("pandoc");
-      await input.press("Enter");
-      assert.equal(await page.locator(".picker-status").count(), 1);
-      assert.equal(await page.locator(".picker-status").innerText(), "Copied");
-      assert.equal(await page.locator(".copied-notice, .picker-receipt").count(), 0);
-      assert.equal(await page.locator(".picker-library").textContent(), "Sample references · 3");
-      assert.equal(await page.locator(".picker-beak-end").isVisible(), true);
-      assert.equal((await panel.boundingBox()).height, frame.height, "copy feedback cannot resize the picker");
-      const paste = page.getByRole("button", { name: "Paste the copied citation into the sentence" });
-      await paste.press(`${modifier}+V`);
-      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
-      await input.fill("no invented reference matches this");
-      assert.equal(await page.locator(".picker-foot button").last().isDisabled(), true);
-      assert.equal(await page.locator("[data-result] code").innerText(), "[@vale2024lanterns]");
-      assert.match(await page.locator(".picker-empty").innerText(), /No matching references/);
-      assert.equal(await input.getAttribute("aria-activedescendant"), null);
-      assert.equal(await input.getAttribute("aria-expanded"), "false");
-      assert.equal(await page.locator(".picker-results").isVisible(), false, "the empty-state action lives outside the listbox");
-      assert.equal(await page.locator(".picker-shelf").isVisible(), false, "no matches without a prepared citation has no shelf");
-      assert.equal((await panel.boundingBox()).height, frame.height, "no matches cannot resize the picker");
-      await input.press("Escape"); await input.press("Escape"); await input.press("Escape");
-      await page.getByRole("button", { name: "Open the picker again" }).click();
-      assert.equal((await panel.boundingBox()).height, frame.height, "reopening keeps the frame");
-      for (const location of await page.locator(".intro, .platform:visible").all()) {
-        const privacy = location.locator("[data-download-privacy]");
-        assert.equal(await privacy.isVisible(), true);
-        assert.match(await privacy.innerText(), /No account, no uploads, no telemetry; sources read without changes/);
-        assert.equal(await privacy.getByRole("link", { name: "Privacy", exact: true }).getAttribute("href"), "https://github.com/ibiscite/ibis/blob/main/PRIVACY.md");
-        assert.equal(await privacy.evaluate(node => node.scrollWidth <= node.clientWidth), true, "privacy sentence wraps at small widths");
-      }
-      await page.reload();
-      assert.equal(await input.inputValue(), "lantern");
-      assert.equal(await page.getByRole("button", { name: "Paste the copied citation into the sentence" }).count(), 0);
-      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, "page never overflows sideways");
-      assert.deepEqual(errors, []);
-      await page.close();
-    }
-    for (const colorScheme of ["light", "dark"]) {
-      const staticPage = await browser.newPage({ javaScriptEnabled: false, viewport: { width: 320, height: 850 }, colorScheme });
-      await staticPage.goto(url.href + "#how");
-      assert.equal(await staticPage.locator("[data-picker] .picker-panel").isVisible(), true);
-      assert.match(await staticPage.locator("[data-picker]").innerText(), /Copy as Pandoc/);
-      assert.equal(await staticPage.locator(".picker-shelf code").innerText(), "[@vale2024lanterns]");
-      assert.equal(await staticPage.locator(".picker-status").innerText(), "Copied");
-      assert.equal(await staticPage.locator(".copied-notice, .picker-receipt").count(), 0);
-      assert.equal(await staticPage.locator(".picker-library").textContent(), "Sample references · 3");
-      assert.equal(await staticPage.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true);
-      assert.equal(await staticPage.locator("[data-download-privacy]:visible").count(), 4);
-      await staticPage.close();
-    }
-  } finally { await browser.close(); }
-});
-
-test("picker header fits its container at 200% text and uses aligned themed gradient marks", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    for (const fontSize of [16, 32]) for (const width of [320, 1180]) for (const colorScheme of ["light", "dark"]) for (const javaScriptEnabled of [false, true]) {
-      const page = await browser.newPage({ viewport: { width, height: 900 }, colorScheme, javaScriptEnabled, reducedMotion: "reduce" });
-      const session = await page.context().newCDPSession(page);
-      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
-      await page.goto(url.href + "#how");
-      if (javaScriptEnabled) await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
-      const panel = page.locator("[data-picker] .picker-panel");
-      // Exercise a narrow container on desktop too: viewport media queries alone
-      // cannot protect a small picture inside the website's reading column.
-      if (width === 1180) await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, fontSize === 32 ? 240 : 280);
-      const check = async (theme = colorScheme) => {
-        const layout = await panel.evaluate(node => {
-          const header = node.querySelector(".picker-search"), box = node.getBoundingClientRect(), band = header.getBoundingClientRect();
-          const visible = [...header.querySelectorAll("input, button, select, .picker-query, .picker-format, .picker-mark, .picker-mark img")]
-            .filter(child => child.getBoundingClientRect().width && child.getBoundingClientRect().height);
-          const clipped = visible.filter(child => {
-            const bounds = child.getBoundingClientRect();
-            return bounds.left < Math.max(box.left, band.left) - 1 || bounds.right > Math.min(box.right, band.right) + 1
-              || bounds.top < Math.max(box.top, band.top) - 1 || bounds.bottom > Math.min(box.bottom, band.bottom) + 1;
-          }).map(child => child.className || child.tagName);
-          const query = header.querySelector("input, .picker-query"), mark = visible.find(child => child.tagName === "IMG");
-          const tile = node.querySelector(".tile").getBoundingClientRect(), title = node.querySelector(".ref").getBoundingClientRect();
-          const image = mark?.getBoundingClientRect(), field = query.getBoundingClientRect();
-          return { clipped, headerOverflow: header.scrollWidth > header.clientWidth, rootSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
-            queryWidth: field.width, querySize: parseFloat(getComputedStyle(query).fontSize), queryAlignment: field.left - title.left,
-            markSource: mark?.getAttribute("src"), markWidth: image?.width, markAlignment: image && (image.left + image.width / 2) - (tile.left + tile.width / 2),
-            mask: mark && getComputedStyle(mark.parentElement).maskImage };
-        });
-        const scenario = `${width}px viewport / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled}`;
-        assert.equal(layout.rootSize, fontSize, scenario);
-        assert.deepEqual(layout.clipped, [], `header controls must be entirely inside the panel: ${scenario}`);
-        assert.equal(layout.headerOverflow, false, `overflow:hidden cannot conceal header overflow: ${scenario}`);
-        assert.ok(layout.queryWidth >= 2 * layout.querySize, `the query must retain usable editing space: ${scenario}`);
-        assert.ok(Math.abs(layout.queryAlignment) <= 1, `query and result titles stay aligned: ${scenario}`);
-        assert.equal(layout.markSource, `assets/ibis-mark${theme === "dark" ? "-on-dark" : ""}.svg`, scenario);
-        assert.equal(layout.markWidth, fontSize * 1.5, `the search mark is 24 px at normal text size: ${scenario}`);
-        assert.ok(Math.abs(layout.markAlignment) <= 1, `the mark stays centred over the type tile: ${scenario}`);
-        assert.equal(layout.mask, "none", `the gradient must remain intact: ${scenario}`);
-      };
-      await check();
-      const override = colorScheme === "light" ? "dark" : "light";
-      await page.evaluate(theme => { document.documentElement.dataset.theme = theme; }, override);
-      await check(override);
-      await page.evaluate(() => { delete document.documentElement.dataset.theme; });
-      if (javaScriptEnabled) {
-        const input = page.getByRole("combobox", { name: "Search the made-up library" });
-        await input.fill(""); await check();
-        await input.fill("lantern"); await page.getByRole("combobox", { name: "Copy format" }).selectOption("parencite"); await check();
-      }
-      await page.close();
-    }
-  } finally { await browser.close(); }
-});
-
-async function combineDemoReferences(page) {
-  const input = page.getByRole("combobox", { name: "Search the made-up library" });
-  await input.waitFor(); await input.fill("");
-  for (let index = 0; index < 3; index++) {
-    await input.press("Shift+Enter");
-    if (index < 2) await input.press("ArrowDown");
+test("detected desktops get a named download; phones keep the generic download", () => {
+  for (const [platform, agent, touch, label] of [
+    ["MacIntel", "Desktop", 0, "Get Ibis for Mac"], ["macOS", "Desktop", 0, "Get Ibis for Mac"],
+    ["Win32", "Desktop", 0, "Get Ibis for Windows"], ["Linux", "Desktop", 0, "Get Ibis for Linux"],
+    ["Linux", "Android", 1, "Get the early preview"], ["MacIntel", "Tablet", 5, "Get the early preview"],
+    ["iPhone", "iPhone", 1, "Get the early preview"], ["unknown", "Desktop", 0, "Get the early preview"],
+  ]) {
+    const { ctx } = context(null, platform, agent, touch), button = { textContent: "Get the early preview", href: "/get/", dataset: { mac: "Get Ibis for Mac", windows: "Get Ibis for Windows", linux: "Get Ibis for Linux" } };
+    ctx.document.querySelectorAll = () => [];
+    ctx.document.querySelector = () => button; ctx.platforms();
+    assert.equal(button.textContent, label);
+    assert.equal(button.href, "/get/");
   }
-  await page.getByRole("combobox", { name: "Copy format" }).selectOption("parencite");
-  await input.press("Enter");
+});
+
+test("Get keeps every platform visible without adding platform toggles", () => {
+  for (const platform of ["MacIntel", "Win32", "Linux"]) {
+    const { ctx } = context(null, platform);
+    const inserted = [], blocks = ["mac", "windows", "linux"].map(os => ({ hidden: false, dataset: { os }, before: node => inserted.push(node) }));
+    ctx.document.querySelectorAll = () => blocks;
+    ctx.document.querySelector = () => null;
+    ctx.document.createElement = control;
+    ctx.platforms();
+    assert.deepEqual(blocks.map(block => block.hidden), [false, false, false], platform);
+    assert.deepEqual(inserted, []);
+  }
+});
+
+test("the home key strip uses platform text from its template", async () => {
+  const html = await content(await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8"));
+  const cap = html.match(/<kbd\b[^>]*data-shortcut-other="([^"]+)"[^>]*>([^<]+)<\/kbd>/);
+  for (const [platform, expected] of [["MacIntel", cap[2]], ["Win32", cap[1]], ["Linux", cap[1]]]) {
+    const { ctx } = context(null, platform), kbd = { textContent: cap[2], dataset: { shortcutOther: cap[1] } };
+    ctx.document.querySelector = () => null; ctx.document.querySelectorAll = () => [kbd]; ctx.platforms();
+    assert.equal(kbd.textContent, expected);
+  }
+});
+
+test("outbound prose and footer links have silent marks; local links, rows, buttons and key chips do not", () => {
+  const { ctx } = context();
+  const links = [
+    ["https://other.test/article", false, true], ["https://other.test/privacy", false, true],
+    ["https://ibis.test/get/", false, false], ["https://ibis.test/#try", false, false],
+    ["mailto:hello@example.test", false, false],
+    ...["rows", "button", "key"].map(() => ["https://other.test/", true, false]),
+  ].map(([href, excluded, marked]) => {
+    const link = { ...control(), href, marked, closest: () => excluded, append(node) { this.mark = node; } };
+    link.text = { textContent: "FUSE support", splitText(index) {
+      const word = { textContent: this.textContent.slice(index), replaceWith(node) { link.end = node; } };
+      this.textContent = this.textContent.slice(0, index); return word;
+    } };
+    return link;
+  });
+  ctx.document.querySelectorAll = () => links;
+  ctx.document.createElement = () => ({ ...control(), append(...children) { this.children = children; } });
+  ctx.document.createTreeWalker = link => { let pending = true; return { nextNode() { if (!pending) return null; pending = false; return link.text; } }; };
+  ctx.location = new URL("https://ibis.test/"); ctx.URL = URL;
+  ctx.outboundLinks();
+  for (const link of links) {
+    assert.equal(!!link.end, link.marked, link.href);
+    if (link.end) {
+      const [word, mark] = link.end.children;
+      assert.equal(link.text.textContent + word.textContent, "FUSE support");
+      assert.equal(word.textContent, "support");
+      assert.equal(mark.className, "outbound"); assert.equal(mark.attrs["aria-hidden"], "true");
+    }
+  }
+});
+
+test("the picker shortcut opens and focuses home from every inner page, and leaves text entry alone", () => {
+  for (const platform of ["MacIntel", "Win32", "Linux"]) for (const path of ["/", "/get/", "/features/", "/cli/"]) {
+    const { ctx } = context(null, platform), events = {}, window = control(), destinations = [];
+    let opened = 0;
+    ctx.window = window; ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+    ctx.document.querySelectorAll = () => [];
+    ctx.document.querySelector = () => path === "/" ? {} : null;
+    ctx.location = { assign: value => destinations.push(value) };
+    ctx.pickerKeys(keys, () => { opened++; });
+    const press = extra => ({ key: "Y", code: "KeyY", shiftKey: true, altKey: false,
+      metaKey: platform === "MacIntel", ctrlKey: platform !== "MacIntel", target: { closest: () => null },
+      preventDefault() { this.prevented = true; }, ...extra });
+    for (const extra of [{ target: { closest: () => ({}) } }, { repeat: true }, { isComposing: true }, { shiftKey: false }]) {
+      const event = press(extra); events.keydown(event); assert.ok(!event.prevented);
+    }
+    assert.equal(opened, 0); assert.deepEqual(destinations, []);
+    const event = press(); events.keydown(event); assert.equal(event.prevented, true);
+    assert.equal(opened, path === "/" ? 1 : 0);
+    assert.deepEqual(destinations, path === "/" ? [] : ["/#try"]);
+  }
+});
+
+test("question mark opens keyboard help outside text entry and ignores held keys or composition", () => {
+  const { ctx } = context(), events = {}, button = control(), close = control(), dialog = { ...control(), opened: 0,
+    querySelector: () => close, showModal() { this.opened++; }, close() { this.closed = true; } };
+  ctx.document.querySelector = selector => selector === ".keyboard-help" ? dialog : button;
+  ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.keyboardHelp();
+  const press = extra => ({ key: "?", target: { closest: () => null }, preventDefault() { this.prevented = true; }, ...extra });
+  for (const extra of [{ target: { closest: () => ({}) } }, { repeat: true }, { isComposing: true }, { ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+    const event = press(extra); events.keydown(event); assert.ok(!event.prevented);
+  }
+  assert.equal(dialog.opened, 0);
+  const event = press({ shiftKey: true }); events.keydown(event);
+  assert.equal(event.prevented, true); assert.equal(dialog.opened, 1);
+  close.handlers.click(); assert.equal(dialog.closed, true);
+  button.handlers.click(); assert.equal(dialog.opened, 2);
+});
+
+test("shortcut, Enter and Shift+Enter caps stay pressed until their keys are released or the window blurs", () => {
+  const { ctx } = context(), events = {}, window = control();
+  const caps = ["CmdOrCtrl+Shift+Y", "Enter", "Shift+Enter"].map(accelerator => ({ dataset: { accelerator }, classList: classes() }));
+  ctx.window = window; ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.document.querySelectorAll = () => caps; ctx.document.querySelector = () => ({});
+  ctx.pickerKeys(keys, () => {});
+  const event = (key, shiftKey = false, metaKey = false) => ({ key, code: key, shiftKey, metaKey, ctrlKey: false, altKey: false, target: {}, preventDefault() {} });
+  const check = expected => assert.deepEqual(caps.map(cap => cap.classList.contains("pressed")), expected);
+  events.keydown(event("Enter")); check([false, true, false]);
+  events.keydown(event("Shift", true)); check([false, false, true]);
+  events.keyup(event("Shift")); check([false, true, false]);
+  events.keyup(event("Enter")); check([false, false, false]);
+  events.keydown(event("Y", true, true)); check([true, false, false]);
+  window.handlers.blur(); check([false, false, false]);
+});
+
+test("the bird pecks once per successful action, ignores overlapping actions and respects reduced motion", () => {
+  const { ctx, media } = context(), logo = { ...control(), classList: classes(), removeEventListener(name) { delete this.handlers[name]; } };
+  let starts = 0;
+  const add = logo.classList.add; logo.classList.add = value => { starts++; add(value); };
+  ctx.document.querySelector = () => logo;
+  ctx.peck(); ctx.peck(); assert.equal(starts, 1);
+  logo.handlers.animationend(); assert.equal(logo.classList.contains("pecking"), false);
+  ctx.peck(); assert.equal(starts, 2);
+  logo.handlers.animationcancel(); media.matches = true; ctx.peck(); assert.equal(starts, 2);
+});
+
+function citationChip() {
+  const { ctx } = context(), timers = new Map(), events = {}, animations = [];
+  const hover = { ...control(), matches: true }, still = { ...control(), matches: false };
+  const style = () => ({ removeProperty(name) { if (name === "inline-size") delete this.inlineSize; } });
+  const chip = { ...control(), textContent: "@sample", style: style(),
+    getBoundingClientRect() { return { width: parseFloat(this.style.inlineSize) || this.textContent.length * 8 + 12 }; },
+    cloneNode() { return { ...this, style: style(), remove() {} }; }, after() {},
+    getAnimations() { return [{ finished: new Promise(resolve => animations.push(resolve)) }]; } };
+  let serial = 0;
+  ctx.document.querySelectorAll = () => [chip];
+  ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.matchMedia = query => query.includes("reduced-motion") ? still : hover;
+  ctx.setTimeout = fn => { timers.set(++serial, fn); return serial; }; ctx.clearTimeout = id => timers.delete(id);
+  return { ctx, chip, hover, still, events, timers,
+    tick() { const [id, fn] = timers.entries().next().value; timers.delete(id); fn(); },
+    // Complete newer transitions first, so cancelled work arrives late.
+    async settle() {
+      await new Promise(setImmediate);
+      animations.splice(0).reverse().forEach(resolve => resolve());
+      await new Promise(setImmediate);
+    } };
 }
 
-test("copied shelf and footer fit one row at 240 px and 200% text", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    for (const fontSize of [16, 32]) for (const colorScheme of ["light", "dark"]) for (const javaScriptEnabled of [false, true]) for (const hasTouch of [false, true]) {
-      const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, colorScheme, javaScriptEnabled, hasTouch, reducedMotion: "reduce" });
-      const session = await page.context().newCDPSession(page);
-      await session.send("Page.setFontSizes", { fontSizes: { standard: fontSize, fixed: fontSize } });
-      await page.goto(url.href + "#how");
-      if (javaScriptEnabled) await combineDemoReferences(page);
-      const panel = page.locator("[data-picker] .picker-panel");
-      for (const width of [720, 480, 240]) {
-        await panel.evaluate((node, size) => { node.style.width = `${size}px`; }, width);
-        const layout = await panel.evaluate(node => {
-          const shelf = node.querySelector(".picker-shelf"), foot = node.querySelector(".picker-foot"), citation = shelf.querySelector("code"), capsule = shelf.querySelector(".picker-status");
-          const bounds = element => { const rect = element.getBoundingClientRect(); return { left: rect.left, right: rect.right, top: rect.top, bottom: rect.bottom, width: rect.width, height: rect.height }; };
-          const elements = [...shelf.querySelectorAll(".picker-beak, code, .picker-status"), ...foot.querySelectorAll(".picker-library, button, .picker-static-control")];
-          const clipped = elements.filter(element => {
-            const rect = bounds(element), parent = bounds(element.closest(".picker-shelf, .picker-foot"));
-            return rect.width && (rect.left < parent.left - 1 || rect.right > parent.right + 1 || rect.top < parent.top - 1 || rect.bottom > parent.bottom + 1);
-          }).map(element => element.className || element.tagName);
-          const actions = [...foot.querySelectorAll("button, .picker-static-control")];
-          const statusText = foot.querySelector(".picker-library > span:last-child");
-          return { clipped, shelfOverflow: shelf.scrollWidth > shelf.clientWidth, footOverflow: foot.scrollWidth > foot.clientWidth,
-            capsuleWhole: capsule.scrollWidth <= capsule.clientWidth && getComputedStyle(capsule).whiteSpace === "nowrap",
-            citationWidth: bounds(citation).width, citationEllipsis: getComputedStyle(citation).textOverflow, citationClipped: citation.scrollWidth > citation.clientWidth,
-            actionRows: actions.map(action => bounds(action).top),
-            labels: [...foot.querySelectorAll(".picker-action-label")].map(label => bounds(label).width),
-            keysVisible: actions.every(action => [...action.querySelectorAll("kbd")].some(key => bounds(key).width > 0)),
-            libraryStatus: statusText.textContent,
-            actionNames: actions.map(action => action.getAttribute("aria-label") || action.textContent) };
-        });
-        const scenario = `${width}px / ${fontSize}px font / ${colorScheme} / JS ${javaScriptEnabled} / touch ${hasTouch}`;
-        assert.deepEqual(layout.clipped, [], scenario);
-        assert.equal(layout.shelfOverflow, false, `the shelf must fit internally: ${scenario}`);
-        assert.equal(layout.footOverflow, false, `the footer must fit internally: ${scenario}`);
-        assert.equal(layout.capsuleWhole, true, `Copied stays whole: ${scenario}`);
-        assert.ok(layout.citationWidth > 0, `the citation retains room for its ellipsis: ${scenario}`);
-        assert.equal(layout.citationEllipsis, "ellipsis", scenario);
-        assert.ok(layout.actionRows.every(top => Math.abs(top - layout.actionRows[0]) < 1), `actions stay on one row: ${scenario}`);
-        assert.equal(layout.libraryStatus, "Sample references · 3", scenario);
-        assert.equal(layout.keysVisible, true, `keys stay visible on touch as well: ${scenario}`);
-        assert.ok(layout.actionNames.some(name => /Copy.*as/.test(name)), `compact actions keep their accessible names: ${scenario}`);
-        if (width === 240) {
-          assert.equal(layout.citationClipped, true, scenario);
-          assert.ok(layout.labels.every(size => size <= 1), `narrow actions show keys only: ${scenario}`);
-        }
-        if (width === 480 && fontSize === 16 && javaScriptEnabled) {
-          assert.ok(layout.labels.every(size => size > 1), `labels stay until the status has shortened: ${scenario}`);
-        }
-      }
-      await page.close();
-    }
-  } finally { await browser.close(); }
+test("citation pills hug their text at rest, make room before wider forms and return to natural width", async () => {
+  const p = citationChip(), natural = p.chip.getBoundingClientRect().width;
+  p.ctx.chips();
+  assert.equal(p.chip.getBoundingClientRect().width, natural);
+  assert.ok(!p.chip.style.inlineSize);
+  p.chip.handlers.pointerenter({ pointerType: "mouse" });
+  for (const form of ["[@sample]", "\\cite{sample}", "@sample"]) {
+    const previous = p.chip.textContent;
+    p.tick();
+    if (form.length > previous.length) assert.equal(p.chip.textContent, previous, "expansion precedes the wider text");
+    await p.settle();
+    assert.equal(p.chip.textContent, form);
+    assert.equal(p.chip.getBoundingClientRect().width, form.length * 8 + 12);
+  }
+  assert.ok(!p.chip.style.inlineSize, "the completed cycle restores natural sizing");
+  p.tick(); await p.settle();
+  p.chip.handlers.pointerleave(); await p.settle();
+  assert.equal(p.chip.textContent, "@sample");
+  assert.equal(p.chip.getBoundingClientRect().width, natural);
+  assert.ok(!p.chip.style.inlineSize);
+  assert.equal(p.timers.size, 0);
 });
 
-test("RTL mirrors both citation beaks and preserves the Ibis logo and LTR keys", { skip: !process.env.IBIS_WEBSITE_URL }, async () => {
-  const url = new URL(process.env.IBIS_WEBSITE_URL);
-  assert.equal(url.protocol, "http:"); assert.equal(url.hostname, "127.0.0.1");
-  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
-  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
-  try {
-    for (const javaScriptEnabled of [false, true]) {
-      const page = await browser.newPage({ viewport: { width: 1180, height: 900 }, javaScriptEnabled, reducedMotion: "reduce" });
-      await page.goto(url.href + "#how");
-      if (javaScriptEnabled) await combineDemoReferences(page);
-      for (const dir of ["ltr", "rtl", "ltr"]) {
-        await page.locator("[data-picker]").evaluate((node, direction) => { node.dir = direction; }, dir);
-        const visual = await page.locator("[data-picker]").evaluate(node => {
-          const style = element => { const css = getComputedStyle(element); return { scale: css.scale, rotate: css.rotate, transform: css.transform }; };
-          const beaks = [...node.querySelectorAll(".picker-beak")];
-          return { beaks: beaks.map(style), logo: style(node.querySelector(".picker-mark")), images: [...node.querySelectorAll(".picker-mark img")].map(style),
-            direction: getComputedStyle(node.querySelector(".picker-shelf code")).direction,
-            order: beaks.map(beak => beak.getBoundingClientRect().left) };
-        });
-        assert.equal(visual.beaks.length, 2);
-        assert.ok(visual.beaks.every(beak => beak.scale === (dir === "rtl" ? "-1 1" : "none")));
-        assert.equal(visual.beaks[1].rotate, "180deg");
-        assert.deepEqual(visual.logo, { scale: "none", rotate: "none", transform: "none" });
-        assert.ok(visual.images.every(image => image.scale === "none" && image.rotate === "none" && image.transform === "none"));
-        assert.equal(visual.direction, "ltr");
-        assert.equal(visual.order[0] > visual.order[1], dir === "rtl", "the mirrored pair follows the logical citation order");
+test("leaving or re-entering a citation pill cancels old text; touch, reduced motion and hidden pages stay still", async () => {
+  const p = citationChip(); p.ctx.chips();
+  p.chip.handlers.pointerenter({ pointerType: "mouse" }); p.tick();
+  p.chip.handlers.pointerleave(); await p.settle();
+  assert.equal(p.chip.textContent, "@sample", "an old expansion cannot replace the reset text");
+  assert.ok(!p.chip.style.inlineSize);
+  p.chip.handlers.pointerenter({ pointerType: "mouse" }); p.tick();
+  p.chip.handlers.pointerleave(); p.chip.handlers.pointerenter({ pointerType: "mouse" });
+  await p.settle(); p.tick(); await p.settle();
+  assert.equal(p.chip.textContent, "[@sample]");
+  for (const reason of ["motion", "hover", "hidden"]) {
+    p.chip.handlers.pointerenter({ pointerType: "mouse" }); p.tick();
+    if (reason === "motion") { p.still.matches = true; p.still.handlers.change(); }
+    if (reason === "hover") { p.hover.matches = false; p.hover.handlers.change(); }
+    if (reason === "hidden") { p.ctx.document.hidden = true; p.events.visibilitychange(); }
+    await p.settle();
+    assert.equal(p.chip.textContent, "@sample", reason);
+    assert.ok(!p.chip.style.inlineSize, reason);
+    assert.equal(p.timers.size, 0, reason);
+    p.still.matches = false; p.hover.matches = true; p.ctx.document.hidden = false;
+  }
+  for (const pointerType of ["touch", "mouse"]) {
+    p.still.matches = pointerType === "mouse";
+    p.chip.handlers.pointerenter({ pointerType });
+    assert.equal(p.timers.size, 0);
+    assert.ok(!p.chip.style.inlineSize);
+  }
+});
+
+function shorthandPage() {
+  const { ctx, media } = context(), events = {}, timers = new Map();
+  let serial = 0;
+  const input = { ...control(), value: "see vale 417" }, parts = { ...control(), dataset: { before: "before", empty: "No match" } }, out = { dataset: { empty: "[@key, p. 12]" }, classList: classes() };
+  const buttons = ["fen ch 2", "reed 12-14", "see vale 33"].map(textContent => ({ ...control(), textContent }));
+  const box = { dataset: { references: JSON.stringify([{ key: "vale2024lanterns", label: "Vale 2024", words: "vale" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed" }]) },
+    querySelector: selector => ({ "[data-shorthand-input]": input, "[data-shorthand-parts]": parts, "[data-shorthand-out]": out })[selector], querySelectorAll: () => buttons };
+  ctx.document.querySelector = () => box;
+  ctx.document.createElement = () => ({ ...control(), dataset: {}, append(...children) { this.children = children; } });
+  ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.setTimeout = (fn, delay) => { const id = ++serial; timers.set(id, { fn, delay }); return id; };
+  ctx.clearTimeout = id => timers.delete(id);
+  ctx.getComputedStyle = () => ({ getPropertyValue: () => "120ms" });
+  const tick = () => { const [id, timer] = timers.entries().next().value; timers.delete(id); timer.fn(); return timer.delay; };
+  return { ctx, media, events, timers, input, parts, out, buttons, tick };
+}
+
+test("empty and unmatched shorthand show a citation placeholder, then recover with Try", () => {
+  const p = shorthandPage(); p.ctx.shorthand();
+  for (const value of ["", "   ", "missing", "see 417"]) {
+    p.input.value = value; p.input.handlers.input();
+    assert.equal(p.out.textContent, "[@key, p. 12]");
+    assert.equal(p.out.classList.contains("placeholder"), true);
+    assert.deepEqual(p.parts.children, value.trim() ? ["No match"] : []);
+  }
+  p.buttons[0].handlers.click();
+  assert.equal(p.out.textContent, "[@fen2023clouds, chap. 2]");
+  assert.equal(p.out.classList.contains("placeholder"), false);
+});
+
+test("idle shorthand types the next examples with live gloss, then stops permanently on focus, input or Try", () => {
+  const page = shorthandPage(); page.ctx.shorthand();
+  assert.equal(page.timers.values().next().value.delay, 3000);
+  for (const [example, citation] of [["fen ch 2", "[@fen2023clouds, chap. 2]"], ["reed 12-14", "[@reed2025maps, pp. 12–14]"],
+    ["see vale 33", "[see @vale2024lanterns, p. 33]"], ["see vale 417", "[see @vale2024lanterns, p. 417]"]]) {
+    page.tick();
+    for (let i = 0; i < example.length; i++) { page.tick(); assert.equal(page.input.value, example.slice(0, i + 1)); }
+    assert.equal(page.out.textContent, citation);
+    assert.equal(page.parts.children.at(-1).children[0].textContent, example.startsWith("fen") ? "ch 2" : example.split(" ").at(-1));
+  }
+  for (const action of ["focus", "input", "try"]) {
+    const p = shorthandPage(); p.ctx.shorthand(); p.tick(); p.tick();
+    if (action === "try") p.buttons[1].handlers.click(); else p.input.handlers[action]();
+    const value = p.input.value; assert.equal(p.timers.size, 0, action);
+    p.ctx.document.hidden = true; p.events.visibilitychange(); p.ctx.document.hidden = false; p.events.visibilitychange();
+    assert.equal(p.timers.size, 0); assert.equal(p.input.value, value);
+  }
+});
+
+test("idle shorthand pauses while hidden, waits after interaction and stays still under reduced motion", () => {
+  const p = shorthandPage(); p.ctx.shorthand(); p.tick(); p.tick();
+  const partial = p.input.value;
+  p.ctx.document.hidden = true; p.events.visibilitychange(); assert.equal(p.timers.size, 0);
+  assert.equal(p.input.value, partial);
+  p.ctx.document.hidden = false; p.events.visibilitychange();
+  assert.equal(p.timers.values().next().value.delay, 3000);
+  p.events.pointerdown(); assert.equal(p.timers.size, 1); assert.equal(p.timers.values().next().value.delay, 3000);
+  p.media.matches = true; p.media.change(); assert.equal(p.timers.size, 0);
+  const still = shorthandPage(); still.media.matches = true; still.ctx.shorthand(); assert.equal(still.timers.size, 0);
+});
+
+test("writing tabs rewrite one citation, keep their labels and support both arrows, Home and End", () => {
+  const { ctx } = context();
+  const tabs = apps.map(app => ({ ...control(), id: `app-${app.id}`, textContent: `@${app.id}`,
+    dataset: { output: app.output, explain: `${app.name}: ${app.note}` } }));
+  const output = { textContent: apps[0].output, classList: { remove() {}, add() {} } }, explanation = {}, panel = control();
+  panel.querySelector = selector => ({ "[data-out]": output, "[data-explanation]": explanation })[selector];
+  ctx.document.querySelector = () => ({ querySelectorAll: () => tabs, querySelector: () => panel });
+  ctx.writingApps();
+  const check = i => {
+    assert.equal(output.textContent, apps[i].output);
+    assert.equal(explanation.textContent, `${apps[i].name}: ${apps[i].note}`);
+    assert.deepEqual(tabs.map(tab => tab.textContent), apps.map(app => `@${app.id}`));
+    assert.equal(panel.attrs["aria-labelledby"], tabs[i].id);
+    assert.deepEqual(tabs.map(tab => tab.attrs["aria-selected"]), apps.map((_, n) => String(n === i)));
+    assert.deepEqual(tabs.map(tab => tab.tabIndex), apps.map((_, n) => n === i ? 0 : -1));
+  };
+  for (let i = 0; i < tabs.length; i++) { tabs[i].handlers.click(); check(i); }
+  const press = (i, key, next) => {
+    let prevented = false;
+    tabs[i].handlers.keydown({ key, preventDefault() { prevented = true; } });
+    assert.equal(prevented, true); assert.equal(tabs[next].focused, true); check(next);
+  };
+  press(3, "ArrowRight", 0); press(0, "ArrowLeft", 3);
+  press(3, "Home", 0); press(0, "End", 3);
+  press(3, "ArrowLeft", 2); press(2, "ArrowRight", 3);
+});
+
+test("RTL writing tabs follow the visual arrow direction", () => {
+  const { ctx } = context(), tabs = apps.map(app => ({ ...control(), dataset: { output: app.output, explain: app.note } }));
+  const output = { classList: classes() }, explanation = {};
+  const panel = { ...control(), querySelector: selector => selector === "[data-out]" ? output : explanation };
+  ctx.document.querySelector = () => ({ querySelectorAll: () => tabs, querySelector: () => panel });
+  ctx.getComputedStyle = () => ({ direction: "rtl" });
+  ctx.writingApps();
+  tabs[0].handlers.keydown({ key: "ArrowLeft", preventDefault() {} });
+  assert.equal(tabs[1].focused, true);
+  assert.equal(output.textContent, apps[1].output);
+  tabs[1].handlers.keydown({ key: "ArrowRight", preventDefault() {} });
+  assert.equal(tabs[0].focused, true);
+});
+
+test("home navigation keeps one current section at the top, on clicks and through scrolling", () => {
+  const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 300 };
+  const sections = ["try", "where", "why"].map((id, i) => ({ id, top: 1000 + i * 1000,
+    getBoundingClientRect() { return { top: this.top, bottom: this.top + 900 }; } }));
+  const links = sections.map(section => { const link = control(); link.setAttribute("href", `#${section.id}`);
+    link.getBoundingClientRect = () => ({ left: 0, right: 100 }); return link; });
+  bar.getBoundingClientRect = () => ({ left: 0, right: 300 });
+  const events = {}, window = { ...control(), innerHeight: 900, scrollY: 0 };
+  ctx.window = window; ctx.requestAnimationFrame = fn => fn();
+  ctx.document.documentElement.scrollHeight = 4000;
+  ctx.document.addEventListener = (name, fn) => { events[name] = fn; };
+  ctx.document.querySelectorAll = () => links;
+  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : sections.find(section => `#${section.id}` === selector);
+  const check = i => assert.deepEqual(links.map(link => link.attrs["aria-current"]), sections.map((_, n) => n === i ? "location" : undefined));
+  ctx.navigation(); check(0);
+  sections[0].top = -800; sections[1].top = 200; window.scrollY = 1800;
+  window.handlers.scroll(); check(1);
+  sections[2].top = 500;
+  events.click({ target: { closest: () => links[2] } }); window.handlers.scroll(); check(2);
+  window.handlers.wheel(); window.handlers.scroll(); check(1);
+  window.scrollY = 3100; window.handlers.scroll(); check(2);
+});
+
+test("an inner page reveals its current key on load without scrolling the document", () => {
+  const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 600,
+    getBoundingClientRect: () => ({ left: 0, right: 300 }) };
+  const current = { getBoundingClientRect: () => ({ left: 400, right: 480 }) };
+  ctx.window = { ...control(), innerHeight: 900, scrollY: 0 };
+  ctx.document.documentElement.scrollHeight = 2000;
+  ctx.document.querySelectorAll = () => [];
+  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : current;
+  ctx.navigation();
+  assert.equal(bar.scrollLeft, 196);
+  assert.equal(ctx.window.scrollY, 0);
+});
+
+test("RTL navigation removes its end fade when the last key is reached", () => {
+  const { ctx } = context(), bar = { ...control(), scrollLeft: 0, clientWidth: 300, scrollWidth: 600 };
+  ctx.document.querySelectorAll = () => [];
+  ctx.document.querySelector = selector => selector === ".index nav ul" ? bar : null;
+  ctx.window = { ...control(), innerHeight: 900, scrollY: 0 };
+  ctx.navigation();
+  assert.equal(bar.hasAttribute("data-at-start"), true);
+  assert.equal(bar.hasAttribute("data-at-end"), false);
+  bar.scrollLeft = -300; bar.handlers.scroll();
+  assert.equal(bar.hasAttribute("data-at-start"), false);
+  assert.equal(bar.hasAttribute("data-at-end"), true);
+});
+
+test("Copy copies only the command and reports clipboard refusal", async () => {
+  for (const allowed of [true, false]) {
+    const label = { textContent: "Copy" };
+    const { ctx } = context(), button = { ...control(), querySelector: () => label, dataset: { copy: 'ibis cite vale2024lanterns --locator "p. 12" --file sample.bib', copied: "Copied", failed: "Select to copy" } };
+    const written = [], timers = [];
+    let pecks = 0; ctx.peck = () => { pecks++; };
+    ctx.navigator.clipboard = { async writeText(value) { if (!allowed) throw Error("blocked"); written.push(value); } };
+    ctx.document.querySelectorAll = () => [button];
+    ctx.setTimeout = fn => { timers.push(fn); };
+    ctx.copyButtons(); await button.handlers.click();
+    assert.deepEqual(written, allowed ? [button.dataset.copy] : []);
+    assert.equal(label.textContent, allowed ? "Copied" : "Select to copy");
+    assert.equal(pecks, allowed ? 1 : 0);
+    timers[0](); assert.equal(label.textContent, "Copy");
+  }
+  const { ctx } = context(), button = control();
+  ctx.document.querySelectorAll = () => [button]; ctx.copyButtons();
+  assert.equal(button.hidden, true);
+});
+
+test("repeated Copy clicks return to Copy and ignore an older clipboard completion", async () => {
+  const { ctx } = context(), label = { textContent: "Copy" }, pending = [], timers = new Map();
+  const button = { ...control(), querySelector: () => label, dataset: { copy: "ibis mcp", copied: "Copied", failed: "Select to copy" } };
+  let serial = 0;
+  ctx.navigator.clipboard = { writeText: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) };
+  ctx.document.querySelectorAll = () => [button]; ctx.peck = () => {};
+  ctx.setTimeout = fn => { timers.set(++serial, fn); return serial; }; ctx.clearTimeout = id => timers.delete(id);
+  ctx.copyButtons();
+  const first = button.handlers.click(); pending[0].resolve(); await first;
+  const second = button.handlers.click(); pending[1].resolve(); await second;
+  for (const fn of [...timers.values()]) fn(); timers.clear();
+  assert.equal(label.textContent, "Copy");
+  const old = button.handlers.click(), latest = button.handlers.click();
+  pending[3].reject(Error("blocked")); await latest;
+  pending[2].resolve(); await old;
+  assert.equal(label.textContent, "Select to copy");
+  assert.equal(button.dataset.state, undefined);
+  for (const fn of timers.values()) fn();
+  assert.equal(label.textContent, "Copy");
+});
+
+// Optional existing browser runtime. All requests are fulfilled from disk; no listener or network.
+const hasFocusRing = node => { const css = getComputedStyle(node); return css.outlineStyle !== "none" && parseFloat(css.outlineWidth) > 0; };
+async function checkCitationPills(page) {
+  await page.mouse.move(0, 0);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.evaluate(() => {
+    const pills = [...document.querySelectorAll("main .key:not(code), .index nav .key")].filter(node => node.getClientRects().length);
+    const geometry = node => {
+      const range = document.createRange(); range.selectNodeContents(node);
+      const text = range.getBoundingClientRect(), box = node.getBoundingClientRect(), css = getComputedStyle(node);
+      return { text, box, natural: text.width + parseFloat(css.paddingLeft) + parseFloat(css.paddingRight) + parseFloat(css.borderLeftWidth) + parseFloat(css.borderRightWidth) };
+    };
+    const records = pills.map(node => ({ node, original: node.textContent, seen: new Set(), widths: new Set() }));
+    const errors = [];
+    function sample() {
+      for (const record of records) {
+        const { node, original } = record, { text, box } = geometry(node);
+        record.seen.add(node.textContent); record.widths.add(box.width);
+        if (text.left < box.left - .5 || text.right > box.right + .5) errors.push(`${original}: ${node.textContent} overflows`);
+        if (Math.abs((text.left + text.right - box.left - box.right) / 2) > .5) errors.push(`${original}: text is not centred`);
+        const label = node.closest(".index nav a")?.querySelector(".label");
+        if (label && getComputedStyle(label).position !== "absolute") {
+          const link = node.parentElement.getBoundingClientRect();
+          if (Math.abs((getComputedStyle(node).direction === "rtl" ? box.left - link.left : box.right - link.right)) > .5) errors.push(`${original}: sidebar pill moved from its aligned edge`);
+          if (Math.abs(label.getBoundingClientRect().top - box.top) > box.height) errors.push(`${original}: sidebar label wrapped`);
+        }
       }
+      if (window.citationCheck.running) requestAnimationFrame(sample);
+    }
+    window.citationCheck = { running: true, errors, records };
+    for (const { node, original } of records) {
+      const { box, natural } = geometry(node);
+      if (Math.abs(box.width - natural) > .5) errors.push(`${original}: resting width does not hug its text`);
+      node.dispatchEvent(new PointerEvent("pointerenter", { pointerType: "mouse" }));
+    }
+    sample();
+  });
+  await page.waitForFunction(() => window.citationCheck.records.every(({ node, original, seen }) =>
+    seen.has(`\\cite{${original.slice(1)}}`) && node.textContent === original && !node.style.inlineSize));
+  const result = await page.evaluate(() => {
+    const check = window.citationCheck; check.running = false;
+    for (const { node } of check.records) node.dispatchEvent(new PointerEvent("pointerleave"));
+    return { errors: [...new Set(check.errors)], records: check.records.map(({ original, seen, widths }) => ({ original, seen: [...seen], widths: widths.size })) };
+  });
+  assert.deepEqual(result.errors, [], "every cycling pill stays centred and contains its text, including the signature");
+  for (const { original, seen, widths } of result.records) {
+    assert.deepEqual(seen, [original, `[@${original.slice(1)}]`, `\\cite{${original.slice(1)}}`]);
+    assert.ok(widths > 3, `${original}: width passes through intermediate sizes`);
+  }
+  const pager = page.locator(".next-page .key"), original = await pager.innerText();
+  const before = await pager.boundingBox();
+  await pager.hover();
+  await page.waitForFunction(original => document.querySelector(".next-page .key").textContent !== original, original);
+  assert.equal(await pager.evaluate(node => getComputedStyle(node).boxShadow), "none", "hover fills the pill without a ring");
+  assert.equal(await page.locator(".next-page a").evaluate(hasFocusRing), false);
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(original => {
+    const node = document.querySelector(".next-page .key"); return node.textContent === original && !node.style.inlineSize;
+  }, original);
+  assert.equal((await pager.boundingBox()).width, before.width, "pointer leave restores the resting width");
+  const link = page.locator(".next-page a");
+  await link.evaluate(node => node.addEventListener("click", event => event.preventDefault(), { once: true }));
+  await link.click(); assert.equal(await link.evaluate(hasFocusRing), false, "pointer activation has no focus ring");
+  await link.press("Tab"); await page.keyboard.press("Shift+Tab");
+  assert.equal(await link.evaluate(hasFocusRing), true, "keyboard focus keeps its ring");
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.mouse.move(0, 0);
+  await pager.hover();
+  await page.waitForTimeout(300);
+  assert.equal(await pager.innerText(), original, "reduced motion never cycles");
+  assert.equal(await pager.evaluate(node => node.getAnimations().length), 0, "reduced motion never transitions");
+  await page.mouse.move(0, 0);
+  await page.locator("h1").click();
+}
+const searchGeometry = node => {
+  const css = getComputedStyle(node), box = node.getBoundingClientRect(), rtl = css.direction === "rtl";
+  const start = rect => rtl ? box.right - rect.right : rect.left - box.left;
+  const input = node.querySelector("input"), query = getComputedStyle(input), mark = [...node.querySelectorAll(".picker-mark img")].find(img => img.getClientRects().length).getBoundingClientRect();
+  return { height: box.height, padding: css.padding, mark: [start(mark), mark.top - box.top, mark.width, mark.height],
+    query: [start(input.getBoundingClientRect()), query.height, query.padding, query.font, query.letterSpacing], placeholder: getComputedStyle(input, "::placeholder").color };
+};
+test("all routes fit the requested viewports in both themes and directions; visitor controls work", { skip: !process.env.IBIS_PLAYWRIGHT_MODULE }, async () => {
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE, ignoreDefaultArgs: ["--hide-scrollbars"] });
+  const root = resolve("website/dist"), screenshots = resolve(".local/website-review");
+  const headers = await readFile(join(root, "_headers"), "utf8");
+  const csp = headers.match(/^  Content-Security-Policy: (.+)$/m)[1];
+  await mkdir(screenshots, { recursive: true });
+  try {
+    for (const [width, height] of [[1100, 600], [1270, 800], [375, 812]]) for (const colorScheme of ["light", "dark"]) for (const direction of ["ltr", "rtl"]) {
+      const page = await browser.newPage({ viewport: { width, height }, colorScheme, reducedMotion: "reduce", hasTouch: width === 375, isMobile: width === 375 });
+      const errors = []; page.on("pageerror", error => errors.push(error.message));
+      page.on("console", message => { if (message.type() === "error" && /Content Security Policy/i.test(message.text())) errors.push(message.text()); });
+      await page.addInitScript(direction => {
+        document.addEventListener("DOMContentLoaded", () => { document.documentElement.dir = direction; });
+        Object.defineProperty(navigator, "clipboard", { value: { async writeText(value) { window.copiedCommand = value; } } });
+      }, direction);
+      await page.route("**/*", async route => {
+        const url = new URL(route.request().url());
+        if (url.hostname !== "ibis.test") return route.abort();
+        const path = url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname;
+        const type = path.endsWith(".html") ? "text/html" : path.endsWith(".css") ? "text/css" : /\.(m?js)$/.test(path) ? "text/javascript" : path.endsWith(".svg") ? "image/svg+xml" : undefined;
+        let body;
+        try { body = await readFile(join(root, path)); }
+        catch (error) {
+          if (error.code !== "ENOENT") throw error;
+          return route.fulfill({ path: join(root, "404.html"), status: 404, contentType: "text/html", headers: { "content-security-policy": csp } });
+        }
+        await route.fulfill({ body, contentType: type, headers: path.endsWith(".html") ? { "content-security-policy": csp } : {} });
+      });
+      let chosenDark, homeSearch;
+      for (const path of ["/", "/get/", "/features/", "/cli/", "/missing/nested/page"]) {
+        await page.goto(`https://ibis.test${path}`);
+        if (path === "/") {
+          await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
+          homeSearch = await page.locator("[data-picker] .picker-search").evaluate(searchGeometry);
+        }
+        if (width === 1270 && !path.startsWith("/missing/")) await checkCitationPills(page);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `${path} fits ${width} ${colorScheme}`);
+        assert.equal(await page.getByRole("heading", { level: 1 }).count(), 1);
+        assert.deepEqual(await page.locator("body *").evaluateAll(nodes => nodes.filter(node => {
+          if (!node.getClientRects().length) return false;
+          const css = getComputedStyle(node);
+          return (/auto|scroll/.test(css.overflowY) && node.scrollHeight > node.clientHeight + 1) ||
+            (node.tagName !== "PRE" && /auto|scroll/.test(css.overflowX) && node.scrollWidth > node.clientWidth + 1);
+        }).map(node => `${node.tagName}.${node.className}`)), [], `${path}: no unexpected nested scrollers at ${width}×${height} ${direction}`);
+        const missing = path.startsWith("/missing/");
+        assert.equal(await page.locator('.index nav a[aria-current]').count(), missing ? 0 : 1);
+        if (!missing) assert.equal(await page.locator('.index nav a[aria-current]').evaluate(node => {
+          const chip = node.getBoundingClientRect(), bar = node.closest("ul").getBoundingClientRect();
+          return chip.left >= bar.left - 1 && chip.right <= bar.right + 1;
+        }), true, `${path} current key is in view`);
+        if (width === 375) {
+          assert.equal(await page.locator(".index nav .key").count(), 6);
+          assert.equal(await page.locator(".index nav ul").evaluate(node => node.scrollWidth <= node.clientWidth + 1), true, "six keys fit without scrolling");
+        }
+        assert.equal(await page.getByRole("link", { name: "Source on GitHub", exact: true }).count(), 1);
+        assert.equal(await page.locator('footer .outbound').count(), 3);
+        assert.equal(await page.locator('.rows .outbound, .button .outbound, .key .outbound, a[href^="/#"] .outbound, a[href^="#"] .outbound').count(), 0);
+        assert.equal(await page.locator('.outbound').evaluateAll(marks => marks.every(mark => {
+          const end = mark.parentElement, range = document.createRange(); range.selectNodeContents(end.firstChild);
+          const word = [...range.getClientRects()].at(-1), arrow = mark.getBoundingClientRect();
+          return end.classList.contains("outbound-end") && arrow.top < word.bottom && arrow.bottom > word.top;
+        })), true, "outbound marks stay with their last word");
+        await page.screenshot({ path: join(screenshots, `${path.replaceAll("/", "") || "home"}-${width}-${colorScheme}-${direction}.png`), fullPage: true });
+        await page.locator("h1").click();
+        await page.keyboard.press("?");
+        assert.equal(await page.getByRole("dialog", { name: "Keyboard shortcuts" }).isVisible(), true);
+        assert.equal(await page.getByRole("dialog").evaluate(node => node.scrollHeight <= node.clientHeight + 1), true, "keyboard help fits the viewport");
+        await page.keyboard.press("Escape");
+        assert.equal(await page.getByRole("dialog").isVisible(), false);
+        const helpButton = page.getByRole("button", { name: "Keyboard shortcuts ?", exact: true });
+        await helpButton.click(); await page.keyboard.press("Escape");
+        assert.equal(await helpButton.evaluate(node => node === document.activeElement), true, "Escape returns focus to the help button");
+        if (missing) {
+          assert.equal(await page.getByRole("heading", { name: "Page not found" }).isVisible(), true);
+          if (width >= 992) assert.equal(await page.locator("h1").evaluate(node => {
+            const content = node.getBoundingClientRect(), sidebar = document.querySelector(".index").getBoundingClientRect();
+            return document.documentElement.dir === "rtl" ? content.right < sidebar.left : content.left > sidebar.right;
+          }), true, "404 content clears the sidebar");
+          await page.getByRole("link", { name: "Return home", exact: true }).click();
+          assert.equal(new URL(page.url()).pathname, "/");
+          continue;
+        }
+        if (chosenDark !== undefined) assert.equal(await page.getByRole("switch").getAttribute("aria-checked"), chosenDark);
+        if (path === "/get/") {
+          assert.equal(await page.locator('.platform a[href*="/releases/download/"]:visible').count(), 5);
+          assert.equal(await page.getByRole("heading", { name: "Choose your library", exact: true }).isVisible(), true);
+          assert.equal(await page.getByRole("heading", { name: "Press your shortcut", exact: true }).isVisible(), true);
+          assert.equal(await page.locator("details").count(), 0);
+        }
+        if (path === "/cli/") {
+          assert.deepEqual(await page.locator(".shorthand-picker .picker-search").evaluate(searchGeometry), homeSearch, "shorthand uses the demo search geometry, type and placeholder colour");
+          const field = page.locator("[data-shorthand-input]"), output = page.locator("[data-shorthand-out]"), firstTry = page.locator("[data-try]").first();
+          await field.click();
+          assert.equal(await field.evaluate(hasFocusRing), false, "pointer focus gives the search no ring");
+          assert.equal(await page.locator(".shorthand-picker .picker-panel").evaluate(hasFocusRing), false, "the panel has no focus outline");
+          await field.press("Tab"); await page.keyboard.press("Shift+Tab");
+          assert.equal(await field.evaluate(hasFocusRing), true, "keyboard focus rings the search field");
+          for (const value of ["", "missing"]) {
+            await field.fill(value);
+            assert.equal(await field.getAttribute("placeholder"), "Try see vale 417");
+            assert.equal(await output.innerText(), "[@key, p. 12]");
+            assert.equal(await output.evaluate(node => getComputedStyle(node).color === getComputedStyle(document.querySelector("#shorthand .try")).color), true, "empty citations use secondary text");
+            if (value) assert.equal(await page.locator("[data-shorthand-parts]").evaluate(node => {
+              const range = document.createRange(); range.selectNodeContents(node);
+              const text = range.getBoundingClientRect(), input = document.querySelector("[data-shorthand-input]").getBoundingClientRect();
+              return Math.abs(getComputedStyle(node).direction === "rtl" ? text.right - input.right : text.left - input.left) < 1;
+            }), true, "no-match text starts at the query's start edge");
+            else assert.equal(await page.locator("[data-shorthand-parts]").innerText(), "");
+          }
+          await firstTry.click();
+          assert.equal(await field.inputValue(), "fen ch 2");
+          assert.equal(await output.innerText(), "[@fen2023clouds, chap. 2]");
+          assert.equal(await firstTry.evaluate(hasFocusRing), false, "Try pointer activation leaves no ring");
+          assert.equal(await firstTry.evaluate(node => {
+            const row = node.parentElement, gap = row.getBoundingClientRect().top - row.previousElementSibling.getBoundingClientRect().bottom;
+            return gap > 0 && Math.abs(gap - parseFloat(getComputedStyle(row).marginBlockStart)) < 1;
+          }), true, "Try follows the sentence with paragraph spacing");
+          await firstTry.press("Tab"); await page.keyboard.press("Shift+Tab");
+          assert.equal(await firstTry.evaluate(hasFocusRing), true, "Try keyboard focus keeps its ring");
+        }
+        if (path === "/cli/") for (const button of await page.getByRole("button", { name: "Copy", exact: true }).all()) {
+          const command = await button.getAttribute("data-copy");
+          await button.click();
+          assert.equal(await page.evaluate(() => window.copiedCommand), command);
+          assert.equal(await button.innerText(), "Copied");
+          assert.equal(await button.evaluate(hasFocusRing), false, "Copy pointer activation leaves no ring");
+        }
+        if (path !== "/") {
+          const shortcut = await page.evaluate(() => document.documentElement.dataset.platform === "macos" ? "Meta+Shift+Y" : "Control+Shift+Y");
+          if (path === "/cli/") {
+            await page.locator("[data-shorthand-input]").focus();
+            await page.keyboard.press(shortcut);
+            assert.equal(new URL(page.url()).pathname, "/cli/");
+            await page.locator("h1").click();
+          }
+          await page.keyboard.press(shortcut);
+          await page.waitForURL("https://ibis.test/#try");
+          await page.getByRole("combobox", { name: "Search the made-up library" }).waitFor();
+          assert.equal(await page.getByRole("combobox", { name: "Search the made-up library" }).evaluate(node => node === document.activeElement), true);
+          continue;
+        }
+        assert.equal(await page.locator(".picker-primary").isVisible(), true);
+        assert.equal(await page.locator(".picker-library").isVisible(), true);
+        const query = page.getByRole("combobox", { name: "Search the made-up library" });
+        assert.equal(await query.inputValue(), "");
+        assert.equal(await page.getByRole("listbox").getByRole("option").count(), 3);
+        assert.equal(await page.getByRole("listbox", { name: "Recently added" }).isVisible(), true);
+        const panelHeight = await page.locator("[data-picker] .picker-panel").evaluate(node => node.getBoundingClientRect().height);
+        assert.equal(await page.locator("[data-picker] .picker-search").evaluate(node => {
+          const field = node.querySelector(".picker-field").getBoundingClientRect(), controls = node.querySelector(".picker-controls").getBoundingClientRect();
+          return Math.abs(field.top + field.height / 2 - controls.top - controls.height / 2) < 1;
+        }), true, "search and format share one row");
+        assert.equal(await page.locator(".picker-foot").evaluate(node => {
+          const foot = node.getBoundingClientRect();
+          return [...node.querySelectorAll(".picker-actions > *")].every(control => {
+            const rect = control.getBoundingClientRect();
+            return rect.top >= foot.top && rect.bottom <= foot.bottom && rect.left >= foot.left && rect.right <= foot.right;
+          });
+        }), true, "all footer columns fit one row");
+        assert.equal(await page.locator(".picker-more").count(), 1);
+        const format = page.getByRole("combobox", { name: "Copy format", exact: true });
+        if (width === 375) await format.tap(); else await format.click();
+        assert.equal(await format.evaluate(node => node.matches(":open")), true, "mouse or touch opens the native format menu");
+        await page.keyboard.press("End"); await page.keyboard.press("Enter");
+        assert.equal(await format.inputValue(), "keys");
+        assert.equal(await page.locator(".picker-shelf code").innerText(), "vale2024lanterns");
+        assert.equal(await page.getByRole("button", { name: "Copy as Keys only", exact: true }).isVisible(), true);
+        await format.focus(); await page.keyboard.press("Space");
+        assert.equal(await format.evaluate(node => node.matches(":open")), true, "keyboard opens the native menu");
+        await page.keyboard.press("Home"); await page.keyboard.press("Enter");
+        assert.equal(await format.inputValue(), "pandoc");
+        await query.focus();
+        assert.equal(await query.evaluate(node => getComputedStyle(node).outlineStyle !== "none" && parseFloat(getComputedStyle(node).outlineWidth) > 0), true, "demo search has a visible keyboard focus ring");
+        await query.press("Tab");
+        assert.equal(await format.evaluate(node => node === document.activeElement), true, "Tab moves from empty search to the format selector");
+        if (width === 375) {
+          assert.equal(await page.locator(".picker-more").innerText(), "More");
+          assert.equal(await page.locator(".picker-primary .picker-action-label").isVisible(), true);
+          assert.equal(await page.locator(".picker-primary .key-caps").isVisible(), false);
+          assert.equal(await page.locator("[data-picker] select").evaluate(node => node.getBoundingClientRect().height < 44), true, "format control stays slim");
+          assert.equal(await page.locator(".picker-actions button").evaluateAll(nodes => nodes.every(node => node.getBoundingClientRect().height < 44)), true, "footer actions stay slim");
+          const add = page.getByRole("button", { name: "Add", exact: true });
+          await add.scrollIntoViewIfNeeded();
+          const box = await add.boundingBox();
+          await page.touchscreen.tap(box.x + box.width / 2, box.y - (44 - box.height) / 2 + 2);
+          assert.equal(await page.getByRole("button", { name: "Remove", exact: true }).isVisible(), true, "invisible hit area activates Add");
+          await page.getByRole("button", { name: "Remove", exact: true }).click();
+        }
+        await query.focus(); await query.press("ArrowDown");
+        assert.equal(await page.locator(".picker-shelf code").innerText(), "[@fen2023clouds]", "arrow keys choose the next reference");
+        for (const name of ["Add A field guide to clockwork clouds to citation", "Add Mapping the quiet islands of an invented sea to citation"]) {
+          const tile = page.getByRole("button", { name, exact: true });
+          if (width === 375) await tile.tap(); else await tile.click();
+        }
+        assert.equal(await page.locator(".picker-shelf code").innerText(), "[@fen2023clouds; @reed2025maps]", "tiles combine references in citation order");
+        for (const name of ["Remove A field guide to clockwork clouds from citation", "Remove Mapping the quiet islands of an invented sea from citation"]) {
+          await page.getByRole("button", { name, exact: true }).click();
+        }
+        await query.fill("not in this invented library");
+        assert.equal(await page.getByText("No matching references", { exact: true }).isVisible(), true);
+        assert.equal(await page.getByRole("button", { name: "Copy as Pandoc", exact: true }).isDisabled(), true);
+        await query.fill("lantern");
+        assert.equal(await page.getByRole("listbox", { name: "Best matches" }).isVisible(), true);
+        assert.equal(await page.locator("[data-picker] .picker-panel").evaluate(node => node.getBoundingClientRect().height), panelHeight, "search keeps the three-row panel height");
+        await query.press("Enter");
+        assert.equal(await page.getByRole("button", { name: "Paste the copied citation into the sentence" }).evaluate(hasFocusRing), true, "keyboard Copy transfers its ring to Paste");
+        await page.getByRole("button", { name: "Paste the copied citation into the sentence" }).click();
+        assert.match(await page.locator("[data-result]").innerText(), /\[@vale2024lanterns\]/);
+        await query.focus(); await query.press("Escape");
+        assert.equal(await query.inputValue(), "");
+        assert.equal(await page.locator(".picker-shelf").isVisible(), true);
+        await query.press("Escape");
+        assert.equal(await page.locator("[data-picker] .picker-panel").isVisible(), false);
+        await page.getByRole("button", { name: "Open the picker again", exact: true }).click();
+        assert.equal(await query.evaluate(hasFocusRing), false, "pointer reopen focuses search without a ring");
+        assert.equal(await page.locator(".picker-shelf").isVisible(), true);
+        await page.getByRole("tab", { name: "@typst", exact: true }).click();
+        assert.equal(await page.getByRole("tab", { name: "@typst", exact: true }).evaluate(hasFocusRing), false, "pointer tabs leave no ring");
+        await page.getByRole("tab", { name: "@typst", exact: true }).press("ArrowLeft");
+        assert.equal(await page.getByRole("tab", { selected: true }).evaluate(hasFocusRing), true, "arrow-key tabs keep a ring");
+        await page.getByRole("tab", { name: "@typst", exact: true }).click();
+        assert.equal(await page.locator("[data-out]").innerText(), "@vale2024lanterns[p. 12]");
+        assert.deepEqual(await page.getByRole("tab").allTextContents(), apps.map(app => `@${app.id}`));
+        assert.deepEqual(await page.evaluate(() => document.getAnimations().filter(a => a.playState === "running").map(a => a.animationName)), []);
+        const dark = await page.getByRole("switch").getAttribute("aria-checked");
+        await page.getByRole("switch").click();
+        chosenDark = await page.getByRole("switch").getAttribute("aria-checked");
+        assert.notEqual(chosenDark, dark);
+        assert.equal(await page.getByRole("switch").evaluate(node => {
+          const track = node.querySelector(".appearance-track").getBoundingClientRect(), thumb = node.querySelector(".appearance-thumb").getBoundingClientRect();
+          return thumb.left >= track.left && thumb.right <= track.right;
+        }), true, "the theme thumb stays inside its track in both directions");
+        await page.getByRole("switch").click();
+        chosenDark = dark;
+      }
+      await page.getByRole("button", { name: "Use system" }).click();
+      assert.equal(await page.getByRole("switch").getAttribute("aria-checked"), String(colorScheme === "dark"));
+      assert.deepEqual(errors, []);
       await page.close();
     }
   } finally { await browser.close(); }

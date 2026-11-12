@@ -12,24 +12,24 @@ import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classify, parseNameStatus } from "./ci-paths.mjs";
 
-/** Outline drawings stay on the 20 pt grid, inside the 16 pt live area.
+/** Lucide outlines stay on the 24 unit grid, with room for the source stroke.
  * Curves use bounded control points too: no hidden transform can move them. */
 export function iconProblems(svg) {
   const problems = [];
-  const expected = { xmlns: "http://www.w3.org/2000/svg", width: "20", height: "20", viewBox: "0 0 20 20", fill: "none", stroke: "currentColor", "stroke-width": "1.5", "stroke-linecap": "round", "stroke-linejoin": "round" };
+  const expected = { xmlns: "http://www.w3.org/2000/svg", width: "24", height: "24", viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" };
   const root = svg.match(/^<svg\s+([^>]+)><path d="([^"]+)"\s*\/><\/svg>\s*$/);
   if (!root) return ["one svg and one untransformed path required"];
   // Every attribute counts, however it is quoted: nothing unread can move the drawing.
   const attribute = /([\w:-]+)\s*=\s*(?:"([^"]*)"|'([^']*)')/g;
   const attributes = [...root[1].matchAll(attribute)].map(([, key, double, single]) => [key, double ?? single]);
   const unread = root[1].replace(attribute, "").trim();
-  if (unread || attributes.length !== Object.keys(expected).length || new Set(attributes.map(([key]) => key)).size !== attributes.length || attributes.some(([key, value]) => expected[key] !== value)) problems.push("20 pt grid, no fill, 1.5 pt stroke, round caps and joins required");
+  if (unread || attributes.length !== Object.keys(expected).length || new Set(attributes.map(([key]) => key)).size !== attributes.length || attributes.some(([key, value]) => expected[key] !== value)) problems.push("24 unit grid, no fill, 2 unit source stroke, round caps and joins required");
   const tokens = root[2].match(/[a-z]|[-+]?(?:\d*\.\d+|\d+\.?\d*)/gi) ?? [];
   if (root[2].replace(/[a-z]|[-+]?(?:\d*\.\d+|\d+\.?\d*)|[\s,]/gi, "")) problems.push("invalid path data");
   const counts = { M: 2, L: 2, H: 1, V: 1, C: 6, S: 4, Q: 4 };
   let index = 0, command = "", x = 0, y = 0, startX = 0, startY = 0;
   let controlX = 0, controlY = 0, previous = "";
-  const within = (a, b) => a >= 2.75 && a <= 17.25 && b >= 2.75 && b <= 17.25;
+  const within = (a, b) => a >= 1 && a <= 23 && b >= 1 && b <= 23;
   if (tokens[0] !== "M") problems.push("path must start with absolute Move");
   while (index < tokens.length) {
     if (/^[a-z]$/i.test(tokens[index])) command = tokens[index++];
@@ -45,16 +45,16 @@ export function iconProblems(svg) {
     else if (upper === "V") y = values[0] + (relative ? y : 0);
     else {
       const originX = x, originY = y;
-      if (upper === "S" && ["C", "S"].includes(previous) && !within(2 * x - controlX, 2 * y - controlY)) problems.push("stroke leaves the 16 pt live area");
+      if (upper === "S" && ["C", "S"].includes(previous) && !within(2 * x - controlX, 2 * y - controlY)) problems.push("path leaves room for less than half the source stroke");
       for (let i = 0; i < count; i += 2) {
         x = values[i] + (relative ? originX : 0); y = values[i + 1] + (relative ? originY : 0);
-        if (!within(x, y)) problems.push("stroke leaves the 16 pt live area");
+        if (!within(x, y)) problems.push("path leaves room for less than half the source stroke");
       }
       if (["C", "S"].includes(upper)) {
         controlX = values[count - 4] + (relative ? originX : 0); controlY = values[count - 3] + (relative ? originY : 0);
       }
     }
-    if (!within(x, y)) problems.push("stroke leaves the 16 pt live area");
+    if (!within(x, y)) problems.push("path leaves room for less than half the source stroke");
     if (upper === "M") { startX = x; startY = y; command = relative ? "l" : "L"; }
     previous = upper;
   }

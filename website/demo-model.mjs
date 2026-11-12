@@ -20,7 +20,7 @@ function renderKeys(format, keys) {
   return "";
 }
 export function createDemo() {
-  const state = { query: "lantern", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true, preview: true };
+  const state = { query: "", selected: 0, format: "pandoc", added: [], copied: null, pasted: null, open: true };
   const found = () => {
     const words = state.query.toLowerCase().split(/\p{White_Space}+/u).filter(Boolean);
     return references.filter(ref => words.every(word => `${ref.authors} ${ref.title} ${ref.year} ${ref.key} ${ref.where}`.toLowerCase().includes(word)));
@@ -34,6 +34,6 @@ export function createDemo() {
     },
     copy() { const value = output(); if (!value) return false; state.copied = value; return true; },
     paste() { if (state.copied) state.pasted = state.copied; },
-    back() { if (state.preview) state.preview = false; else if (state.query) setQuery(""); else state.open = false; },
+    back() { if (state.query) setQuery(""); else state.open = false; },
   };
 }

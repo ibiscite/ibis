@@ -32,4 +32,6 @@ Built for key outputs: **More › Check Against a .bib File…** chooses the fil
 
 ## Cited since opening
 
+Copying captures the list's revision before formatting and checks it again at the clipboard write. An edit, including Reset followed by Undo, retires that copy. The sheet keeps the current list and says it changed; an obsolete copy or save response cannot replace newer feedback.
+
 **More › Cited Since Opening…** opens a sheet, named for what Ibis knows: what it copied since it opened or since a reset, never the document's bibliography. Its lead says it covers **every project since Ibis opened**; choosing a project neither partitions nor clears the list. It lists each reference once, in the order first cited, with Remove; **Undo** names its action ("Undo Remove Okafor & Lima, 2018"), and undoing keeps anything copied since. **Reset List** is undoable too. Under the list is the bibliography in the output's style (APA when the output is keys), exactly what **Copy Bibliography** writes as rich and plain text together. **Save…** writes it as rich text, a web page or plain text. A reference from a library that isn't open is left out and counted, never guessed. The list holds record identities, in memory only, and leaves it only through Save.

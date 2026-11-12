@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Check the actual PR/queue/push range, excluding only ordinary merge messages.
+# Check the actual PR/queue/push range, excluding ordinary merges and GitHub-committed release-app commits.
 # The separate identity guard still validates public maintainer metadata.
 set -euo pipefail
 if ! [[ ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ ]]; then
@@ -19,6 +19,10 @@ for commit in $commits; do
   subject=$(git show -s --format=%s "$commit")
   read -r -a parents <<< "$parents"
   if [ "${#parents[@]}" = 2 ] && [[ $subject == Merge* ]]; then continue; fi
+  author_email=$(git show -s --format=%ae "$commit")
+  committer=$(git show -s --format='%cn <%ce>' "$commit")
+  if [ "$author_email" = '347725936+ibis-release[bot]@users.noreply.github.com' ] &&
+     [ "$committer" = 'GitHub <noreply@github.com>' ]; then continue; fi
   signoffs=$(git show -s --format='%(trailers:key=Signed-off-by,valueonly)' "$commit")
   if ! grep -Eq '^[^<>]+ <[^<>[:space:]]+@[^<>[:space:]]+>$' <<< "$signoffs"; then
     echo "::error::Commit ${commit:0:12} needs a Signed-off-by trailer."

@@ -4,8 +4,9 @@
  * for its queue's pending[n].complete(value), inside React act(). Searches and
  * previews take invented engine fixtures; copy validates the returned ticket/hash
  * and writes that exact preview to the clipboard, never a supplied copy receipt.
- * Like macOS, its successful write captures the current app and presentation;
- * App must suppress stale completion feedback even after that native write.
+ * A copy captures its presentation and clipboard sequence before its worker
+ * starts, and refuses a superseded write. App also suppresses stale feedback
+ * when a successful native write's response arrives after reopening.
  *
  * show_copied_notice queues delivery first: completing it consumes a matching
  * one-use proof, checks clipboard ownership/sequence and picker presentation,
@@ -90,6 +91,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const receiptRoot = globalThis.document.createElement("div");
   const showReceipt = renderNotice(receiptRoot, "macos");
   let presentation = 0;
+  let copyGeneration = 0;
   let visible = true;
   let nextDelivery = 0;
   let proof: Proof | null = null;
@@ -179,7 +181,9 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     copy_file_citation: (args) => {
       const replaces = (args.replaces ?? []) as string[];
       const request = { ...args, replaces };
+      const generation = copyGeneration, sequence = clipboard.sequence;
       return copy.enqueue(request, () => {
+        if (generation !== copyGeneration || sequence !== clipboard.sequence) throw { code: "cancelled" };
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
         Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
@@ -188,7 +192,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };
       }).then((outcome) => holdCopyReplies ? copyReplies.enqueue(outcome, () => outcome) : outcome);
     },
-    hide_picker: async () => { visible = false; await emit("picker:hidden"); return null; },
+    hide_picker: async () => { copyGeneration += 1; visible = false; await emit("picker:hidden"); return null; },
     show_copied_notice: (args) => {
       const request = args as unknown as DeliveryRequest;
       const noticeOwner = ++latestNotice;
@@ -209,6 +213,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     get visible() { return visible; },
     async reopen() {
       presentation += 1;
+      copyGeneration += 1;
       proof = null;
       captured = capture();
       visible = true;
