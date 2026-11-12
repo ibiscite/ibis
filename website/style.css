@@ -73,9 +73,17 @@ section { padding-block: var(--website-section-pad); }
 .journey > li { counter-increment: step; }
 .action:first-child::before { content: counter(step) ". "; font-weight: var(--strong); }
 .draft { margin: 0; font-size: var(--type-search-size); line-height: 1.55; }
-.caret { display: inline-block; width: var(--ring-width); height: 1.05em; margin-inline-start: var(--space-1); vertical-align: -.15em; background: var(--scarlet); }
+.draft + p { margin-block-start: var(--website-paragraph-gap); }
+.caret { display: inline-block; inline-size: var(--border-width); block-size: .75em; vertical-align: -.05em; background: currentColor; }
 .draft-end { white-space: nowrap; }
-.where-doc .draft .key::after, #shorthand .draft .key::after { content: ""; display: inline-block; inline-size: var(--ring-width); block-size: 1.05em; margin-inline-start: var(--space-1); vertical-align: -.15em; background: currentColor; }
+/* Every variant occupies the same cell; only the live content is seen or read. */
+.draft-stack { display: grid; }
+.draft-stack > * { grid-area: 1 / 1; align-self: start; min-inline-size: 0; }
+.draft-reserve { visibility: hidden; pointer-events: none; user-select: none; }
+p.draft .key { padding: 0; border: 0; border-radius: 0; background: transparent; white-space: normal; overflow-wrap: anywhere; transition: none; }
+/* A citation moves to the next line whole; on the narrowest phones it may break only at a space. */
+#shorthand p.draft .key { overflow-wrap: normal; }
+@media (min-width: 30rem) { #shorthand p.draft .key { white-space: nowrap; } }
 .picker { margin: 0; font: var(--type-body-size)/1.4 var(--font); }
 .picker figcaption { margin-bottom: var(--space-3); }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-3) var(--space-6); margin-top: var(--space-8); }
@@ -219,8 +227,7 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .appearance-thumb { transition: translate var(--dur-1) var(--ease-out); }
   section:target h2 { animation: land-text var(--dur-2) var(--ease-out); }
   .reveal { animation: reveal var(--dur-2) var(--ease-out) both; }
-  .reveal .caret, .reveal .draft .key::after { animation: caret-blink calc(5 * var(--dur-2)) step-end infinite; }
-  .draft .key { animation: receipt var(--dur-2) var(--ease-out); }
+  .caret { animation: caret-blink calc(5 * var(--dur-2)) step-end infinite; }
 }
 @keyframes land-text { from { color: var(--scarlet); } }
 @keyframes reveal { from { opacity: 0; translate: 0 var(--website-reveal); } }
@@ -238,13 +245,16 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 .chips .key, .try button { position: relative; border: 0; cursor: pointer; padding: .2em .45em; font: var(--type-body-size)/1.5 var(--mono); }
 .try button:hover { box-shadow: inset 0 0 0 var(--border-width) currentColor; }
 .chips .key[aria-selected="true"] { background: var(--scarlet); color: var(--website-bg); box-shadow: none; }
+/* Inactive panels still size the shared cell, so switching setup never moves the next paragraph. */
+.tab-panels { display: grid; margin-bottom: var(--website-paragraph-gap); }
+.tab-panels > [role="tabpanel"] { grid-area: 1 / 1; align-self: start; min-inline-size: 0; }
+.tab-panels > [aria-hidden="true"] { visibility: hidden; }
+.tab-panels > [role="tabpanel"] > :last-child { margin-bottom: 0; }
 .try button { color: var(--scarlet); background: var(--website-accent-soft); border-radius: var(--website-chip-radius); }
 .try { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
-.draft + .try { margin-block-start: var(--website-paragraph-gap); }
-.draft .key.placeholder { color: var(--text-secondary); }
+.draft-stack + .try { margin-block-start: var(--website-paragraph-gap); }
 .where-doc { margin-bottom: var(--website-paragraph-gap); padding-block: var(--space-4); border-block: var(--border-width) solid var(--separator); }
 .where-doc .draft { margin-bottom: var(--space-2); }
-.where-doc .draft .key, #shorthand .draft .key { display: inline; white-space: normal; overflow-wrap: anywhere; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
 .where-doc .small { margin: 0; }
 /* Today: one drawn mark per state, filled for what you can use now. */
 .roadmap li::before { content: ""; flex: none; align-self: start; margin-block-start: calc(.5lh - .25rem); inline-size: .5rem; block-size: .5rem; border-radius: 50%; background: var(--scarlet); }
@@ -256,17 +266,21 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 .label-nightly { display: inline-block; margin-inline-start: var(--space-2); padding: .1em .45em; border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.5 var(--mono); vertical-align: .2em; }
 /* The shorthand: the demo picker's own search bar (same parts, same app tokens), then each typed word over what it means. */
 .shorthand-picker { margin: var(--space-5) 0 var(--space-3); }
-.gloss { display: flex; flex-wrap: wrap; gap: var(--space-3) var(--space-6); min-height: 3.5rem; margin: 0 0 var(--space-5); padding: 0; padding-inline-start: calc(var(--inset) + var(--row-pad) + var(--tile) + var(--row-gap)); list-style: none; font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
-.gloss li { display: grid; justify-items: center; gap: var(--space-1); text-align: center; }
+.gloss { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; column-gap: var(--space-2); block-size: 6rem; max-inline-size: 32rem; margin: 0 0 var(--space-5); padding: 0; padding-inline-start: calc(var(--inset) + var(--row-pad) + var(--tile) + var(--row-gap)); list-style: none; font: var(--type-body-size)/1.5 var(--font); color: var(--text-secondary); }
+.gloss li { display: grid; justify-items: start; gap: var(--space-1); min-inline-size: 0; overflow-wrap: anywhere; }
+.gloss [data-role="message"] { grid-column: 1 / -1; }
 .gloss b { padding-bottom: var(--space-1); border-bottom: var(--ring-width) solid var(--role); color: var(--text); font: var(--type-search-size)/1.3 var(--font); }
 .gloss [data-role="before"] { --role: var(--text-secondary); }
 .gloss [data-role="reference"] { --role: var(--scarlet); }
 .gloss [data-role="locator"] { --role: var(--text); }
+@media (min-width: 40rem) { .gloss { block-size: 4rem; } }
 @media (prefers-reduced-motion: no-preference) {
   .try button, .copy { transition: background-color var(--dur-1) var(--ease-out), color var(--dur-1) var(--ease-out), box-shadow var(--dur-1) var(--ease-out), scale var(--dur-1) var(--ease-out), opacity var(--dur-1) var(--ease-out); }
   .chips .key:active, .try button:active, .copy:active { scale: var(--website-press); }
-  .landed { animation: receipt var(--dur-2) var(--ease-out); }
+  .gloss li { animation: receipt var(--dur-1) var(--ease-out); }
+  .draft .key.landed { animation: citation-receipt calc(5 * var(--dur-1)) var(--ease-out); }
 }
+@keyframes citation-receipt { from { background-color: var(--website-accent-soft); } to { background-color: transparent; } }
 @media (forced-colors: active) { a[aria-current="page"] .key, .chips .key[aria-selected="true"] { forced-color-adjust: none; background: Highlight; color: HighlightText; } .code { border: var(--border-width) solid CanvasText; } }
 /* Inner pages start with content sooner: their title takes the section-heading size. */
 main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) * 1.5), 3.6vw, calc(var(--type-search-size) * 2.2)); margin-bottom: var(--website-block-gap); }

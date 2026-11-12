@@ -96,12 +96,13 @@ from indexing. Search engines decide when and whether to index the site.
 9. Keep controls visually slim on touch screens; invisible hit areas provide
    their full tap height. Native selects receive pointer activation directly;
    hit-area overlays belong to buttons, never their labels. At phone width all
-   six navigation keys fit, and the picker search and footer each stay on one row. Citation carets stay attached
-   to the end of inline chips; outbound marks stay with the link's last word.
+   six navigation keys fit, and the picker search and footer each stay on one row.
+   The writer's caret follows the citation, outside it; outbound marks stay with the link's last word.
 10. Focus rings indicate keyboard input, including after script-driven focus
     transfers. Pointer actions keep focus without a ring; the next keyboard action
     restores it. Search examples share the demo's field parts and tokens, and
-    empty citations use muted sample text. Follow sentences with paragraph spacing.
+    unmatched citations leave an empty insertion point. Follow sentences with paragraph spacing.
+11. [Nothing jumps](../docs/design.md#principles): changing regions keep their size; only changed content animates, briefly, in place.
 
 The interactive demo keeps the app's bundled sample references and changes only
 its own page; it never reads a visitor's library or clipboard. Search, combine,
@@ -113,8 +114,12 @@ alone. The reading order and next-page rows come from `sections` in `content.mjs
 Escape clears the demo search, then closes the picker; reopening keeps its choices
 and citation shelf. `?` outside text entry, or Keyboard shortcuts in the footer,
 opens keyboard help; Escape closes it and returns focus.
-Scripts' shorthand cycles its examples after three idle seconds, pauses while
-hidden or under reduced motion, and stops permanently on focus, input or Try.
+Scripts' shorthand types after three idle seconds, explains the query live, then
+lands the citation after a short pause and holds it for 2.5 seconds. Its empty gloss
+stays blank to keep the reserved row quiet. It pauses while hidden or under reduced
+motion, and stops permanently on focus, input or Try. Draft citations are plain
+scarlet monospace text, with a 600 ms insertion tint; Reduce Motion removes the tint
+and shows the writer's caret steadily.
 
 ### Names
 A page's label, its `@key` and its address agree: the key is the label's main word, lowercased (`Features`, `@features`, `/features/`). Labels use the words a newcomer would search for.
