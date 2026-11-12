@@ -59,7 +59,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let data = json!({
         "contract_version": Version,
         "cli_version": ibis_core::VERSION,
-        "stdout_tty": mode == OutputMode::Terminal,
+        "stdout_tty": mode.stdout_terminal(),
         "capabilities": {"methods":Method::ALL, "key_outputs":key_outputs, "csl_styles":{
             "count":styles["total"], "locales":styles["locales"].as_array().map_or(0, Vec::len),
             "styles_release":styles["styles_release"], "locales_release":styles["locales_release"],

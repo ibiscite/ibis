@@ -95,7 +95,6 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
         let warnings_before = result.warnings.len();
         let line = spans.get(index).map(|(_, _, line)| *line);
         let warning = |code| SourceWarning::at(code, line);
-        let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
         if raw.get().len() > 1024 * 1024 {
             result.warnings.push(warning(WarningCode::WorkLimit));
             continue;
@@ -111,6 +110,16 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
                 .get(name)
                 .and_then(|value| serde_json::from_str::<Value>(value.get()).ok())
         };
+        let label = ["citation-key", "title"].into_iter().find_map(|name| {
+            scalar(name).and_then(|value| {
+                value
+                    .as_str()
+                    .filter(|value| !value.trim().is_empty())
+                    .map(str::to_owned)
+            })
+        });
+        let warning = |code| SourceWarning::at(code, line).for_entry(label.as_deref());
+        let because = |code, cause, field: &str| warning(code).because(cause, Some(field));
         let id = fields.get("id").and_then(|value| id_string(value));
         // Only library files may use a citation key in place of an ID.
         if matches!(input, Input::Request) && id.is_none() {
@@ -181,6 +190,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
                 code: WarningCode::DuplicateKey,
                 line,
                 key: Some(native.clone()),
+                entry: None,
                 cause: None,
                 field: None,
             });
@@ -265,6 +275,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
                     code: WarningCode::DuplicateKey,
                     line,
                     key: Some(native),
+                    entry: None,
                     cause: None,
                     field: None,
                 });
@@ -282,6 +293,7 @@ fn read_str(library: &LibraryId, text: &str, input: Input) -> Result<ParsedLibra
             code: WarningCode::WorkLimit,
             line: spans.get(crate::MAX_LIBRARY_RECORDS).map(|(_, _, line)| *line),
             key: None,
+            entry: None,
             cause: None,
             field: None,
         });
@@ -629,7 +641,9 @@ mod tests {
         assert_eq!(parsed.records.len(), 1);
         assert_eq!(
             parsed.warnings,
-            [SourceWarning::at(WarningCode::Syntax, Some(2)).because(WarningCause::MissingField, Some("id"))]
+            [SourceWarning::at(WarningCode::Syntax, Some(2))
+                .because(WarningCause::MissingField, Some("id"))
+                .for_entry(Some("missing"))]
         );
         Ok(())
     }
@@ -646,8 +660,12 @@ mod tests {
         assert_eq!(
             parsed.warnings,
             [
-                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::UnknownField, None),
-                SourceWarning::at(WarningCode::Field, Some(2)).because(WarningCause::Value, Some("publisher")),
+                SourceWarning::at(WarningCode::Field, Some(2))
+                    .because(WarningCause::UnknownField, None)
+                    .for_entry(Some("Invented book")),
+                SourceWarning::at(WarningCode::Field, Some(2))
+                    .because(WarningCause::Value, Some("publisher"))
+                    .for_entry(Some("Invented book")),
             ]
         );
         Ok(())

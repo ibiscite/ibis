@@ -1,9 +1,10 @@
 # Ibis software and plugin notice
 
-Ibis is free, open-source software licensed under the
-[GNU Affero General Public License, version 3 or later](../LICENSE).
+Ibis is free, open-source software. The engine is licensed under the
+[GNU Affero General Public License, version 3 or later](../LICENSE);
+the [plugin](../plugins/ibis/LICENSE) is MIT.
 This notice describes Ibis and its plugin; it does not replace the licence or
-add conditions to it. The licence includes its warranty and liability terms.
+add conditions to it. Each licence includes its warranty and liability terms.
 
 ## Local software
 

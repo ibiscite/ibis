@@ -17,6 +17,11 @@ notice rules; the page's prose colours cannot override the app pictures.
 There is no maintained second palette. Check with
 `node --test scripts/website*.test.mjs`.
 
+`docs/agents.md` is the single source for `/setup` and `/setup.md`. The build
+publishes identical Markdown at both paths, resolving relative links to the
+GitHub repository while preserving anchors. `llms.txt` indexes the setup guide,
+CLI and MCP contract, privacy policy, and official name and logo policy.
+
 Browser checks in `scripts/website-controls.test.mjs` use an existing Playwright
 runtime when `IBIS_PLAYWRIGHT_MODULE` is set. `IBIS_CHROMIUM_EXECUTABLE` can select
 an existing browser. They serve build files through request interception; no local
@@ -36,13 +41,19 @@ The site is served at ibiscite.org through the Worker's custom domain, with
 Always Use HTTPS on. Domain and DNS settings are the maintainer's.
 
 `_headers` applies a self-only page CSP and revalidation to unversioned files;
-brand assets cache for one hour. SVGs have a separate sandboxed policy allowing
+it also sets `text/markdown; charset=utf-8` for both setup paths and
+`text/plain; charset=utf-8` for `/llms.txt`. Workers static assets apply these
+overrides to the extensionless `/setup` file and inherit the wildcard security
+headers; the existing assets-only Wrangler configuration needs no Worker script.
+Brand assets cache for one hour. SVGs have a separate sandboxed policy allowing
 their embedded animation styles, and workers.dev preview links send
 `X-Robots-Tag: noindex`. Missing paths get `404.html` with a 404 status. Pull
 requests get a preview link from Cloudflare Worker Previews (deploy command
 `npx wrangler preview`, `previews` block in `wrangler.jsonc`); the workers.dev
 production address stays off. No external fonts, scripts or analytics load.
 Check live HTTPS, CSP, caching, missing-path 404s, downloads and both themes.
+Check `/setup` and `/setup.md` return the same raw Markdown with the declared
+content type and security headers, and `/llms.txt` returns the index as text.
 For rollback, choose the previous reviewed deployment in Cloudflare; restore
 nameservers at the registrar only if abandoning Cloudflare DNS.
 

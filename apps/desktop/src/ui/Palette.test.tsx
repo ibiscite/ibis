@@ -68,3 +68,16 @@ test("a press outside the field keeps the keyboard there, so keys still drive th
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "ArrowDown" });
   expect(field.getAttribute("aria-activedescendant")).toBe(screen.getByRole("option", { name: /^IEEE/ }).id);
 });
+
+test("Backspace in an empty search goes back like Esc; while there is text, or held down after clearing it, it only edits", () => {
+  const { onClose, field } = open();
+  fireEvent.change(field, { target: { value: "ap" } });
+  fireEvent.keyDown(field, { key: "Backspace" });
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.change(field, { target: { value: "" } });
+  fireEvent.keyDown(field, { key: "Backspace", repeat: true });
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyDown(field, { key: "Backspace" });
+  expect(onClose).toHaveBeenCalledWith("dismiss");
+  expect(document.activeElement).toBe(screen.getByRole("button", { name: "Opener" }));
+});

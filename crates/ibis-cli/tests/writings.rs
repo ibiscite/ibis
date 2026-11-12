@@ -129,6 +129,21 @@ fn writing_format_and_bibliography_work_without_inheriting_gui_selection() {
 }
 
 #[test]
+fn an_unknown_writing_citation_key_suggests_without_citing() {
+    let home = Home::new();
+    let bib = home.0.path().join("refs.bib");
+    std::fs::write(&bib, "@book{vale2024,title={Invented Atlas}}\n").unwrap();
+    assert_eq!(home.run(&["writings", "create", "Atlas", "--format", "pandoc"]).0, 0);
+    let (code, refused, errors) = home.run(&["cite", "vale202", "--writing", "Atlas", "--file", bib.to_str().unwrap()]);
+    assert_eq!(code, 4, "{refused} {errors}");
+    assert_eq!(refused["ok"], false);
+    assert_eq!(refused["error"]["code"], "not-found");
+    assert_eq!(refused["error"]["suggestions"], json!(["vale2024"]));
+    assert!(errors.contains("Did you mean 'vale2024'?"), "{errors}");
+    assert!(refused.get("data").is_none());
+}
+
+#[test]
 fn failed_or_busy_writes_never_report_an_unsaved_writing() {
     let home = Home::new();
     let path = home.settings();

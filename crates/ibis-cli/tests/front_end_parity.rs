@@ -1,6 +1,6 @@
 //! Same results from every front end (#1200): each golden case runs through
-//! every front end that exposes a method, and the envelopes must be
-//! byte-identical. The picker's row (its search rows, preview and copy) is
+//! every front end that exposes a method. CLI recovery advice is additional;
+//! the underlying result and error stay byte-identical. The picker's row is
 //! `apps/desktop/src-tauri/src/library/engine_file/parity_tests.rs`.
 use ibis_core::contract::*;
 use ibis_engine::protocol::{read_frame, write_frame};
@@ -218,11 +218,16 @@ fn call(front_end: FrontEnd, engine: &Engine, method: Method, params: &Value) ->
     }))
 }
 
-/// Every exposing front end gives exactly `expected`, byte for byte.
+/// Every exposing front end gives exactly `expected`, apart from CLI advice
+/// covered by cli_features (suggestions never change the underlying error).
 fn same(case: &str, engine: &Engine, method: Method, params: &Value, expected: &Value) -> Result {
     let expected = ibis_engine::wire::encode(expected, 16 * 1024 * 1024)?;
     for (front_end, _) in EXPOSES {
-        if let Some(actual) = call(front_end, engine, method, params)? {
+        if let Some(mut actual) = call(front_end, engine, method, params)? {
+            if let Some(error) = actual.get_mut("error").and_then(Value::as_object_mut) {
+                error.remove("suggestions");
+                error.remove("next");
+            }
             assert_eq!(
                 String::from_utf8(ibis_engine::wire::encode(&actual, 16 * 1024 * 1024)?)?,
                 String::from_utf8(expected.clone())?,

@@ -321,12 +321,12 @@ fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Resul
             .filter(|limit| (1..=MAX_HITS).contains(limit))
             .ok_or_else(|| Refusal::bad(format!("limit must be a whole number from 1 to {MAX_HITS}.")))?,
     };
-    // One more than was asked for shows whether the list stops at the limit or at the end.
+    // The engine probes one extra candidate and reports completeness.
     let result = engine.search(
         &SearchRequest {
             interpret_locator: false,
             query: query.to_owned(),
-            limit: limit + 1,
+            limit,
             libraries: None,
         },
         &Cancellation::default(),
@@ -339,7 +339,7 @@ fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Resul
             _ => None,
         })
         .collect();
-    let mut complete = records.len() <= limit;
+    let mut complete = result.complete && records.len() <= limit;
     let snapshot = engine.snapshot()?;
     let refs = references(&snapshot, records.iter().take(limit).map(|(hit, _)| &hit.item));
     let mut hits = Vec::new();

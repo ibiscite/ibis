@@ -2052,13 +2052,17 @@ dependencies = [
 name = "ibis"
 version = "0.3.3"
 dependencies = [
+ "chrono",
  "clap",
+ "console",
  "ibis-core",
  "ibis-engine",
  "ibis-sources",
+ "icu_properties",
  "insta",
  "serde_json",
  "tempfile",
+ "unicode-segmentation",
 ]
 
 [[package]]

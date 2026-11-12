@@ -61,6 +61,7 @@ test("crate code reads the app or the website only where input changes still run
   const readers = files.filter((file) => namesAppOrWebsite(readFileSync(join(root, file), "utf8")));
   // Each file allowed to name these folders, and why that is safe.
   const allowed = {
+    "crates/ibis-cli/tests/engine_cli.rs": "reads fixtures/website/sample.bib, a fixture that runs the crates above",
     "crates/ibis-cli/tests/website_transcripts.rs": "reads CLI example content and fixtures, which run the crates above",
     "crates/ibis-core/src/locator.rs": 'the locator abbreviation "apps" (appendices), not a path',
     "crates/ibis-engine/tests/engine_boundary.rs": "reads only the app's Cargo.toml, a crate input above",
