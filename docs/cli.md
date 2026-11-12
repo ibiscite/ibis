@@ -12,6 +12,10 @@ or [Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
 The desktop does not install it there. From a checkout:
 `cargo run -p ibis -- --help`.
 
+With Nix on Linux or macOS (x86_64 and aarch64),
+`nix profile add github:ibiscite/ibis` installs the CLI and shell completions.
+See [Nix installation](nix.md) for version pins and declarative configuration.
+
 The macOS CLI is unsigned. If a trusted downloaded binary is quarantined,
 `xattr -d com.apple.quarantine ibis` removes that attribute.
 Shell completions and an fzf recipe are in the
