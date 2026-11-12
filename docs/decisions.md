@@ -104,3 +104,6 @@ the anchor older links use.
 
 ## 0047 Opening references, where the picker appears, and going back
 [0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.
+
+## 0048 Nix install
+[0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.

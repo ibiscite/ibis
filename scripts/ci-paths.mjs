@@ -14,6 +14,8 @@ const documentation = (path) => !path.split("/").includes("vendor") && (
   // Pull request CI runs no other workflow; actionlint, which always runs, checks them.
   || (/^\.github\/workflows\/[^/]+\.yml$/.test(path) && path !== ".github/workflows/ci.yml")
 );
+// Nix packaging is built by nix.yml; it cannot affect the app's native checks.
+const nixFile = (path) => path === "flake.nix" || path === "flake.lock" || path.startsWith("nix/");
 // Generated bindings are also a native contract, checked by `node scripts/gen.mjs --check`.
 // The design canvas and its gallery are built and pictured only by the interface checks.
 const interfaceFile = (path) => path !== "apps/desktop/src/bindings.ts" && (
@@ -53,7 +55,7 @@ function pathsOf(expected, files) {
 export function classify(event, expected, files) {
   const paths = pathsOf(expected, files);
   if (!["pull_request", "push"].includes(event) || !paths) return { ...full };
-  const web = paths.filter((path) => !documentation(path));
+  const web = paths.filter((path) => !documentation(path) && !nixFile(path));
   const native = web.filter((path) => !interfaceFile(path) && !websiteFile(path) && !scriptFile(path));
   const core = native.some((path) => !appFile(path));
   // Script tests on other systems run for script changes and, as before, for any crate change.

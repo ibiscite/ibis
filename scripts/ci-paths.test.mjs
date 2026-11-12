@@ -103,6 +103,19 @@ test("Markdown additions and deletions beside code and vendor assets require Rus
   }
 });
 
+test("Nix packaging uses its separate workflow without selecting app builds", () => {
+  for (const event of ["pull_request", "push"]) {
+    for (const filename of ["flake.nix", "flake.lock", "nix/package.nix", "nix/pnpm-deps-hash", ".github/workflows/nix.yml"]) {
+      for (const status of ["added", "modified", "removed"]) {
+        assert.deepEqual(classify(event, 1, [{ filename, status }]), docsOnly, `${event}: ${status}: ${filename}`);
+      }
+    }
+    assert.deepEqual(classify(event, 1, [row("nix/package.nix", "crates/ibis-cli/src/main.rs")]), full, `${event}: moving code into nix still checks the old path`);
+    assert.deepEqual(classify(event, 2, [row("nix/package.nix"), row("crates/ibis-core/src/lib.rs")]), full, `${event}: code alongside Nix still gets checked`);
+  }
+  assert.deepEqual(pr([row("scripts/nix-pnpm-hash.mjs")]), scriptsOnly);
+});
+
 test("native, tooling and unknown changes stay conservative", () => {
   for (const path of ["crates/ibis-desktop/src/lib.rs", "Cargo.toml", "scripts/smoke-native.py", "scripts/update-e2e.py", ".github/workflows/ci.yml", ".github/workflows/ci.yaml", ".github/workflows/nested/preview.yml", ".github/actions/setup/action.yml", "unknown/file", "docs/design-settings.json", "docs/design-settings.json.bak"]) {
     assert.deepEqual(pr([row("apps/desktop/src/App.tsx"), row(path)]), full, path);
