@@ -805,7 +805,8 @@ test("all routes fit the requested viewports in both themes and directions; visi
               const command = await button.getAttribute("data-copy");
               await button.click();
               assert.equal(await page.evaluate(() => window.copiedCommand), command);
-              assert.ok(command.includes(await tab.innerText() === "@any" ? "docs/agents.md" : "--app-libraries"));
+              if (await tab.innerText() === "@any") assert.equal(command, "Set up Ibis for me: https://ibiscite.org/setup");
+              else assert.ok(command.includes("--app-libraries"));
             }
           }
         }

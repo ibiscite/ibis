@@ -1,20 +1,35 @@
 # Contributing to Ibis
 
-Problem reports, invented test examples and documentation fixes help.
+Code contributions, problem reports, invented test examples and documentation
+fixes are welcome.
 See [current work](https://github.com/ibiscite/ibis/issues?q=is%3Aopen+label%3Atracking)
 and [ROADMAP.md](ROADMAP.md).
 
 ## How Ibis is built
 
-Diyanko is the sole maintainer and decides product scope and releases.
-AI agents write most code, tests and docs under that direction. Automated
-checks and reviews supplement people testing the app. Reports from your
+AI agents write most code, tests and docs under the maintainer's direction.
+Automated checks and reviews supplement people testing the app. Reports from your
 actual writing setup matter; no response time is promised.
 
-Agents may read public issues and draft replies. Outside pull requests need
-the maintainer's approval; they do not auto-merge. Describe problems with
+Agents may read public issues and draft replies. Describe problems with
 invented data and discuss large changes first. See [help](README.md#help-and-feedback)
 or [private security reporting](SECURITY.md).
+
+## How decisions are made
+
+Diyanko, the maintainer, decides Ibis's scope and releases.
+[Decisions](docs/decisions/) and the [roadmap](ROADMAP.md) are public.
+Ideas outside Ibis's scope are welcome as separate projects built on the CLI,
+`ibis serve` or MCP; see the [engine contract](docs/cli.md#output-for-scripts-and-agents).
+
+## Places to start
+
+You can help without knowing the engine:
+
+- Invented compatibility fixtures for unusual `.bib`, RIS and CSV files.
+- Translations when the message catalogue invites a second locale.
+- Documentation and website fixes.
+- Citation styles: contribute them at [citationstyles.org](https://citationstyles.org/).
 
 ## Setup
 
@@ -42,6 +57,12 @@ modules. `fixtures/` holds invented data, `brand/` generates logos/icons and
 [RELEASING.md](RELEASING.md) describes builds and publication.
 
 ## Pull requests
+
+We review code submitted from another repository and re-apply it on a branch
+here. This lets us use this repository's trusted checks, since a pull request
+can change the workflow that reports its own result
+([decision 0034](docs/decisions/0034-outside-input-is-data.md)). We credit your
+work with a `Co-authored-by` trailer and thank you in the release notes.
 
 Follow [AGENTS.md](AGENTS.md). A bug fix starts with a failing regression.
 Run the focused check; `node scripts/check.mjs --plan` shows the CI classes

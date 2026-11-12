@@ -111,6 +111,8 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
     else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
     else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
+    // Backspace in an empty search goes back, as Esc does; a held key that just cleared the search stays.
+    else if (event.key === "Backspace" && !query && !event.repeat) { event.preventDefault(); dismiss(); }
     // Tab leaves the palette for Search, as Tab leaves a menu.
     else if (event.key === "Tab") { event.preventDefault(); acted.current = true; leave(); onClose("tab"); }
   };

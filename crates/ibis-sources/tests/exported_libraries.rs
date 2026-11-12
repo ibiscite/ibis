@@ -403,6 +403,7 @@ fn ris_fields_keep_what_was_written_and_refuse_what_disagrees() {
     let monthly = read("PY  - 2026\nDA  - MAY\n");
     assert_eq!(citation_fields(&monthly)[0]["issued"], json!({"date-parts": [[2026]]}));
     assert_eq!(monthly.warnings[0].code, WarningCode::Field);
+    assert_eq!(monthly.warnings[0].entry.as_deref(), Some("Invented"));
 }
 
 #[test]

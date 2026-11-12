@@ -186,6 +186,18 @@ impl<'a> Records<'a> {
             self.warn(WarningCode::Field, line);
             uncertain = true;
         }
+        let title = csl.get("title").and_then(Value::as_str);
+        for warning in self
+            .parsed
+            .warnings
+            .iter_mut()
+            .rev()
+            .take_while(|warning| warning.line == Some(line))
+        {
+            if warning.entry.is_none() {
+                *warning = warning.clone().for_entry(title);
+            }
+        }
         // Serialising the sorted map gives the same bytes for the same fields.
         let fields = serde_json::to_vec(&csl).unwrap_or_default();
         let digest = Fingerprint::of_bytes(&[self.prefix.as_bytes(), b":v1\0", &fields].concat());

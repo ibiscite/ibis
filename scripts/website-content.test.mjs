@@ -154,11 +154,15 @@ test("assistant chips offer exactly one action, starting with a copyable setup p
   const panels = [...html.matchAll(/<div\b[^>]*role="tabpanel"[^>]*>[\s\S]*?(?=<\/div>\s*(?:<div\b[^>]*role="tabpanel"|<\/div>))/g)];
   assert.equal(panels.length, apps.length);
   const setup = [
-    "Set up Ibis for me: follow https://github.com/ibiscite/ibis/blob/main/docs/agents.md",
+    "Set up Ibis for me: https://ibiscite.org/setup",
     "claude mcp add --scope user ibis -- ibis mcp --app-libraries",
     "codex mcp add ibis -- ibis mcp --app-libraries",
   ];
   const guide = await readFile(new URL("../docs/agents.md", import.meta.url), "utf8");
+  for (const path of ["README.md", "docs/cli.md"]) {
+    const doc = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
+    assert.deepEqual(doc.match(/^Set up Ibis for me:.*$/gm), [setup[0]], `${path} offers the same prompt`);
+  }
   assert.deepEqual(brokenLinks(["docs/agents.md"]), []);
   for (const [i, app] of apps.entries()) {
     const tab = tabs[i][0], panel = panels[i][0];

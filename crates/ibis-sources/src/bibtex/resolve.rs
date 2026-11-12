@@ -1216,7 +1216,7 @@ mod tests {
         // Golden transcripts include exact canonical bytes, diagnostics, remaining
         // work credits and the final records/fingerprints published to consumers.
         // Title casing and source-warning fingerprints were updated for #1530, and
-        // library ids for #1535;
+        // library ids for #1535, and entry/field warning labels for terminal diagnostics;
         // subsequent allocation changes must preserve them. Pinned hashes keep the many
         // partial-budget outcomes small without keeping a second resolver.
         let cases = [
@@ -1233,13 +1233,13 @@ mod tests {
                     "\u{E000}\u{E001}\u{E002}\u{E003}",
                     r"},note={\i nt \item \j and \\{group\\}}}",
                 ),
-                "6fcd6d2e966899d4d3a82ffe2b3f4ebe9d2c514cf378b38ed4038c1dd94259f7",
+                "832b854d8b5b317a7e3168349995c35c274c7b8c386d17c7807009c020e1dac9",
             ),
             (
                 "unicode-and-verbatim-url",
                 r"@book{unicode,title={২০২০ পর্যবেক্ষণ},year={۲۰۲۴},month=mar,day={৫},
                   url={https://example.invalid/\textbackslash/a\{kept\}},urldate={２０２５-０２-０３}}",
-                "9a92d30ec60b94f47fb3d9a68aec263241de569c93c5d95c8eb984ff67045310",
+                "1df4e0fd99004c92fe12ef9c5d6c66077e76c026cfde255e4417e122bfb25fcd",
             ),
             (
                 "epochs-and-shared-inheritance",
@@ -1255,7 +1255,7 @@ mod tests {
                 "@proceedings(parent,title=\"x}, date = {1999-01-01}, author = {Injected Person}\",year=2024)\n\
                  @inproceedings{safe,title={First},title={Safe},crossref={parent},note=undefined}\n\
                  @book{broken,title={Unclosed\n@book{last,title={Still Visible}}",
-                "0a40c563f092cc77eeda30f26fd9f8a27d77015e5b1c7d50a7e1f9dabaa43686",
+                "2caff5a1f320c4f1f3304a631203faf5a82d1d8db9a1409947395e304cfb3a65",
             ),
         ];
         let mut mismatches = Vec::new();
