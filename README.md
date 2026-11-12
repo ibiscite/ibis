@@ -16,6 +16,7 @@ citation where you write. No account, no uploads, no telemetry; sources read wit
 Download the numbered [release](https://github.com/ibiscite/ibis/releases/latest) or
 [Ibis Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly).
 They install as separate apps. Both are early previews.
+See [how to recognise official Ibis](TRADEMARKS.md#how-to-recognise-official-ibis).
 
 | System | Ibis download |
 | --- | --- |
