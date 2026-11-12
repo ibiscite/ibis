@@ -4,9 +4,10 @@ import { stripTypeScriptTypes } from "node:module";
 import { runInNewContext } from "node:vm";
 import { test } from "node:test";
 import { createDemo, references, formats } from "../website/demo-model.mjs";
+import { sharedKeys } from "../website/shared.mjs";
 
 // Like the page-control tests, run the real script against a small synthetic DOM.
-const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const keys = await sharedKeys();
 const iconScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/icon-paths.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
 const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
@@ -38,7 +39,7 @@ function demoPage(platform) {
   figure.closest = selector => selector === "section" ? section : list;
   const document = { ...element("document"), documentElement: { dataset: { platform } }, createElement: element,
     createElementNS: (_namespace, tag) => element(tag), querySelector: selector => selector === "[data-picker]" ? figure : result };
-  const picker = runInNewContext(`${keyScript}\n${iconScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
+  const picker = runInNewContext(`${iconScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { ...keys, document, createDemo, references, formats,
     onCopy: () => { copies++; }, onPaste: () => { pastes++; },
     matchMedia: () => ({ matches: false }) });
   const panel = placeholder.replacement, [add, copy] = panel.querySelector(".picker-actions").children, input = panel.querySelector("input");
@@ -71,14 +72,13 @@ for (const [platform, addCaps, copyCaps] of [
 });
 
 test("shared cap labels are one cap per shortcut in native modifier order, with literal plus and slash keys", () => {
-  const ctx = {}; runInNewContext(keyScript, ctx);
   for (const [accelerator, mac, expected] of [
     ["CmdOrCtrl+Shift+Alt+C", true, ["⌥⇧⌘C"]],
     ["CmdOrCtrl+Shift+Alt+C", false, ["Ctrl+Alt+Shift+C"]],
     ["+", true, ["+"]], ["+", false, ["+"]],
     ["CmdOrCtrl++", true, ["⌘+"]], ["CmdOrCtrl++", false, ["Ctrl++"]],
     ["CmdOrCtrl+/", true, ["⌘/"]], ["CmdOrCtrl+/", false, ["Ctrl+/"]],
-  ]) assert.deepEqual(Array.from(ctx.keyCapLabels(accelerator, mac)), expected, `${accelerator}, mac=${mac}`);
+  ]) assert.deepEqual(keys.keyCapLabels(accelerator, mac), expected, `${accelerator}, mac=${mac}`);
 });
 
 test("copy confirms once in the shelf and paste keeps the copied value through later edits", () => {

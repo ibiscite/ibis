@@ -4,6 +4,7 @@
 # feed/latest.json, unless it already holds this commit SHA or a later one.
 # GH_TOKEN, REPO, SHA, TAG come from the workflow.
 set -euo pipefail
+node scripts/ci-main.mjs
 # An older run must not replace a newer nightly, but a newer merge
 # to main must not stop this one either: with frequent merges that
 # would starve the nightly. Publish unless the nightly already has

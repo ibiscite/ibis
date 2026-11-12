@@ -1,9 +1,9 @@
 import { copyFile, mkdir, mkdtemp, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { stripTypeScriptTypes } from "node:module";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { content, pages, notFound } from "./content.mjs";
+import { sharedModules, sharedSource } from "./shared.mjs";
 
 const source = fileURLToPath(new URL(".", import.meta.url));
 const root = resolve(source, "..");
@@ -43,10 +43,7 @@ export async function build(output = join(source, "dist"), input = source) {
     await copyFile(join(root, "apps/desktop/src/ui/Icon.css"), join(stage, "icon.css"));
     await copyFile(join(root, "brand/icons/LICENSE-lucide"), join(stage, "LICENSE-lucide"));
     await writeFile(join(stage, "picker-tokens.css"), scopePickerTokens(await readFile(join(stage, "tokens.css"), "utf8")));
-    for (const name of ["keys", "icon-paths"]) {
-      const shared = stripTypeScriptTypes(await readFile(join(root, `apps/desktop/src/${name}.ts`), "utf8"));
-      await writeFile(join(stage, `${name}.js`), shared);
-    }
+    for (const name of sharedModules) await writeFile(join(stage, `${name}.js`), await sharedSource(name));
     for (const file of PUBLIC) {
       const target = join(stage, "assets", file);
       await mkdir(dirname(target), { recursive: true });

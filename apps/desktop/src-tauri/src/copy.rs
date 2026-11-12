@@ -215,15 +215,19 @@ pub(crate) async fn citation_details(
     ticket: String,
     content_hash: String,
     item: usize,
+    intent: PreviewIntent,
+    requests: State<'_, crate::library::FormattingRequests>,
     library: State<'_, Mutex<Library>>,
 ) -> Result<crate::library::engine_file::ReferenceDetails, CommandError> {
+    let cancel = requests.details.start(intent).ok_or(CommandError::Cancelled)?;
+    cancel.check().map_err(CommandError::from)?;
     let file = library
         .lock()
         .map_err(|_| CommandError::SnapshotChanged)?
         .file
         .clone()
         .ok_or(CommandError::SnapshotChanged)?;
-    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item))
+    tauri::async_runtime::spawn_blocking(move || file.details(&ticket, &content_hash, item, &cancel))
         .await
         .map_err(|_| CommandError::from("Citation examples are unavailable. Close and reopen the menu to try again."))?
 }

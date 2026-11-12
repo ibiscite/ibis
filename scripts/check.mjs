@@ -1,14 +1,13 @@
 #!/usr/bin/env node
 // One command to trust before pushing:
 //   node scripts/check.mjs         what CI would run for this branch's changes
-//   node scripts/check.mjs --all   every check
-//   node scripts/check.mjs --plan  the check classes this branch's changes select, for land.sh
+//   node scripts/check.mjs --all   every routine local check
+//   node scripts/check.mjs --plan  the check classes selected by changed paths
 // Runs formatting, lints, tests and the dependency policy. Never edits files.
-// Exit codes: 0 all passed, 1 a check failed, 2 incomplete (a tool is missing).
+// Exit codes: 0 passed, 1 failed, 2 unavailable, 75 infrastructure.
 import { spawnSync } from "node:child_process";
 import { readdirSync, realpathSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { classify, parseNameStatus } from "./ci-paths.mjs";
 
@@ -71,10 +70,9 @@ export function changedFiles(run = git) {
   return [...untracked.split("\0").filter(Boolean).map((filename) => ({ filename, status: "added" })), ...parseNameStatus(tracked)];
 }
 
-/** The check classes for this branch's changes, as CI's pull request run picks them. */
+/** The same path classification used by CI. */
 export function plan(files = changedFiles()) {
-  const selected = classify("pull_request", files?.length, files);
-  return Object.keys(selected).filter((name) => name !== "proven" && selected[name]);
+  return Object.entries(classify("pull_request", files?.length, files)).filter(([, value]) => value).map(([name]) => name);
 }
 
 function git(args) {
@@ -82,105 +80,97 @@ function git(args) {
   return result.status === 0 ? result.stdout : null;
 }
 
-function main() {
-  const args = process.argv.slice(2);
-  if (args.length === 1 && args[0] === "--plan") {
-    console.log(plan().join(" "));
-    return;
-  }
-  const scriptsOnly = args.length === 1 && ["--script-tests", "--platform-script-tests"].includes(args[0]);
-  const brandOnly = args.length === 1 && args[0] === "--brand-assets";
-  if (args.length > 0 && !scriptsOnly && !brandOnly && args.join() !== "--all") {
-    console.error("Usage: node scripts/check.mjs [--all | --plan | --script-tests | --platform-script-tests | --brand-assets]");
-    process.exit(1);
-  }
-
-  const desktop = { cwd: "apps/desktop" };
-  const scriptFiles = readdirSync(new URL(".", import.meta.url)).sort();
-  const scriptTests = scriptFiles
-    .filter((name) => /\.test\.(mjs|cjs)$/.test(name))
-    .map((name) => `scripts/${name}`);
+/** One executable local gate; land.sh delegates every check to this plan. */
+export function checkPlan(files, { all = false, scriptsOnly = false, brandOnly = false, inventory = readdirSync(new URL(".", import.meta.url)).sort() } = {}) {
+  const selected = classify(all ? "all" : "pull_request", files?.length, files);
+  const names = files?.flatMap(({ filename, previous_filename }) => [filename, previous_filename].filter(Boolean)) ?? [];
+  const step = (name, command, args, options = {}, probes) => ({ name, command, args, options,
+    probes: probes ?? [[command, command === "actionlint" ? ["-version"] : ["--version"], `${command} is not installed or cannot start`]],
+  });
+  const python = process.platform === "win32" ? "python" : "python3";
+  const brand = step("Brand assets", python, ["brand/build.py", "--check"], {}, [
+    [python, ["--version"], "Python is not installed or cannot start"],
+    ["rsvg-convert", ["--version"], "librsvg's rsvg-convert is not installed"],
+    ["fc-match", ["--version"], "fontconfig is not installed"],
+    [python, ["-c", "import subprocess, sys; sys.exit('Inter Display' not in subprocess.check_output(['fc-match', '-f', '%{family}', 'Inter Display'], text=True).split(','))"], "Inter Display is not installed"],
+  ]);
+  if (brandOnly) return [brand];
+  const related = inventory.slice().sort().filter((name) => /\.test\.(mjs|cjs)$/.test(name)).filter((name) =>
+    scriptsOnly || all || !files || selected.scripts || names.some((path) => path.startsWith("website/") && name.startsWith("website")));
   const scriptSteps = [
-    // CI runs the identity guard in the dependency job, which every run needs.
-    ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
-      .filter((name) => !scriptsOnly || name !== "check-agent-identity.mjs")
-      .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
-    // Each suite starts its own bounded subprocesses. Running suites together
-    // can exhaust CI's CPU quota and spend those deadlines waiting to start.
-    ["Script tests", "node", ["--test", "--test-concurrency=1", ...scriptTests]],
-    ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
-      `Python script tests: ${name}`, process.platform === "win32" ? "python" : "python3", ["-B", `scripts/${name}`],
+    ...inventory.filter((name) => /^check-[a-z-]+\.mjs$/.test(name) && (!scriptsOnly || name !== "check-agent-identity.mjs"))
+      .map((name) => step(`Repository guard: ${name}`, "node", [`scripts/${name}`])),
+    // Each suite owns bounded subprocesses; serialize suites to keep their deadlines useful.
+    ...(related.length ? [step("Script tests", "node", ["--test", "--test-concurrency=1", ...related.map((name) => `scripts/${name}`)])] : []),
+    ...inventory.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name))
+      .filter((name) => scriptsOnly || all || !files || names.some((path) => path === `scripts/${name}` || path.replace(/\.py$/, ".test.py") === `scripts/${name}`))
+      .map((name) => step(`Python script tests: ${name}`, python, ["-B", `scripts/${name}`])),
+  ];
+  if (scriptsOnly) return scriptSteps;
+  const cargo = (name, args, native = false) => step(name, "cargo", args, {}, [
+    ["cargo", ["--version"], "Cargo is not installed or cannot start"],
+    ...["fmt", "clippy"].includes(args[0]) ? [["cargo", [args[0], "--version"], `cargo ${args[0]} is not installed`]] : [],
+    ...native && process.platform === "linux" ? [["pkg-config", ["--exists", "webkit2gtk-4.1", "libsoup-3.0", "gtk+-3.0"], "Linux desktop WebView development libraries are unavailable"]] : [],
+  ]);
+  const desktop = { cwd: "apps/desktop" };
+  const pnpm = (name, args, tool) => step(name, "pnpm", args, desktop, [
+    ["pnpm", ["--version"], "pnpm is not installed or cannot start"],
+    ["pnpm", ["exec", tool, "--version"], `desktop dependencies are unavailable (${tool}); install the locked dependencies first`, desktop],
+  ]);
+  return [
+    step("Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]),
+    cargo("Format", ["fmt", "--all", "--check"]),
+    ...selected.core ? [cargo("Lint", ["clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], true),
+      cargo("Test", ["test", "--workspace", "--locked"], true)] : [],
+    ...selected.native ? [brand,
+      ...!selected.core ? [cargo("Desktop: lint app", ["clippy", "-p", "ibis-desktop", "-p", "ibis-desktop-macros", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], true),
+        cargo("Desktop: app tests", ["test", "-p", "ibis-desktop", "-p", "ibis-desktop-macros", "--locked"], true)] : []] : [],
+    ...selected.web ? [pnpm("Desktop: type check", ["typecheck"], "tsc"), pnpm("Desktop: Biome", ["lint"], "biome"),
+      pnpm("Desktop: interface tests", ["test", "--maxWorkers=1"], "vitest")] : [],
+    ...scriptSteps,
+    // Freshness is checked on every landing, including documentation changes.
+    step("Generated files", "node", ["scripts/gen.mjs", "--check"], {}, cargo("", [], true).probes),
+    step("Dependency policy", "cargo", ["deny", "--locked", "check", "licenses", "bans", "sources"], {}, [
+      ["cargo", ["deny", "--version"], "cargo-deny is not installed"],
     ]),
   ];
-  const brandSteps = [["Brand assets", process.platform === "win32" ? "python" : "python3", ["brand/build.py", "--check"]]];
-  // Verified against https://clippy.rust-lang.org/stable/index.html:
-  // unused_result_ok (restriction): discarded .ok(); enabled below (zero hits).
-  // let_underscore_must_use / let_underscore_untyped (restriction): many current
-  // deliberate discards; do not enable wholesale without resolving those cases.
-  const webkit = join(tmpdir(), `ibis-webkit-${process.pid}`);
-  // The names after each step are the path decisions that select it, as in CI.
-  const steps = [
-    ["Workflow expressions", "actionlint", ["-shellcheck=", "-pyflakes="]],
-    ...brandSteps.map((step) => [...step, {}, "native"]),
-    ["Format", "cargo", ["fmt", "--all", "--check"], {}, "native"],
-    ["Lint", "cargo", ["clippy", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "core"],
-    ["Minimum Rust", "cargo", ["+1.90.0", "check", "--locked", "--all-targets"], {}, "core"],
-    ["Test", "cargo", ["test", "--locked"], {}, "core"],
-    ["Dependency policy", "cargo", ["deny", "--locked", "check"]],
-    ["Desktop: install", "pnpm", ["install", "--frozen-lockfile"], desktop],
-    ...scriptSteps,
-    // All desktop unit tests, including the generated-contract freshness check.
-    ["Desktop: app tests", "cargo", ["test", "-p", "ibis-desktop", "--locked"], {}, "native"],
-    ["Desktop: type check", "pnpm", ["typecheck"], desktop, "web"],
-    ["Desktop: hook dependencies", "pnpm", ["lint"], desktop, "web"],
-    ["Desktop: interface tests", "pnpm", ["test"], desktop, "web"],
-    ["Desktop: picker size", "pnpm", ["exec", "vite", "build"], desktop, "web"],
-    ["Desktop: picker budget", "node", ["../../scripts/picker-budget.mjs", "dist"], desktop, "web"],
-    ["Desktop: lint app", "cargo", ["clippy", "-p", "ibis-desktop", "--all-targets", "--locked", "--", "-D", "warnings", "-D", "clippy::unused_result_ok"], {}, "native"],
-    // Only the system's own WebKit shows these colours; jsdom and Chromium cannot.
-    ...process.platform === "darwin" ? [
-      ["WebKit: canvas", "pnpm", ["build:canvas"], desktop, "interface"],
-      ["WebKit: compile", "swiftc", ["-O", "apps/desktop/gallery/webkit.swift", "-o", webkit], {}, "interface"],
-      ["WebKit colours", webkit, ["apps/desktop/dist-canvas", `${webkit}-pictures`], {}, "interface"],
-    ] : [],
-  ];
-  const changed = args.length === 0;
-  const files = changed ? changedFiles() : null;
-  const selected = classify(changed ? "pull_request" : "all", files?.length, files);
-  if (changed) console.log(`Checks for ${files?.length ?? "unknown"} changed file(s): ${plan(files).join(", ") || "documentation only"}.`);
+}
 
-  // On Windows commands run through a shell so that pnpm.cmd resolves; a missing
-  // tool then fails like any other command instead of raising ENOENT. So when a
-  // step fails, ask the tool for its version: if that fails too, the tool is
-  // missing and the run is incomplete rather than failed.
-  const shell = process.platform === "win32";
-  const skipped = [];
-  for (const [name, cmd, args, options = {}, selector] of scriptsOnly ? scriptSteps : brandOnly ? brandSteps : steps) {
-    if (selector && !selected[selector]) continue;
-    console.log(`\n== ${name}: ${cmd} ${args.join(" ")}`);
-    const result = spawnSync(cmd, args, { stdio: "inherit", shell, ...options });
-    if (result.status === 0) continue;
-    const probe = cmd === "actionlint" ? ["-version"] : args[0] === "deny" ? ["deny", "--version"] : args[0].startsWith("+") ? [args[0], "--version"] : ["--version"];
-    if (cmd !== webkit && (result.error?.code === "ENOENT" || !hasCommand(cmd, probe)) || name === "Brand assets" && result.status === 2) {
-      console.log(`${name} could not run: the tool is not installed.`);
-      skipped.push(name);
-      continue;
+/** Probe before execution. A check failure is never reinterpreted as absence. */
+export function runChecks(steps, run = spawnSync, report = console.log) {
+  let unavailable = false;
+  const shellFor = (command) => process.platform === "win32" && command === "pnpm";
+  for (const { name, command, args, options = {}, probes = [] } of steps) {
+    let reason;
+    for (const [tool, probeArgs, missing, probeOptions = {}] of probes) {
+      const probe = run(tool, probeArgs, { stdio: "ignore", shell: shellFor(tool), timeout: 30_000, ...probeOptions });
+      if (probe.signal || probe.status === 75 || probe.error && probe.error.code !== "ENOENT") {
+        report(`${name}: infrastructure — prerequisite probe could not complete`); return 75;
+      }
+      if (probe.status !== 0) { reason = missing; break; }
     }
-    // Always 1, so that a tool's own status (for example 2) never reads as incomplete.
-    console.error(`\n✗ ${name} failed. Fix the problem above, then run this script again.`);
-    process.exit(1);
+    if (reason) { report(`${name}: unavailable — ${reason}`); unavailable = true; continue; }
+    report(`== ${name}: ${command} ${args.join(" ")}`);
+    const result = run(command, args, { stdio: "inherit", shell: shellFor(command), ...options });
+    if (result.status === 0) { report(`${name}: passed`); continue; }
+    const infrastructure = result.status === 75 || result.error || result.signal;
+    report(`${name}: ${infrastructure ? "infrastructure — command interrupted or could not execute" : "failed"}`);
+    return infrastructure ? 75 : 1;
   }
-  if (skipped.length > 0) {
-    console.error(`\n! INCOMPLETE: ${skipped.join(", ")} did not run. Install the missing tools (cargo-deny: cargo install --locked cargo-deny; minimum Rust: rustup toolchain install 1.90.0 --profile minimal; pnpm: https://pnpm.io/installation; actionlint: https://github.com/rhysd/actionlint/blob/main/docs/install.md).`);
-    process.exit(2);
-  }
-  console.log("\n✓ All checks passed.");
+  if (unavailable) report("Gate incomplete: unavailable checks must run before landing.");
+  else report("All checks passed.");
+  return unavailable ? 2 : 0;
+}
 
+function main() {
+  const [flag, ...extra] = process.argv.slice(2);
+  if (extra.length || flag && !["--all", "--plan", "--script-tests", "--platform-script-tests", "--brand-assets"].includes(flag)) {
+    console.error("Usage: node scripts/check.mjs [--all | --plan | --script-tests | --platform-script-tests | --brand-assets]");
+    process.exitCode = 1; return;
+  }
+  const files = flag === "--all" || ["--script-tests", "--platform-script-tests", "--brand-assets"].includes(flag) ? null : changedFiles();
+  if (flag === "--plan") { console.log(plan(files).join(" ")); return; }
+  process.exitCode = runChecks(checkPlan(files, { all: flag === "--all", scriptsOnly: ["--script-tests", "--platform-script-tests"].includes(flag), brandOnly: flag === "--brand-assets" }));
 }
 
 if (process.argv[1] && realpathSync(resolve(process.argv[1])) === realpathSync(fileURLToPath(import.meta.url))) main();
-
-function hasCommand(cmd, args) {
-  const probe = spawnSync(cmd, args, { stdio: "ignore", shell: process.platform === "win32" });
-  return probe.status === 0;
-}

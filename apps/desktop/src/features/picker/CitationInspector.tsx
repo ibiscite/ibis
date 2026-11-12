@@ -41,11 +41,12 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
   useEffect(() => {
     if (!editing || !previewReceipt || index < 0) return;
     let live = true;
-    void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index).then(
+    const controller = new AbortController();
+    void citationDetails(previewReceipt.ticket, previewReceipt.content_hash, index, controller.signal).then(
       (value) => { if (live) setDetails({ receipt: previewReceipt, output, value }); },
       (error) => { if (live && !isCancelled(error)) setDetails({ receipt: previewReceipt, output, value: "failed" }); },
     );
-    return () => { live = false; };
+    return () => { live = false; controller.abort(); };
   }, [editing, previewReceipt, index, output]);
   // One stable ref, so the shelf's own keeps its cleanup, which returns focus to the token.
   const body = useRef<HTMLElement | null>(null);
@@ -92,7 +93,7 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
   const notesShown = [...notes.entry ? [notes.entry.text] : [], ...notes.output, ...notes.closest].map((note, i) => <p key={i} className="ui-popover-note">{note}</p>);
   const removeKeys = (event: React.KeyboardEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    if ((event.key !== "Backspace" && event.key !== "Delete") || composing(event) || target.matches("input") || !reference || !selected) return;
+    if (event.key !== "Delete" || event.repeat || composing(event) || target.matches("input, textarea, [contenteditable]") || !reference || !selected) return;
     event.preventDefault(); onRemove(reference);
   };
   // The Reader keeps the side panel: a source's pages need its room.
@@ -105,7 +106,7 @@ export function CitationInspector({ ref, id, panel, anchor, keepOrder, heading, 
       onKeyDown={removeKeys}>{fields}</Inspector>;
   }
   return <Popover triggerRef={anchor} label={reference ? say("citation-details-details", { reference: reference.title || reference.key }) : say("picker-citation-details")}
-    className="citation-popover">
+    className="citation-popover" onClose={onClose}>
     <section ref={attach} id={id} className="ui-popover-body" onKeyDown={removeKeys}>
       <header className="ui-popover-heading">
         <h2><bdi dir="auto">{reference ? reference.title || heading : heading}</bdi></h2>

@@ -3,7 +3,7 @@ import type { usePointerSelection } from "../../pointerSelection";
 import type { OutputId } from "../../format/outputs";
 import type { useCitationOutput } from "./useCitationOutput";
 
-export function useResultScroll({ input, active, selectAll, pointer, selectedSize, citationProblem, formatted, format, searchFocused }: {
+export function useResultScroll({ input, active, selectAll, pointer, selectedSize, citationProblem, formatted, format }: {
   input: RefObject<HTMLInputElement | null>;
   active: number;
   /** Advances when text arrives that typing should replace, such as a document selection. */
@@ -13,7 +13,6 @@ export function useResultScroll({ input, active, selectAll, pointer, selectedSiz
   citationProblem: string | null;
   formatted: ReturnType<typeof useCitationOutput>["formatted"];
   format: OutputId;
-  searchFocused: boolean;
 }) {
   // Selected once it is in the box, so typing replaces it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: only new arriving text is selected; Search's ref is stable.
@@ -24,10 +23,12 @@ export function useResultScroll({ input, active, selectAll, pointer, selectedSiz
   // Keep the highlighted result visible while moving with the arrow keys.
   // A row clicked is already under the pointer; scrolling would move it away.
   // Selection/preview reflow follows the highlight only while Search has focus.
+  // Focus returning from a view preserves the person's scroll; only navigation
+  // or changed content may reveal a row.
   const previousActive = useRef(active);
   const followKeyboard = useRef(true);
   const resultArea = useRef<HTMLDivElement>(null);
-  // biome-ignore lint/correctness/useExhaustiveDependencies: the conditional values are triggers: while references are chosen, a preview, format or focus change can move the row, so it is revealed again.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: while references are chosen, preview or format changes can move the row.
   useEffect(() => {
     const moved = previousActive.current !== active;
     previousActive.current = active;
@@ -40,7 +41,7 @@ export function useResultScroll({ input, active, selectAll, pointer, selectedSiz
     if (!moved && (citationProblem || selectedSize === 0 || document.activeElement !== input.current)) return;
     document.getElementById(`result-${active}`)?.scrollIntoView?.({ block: "nearest" });
   }, [active, pointer.cameFrom, selectedSize, citationProblem,
-    selectedSize > 0 ? formatted : null, selectedSize > 0 ? format : null, selectedSize > 0 ? searchFocused : null]);
+    selectedSize > 0 ? formatted : null, selectedSize > 0 ? format : null]);
 
   // Content changes preserve Search's keyboard highlight. A real viewport
   // resize must also leave the selected title readable while Page is edited.

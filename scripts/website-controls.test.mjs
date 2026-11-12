@@ -1,13 +1,12 @@
 import assert from "node:assert/strict";
 import { readFile, mkdir } from "node:fs/promises";
 import { runInNewContext } from "node:vm";
-import { stripTypeScriptTypes } from "node:module";
 import { test } from "node:test";
 import { join, resolve } from "node:path";
 import { content } from "../website/content.mjs";
+import { sharedKeys } from "../website/shared.mjs";
 const script = await readFile(new URL("../website/site.js", import.meta.url), "utf8");
-const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
-const keys = runInNewContext(`${keyScript}\n({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator })`);
+const keys = await sharedKeys();
 const apps = JSON.parse(await readFile(new URL("../website/content/writing-apps.json", import.meta.url), "utf8"));
 const control = () => ({ attrs: {}, handlers: {}, setAttribute(k, v) { this.attrs[k] = v; },
   getAttribute(k) { return this.attrs[k]; }, hasAttribute(k) { return k in this.attrs; },

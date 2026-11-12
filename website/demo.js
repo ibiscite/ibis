@@ -49,7 +49,7 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     return caps;
   }
   function actionLabel(button, label, command) {
-    const accelerator = keysFor(command);
+    const accelerator = keysFor(command, mac);
     button.setAttribute("aria-label", label);
     button.setAttribute("aria-keyshortcuts", accelerator);
     button.title = `${label} (${keyLabel(accelerator, mac)})`;
@@ -162,8 +162,8 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   panel.addEventListener("keydown", event => {
     if (event.isComposing || event.keyCode === 229) return;
     if (event.repeat && event.key === "Enter") { event.preventDefault(); return; }
-    if (event.target === select) { if (event.key === keysFor("escape")) input.focus(); return; }
-    const is = action => matchesAccelerator(event, keysFor(action), mac);
+    if (event.target === select) { if (event.key === keysFor("escape", mac)) input.focus(); return; }
+    const is = action => matchesAccelerator(event, keysFor(action, mac), mac);
     if (is("escape")) { event.preventDefault(); model.back(); render(); if (!state.open) reopen.focus(); return; }
     if (event.target !== input) return;
     if (is("add")) { event.preventDefault(); const ref = model.found()[state.selected]; if (ref) model.add(ref.key); }

@@ -29,6 +29,8 @@ pub(crate) struct FileLibrary {
     pub(crate) sample: bool,
     prepared: Mutex<Option<(String, Arc<PreparedCitation>, OutputSpec)>>,
     latest_preview: Mutex<(u64, Cancellation)>,
+    latest_details: Mutex<Cancellation>,
+    latest_bibliography: Mutex<Cancellation>,
     observing: AtomicBool,
 }
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -244,7 +246,13 @@ impl FileLibrary {
         })
     }
 
-    fn bibliography_of(&self, items: Vec<CitationItem>, style: &str) -> Result<(PreparedCitation, bool), CommandError> {
+    fn bibliography_of(
+        &self,
+        items: Vec<CitationItem>,
+        style: &str,
+        cancel: &Cancellation,
+    ) -> Result<(PreparedCitation, bool), CommandError> {
+        cancel.check().map_err(CommandError::from)?;
         let count = items.len();
         let request = CitationRequest {
             items,
@@ -257,7 +265,7 @@ impl FileLibrary {
         };
         let citation = self
             .engine
-            .prepare_citation(&request, &Cancellation::default())
+            .prepare_citation(&request, cancel)
             .map_err(CommandError::from)?;
         let whole = citation.result().copy_content(count).is_some();
         Ok((citation, whole))
@@ -269,30 +277,36 @@ impl FileLibrary {
         &self,
         ids: &[ItemRef],
         style: &str,
+        cancel: &Cancellation,
     ) -> Result<Option<(PreparedCitation, Vec<String>)>, CommandError> {
+        cancel.check().map_err(CommandError::from)?;
         let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
         let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
         if items.is_empty() {
             return Ok(None);
         }
-        let first = self.bibliography_of(items.clone(), style);
+        let first = self.bibliography_of(items.clone(), style, cancel);
+        cancel.check().map_err(CommandError::from)?;
         let (citation, left_out) = if let Ok((citation, true)) = first {
             (citation, vec![])
         } else {
             let mut kept = vec![];
             let mut left_out = vec![];
             for item in items {
+                cancel.check().map_err(CommandError::from)?;
                 // Refused, or a failure only this record causes. The engine names it.
-                match self.bibliography_of(vec![item.clone()], style) {
+                match self.bibliography_of(vec![item.clone()], style, cancel) {
                     Ok((_, true)) => kept.push(item),
                     Ok((single, false)) => left_out.extend(single.item_label(0)),
+                    Err(CommandError::Cancelled) => return Err(CommandError::Cancelled),
                     Err(_) => left_out.extend(session_key(&snapshot, &item.item)),
                 }
             }
+            cancel.check().map_err(CommandError::from)?;
             if kept.is_empty() {
                 return Err(format!("This style can't write these references: {}.", left_out.join(", ")).into());
             }
-            let (citation, whole) = self.bibliography_of(kept, style)?;
+            let (citation, whole) = self.bibliography_of(kept, style, cancel)?;
             if !whole {
                 return Err("These references cannot be written as a bibliography in this style.".into());
             }
@@ -310,20 +324,21 @@ impl FileLibrary {
         &self,
         ids: &[ItemRef],
         style: &str,
+        cancel: &Cancellation,
     ) -> Result<Option<SessionBibliography>, CommandError> {
-        Ok(self
-            .prepare_session_bibliography(ids, style)?
-            .map(|(citation, left_out)| {
-                let warnings = citation_warnings_named(&citation);
-                let result = citation.into_result();
-                SessionBibliography {
-                    text: result.text,
-                    html: result.html,
-                    content_hash: result.content_hash.as_str().to_owned(),
-                    warnings,
-                    left_out,
-                }
-            }))
+        let prepared = self.prepare_session_bibliography(ids, style, cancel)?;
+        cancel.check().map_err(CommandError::from)?;
+        Ok(prepared.map(|(citation, left_out)| {
+            let warnings = citation_warnings_named(&citation);
+            let result = citation.into_result();
+            SessionBibliography {
+                text: result.text,
+                html: result.html,
+                content_hash: result.content_hash.as_str().to_owned(),
+                warnings,
+                left_out,
+            }
+        }))
     }
 
     /// Hand `use_it` exactly what was shown, or refuse: the list, the library
@@ -333,26 +348,30 @@ impl FileLibrary {
         ids: &[ItemRef],
         style: &str,
         hash: &str,
+        cancel: &Cancellation,
         use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
     ) -> Result<T, CommandError> {
         let (citation, _) = self
-            .prepare_session_bibliography(ids, style)?
+            .prepare_session_bibliography(ids, style, cancel)?
             .ok_or(CommandError::SnapshotChanged)?;
         if citation.result().content_hash.as_str() != hash {
             return Err(CommandError::SnapshotChanged);
         }
-        let copied = self
-            .engine
-            .recite(&citation, &Cancellation::default())
-            .map_err(|error| match error {
-                ibis_engine::CitationCommitError::Engine(_) => {
-                    CommandError::from("The bibliography could not be copied. Try again.")
-                }
-                _ => CommandError::SnapshotChanged,
-            })?;
+        let copied = self.engine.recite(&citation, cancel).map_err(|error| match error {
+            ibis_engine::CitationCommitError::Engine(error)
+                if error.code == ibis_core::contract::ErrorCode::Cancelled =>
+            {
+                CommandError::Cancelled
+            }
+            ibis_engine::CitationCommitError::Engine(_) => {
+                CommandError::from("The bibliography could not be copied. Try again.")
+            }
+            _ => CommandError::SnapshotChanged,
+        })?;
         let content = copied
             .copy_content(citation.items().len())
             .ok_or(CommandError::SnapshotChanged)?;
+        cancel.check().map_err(CommandError::from)?;
         use_it(content).map_err(CommandError::from)
     }
 
@@ -396,6 +415,8 @@ impl FileLibrary {
             sample: false,
             prepared: Mutex::new(None),
             latest_preview: Mutex::new((0, Cancellation::default())),
+            latest_details: Mutex::default(),
+            latest_bibliography: Mutex::default(),
             observing: AtomicBool::new(false),
         }
     }
@@ -730,6 +751,14 @@ impl FileLibrary {
             return request;
         }
         latest.1.cancel();
+        self.latest_details
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .cancel();
+        self.latest_bibliography
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .cancel();
         *latest = (request, cancel);
         request
     }
@@ -948,7 +977,28 @@ impl FileLibrary {
         *slot = Some((preview.ticket.clone(), Arc::new(citation), original_output));
         Ok(preview)
     }
-    pub(crate) fn details(&self, ticket: &str, hash: &str, item: usize) -> Result<ReferenceDetails, CommandError> {
+    fn replace_formatting(slot: &Mutex<Cancellation>, cancel: &Cancellation) -> Result<(), CommandError> {
+        let mut current = slot.lock().map_err(|_| CommandError::Cancelled)?;
+        cancel.check().map_err(CommandError::from)?;
+        current.cancel();
+        *current = cancel.clone();
+        Ok(())
+    }
+
+    /// Register before spawning a worker: a citation that replaces this work
+    /// must also stop a bibliography that has not started formatting yet.
+    pub(crate) fn begin_bibliography(&self, cancel: &Cancellation) -> Result<(), CommandError> {
+        let _preview = self.latest_preview.lock().map_err(|_| CommandError::Cancelled)?;
+        Self::replace_formatting(&self.latest_bibliography, cancel)
+    }
+
+    pub(crate) fn details(
+        &self,
+        ticket: &str,
+        hash: &str,
+        item: usize,
+        cancel: &Cancellation,
+    ) -> Result<ReferenceDetails, CommandError> {
         let (reservation, citation, original_output) = {
             let slot = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
             let (current, citation, output) = slot.as_ref().ok_or(CommandError::SnapshotChanged)?;
@@ -961,7 +1011,16 @@ impl FileLibrary {
                 output.clone(),
             )
         };
-        let cancel = self.preview_cancellation(reservation)?;
+        {
+            // Install under the preview's identity lock so a replacement cannot
+            // pass between validation and registration of the examples' owner.
+            let latest = self.latest_preview.lock().map_err(|_| CommandError::Cancelled)?;
+            if latest.0 != reservation {
+                return Err(CommandError::Cancelled);
+            }
+            latest.1.check().map_err(CommandError::from)?;
+            Self::replace_formatting(&self.latest_details, cancel)?;
+        }
         // A numbered style writes reference entries, which have no name forms.
         let entry = citation.result().notices.contains(&Notice::ReferenceEntry);
         let bare_keys = matches!(
@@ -1005,14 +1064,14 @@ impl FileLibrary {
                 continue;
             }
             let result = citation
-                .form_example(&self.engine, &original_output, item, form, &cancel)
+                .form_example(&self.engine, &original_output, item, form, cancel)
                 .map_err(CommandError::from)?;
             let supported = result.outcomes.contains(&ItemOutcome::Rendered { item });
             // Refused in a group, a form may still work for this reference alone.
             let alone = !supported
                 && result.outcomes.len() > 1
                 && citation
-                    .form_alone(&self.engine, &original_output, item, form, &cancel)
+                    .form_alone(&self.engine, &original_output, item, form, cancel)
                     .map_err(CommandError::from)?;
             forms.push(FormOption {
                 form: wire,
@@ -1048,6 +1107,7 @@ impl FileLibrary {
         self.preview_cancellation(reservation)?
             .check()
             .map_err(CommandError::from)?;
+        cancel.check().map_err(CommandError::from)?;
         Ok(ReferenceDetails { forms, current_form })
     }
     /// Whether the receipt `ticket` was prepared for this editor's request.

@@ -120,7 +120,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
     return () => { versionCopy.current += 1; };
   }, [page]);
-  const { altHeld } = useAltHeld();
+  const { altHeld } = useAltHeld("option");
   const [about, setAbout] = useState<DelightView | null>(null);
   const [fact, setFact] = useState<DelightFact | null>(null);
   const [dip, setDip] = useState(0);

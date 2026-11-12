@@ -18,17 +18,19 @@
 }
 @keyframes ui-view-fade { from { opacity: 0; } }
 .ui-view-head {
-  flex: none; display: flex; align-items: center; min-height: var(--header-h);
+  flex: none; display: grid; grid-template-columns: calc(var(--row-pad) + var(--tile)) auto minmax(0, 1fr);
+  align-items: center; column-gap: var(--row-gap); min-height: var(--header-h);
   padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);
 }
 /* The chevron centres on the tile column, where the bird sits; the name follows so
    the field after it starts no earlier than the title column. */
 .ui-view-head > .ui-view-back.ui-button[data-variant] {
-  flex: none; --icon-button-size: var(--field-h); border-radius: var(--r-control);
-  margin-inline: calc(var(--row-pad) + (var(--tile) - var(--field-h)) / 2) calc((var(--tile) - var(--field-h)) / 2 + var(--row-gap));
+  --icon-button-size: var(--hit); justify-self: start;
+  margin-inline-start: calc(var(--row-pad) + (var(--tile) - var(--hit)) / 2);
 }
-.ui-view-title { flex: none; min-width: 0; margin: 0 var(--space-3) 0 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
-.ui-view-title[data-chip] { padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.ui-view-title { min-width: 0; margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
+.ui-view-title:not([data-chip]) { grid-column: 2 / -1; }
+.ui-view-title[data-chip] { margin-inline-start: calc(-1 * var(--space-2)); padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); font-size: var(--type-label-size); line-height: var(--type-label-line); }
 /* A view's search is the picker's: frameless and large. */
 .ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
 .ui-view .ui-view-field:focus-visible { outline: none; box-shadow: none; }
@@ -44,5 +46,6 @@
 }
 .ui-view-status { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ui-view-back-hint.ui-button[data-variant] { color: var(--text-secondary); }
+.ui-view-back-hint.ui-button[data-variant] > .key-hint { flex-wrap: nowrap; white-space: nowrap; }
 /* A leading text action starts its words, not its hover plate, on the title column, as the status words do. */
 .ui-view-status > .ui-button[data-size="small"]:first-child { margin-inline-start: calc(-1 * (var(--space-2) + var(--border-width))); }

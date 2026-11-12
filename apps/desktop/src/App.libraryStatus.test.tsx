@@ -1,4 +1,4 @@
-import { afterEach, expect, test, vi } from "vitest";
+import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { getRoles } from "@testing-library/dom";
 import { emit } from "@tauri-apps/api/event";
@@ -67,18 +67,25 @@ test.each([
   expect(within(await screen.findByRole("menu", { name: "Library" })).getByRole("menuitem", { name: "Reload Library" })).toBeTruthy();
 });
 
-test("a fresh closed Zotero snapshot stays quiet and the footer opens its library menu", async () => {
+test.each(["macos", "windows", "linux"])("%s: a fresh closed Zotero snapshot stays quiet and the footer opens its library menu", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  onTestFinished(() => {
+    if (previous === undefined) delete document.documentElement.dataset.system;
+    else document.documentElement.dataset.system = previous;
+  });
   const calls = backend({ library_status: () => library(), reload_library: () => null });
   render(<App />);
   await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
   expect(document.querySelector(".notices")?.textContent).toBe("");
   fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
   const menu = await screen.findByRole("menu", { name: "Library" });
-  // The spec's order: the library with its count and age, a separator, then Choose Library… ⇧⌘O and Reload Library.
+  // Library detail, separator, Choose Library and Reload Library. Only macOS
+  // has a Choose shortcut: Ctrl+Shift+O is the source alternate elsewhere.
   const heading = menu.querySelector(".menu-detail")!;
   expect(heading.textContent).toMatch(/^\u2068?Zotero\u2069? · 12 references.*checked 2 hours ago/);
   expect(heading.closest("section")?.nextElementSibling?.getAttribute("role")).toBe("separator");
-  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Choose Library…Ctrl+Shift+O", "Reload Library"]);
+  expect(within(menu).getAllByRole("menuitem").map((item) => item.textContent)).toEqual([`Choose Library…${platform === "macos" ? "⇧⌘O" : ""}`, "Reload Library"]);
   // A keyboard user entering the actions hears what the menu is about.
   const actions = within(menu).getAllByRole("group").find((group) => group.contains(within(menu).getByRole("menuitem", { name: "Reload Library" })))!;
   expect(actions.getAttribute("aria-label")).toMatch(/^\u2068Zotero\u2069 · 12 references\. .*checked 2 hours ago/);

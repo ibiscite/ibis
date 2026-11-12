@@ -46,8 +46,8 @@ pub(super) struct Tool {
     answer: Answer,
 }
 
-/// A tool's work: the engine, where the app's formats are read, and the arguments.
-type Answer = fn(&Engine, &Formats, &Map<String, Value>) -> Result<Value, Refusal>;
+/// A tool's work: the engine, where the app's formats are read, the arguments and cancellation.
+type Answer = fn(&Engine, &Formats, &Map<String, Value>, &Cancellation) -> Result<Value, Refusal>;
 
 pub(super) const TOOLS: [Tool; 4] = [
     Tool {
@@ -140,8 +140,9 @@ pub(super) fn call(
     formats: &Formats,
     tool: &Tool,
     arguments: &Value,
+    cancel: &Cancellation,
 ) -> Value {
-    let answered = answer(engine, problem, formats, tool, arguments).and_then(|(text, data)| {
+    let answered = answer(engine, problem, formats, tool, arguments, cancel).and_then(|(text, data)| {
         // The answer goes twice, as text and as structured content: the bound is on what is sent.
         let result = json!({
             "content": [{"type": "text", "text": text}],
@@ -171,7 +172,9 @@ fn answer(
     formats: &Formats,
     tool: &Tool,
     arguments: &Value,
+    cancel: &Cancellation,
 ) -> Result<(String, Value), Refusal> {
+    cancel.check()?;
     let arguments = arguments
         .as_object()
         .ok_or_else(|| Refusal::bad("arguments must be an object."))?;
@@ -184,7 +187,8 @@ fn answer(
             return Err(Refusal::new(ErrorCode::SourceUnavailable, NO_LIBRARY));
         }
     }
-    let data = (tool.answer)(engine, formats, arguments)?;
+    let data = (tool.answer)(engine, formats, arguments, cancel)?;
+    cancel.check()?;
     Ok((data.to_string(), data))
 }
 
@@ -310,7 +314,12 @@ fn search_output() -> Value {
     })
 }
 
-fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn search(
+    engine: &Engine,
+    _: &Formats,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+) -> Result<Value, Refusal> {
     let query = arguments
         .get("query")
         .and_then(Value::as_str)
@@ -338,7 +347,7 @@ fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Resul
             limit,
             libraries: None,
         },
-        &Cancellation::default(),
+        cancel,
     )?;
     let records: Vec<_> = result
         .hits
@@ -439,7 +448,12 @@ fn show_output() -> Value {
     shown
 }
 
-fn show(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn show(
+    engine: &Engine,
+    _: &Formats,
+    arguments: &Map<String, Value>,
+    _cancel: &Cancellation,
+) -> Result<Value, Refusal> {
     let Checked {
         value: shown,
         source_health,
@@ -538,9 +552,14 @@ fn format_ids() -> Vec<&'static str> {
         .collect()
 }
 
-fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn cite(
+    engine: &Engine,
+    formats: &Formats,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+) -> Result<Value, Refusal> {
     if arguments.contains_key("records") {
-        return cite_records(engine, arguments);
+        return cite_records(engine, arguments, cancel);
     }
     let items = arguments
         .get("items")
@@ -632,12 +651,10 @@ fn cite(engine: &Engine, formats: &Formats, arguments: &Map<String, Value>) -> R
         output_locale: locale,
     };
     let (result, source_health, bibliography) = if let Some(writing) = writing {
-        let result = engine.writing_citation(&writing, &request, by_key, &Cancellation::default())?;
+        let result = engine.writing_citation(&writing, &request, by_key, cancel)?;
         (result.citation, result.source_health, result.bibliography)
     } else {
-        let checked = engine
-            .prepare_consulting(&request, by_key, &Cancellation::default())?
-            .into_checked();
+        let checked = engine.prepare_consulting(&request, by_key, cancel)?.into_checked();
         (checked.value, checked.source_health, None)
     };
     let mut answer = written(&result, count)?;
@@ -734,7 +751,7 @@ fn written(result: &CitationResult, count: usize) -> Result<Value, Refusal> {
 }
 
 /// Records the agent sent, cited in the order sent; the user's library is not read.
-fn cite_records(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn cite_records(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) -> Result<Value, Refusal> {
     if arguments.contains_key("items") || arguments.contains_key("for_app") {
         return Err(Refusal::bad("Give records or items, not both; for_app needs items."));
     }
@@ -759,7 +776,7 @@ fn cite_records(engine: &Engine, arguments: &Map<String, Value>) -> Result<Value
             output_locale,
             items: None,
         },
-        &Cancellation::default(),
+        cancel,
     )?;
     let mut answer = written(&result, records.len())?;
     answer["provenance"] = json!(RECORDS_PROVENANCE);
@@ -886,7 +903,12 @@ fn styles_output() -> Value {
     })
 }
 
-fn styles(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Result<Value, Refusal> {
+fn styles(
+    engine: &Engine,
+    _: &Formats,
+    arguments: &Map<String, Value>,
+    _cancel: &Cancellation,
+) -> Result<Value, Refusal> {
     let number = |name: &str, default: usize, most: Option<usize>| match arguments.get(name) {
         None => Ok(default),
         Some(value) => value

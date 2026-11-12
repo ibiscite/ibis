@@ -2,6 +2,27 @@ use super::*;
 use std::sync::{Arc, Barrier};
 
 #[test]
+fn a_delayed_bibliography_stops_after_a_new_citation_without_a_style_error_or_delivery()
+-> Result<(), Box<dyn std::error::Error>> {
+    let file = FileLibrary::from_engine(Engine::new().map_err(|_| "engine")?);
+    let cancel = Cancellation::default();
+    file.begin_bibliography(&cancel).map_err(|_| "start bibliography")?;
+    file.reserve_preview();
+    assert!(matches!(
+        file.session_bibliography(&[], "unknown-style", &cancel),
+        Err(CommandError::Cancelled)
+    ));
+    let mut delivered = false;
+    let result = file.commit_session_bibliography(&[], "unknown-style", "unused", &cancel, |_| {
+        delivered = true;
+        Ok(())
+    });
+    assert!(matches!(result, Err(CommandError::Cancelled)));
+    assert!(!delivered);
+    Ok(())
+}
+
+#[test]
 fn item_warnings_reach_both_native_preview_and_copy_feedback() -> Result<(), Box<dyn std::error::Error>> {
     let directory = tempfile::tempdir()?;
     let path = directory.path().join("invented.bib");
@@ -503,7 +524,7 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
         preview.text
     );
     let choices = file
-        .details(&preview.ticket, &preview.content_hash, 0)
+        .details(&preview.ticket, &preview.content_hash, 0, &Cancellation::default())
         .map_err(|_| "details")?;
     let offered: Vec<_> = choices.forms.iter().map(|choice| choice.form).collect();
     assert_eq!(
@@ -528,7 +549,10 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
     // Metadata is read-only: opening it cannot replace the authoritative copy ticket.
     assert!(file.copy(&preview.ticket, &preview.content_hash, |_| Ok(())).is_ok());
     file.reserve_preview();
-    assert!(file.details(&preview.ticket, &preview.content_hash, 0).is_err());
+    assert!(
+        file.details(&preview.ticket, &preview.content_hash, 0, &Cancellation::default())
+            .is_err()
+    );
     Ok(())
 }
 
@@ -569,7 +593,7 @@ fn shelf_biblatex_examples_keep_the_original_family_after_narrative() -> Result<
             .map_err(|_| "preview")?;
         assert_eq!(preview.text, "\\textcite{Synthetic2021}");
         let details = file
-            .details(&preview.ticket, &preview.content_hash, 0)
+            .details(&preview.ticket, &preview.content_hash, 0, &Cancellation::default())
             .map_err(|_| "details")?;
         assert_eq!(
             details.forms[0].example.as_deref(),
@@ -625,7 +649,7 @@ fn shelf_semantic_forms_do_not_mislabel_textcite_keys_or_reference_entries() -> 
             )
             .map_err(|_| "preview")?;
         let details = file
-            .details(&preview.ticket, &preview.content_hash, 0)
+            .details(&preview.ticket, &preview.content_hash, 0, &Cancellation::default())
             .map_err(|_| "details")?;
         if format == "textcite" {
             assert_eq!(details.current_form, Some(ReferenceForm::Narrative));

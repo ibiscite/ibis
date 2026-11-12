@@ -1,16 +1,16 @@
+import { useRef, useState } from "react";
 import type * as nativeApi from "../../api";
-import { useState } from "react";
 import type { UpdateProgress } from "../../api";
 import { useInterfaceMessages } from "../../i18n";
 import { say } from "../../i18n";
-import { isMac } from "../../platform";
+import { currentPlatform } from "../../platform";
 import { NoticeSlot, QuietNotice } from "../../ui/NoticeSlot";
 import { UndoNotice } from "../../ui/UndoNotice";
 import { KeysDialog } from "./KeysDialog";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";
-import { WritingsDialog } from "./Writings";
+import { WritingsDialog, type WritingDraft } from "./Writings";
 import { defaultOutput, defaultStyle, type OutputId } from "../../format/outputs";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -25,12 +25,13 @@ export function PickerOverlays({ api, style, format, menus, bindings }: {
   bindings: readonly KeyBinding[];
 }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
+  const writingDraft = useRef<WritingDraft>({ form: null, place: { current: null } });
   return <>
-    {menus.keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} />}
+    {menus.keysOpen && <KeysDialog bindings={bindings} isMac={currentPlatform() === "macos"} onClose={menus.closeKeys} />}
     {menus.projectsOpen && <WritingsDialog
       api={{ writings: api.writings, editWriting: api.editWriting,
         chooseProject: api.chooseProject, stopProject: api.stopProject, onProjectChanged: api.onProjectChanged, onWritingsChanged: api.onWritingsChanged }}
-      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} />}
+      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} draft={writingDraft} />}
     {menus.sessionOpen && <SessionReferencesDialog style={style ?? defaultStyle} onClose={menus.closeSession}
         api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
   </>;

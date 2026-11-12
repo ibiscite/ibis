@@ -14,9 +14,9 @@ export type InspectorPanel = {
 
 /** The inspector's one owner, above the shelf because Esc, the list's notices
  * and the footer's Esc hint all answer to it. */
-export function useCitationInspector() {
+export function useCitationInspector(cancelCopy?: () => void) {
   const [panel, show] = useState<InspectorPanel | null>(null);
-  const close = useCallback(() => show(null), []);
+  const close = useCallback(() => { cancelCopy?.(); show(null); }, [cancelCopy]);
   return { panel, show, close };
 }
 
