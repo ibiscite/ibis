@@ -5,7 +5,7 @@ import { LibraryDetail, libraryCondition, LibraryStatusLine, zoteroLibraryNames 
 import { say } from "../../i18n";
 import { shortenedLabel, SourceAction, type SourceActionProps } from "../../ui/SourceAction";
 import { keyLabel, keysFor } from "../../keys";
-import { isMac } from "../../platform";
+import { currentPlatform } from "../../platform";
 import { MenuItem, MenuSection, MenuSeparator } from "../../ui/Menu";
 import { findSourceLabel } from "./usePickerSource";
 import { libraryMessages } from "../../libraryWords";
@@ -96,7 +96,7 @@ export function PickerLibraryStatus({ library, groupName, notice, isOpen, onOpen
         </MenuSection>}
         {zotero && zotero.offered.length > 1 && <MenuSeparator />}
         <MenuSection id="library-actions" label={detailLabel}>
-          <MenuItem id="choose" label={say("picker-choose-library-menu")} keys={keyLabel(keysFor("chooseSource"), isMac)} onAction={actions.choose} />
+          <MenuItem id="choose" label={say("picker-choose-library-menu")} keys={keyLabel(keysFor("chooseSource"), currentPlatform() === "macos")} onAction={actions.choose} />
           {!library?.zotero && <MenuItem id="zotero" label={say("picker-use-zotero")} onAction={actions.useZotero} />}
           {/* A reload can publish a recovery screen before an animated exit
               ends. Retire the modal and its same-named menu before that I/O. */}

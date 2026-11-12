@@ -1,23 +1,24 @@
 import { useEffect, useState } from "react";
 import { currentPlatform } from "../../platform";
 
-export function useAltHeld() {
+export function useAltHeld(mode: "picker" | "option" = "picker") {
   // Option on macOS; Shift over the footer elsewhere, so capitals in Search
-  // never change its actions. Any other key ends the alternate display.
+  // never change its actions. About keeps Option/Alt on every system.
+  // Any other key ends the alternate display.
   const [altHeld, setAltHeld] = useState(false);
   useEffect(() => {
-    const mac = currentPlatform() === "macos", modifier = mac ? "Alt" : "Shift";
+    const option = mode === "option" || currentPlatform() === "macos", modifier = option ? "Alt" : "Shift";
     let held = false, hovering = false;
-    const show = () => setAltHeld(held && (mac || hovering));
+    const show = () => setAltHeld(held && (option || hovering));
     const down = (e: KeyboardEvent) => {
       if (e.repeat) return;
-      held = e.key === modifier && !e.ctrlKey && !e.metaKey && (mac ? !e.shiftKey : !e.altKey);
+      held = e.key === modifier && !e.ctrlKey && !e.metaKey && (option ? !e.shiftKey : !e.altKey);
       show();
     };
-    const up = (e: KeyboardEvent) => { if (e.key === modifier || !(mac ? e.altKey : e.shiftKey)) { held = false; show(); } };
+    const up = (e: KeyboardEvent) => { if (e.key === modifier || !(option ? e.altKey : e.shiftKey)) { held = false; show(); } };
     const over = (e: PointerEvent) => {
       // A key released in another window may never send us keyup.
-      held &&= mac ? e.altKey : e.shiftKey;
+      held &&= option ? e.altKey : e.shiftKey;
       hovering = e.target instanceof Element && e.target.closest("footer") !== null;
       show();
     };
@@ -36,7 +37,7 @@ export function useAltHeld() {
       window.removeEventListener("pointerover", over);
       window.removeEventListener("pointerout", out);
     };
-  }, []);
+  }, [mode]);
 
   return { altHeld, setAltHeld };
 }
