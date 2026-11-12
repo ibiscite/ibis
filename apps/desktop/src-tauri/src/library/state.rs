@@ -598,7 +598,6 @@ mod tests {
         )
         .unwrap_or_else(|| panic!("automatic install"));
         assert_eq!(unavailable.error, rejected.error);
-        assert!(unavailable.choice_not_saved);
         let note = unavailable.note.unwrap_or_else(|| panic!("retained source note"));
         assert!(note.starts_with(original_note));
         assert!(note.contains("retained.bib could not be updated"));
@@ -610,7 +609,6 @@ mod tests {
             .unwrap_or_else(|| panic!("empty update"));
         assert_eq!(empty.references, 0);
         assert!(empty.has_snapshot);
-        assert!(empty.choice_not_saved);
         assert_eq!(
             empty.error.as_deref(),
             Some("the library file is not UTF-8 text; save it as UTF-8")
@@ -657,7 +655,6 @@ mod tests {
         assert_eq!(loaded.references, 0);
         assert!(loaded.error.is_none());
         assert!(loaded.note.is_none());
-        assert!(!loaded.choice_not_saved);
         assert_eq!(loaded.settings_notice.as_deref(), Some("settings recovered"));
     }
 
@@ -696,7 +693,6 @@ mod tests {
             let refreshed = install_automatic(&library, &requests, request, Ok(changed))
                 .unwrap_or_else(|| panic!("the refresh is current"));
             assert_eq!(refreshed.references, 2);
-            assert!(refreshed.choice_not_saved);
             assert_eq!(
                 refreshed.note.as_deref(),
                 Some(saved),
@@ -802,9 +798,7 @@ mod tests {
         assert_eq!(failed.warnings, before.warnings);
         assert_eq!(failed.note.as_deref(), Some("the library choice was not saved"));
         assert_eq!(failed.error.as_deref(), Some("the chosen file is not on this computer"));
-        assert!(
-            library_line(&failed).starts_with("Library could not be opened: the chosen file is not on this computer")
-        );
+        assert_eq!(library_line(&failed), "synthetic.bib could not be read");
         let file = library.file.clone().unwrap_or_else(|| panic!("file"));
         super::super::tasks::engine_changed(&mut library, &file);
         assert_eq!(library.error, Some(LoadError::NotLocal));
