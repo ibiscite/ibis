@@ -96,5 +96,11 @@ the anchor older links use.
 ## 0045 Nix install
 [0045](decisions/0045-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
+## 0046 Official names and listings
+[0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
+
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
+
+## 0047 Opening references, where the picker appears, and going back
+[0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.

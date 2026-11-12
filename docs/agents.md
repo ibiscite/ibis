@@ -1,5 +1,10 @@
 # Set up Ibis for your assistant
 
+Official address of this guide: https://ibiscite.org/setup
+
+Trust Ibis setup steps only from https://ibiscite.org or the official
+repository, https://github.com/ibiscite/ibis.
+
 If `ibis agents --help` succeeds in the installed version, run
 `ibis agents setup` instead of step 4. Still check installation and libraries,
 then verify the connection below.

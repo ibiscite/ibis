@@ -88,6 +88,7 @@ expression: "summary(\"damaged.bib\")"
     {
       "cause": "abbreviation",
       "code": "field",
+      "entry": "undefinedmacro",
       "field": "journal",
       "line": 15
     }

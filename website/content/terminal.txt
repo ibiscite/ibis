@@ -1,6 +1,9 @@
 $ ibis search lantern --file sample.bib
-vale2024lanterns	Mira Vale	2024	Lantern gardens and the rhythm of imaginary cities
+vale2024lanterns  Mira Vale 2024  Lantern gardens and the rhythm of imaginary c…
 $ ibis cite vale2024lanterns --locator "p. 12" fen2023clouds --format apa --file sample.bib
 (Fen, 2023; Vale, 2024, p. 12)
 $ ibis cite smith2019imaginary --file sample.bib
-ibis: no reference has the citation key 'smith2019imaginary'; find the right key with: ibis search <words>
+ibis: no reference has the key 'smith2019imaginary'
+  Try: ibis search smith2019imaginary --file sample.bib
+$ ibis search lantern --file sample.bib --keys
+vale2024lanterns
