@@ -268,7 +268,11 @@ fn refresh_error(
 ) -> Option<LoadError> {
     use ibis_core::contract::EngineError;
     let code = code?;
-    let error = EngineError { code, reason };
+    let error = EngineError {
+        code,
+        reason,
+        detail: None,
+    };
     Some(match kind {
         LibraryKind::File => LoadError::file_refresh(error),
         LibraryKind::Zotero => LoadError::Zotero(error),
