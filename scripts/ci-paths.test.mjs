@@ -5,15 +5,14 @@ import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { classify, parseNameStatus } from "./ci-paths.mjs";
+import { classify, coreSystems, parseNameStatus } from "./ci-paths.mjs";
 
-const full = { core: true, interface: true, native: true, proven: false, scripts: true, web: true };
-const appOnly = { core: false, interface: true, native: true, proven: false, scripts: false, web: true };
-const interfaceOnly = { core: false, interface: true, native: false, proven: false, scripts: false, web: true };
-const websiteOnly = { core: false, interface: false, native: false, proven: false, scripts: false, web: true };
+const full = { core: true, interface: true, native: true, scripts: true, web: true };
+const appOnly = { core: false, interface: true, native: true, scripts: false, web: true };
+const interfaceOnly = { core: false, interface: true, native: false, scripts: false, web: true };
+const websiteOnly = { core: false, interface: false, native: false, scripts: false, web: true };
 const scriptsOnly = { ...websiteOnly, scripts: true };
-const docsOnly = { core: false, interface: false, native: false, proven: false, scripts: false, web: false };
-const reused = { ...docsOnly, proven: true };
+const docsOnly = { core: false, interface: false, native: false, scripts: false, web: false };
 const row = (filename, previous_filename = null) => ({ filename, previous_filename, status: previous_filename ? "renamed" : "modified" });
 const pr = (files, expected = files.length) => classify("pull_request", expected, files);
 
@@ -84,7 +83,6 @@ test("website CLI examples run the crates that verify their outputs", () => {
     for (const status of ["added", "modified", "removed"]) assert.deepEqual(pr([{ filename, status }]), full, `${status}: ${filename}`);
     assert.deepEqual(pr([row("website/old.txt", filename)]), full, `renamed from ${filename}`);
     assert.deepEqual(pr([row(filename, "website/old.txt")]), full, `renamed to ${filename}`);
-    assert.deepEqual(classify("merge_group", 1, [row(filename)], true), full, "the queue still runs the macOS crate tests");
   }
 });
 
@@ -158,37 +156,10 @@ test("Rust never reads a script, so script changes may skip the crates and the a
   assert.deepEqual(readers, Object.keys(allowed), "a new reader must run on script changes too, or narrow `scriptFile` in ci-paths.mjs");
 });
 
-test("the merge queue runs what its entry changes; anything else runs everything unless proven", () => {
-  assert.deepEqual(classify("merge_group", 1, [row("docs/design.md")]), docsOnly);
-  assert.deepEqual(classify("merge_group", 2, [row("scripts/land.sh"), row("apps/desktop/src/App.tsx")]), { ...interfaceOnly, scripts: true });
-  assert.deepEqual(classify("merge_group", 1, [row("crates/ibis-core/src/lib.rs")]), full);
-  for (const files of [[], null, [row("../README.md")]]) assert.deepEqual(classify("merge_group", files?.length, files), full);
-  for (const event of ["push", "schedule", "workflow_dispatch", "unknown"]) {
-    assert.deepEqual(classify(event, 1, [row("README.md")]), full, event);
-  }
-});
-
-test("a run reuses only a passing run of the same tree, and main still saves changed caches", () => {
-  // A queue entry identical to its pull request's checked head...
-  for (const path of ["docs/design.md", "apps/desktop/src/App.tsx", "apps/desktop/src-tauri/src/lib.rs", "website/index.html"]) {
-    assert.deepEqual(classify("merge_group", 1, [row(path)], true), reused, path);
-  }
-  // ...still runs the macOS crate and script tests its pull request left to the queue.
-  assert.deepEqual(classify("merge_group", 1, [row("crates/ibis-core/src/lib.rs")], true), full);
-  assert.deepEqual(classify("merge_group", 1, [row("scripts/land.sh")], true), scriptsOnly);
-  for (const files of [[], null]) assert.deepEqual(classify("merge_group", files?.length, files, true), full, "an unclear list reuses nothing");
-  // Main at the commit the queue checked.
-  for (const path of ["docs/design.md", "crates/ibis-core/src/lib.rs", "apps/desktop/src/App.tsx", "scripts/land.sh"]) {
-    assert.deepEqual(classify("push", 1, [row(path)], true), reused, path);
-  }
-  for (const path of ["Cargo.lock", "Cargo.toml", "crates/ibis-core/Cargo.toml", "apps/desktop/src-tauri/Cargo.toml", "fuzz/Cargo.toml", "rust-toolchain.toml", ".cargo/config.toml", "apps/desktop/pnpm-lock.yaml", "apps/desktop/package.json", ".github/workflows/ci.yml"]) {
-    assert.deepEqual(classify("push", 2, [row("docs/design.md"), row(path)], true), full, path);
-  }
-  for (const files of [[], null, [row("../README.md")]]) assert.deepEqual(classify("push", files?.length, files, true), full);
-  for (const proven of [false, "true", 1]) assert.deepEqual(classify("push", 1, [row("README.md")], proven), full);
-  for (const event of ["pull_request", "schedule", "workflow_dispatch"]) {
-    assert.notEqual(classify(event, 1, [row("README.md")], true).proven, true, event);
-  }
+test("main verifies each pushed commit by its changed areas; daily and manual runs select everything", () => {
+  assert.deepEqual(classify("push", 1, [row("docs/design.md")]), docsOnly);
+  assert.deepEqual(classify("push", 1, [row("crates/ibis-core/src/lib.rs")]), full);
+  for (const event of ["schedule", "workflow_dispatch", "unknown"]) assert.deepEqual(classify(event, 1, [row("README.md")]), full);
 });
 
 test("git's name-status list reads as GitHub's file list", () => {
@@ -198,7 +169,7 @@ test("git's name-status list reads as GitHub's file list", () => {
     { filename: "gone.txt", previous_filename: null, status: "removed" },
     { filename: "odd", previous_filename: null, status: "unknown" },
   ]);
-  assert.deepEqual(classify("merge_group", 1, parseNameStatus("X\0odd\0")), full);
+  assert.deepEqual(classify("push", 1, parseNameStatus("X\0odd\0")), full);
   assert.equal(parseNameStatus(null), null);
 });
 
@@ -206,12 +177,12 @@ test("the CLI emits only fixed decisions for valid, missing and malformed metada
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-paths-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const file = join(dir, "synthetic.ndjson");
-  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "core=false\ninterface=true\nnative=false\nproven=false\nscripts=false\nweb=true\n"], ["private-資料: invalid metadata", "core=true\ninterface=true\nnative=true\nproven=false\nscripts=true\nweb=true\n"], ["", "core=true\ninterface=true\nnative=true\nproven=false\nscripts=true\nweb=true\n"], [null, "core=true\ninterface=true\nnative=true\nproven=false\nscripts=true\nweb=true\n"]]) {
+  for (const [contents, expected] of [[JSON.stringify(row("apps/desktop/src/研究.tsx")), "core=false\ninterface=true\nnative=false\nscripts=false\nweb=true\n"], ["private-資料: invalid metadata", "core=true\ninterface=true\nnative=true\nscripts=true\nweb=true\n"], ["", "core=true\ninterface=true\nnative=true\nscripts=true\nweb=true\n"], [null, "core=true\ninterface=true\nnative=true\nscripts=true\nweb=true\n"]]) {
     if (contents !== null) writeFileSync(file, contents);
     else rmSync(file);
     const result = spawnSync(process.execPath, [fileURLToPath(new URL("./ci-paths.mjs", import.meta.url))], { encoding: "utf8", env: { ...process.env, EVENT: "pull_request", EXPECTED: "1", FILES: file }, timeout: 5000 });
     assert.equal(result.status, 0);
-    assert.equal(result.stdout, expected);
+    assert.equal(result.stdout, expected + `systems=${JSON.stringify(coreSystems("pull_request", contents === null ? undefined : 1, contents && contents.startsWith("{") ? [JSON.parse(contents)] : null))}\n`);
     assert.equal(result.stderr, "");
   }
   assert.deepEqual(pr([{ filename: "README.md" }]), full);
@@ -222,7 +193,7 @@ test("the crates' tests skip only when none of their inputs changed", () => {
   assert.deepEqual(pr([row("ROADMAP.md", "crates/ibis-core/src/lib.rs")]), full);
 });
 
-test("every interface change reaches the system's own WebKit on macOS", () => {
+test("interface selection identifies changes for the daily WebKit canvas", () => {
   for (const path of ["apps/desktop/src/tokens.css", "apps/desktop/src-tauri/src/lib.rs", "apps/desktop/gallery/webkit.swift", "crates/ibis-core/src/lib.rs"]) assert.equal(pr([row(path)]).interface, true, path);
   for (const path of ["website/index.html", "docs/design.md", "README.md"]) assert.equal(pr([row(path)]).interface, false, path);
 });
@@ -232,7 +203,7 @@ test("every interface change reaches the system's own WebKit on macOS", () => {
 function changesFixture(t) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-ci-changes-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
-  for (const name of ["github", "crash"]) mkdirSync(join(dir, name));
+  for (const name of ["github", "crash", "git"]) mkdirSync(join(dir, name));
   writeFileSync(join(dir, "github/gh"), `#!/usr/bin/env bash
 if [[ "$*" == *"/files"* ]]; then
   printf '%s\n' "$METADATA"
@@ -243,6 +214,7 @@ else
   [[ "$SCENARIO" != failedhead ]]
 fi
 `, { mode: 0o755 });
+  writeFileSync(join(dir, "git/git"), '#!/bin/sh\nif [ "$1" = fetch ]; then exit "$FETCH_STATUS"; fi\nif [ "$1" = diff ]; then printf "%b" "$DIFF_DATA"; fi\n', { mode: 0o755 });
   writeFileSync(join(dir, "crash/node"), "#!/usr/bin/env bash\nprintf '%b' \"$PARTIAL\"\nexit 17\n", { mode: 0o755 });
   return (stubs, env) => {
     rmSync(join(dir, "read"), { force: true });
@@ -260,7 +232,7 @@ test("CI's file list falls back to every check on failed reads or changing refs"
   for (const scenario of ["valid", "changedrefs", "failedhead", "failedfiles", "partial", "malformed"]) {
     // The real Node runs the real classifier.
     const result = run(["github"], { EVENT: "pull_request", REPO: "example/ibis", PR: "7", EXPECTED: scenario === "partial" ? "2" : "1", EXPECTED_REFS: `${"a".repeat(40)}:${"b".repeat(40)}`, SCENARIO: scenario, METADATA: scenario === "malformed" ? "invalid-private-資料" : JSON.stringify(row("apps/desktop/src/App.tsx")) });
-    const expected = scenario === "valid" ? "core=false\ninterface=true\nnative=false\nproven=false\nscripts=false\nweb=true\n" : "core=true\ninterface=true\nnative=true\nproven=false\nscripts=true\nweb=true\n";
+    const expected = scenario === "valid" ? 'core=false\ninterface=true\nnative=false\nscripts=false\nweb=true\nsystems=["ubuntu-24.04"]\n' : 'core=true\ninterface=true\nnative=true\nscripts=true\nweb=true\nsystems=["ubuntu-24.04","windows-2025","macos-15"]\n';
     assert.equal(result.status, 0, scenario);
     assert.equal(result.stdout, expected, scenario);
     assert.equal(result.stderr, "", scenario);
@@ -270,87 +242,9 @@ test("CI's file list falls back to every check on failed reads or changing refs"
 
 test("a classifier crash fails CI's file list step, even after partial output", { skip: process.platform === "win32" }, (t) => {
   const run = changesFixture(t);
-  for (const partial of ["", "core=false\\ninterface=false\\nnative=false\\nproven=true\\nscripts=false\\nweb=false\\n"]) {
+  for (const partial of ["", "core=false\\ninterface=false\\nnative=false\\nscripts=false\\nweb=false\\n"]) {
     assert.equal(run(["github", "crash"], { EVENT: "schedule", PARTIAL: partial }).status, 17);
   }
-});
-
-// scripts/ci-changes.sh for a queue entry and a push to main, in a shallow
-// checkout like CI's, fetching from a local stand-in for GitHub. Only GitHub's
-// API is replaced: it answers from the scenario's environment.
-function commitsFixture(t) {
-  const dir = mkdtempSync(join(tmpdir(), "ibis-ci-commits-"));
-  t.after(() => rmSync(dir, { recursive: true, force: true }));
-  const env = { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !/^GIT(HUB)?_/.test(key))), GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
-  const git = (cwd, ...args) => {
-    const result = spawnSync("git", args, { cwd, env, encoding: "utf8", timeout: 10_000 });
-    assert.equal(result.status, 0, result.stderr);
-    return result.stdout.trim();
-  };
-  const work = join(dir, "work"), origin = join(dir, "origin.git"), ci = join(dir, "ci"), bin = join(dir, "bin");
-  for (const path of [work, ci, bin, join(ci, "scripts")]) mkdirSync(path, { recursive: true });
-  git(work, "init", "-q", "-b", "main");
-  git(work, "config", "user.name", "Synthetic"); git(work, "config", "user.email", "noreply@example.org");
-  const commit = (files) => {
-    for (const [path, text] of Object.entries(files)) { mkdirSync(join(work, path, ".."), { recursive: true }); writeFileSync(join(work, path), text); }
-    git(work, "add", "."); git(work, "commit", "-qm", "synthetic");
-    return git(work, "rev-parse", "HEAD");
-  };
-  const base = commit({ "README.md": "base\n", "crates/a/src/lib.rs": "// a\n", "Cargo.lock": "# lock\n" });
-  const docs = commit({ "docs/a.md": "docs\n" });
-  const crate = commit({ "crates/a/src/lib.rs": "// b\n" });
-  git(work, "switch", "-q", "--detach", base);
-  const lock = commit({ "Cargo.lock": "# new lock\n" });
-  git(dir, "clone", "-q", "--bare", work, origin);
-  git(origin, "config", "uploadpack.allowAnySHA1InWant", "true");
-  git(origin, "fetch", "-q", work, `${lock}:refs/heads/lock`);
-  writeFileSync(join(bin, "gh"), `#!/usr/bin/env bash
-case "$2" in
-  *event=merge_group*) echo "$QUEUE_RUNS" ;;
-  *event=pull_request*) echo "$PR_RUNS" ;;
-  */compare/*) echo "$COMPARE" ;;
-  */pulls/*) echo "$PR_HEAD" ;;
-  *) exit 44 ;;
-esac
-`, { mode: 0o755 });
-  for (const name of ["ci-changes.sh", "ci-paths.mjs"]) writeFileSync(join(ci, "scripts", name), readFileSync(new URL(`./${name}`, import.meta.url)), { mode: 0o755 });
-  const run = (candidate, overrides) => {
-    rmSync(join(ci, ".git"), { recursive: true, force: true });
-    git(ci, "init", "-q");
-    git(ci, "remote", "add", "origin", `file://${origin}`);
-    git(ci, "fetch", "-q", "--depth=1", "origin", candidate);
-    git(ci, "checkout", "-q", "-f", "FETCH_HEAD");
-    writeFileSync(join(dir, "output"), "");
-    const result = spawnSync("bash", ["scripts/ci-changes.sh"], {
-      cwd: ci, encoding: "utf8", timeout: 10_000,
-      env: { ...env, PATH: `${bin}${delimiter}${env.PATH}`, RUNNER_TEMP: dir, GITHUB_OUTPUT: join(dir, "output"), REPO: "example/ibis", HEAD_SHA: candidate, QUEUE_RUNS: "false", PR_RUNS: "true", COMPARE: "ahead", PR_HEAD: candidate, ...overrides },
-    });
-    assert.equal(result.status, 0, result.stderr);
-    return Object.fromEntries(readFileSync(join(dir, "output"), "utf8").trim().split("\n").map((line) => line.split("=")).map(([key, value]) => [key, value === "true"]));
-  };
-  return { base, docs, crate, lock, run };
-}
-
-test("a queue entry runs what it changes, or nothing beside the run of the same tree", { skip: process.platform === "win32" }, (t) => {
-  const { base, docs, crate, run } = commitsFixture(t);
-  const entry = (candidate, overrides = {}) => run(candidate, { EVENT: "merge_group", BASE_SHA: base, HEAD_REF: `refs/heads/gh-readonly-queue/main/pr-7-${base}`, ...overrides });
-  assert.deepEqual(entry(docs), reused, "the pull request's head, on top of this base, passed");
-  assert.deepEqual(entry(crate), full, "macOS crate tests still run in the queue");
-  // Anything less than a passing run of the identical tree on top of this base runs the entry's classes.
-  for (const overrides of [{ PR_RUNS: "false" }, { PR_RUNS: "" }, { COMPARE: "diverged" }, { COMPARE: "" }, { PR_HEAD: crate }, { PR_HEAD: "" }, { PR_HEAD: "not-a-sha" }, { HEAD_REF: "refs/heads/feature" }]) {
-    assert.deepEqual(entry(docs, overrides), docsOnly, JSON.stringify(overrides));
-  }
-  assert.deepEqual(entry(crate, { PR_RUNS: "false" }), full);
-  assert.deepEqual(entry(docs, { PR_RUNS: "false", BASE_SHA: "f".repeat(40) }), full, "an unreadable base runs everything");
-});
-
-test("main reuses the queue's run of its commit unless its caches' inputs changed", { skip: process.platform === "win32" }, (t) => {
-  const { base, crate, lock, run } = commitsFixture(t);
-  const push = (candidate, overrides = {}) => run(candidate, { EVENT: "push", BASE_SHA: base, ...overrides });
-  assert.deepEqual(push(crate, { QUEUE_RUNS: "true" }), reused);
-  for (const queue of ["false", "", "1"]) assert.deepEqual(push(crate, { QUEUE_RUNS: queue }), full, queue);
-  assert.deepEqual(push(lock, { QUEUE_RUNS: "true" }), full, "new caches are saved");
-  assert.deepEqual(push(crate, { QUEUE_RUNS: "true", BASE_SHA: "f".repeat(40) }), full);
 });
 
 test("Release Please's own updates wait for the release; anyone else's run is checked", { skip: process.platform === "win32" }, (t) => {
@@ -366,4 +260,24 @@ test("Release Please's own updates wait for the release; anyone else's run is ch
     assert.match(checked.output, /^native=true$/m, actor);
   }
   assert.equal(run(["github"], { ...release, HEAD_REF: "feature", ACTOR: "ibis-release[bot]" }).status, 0);
+});
+
+test("fast core suites include touched platform implementations, while qualification covers all three", () => {
+  assert.deepEqual(coreSystems("pull_request", 1, [row("crates/ibis-core/src/lib.rs")]), ["ubuntu-24.04"]);
+  assert.deepEqual(coreSystems("pull_request", 1, [row("crates/ibis-sources/src/windows.rs")]), ["ubuntu-24.04", "windows-2025"]);
+  assert.deepEqual(coreSystems("push", 1, [row("crates/ibis-engine/src/macos/mod.rs")]), ["ubuntu-24.04", "macos-15"]);
+  assert.equal(coreSystems("schedule", 1, [row("README.md")]).length, 3);
+  assert.equal(coreSystems("workflow_dispatch", 1, [row("README.md")]).length, 3);
+});
+
+test("main push classification reads that push's diff and never reuses old evidence", { skip: process.platform === "win32" }, (t) => {
+  const run = changesFixture(t);
+  for (const [diff, expected] of [["M\\0docs/note.md\\0", false], ["M\\0crates/ibis-core/src/lib.rs\\0", true]]) {
+    const result = run(["git"], { EVENT: "push", BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), FETCH_STATUS: "0", DIFF_DATA: diff });
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.output, new RegExp(`^core=${expected}$`, "m"));
+  }
+  const unavailable = run(["git"], { EVENT: "push", BASE_SHA: "a".repeat(40), HEAD_SHA: "b".repeat(40), FETCH_STATUS: "1", DIFF_DATA: "" });
+  assert.equal(unavailable.status, 0);
+  assert.match(unavailable.output, /^core=true$/m);
 });
