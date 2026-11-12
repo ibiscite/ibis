@@ -1,5 +1,295 @@
 use super::super::state::candidate;
+use super::super::zotero_fixture;
 use super::*;
+
+#[test]
+fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() -> Result<(), Box<dyn std::error::Error>>
+{
+    use std::{sync::mpsc, time::Duration};
+    // Keep more abandoned Zotero reads than the file opener's capacity, then
+    // release both successful and failed responses after B is already saved.
+    let directory = tempfile::tempdir()?;
+    let library = Arc::new(Mutex::new(candidate(
+        Source::File(directory.path().join("A.bib")),
+        "@misc{alpha,title={Accepted alpha}}",
+    )));
+    let requests = Arc::new(LoadRequests::default());
+    let saved = Arc::new(SettingsFile::new(directory.path().join("settings.json")));
+    let mut abandoned = vec![];
+    for index in 0..6 {
+        let zotero = Source::Zotero(ZoteroLibrary::User.into());
+        let (request, reload, _) = begin_open(&library, &requests, zotero.clone()).ok_or("Zotero choice")?;
+        assert!(requests.enqueue(OpenRequest {
+            request,
+            source: zotero,
+            reload,
+            intent: OpenIntent::Remember,
+            profile: None,
+            cancel: OpenCancellation::default(),
+            #[cfg(debug_assertions)]
+            started: std::time::Instant::now()
+        }));
+        let (began, reading) = mpsc::channel();
+        let (release, blocked) = mpsc::channel();
+        let (done, finished) = mpsc::channel();
+        let (visible, displayed) = mpsc::channel();
+        let spawn_worker = |mut blocked: Option<(mpsc::Sender<()>, mpsc::Receiver<()>, mpsc::Sender<()>)>| {
+            let (library_worker, requests_worker, saved_worker) = (library.clone(), requests.clone(), saved.clone());
+            let visible = visible.clone();
+            std::thread::spawn(move || {
+                while let Some(open) = requests_worker.next_open() {
+                    let source = open.source.clone();
+                    let block = blocked.take();
+                    let loaded = supervise_source_load(&open.source, &open.cancel, Duration::from_secs(5), move || {
+                        if let Some((began, blocked, done)) = block {
+                            let _ = began.send(());
+                            let _ = blocked.recv();
+                            let result = if index % 2 == 0 {
+                                Ok(Loaded::New(Box::new(candidate(
+                                    source,
+                                    "@misc{obsolete,title={Obsolete Zotero}}",
+                                ))))
+                            } else {
+                                Err(super::super::error::ZOTERO_OFFLINE)
+                            };
+                            let _ = done.send(());
+                            return result;
+                        }
+                        load_source(source, false, None, None, &ibis_engine::Cancellation::default(), || {
+                            false
+                        })
+                    });
+                    let choice = remembered_choice(&open.source, &loaded);
+                    if open
+                        .intent
+                        .install(&library_worker, &requests_worker, open.request, loaded)
+                        .is_some()
+                    {
+                        if let Some(choice) = choice {
+                            saved_worker
+                                .update(|settings| settings.library = Some(choice))
+                                .unwrap_or_else(|e| panic!("{e}"));
+                        }
+                        let _ = visible.send(open.request);
+                    }
+                }
+            })
+        };
+        let worker = spawn_worker(Some((began, blocked, done)));
+        // Saturated Zotero acquisition may refuse promptly, but it must leave
+        // the file queue available. A blocked acquisition must announce itself.
+        let started = reading.recv_timeout(Duration::from_secs(1)).is_ok();
+        let path = directory.path().join(format!("B-{index}.bib"));
+        std::fs::write(&path, "@misc{bravo,title={Searchable bravo}}")?;
+        let source = Source::File(path.clone());
+        let (request, reload, _) = begin_open(&library, &requests, source.clone()).ok_or("B choice")?;
+        let open = OpenRequest {
+            request,
+            source,
+            reload,
+            intent: OpenIntent::Remember,
+            profile: None,
+            cancel: OpenCancellation::default(),
+            #[cfg(debug_assertions)]
+            started: std::time::Instant::now(),
+        };
+        let worker = if requests.enqueue(open) {
+            worker.join().map_err(|_| "saturated supervisor")?;
+            spawn_worker(None)
+        } else {
+            worker
+        };
+        // The queued file is handled by the same worker while Zotero is held.
+        let until = std::time::Instant::now() + Duration::from_secs(2);
+        let outcome = loop {
+            match displayed.recv_timeout(until.saturating_duration_since(std::time::Instant::now())) {
+                Ok(displayed) if displayed == request => break Ok(()),
+                Ok(_) => continue,
+                Err(_) => break Err("Zotero held B hostage"),
+            }
+        };
+        if let Err(error) = outcome {
+            let _ = release.send(());
+            let _ = worker.join();
+            return Err(error.into());
+        }
+        worker.join().map_err(|_| "supervisor")?;
+        let current = library.lock().map_err(|_| "library")?;
+        let query = super::super::search::SearchQuery {
+            text: "bravo".into(),
+            interpret_locators: false,
+        };
+        assert_eq!(
+            current
+                .file
+                .as_ref()
+                .ok_or("B engine")?
+                .search(&query, 10, None, &ibis_engine::Cancellation::default())
+                .map_err(|_| "B search")?
+                .results
+                .len(),
+            1
+        );
+        drop(current);
+        let persisted: ibis_core::settings::Settings =
+            serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
+        assert_eq!(persisted.library, Some(LibrarySetting::Bibtex(path.canonicalize()?)));
+        abandoned.push((release, finished, started));
+    }
+    let before = serde_json::to_value(current_status_for_test(&library))?;
+    for (release, finished, started) in abandoned {
+        let _ = release.send(());
+        if started {
+            finished.recv_timeout(Duration::from_secs(2))?;
+        }
+    }
+    assert_eq!(serde_json::to_value(current_status_for_test(&library))?, before);
+    let persisted: ibis_core::settings::Settings =
+        serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
+    assert_eq!(
+        persisted.library,
+        Some(LibrarySetting::Bibtex(directory.path().join("B-5.bib").canonicalize()?)),
+        "late Zotero success and failure cannot replace the saved file choice"
+    );
+    Ok(())
+}
+
+#[test]
+fn visible_zotero_recovery_over_a_retained_file_saves_the_recovered_choice() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let settings = SettingsFile::new(directory.path().join("settings.json"));
+    let file = Source::File(directory.path().join("retained.bib"));
+    settings.update(|settings| settings.library = file.setting())?;
+    let library = Mutex::new(candidate(file.clone(), "@book{retained,title={Retained atlas}}"));
+    let requests = LoadRequests::default();
+    let zotero = Source::Zotero(ZoteroLibrary::User.into());
+    let (failed, _, _) = begin_open(&library, &requests, zotero.clone()).ok_or("Zotero choice")?;
+    OpenIntent::Remember
+        .install(&library, &requests, failed, Err(super::super::error::ZOTERO_OFFLINE))
+        .ok_or("failed choice")?;
+    assert!(current_status_for_test(&library).has_snapshot);
+    let (request, source, reload) = begin_focus_retry(&library, &requests).ok_or("visible recovery")?;
+    let loaded = Ok(Loaded::New(Box::new(candidate(
+        source.clone(),
+        "@book{recovered,title={Recovered Zotero atlas}}",
+    ))));
+    let chosen = remembered_choice(&source, &loaded).ok_or("recovered choice")?;
+    let intent = OpenIntent::retry(reload);
+    let visible = intent
+        .install(&library, &requests, request, loaded)
+        .ok_or("accepted recovery")?;
+    assert!(visible.error.is_none());
+    assert!(visible.zotero);
+    assert!(
+        intent.saves_choice(&source, &chosen),
+        "recovery must save the requested Zotero choice"
+    );
+    settings.update(|settings| settings.library = Some(chosen))?;
+    let persisted: ibis_core::settings::Settings =
+        serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
+    assert_eq!(persisted.library, zotero.setting());
+    let current = library.lock().map_err(|_| "library")?;
+    let query = super::super::search::SearchQuery {
+        text: "recovered".into(),
+        interpret_locators: false,
+    };
+    assert_eq!(
+        current
+            .file
+            .as_ref()
+            .ok_or("recovered engine")?
+            .search(&query, 10, None, &ibis_engine::Cancellation::default())
+            .map_err(|_| "recovered search")?
+            .results
+            .len(),
+        1
+    );
+    Ok(())
+}
+
+#[test]
+fn obsolete_zotero_reloads_cannot_change_retained_search_results_or_health() -> Result<(), Box<dyn std::error::Error>> {
+    let server = zotero_fixture::Server::new();
+    let source = Source::Zotero(ZoteroLibrary::User.into());
+    let engine = ibis_engine::Engine::with_zotero_port(server.port).map_err(|_| "engine")?;
+    engine
+        .dispatch(
+            ibis_engine::Method::Libraries,
+            &serde_json::json!({"action":"open-zotero"}),
+            &ibis_engine::Cancellation::default(),
+        )
+        .map_err(|_| "open")?;
+    let file = Arc::new(super::super::engine_file::FileLibrary::from_engine(engine));
+    let warning = "the library opened but could not be saved for next time: synthetic";
+    let library = Mutex::new(Library {
+        source: Some(source.clone()),
+        requested: Some(source.clone()),
+        file: Some(file.clone()),
+        choice_save_warning: Some(warning.into()),
+        ..Library::default()
+    });
+    let requests = LoadRequests::default();
+    let (request, _, _) = begin_open(&library, &requests, source.clone()).ok_or("automatic check")?;
+    let loaded = load_source(
+        source.clone(),
+        false,
+        Some(file.clone()),
+        None,
+        &ibis_engine::Cancellation::default(),
+        || false,
+    );
+    let checked = OpenIntent::Refresh
+        .install(&library, &requests, request, loaded)
+        .ok_or("checked")?;
+    assert!(
+        checked.choice_not_saved,
+        "automatic refresh never saves the choice again"
+    );
+    assert_eq!(checked.note.as_deref(), Some(warning));
+    for fails in [false, true] {
+        let before = serde_json::to_value(file.engine.libraries().map_err(|_| "health")?)?;
+        let query = super::super::search::SearchQuery {
+            text: "atlas".into(),
+            interpret_locators: false,
+        };
+        let search = || {
+            file.search(&query, 10, None, &ibis_engine::Cancellation::default())
+                .map_err(|_| "search")
+        };
+        let expected = serde_json::to_value(search()?)?;
+        let (old, _, _) = begin_open(&library, &requests, source.clone()).ok_or("reload")?;
+        *server.title.lock().map_err(|_| "title")? = "Obsolete atlas".into();
+        server.sharing_off.store(fails, Ordering::SeqCst);
+        let loaded = load_source(
+            source.clone(),
+            true,
+            Some(file.clone()),
+            None,
+            &ibis_engine::Cancellation::default(),
+            || false,
+        );
+        let directory = tempfile::tempdir()?;
+        let (newer, _, _) =
+            begin_open(&library, &requests, directory.path().join("missing.bib")).ok_or("file choice")?;
+        OpenIntent::Remember
+            .install(&library, &requests, newer, Err(LoadError::FILE_UNAVAILABLE))
+            .ok_or("file refusal")?;
+        let refused = serde_json::to_value(current_status_for_test(&library))?;
+        assert!(OpenIntent::Refresh.install(&library, &requests, old, loaded).is_none());
+        assert_eq!(
+            serde_json::to_value(search()?)?,
+            expected,
+            "obsolete read cannot change retained results"
+        );
+        assert_eq!(
+            serde_json::to_value(file.engine.libraries().map_err(|_| "health")?)?,
+            before,
+            "obsolete read cannot change retained health"
+        );
+        assert_eq!(serde_json::to_value(current_status_for_test(&library))?, refused);
+    }
+    Ok(())
+}
 
 #[test]
 fn picker_open_file_refresh_reads_bytes_and_keeps_failed_or_stale_candidates_private()
@@ -85,11 +375,16 @@ fn a_stuck_read_releases_the_load_worker_on_cancellation_or_deadline() {
         let (release, stuck) = mpsc::channel();
         let (finished, outcome) = mpsc::channel();
         let worker = std::thread::spawn(move || {
-            let result = supervise_load(&worker_cancel, Duration::from_millis(100), move || {
-                started.send(()).unwrap_or_else(|e| panic!("{e}"));
-                stuck.recv().unwrap_or_else(|e| panic!("{e}"));
-                Ok("obsolete A")
-            });
+            let result = supervise_source_load(
+                &Source::File("synthetic.bib".into()),
+                &worker_cancel,
+                Duration::from_millis(100),
+                move || {
+                    started.send(()).unwrap_or_else(|e| panic!("{e}"));
+                    stuck.recv().unwrap_or_else(|e| panic!("{e}"));
+                    Ok("obsolete A")
+                },
+            );
             finished.send(result).unwrap_or_else(|e| panic!("{e}"));
         });
         reading
@@ -145,7 +440,7 @@ fn a_new_library_opens_before_the_obsolete_filesystem_read_returns() {
             while let Some(open) = requests.next_open() {
                 let source = open.source.clone();
                 let blocked = blocked.take();
-                let loaded = supervise_load(&open.cancel, Duration::from_secs(5), move || {
+                let loaded = supervise_source_load(&open.source, &open.cancel, Duration::from_secs(5), move || {
                     if let Some((started, stuck)) = blocked {
                         started.send(()).unwrap_or_else(|e| panic!("{e}"));
                         stuck.recv().unwrap_or_else(|e| panic!("{e}"));

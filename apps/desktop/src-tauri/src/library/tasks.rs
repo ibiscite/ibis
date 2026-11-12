@@ -17,10 +17,12 @@ use crate::preferences::SettingsFile;
 use crate::tray::{LibraryMenuItem, library_line};
 
 use super::error::LoadError;
-use super::load::{Loaded, load_source};
+#[cfg(test)]
+use super::load::load_source;
+use super::load::{Loaded, load_source_guarded};
 use super::retry::{begin_check, begin_focus_retry, begin_zotero_retry, retry, zotero_choice, zotero_to_check};
 use super::source::Source;
-use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic, install_loaded};
+use super::state::{Library, LoadRequests, begin_open, dialog_path_error, install_automatic_loaded, install_loaded};
 use super::status::{LibraryProblem, LibraryState, LibraryStatus, status};
 
 pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStatus) {
@@ -247,9 +249,33 @@ impl LoadRequests {
 /// finish. A newer choice cancels at once, so this only limits a lone stuck read.
 const LOAD_DEADLINE: std::time::Duration = std::time::Duration::from_secs(120);
 
+fn supervise_source_load<T: Send + 'static>(
+    source: &Source,
+    cancel: &OpenCancellation,
+    deadline: std::time::Duration,
+    operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
+) -> Result<T, LoadError> {
+    use std::sync::atomic::AtomicUsize;
+    // An abandoned network/database call must never occupy a file-opening slot.
+    static FILE_READS: AtomicUsize = AtomicUsize::new(0);
+    static ZOTERO_READS: AtomicUsize = AtomicUsize::new(0);
+    let (in_flight, unavailable) = match source {
+        Source::Zotero(_) => (
+            &ZOTERO_READS,
+            LoadError::Zotero(ibis_core::contract::EngineError::new(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+            )),
+        ),
+        _ => (&FILE_READS, LoadError::FILE_UNAVAILABLE),
+    };
+    supervise_load(cancel, deadline, in_flight, unavailable, operation)
+}
+
 fn supervise_load<T: Send + 'static>(
     cancel: &OpenCancellation,
     deadline: std::time::Duration,
+    in_flight: &'static std::sync::atomic::AtomicUsize,
+    unavailable: LoadError,
     operation: impl FnOnce() -> Result<T, LoadError> + Send + 'static,
 ) -> Result<T, LoadError> {
     use std::sync::atomic::AtomicUsize;
@@ -258,21 +284,20 @@ fn supervise_load<T: Send + 'static>(
     // A driver call cannot be killed safely. Bound abandoned operations, while
     // leaving room for local B to open when remote A is stuck. Saturation fails
     // promptly, rather than queuing behind an indefinitely blocked OS call.
-    static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
-    struct Permit;
+    struct Permit(&'static AtomicUsize);
     impl Drop for Permit {
         fn drop(&mut self) {
-            IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+            self.0.fetch_sub(1, Ordering::SeqCst);
         }
     }
     if cancel.token.is_cancelled() {
         return Err(LoadError::Stopped);
     }
-    if IN_FLIGHT.fetch_add(1, Ordering::SeqCst) >= 4 {
-        IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
-        return Err(LoadError::FILE_UNAVAILABLE);
+    if in_flight.fetch_add(1, Ordering::SeqCst) >= 4 {
+        in_flight.fetch_sub(1, Ordering::SeqCst);
+        return Err(unavailable);
     }
-    let permit = Permit;
+    let permit = Permit(in_flight);
     let (send, result) = mpsc::sync_channel(1);
     let wake = Arc::clone(&cancel.wake);
     std::thread::Builder::new()
@@ -296,7 +321,7 @@ fn supervise_load<T: Send + 'static>(
         if remaining.is_zero() {
             drop(gate);
             cancel.cancel();
-            return Err(LoadError::FILE_UNAVAILABLE);
+            return Err(unavailable);
         }
         match result.try_recv() {
             Ok(result) => {
@@ -344,8 +369,7 @@ impl OpenIntent {
         loaded: Result<Loaded, LoadError>,
     ) -> Option<LibraryStatus> {
         match (self, loaded) {
-            (Self::Refresh, Ok(Loaded::New(new))) => install_automatic(library, requests, request, Ok(*new)),
-            (Self::Refresh, loaded) => install_loaded(library, requests, request, loaded),
+            (Self::Refresh, loaded) => install_automatic_loaded(library, requests, request, loaded),
             // An explicit request starts afresh even when the source is
             // unchanged: a remembered choice is saved again afterwards.
             (_, Ok(Loaded::Unchanged)) => {
@@ -455,17 +479,19 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     let loading_app = app.clone();
     async move {
         let loaded = tauri::async_runtime::spawn_blocking(move || {
-            let file_io = matches!(source, Source::File(_) | Source::Samples(_));
+            let supervised_source = source.clone();
             let worker_cancel = cancel.token.clone();
-            let read_profile = if matches!(source, Source::Zotero(_)) {
-                reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
-            } else {
-                None
-            };
             let operation = move || {
                 #[cfg(debug_assertions)]
                 let loading = std::time::Instant::now();
-                let loaded = load_source(
+                let read_profile = if matches!(source, Source::Zotero(_)) {
+                    reading_profile.or_else(|| loading_app.state::<SettingsFile>().zotero_profile())
+                } else {
+                    None
+                };
+                let expected_source = source.clone();
+                let expected_bridge = previous_file.clone();
+                let loaded = load_source_guarded(
                     source,
                     force,
                     previous_file,
@@ -474,6 +500,16 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     || {
                         worker_cancel.is_cancelled()
                             || loading_app.state::<LoadRequests>().0.load(Ordering::SeqCst) != request
+                    },
+                    |retire| {
+                        guard_zotero_read(
+                            &loading_app.state(),
+                            &loading_app.state(),
+                            request,
+                            &expected_source,
+                            expected_bridge.as_ref(),
+                            retire,
+                        )
                     },
                 );
                 #[cfg(debug_assertions)]
@@ -485,11 +521,7 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
                     loaded
                 }
             };
-            if file_io {
-                supervise_load(&cancel, LOAD_DEADLINE, operation)
-            } else {
-                operation()
-            }
+            supervise_source_load(&supervised_source, &cancel, LOAD_DEADLINE, operation)
         })
         .await;
         #[cfg(debug_assertions)]
@@ -583,10 +615,36 @@ fn open_one(app: AppHandle, open: OpenRequest) -> impl std::future::Future<Outpu
     }
 }
 
+/// Detecting a full read retires old citations immediately, but only while
+/// this request still owns the retained bridge. Data and health stay private.
+pub(super) fn guard_zotero_read(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    source: &Source,
+    bridge: Option<&Arc<super::engine_file::FileLibrary>>,
+    retire: &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
+) -> Result<(), ibis_core::contract::EngineError> {
+    use ibis_core::contract::{EngineError, ErrorCode};
+    let library = library.lock().map_err(|_| EngineError::new(ErrorCode::Internal))?;
+    if requests.0.load(Ordering::SeqCst) != request
+        || library.source.as_ref() != Some(source)
+        || !library
+            .file
+            .as_ref()
+            .zip(bridge)
+            .is_some_and(|(current, expected)| Arc::ptr_eq(current, expected))
+    {
+        return Err(EngineError::new(ErrorCode::Cancelled));
+    }
+    retire()
+}
+
 pub(super) fn remembered_choice(source: &Source, loaded: &Result<Loaded, LoadError>) -> Option<LibrarySetting> {
-    if let Ok(Loaded::Reload(reload)) = loaded {
-        return reload
-            .prepared
+    if let Ok(Loaded::Reload(reload)) = loaded
+        && let super::load::PreparedReload::File(prepared) = &reload.prepared
+    {
+        return prepared
             .source_path()
             .map(|path| LibrarySetting::Bibtex(path.to_path_buf()));
     }

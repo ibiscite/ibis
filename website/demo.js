@@ -59,7 +59,7 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
   paste.setAttribute("aria-label", words("pasteLabel"));
   const reopen = el("button", { type: "button", textContent: words("reopen"), hidden: true });
   const hint = el("p", { className: "demo-hint" });
-  const labels = Object.fromEntries(["copy", "add", "move", "escape", "preview"].map(action => [action, words(`legend${action[0].toUpperCase()}${action.slice(1)}`)]));
+  const labels = Object.fromEntries(["copy", "add", "move", "escape"].map(action => [action, words(`legend${action[0].toUpperCase()}${action.slice(1)}`)]));
   const touch = matchMedia("(hover: none)").matches;
   hint.hidden = touch;
   hint.append(...KEY_TABLE.filter(row => labels[row.action]).flatMap((row, index) => [index ? " · " : "", ...row.keys.flatMap((key, k) => [k ? " " : "", el("kbd", { textContent: keyLabel(key, mac) })]), ` ${labels[row.action]}`]));
@@ -126,11 +126,11 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     output.textContent = value || "—"; output.title = value;
     status.hidden = !value || value !== state.copied;
     statusLabel.textContent = status.hidden ? "" : words("copied");
-    closingBeak.hidden = !state.preview || status.hidden;
+    closingBeak.hidden = status.hidden;
     shelf.toggleAttribute("data-copied", !status.hidden);
     const feedback = state.copied ? words(state.pasted === state.copied ? "announcePasted" : "announceCopied", { citation: state.copied }) : "";
     if (announce.textContent !== feedback) announce.textContent = feedback;
-    citation.hidden = !state.preview; shelf.hidden = !value || (!state.preview && status.hidden);
+    shelf.hidden = !value;
     copy.disabled = !value; actionLabel(copy, words(state.added.length > 1 ? "copyMany" : "copyOne", { count: state.added.length, format: formats[state.format] }), "copy");
     add.disabled = !current; actionLabel(add, words(current && state.added.includes(current.key) ? "remove" : "add"), "add");
     const pasted = state.pasted ? [" ", el("code", { className: "key", textContent: state.pasted })] : [];
@@ -165,7 +165,6 @@ export function setupDemo({ onCopy = () => {}, onPaste = () => {} } = {}) {
     if (event.target === select) { if (event.key === keysFor("escape")) input.focus(); return; }
     const is = action => matchesAccelerator(event, keysFor(action), mac);
     if (is("escape")) { event.preventDefault(); model.back(); render(); if (!state.open) reopen.focus(); return; }
-    if (is("preview")) { event.preventDefault(); if (!event.repeat) { state.preview = !state.preview; render(); } return; }
     if (event.target !== input) return;
     if (is("add")) { event.preventDefault(); const ref = model.found()[state.selected]; if (ref) model.add(ref.key); }
     else if (is("copy")) { event.preventDefault(); performCopy(); return; }

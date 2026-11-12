@@ -708,6 +708,11 @@
                 "type": "string"
               },
               {
+                "const": "zotero-newer-than-tested",
+                "description": "Validated newer Zotero layout; a source status, not a record problem.",
+                "type": "string"
+              },
+              {
                 "const": "citation-keys-unavailable",
                 "description": "Better BibTeX keeps keys this read could not get, so items without a\nkey of their own have none rather than a guessed one.",
                 "type": "string"

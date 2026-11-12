@@ -9,6 +9,13 @@ else if (/Win/i.test(platform)) document.documentElement.dataset.platform = "win
 else if (/Linux/i.test(platform)) document.documentElement.dataset.platform = "linux";
 
 const THEME_KEY = "ibis-theme";
+// Native :focus-visible can follow script focus into a text field after a click.
+// Keep focus transfers accessible, but show rings only after keyboard input.
+function focusRings() {
+  const root = document.documentElement;
+  document.addEventListener("pointerdown", () => { root.dataset.pointer = ""; }, true);
+  document.addEventListener("keydown", () => { delete root.dataset.pointer; }, true);
+}
 function appearance() {
   const groups = [...document.querySelectorAll(".appearance")], root = document.documentElement;
   const media = matchMedia("(prefers-color-scheme: dark)");
@@ -59,6 +66,17 @@ function outboundLinks() {
   }
 }
 const textEntry = target => target?.closest?.('input, textarea, select, [contenteditable]:not([contenteditable="false"])');
+function keyboardHelp() {
+  const dialog = document.querySelector(".keyboard-help"), button = document.querySelector(".keyboard-help-open");
+  if (!dialog || !button) return;
+  button.hidden = false;
+  button.addEventListener("click", () => dialog.showModal());
+  dialog.querySelector("button").addEventListener("click", () => dialog.close());
+  document.addEventListener("keydown", event => {
+    if (event.key !== "?" || event.ctrlKey || event.metaKey || event.altKey || event.repeat || event.isComposing || event.keyCode === 229 || textEntry(event.target) || dialog.open) return;
+    event.preventDefault(); dialog.showModal();
+  });
+}
 // One shortcut owner across all four pages; the app's matcher owns layouts and modifiers.
 function pickerKeys({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator }, open) {
   const mac = document.documentElement.dataset.platform === "macos", held = new Map();
@@ -71,6 +89,8 @@ function pickerKeys({ DEFAULT_PICKER_SHORTCUT, matchesAccelerator }, open) {
     held.set(event.code || event.key, { key: event.key, code: event.code });
     if (!event.repeat && !textEntry(event.target) && matchesAccelerator(event, DEFAULT_PICKER_SHORTCUT, mac)) {
       event.preventDefault();
+      const help = document.querySelector(".keyboard-help");
+      if (help?.open) help.close();
       if (document.querySelector("[data-picker]")) open(); else location.assign("/#try");
     }
     show(event);
@@ -103,16 +123,47 @@ function share() {
 }
 // Hovering a chip cites it in each form Ibis copies: Pandoc, LaTeX, then Typst's bare key.
 function chips() {
-  if (!matchMedia("(hover: hover)").matches) return;
+  const hover = matchMedia("(hover: hover) and (pointer: fine)");
+  if (!hover.matches) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)");
-  for (const chip of document.querySelectorAll("main .key:not(code):not(button)")) {
-    const key = chip.textContent.slice(1), forms = [`[@${key}]`, `\\cite{${key}}`, `@${key}`];
-    let timer;
-    chip.addEventListener("pointerenter", () => {
+  for (const chip of document.querySelectorAll("main .key:not(code, button), .index nav .key")) {
+    const original = chip.textContent, key = original.slice(1), forms = [`[@${key}]`, `\\cite{${key}}`, original];
+    let timer, revision = 0;
+    function show(form) {
+      const current = chip.getBoundingClientRect().width, owner = ++revision;
+      // Measure in the same context without changing the live pill or its neighbours.
+      const measure = chip.cloneNode(false); measure.removeAttribute("id"); measure.textContent = form;
+      Object.assign(measure.style, { inlineSize: "max-content", position: "fixed", visibility: "hidden", transition: "none" });
+      chip.after(measure);
+      const width = measure.getBoundingClientRect().width; measure.remove();
+      chip.style.inlineSize = `${current}px`;
+      // Shorter text fits immediately; longer text waits until its pill has expanded.
+      if (width <= current) chip.textContent = form;
+      chip.getBoundingClientRect();
+      chip.style.inlineSize = `${width}px`;
+      Promise.all(chip.getAnimations().map(animation => animation.finished)).then(() => {
+        if (owner !== revision) return;
+        chip.textContent = form;
+        if (form === original) chip.style.removeProperty("inline-size");
+      }).catch(() => { /* A newer hover or reset owns the pill. */ });
+    }
+    function reset(immediate = false) {
+      clearTimeout(timer); revision++;
+      if (immediate || !chip.style.inlineSize) { chip.textContent = original; chip.style.removeProperty("inline-size"); }
+      else show(original);
+    }
+    chip.addEventListener("pointerenter", event => {
+      if (event.pointerType === "touch" || !hover.matches || still.matches || document.hidden) { reset(true); return; }
+      reset();
       let step = 0;
-      timer = setTimeout(function cycle() { chip.textContent = forms[step++ % forms.length]; if (!still.matches) timer = setTimeout(cycle, 900); }, 150);
+      timer = setTimeout(function cycle() {
+        if (still.matches || !hover.matches || document.hidden) { reset(true); return; }
+        show(forms[step++ % forms.length]); timer = setTimeout(cycle, 900);
+      }, 150);
     });
-    chip.addEventListener("pointerleave", () => { clearTimeout(timer); chip.textContent = `@${key}`; });
+    chip.addEventListener("pointerleave", () => reset(still.matches || document.hidden));
+    still.addEventListener("change", () => reset(true)); hover.addEventListener("change", () => reset(true));
+    document.addEventListener("visibilitychange", () => reset(true));
   }
 }
 function navigation() {
@@ -125,7 +176,7 @@ function navigation() {
     if (chip.left < view.left) bar.scrollLeft += chip.left - view.left - room;
     else if (chip.right > view.right) bar.scrollLeft += chip.right - view.right + room;
   }
-  const edge = () => { bar.toggleAttribute("data-at-end", bar.scrollLeft + bar.clientWidth >= bar.scrollWidth - 1); bar.toggleAttribute("data-at-start", bar.scrollLeft <= 1); };
+  const edge = () => { const offset = Math.abs(bar.scrollLeft); bar.toggleAttribute("data-at-end", offset + bar.clientWidth >= bar.scrollWidth - 1); bar.toggleAttribute("data-at-start", offset <= 1); };
   bar.addEventListener("scroll", edge, { passive: true });
   window.addEventListener("resize", edge); edge();
   let pending = false, pinned = null;
@@ -150,36 +201,72 @@ function navigation() {
   if (current) reveal(current);
   edge();
 }
-// Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
-function writingApps() {
-  const where = document.querySelector("[data-where]");
-  if (!where) return;
-  const tabs = [...where.querySelectorAll('[role="tab"]')], panel = where.querySelector('[role="tabpanel"]');
-  const output = panel.querySelector("[data-out]"), explanation = panel.querySelector("[data-explanation]");
+// Shared chip tabs: explicit selection only, with arrows following the reading direction.
+function chipTabs(region, select) {
+  const tabs = [...region.querySelectorAll('[role="tab"]')];
   function show(tab) {
     for (const item of tabs) { item.setAttribute("aria-selected", String(item === tab)); item.tabIndex = item === tab ? 0 : -1; }
-    panel.setAttribute("aria-labelledby", tab.id);
-    output.textContent = tab.dataset.output; explanation.textContent = tab.dataset.explain;
-    output.classList.remove("landed"); void output.offsetWidth; output.classList.add("landed");
+    select(tab);
   }
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => show(tab));
     tab.addEventListener("keydown", event => {
-      const next = { ArrowRight: (i + 1) % tabs.length, ArrowLeft: (i + tabs.length - 1) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
+      const direction = getComputedStyle(region).direction === "rtl" ? -1 : 1;
+      const next = { ArrowRight: (i + direction + tabs.length) % tabs.length, ArrowLeft: (i - direction + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
       if (next === undefined) return;
       event.preventDefault(); tabs[next].focus(); show(tabs[next]);
     });
   });
 }
+// Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
+function writingApps() {
+  const where = document.querySelector("[data-where]");
+  if (!where) return;
+  const panel = where.querySelector('[role="tabpanel"]');
+  const output = panel.querySelector("[data-out]"), explanation = panel.querySelector("[data-explanation]");
+  chipTabs(where, tab => {
+    panel.setAttribute("aria-labelledby", tab.id);
+    if (output.textContent !== tab.dataset.output) {
+      output.textContent = tab.dataset.output;
+      output.classList.remove("landed"); void output.offsetWidth; output.classList.add("landed");
+    }
+    explanation.textContent = tab.dataset.explain;
+  });
+}
+function agentApps() {
+  const region = document.querySelector("[data-agent-tabs]");
+  if (!region) return;
+  const panels = [...region.querySelectorAll('[role="tabpanel"]')];
+  const guide = region.querySelector("[data-agent-guide]"), guideBase = guide.href.split("#")[0];
+  chipTabs(region, tab => {
+    for (const panel of panels) {
+      const inactive = panel.id !== tab.getAttribute("aria-controls");
+      panel.setAttribute("aria-hidden", String(inactive));
+      panel.inert = inactive;
+    }
+    guide.href = guideBase + tab.dataset.guide;
+  });
+}
 // Copy a command: the button says Copied for a moment, and screen readers hear it.
 function copyButtons() {
   if (!navigator.clipboard) { document.querySelectorAll(".copy").forEach(button => { button.hidden = true; }); return; }
-  for (const button of document.querySelectorAll(".copy")) button.addEventListener("click", async () => {
+  for (const button of document.querySelectorAll(".copy")) {
     const label = button.querySelector("span"), idle = label.textContent;
-    try { await navigator.clipboard.writeText(button.dataset.copy); label.textContent = button.dataset.copied; button.dataset.state = "copied"; peck(); }
-    catch { label.textContent = button.dataset.failed; }
-    setTimeout(() => { label.textContent = idle; delete button.dataset.state; }, 1500);
-  });
+    let request = 0, timer;
+    button.addEventListener("click", async () => {
+      const current = ++request;
+      clearTimeout(timer);
+      try {
+        await navigator.clipboard.writeText(button.dataset.copy);
+        if (current !== request) return;
+        label.textContent = button.dataset.copied; button.dataset.state = "copied"; peck();
+      } catch {
+        if (current !== request) return;
+        label.textContent = button.dataset.failed; delete button.dataset.state;
+      }
+      timer = setTimeout(() => { label.textContent = idle; delete button.dataset.state; }, 1500);
+    });
+  }
 }
 // A teaching sketch of the typed shorthand; the app's engine owns the real parser.
 function shorthand() {
@@ -188,8 +275,27 @@ function shorthand() {
   const refs = JSON.parse(box.dataset.references);
   const input = box.querySelector("[data-shorthand-input]"), parts = box.querySelector("[data-shorthand-parts]"), out = box.querySelector("[data-shorthand-out]");
   // Each typed word over what it means, underlined by its role.
-  const gloss = (role, typed, meaning) => { const item = document.createElement("li"); item.dataset.role = role; const word = document.createElement("b"), note = document.createElement("span"); word.textContent = typed; note.textContent = meaning; item.append(word, note); return item; };
-  function render() {
+  function showGloss(items) {
+    const children = items.map(([role, typed, meaning], index) => {
+      const previous = parts.children[index];
+      const identity = JSON.stringify([role, typed, meaning]);
+      if (previous?.dataset.identity === identity) return previous;
+      const item = document.createElement("li"); item.dataset.role = role; item.dataset.identity = identity;
+      if (role === "message") item.textContent = meaning;
+      else {
+        const word = document.createElement("b"), note = document.createElement("span");
+        word.textContent = typed; note.textContent = meaning; item.append(word, note);
+      }
+      return item;
+    });
+    parts.replaceChildren(...children);
+  }
+  function insert(citation) {
+    if (out.textContent === citation) return;
+    out.textContent = citation; out.classList.remove("landed");
+    if (citation) { void out.offsetWidth; out.classList.add("landed"); }
+  }
+  function render(land = true) {
     const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean), terms = [];
     let prefix, locator, typedLocator;
     words.forEach((word, i) => {
@@ -199,10 +305,9 @@ function shorthand() {
       else terms.push(word);
     });
     const ref = terms.length ? refs.find(r => terms.every(t => r.words.includes(t))) : undefined;
-    if (!ref) { parts.replaceChildren(parts.dataset.empty); out.textContent = out.dataset.empty; return; }
-    parts.replaceChildren(...[prefix && gloss("before", prefix, parts.dataset.before), gloss("reference", terms.join(" "), ref.label), locator && gloss("locator", typedLocator, locator)].filter(Boolean));
-    out.textContent = `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]`;
-    out.classList.remove("landed"); void out.offsetWidth; out.classList.add("landed");
+    if (!ref) { showGloss(words.length ? [["message", "", parts.dataset.empty]] : []); insert(""); return; }
+    showGloss([prefix && ["before", prefix, parts.dataset.before], ["reference", terms.join(" "), ref.label], locator && ["locator", typedLocator, locator]].filter(Boolean));
+    insert(land ? `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]` : "");
   }
   const buttons = [...box.querySelectorAll("[data-try]")], examples = [...buttons.map(button => button.textContent.trim()), input.value];
   const still = matchMedia("(prefers-reduced-motion: reduce)"), pace = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-1"));
@@ -217,8 +322,10 @@ function shorthand() {
     const example = examples[index];
     function type() {
       if (stopped || still.matches || document.hidden) return;
-      input.value = example.slice(0, input.value.length + 1); render();
-      if (input.value === example) { index = (index + 1) % examples.length; schedule(begin, 3000); }
+      input.value = example.slice(0, input.value.length + 1); render(false);
+      if (input.value === example) schedule(() => {
+        render(); index = (index + 1) % examples.length; schedule(begin, 2500);
+      }, 600);
       else schedule(type, pace * (.65 + Math.random() * .7));
     }
     schedule(type, pace);
@@ -237,7 +344,7 @@ function shorthand() {
 globalThis.addEventListener?.("load", () => requestAnimationFrame(() => document.documentElement.classList.add("smooth")));
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
-  appearance(); platforms(); outboundLinks(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();
+  focusRings(); appearance(); platforms(); keyboardHelp(); outboundLinks(); navigation(); share(); chips(); writingApps(); agentApps(); copyButtons(); shorthand();
   console.info("Curious how this page works? Ibis is open source: https://github.com/ibiscite/ibis");
   let lastMove = performance.now();
   const markMove = () => { lastMove = performance.now(); };

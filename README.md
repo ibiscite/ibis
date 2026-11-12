@@ -73,6 +73,7 @@ ibis cite vale2024lanterns --file refs.bib --style apa
 
 See the [CLI reference](docs/cli.md) for installation, JSON, projects,
 JSON-RPC and the [agent plugin](docs/cli.md#ai-agents-mcp).
+Connect your AI assistant with the [setup guide](docs/agents.md).
 
 ## Help and feedback
 

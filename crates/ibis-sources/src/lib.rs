@@ -43,6 +43,8 @@ pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum WarningCode {
+    /// Validated newer Zotero layout; a source status, not a record problem.
+    ZoteroNewerThanTested,
     CloudSyncedDirectory,
     /// Better BibTeX keeps keys this read could not get, so items without a
     /// key of their own have none rather than a guessed one.
