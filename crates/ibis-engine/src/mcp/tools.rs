@@ -126,11 +126,8 @@ impl Refusal {
 }
 
 impl From<EngineError> for Refusal {
-    fn from(EngineError { code, reason }: EngineError) -> Self {
-        Self::new(
-            code,
-            crate::catalogue::error(&EngineError { code, reason }, Audience::Agent),
-        )
+    fn from(error: EngineError) -> Self {
+        Self::new(error.code, crate::catalogue::error(&error, Audience::Agent))
     }
 }
 

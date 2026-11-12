@@ -137,7 +137,7 @@ fn automatic_private_zotero_reload_refuses_old_copies_as_soon_as_a_switch_is_det
     use std::sync::Mutex;
     let server = fixture::Server::new();
     let bridge = Arc::new(opened(&server)?);
-    let source = Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into());
+    let source = Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into());
     let library = Arc::new(Mutex::new(Library {
         source: Some(source.clone()),
         requested: Some(source.clone()),

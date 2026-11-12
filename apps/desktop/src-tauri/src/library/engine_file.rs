@@ -463,6 +463,7 @@ impl FileLibrary {
             info.refresh_error.map(|code| ibis_core::contract::EngineError {
                 code,
                 reason: info.refresh_reason,
+                detail: None,
             })
         });
         if let Some(failure) = failure {
@@ -555,6 +556,7 @@ impl FileLibrary {
                 info.refresh_error.map(|code| ibis_core::contract::EngineError {
                     code,
                     reason: info.refresh_reason,
+                    detail: None,
                 })
             })
         {

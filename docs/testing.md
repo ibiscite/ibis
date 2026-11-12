@@ -42,6 +42,8 @@ Plain `cargo test` skips desktop Rust tests. `check.mjs` exits 2 when a tool
 is missing. `gen.mjs --check` checks generated schemas, bindings and CLI
 options without replacing them. To update a reviewed Rust snapshot, use
 `INSTA_UPDATE=always cargo test -p CRATE` and inspect the `.snap` diff.
+Script suites run one at a time so their subprocess deadlines do not compete
+for CI's CPU quota.
 
 ## What exists
 

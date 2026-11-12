@@ -817,6 +817,16 @@
         "code": {
           "$ref": "#/$defs/ErrorCode"
         },
+        "detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ErrorDetail"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "reason": {
           "anyOf": [
             {
@@ -857,6 +867,17 @@
         "newer-format",
         "internal",
         "cancelled"
+      ]
+    },
+    "ErrorDetail": {
+      "type": "object",
+      "properties": {
+        "table": {
+          "$ref": "#/$defs/ZoteroTable"
+        }
+      },
+      "required": [
+        "table"
       ]
     },
     "ErrorReason": {
@@ -1804,6 +1825,26 @@
       "required": [
         "id",
         "name"
+      ]
+    },
+    "ZoteroTable": {
+      "description": "A fixed database identifier, never a name supplied by an untrusted source.",
+      "type": "string",
+      "enum": [
+        "version",
+        "libraries",
+        "groups",
+        "items",
+        "itemTypesCombined",
+        "fieldsCombined",
+        "itemData",
+        "itemDataValues",
+        "creators",
+        "creatorTypes",
+        "itemCreators",
+        "deletedItems",
+        "itemNotes",
+        "itemAttachments"
       ]
     }
   }

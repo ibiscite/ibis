@@ -61,10 +61,19 @@ impl SourceHealth {
                     last_successful_read_ms: library.updated_at_ms,
                 });
             }
-            if library.warnings_total > 0 {
+            // Compatibility advice belongs to source status, not every
+            // search or citation. Other warnings and failed refreshes stay.
+            let count = library.warnings_total.saturating_sub(
+                library
+                    .warnings
+                    .iter()
+                    .filter(|warning| warning.code == ibis_sources::WarningCode::ZoteroNewerThanTested)
+                    .count(),
+            );
+            if count > 0 {
                 findings.push(SourceFinding::SourceWarnings {
                     library: library.id.clone(),
-                    count: library.warnings_total,
+                    count,
                 });
             }
         }

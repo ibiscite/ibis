@@ -32,14 +32,24 @@ test("brand-only checks rebuild without starting Rust or changing source files",
   assert.doesNotMatch(result.stdout, /== Format:|== Desktop:|== Workflow/);
 });
 
-test("script-only discovery covers Node and Python names without starting build tools", (t) => {
+test("script-only checks discover Node and Python tests and run suites without contention", (t) => {
   const root = mkdtempSync(join(tmpdir(), "ibis-script-discovery-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   const scripts = join(root, "scripts"), bin = join(root, "bin");
   mkdirSync(scripts); mkdirSync(bin);
   copyChecker(scripts);
   for (const name of ["new.test.mjs", "new.test.cjs"]) {
-    writeFileSync(join(scripts, name), `console.log(${JSON.stringify(name)});`);
+    const imports = name.endsWith(".cjs")
+      ? 'const { mkdirSync, rmdirSync } = require("node:fs"); const { test } = require("node:test");'
+      : 'import { mkdirSync, rmdirSync } from "node:fs"; import { test } from "node:test";';
+    writeFileSync(join(scripts, name), `${imports}
+test("a suite owns its subprocess budget", async () => {
+  mkdirSync("suite-active");
+  try {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    console.log(${JSON.stringify(name)});
+  } finally { rmdirSync("suite-active"); }
+});`);
   }
   for (const name of ["test_new.py", "new.test.py", "unrelated.py"]) writeFileSync(join(scripts, name), "");
   const python = process.platform === "win32" ? "python.cmd" : "python3";

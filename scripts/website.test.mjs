@@ -24,6 +24,15 @@ test("public build has four canonical routes, local assets, safe headers and no 
       for (const [, reference] of html.matchAll(/(?:src|href|srcset)="([^"\s]+)"/g)) {
         const url = new URL(reference, `https://ibiscite.org${path}`);
         if (url.origin !== "https://ibiscite.org") {
+          if (path === "/cli/" && url.protocol === "cursor:") {
+            assert.equal(url.hostname, "anysphere.cursor-deeplink");
+            assert.equal(url.pathname, "/mcp/install");
+            continue;
+          }
+          if (path === "/cli/" && url.protocol === "vscode:") {
+            assert.equal(url.pathname, "mcp/install");
+            continue;
+          }
           assert.equal(url.protocol, "https:", reference);
           // GitHub source links can be checked against this checkout offline.
           const file = url.pathname.match(/^\/ibiscite\/ibis\/blob\/main\/(.+)$/)?.[1];

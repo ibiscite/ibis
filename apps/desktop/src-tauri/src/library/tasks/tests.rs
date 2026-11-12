@@ -131,7 +131,7 @@ fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() 
             1
         );
         drop(current);
-        let persisted: ibis_core::settings::Settings =
+        let persisted: ibis_engine::settings::Settings =
             serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
         assert_eq!(persisted.library, Some(LibrarySetting::Bibtex(path.canonicalize()?)));
         abandoned.push((release, finished, started));
@@ -144,7 +144,7 @@ fn bib_choices_are_searchable_and_saved_before_superseded_zotero_reads_finish() 
         }
     }
     assert_eq!(serde_json::to_value(current_status_for_test(&library))?, before);
-    let persisted: ibis_core::settings::Settings =
+    let persisted: ibis_engine::settings::Settings =
         serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
     assert_eq!(
         persisted.library,
@@ -185,7 +185,7 @@ fn visible_zotero_recovery_over_a_retained_file_saves_the_recovered_choice() -> 
         "recovery must save the requested Zotero choice"
     );
     settings.update(|settings| settings.library = Some(chosen))?;
-    let persisted: ibis_core::settings::Settings =
+    let persisted: ibis_engine::settings::Settings =
         serde_json::from_slice(&std::fs::read(directory.path().join("settings.json"))?)?;
     assert_eq!(persisted.library, zotero.setting());
     let current = library.lock().map_err(|_| "library")?;

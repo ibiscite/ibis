@@ -126,7 +126,7 @@ function chips() {
   const hover = matchMedia("(hover: hover) and (pointer: fine)");
   if (!hover.matches) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)");
-  for (const chip of document.querySelectorAll("main .key:not(code), .index nav .key")) {
+  for (const chip of document.querySelectorAll("main .key:not(code, button), .index nav .key")) {
     const original = chip.textContent, key = original.slice(1), forms = [`[@${key}]`, `\\cite{${key}}`, original];
     let timer, revision = 0;
     function show(form) {
@@ -201,26 +201,48 @@ function navigation() {
   if (current) reveal(current);
   edge();
 }
-// Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
-function writingApps() {
-  const where = document.querySelector("[data-where]");
-  if (!where) return;
-  const tabs = [...where.querySelectorAll('[role="tab"]')], panel = where.querySelector('[role="tabpanel"]');
-  const output = panel.querySelector("[data-out]"), explanation = panel.querySelector("[data-explanation]");
+// Shared chip tabs: explicit selection only, with arrows following the reading direction.
+function chipTabs(region, select) {
+  const tabs = [...region.querySelectorAll('[role="tab"]')];
   function show(tab) {
     for (const item of tabs) { item.setAttribute("aria-selected", String(item === tab)); item.tabIndex = item === tab ? 0 : -1; }
-    panel.setAttribute("aria-labelledby", tab.id);
-    output.textContent = tab.dataset.output; explanation.textContent = tab.dataset.explain;
-    output.classList.remove("landed"); void output.offsetWidth; output.classList.add("landed");
+    select(tab);
   }
   tabs.forEach((tab, i) => {
     tab.addEventListener("click", () => show(tab));
     tab.addEventListener("keydown", event => {
-      const direction = getComputedStyle(where).direction === "rtl" ? -1 : 1;
+      const direction = getComputedStyle(region).direction === "rtl" ? -1 : 1;
       const next = { ArrowRight: (i + direction + tabs.length) % tabs.length, ArrowLeft: (i - direction + tabs.length) % tabs.length, Home: 0, End: tabs.length - 1 }[event.key];
       if (next === undefined) return;
       event.preventDefault(); tabs[next].focus(); show(tabs[next]);
     });
+  });
+}
+// Where you write: each tab rewrites the citation in the sentence. The explanation lives in the panel, never on the tabs.
+function writingApps() {
+  const where = document.querySelector("[data-where]");
+  if (!where) return;
+  const panel = where.querySelector('[role="tabpanel"]');
+  const output = panel.querySelector("[data-out]"), explanation = panel.querySelector("[data-explanation]");
+  chipTabs(where, tab => {
+    panel.setAttribute("aria-labelledby", tab.id);
+    if (output.textContent !== tab.dataset.output) {
+      output.textContent = tab.dataset.output;
+      output.classList.remove("landed"); void output.offsetWidth; output.classList.add("landed");
+    }
+    explanation.textContent = tab.dataset.explain;
+  });
+}
+function agentApps() {
+  const region = document.querySelector("[data-agent-tabs]");
+  if (!region) return;
+  const panels = [...region.querySelectorAll('[role="tabpanel"]')];
+  chipTabs(region, tab => {
+    for (const panel of panels) {
+      const inactive = panel.id !== tab.getAttribute("aria-controls");
+      panel.setAttribute("aria-hidden", String(inactive));
+      panel.inert = inactive;
+    }
   });
 }
 // Copy a command: the button says Copied for a moment, and screen readers hear it.
@@ -251,8 +273,27 @@ function shorthand() {
   const refs = JSON.parse(box.dataset.references);
   const input = box.querySelector("[data-shorthand-input]"), parts = box.querySelector("[data-shorthand-parts]"), out = box.querySelector("[data-shorthand-out]");
   // Each typed word over what it means, underlined by its role.
-  const gloss = (role, typed, meaning) => { const item = document.createElement("li"); item.dataset.role = role; const word = document.createElement("b"), note = document.createElement("span"); word.textContent = typed; note.textContent = meaning; item.append(word, note); return item; };
-  function render() {
+  function showGloss(items) {
+    const children = items.map(([role, typed, meaning], index) => {
+      const previous = parts.children[index];
+      const identity = JSON.stringify([role, typed, meaning]);
+      if (previous?.dataset.identity === identity) return previous;
+      const item = document.createElement("li"); item.dataset.role = role; item.dataset.identity = identity;
+      if (role === "message") item.textContent = meaning;
+      else {
+        const word = document.createElement("b"), note = document.createElement("span");
+        word.textContent = typed; note.textContent = meaning; item.append(word, note);
+      }
+      return item;
+    });
+    parts.replaceChildren(...children);
+  }
+  function insert(citation) {
+    if (out.textContent === citation) return;
+    out.textContent = citation; out.classList.remove("landed");
+    if (citation) { void out.offsetWidth; out.classList.add("landed"); }
+  }
+  function render(land = true) {
     const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean), terms = [];
     let prefix, locator, typedLocator;
     words.forEach((word, i) => {
@@ -262,11 +303,9 @@ function shorthand() {
       else terms.push(word);
     });
     const ref = terms.length ? refs.find(r => terms.every(t => r.words.includes(t))) : undefined;
-    out.classList.toggle("placeholder", !ref);
-    if (!ref) { parts.replaceChildren(...(words.length ? [parts.dataset.empty] : [])); out.textContent = out.dataset.empty; out.classList.remove("landed"); return; }
-    parts.replaceChildren(...[prefix && gloss("before", prefix, parts.dataset.before), gloss("reference", terms.join(" "), ref.label), locator && gloss("locator", typedLocator, locator)].filter(Boolean));
-    out.textContent = `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]`;
-    out.classList.remove("landed"); void out.offsetWidth; out.classList.add("landed");
+    if (!ref) { showGloss(words.length ? [["message", "", parts.dataset.empty]] : []); insert(""); return; }
+    showGloss([prefix && ["before", prefix, parts.dataset.before], ["reference", terms.join(" "), ref.label], locator && ["locator", typedLocator, locator]].filter(Boolean));
+    insert(land ? `[${prefix ? prefix + " " : ""}@${ref.key}${locator ? ", " + locator : ""}]` : "");
   }
   const buttons = [...box.querySelectorAll("[data-try]")], examples = [...buttons.map(button => button.textContent.trim()), input.value];
   const still = matchMedia("(prefers-reduced-motion: reduce)"), pace = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--dur-1"));
@@ -281,8 +320,10 @@ function shorthand() {
     const example = examples[index];
     function type() {
       if (stopped || still.matches || document.hidden) return;
-      input.value = example.slice(0, input.value.length + 1); render();
-      if (input.value === example) { index = (index + 1) % examples.length; schedule(begin, 3000); }
+      input.value = example.slice(0, input.value.length + 1); render(false);
+      if (input.value === example) schedule(() => {
+        render(); index = (index + 1) % examples.length; schedule(begin, 2500);
+      }, 600);
       else schedule(type, pace * (.65 + Math.random() * .7));
     }
     schedule(type, pace);
@@ -301,7 +342,7 @@ function shorthand() {
 globalThis.addEventListener?.("load", () => requestAnimationFrame(() => document.documentElement.classList.add("smooth")));
 document.addEventListener("DOMContentLoaded", () => {
   if (!document.querySelector(".index nav")) return; // Plain pages such as 404 need only the appearance applied above.
-  focusRings(); appearance(); platforms(); keyboardHelp(); outboundLinks(); navigation(); share(); chips(); writingApps(); copyButtons(); shorthand();
+  focusRings(); appearance(); platforms(); keyboardHelp(); outboundLinks(); navigation(); share(); chips(); writingApps(); agentApps(); copyButtons(); shorthand();
   console.info("Curious how this page works? Ibis is open source: https://github.com/ibiscite/ibis");
   let lastMove = performance.now();
   const markMove = () => { lastMove = performance.now(); };

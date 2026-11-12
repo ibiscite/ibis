@@ -105,7 +105,9 @@ function main() {
     ...scriptFiles.filter((name) => /^check-[a-z-]+\.mjs$/.test(name))
       .filter((name) => !scriptsOnly || name !== "check-agent-identity.mjs")
       .map((name) => [`Repository guard: ${name}`, "node", [`scripts/${name}`]]),
-    ["Script tests", "node", ["--test", ...scriptTests]],
+    // Each suite starts its own bounded subprocesses. Running suites together
+    // can exhaust CI's CPU quota and spend those deadlines waiting to start.
+    ["Script tests", "node", ["--test", "--test-concurrency=1", ...scriptTests]],
     ...scriptFiles.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name)).map((name) => [
       `Python script tests: ${name}`, process.platform === "win32" ? "python" : "python3", ["-B", `scripts/${name}`],
     ]),

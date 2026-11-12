@@ -329,13 +329,19 @@ fn reference(data: &Value) -> Option<String> {
 }
 
 /// A source warning as a sentence.
-fn warning_line(warning: &Value) -> String {
+pub(super) fn warning_line(warning: &Value) -> String {
     let key = warning.get("key").and_then(Value::as_str).map(field);
     let what = match (warning.get("code").and_then(Value::as_str), key) {
         (Some("duplicate-key"), Some(key)) => {
             // In CSL-JSON this is the record's `id`, which is never a citation key.
             format!("more than one entry uses '{key}' as its key or id, so Ibis skips them all")
         }
+        (Some("zotero-newer-than-tested"), _) => catalogue::sentence(
+            "source-warning",
+            ibis_engine::WarningCode::ZoteroNewerThanTested,
+            Audience::Cli,
+            &[],
+        ),
         (Some("syntax"), _) => "an entry could not be read, so Ibis skips it".into(),
         (Some("field"), _) => "a field could not be fully converted; check this entry".into(),
         (Some("work-limit"), _) => "the library is too large to read in full".into(),
@@ -672,6 +678,17 @@ pub(super) fn reason_sentence(reason: ErrorReason) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn newer_zotero_warning_is_shown_in_libraries_text() {
+        let data = serde_json::json!({"libraries":[{
+            "id":"lib_synthetic", "kind":"zotero", "objects":1, "warnings_total":1,
+            "warnings":[{"code":"zotero-newer-than-tested","line":null}]
+        }]});
+        let said = summary(Method::Libraries, &data, Holdings::References, &BTreeMap::new())
+            .unwrap_or_else(|| panic!("library summary"));
+        assert!(said.contains("Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can."), "{said}");
+    }
+
     use super::*;
 
     /// A loss a newer engine reports is said to need a check, never named as one Ibis knows.
