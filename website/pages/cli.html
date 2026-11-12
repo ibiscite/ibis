@@ -26,51 +26,43 @@
 </section>
 <section id="agents" class="row" aria-labelledby="agents-h">
   <p class="margin"><span class="key">@agents</span></p>
-  <div class="text"><h2 id="agents-h">For AI agents</h2>
-    <p>AI assistants sometimes invent references that look real. Connect Ibis so your assistant can use your real library: search your references, read their details, find citation styles, and format citations and reference lists in any style. It’s read-only: it cannot change your library or read notes or attachments.</p>
-    <p>Try asking:</p>
-    <p class="draft">“Find my papers on lantern gardens and cite the Vale one in APA, page 12.”</p>
-    <p>First, <a href="/cli/#install">install the <code>ibis</code> command</a> and <a href="/get/#setup">choose your library in Ibis</a>. Then choose your assistant below to connect it once.</p>
+  <div class="text"><h2 id="agents-h">Your library, in your AI assistant</h2>
+    <p>Find references and format citations from the libraries you choose.</p>
+    <p class="small">Try asking</p>
+    <p class="draft">“Find the lantern gardens paper in my library and cite it as Pandoc.”</p>
     <div data-agent-tabs>
       <div class="chips" role="tablist" aria-label="Your AI assistant">
-        <button class="key" type="button" role="tab" id="agent-claude" aria-controls="agent-claude-panel" aria-selected="true" tabindex="0" title="Claude Desktop and Claude Code">@claude</button>
-        <button class="key" type="button" role="tab" id="agent-chatgpt" aria-controls="agent-chatgpt-panel" aria-selected="false" tabindex="-1" title="ChatGPT desktop">@chatgpt</button>
-        <button class="key" type="button" role="tab" id="agent-codex" aria-controls="agent-codex-panel" aria-selected="false" tabindex="-1" title="Codex">@codex</button>
-        <button class="key" type="button" role="tab" id="agent-cursor" aria-controls="agent-cursor-panel" aria-selected="false" tabindex="-1" title="Cursor">@cursor</button>
-        <button class="key" type="button" role="tab" id="agent-vscode" aria-controls="agent-vscode-panel" aria-selected="false" tabindex="-1" title="VS Code">@vscode</button>
-        <button class="key" type="button" role="tab" id="agent-gemini" aria-controls="agent-gemini-panel" aria-selected="false" tabindex="-1" title="Gemini CLI">@gemini</button>
+        <button class="key" type="button" role="tab" id="agent-any" aria-controls="agent-any-panel" aria-selected="true" tabindex="0" title="Any assistant" data-guide="">@any</button>
+        <button class="key" type="button" role="tab" id="agent-claude" aria-controls="agent-claude-panel" aria-selected="false" tabindex="-1" title="Claude Code and Claude Desktop" data-guide="#claude">@claude</button>
+        <button class="key" type="button" role="tab" id="agent-codex" aria-controls="agent-codex-panel" aria-selected="false" tabindex="-1" title="Codex" data-guide="#codex">@codex</button>
+        <button class="key" type="button" role="tab" id="agent-cursor" aria-controls="agent-cursor-panel" aria-selected="false" tabindex="-1" title="Cursor" data-guide="#cursor">@cursor</button>
+        <button class="key" type="button" role="tab" id="agent-vscode" aria-controls="agent-vscode-panel" aria-selected="false" tabindex="-1" title="VS Code" data-guide="#vs-code">@vscode</button>
+        <button class="key" type="button" role="tab" id="agent-chatgpt" aria-controls="agent-chatgpt-panel" aria-selected="false" tabindex="-1" title="ChatGPT desktop" data-guide="#chatgpt-desktop">@chatgpt</button>
       </div>
       <div class="tab-panels">
-        <div id="agent-claude-panel" role="tabpanel" aria-labelledby="agent-claude" aria-hidden="false" tabindex="0">
-          <p>In Claude Desktop, open Settings › Developer › Edit Config, add this to <code>claude_desktop_config.json</code> alongside any existing servers, then fully quit and reopen Claude.</p>
-          {{agent-claude-config}}
-          <p>For Claude Code, paste this into your computer’s terminal and press Enter:</p>
+        <div id="agent-any-panel" role="tabpanel" aria-labelledby="agent-any" aria-hidden="false" tabindex="0">
+          <p class="small">Paste into your assistant</p>
+          {{agent-any-prompt}}
+        </div>
+        <div id="agent-claude-panel" role="tabpanel" aria-labelledby="agent-claude" aria-hidden="true" tabindex="0" inert>
           {{agent-claude-command}}
         </div>
-        <div id="agent-chatgpt-panel" role="tabpanel" aria-labelledby="agent-chatgpt" aria-hidden="true" tabindex="0" inert>
-          <p>In ChatGPT desktop, open Settings › MCP servers › Add server › STDIO and enter the fields below. ChatGPT on the web cannot start programs on your computer.</p>
-          {{agent-chatgpt-fields}}
-        </div>
         <div id="agent-codex-panel" role="tabpanel" aria-labelledby="agent-codex" aria-hidden="true" tabindex="0" inert>
-          <p>To connect Codex, paste this into your computer’s terminal and press Enter:</p>
           {{agent-codex-command}}
         </div>
         <div id="agent-cursor-panel" role="tabpanel" aria-labelledby="agent-cursor" aria-hidden="true" tabindex="0" inert>
-          <p>Click Add to Cursor and confirm the setup in Cursor.</p>
-          <a class="button" href="cursor://anysphere.cursor-deeplink/mcp/install?name=ibis&amp;config=eyJjb21tYW5kIjoiaWJpcyIsImFyZ3MiOlsibWNwIiwiLS1hcHAtbGlicmFyaWVzIl19">Add to Cursor</a>
+          <p class="actions"><a href="cursor://anysphere.cursor-deeplink/mcp/install?name=ibis&amp;config=eyJjb21tYW5kIjoiaWJpcyIsImFyZ3MiOlsibWNwIiwiLS1hcHAtbGlicmFyaWVzIl19">Add to <span class="outbound-end">Cursor<span class="outbound" aria-hidden="true"></span></span></a></p>
         </div>
         <div id="agent-vscode-panel" role="tabpanel" aria-labelledby="agent-vscode" aria-hidden="true" tabindex="0" inert>
-          <p>Click Add to VS Code and confirm the setup in VS Code.</p>
-          <a class="button" href="vscode:mcp/install?%7B%22name%22%3A%22ibis%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22ibis%22%2C%22args%22%3A%5B%22mcp%22%2C%22--app-libraries%22%5D%7D">Add to VS Code</a>
+          <p class="actions"><a href="vscode:mcp/install?%7B%22name%22%3A%22ibis%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22ibis%22%2C%22args%22%3A%5B%22mcp%22%2C%22--app-libraries%22%5D%7D">Add to VS <span class="outbound-end">Code<span class="outbound" aria-hidden="true"></span></span></a></p>
         </div>
-        <div id="agent-gemini-panel" role="tabpanel" aria-labelledby="agent-gemini" aria-hidden="true" tabindex="0" inert>
-          <p>To connect Gemini CLI, paste this into your computer’s terminal and press Enter:</p>
-          {{agent-gemini-command}}
+        <div id="agent-chatgpt-panel" role="tabpanel" aria-labelledby="agent-chatgpt" aria-hidden="true" tabindex="0" inert>
+          <p>ChatGPT desktop: Settings › MCP servers › Add server, command <code>ibis mcp --app-libraries</code>. Not available in ChatGPT on the web.</p>
         </div>
       </div>
+      <p class="small"><a href="/cli/#install">Install ibis <span class="outbound-end">first<span class="outbound" aria-hidden="true"></span></span></a> · <a href="https://github.com/ibiscite/ibis/blob/main/docs/agents.md" data-agent-guide>Setup guide</a></p>
     </div>
-    <p class="small">Your assistant starts Ibis by itself; you never type <code>ibis mcp</code> into the chat.</p>
-    <p class="small">Ibis reads your library on your computer; only reference details and citations go to your assistant, which may send them to its provider. <a href="https://github.com/ibiscite/ibis/blob/main/docs/plugin-terms.md">Privacy and plugin notice</a>.</p></div>
+    <p class="small">Read-only access to the libraries you choose; your AI provider’s privacy policy applies.</p></div>
 </section>
 <section id="install" class="row" aria-labelledby="install-h">
   <p class="margin"><span class="key">@install</span></p>

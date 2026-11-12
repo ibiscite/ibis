@@ -143,24 +143,23 @@ test("CLI prints the captured transcript verbatim, explains stdout and offers in
     assert.deepEqual(buttons.map(m => [text(m[1]), m[2]]), [[command, "Copy"]]);
   }
   for (const text of ["standard output", "standard error", "pbcopy", "clip", "wl-copy", "brew install ibiscite/tap/ibis", "ibis mcp", "docs/cli.md"]) assert.ok(html.includes(text), text);
-  assert.ok(!html.includes("winget"), "winget is offered only once Ibis is in its catalogue");
 });
 
-test("each assistant tab offers copyable setup or an install link using the app's libraries", async () => {
+test("assistant chips offer exactly one action, starting with a copyable setup prompt without JavaScript", async () => {
   const html = (await page("cli/")).match(/<section id="agents"[\s\S]*?<\/section>/)[0];
-  const apps = ["claude", "chatgpt", "codex", "cursor", "vscode", "gemini"];
+  const apps = ["any", "claude", "codex", "cursor", "vscode", "chatgpt"];
   const tabs = [...html.matchAll(/<button\b[^>]*role="tab"[^>]*>([^<]+)<\/button>/g)];
   assert.deepEqual(tabs.map(m => m[1]), apps.map(app => `@${app}`));
   const panels = [...html.matchAll(/<div\b[^>]*role="tabpanel"[^>]*>[\s\S]*?(?=<\/div>\s*(?:<div\b[^>]*role="tabpanel"|<\/div>))/g)];
   assert.equal(panels.length, apps.length);
-  const shared = { mcpServers: { ibis: { command: "ibis", args: ["mcp", "--app-libraries"] } } };
   const setup = [
-    [JSON.stringify(shared), "claude mcp add --scope user --transport stdio ibis -- ibis mcp --app-libraries"],
-    ["Name: ibis\nCommand: ibis\nArguments: mcp --app-libraries"],
-    ["codex mcp add ibis -- ibis mcp --app-libraries"],
-    [], [],
-    ["gemini mcp add --scope user --transport stdio ibis ibis mcp -- --app-libraries"],
+    "Set up Ibis for me: follow https://github.com/ibiscite/ibis/blob/main/docs/agents.md",
+    "claude mcp add --scope user ibis -- ibis mcp --app-libraries",
+    "codex mcp add ibis -- ibis mcp --app-libraries",
   ];
+  const guide = await readFile(new URL("../docs/agents.md", import.meta.url), "utf8");
+  const { anchors, brokenLinks } = await import("./doc-links.test.mjs");
+  assert.deepEqual(brokenLinks(["docs/agents.md"]), []);
   for (const [i, app] of apps.entries()) {
     const tab = tabs[i][0], panel = panels[i][0];
     const id = tab.match(/id="([^"]+)"/)[1], target = tab.match(/aria-controls="([^"]+)"/)[1];
@@ -168,27 +167,31 @@ test("each assistant tab offers copyable setup or an install link using the app'
     assert.ok(panel.includes(`aria-labelledby="${id}"`));
     assert.ok(tab.includes(`aria-selected="${i === 0}"`));
     assert.ok(panel.includes(`aria-hidden="${i !== 0}"`));
-    const examples = [...panel.matchAll(/<div class="code(?: \w+)*"><pre><code>([\s\S]*?)<\/code><\/pre>[\s\S]*?<button\b[^>]*data-copy="([^"]+)"/g)];
-    assert.deepEqual(examples.map(m => {
-      const value = text(m[1]);
-      assert.equal(text(m[2]), value, `${app} copies the whole example`);
-      assert.ok(value.includes("--app-libraries"), `${app} selects the app's libraries`);
-      return value.startsWith("{") ? JSON.stringify(JSON.parse(value)) : value;
-    }), setup[i]);
-    const links = [...panel.matchAll(/<a\b[^>]*href="((?:cursor:|vscode:)[^"]+)"[^>]*>([^<]+)<\/a>/g)];
-    assert.ok(examples.length || links.length, `${app} has setup to copy or open`);
+    assert.equal(/\binert\b/.test(panel), i !== 0);
+    const examples = [...panel.matchAll(/<div class="code single(?: prose)?"><pre><code>([\s\S]*?)<\/code><\/pre>[\s\S]*?<button\b[^>]*data-copy="([^"]+)"/g)];
+    const links = [...panel.matchAll(/<a\b[^>]*href="((?:cursor:|vscode:)[^"]+)"[^>]*>([\s\S]*?)<\/a>/g)];
+    const sentences = [...panel.matchAll(/<p>([\s\S]*?)<\/p>/g)];
+    assert.equal(examples.length + links.length + sentences.length, 1, `${app} offers exactly one action`);
+    if (i < setup.length) {
+      assert.equal(text(examples[0][1]), setup[i]);
+      assert.equal(text(examples[0][2]), setup[i], `${app} copies the whole line`);
+      if (app !== "any") assert.ok(setup[i].includes("--app-libraries"));
+    }
     if (app === "cursor" || app === "vscode") {
-      assert.equal(links.length, 1);
       const url = new URL(text(links[0][1]));
       const config = app === "cursor" ? JSON.parse(Buffer.from(url.searchParams.get("config"), "base64").toString()) : JSON.parse(decodeURIComponent(url.search.slice(1)));
       assert.equal(config.command, "ibis");
       assert.deepEqual(config.args, ["mcp", "--app-libraries"]);
-      assert.equal(links[0][2], app === "cursor" ? "Add to Cursor" : "Add to VS Code");
+      assert.equal(text(links[0][2]).trim(), app === "cursor" ? "Add to Cursor" : "Add to VS Code");
     }
+    if (app === "chatgpt") assert.equal(text(sentences[0][1]), "ChatGPT desktop: Settings › MCP servers › Add server, command ibis mcp --app-libraries. Not available in ChatGPT on the web.");
+    const anchor = tab.match(/data-guide="([^"]*)"/)[1];
+    assert.equal(anchor === "", app === "any");
+    if (anchor) assert.ok(anchors(guide).has(anchor.slice(1)), `${app} guide anchor resolves offline`);
   }
+  for (const copy of ["@agents", "Your library, in your AI assistant", "Find references and format citations from the libraries you choose.", "Try asking", "“Find the lantern gardens paper in my library and cite it as Pandoc.”", "Paste into your assistant", "Read-only access to the libraries you choose; your AI provider’s privacy policy applies."]) assert.ok(text(html).includes(copy), copy);
   assert.match(html, /href="\/cli\/#install"/);
-  assert.match(html, /Try asking:/);
+  assert.match(text(html), /Install ibis first/);
+  assert.match(html, /href="https:\/\/github.com\/ibiscite\/ibis\/blob\/main\/docs\/agents.md" data-agent-guide>Setup guide/);
   assert.match(html, /class="draft"/);
-  assert.match(text(html), /Your assistant starts Ibis by itself; you never type ibis mcp into the chat\./);
-  assert.match(html, /https:\/\/github.com\/ibiscite\/ibis\/blob\/main\/docs\/plugin-terms.md/);
 });

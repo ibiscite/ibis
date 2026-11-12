@@ -250,6 +250,8 @@ a[aria-current="page"] .key { background: var(--scarlet); color: var(--website-b
 .tab-panels > [role="tabpanel"] { grid-area: 1 / 1; align-self: start; min-inline-size: 0; }
 .tab-panels > [aria-hidden="true"] { visibility: hidden; }
 .tab-panels > [role="tabpanel"] > :last-child { margin-bottom: 0; }
+.tab-panels .actions { margin-top: 0; }
+.tab-panels .small { margin-bottom: var(--space-2); }
 .try button { color: var(--scarlet); background: var(--website-accent-soft); border-radius: var(--website-chip-radius); }
 .try { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); }
 .draft-stack + .try { margin-block-start: var(--website-paragraph-gap); }
@@ -294,6 +296,8 @@ main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) 
    Copy lines up with the first line, or the middle of a one-line block. Terminals are dark in both modes. */
 .code { display: flex; align-items: flex-start; gap: var(--space-2); margin: var(--space-3) 0 var(--website-paragraph-gap); padding: var(--space-2); border-radius: var(--r-control); background: light-dark(var(--text), color-mix(in srgb, var(--text) 8%, var(--website-bg))); color: light-dark(var(--website-bg), var(--text)); }
 .code.single { align-items: center; }
+/* A prompt is a sentence: it wraps, at the slashes of a long address too. */
+.code.prose pre, .code.prose code { white-space: pre-wrap; overflow-wrap: anywhere; }
 .code pre { flex: 1; min-width: 0; margin: 0; padding: var(--space-2); overflow-x: auto; scrollbar-width: none; font: var(--type-body-size)/1.6 var(--mono); tab-size: 8; }
 .code code { display: inline; padding: 0; background: none; color: inherit; font: inherit; white-space: pre; }
 .code .prompt { opacity: .55; }

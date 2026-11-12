@@ -384,14 +384,15 @@ test("RTL writing tabs follow the visual arrow direction", () => {
 
 test("assistant tabs select only the requested setup and keep inactive controls out of keyboard navigation", () => {
   const { ctx } = context();
-  const names = ["claude", "chatgpt", "codex", "cursor", "vscode", "gemini"];
+  const names = ["any", "claude", "codex", "cursor", "vscode", "chatgpt"];
   const tabs = names.map(name => {
-    const tab = { ...control(), id: `agent-${name}` };
+    const tab = { ...control(), id: `agent-${name}`, dataset: { guide: name === "any" ? "" : `#${name}` } };
     tab.setAttribute("aria-controls", `agent-${name}-panel`);
     return tab;
   });
   const panels = names.map(name => ({ ...control(), id: `agent-${name}-panel` }));
-  ctx.document.querySelector = () => ({ querySelectorAll: selector => selector === '[role="tab"]' ? tabs : panels });
+  const guide = { href: "https://github.com/ibiscite/ibis/blob/main/docs/agents.md" }, base = guide.href;
+  ctx.document.querySelector = () => ({ querySelectorAll: selector => selector === '[role="tab"]' ? tabs : panels, querySelector: () => guide });
   ctx.setTimeout = () => assert.fail("setup tabs do not cycle");
   ctx.agentApps();
   const check = selected => {
@@ -399,6 +400,7 @@ test("assistant tabs select only the requested setup and keep inactive controls 
     assert.deepEqual(tabs.map(tab => tab.tabIndex), names.map((_, i) => i === selected ? 0 : -1));
     assert.deepEqual(panels.map(panel => panel.attrs["aria-hidden"]), names.map((_, i) => String(i !== selected)));
     assert.deepEqual(panels.map(panel => panel.inert), names.map((_, i) => i !== selected));
+    assert.equal(guide.href, base + tabs[selected].dataset.guide, "setup guide follows the selected assistant");
   };
   for (let i = 0; i < tabs.length; i++) { tabs[i].handlers.click(); check(i); }
   for (const [i, key, selected] of [[5, "Home", 0], [0, "End", 5], [5, "ArrowRight", 0], [0, "ArrowLeft", 5]]) {
@@ -793,13 +795,17 @@ test("all routes fit the requested viewports in both themes and directions; visi
             await tab.click();
             assert.equal((await region.boundingBox()).height, initialHeight, "assistant setup keeps its height across tabs");
             assert.equal(await page.locator("#install").evaluate(node => node.getBoundingClientRect().top + scrollY), installTop, "the next section stays in place");
-            assert.equal(await region.locator('[role="tabpanel"]:visible').count(), 1);
+            const active = region.locator('[role="tabpanel"]:visible');
+            assert.equal(await active.count(), 1);
+            assert.equal(await active.locator(".code, a, p:not([class])").count(), 1, "each chip shows exactly one setup action");
+            const guide = page.locator("[data-agent-guide]");
+            assert.equal(new URL(await guide.getAttribute("href")).hash, await tab.getAttribute("data-guide"));
             assert.equal(await panels.evaluateAll(nodes => nodes.every(node => node.inert === (node.getAttribute("aria-hidden") === "true"))), true);
             for (const button of await region.locator(".copy:visible").all()) {
               const command = await button.getAttribute("data-copy");
               await button.click();
               assert.equal(await page.evaluate(() => window.copiedCommand), command);
-              assert.ok(command.includes("--app-libraries"));
+              assert.ok(command.includes(await tab.innerText() === "@any" ? "docs/agents.md" : "--app-libraries"));
             }
           }
         }
