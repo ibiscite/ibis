@@ -1188,3 +1188,16 @@ mcp-citation-hidden = This citation contains hidden characters and cannot be ret
 mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
 mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
 mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.
+
+# The desktop's bundled command. Never execute another program to check its version.
+command-install = Install the ibis command
+command-remove = Remove Command
+command-checking = Checking the ibis command…
+command-missing = Not installed
+command-matching = ibis { $version } — matches this app
+command-different = ibis { $version } — a different version from this app
+command-foreign = Another ibis is used: { $path }. Version unavailable.
+command-profile = Add this line to your shell profile, then reopen your terminal. Ibis checks the PATH available to the app.
+command-copy = Copy
+command-copied = Copied
+command-failed = Could not change the ibis command. Check the folder permissions and try again.

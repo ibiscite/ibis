@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
+import { nightlyConfig } from "./update-feed.mjs";
 
 // The packaging scripts preview.yml runs, on invented build output in a temporary folder.
 const skip = process.platform === "win32";
@@ -63,4 +64,67 @@ test("a release tag that differs from the workspace version signs nothing", { sk
   const unknown = sign(["stable"], {});
   assert.equal(unknown.status, 2);
   assert.ok(!existsSync(feed), "nothing was signed or listed");
+});
+
+test("desktop packaging stages the matching CLI before every bundle and keeps standalone archives", () => {
+  const read = (path) => readFileSync(new URL(`../${path}`, import.meta.url), "utf8");
+  const bundle = JSON.parse(read("apps/desktop/src-tauri/tauri.bundle.conf.json")).bundle;
+  assert.deepEqual(bundle.externalBin, ["binaries/ibis"]);
+  const linux = JSON.parse(read("apps/desktop/src-tauri/tauri.linux.bundle.conf.json")).bundle;
+  assert.deepEqual(linux.externalBin, []);
+  assert.equal(linux.resources["binaries/ibis"], "binaries/ibis");
+  assert.equal(linux.linux, undefined, "Linux CLI resources need no maintainer scripts or dependencies");
+  const nightlyDeb = nightlyConfig("0.3.4-nightly.20261112000000", "linux").bundle.linux.deb;
+  assert.equal(nightlyDeb.postInstallScript, undefined);
+  assert.equal(nightlyDeb.preRemoveScript, undefined);
+  const workflow = read(".github/workflows/preview.yml");
+  assert.ok(workflow.indexOf("name: Build the command line") < workflow.indexOf("name: Build the packages"));
+  assert.match(workflow, /tauri\.bundle\.conf\.json/);
+  assert.match(read("scripts/build-cli.sh"), /binaries\/ibis/);
+  assert.match(read("scripts/collect-packages.sh"), /CLI_TARGET/);
+});
+
+test("Windows packages add only the user PATH and remove their entry on uninstall", () => {
+  const read = (name) => readFileSync(new URL(`../apps/desktop/src-tauri/${name}`, import.meta.url), "utf8");
+  const windows = JSON.parse(read("tauri.bundle.conf.json")).bundle.windows;
+  assert.equal(windows.nsis.installMode, "currentUser");
+  assert.match(read(windows.nsis.installerHooks), /NSIS_HOOK_POSTINSTALL/);
+  assert.match(read(windows.nsis.installerHooks), /NSIS_HOOK_PREUNINSTALL/);
+  const path = read("packaging/path.ps1");
+  assert.match(path, /DoNotExpandEnvironmentNames/);
+  assert.match(path, /CurrentUser/);
+  assert.doesNotMatch(path, /\$env:PATH/);
+  assert.match(path, /Remove/);
+  assert.match(path, /CommandPathTransactions/);
+  assert.doesNotMatch(path, /WriteAllText|Join-Path \$Directory/);
+  const wix = read(windows.wix.fragmentPaths[0]);
+  assert.match(wix, /Id="IbisAddUserPath"[^>]*Execute="deferred"[^>]*Impersonate="yes"/);
+  assert.match(wix, /Id="IbisRemoveUserPath"[^>]*Execute="deferred"[^>]*Impersonate="yes"/);
+  assert.match(wix, /Action="IbisRollbackAddUserPath" After="InstallFiles"/);
+  assert.match(wix, /Action="IbisAddUserPath" After="IbisRollbackAddUserPath"/);
+  assert.match(wix, /Action="IbisRollbackRemoveUserPath" Before="IbisRemoveUserPath"/);
+  assert.match(wix, /Action="IbisRemoveUserPath" Before="RemoveFiles"/);
+  assert.doesNotMatch(wix, /<Environment /);
+  assert.ok(windows.wix.componentRefs.includes("IbisUserPath"));
+});
+
+test("the CLI build stages the same bytes under the app target, including musl Linux", { skip }, (t) => {
+  for (const [runner, target, cliTarget] of [
+    ["macOS", "aarch64-apple-darwin", "aarch64-apple-darwin"],
+    ["macOS", "x86_64-apple-darwin", "x86_64-apple-darwin"],
+    ["Linux", "x86_64-unknown-linux-gnu", "x86_64-unknown-linux-musl"],
+  ]) {
+    const dir = mkdtempSync(join(tmpdir(), "ibis-stage-"));
+    t.after(() => rmSync(dir, { recursive: true, force: true }));
+    mkdirSync(join(dir, "bin"));
+    const binary = "#!/bin/sh\necho ibis-synthetic-matching-build\n";
+    writeFileSync(join(dir, "bin/cargo"), `#!/bin/sh\nmkdir -p 'target/${cliTarget}/release'\nprintf '%s' '${binary}' > 'target/${cliTarget}/release/ibis'\nchmod 755 'target/${cliTarget}/release/ibis'\n`, { mode: 0o755 });
+    writeFileSync(join(dir, "bin/file"), "#!/bin/sh\necho 'statically linked'\n", { mode: 0o755 });
+    const result = spawnSync("bash", [script("build-cli.sh")], { cwd: dir, encoding: "utf8", timeout: 10_000,
+      env: { ...process.env, PATH: `${join(dir, "bin")}:${process.env.PATH}`, TARGET: target, RUNNER_OS: runner, GITHUB_ENV: join(dir, "env") } });
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(join(dir, `apps/desktop/src-tauri/binaries/ibis-${target}`), "utf8"), binary);
+    assert.equal(readFileSync(join(dir, "env"), "utf8"), `CLI_TARGET=${cliTarget}\n`);
+    if (runner === "Linux") assert.equal(readFileSync(join(dir, "apps/desktop/src-tauri/binaries/ibis"), "utf8"), binary);
+  }
 });

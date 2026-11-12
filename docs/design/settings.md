@@ -27,6 +27,18 @@
 
 **General.** **Open at Login** is off until turned on and read from the system, never `settings.json`. **Bird facts and milestones** closes the same card. **Show in menu bar** is on by default; while it is off, opening Ibis from Applications opens Settings. The menu bar icon is a one-colour bird from `brand/` opening a menu: Open Ibis, the library line, Reset Window Position, Settings…, Check for Updates…, Quit Ibis.
 
+**The ibis command.** On macOS and Linux, General offers **Install the ibis
+command** once as a persistent row, without repeated prompts. It creates a
+per-user `~/.local/bin/ibis` symlink to the bundled command; AppImage uses an
+owned copy there so the command survives unmounting. Linux packages register
+nothing on PATH as root. Windows installers add the command to the user's PATH.
+Foreign commands are preserved. The row shows not installed, the installed
+version matching this app, a different installed version, or the location of
+another `ibis` (version unavailable). **Remove Command** removes only Ibis-owned
+artifacts. If `~/.local/bin` is absent from PATH on macOS or Linux, show the exact
+shell-profile line with **Copy**; no elevation or profile editing. Refresh only on a visit or
+window focus, never while hidden. All controls use `ui/Layout` and `ui/Button`.
+
 **Another computer.** Settings › General ends with **Back up settings** (Back Up…, a save dialog that starts in iCloud Drive on macOS, OneDrive on Windows, otherwise Documents) and **Restore settings** (Restore…). A chosen backup is checked whole, then the row lists every change as "Setting: before → after" with notes (a bibliography not on this computer, a shortcut kept for this system), **Cancel** and the primary **Restore and Restart**. Nothing changes before that button; a bibliography shows by its file name only. Refusals say why in one line and change nothing ([moving to a new computer](../moving-to-a-new-computer.md)).
 
 **About** (maintainer, 2026-11-10, option C). One centred column, as System Settings' About: the actual app icon, the name, a **Version x** button that copies it (⌥ shows and copies the full build), **Check for Updates** under the version, as Mac apps place it, with its result under it, then the mission line and the line on the name, which keeps the room of two lines so a new fact never moves the page. Under it, the Updates group (one row: the automatic-checks switch) is the same card as every page, and the links and the free-software note are centred at the foot. The mission line is the hero's lead, in the text colour; the line on the name is secondary. The icon is the page's only bird. It fits 920 × 560 without scrolling. **Check for Updates…** in the tray and menu bar checks at once and leaves Settings closed (maintainer, 2026-11-07): an update found is the offer (install now or later); otherwise one native prompt says Ibis has the newest version, could not check, is already checking, or does not update itself. Automatic update offers never show or focus the picker; they wait for empty, idle input, and **Later** is the default for every key (decision 0019).

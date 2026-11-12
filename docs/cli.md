@@ -5,14 +5,46 @@
 
 ## Install
 
-Download the CLI archive from a [release](https://github.com/ibiscite/ibis/releases/latest)
-or [Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
+The desktop app includes the matching `ibis` built from the same commit.
+
+- **macOS and Linux deb/rpm:** Settings › General › **Install the ibis command**
+  links `~/.local/bin/ibis` to the command inside the app's bundle or package.
+  Keep the macOS app in its permanent location. Install creates the link even
+  when the app's PATH omits it. If that directory is missing from the app's
+  PATH, copy this line into your shell profile, then reopen your terminal:
+  `export PATH="$HOME/.local/bin:$PATH"`. Ibis never requests administrator
+  access or changes your profile. Linux packages install no command on PATH
+  as root. On macOS, Finder's PATH can differ from your terminal; Homebrew's
+  standard locations are also checked for conflicts.
+- **Windows:** the per-user NSIS installer adds the app folder to your user
+  PATH without elevation. MSI also adds a user PATH entry. Open a new terminal
+  after installation. Channel installs serialize their PATH updates and refuse
+  additions that exceed Windows's expanded PATH limit. Successful uninstall
+  removes the installer's entry; cancellation preserves it, and MSI rollback
+  preserves later PATH edits.
+- **Linux AppImage:** the same Settings action offers the command as an owned
+  copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
+  the same profile line when that directory is missing from PATH. Install again
+  after an app update to update this copy (remove the old command first).
+
+Settings shows the command's location, version and whether it matches this app.
+Another command (including Homebrew) is never overwritten or run to inspect
+its version; its location is shown with version unavailable. Unix PATH lookup
+skips files without executable access. **Remove Command**
+removes only an unchanged Ibis-owned installation and its receipt. Removing the
+app itself on macOS cannot run cleanup: remove the command in Settings first.
+The shared installation operation is available for `ibis agents setup` in
+issue #1867's next slice; that command is not part of this slice.
+
+Standalone downloads, Homebrew and winget remain available. Download the CLI
+archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
+[Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
 `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`,
-`ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH.
-The desktop does not install it there. From a checkout:
+`ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH. From a checkout:
 `cargo run -p ibis -- --help`.
 
-The macOS CLI is unsigned. If a trusted downloaded binary is quarantined,
+The standalone macOS CLI is unsigned; the bundled command follows the app's
+signing. If a trusted standalone download is quarantined,
 `xattr -d com.apple.quarantine ibis` removes that attribute.
 Shell completions and an fzf recipe are in the
 [terminal kit](../crates/ibis-cli/README.md).

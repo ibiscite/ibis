@@ -1,6 +1,7 @@
 //! Shared contracts and pure rules for sources, search and citation output.
 
 pub mod citable;
+pub mod command_install;
 pub mod contract;
 pub mod destination;
 pub mod identifier;
