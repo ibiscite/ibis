@@ -1,173 +1,74 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
-import { delimiter, join } from "node:path";
 import { test } from "node:test";
-import { fileURLToPath } from "node:url";
-import { changedFiles } from "./check.mjs";
+import { changedFiles, checkPlan, runChecks } from "./check.mjs";
 
-const checker = fileURLToPath(new URL("./check.mjs", import.meta.url));
-const pathKey = Object.keys(process.env).find((key) => key.toLowerCase() === "path") ?? "PATH";
-const copyChecker = (scripts) => {
-  writeFileSync(join(scripts, "check.mjs"), readFileSync(checker));
-  writeFileSync(join(scripts, "ci-paths.mjs"), readFileSync(new URL("./ci-paths.mjs", import.meta.url)));
-  for (const name of ["empty.test.mjs", "picker-budget.mjs"]) writeFileSync(join(scripts, name), "");
-};
+const files = (...names) => names.map((filename) => ({ filename, status: "modified" }));
+const inventory = ["land.test.mjs", "check.test.mjs", "website.test.mjs", "website-copy.test.mjs", "other.test.mjs"];
 
-// Compiles a WebKit check that ends as SWIFT_RESULT says.
-const stubSwift = (bin) => writeFileSync(join(bin, "swiftc"), '#!/bin/sh\nprintf "#!/bin/sh\\nexit ${SWIFT_RESULT:-0}\\n" > "$4"\nchmod +x "$4"\n', { mode: 0o755 });
-
-test("brand-only checks rebuild without starting Rust or changing source files", { skip: process.platform === "win32" }, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "ibis-brand-check-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  mkdirSync(join(root, "scripts")); mkdirSync(join(root, "bin"));
-  copyChecker(join(root, "scripts"));
-  writeFileSync(join(root, "bin/python3"), '#!/bin/sh\nprintf "%s\\n" "$*"\nexit 0\n', { mode: 0o755 });
-  const result = spawnSync(process.execPath, [join(root, "scripts/check.mjs"), "--brand-assets"], {
-    cwd: root, env: { ...process.env, [pathKey]: `${join(root, "bin")}${delimiter}${process.env[pathKey] ?? ""}` }, encoding: "utf8",
-  });
-  assert.equal(result.status, 0, result.stdout + result.stderr);
-  assert.match(result.stdout, /brand\/build\.py --check/);
-  assert.doesNotMatch(result.stdout, /== Format:|== Desktop:|== Workflow/);
+test("the local plan checks native targets, generated files and related website tests", () => {
+  const steps = checkPlan(files("crates/ibis-core/src/lib.rs", "website/index.html"), { inventory });
+  assert.ok(steps.some(({ command, args }) => command === "cargo" && args[0] === "fmt"));
+  for (const step of steps.filter(({ args }) => args[0] === "clippy")) {
+    assert.ok(step.args.includes("--all-targets"));
+    assert.deepEqual(step.args.slice(-4), ["-D", "warnings", "-D", "clippy::unused_result_ok"]);
+  }
+  assert.ok(steps.some(({ args }) => args.join(" ") === "scripts/gen.mjs --check"));
+  const tests = checkPlan(files("website/index.html"), { inventory }).find(({ name }) => name === "Script tests").args;
+  assert.ok(tests.includes("scripts/website.test.mjs") && tests.includes("scripts/website-copy.test.mjs"));
+  assert.ok(!tests.includes("scripts/other.test.mjs"));
+  assert.ok(!steps.some(({ name }) => /Minimum Rust|WebKit|install/.test(name)), "heavy checks and installs belong to CI");
 });
 
-test("script-only discovery covers Node and Python names without starting build tools", (t) => {
-  const root = mkdtempSync(join(tmpdir(), "ibis-script-discovery-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const scripts = join(root, "scripts"), bin = join(root, "bin");
-  mkdirSync(scripts); mkdirSync(bin);
-  copyChecker(scripts);
-  for (const name of ["new.test.mjs", "new.test.cjs"]) {
-    writeFileSync(join(scripts, name), `console.log(${JSON.stringify(name)});`);
-  }
-  for (const name of ["test_new.py", "new.test.py", "unrelated.py"]) writeFileSync(join(scripts, name), "");
-  const python = process.platform === "win32" ? "python.cmd" : "python3";
-  const wrapper = process.platform === "win32"
-    ? '@echo off\r\nif "%~1"=="--version" exit /b 0\r\necho PYTHON_TEST %*\r\nexit /b 0\r\n'
-    : '#!/bin/sh\nif [ "$1" = "--version" ]; then exit 0; fi\nprintf "PYTHON_TEST %s %s\\n" "$1" "$2"\n';
-  writeFileSync(join(bin, python), wrapper, { mode: 0o755 });
-  const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}` };
-  delete env.NODE_TEST_CONTEXT; // The synthetic child runs its own Node test runner.
-  const run = (flag) => spawnSync(process.execPath, [join(scripts, "check.mjs"), flag], { cwd: root, env, encoding: "utf8", timeout: 15_000 });
-  for (const flag of ["--script-tests", "--platform-script-tests"]) {
-    const result = run(flag);
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    for (const name of ["new.test.mjs", "new.test.cjs", "test_new.py", "new.test.py"]) assert.match(result.stdout, new RegExp(name));
-    assert.doesNotMatch(result.stdout, /unrelated\.py|== Format:|== Lint:|== Desktop:|== Workflow/);
-  }
-  writeFileSync(join(scripts, "new.test.cjs"), 'throw Error("synthetic script failure");');
-  assert.equal(run("--platform-script-tests").status, 1);
-  writeFileSync(join(scripts, "new.test.cjs"), "");
-  writeFileSync(join(bin, python), process.platform === "win32" ? wrapper.replace(/exit \/b 0\r\n$/, 'exit /b 7\r\n') : wrapper + 'exit 7\n', { mode: 0o755 });
-  assert.equal(run("--platform-script-tests").status, 1);
-  writeFileSync(join(bin, python), process.platform === "win32" ? '@exit /b 7\r\n' : '#!/bin/sh\nexit 7\n', { mode: 0o755 });
-  assert.equal(run("--platform-script-tests").status, 2, "unavailable Python must report incomplete");
+test("interface and script changes select their supported outcomes without native suites", () => {
+  const front = checkPlan(files("apps/desktop/src/App.tsx"), { inventory });
+  for (const command of ["typecheck", "lint", "test"]) assert.ok(front.some(({ args }) => args.includes(command)), command);
+  assert.ok(!front.some(({ command, args }) => command === "cargo" && ["test", "clippy"].includes(args[0])));
+  const scripts = checkPlan(files("scripts/land.sh", "scripts/check.test.mjs"), { inventory });
+  assert.deepEqual(scripts.find(({ name }) => name === "Script tests").args, ["--test", ...inventory.slice().sort().map((name) => `scripts/${name}`)]);
 });
 
-function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), "ibis-check-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const bin = join(root, "tools");
-  mkdirSync(bin);
-  // Stop at the first normal step; no Rust, package install or app test runs.
-  writeFileSync(join(bin, process.platform === "win32" ? "actionlint.cmd" : "actionlint"),
-    process.platform === "win32"
-      ? '@echo off\r\nif "%~1"=="-version" exit /b 0\r\necho CHECK_STEP_STARTED\r\nexit /b 7\r\n'
-      : '#!/bin/sh\nif [ "$1" = "-version" ]; then exit 0; fi\nprintf "CHECK_STEP_STARTED\\n"\nexit 7\n',
-    { mode: 0o755 });
-  const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}` };
-  return (args) => spawnSync(process.execPath, [checker, ...args], { cwd: root, env, encoding: "utf8", timeout: 15_000 });
-}
-
-test("changed files read committed, uncommitted and untracked work, and anything unclear fails open", () => {
+test("changed files include committed, dirty and untracked files; unreadable input selects everything", () => {
   const answers = (tracked, untracked = "") => (args) => ({ "merge-base": "abc\n", diff: tracked, "ls-files": untracked })[args[0]];
-  assert.deepEqual(changedFiles(answers("M\0docs/a.md\0R100\0crates/old.rs\0apps/desktop/new.rs\0D\0gone.txt\0", "scripts/new.mjs\0")), [
-    { filename: "scripts/new.mjs", status: "added" },
+  assert.deepEqual(changedFiles(answers("M\0docs/a.md\0R100\0old.rs\0new.rs\0", "new.txt\0")), [
+    { filename: "new.txt", status: "added" },
     { filename: "docs/a.md", previous_filename: null, status: "modified" },
-    { filename: "apps/desktop/new.rs", previous_filename: "crates/old.rs", status: "renamed" },
-    { filename: "gone.txt", previous_filename: null, status: "removed" },
+    { filename: "new.rs", previous_filename: "old.rs", status: "renamed" },
   ]);
-  assert.equal(changedFiles(() => null), null, "no origin/main");
-  assert.equal(changedFiles((args) => (args[0] === "diff" ? null : answers("")(args))), null, "failed diff");
-  assert.equal(changedFiles((args) => (args[0] === "ls-files" ? null : answers("")(args))), null, "failed listing");
+  assert.equal(changedFiles(() => null), null);
+  assert.ok(checkPlan(null, { inventory }).some(({ name, args }) => name === "Test" && args.includes("--workspace")));
 });
 
-test("a change selects the checks CI would run", { skip: process.platform === "win32" }, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "ibis-check-changed-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const scripts = join(root, "scripts"), bin = join(root, "bin"), desktop = join(root, "apps/desktop");
-  mkdirSync(scripts); mkdirSync(bin); mkdirSync(desktop, { recursive: true });
-  copyChecker(scripts);
-  for (const tool of ["actionlint", "cargo", "pnpm", "python3"]) writeFileSync(join(bin, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-  stubSwift(bin);
-  const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}`, GIT_AUTHOR_NAME: "t", GIT_AUTHOR_EMAIL: "t@example.org", GIT_COMMITTER_NAME: "t", GIT_COMMITTER_EMAIL: "t@example.org" };
-  delete env.NODE_TEST_CONTEXT;
-  const git = (...args) => assert.equal(spawnSync("git", args, { cwd: root, env }).status, 0, args.join(" "));
-  git("init", "-q", "-b", "main");
-  writeFileSync(join(root, ".gitignore"), "scripts\nbin\n");
-  git("add", ".gitignore"); git("commit", "-qm", "base");
-  git("update-ref", "refs/remotes/origin/main", "HEAD");
-  const run = (...args) => spawnSync(process.execPath, [join(scripts, "check.mjs"), ...args], { cwd: root, env, encoding: "utf8", timeout: 60_000 });
-  const ran = (result) => [...result.stdout.matchAll(/^== (.+?): (?:actionlint|cargo|node|pnpm|python3|swiftc|\/\S+) /gm)].map((match) => match[1]);
-  const macOS = process.platform === "darwin";
-  const change = (path, text = "x") => { mkdirSync(join(root, path, ".."), { recursive: true }); writeFileSync(join(root, path), text); };
-  const steps = (...paths) => {
-    for (const path of paths) change(path);
-    const result = run();
-    assert.equal(result.status, 0, result.stdout + result.stderr);
-    return ran(result);
-  };
-  const docs = steps("docs/note.md");
-  assert.ok(docs.includes("Workflow expressions") && docs.includes("Dependency policy"));
-  assert.ok(!docs.some((step) => /^(Lint|Test|Format|WebKit|Desktop: (app|type))/.test(step)), docs.join());
-  const front = steps("apps/desktop/src/App.tsx");
-  assert.ok(front.includes("Desktop: interface tests") && !front.includes("Desktop: app tests") && !front.includes("Test"), front.join());
-  assert.equal(front.includes("WebKit colours"), macOS);
-  if (macOS) {
-    const failed = spawnSync(process.execPath, [join(scripts, "check.mjs")], { cwd: root, env: { ...env, SWIFT_RESULT: "1" }, encoding: "utf8", timeout: 60_000 });
-    assert.equal(failed.status, 1, "a wrong colour is a failure, not a missing tool");
-    assert.match(failed.stderr, /WebKit colours failed/);
-  }
-  const app = steps("apps/desktop/src-tauri/src/lib.rs");
-  assert.ok(app.includes("Desktop: app tests") && app.includes("Format") && !app.includes("Test") && !app.includes("Minimum Rust"), app.join());
-  const core = steps("crates/ibis-core/src/lib.rs");
-  assert.ok(core.includes("Test") && core.includes("Minimum Rust") && core.includes("Desktop: app tests"), core.join());
-  assert.ok(ran(run("--all")).includes("Minimum Rust"));
-  git("update-ref", "-d", "refs/remotes/origin/main");
-  assert.ok(ran(run()).includes("Test"), "without origin/main everything runs");
+test("preflight absence reports unavailable without executing the check; a later failure stays failed", () => {
+  const step = { name: "Lint", command: "cargo", args: ["clippy"], probes: [["cargo", ["clippy", "--version"], "clippy is not installed"]] };
+  const calls = [], reports = [];
+  const unavailable = runChecks([step], (command, args) => { calls.push([command, args]); return { status: 1 }; }, (line) => reports.push(line));
+  assert.equal(unavailable, 2);
+  assert.equal(calls.length, 1);
+  assert.match(reports.join("\n"), /unavailable.*clippy is not installed/);
+  let count = 0;
+  assert.equal(runChecks([step], () => ({ status: ++count === 1 ? 0 : 2 }), (line) => reports.push(line)), 1);
+  assert.match(reports.at(-1), /failed/);
+  assert.equal(count, 2, "a failed command is never re-probed or reinterpreted");
+  assert.equal(runChecks([step], () => ({ signal: "SIGTERM" }), (line) => reports.push(line)), 75);
+  assert.match(reports.at(-1), /infrastructure/);
 });
 
-test("a missing minimum Rust toolchain reports incomplete instead of failed", { skip: process.platform === "win32" }, (t) => {
-  const root = mkdtempSync(join(tmpdir(), "ibis-check-msrv-"));
-  t.after(() => rmSync(root, { recursive: true, force: true }));
-  const scripts = join(root, "scripts"), bin = join(root, "bin");
-  mkdirSync(scripts); mkdirSync(bin); mkdirSync(join(root, "apps/desktop"), { recursive: true });
-  copyChecker(scripts);
-  for (const tool of ["actionlint", "pnpm", "python3"]) writeFileSync(join(bin, tool), "#!/bin/sh\nexit 0\n", { mode: 0o755 });
-  stubSwift(bin);
-  writeFileSync(join(bin, "cargo"), '#!/bin/sh\ncase "$1" in +*) exit 1 ;; esac\nexit 0\n', { mode: 0o755 });
-  const env = { ...process.env, [pathKey]: `${bin}${delimiter}${process.env[pathKey] ?? ""}` };
-  delete env.NODE_TEST_CONTEXT;
-  const result = spawnSync(process.execPath, [join(scripts, "check.mjs"), "--all"], { cwd: root, env, encoding: "utf8", timeout: 60_000 });
-  assert.equal(result.status, 2, result.stdout + result.stderr);
-  assert.match(result.stderr, /rustup toolchain install 1\.90\.0/);
-});
-
-test("unknown arguments are refused before checks", (t) => {
-  const run = fixture(t);
-  for (const args of [["--unknown"], ["--script-tests", "extra"], ["--expect-commit", "a".repeat(40)]]) {
-    const result = run(args);
-    assert.equal(result.status, 1);
-    assert.match(result.stderr, /Usage: node scripts\/check\.mjs/);
-    assert.doesNotMatch(result.stdout, /CHECK_STEP_STARTED/);
+test("each result is explicit and infrastructure never counts as a pass", () => {
+  const step = { name: "Test", command: "node", args: [], probes: [] };
+  for (const [result, code, word] of [[{ status: 0 }, 0, "passed"], [{ status: 1 }, 1, "failed"], [{ status: 75 }, 75, "infrastructure"], [{ signal: "SIGTERM" }, 75, "infrastructure"]]) {
+    const reports = [];
+    assert.equal(runChecks([step], () => result, (line) => reports.push(line)), code);
+    assert.match(reports.at(-1), new RegExp(word));
   }
 });
 
-test("ordinary checks start with the first step", (t) => {
-  const result = fixture(t)(["--all"]);
-  assert.equal(result.status, 1); // The deliberately failed first step.
-  assert.match(result.stdout, /== Workflow expressions:/);
-  assert.match(result.stdout, /CHECK_STEP_STARTED/);
-  assert.doesNotMatch(result.stdout, /== Format:|== Desktop:/);
+test("missing brand fonts report unavailable before rendering starts", () => {
+  const reports = [], calls = [];
+  const status = runChecks(checkPlan([], { brandOnly: true, inventory }), (command, args) => {
+    calls.push([command, args]);
+    return { status: args[0] === "-c" ? 1 : 0 };
+  }, (line) => reports.push(line));
+  assert.equal(status, 2);
+  assert.match(reports.join("\n"), /unavailable.*Inter Display/);
+  assert.ok(!calls.some(([, args]) => args.includes("brand/build.py")));
 });

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
-import { backend, chooseFromMore, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -18,11 +18,51 @@ async function open() {
   return screen.findByRole("dialog");
 }
 
+test("closing slow bibliography formatting lets citation B finish before the abandoned bibliography", async () => {
+  let busy = false;
+  let started = false;
+  backend({ search: () => [taylor, morgan], session_references: () => list(),
+    session_bibliography: ({ intent }) => {
+      if (intent?.cancel) { busy = false; return null; }
+      started = busy = true;
+      return new Promise(() => {});
+    },
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+  });
+  const dialog = await open();
+  await waitFor(() => expect(started).toBe(true));
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(screen.getByText(morgan.title));
+  expect(await screen.findByText("Citation B")).toBeTruthy();
+});
+
+test.each(["Copy Bibliography", "Save…"])("closing slow %s formatting lets citation B finish without a late delivery", async (action) => {
+  let busy = false;
+  let started = false;
+  const deliver = ({ intent }: { intent?: { cancel: boolean } }) => {
+    if (intent?.cancel) { busy = false; return null; }
+    started = busy = true;
+    return new Promise(() => {});
+  };
+  backend({ search: () => [taylor, morgan], session_references: () => list(),
+    session_bibliography: () => formatted("Bibliography A"),
+    copy_session_bibliography: deliver, export_session_bibliography: deliver,
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+  });
+  const dialog = await open();
+  await within(dialog).findByText("Bibliography A");
+  fireEvent.click(within(dialog).getByRole("button", { name: action }));
+  await waitFor(() => expect(started).toBe(true));
+  fireEvent.keyDown(dialog, { key: "Escape" });
+  fireEvent.click(screen.getByText(morgan.title));
+  expect(await screen.findByText("Citation B")).toBeTruthy();
+});
+
 test("it is named for what Ibis knows and shows what Copy writes", async () => {
   const sent: unknown[] = [];
   backend({
     session_references: () => list(), session_bibliography: () => formatted("Morgan, A. Taylor, A."),
-    copy_session_bibliography: (args) => { sent.push(args); return null; },
+    copy_session_bibliography: ({ style, contentHash }) => { sent.push({ style, contentHash }); return null; },
   });
   const dialog = await open();
   expect(within(dialog).getByRole("heading", { name: "Cited Since Opening" })).toBeTruthy();
@@ -38,7 +78,7 @@ test("Enter copies the bibliography, as the footer says, unless a control in the
   const sent: unknown[] = [];
   backend({
     session_references: () => list(), session_bibliography: () => formatted("Morgan, A. Taylor, A."),
-    copy_session_bibliography: (args) => { sent.push(args); return null; },
+    copy_session_bibliography: ({ style, contentHash }) => { sent.push({ style, contentHash }); return null; },
   });
   const dialog = await open();
   await within(dialog).findByText("Morgan, A. Taylor, A.");
@@ -82,7 +122,7 @@ test("a slow bibliography for an older list never replaces the newer one", async
   let current = list();
   backend({
     session_references: () => current,
-    session_bibliography: () => new Promise((resolve) => { pending.push(resolve); }),
+    session_bibliography: ({ intent }) => intent?.cancel ? null : new Promise((resolve) => { pending.push(resolve); }),
     edit_session_references: () => { current = list({ rows: [morgan] }); return current; },
   });
   const dialog = await open();

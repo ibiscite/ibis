@@ -33,9 +33,9 @@ done
   };
 }
 
-test("only dependency changes block PR and queue advisory failures; unreadable ranges enforce the policy", posix, (t) => {
+test("only dependency changes block PR and main advisory failures; unreadable ranges enforce the policy", posix, (t) => {
   const run = fixture(t);
-  for (const event of ["pull_request", "merge_group"]) {
+  for (const event of ["pull_request", "push"]) {
     assert.equal(run("policy", { EVENT: event }).stdout, "blocking=false\n");
     for (const file of ["Cargo.toml", "Cargo.lock", "deny.toml", "crates/example/Cargo.toml"]) {
       assert.equal(run("policy", { EVENT: event, FILES: file }).stdout, "blocking=true\n");
@@ -71,7 +71,7 @@ test("real diffs include nested manifests and both sides of renames, without cou
   };
   for (const [path, blocking] of [["README.md", false], ["crates/example/Cargo.toml", true], ["Cargo.lock", true], ["deny.toml", true], ["docs/deny.toml", false], ["Cargo.toml.orig", false]]) {
     const head = commit(path, "synthetic content\n");
-    for (const event of ["pull_request", "merge_group"]) assert.equal(run(event, head), `blocking=${blocking}\n`, path);
+    for (const event of ["pull_request", "push"]) assert.equal(run(event, head), `blocking=${blocking}\n`, path);
     base = head;
   }
   git("mv", "Cargo.toml", "old-manifest"); git("commit", "-qm", "synthetic rename away");

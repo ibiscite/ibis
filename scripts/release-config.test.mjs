@@ -35,6 +35,12 @@ function fakeGithub() {
   };
   save();
   if (args[0] === "api") {
+    if (args[1] === "repos/example/ibis/git/ref/heads/main") {
+      console.log(JSON.stringify({ object: { type: "commit", sha: "a".repeat(40) } })); return;
+    }
+    if (args[1].startsWith("repos/example/ibis/actions/workflows/ci.yml/runs?")) {
+      console.log(JSON.stringify({ workflow_runs: [{ event: "push", head_branch: "main", head_sha: "a".repeat(40), status: "completed", conclusion: state.ciConclusion ?? "success" }] })); return;
+    }
     if (args[1] === "repos/example/ibis/git/ref/tags/nightly") {
       const status = state.refStatus ?? (state.currentSha ? 200 : 404);
       const body = state.refBody ?? JSON.stringify({ object: { type: "commit", sha: state.currentSha } });
@@ -140,7 +146,7 @@ function fixture(t, initial = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ibis-release-config-"));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   for (const name of ["scripts", "dist", "feed", "style-changes"]) mkdirSync(join(dir, name));
-  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", ...Object.values(scripts)]) {
+  for (const name of ["update-feed.mjs", "release-notes.mjs", "publication-guard.mjs", "ci-main.mjs", ...Object.values(scripts)]) {
     copyFileSync(new URL(name, import.meta.url), join(dir, "scripts", name));
   }
   writeFileSync(join(dir, "gh"), `#!/usr/bin/env node\n(${fakeGithub.toString()})();\n`, { mode: 0o755 });
@@ -383,6 +389,13 @@ test("stable feed read failures stop before changing permanent installers or lat
   }
 });
 
+test("red main prevents every nightly publication mutation", { skip }, (t) => {
+  const f = fixture(t, { ciConclusion: "failure" });
+  const result = f.run("nightly", { TAG: "nightly" });
+  assert.notEqual(result.status, 0);
+  assert.ok(f.state().calls.every((args) => args[0] === "api" && !args.includes("--method")));
+});
+
 test("nightly only publishes after a successful ahead comparison or confirmed ref absence", { skip }, (t) => {
   for (const currentSha of [undefined, "b".repeat(40)]) {
     const f = fixture(t, { currentSha });
@@ -420,7 +433,7 @@ test("nightly leaves a newer, equal or diverged nightly untouched", { skip }, (t
     const result = f.run("nightly", { TAG: "nightly" });
     assert.equal(result.status, 0, result.stdout + result.stderr);
     assert.deepEqual(f.state().releases.nightly.assets, assets);
-    assert.equal(f.state().calls.length, 2, "only the ref and comparison may be read");
+    assert.equal(f.state().calls.length, 5, "only main CI, the nightly ref and comparison may be read");
   }
 });
 
