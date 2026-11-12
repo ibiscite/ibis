@@ -293,7 +293,8 @@ fn transcript(entry: &mut String, typed: &str, (code, stdout, stderr): (u8, Stri
     let folder = env!("CARGO_TARGET_TMPDIR");
     let _ = write!(entry, "$ ibis {typed}\nexit {code}\n");
     for (stream, text) in [("stdout", stdout), ("stderr", stderr)] {
-        for line in text.replace(folder, "<tmp>").lines() {
+        // Windows separates the file name with `\`; the transcript is the same on every system.
+        for line in text.replace(&format!("{folder}\\"), "<tmp>/").replace(folder, "<tmp>").lines() {
             let _ = writeln!(entry, "{stream}| {line}");
         }
     }
