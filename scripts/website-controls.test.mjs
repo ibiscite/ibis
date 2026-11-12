@@ -269,11 +269,13 @@ test("leaving or re-entering a citation pill cancels old text; touch, reduced mo
   }
 });
 
+const shorthandExamples = [["fen ch 2", "[@fen2023clouds, chap. 2]"], ["reed 12-14", "[@reed2025maps, pp. 12–14]"],
+  ["see vale 33", "[see @vale2024lanterns, p. 33]"], ["see vale 417", "[see @vale2024lanterns, p. 417]"]];
 function shorthandPage() {
   const { ctx, media } = context(), events = {}, timers = new Map();
   let serial = 0;
-  const input = { ...control(), value: "see vale 417" }, parts = { ...control(), dataset: { before: "before", empty: "No match" } }, out = { dataset: { empty: "[@key, p. 12]" }, classList: classes() };
-  const buttons = ["fen ch 2", "reed 12-14", "see vale 33"].map(textContent => ({ ...control(), textContent }));
+  const input = { ...control(), value: "see vale 417" }, parts = { ...control(), children: [], dataset: { before: "before", empty: "No match" } }, out = { textContent: "[see @vale2024lanterns, p. 417]", classList: classes() };
+  const buttons = shorthandExamples.slice(0, 3).map(([textContent]) => ({ ...control(), textContent }));
   const box = { dataset: { references: JSON.stringify([{ key: "vale2024lanterns", label: "Vale 2024", words: "vale" }, { key: "fen2023clouds", label: "Fen 2023", words: "fen" }, { key: "reed2025maps", label: "Reed and Vale 2025", words: "reed" }]) },
     querySelector: selector => ({ "[data-shorthand-input]": input, "[data-shorthand-parts]": parts, "[data-shorthand-out]": out })[selector], querySelectorAll: () => buttons };
   ctx.document.querySelector = () => box;
@@ -286,27 +288,36 @@ function shorthandPage() {
   return { ctx, media, events, timers, input, parts, out, buttons, tick };
 }
 
-test("empty and unmatched shorthand show a citation placeholder, then recover with Try", () => {
+test("empty and unmatched shorthand leave an empty insertion point; typing and Try update citations without Enter", () => {
   const p = shorthandPage(); p.ctx.shorthand();
   for (const value of ["", "   ", "missing", "see 417"]) {
     p.input.value = value; p.input.handlers.input();
-    assert.equal(p.out.textContent, "[@key, p. 12]");
-    assert.equal(p.out.classList.contains("placeholder"), true);
-    assert.deepEqual(p.parts.children, value.trim() ? ["No match"] : []);
+    assert.equal(p.out.textContent, "");
+    assert.equal(p.parts.children.map(item => item.textContent).join(""), value.trim() ? "No match" : "");
   }
-  p.buttons[0].handlers.click();
-  assert.equal(p.out.textContent, "[@fen2023clouds, chap. 2]");
-  assert.equal(p.out.classList.contains("placeholder"), false);
+  for (const [query, citation] of shorthandExamples) {
+    p.input.value = ""; p.input.handlers.input();
+    for (const char of query) { p.input.value += char; p.input.handlers.input(); }
+    assert.equal(p.out.textContent, citation);
+  }
+  p.input.value = "fen"; p.input.handlers.input();
+  assert.equal(p.out.textContent, "[@fen2023clouds]", "a matching query lands while still being typed");
+  p.buttons.forEach((button, index) => { button.handlers.click(); assert.equal(p.out.textContent, shorthandExamples[index][1]); });
 });
 
-test("idle shorthand types the next examples with live gloss, then stops permanently on focus, input or Try", () => {
+test("idle shorthand fills the gloss before landing, holds the citation, and stops permanently on focus, input or Try", () => {
   const page = shorthandPage(); page.ctx.shorthand();
   assert.equal(page.timers.values().next().value.delay, 3000);
-  for (const [example, citation] of [["fen ch 2", "[@fen2023clouds, chap. 2]"], ["reed 12-14", "[@reed2025maps, pp. 12–14]"],
-    ["see vale 33", "[see @vale2024lanterns, p. 33]"], ["see vale 417", "[see @vale2024lanterns, p. 417]"]]) {
+  for (const [example, citation] of shorthandExamples) {
     page.tick();
-    for (let i = 0; i < example.length; i++) { page.tick(); assert.equal(page.input.value, example.slice(0, i + 1)); }
+    for (let i = 0; i < example.length; i++) {
+      page.tick(); assert.equal(page.input.value, example.slice(0, i + 1));
+      assert.equal(page.out.textContent, "", "typing has not inserted a citation");
+    }
+    assert.ok(page.parts.children.length, "the gloss explains the completed query before landing");
+    assert.ok(page.tick() >= 300, "a short pause separates typing from landing");
     assert.equal(page.out.textContent, citation);
+    assert.equal(page.timers.values().next().value.delay, 2500);
     assert.equal(page.parts.children.at(-1).children[0].textContent, example.startsWith("fen") ? "ch 2" : example.split(" ").at(-1));
   }
   for (const action of ["focus", "input", "try"]) {
@@ -369,6 +380,36 @@ test("RTL writing tabs follow the visual arrow direction", () => {
   assert.equal(output.textContent, apps[1].output);
   tabs[1].handlers.keydown({ key: "ArrowRight", preventDefault() {} });
   assert.equal(tabs[0].focused, true);
+});
+
+test("assistant tabs select only the requested setup and keep inactive controls out of keyboard navigation", () => {
+  const { ctx } = context();
+  const names = ["any", "claude", "codex", "cursor", "vscode", "chatgpt"];
+  const tabs = names.map(name => {
+    const tab = { ...control(), id: `agent-${name}`, dataset: { guide: name === "any" ? "" : `#${name}` } };
+    tab.setAttribute("aria-controls", `agent-${name}-panel`);
+    return tab;
+  });
+  const panels = names.map(name => ({ ...control(), id: `agent-${name}-panel` }));
+  const guide = { href: "https://github.com/ibiscite/ibis/blob/main/docs/agents.md" }, base = guide.href;
+  ctx.document.querySelector = () => ({ querySelectorAll: selector => selector === '[role="tab"]' ? tabs : panels, querySelector: () => guide });
+  ctx.setTimeout = () => assert.fail("setup tabs do not cycle");
+  ctx.agentApps();
+  const check = selected => {
+    assert.deepEqual(tabs.map(tab => tab.attrs["aria-selected"]), names.map((_, i) => String(i === selected)));
+    assert.deepEqual(tabs.map(tab => tab.tabIndex), names.map((_, i) => i === selected ? 0 : -1));
+    assert.deepEqual(panels.map(panel => panel.attrs["aria-hidden"]), names.map((_, i) => String(i !== selected)));
+    assert.deepEqual(panels.map(panel => panel.inert), names.map((_, i) => i !== selected));
+    assert.equal(guide.href, base + tabs[selected].dataset.guide, "setup guide follows the selected assistant");
+  };
+  for (let i = 0; i < tabs.length; i++) { tabs[i].handlers.click(); check(i); }
+  for (const [i, key, selected] of [[5, "Home", 0], [0, "End", 5], [5, "ArrowRight", 0], [0, "ArrowLeft", 5]]) {
+    tabs[i].handlers.keydown({ key, preventDefault() {} });
+    check(selected); assert.equal(tabs[selected].focused, true);
+  }
+  ctx.getComputedStyle = () => ({ direction: "rtl" });
+  tabs[0].handlers.keydown({ key: "ArrowLeft", preventDefault() {} }); check(1);
+  tabs[1].handlers.keydown({ key: "ArrowRight", preventDefault() {} }); check(0);
 });
 
 test("home navigation keeps one current section at the top, on clicks and through scrolling", () => {
@@ -442,7 +483,7 @@ test("Copy copies only the command and reports clipboard refusal", async () => {
 
 test("repeated Copy clicks return to Copy and ignore an older clipboard completion", async () => {
   const { ctx } = context(), label = { textContent: "Copy" }, pending = [], timers = new Map();
-  const button = { ...control(), querySelector: () => label, dataset: { copy: "ibis mcp", copied: "Copied", failed: "Select to copy" } };
+  const button = { ...control(), querySelector: () => label, dataset: { copy: "ibis mcp --app-libraries", copied: "Copied", failed: "Select to copy" } };
   let serial = 0;
   ctx.navigator.clipboard = { writeText: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) };
   ctx.document.querySelectorAll = () => [button]; ctx.peck = () => {};
@@ -542,6 +583,90 @@ const searchGeometry = node => {
   return { height: box.height, padding: css.padding, mark: [start(mark), mark.top - box.top, mark.width, mark.height],
     query: [start(input.getBoundingClientRect()), query.height, query.padding, query.font, query.letterSpacing], placeholder: getComputedStyle(input, "::placeholder").color };
 };
+async function serveWebsite(page) {
+  const root = resolve("website/dist");
+  await page.route("**/*", async route => {
+    const url = new URL(route.request().url());
+    if (url.hostname !== "ibis.test") return route.abort();
+    const path = url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname;
+    const contentType = path.endsWith(".html") ? "text/html" : path.endsWith(".css") ? "text/css" : /\.(m?js)$/.test(path) ? "text/javascript" : path.endsWith(".svg") ? "image/svg+xml" : undefined;
+    await route.fulfill({ body: await readFile(join(root, path)), contentType });
+  });
+}
+test("drafts keep their size through auto-play, manual queries and app changes; the writer's caret stays outside the citation", { skip: !process.env.IBIS_PLAYWRIGHT_MODULE }, async () => {
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
+  const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE });
+  const caretFollows = node => {
+    const caret = node.parentElement.querySelector(".caret");
+    if (!caret || node.contains(caret) || !(node.compareDocumentPosition(caret) & Node.DOCUMENT_POSITION_FOLLOWING)) return false;
+    if (getComputedStyle(caret).backgroundColor !== getComputedStyle(node.closest(".draft")).color) return false;
+    if (!node.textContent) return true;
+    const range = document.createRange(); range.selectNodeContents(node);
+    range.setStart(node.firstChild, node.firstChild.length - 1);
+    const tail = range.getBoundingClientRect(), cursor = caret.getBoundingClientRect();
+    return Math.abs(cursor.left - tail.right) < 1.5 && cursor.top < tail.bottom && cursor.bottom > tail.top;
+  };
+  try {
+    for (const width of [320, 375, 640, 992, 1100, 1270, 1600]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 }, reducedMotion: "no-preference" });
+      await serveWebsite(page);
+      await page.clock.install({ time: new Date("2026-11-11T12:00:00Z") });
+      await page.clock.pauseAt(new Date("2026-11-11T12:00:01Z"));
+      await page.addInitScript(() => { Math.random = () => .5; });
+      await page.goto("https://ibis.test/cli/");
+      const section = page.locator("#shorthand"), field = page.locator("[data-shorthand-input]"), output = page.locator("[data-shorthand-out]");
+      const height = (await section.boundingBox()).height;
+      const stable = async () => {
+        assert.equal((await section.boundingBox()).height, height, `shorthand keeps its height at ${width}px`);
+        assert.equal(await output.evaluate(caretFollows), true);
+        assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `content fits ${width}px`);
+      };
+      await stable();
+      await page.clock.runFor(3000);
+      for (const [query, citation] of shorthandExamples) {
+        assert.equal(await field.inputValue(), ""); await stable();
+        for (let i = 0; i < query.length; i++) {
+          await page.clock.runFor(120);
+          assert.equal(await field.inputValue(), query.slice(0, i + 1));
+          assert.equal(await output.textContent(), ""); await stable();
+        }
+        assert.ok(await page.locator(".gloss li").count());
+        await page.clock.runFor(600);
+        assert.equal(await output.textContent(), citation); await stable();
+        await page.clock.runFor(600); await stable();
+        assert.equal(await output.evaluate(node => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)", "the insertion tint ends");
+        await page.clock.runFor(1900); await stable();
+      }
+      for (const query of [...shorthandExamples.map(([query]) => query), "missing"]) {
+        await field.fill(""); await stable();
+        for (const char of query) { await field.pressSequentially(char); await stable(); }
+        if (query === "missing") {
+          assert.equal(await output.textContent(), "");
+          assert.equal(await page.locator(".gloss").innerText(), "No match in the sample references. Try vale, fen or reed.");
+        } else assert.equal(await output.textContent(), shorthandExamples.find(([value]) => value === query)[1]);
+      }
+      assert.deepEqual(await page.locator("[data-try]").allTextContents(), shorthandExamples.slice(0, 3).map(([query]) => query));
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      await field.fill("see vale 417");
+      const still = async selector => assert.equal(await page.locator(selector).evaluateAll(nodes => nodes.every(node => !node.getAnimations().some(animation => animation.playState === "running"))), true, "Reduce Motion stops blink and tint");
+      await still("#shorthand .caret, [data-shorthand-out]");
+      assert.equal(await output.evaluate(node => getComputedStyle(node).backgroundColor), "rgba(0, 0, 0, 0)");
+      await page.goto("https://ibis.test/");
+      const draft = page.locator(".where-doc"), homeOutput = page.locator("[data-out]"), homeHeight = (await draft.boundingBox()).height;
+      for (const app of apps) {
+        await page.getByRole("tab", { name: `@${app.id}`, exact: true }).click();
+        assert.equal((await draft.boundingBox()).height, homeHeight, `Where you write keeps its height at ${width}px`);
+        assert.equal(await homeOutput.evaluate(caretFollows), true);
+        if (width >= 1100) assert.equal(await homeOutput.evaluate(node => {
+          const range = document.createRange(); range.selectNodeContents(node);
+          return range.getClientRects().length;
+        }), 1, "the longest app citation fits one line at desktop width");
+      }
+      await still(".where-doc .caret, [data-out]");
+      await page.close();
+    }
+  } finally { await browser.close(); }
+});
 test("all routes fit the requested viewports in both themes and directions; visitor controls work", { skip: !process.env.IBIS_PLAYWRIGHT_MODULE }, async () => {
   const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
   const browser = await chromium.launch({ executablePath: process.env.IBIS_CHROMIUM_EXECUTABLE, ignoreDefaultArgs: ["--hide-scrollbars"] });
@@ -643,8 +768,7 @@ test("all routes fit the requested viewports in both themes and directions; visi
           for (const value of ["", "missing"]) {
             await field.fill(value);
             assert.equal(await field.getAttribute("placeholder"), "Try see vale 417");
-            assert.equal(await output.innerText(), "[@key, p. 12]");
-            assert.equal(await output.evaluate(node => getComputedStyle(node).color === getComputedStyle(document.querySelector("#shorthand .try")).color), true, "empty citations use secondary text");
+            assert.equal(await output.textContent(), "");
             if (value) assert.equal(await page.locator("[data-shorthand-parts]").evaluate(node => {
               const range = document.createRange(); range.selectNodeContents(node);
               const text = range.getBoundingClientRect(), input = document.querySelector("[data-shorthand-input]").getBoundingClientRect();
@@ -663,7 +787,29 @@ test("all routes fit the requested viewports in both themes and directions; visi
           await firstTry.press("Tab"); await page.keyboard.press("Shift+Tab");
           assert.equal(await firstTry.evaluate(hasFocusRing), true, "Try keyboard focus keeps its ring");
         }
-        if (path === "/cli/") for (const button of await page.getByRole("button", { name: "Copy", exact: true }).all()) {
+        if (path === "/cli/") {
+          const region = page.locator("[data-agent-tabs] .tab-panels"), panels = region.locator('[role="tabpanel"]');
+          const initialHeight = (await region.boundingBox()).height;
+          const installTop = await page.locator("#install").evaluate(node => node.getBoundingClientRect().top + scrollY);
+          for (const tab of await page.locator('[data-agent-tabs] [role="tab"]').all()) {
+            await tab.click();
+            assert.equal((await region.boundingBox()).height, initialHeight, "assistant setup keeps its height across tabs");
+            assert.equal(await page.locator("#install").evaluate(node => node.getBoundingClientRect().top + scrollY), installTop, "the next section stays in place");
+            const active = region.locator('[role="tabpanel"]:visible');
+            assert.equal(await active.count(), 1);
+            assert.equal(await active.locator(".code, a, p:not([class])").count(), 1, "each chip shows exactly one setup action");
+            const guide = page.locator("[data-agent-guide]");
+            assert.equal(new URL(await guide.getAttribute("href")).hash, await tab.getAttribute("data-guide"));
+            assert.equal(await panels.evaluateAll(nodes => nodes.every(node => node.inert === (node.getAttribute("aria-hidden") === "true"))), true);
+            for (const button of await region.locator(".copy:visible").all()) {
+              const command = await button.getAttribute("data-copy");
+              await button.click();
+              assert.equal(await page.evaluate(() => window.copiedCommand), command);
+              assert.ok(command.includes(await tab.innerText() === "@any" ? "docs/agents.md" : "--app-libraries"));
+            }
+          }
+        }
+        if (path === "/cli/") for (const button of await page.locator(".copy:visible").all()) {
           const command = await button.getAttribute("data-copy");
           await button.click();
           assert.equal(await page.evaluate(() => window.copiedCommand), command);

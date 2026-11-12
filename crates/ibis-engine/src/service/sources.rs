@@ -96,6 +96,27 @@ impl PreparedFileReload {
     }
 }
 
+fn zotero_error(failure: ZoteroError) -> EngineError {
+    let code = if failure.cancelled() {
+        ErrorCode::Cancelled
+    } else if failure.limited() {
+        ErrorCode::ResourceLimit
+    } else if failure.newer() {
+        ErrorCode::NewerFormat
+    } else if failure == ZoteroError::InvalidData || failure == ZoteroError::Selection {
+        ErrorCode::BadInput
+    } else if failure == ZoteroError::LibraryNotFound {
+        ErrorCode::NotFound
+    } else {
+        ErrorCode::SourceUnavailable
+    };
+    EngineError {
+        code,
+        reason: failure.reason(),
+        detail: failure.schema_table().map(|table| ErrorDetail { table }),
+    }
+}
+
 pub(super) fn source_error(error: SourceError) -> EngineError {
     use ibis_core::contract::ErrorReason;
     super::error(match error {
@@ -733,23 +754,8 @@ impl Engine {
                 Ok(())
             }
             Err(failure) => {
-                let code = if failure.cancelled() {
-                    ErrorCode::Cancelled
-                } else if failure.limited() {
-                    ErrorCode::ResourceLimit
-                } else if failure.newer() {
-                    ErrorCode::NewerFormat
-                } else if failure == ZoteroError::InvalidData || failure == ZoteroError::Selection {
-                    ErrorCode::BadInput
-                } else if failure == ZoteroError::LibraryNotFound {
-                    ErrorCode::NotFound
-                } else {
-                    ErrorCode::SourceUnavailable
-                };
-                let failure = EngineError {
-                    code,
-                    reason: failure.reason(),
-                };
+                let failure = zotero_error(failure);
+                let code = failure.code;
                 // Any failed read retires prepared Zotero copies until a read
                 // succeeds, even when only a new choice failed: its full read
                 // already began, and the copy guard does not tell them apart.
@@ -794,6 +800,7 @@ impl Engine {
                 return Err(EngineError {
                     code: ErrorCode::SourceUnavailable,
                     reason: failure.reason(),
+                    detail: None,
                 });
             }
         };
@@ -872,6 +879,93 @@ impl Shared {
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
+    #[test]
+    fn incompatible_newer_zotero_schema_names_only_the_fixed_table_in_json() {
+        let failure = zotero_error(ZoteroError::Closed(ibis_sources::zotero_source::ClosedError::TooNew {
+            table: ZoteroTable::FieldsCombined,
+        }));
+        assert_eq!(
+            serde_json::to_value(failure).unwrap(),
+            serde_json::json!({
+                "code":"newer-format", "detail":{"table":"fieldsCombined"}
+            })
+        );
+    }
+
+    #[test]
+    fn compatible_newer_zotero_warning_stays_in_library_status_without_search_findings() {
+        let engine = Engine::new().unwrap();
+        let case: GoldenCase = serde_json::from_str(include_str!("../../../../fixtures/cases/02-pandoc.json")).unwrap();
+        let snapshot = case.library;
+        let mut library = LibraryInfo::clean(
+            snapshot.objects()[0].object.id().library.clone(),
+            LibraryKind::Zotero,
+            snapshot.objects().len(),
+        );
+        library.warnings = vec![ibis_sources::SourceWarning::at(
+            ibis_sources::WarningCode::ZoteroNewerThanTested,
+            None,
+        )];
+        library.warnings_total = 1;
+        engine.shared.install(library, &snapshot, None).unwrap();
+        let listed = engine
+            .dispatch(
+                Method::Libraries,
+                &serde_json::json!({"action":"list"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(
+            listed.data["libraries"][0]["warnings"][0]["code"],
+            "zotero-newer-than-tested"
+        );
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert_eq!(searched.data["hits"].as_array().unwrap().len(), 1);
+        assert!(!searched.source_findings);
+        assert_eq!(searched.exit_code, ExitCode::Ok);
+        assert!(
+            searched.data["source_health"]["findings"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
+
+        let mut library = engine.libraries().unwrap().libraries.remove(0);
+        library
+            .warnings
+            .push(ibis_sources::SourceWarning::at(ibis_sources::WarningCode::Field, None));
+        library.warnings_total = 2;
+        engine.shared.install(library.clone(), &snapshot, None).unwrap();
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert!(searched.source_findings);
+        assert_eq!(searched.data["source_health"]["findings"][0]["count"], 1);
+        library.warnings.pop();
+        library.warnings_total = 1;
+        library.refresh_error = Some(ErrorCode::SourceUnavailable);
+        engine.shared.install(library, &snapshot, None).unwrap();
+        let searched = engine
+            .dispatch(
+                Method::Search,
+                &serde_json::json!({"query":"signals"}),
+                &Cancellation::default(),
+            )
+            .unwrap();
+        assert!(searched.source_findings);
+        assert_eq!(searched.data["source_health"]["findings"][0]["code"], "refresh-failed");
+    }
+
     use super::*;
 
     #[test]
@@ -1120,7 +1214,8 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
@@ -1204,7 +1299,8 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None
             })
         ));
     }
@@ -1225,7 +1321,8 @@ mod tests {
             engine.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::Cancelled,
-                reason: None
+                reason: None,
+                detail: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1235,7 +1332,8 @@ mod tests {
             other.accept_file_reload(prepared),
             Err(EngineError {
                 code: ErrorCode::BadInput,
-                reason: None
+                reason: None,
+                detail: None
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1283,7 +1381,8 @@ mod tests {
             engine.recite(&old, &cancel),
             Err(CitationCommitError::Engine(EngineError {
                 code: ErrorCode::SourceUnavailable,
-                reason: None
+                reason: None,
+                detail: None
             }))
         ));
         assert_eq!(engine.recite(&file, &cancel).unwrap().text, "[@Example2026]");

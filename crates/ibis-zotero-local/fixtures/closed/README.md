@@ -6,7 +6,16 @@ AGPL-3.0-or-later userdata schema for [7.0.0](https://github.com/zotero/zotero/b
 [8.0](https://github.com/zotero/zotero/blob/8.0/resource/schema/userdata.sql),
 [9.0](https://github.com/zotero/zotero/blob/9.0/resource/schema/userdata.sql) and
 [10.0.6](https://github.com/zotero/zotero/blob/10.0.6/resource/schema/userdata.sql).
-The transport reads supported userdata versions 123–130 and refuses newer layouts.
+The tested userdata range is 123–131. The tagged [10.0.9 schema](https://github.com/zotero/zotero/blob/10.0.9/resource/schema/userdata.sql)
+was compared with 10.0.6 on 2026-11-11: only the version header changes (130 to 131).
+[Migration 131](https://github.com/zotero/zotero/blob/10.0.9/chrome/content/zotero/xpcom/schema.js#L3630)
+repairs incomplete earlier migrations; it adds no new reader dependency.
+Newer userdata versions read with `zotero-newer-than-tested` when the required
+physical tables, ordinary columns, affinities and lookup primary keys validate.
+An incompatible newer layout refuses with the existing TooNew wording and a fixed
+table name in JSON detail. Schemas below 123 still refuse as TooOld.
+The compatibility warning appears in library status and doctor, without turning
+searches or citations into source findings.
 It does not infer a version from a filename or installed application.
 
 Multipart date decoding follows Zotero utilities' `multipartToStr` at commit

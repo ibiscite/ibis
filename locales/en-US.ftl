@@ -1093,6 +1093,7 @@ library-lines = lines { $lines } and { $last }
 library-lines-and-others = lines { $lines } and { $last }, and others
 library-work-limit = The library is too large to read in full.
 library-cloud-synced = It is in a cloud-synced folder, so changes can arrive late.
+library-zotero-newer = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
 library-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
 time-just-now = just now
 time-on = on { $date }
@@ -1224,3 +1225,13 @@ mcp-citation-hidden = This citation contains hidden characters and cannot be ret
 mcp-citation-source-failed = A source could not be refreshed; this citation uses its last good copy. The receipt records its last successful read.
 mcp-citation-source-warnings = A cited source has warnings; its receipt records the warning count.
 mcp-cite-description = Cite refs returned by search, passing each ref unchanged; add page locators if needed. Choose `format` (pandoc, autocite or typst for processed documents; apa for finished text) or any CSL `style`. Default: apa. Use returned text unchanged and report notices, losses and warnings. Set `strict` to refuse findings. To cite CSL-JSON you were given instead, pass it as `records`.
+
+# Source status and reading warnings; separate from citation warnings.
+source-warning-zotero-newer-than-tested = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
+source-warning-cloud-synced-directory = The library is in a cloud-synced folder, so changes can be late.
+source-warning-citation-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
+source-warning-syntax = An entry could not be read, so Ibis skips it.
+source-warning-duplicate-key = More than one entry uses the same key or id, so Ibis skips them all.
+source-warning-field = A field could not be fully converted; check this entry.
+source-warning-work-limit = The library is too large to read in full.
+source-warning-invalid-attachment = An attachment link is not valid.
