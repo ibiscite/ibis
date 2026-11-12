@@ -51,6 +51,9 @@ macro_rules! registry {
 }
 
 registry![
+    crate::cli_install::cli_status,
+    crate::cli_install::set_cli_installed,
+    crate::cli_install::copy_cli_profile,
     crate::library::commands::choose_library,
     crate::library::commands::reload_library,
     crate::library::commands::use_zotero,
@@ -207,6 +210,9 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "cli_status",
+        "set_cli_installed",
+        "copy_cli_profile",
     ];
 
     /// Only Settings asks about paste permission, changes the global shortcut
@@ -228,6 +234,9 @@ mod tests {
         "choose_settings_backup",
         "restore_settings_backup",
         "cancel_settings_restore",
+        "cli_status",
+        "set_cli_installed",
+        "copy_cli_profile",
     ];
 
     #[test]

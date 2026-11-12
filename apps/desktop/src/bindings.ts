@@ -3,6 +3,9 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
+	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
+	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
 	/**
 	 * Choose a library with the system file dialog. The interface never passes
 	 * file paths; the result arrives as the `library:changed` event.
@@ -324,6 +327,17 @@ export type CommandError = {
 } | {
 	code: "failed";
 	message: string;
+};
+
+export type CommandState = "not-installed" | "matching" | "different" | "foreign";
+
+export type CommandStatus = {
+	installable: boolean;
+	profile_line: string | null;
+	removable: boolean;
+	state: CommandState;
+	used_path: string | null;
+	version: string | null;
 };
 
 export type Copied = {

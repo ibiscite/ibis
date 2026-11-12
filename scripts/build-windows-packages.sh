@@ -3,7 +3,7 @@
 # target. CONFIG is the Nightly configuration and is empty for a stable build.
 set -euo pipefail
 
-options=(--ci --target "$TARGET")
+options=(--ci --target "$TARGET" --config src-tauri/tauri.bundle.conf.json)
 if [ -n "${CONFIG:-}" ]; then options+=(--config "$CONFIG"); fi
 pnpm tauri build --no-bundle "${options[@]}" -- --locked
 

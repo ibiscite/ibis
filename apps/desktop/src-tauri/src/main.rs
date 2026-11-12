@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bindings;
+mod cli_install;
 mod copy;
 mod delights;
 #[cfg(any(target_os = "linux", test))]
