@@ -90,9 +90,11 @@ export type SessionEvent =
   | { type: "literal" | "escape-search" | "cancel" | "retire" | "sample" | "change-last" | "forget-last" }
   | { type: "dismiss"; copied?: Copied }
   | { type: "highlight"; index: number; cancel?: boolean }
-  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null }
+  | { type: "toggle"; result?: SearchResult; locator?: Readonly<Locator> | null; prefix?: string }
   | { type: "undo-reference" | "expire-removal"; removal: RemovedReference }
   | { type: "remove-reference"; reference: CitationReference }
+  /** Move one reference a place along `shown`, the line's order, which a style may have sorted. */
+  | { type: "move-reference"; reference: CitationReference; shown: readonly string[]; step: -1 | 1 }
   | { type: "reference"; reference: CitationReference; change: CitationDetailsChange; selectedOnly?: boolean; initialSelection?: readonly CitationReference[] }
   | { type: "enter"; choice: string | null; output?: OutputToken }
   | { type: "question"; format?: OutputId; output?: OutputToken; answer: "answered" | "cancel" }
@@ -307,7 +309,7 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
         selected.delete(key);
         removed = { token: s.context + 1, reference: previous, before: order.slice(0, index), after: order.slice(index + 1) };
       } else {
-        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null });
+        selected.set(key, { ...event.result, locator: event.locator ? { ...event.locator } : null, ...event.prefix ? { prefix: event.prefix } : {} });
         if (removed && idKey(removed.reference.id) === key) removed = null;
       }
       return [changed(s, { selected, removed, selectionChanged: true, changing: selected.size > 0 ? s.changing : null }), []];
@@ -315,6 +317,16 @@ function reduceEvent(s: SessionState, event: SessionEvent): [SessionState, Sessi
     case "remove-reference": {
       if (s.selected.get(idKey(event.reference.id)) !== event.reference) return [s, []];
       return reduceEvent(s, { type: "toggle", result: event.reference });
+    }
+    case "move-reference": {
+      const key = idKey(event.reference.id), order = [...event.shown];
+      const index = order.indexOf(key), target = index + event.step;
+      // Only the line the person sees now can be moved: a stale order or reference does nothing.
+      if (s.selected.get(key) !== event.reference || order.length !== s.selected.size || !order.every((id) => s.selected.has(id))
+        || target < 0 || target >= order.length) return [s, []];
+      [order[index], order[target]] = [order[target]!, order[index]!];
+      // A move would not show in a style that sorts, so it keeps the person's order.
+      return [changed(s, { selected: new Map(order.map((id) => [id, s.selected.get(id)!])), keepOrder: true }), []];
     }
     case "expire-removal": return [s.removed === event.removal ? { ...s, removed: null } : s, []];
     case "undo-reference": {

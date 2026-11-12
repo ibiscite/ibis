@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { build } from "../website/build.mjs";
+import { anchors, brokenLinks } from "./doc-links.mjs";
 
 await build();
 const read = path => readFile(new URL(`../website/${path}`, import.meta.url), "utf8");
@@ -162,7 +163,6 @@ test("assistant chips offer exactly one action, starting with a copyable setup p
     const doc = await readFile(new URL(`../${path}`, import.meta.url), "utf8");
     assert.deepEqual(doc.match(/^Set up Ibis for me:.*$/gm), [setup[0]], `${path} offers the same prompt`);
   }
-  const { anchors, brokenLinks } = await import("./doc-links.test.mjs");
   assert.deepEqual(brokenLinks(["docs/agents.md"]), []);
   for (const [i, app] of apps.entries()) {
     const tab = tabs[i][0], panel = panels[i][0];

@@ -23,6 +23,7 @@ pub const APP_COMMANDS: &[&str] = &[
     "picker_preferences",
     "save_picker_preferences",
     "delight_view",
+    "shorthand_hint",
     "picker_preferences_saved",
     "picker_destination",
     "remember_app_output",

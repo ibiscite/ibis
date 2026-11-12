@@ -138,6 +138,11 @@ export const commands = {
 	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
+	/**
+	 * Asked when a person reaches for a citation's details by hand; true while the
+	 * hint has been shown fewer than [`SHORTHAND_HINTS`] times.
+	 */
+	shorthandHint: () => __TAURI_INVOKE<boolean>("shorthand_hint"),
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
@@ -573,13 +578,18 @@ export type LocatorInput = {
 	text: string;
 };
 
-/** The engine's interpretation, shown so the person can search as typed. */
+/**
+ * The engine's interpretation, shown so the person can search as typed: a
+ * signal read off the start (`see`) and a locator read off the end (`417`).
+ */
 export type LocatorQuery = {
-	locator: Locator;
+	locator?: Locator | null;
+	/** The signal exactly as typed, to become the reference's prefix. */
+	prefix?: string | null;
 	/** What remains to search for. */
 	search: string;
 	/** The text read as the locator, exactly as typed. */
-	typed: string;
+	typed?: string | null;
 };
 
 /**

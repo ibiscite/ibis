@@ -1,10 +1,10 @@
+import type * as nativeApi from "../../api";
 // An editor waiting on the endpoint. Native code owns the request; the picker
 // shows that one is waiting and asks for a fresh preview, which native code
 // writes in the editor's format.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 
-export function useEditorRequest(api: PickerApi) {
+export function useEditorRequest(api: typeof nativeApi) {
   const { editorRequest, onEditorRequest } = api;
   const [label, setLabel] = useState<string | null>(null);
   const [style, setStyle] = useState(false);

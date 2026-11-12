@@ -8,6 +8,7 @@ export const SHORTCUT_ACTIONS = {
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
   undo: "shortcuts-action-undo", textSize: "shortcuts-action-text-size",
   citationMove: "shortcuts-action-citation-move", citationRemove: "shortcuts-action-citation-remove",
+  citationReorder: "shortcuts-action-citation-reorder", citationOpen: "shortcuts-action-citation-open", citationFocus: "shortcuts-action-citation-focus",
   menuMove: "shortcuts-action-menu-move", menuEnds: "shortcuts-action-menu-ends",
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<string, MessageId>;
