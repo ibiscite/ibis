@@ -21,3 +21,6 @@ __pycache__/
 
 # Public website build output
 /website/dist/
+
+# Matching CLI staged by release builds, never committed.
+/apps/desktop/src-tauri/binaries/

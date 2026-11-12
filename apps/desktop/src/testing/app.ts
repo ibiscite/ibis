@@ -221,6 +221,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     remember_app_output: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
+    cli_status: () => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true }),
     // Builds without an update key have no update controls.
     update_checks: () => null,
     update_available: () => false,

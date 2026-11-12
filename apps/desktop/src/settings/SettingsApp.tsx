@@ -1,3 +1,4 @@
+import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
@@ -454,6 +455,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 )}
               </>
             )}
+            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
             <BackupRows api={api} />
           </>
         )}

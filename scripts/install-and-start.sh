@@ -52,7 +52,10 @@ macos() {
   ditto "$bundle" "$installed"
   hdiutil detach "$mount"
   codesign --verify --deep --strict "$installed"
-  app=$(find "$installed/Contents/MacOS" -type f -perm -u+x | head -n 1)
+  executable=$(plutil -extract CFBundleExecutable raw -o - "$installed/Contents/Info.plist")
+  app="$installed/Contents/MacOS/$executable"
+  test -f "$app"
+  test -x "$app"
   echo "installed at $app"
   show python3 "$stays_up" "$app"
   rm -rf "$installed"
@@ -68,8 +71,8 @@ windows() {
   test -n "$key" || { echo "::error::The setup executable registered no uninstall entry"; exit 1; }
   uninstaller=$(KEY="$key" pwsh -NoProfile -Command '(Get-ItemProperty ("HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\" + $env:KEY)).UninstallString' | tr -d '"\r')
   dir=$(dirname "$(cygpath -u "$uninstaller")")
-  app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-  test -n "$app" || { echo "::error::The setup executable installed no app in $dir"; exit 1; }
+  app="$dir/ibis-desktop.exe"
+  test -f "$app" || { echo "::error::The setup executable installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
   show python "$stays_up" "$app"
   "$dir/uninstall.exe" //S
@@ -95,8 +98,8 @@ windows() {
     show sh -c 'grep -a "Property(S): .*\(DIR\|FOLDER\) = " | tail -n 40; exit 1' msiexec < <(msi_log i)
   fi
   dir=$(cygpath -u "$installdir")
-  app=$(find "$dir" -maxdepth 1 -iname '*.exe' ! -iname 'uninstall*' | head -n 1)
-  test -n "$app" || { echo "::error::The MSI installed no app in $dir"; exit 1; }
+  app="$dir/ibis-desktop.exe"
+  test -f "$app" || { echo "::error::The MSI installed no desktop app in $dir"; exit 1; }
   echo "installed at $app"
   show python "$stays_up" "$app"
   if ! msiexec x; then

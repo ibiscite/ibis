@@ -1,5 +1,8 @@
 // Build-time custom commands; the bindings test compares this with the runtime registry.
 pub const APP_COMMANDS: &[&str] = &[
+    "cli_status",
+    "set_cli_installed",
+    "copy_cli_profile",
     "choose_library",
     "reload_library",
     "use_zotero",
