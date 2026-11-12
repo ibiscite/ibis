@@ -47,8 +47,6 @@ pub(crate) struct LibraryStatus {
     pub(crate) error_reason: Option<LoadError>,
     #[serde(skip)]
     pub(crate) kept_references: bool,
-    #[serde(skip)]
-    pub(crate) choice_not_saved: bool,
     /// Something to tell the user that is not a failure to open.
     pub(crate) note: Option<String>,
     /// Startup settings recovery, separate from transient library status.
@@ -206,7 +204,6 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
         problem: library.error.map(LibraryProblem::from),
         error_reason: library.error,
         kept_references,
-        choice_not_saved: library.choice_save_warning.is_some(),
         note: match &library.retained_error {
             Some(error) => {
                 let name = library.source.as_ref().and_then(Source::name).unwrap_or_default();
@@ -234,6 +231,7 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             if result.error.is_none() {
                 result.kept_references = references > 0;
                 result.error = Some(refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
+                result.error_reason = refresh_error(info.kind, info.refresh_error, info.refresh_reason);
             }
         }
     }
@@ -261,6 +259,25 @@ fn refresh_failure(
         }
         _ => words("app-library-not-refreshed", &[]),
     }
+}
+
+fn refresh_error(
+    kind: LibraryKind,
+    code: Option<ibis_core::contract::ErrorCode>,
+    reason: Option<ibis_core::contract::ErrorReason>,
+) -> Option<LoadError> {
+    use ibis_core::contract::EngineError;
+    let code = code?;
+    let error = EngineError {
+        code,
+        reason,
+        detail: None,
+    };
+    Some(match kind {
+        LibraryKind::File => LoadError::file_refresh(error),
+        LibraryKind::Zotero => LoadError::Zotero(error),
+        LibraryKind::Snapshot => return None,
+    })
 }
 
 /// A time for the interface, which shows it relative to its own clock.
@@ -296,6 +313,17 @@ mod tests {
             super::refresh_failure(LibraryKind::File, Some(ErrorCode::SourceUnavailable), None),
             "The library could not be refreshed; keeping the last loaded references."
         );
+        let mut newer = status(&Library::default());
+        newer.state = LibraryState::Error;
+        newer.name = Some("Zotero library".into());
+        newer.zotero = true;
+        newer.error = Some(super::refresh_failure(
+            LibraryKind::Zotero,
+            Some(ErrorCode::NewerFormat),
+            None,
+        ));
+        newer.error_reason = super::refresh_error(LibraryKind::Zotero, Some(ErrorCode::NewerFormat), None);
+        assert_eq!(library_line(&newer), "Zotero needs a newer Ibis");
         assert_eq!(
             super::refresh_failure(
                 LibraryKind::Zotero,
@@ -377,7 +405,7 @@ mod tests {
         let loaded = status(&library);
         assert_eq!(loaded.references, 1);
         assert_eq!(loaded.source_counts.values().copied().collect::<Vec<_>>(), [1]);
-        assert_eq!(library_line(&loaded), "invented.bib: 1 references");
+        assert_eq!(library_line(&loaded), "invented.bib · 1 reference");
         let payload = serde_json::to_value(&loaded)?;
         assert_eq!(payload["references"], 1, "the footer receives the reference count");
 
@@ -485,7 +513,13 @@ mod tests {
         assert!(missing.stale);
         assert_eq!(missing.references, 1);
         assert_eq!(missing.revision, loaded.revision);
-        assert!(library_line(&missing).starts_with("invented.bib: 1 references, not updated:"));
+        assert_eq!(library_line(&missing), "invented.bib was moved or is unavailable");
+        assert_eq!(
+            missing.error_reason,
+            Some(LoadError::FileRefresh(ibis_core::contract::EngineError::new(
+                ibis_core::contract::ErrorCode::SourceUnavailable
+            )))
+        );
 
         std::fs::write(&path, bib)?;
         file.reload().map_err(|error| error.to_string())?;
@@ -493,7 +527,7 @@ mod tests {
         assert!(!restored.stale);
         assert!(restored.problem.is_none());
         assert!(restored.error.is_none());
-        assert_eq!(library_line(&restored), "invented.bib: 1 references");
+        assert_eq!(library_line(&restored), "invented.bib · 1 reference");
         assert_eq!(restored.revision, loaded.revision);
         Ok(())
     }
@@ -519,7 +553,7 @@ mod tests {
         assert_eq!(failed.name.as_deref(), Some("missing.bib"));
         assert_eq!(failed.error, rejected.error, "keep the failed choice visible");
         assert!(failed.note.is_some(), "also report the retained source's failure");
-        assert_eq!(library_line(&failed), "retained.json: 1 references, not updated");
+        assert_eq!(library_line(&failed), "missing.bib was moved or is unavailable");
         std::fs::write(&path, original)?;
         file.reload().map_err(|e| e.to_string())?;
         let recovered = status(&*library.lock().map_err(|_| "library")?);
@@ -536,7 +570,8 @@ mod tests {
         library.choice_save_warning = Some("the choice could not be saved".into());
         let current = status(&library);
         assert!(current.error_reason.is_some());
-        assert!(current.kept_references && current.choice_not_saved);
+        assert!(current.kept_references);
+        assert_eq!(current.note.as_deref(), Some("the choice could not be saved"));
         let payload = serde_json::to_value(&current).unwrap_or_else(|e| panic!("{e}"));
         let expected = [
             "state",

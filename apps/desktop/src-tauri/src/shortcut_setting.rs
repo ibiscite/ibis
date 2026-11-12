@@ -288,7 +288,7 @@ pub(crate) async fn set_shortcut(
         *current = status.clone();
     }
     report(app.emit("shortcut:status", status.clone()), NativeIssue::Shortcut);
-    crate::tray::show_shortcut(&app, Some(&status.shortcut));
+    crate::tray::show_shortcut(&app);
 
     let settings_file = settings_file.inner().clone();
     tauri::async_runtime::spawn_blocking(move || save_shortcut(&settings_file, shortcut))
