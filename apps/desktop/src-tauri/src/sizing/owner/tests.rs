@@ -668,3 +668,58 @@ fn sizing_late_native_events_and_save_completions_cannot_consume_a_newer_drag() 
     assert!(current.revision > old.revision);
     assert_eq!(current.windows["a"].width, 900);
 }
+
+#[test]
+fn sizing_size_undo_restores_custom_dimensions_and_survives_an_older_completion() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let mut custom = native.live.frame;
+    custom.width = 777;
+    custom.height = 555;
+    custom.custom_size = true;
+    native.owner.choose(&display, custom, native.now);
+    let mut medium = custom;
+    medium.width = 720;
+    medium.height = 480;
+    medium.custom_size = false;
+    let ticket = native.owner.choose(&display, medium, native.now);
+    native.owner.complete(ticket - 1);
+    assert!(native.owner.restore_size(ticket, &display, native.now));
+    assert_eq!(native.owner.windows.get(&display), Some(&custom));
+    assert!(
+        !native.owner.restore_size(ticket, &display, native.now),
+        "Undo is spent once"
+    );
+}
+
+#[test]
+fn sizing_size_undo_refuses_another_display_or_newer_geometry() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let ticket = native.owner.choose(&display, native.live.frame, native.now);
+    assert!(!native.owner.restore_size(ticket, "another-display", native.now));
+    let mut newer = native.live.frame;
+    newer.width += 1;
+    native.owner.choose(&display, newer, native.now);
+    assert!(!native.owner.restore_size(ticket, &display, native.now));
+    assert_eq!(native.owner.windows.get(&display), Some(&newer));
+}
+
+#[test]
+fn sizing_failed_size_undo_can_roll_back_and_retry_without_reusing_spent_tickets() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let mut custom = native.live.frame;
+    custom.width = 777;
+    custom.custom_size = true;
+    native.owner.choose(&display, custom, native.now);
+    let medium = native.live.frame;
+    let reset = native.owner.choose(&display, medium, native.now);
+    assert!(native.owner.restore_size(reset, &display, native.now));
+    let failed_undo = native.owner.revision;
+    assert!(native.owner.restore_size(failed_undo, &display, native.now));
+    assert_eq!(native.owner.windows.get(&display), Some(&medium));
+    assert!(!native.owner.restore_size(reset, &display, native.now));
+    assert!(native.owner.restore_size(native.owner.revision, &display, native.now));
+    assert_eq!(native.owner.windows.get(&display), Some(&custom));
+}

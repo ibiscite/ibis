@@ -86,7 +86,7 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
   };
   // Only the variables the interface passes; a message naming another fails here.
   const synthetic = Object.fromEntries(
-    [...PICKER_VARIABLES, "list", "keys", "action", "reference", "command", "file", "setting", "from", "to", "system"].map((name) => [name, "Synthetic"]),
+    [...PICKER_VARIABLES, "list", "keys", "action", "reference", "command", "file", "setting", "from", "to", "system", "query"].map((name) => [name, "Synthetic"]),
   );
   // Exercise all platform branches before publishing the immutable owner.
   // Errors remain fixed text and cannot disclose variables or source content.

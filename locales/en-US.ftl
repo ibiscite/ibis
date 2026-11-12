@@ -429,7 +429,7 @@ about-unavailable = This build does not update itself.
 settings-look = Appearance
 settings-citations = Citations
 settings-search = Search Settings
-settings-no-results = No matching settings
+settings-no-results = No settings match ‘{ $query }’
 settings-results = Search results
 settings-results-count = { $count ->
     [one] 1 result
@@ -439,7 +439,7 @@ settings-read-failed = Ibis could not read your settings; reopen Settings to try
 settings-choice-failed = Ibis could not save this choice; the saved value is shown.
 settings-startup-words = startup launch restart login
 settings-paste-words = paste copy clipboard Enter
-settings-appearance-words = dark light theme system
+settings-appearance-words = dark mode light theme system
 look-appearance = Appearance
 look-appearance-description = Follow the system, or choose Light or Dark for Ibis.
 look-system = System
@@ -1199,3 +1199,10 @@ source-warning-duplicate-key = More than one entry uses the same key or id, so I
 source-warning-field = A field could not be fully converted; check this entry.
 source-warning-work-limit = The library is too large to read in full.
 source-warning-invalid-attachment = An attachment link is not valid.
+
+# Per-setting reset actions name their setting for assistive technology.
+settings-use-default = Use Default for { $setting }
+settings-default-restored = Default restored for { $setting }
+settings-undo-default = Restore Default for { $setting }
+settings-details = Details…
+settings-shortcut-words = keyboard hotkey keybinding

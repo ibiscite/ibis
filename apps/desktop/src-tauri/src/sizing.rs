@@ -716,11 +716,12 @@ pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
 
 /// Kept like a dragged size: the one writer saves it and reports the outcome.
 /// Hidden, the next `prepare` applies it before the window appears.
+/// Returns the save revision. An Undo ticket restores that revision's exact
+/// previous frame on the same display; later geometry invalidates it.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), String> {
+pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64>) -> Result<u64, String> {
     const FAILED: &str = "Ibis could not change the window size. Try again.";
-    let size = size.pixels().ok_or(FAILED)?;
     let (window, monitor) = target(&app).ok_or(FAILED)?;
     let shown = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
     if shown {
@@ -732,27 +733,56 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize) -> Result<(), St
     let key = display.key.clone();
     let sizing = app.state::<Sizing>();
     let larger = sizing.larger_text.load(Ordering::SeqCst);
-    let frame = chosen(sizing.remembered(&key), size, larger, display.room);
-    if shown {
-        sizing.shared.state.lock().map_err(|_| FAILED)?.applying = true;
-        let planned = plan(Some(frame), larger, display.room);
-        let applied = apply_frame(&app, &window, &monitor, planned, display.room);
+    let frame = {
         let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
-        state.applying = false;
-        applied.ok_or(FAILED)?;
+        if state.stopping || state.applying {
+            return Err(FAILED.into());
+        }
+        let frame = if let Some(revision) = undo {
+            let previous = state.size_undo_for(revision, &key).ok_or(FAILED)?;
+            plan(previous.saved, larger, display.room)
+        } else {
+            chosen(
+                state.windows.get(&key).copied(),
+                size.pixels().ok_or(FAILED)?,
+                larger,
+                display.room,
+            )
+        };
+        // Validate and reserve together. Reentrant geometry observations and
+        // another size command cannot retire Undo before its native apply.
+        state.applying = true;
+        frame
+    };
+    let planned = plan(Some(frame), larger, display.room);
+    let applied = if shown {
+        apply_frame(&app, &window, &monitor, planned, display.room)
+    } else {
+        Some(())
+    };
+    let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
+    state.applying = false;
+    applied.ok_or(FAILED)?;
+    if shown {
         state.prepared(Sample {
             display,
             frame: planned,
         });
     }
-    let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
     if state.stopping {
         return Err(FAILED.into());
     }
-    state.choose(&key, frame, Instant::now());
+    let revision = if let Some(revision) = undo {
+        if !state.restore_size(revision, &key, Instant::now()) {
+            return Err(FAILED.into());
+        }
+        state.revision
+    } else {
+        state.choose(&key, frame, Instant::now())
+    };
     drop(state);
     sizing.shared.wake.notify_all();
-    Ok(())
+    Ok(revision)
 }
 
 #[tauri::command]

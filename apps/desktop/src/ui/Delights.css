@@ -12,6 +12,7 @@
 .ui-about-check { display: flex; flex-direction: column; align-items: center; margin-block-start: var(--space-2); border-radius: var(--r-small); }
 /* The outcome replaces nothing until there is one, so an empty status takes no room. */
 .ui-about-check > .ui-quiet-status:not(:empty) { margin-block-start: var(--space-1); }
+.ui-about-check { transition: background-color var(--dur-1) ease-out; }
 .ui-about-check[data-highlighted] { background: var(--highlight); }
 .ui-about-mission { margin: var(--space-2) 0 0; max-width: 32rem; color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); }
 .ui-about-hero .ui-about-line { max-width: 32rem; color: var(--text-secondary); }

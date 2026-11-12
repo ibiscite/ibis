@@ -43,6 +43,7 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",
   "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
   "restore-label", "restore-description", "restore-button", "restore-from", "restore-same", "restore-confirm", "restore-cancel", "restore-restarting",
   "backup-change", "backup-note-library", "backup-note-shortcut", "backup-note-repairs",

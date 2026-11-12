@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { BackupProblem, System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
-import { currentPlatform } from "../platform";
+import { rowDetails } from "./rows";
 import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { listedOutput, outputName } from "../format/outputs";
@@ -127,12 +127,12 @@ export function BackupRows({ api }: { api: BackupApi }) {
 
   return (
     <Section id="another-computer" title={text("backup-title")}><Group>
-      <Row id="backup-settings" label={text("backup-label")} description={text("backup-description", { platform: currentPlatform() })}
+      <Row id="backup-settings" {...rowDetails("backup-settings", text)}
         problem={problem?.row === "backup" ? text(problem.id) : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
         {saved && <Note role="status">{text("backup-saved", { file: saved })}</Note>}
       </Row>
-      <Row id="restore-settings" label={text("restore-label")} description={text("restore-description")}
+      <Row id="restore-settings" {...rowDetails("restore-settings", text)}
         problem={problem?.row === "restore" ? text(problem.id) : undefined}>
         <Button aria-describedby="restore-settings-description" isDisabled={busy !== null || restarting} onPress={choose}>{text("restore-button")}</Button>
       </Row>

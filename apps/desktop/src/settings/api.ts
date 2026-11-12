@@ -2,7 +2,7 @@
 import { getVersion } from "@tauri-apps/api/app";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { commands, type PastePermission, type PreferenceChange, type ShortcutStatus } from "../bindings";
+import { commands, type PastePermission, type PreferenceChange, type ShortcutStatus, type WindowSize } from "../bindings";
 
 export type { PastePermission } from "../bindings";
 
@@ -12,7 +12,7 @@ export const settingsApi = {
   savePickerPreferences: commands.savePickerPreferences,
   pickerPreferencesSaved: commands.pickerPreferencesSaved,
   windowSize: commands.windowSize,
-  setWindowSize: commands.setWindowSize,
+  setWindowSize: (size: WindowSize, undo: number | null = null) => commands.setWindowSize(size, undo),
   loginItem: commands.loginItem,
   setLoginItem: commands.setLoginItem,
   updateChecks: commands.updateChecks,
@@ -38,7 +38,7 @@ export const settingsApi = {
   /** Settings is asked to show a page, such as the paste guide after a refused paste. */
   onPreferencesChanged: (handler: (revision: number) => void): Promise<UnlistenFn> => listen<PreferenceChange>("preferences:changed", (event) => handler(event.payload.revision)),
   /** The window size writer's outcome; a refused write is the only news here. */
-  onWindowSaved: (handler: (saved: boolean) => void): Promise<UnlistenFn> => listen<{ saved: boolean }>("picker:window-saved", (event) => handler(event.payload.saved)),
+  onWindowSaved: (handler: (saved: boolean, revision: number) => void): Promise<UnlistenFn> => listen<{ saved: boolean; revision: number }>("picker:window-saved", (event) => handler(event.payload.saved, event.payload.revision)),
   onPage: (handler: (page: string) => void): Promise<UnlistenFn> => listen<string>("settings:page", (event) => handler(event.payload)),
   /** The saved automatic update choice, after a change from any menu. */
   onUpdateChecks: (handler: (on: boolean) => void): Promise<UnlistenFn> => listen<boolean>("update:automatic", (event) => handler(event.payload)),

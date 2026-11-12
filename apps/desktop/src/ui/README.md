@@ -49,7 +49,7 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Scroll area (`ui/ScrollArea`) | One drawn scroll bar everywhere (`ui/Foundation.css`): a `--scrollbar-thumb` capsule on a clear track, the same at every size and on every system; the side inset sits inside the bar; `--scroll-fade` only at an edge with more beyond it. |
 | File drag (`ui/FileDrag`) | A draggable file icon with button states. |
 
-**Tables** size columns to content and never break or hyphenate a word. **No browser disclosure controls**: never `details`/`summary` or raw triangles; use always-open groups.
+**Tables** size columns to content and never break or hyphenate a word. **No browser disclosure controls**: never `details`/`summary` or raw triangles; use always-open groups, or `ui/Details` for rarer Settings rows that search can open.
 
 ## Menus
 
