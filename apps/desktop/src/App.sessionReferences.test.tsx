@@ -108,6 +108,60 @@ test("a list that moved on since it was shown is shown again, not copied", async
   fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
   await within(dialog).findByText("version 2");
   expect(within(dialog).queryByText("Copied the bibliography.")).toBeNull();
+  expect(within(dialog).getByRole("alert").textContent).toMatch(/list changed/i);
+});
+
+test.each(["refused", "already copied"] as const)("resetting during a delayed copy keeps the empty list and retires %s feedback", async (outcome) => {
+  let current = list();
+  const clipboard = { text: "Invented clipboard text" };
+  let finish: () => void = () => { throw new Error("Copy has not started"); };
+  backend({
+    session_references: () => current,
+    session_bibliography: () => current.rows.length ? formatted("Taylor and Morgan") : null,
+    edit_session_references: () => { current = list({ revision: 2, rows: [], undo: { kind: "reset" } }); return current; },
+    copy_session_bibliography: () => {
+      const revision = current.revision;
+      if (outcome === "already copied") clipboard.text = "Taylor and Morgan";
+      return new Promise<void>((resolve, reject) => {
+        finish = () => {
+          if (outcome === "refused" && revision !== current.revision) { reject({ code: "snapshot_changed" }); return; }
+          clipboard.text = "Taylor and Morgan";
+          resolve();
+        };
+      });
+    },
+  });
+  const dialog = await open();
+  await within(dialog).findByText("Taylor and Morgan");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
+  const beforeReset = clipboard.text;
+  fireEvent.click(within(dialog).getByRole("button", { name: "Reset List" }));
+  await within(dialog).findByRole("button", { name: "Undo Reset List" });
+  await act(async () => { finish(); });
+
+  expect(plain(dialog.textContent)).toContain("Nothing yet");
+  expect(current.rows).toEqual([]);
+  expect(clipboard.text).toBe(beforeReset);
+  expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(true);
+  expect(within(dialog).queryByText("Copied the bibliography.")).toBeNull();
+  expect(within(dialog).getByRole("alert").textContent).toMatch(/list changed/i);
+});
+
+test("a delayed copy cannot replace the failure from a newer list edit", async () => {
+  let finish: () => void = () => { throw new Error("Copy has not started"); };
+  backend({
+    session_references: () => list(), session_bibliography: () => formatted("Taylor and Morgan"),
+    copy_session_bibliography: () => new Promise<void>((resolve) => { finish = resolve; }),
+    edit_session_references: () => { throw new Error("Invented list failure"); },
+  });
+  const dialog = await open();
+  await within(dialog).findByText("Taylor and Morgan");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
+  fireEvent.click(within(dialog).getByRole("button", { name: "Reset List" }));
+  await within(dialog).findByText("The references could not be read. Try again.");
+  await act(async () => { finish(); });
+  expect(within(dialog).getByRole("alert").textContent).toBe("The references could not be read. Try again.");
+  expect(within(dialog).queryByText("Copied the bibliography.")).toBeNull();
 });
 
 test("a copy or a save that fails says so", async () => {
