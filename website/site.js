@@ -126,7 +126,7 @@ function chips() {
   const hover = matchMedia("(hover: hover) and (pointer: fine)");
   if (!hover.matches) return;
   const still = matchMedia("(prefers-reduced-motion: reduce)");
-  for (const chip of document.querySelectorAll("main .key:not(code), .index nav .key")) {
+  for (const chip of document.querySelectorAll("main .key:not(code, button), .index nav .key")) {
     const original = chip.textContent, key = original.slice(1), forms = [`[@${key}]`, `\\cite{${key}}`, original];
     let timer, revision = 0;
     function show(form) {
