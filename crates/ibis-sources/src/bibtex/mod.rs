@@ -222,6 +222,7 @@ pub(crate) fn load_with_budget(
             code: WarningCode::WorkLimit,
             line: None,
             key: None,
+            entry: None,
             cause: None,
             field: None,
         });
@@ -235,6 +236,7 @@ pub(crate) fn load_with_budget(
             code: WarningCode::WorkLimit,
             line: blocks.get(crate::MAX_LIBRARY_RECORDS).map(|block| block.line),
             key: None,
+            entry: None,
             cause: None,
             field: None,
         });
@@ -251,6 +253,7 @@ pub(crate) fn load_with_budget(
         code: WarningCode::DuplicateKey,
         line: Some(line),
         key: Some(key.to_owned()),
+        entry: None,
         cause: None,
         field: None,
     };
@@ -321,7 +324,9 @@ pub(crate) fn load_with_budget(
             CAUGHT_PARSER_PANICS.with(|count| count.set(count.get() + 1));
         }
         let warn = |code, problem: &Problem| {
-            SourceWarning::at(code, problem.line.or(Some(entry.line))).because(problem.cause, problem.field)
+            SourceWarning::at(code, problem.line.or(Some(entry.line)))
+                .because(problem.cause, problem.field)
+                .for_entry(Some(&entry.key))
         };
         if let Ok(Ok((_, _, problems))) = &outcome {
             budget.charge(

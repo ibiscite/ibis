@@ -46,7 +46,7 @@ export async function content(html, page = pages[0], input = new URL(".", import
     robots: page === notFound ? '<meta name="robots" content="noindex">' : "",
     navigation: sections.map(item => { const href = page.path === "/" && item.href.startsWith("/#") ? item.href.slice(1) : item.href; return `<li${item.group ? ' class="group"' : ""}><a href="${href}"${page.path === item.href ? ' aria-current="page"' : ""}><span class="label">${escape(item.label)}</span> <span class="key">@${item.key}</span></a></li>`; }).join(""),
     page: page.file ?? "missing", status: lists, terminal: transcripts(await read("content/terminal.txt")), "writing-apps": writing,
-    "agent-any-prompt": codeBlock("Set up Ibis for me: follow https://github.com/ibiscite/ibis/blob/main/docs/agents.md", true),
+    "agent-any-prompt": codeBlock("Set up Ibis for me: https://ibiscite.org/setup", true),
     "agent-claude-command": codeBlock("claude mcp add --scope user ibis -- ibis mcp --app-libraries"),
     "agent-codex-command": codeBlock("codex mcp add ibis -- ibis mcp --app-libraries"),
     "shorthand-result": escape(apps[0].output),

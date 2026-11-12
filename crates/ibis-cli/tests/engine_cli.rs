@@ -6,6 +6,23 @@ fn ibis(args: &[&str]) -> std::process::Output {
         .output()
         .unwrap_or_else(|error| panic!("{error}"))
 }
+
+#[test]
+fn piped_search_keeps_the_original_tsv_even_with_forced_color() -> Result<(), Box<dyn std::error::Error>> {
+    for (name, value) in [("NO_COLOR", ""), ("TERM", "dumb"), ("CLICOLOR_FORCE", "1")] {
+        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+            .args(["search", "lantern", "--file", "../../fixtures/website/sample.bib"])
+            .env(name, value)
+            .output()?;
+        assert!(output.status.success());
+        assert_eq!(
+            output.stdout,
+            b"vale2024lanterns\tMira Vale\t2024\tLantern gardens and the rhythm of imaginary cities\n"
+        );
+        assert!(output.stderr.is_empty());
+    }
+    Ok(())
+}
 #[test]
 fn file_flags_accumulate_across_positions_and_ignore_duplicates() -> Result<(), Box<dyn std::error::Error>> {
     for duplicates in [false, true] {
