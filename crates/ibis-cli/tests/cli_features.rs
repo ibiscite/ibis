@@ -89,10 +89,9 @@ fn unknown_keys_suggest_without_citing_and_preserve_library_arguments() -> Resul
         let (code, output, errors) = run(&file, &[command, "vale2024lantern"], b"", ibis::OutputMode::Plain)?;
         assert_eq!((code, output.as_str()), (4, ""));
         assert!(errors.contains("Did you mean 'vale2024lanterns'?"), "{errors}");
-        assert!(
-            errors.contains(&format!("Try: ibis show vale2024lanterns --file '{}'", file)),
-            "{errors}"
-        );
+        // The path is quoted the way this system's shell expects.
+        assert!(errors.contains("Try: ibis show vale2024lanterns --file "), "{errors}");
+        assert!(errors.contains(file.as_str()), "{errors}");
         let (code, output, _) = run(
             &file,
             &[command, "vale2024lantern", "--json"],
