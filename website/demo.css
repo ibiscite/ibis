@@ -14,9 +14,10 @@
 .picker-mark img { display: block; width: var(--space-6); height: var(--space-6); object-fit: contain; }
 .picker-mark .logo-dark { display: none; }
 .picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/var(--type-search-line) var(--font); letter-spacing: -.025em; }
+.picker input::placeholder { color: var(--text-secondary); opacity: 1; }
 /* The static query wraps inside its reserved column at large text sizes. */
 .picker-query { overflow-wrap: anywhere; }
-.picker input:focus-visible { outline: none; }
+.picker input:focus-visible { outline-offset: var(--ring-offset); }
 .picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-body-size)/var(--type-body-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
@@ -83,7 +84,8 @@
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--ring-width) dashed var(--scarlet); }
 .draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--scarlet); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.4 var(--font); }
 .picker button, .draft button { position: relative; }
-:is(.picker button, .picker-format:has(select), .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
+/* A label overlay steals native select pointer activation: enlarge buttons only. */
+:is(.picker button, .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
 .picker :is(.tile, .picker-clear)::after { inset-inline: min(0px, calc((100% - var(--touch-target)) / 2)); }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
 @media (hover: hover) {

@@ -21,6 +21,19 @@ test("public build has four canonical routes, local assets, safe headers and no 
       assert.doesNotMatch(html, /<script(?![^>]*src=)|style=|<style|googletagmanager|cloudflareinsights/);
       for (const [, asset] of html.matchAll(/(?:src|href)="(\/(?:assets\/[^"#]+|[^"/]+\.(?:css|js)))"/g)) await readFile(join(dir, asset));
       for (const [, target] of html.matchAll(/href="#([^"\s]+)"/g)) assert.ok(html.includes(`id="${target}"`), target);
+      for (const [, reference] of html.matchAll(/(?:src|href|srcset)="([^"\s]+)"/g)) {
+        const url = new URL(reference, `https://ibiscite.org${path}`);
+        if (url.origin !== "https://ibiscite.org") {
+          assert.equal(url.protocol, "https:", reference);
+          // GitHub source links can be checked against this checkout offline.
+          const file = url.pathname.match(/^\/ibiscite\/ibis\/blob\/main\/(.+)$/)?.[1];
+          if (file) await readFile(new URL(`../${file}`, import.meta.url));
+          continue;
+        }
+        const file = join(dir, url.pathname.endsWith("/") ? `${url.pathname}index.html` : url.pathname);
+        const target = await readFile(file, "utf8");
+        if (url.hash) assert.ok(target.includes(`id="${decodeURIComponent(url.hash.slice(1))}"`), `${path}: ${reference}`);
+      }
     }
     const headers = await readFile(join(dir, "_headers"), "utf8");
     assert.match(headers, /^\/\*\n  Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'/);
