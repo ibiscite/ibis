@@ -77,6 +77,7 @@ test("Backspace in an empty search goes back like Esc; while there is text, or h
   fireEvent.change(field, { target: { value: "" } });
   fireEvent.keyDown(field, { key: "Backspace", repeat: true });
   expect(onClose).not.toHaveBeenCalled();
+  fireEvent.keyUp(field, { key: "Backspace" });
   fireEvent.keyDown(field, { key: "Backspace" });
   expect(onClose).toHaveBeenCalledWith("dismiss");
   expect(document.activeElement).toBe(screen.getByRole("button", { name: "Opener" }));

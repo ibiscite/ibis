@@ -1,8 +1,10 @@
 import { useLayoutEffect, useRef, type HTMLAttributes, type ReactNode, type RefObject } from "react";
-import { createPortal } from "react-dom";
+import { createPortal, flushSync } from "react-dom";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { KeyHint } from "./KeyCaps";
+import { composingKey, useLayer } from "./layers";
+import { useBackNavigation } from "./useBackNavigation";
 import "./ViewFrame.css";
 
 /** The views open now. While any is, the picker's own content is hidden: the window shows one thing. */
@@ -20,7 +22,7 @@ export function leaveView(view: object) { views.delete(view); sync(); }
  * view's name, then an optional search field; the body; and a footer whose status
  * says where the choice applies, with the view's actions and Back with Esc. One
  * frame for the format and actions palette and every sheet. */
-export function ViewFrame({ title, titleId, search, back, status, actions, leadingActions, children, frameRef, ...dialog }: {
+export function ViewFrame({ title, titleId, search, back, status, actions, leadingActions, children, frameRef, onKeyDown, ...dialog }: {
   /** The view's name: a quiet chip before its search ("Format"), or plain title text ("Cited Since Opening"). */
   title: string; titleId: string;
   /** The view's own search field, after its name. */
@@ -35,12 +37,16 @@ export function ViewFrame({ title, titleId, search, back, status, actions, leadi
   frameRef?: RefObject<HTMLDivElement | null>;
 } & Omit<HTMLAttributes<HTMLDivElement>, "title">) {
   const own = useRef<HTMLDivElement>(null), frame = frameRef ?? own;
+  // Commands can open native UI next: this view must already be gone then.
+  const ownsKeys = useLayer(search ? "menu" : "sheet", true, () => { flushSync(back.onBack); });
+  useBackNavigation(back.onBack, ownsKeys);
   useLayoutEffect(() => {
     const view = frame.current!;
     views.add(view); sync();
     return () => leaveView(view);
   }, [frame]);
-  return createPortal(<div ref={frame} className="ui-view" aria-labelledby={titleId} {...dialog}>
+  return createPortal(<div ref={frame} className="ui-view" aria-labelledby={titleId} {...dialog}
+    onKeyDown={(event) => { if (ownsKeys() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     <div className="ui-view-head">
       {/* The pointer's Back; the footer's Back is the one keys and screen readers reach. */}
       <IconButton icon="back" size="large" className="ui-view-back" aria-label={back.label} title={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />

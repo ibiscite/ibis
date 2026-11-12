@@ -2,7 +2,7 @@ import type * as nativeApi from "../../api";
 import { useCallback, useEffect } from "react";
 import { keysFor } from "../../keys";
 import { isolate, say } from "../../i18n";
-import { isMac } from "../../platform";
+import { currentPlatform } from "../../platform";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import type { usePickerLibrary } from "./usePickerLibrary";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -27,6 +27,7 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   perform: ReturnType<typeof useOperations>["perform"];
   report: ReturnType<typeof useOperations>["report"];
 }) {
+  const isMac = currentPlatform() === "macos";
   const { session, state, cancelCopy } = pickerSession;
   const { library, libraryChoices, chooserRequest, setChoosingLibrary, refreshSnapshot } = libraryState;
   const { input, leaveOverlays, runFromMenu } = menus;
@@ -82,7 +83,10 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
   // While opening Zotero is the fix, ⌘O opens Zotero: the footer's fix and More
   // then name the same target, and the words always name what ⌘O does.
   const zoteroFix = Boolean(library?.zotero && (library.error || library.stale) && zoteroWaits(library.problem));
-  const openSource = (appOnly = false, reveal = altHeld) => {
+  const openSource = (appOnly = false, reveal = !appOnly && altHeld && sourceOpen.source.kind === "file") => {
+    // A library-level reveal names a file. Zotero has no such action; even
+    // its key must leave the current view and keyboard owner alone.
+    if (reveal && (appOnly || sourceOpen.source.kind !== "file")) return;
     leaveOverlays();
     appOnly ||= zoteroFix && sourceOpen.source.kind === "zotero";
     if (missingSource && !appOnly) { chooseFile(); return; }
@@ -96,10 +100,11 @@ export function usePickerSource({ api, pickerSession, libraryState, menus, resul
     : source.kind === "zotero" ? sourceItem && !zoteroFix ? say("picker-show-in-zotero") : say("picker-open-zotero")
     : altHeld ? say("picker-show-source-folder", { platform: isMac ? "macos" : "other" }) : (source.name ? say("picker-open-source", { name: isolate(source.name) }) : say("picker-open-library"));
   const sourceAction: SourceActionProps = { label: sourceLabel, keys: keysFor(altHeld && source.kind === "file" ? "revealSource" : "source"), icon: source.icon,
+    glyph: sourceLabel === say("picker-choose-library-menu") ? "library-big" : altHeld && source.kind === "file" && !missingSource && !(sourceOpen.failure && !sourceOpen.failure.changed) ? "folder-search" : undefined,
     file: source.kind === "file", busy: sourceOpen.busy, open: () => openSource() };
   const sourceInChoices = !(sourceOpen.failure && !sourceOpen.failure.changed) && !libraryState.choosingLibrary && Boolean(library?.name) && Boolean(libraryChoices) && (!library?.zotero || zoteroWaits(library.problem));
   const sourceAvailable = source.kind !== "zotero" || sourceItem !== null || Boolean(library?.zotero && zoteroWaits(library.problem));
-  const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} /> };
+  const sourceChoice = { ...sourceAction, icon: <SourceIcon icon={source.icon} file={source.kind === "file"} glyph={sourceAction.glyph} /> };
   /** A reference's menu opens that reference, and recovers its file like More does. */
   const openReference = (id: unknown) => {
     if (missingSource || sourceOpen.failure) openSource();

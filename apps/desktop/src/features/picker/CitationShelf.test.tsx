@@ -236,13 +236,16 @@ const removeOnce = (method: string) => {
 };
 test.each(["Backspace", "Delete", "×"])("%s removes a token exactly once and never opens the details", removeOnce);
 
-test("Backspace removes from the details, but only ever edits text in Page", () => {
+test("Backspace only edits in the details, including a held key on an empty field or a button", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
   fireEvent.click(screen.getByRole("button", { name: "Edit García 2021" }));
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Page" }), { key: "Backspace" });
   expect(remove).not.toHaveBeenCalled();
   fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace" });
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Backspace", repeat: true });
+  expect(remove).not.toHaveBeenCalled();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Locator type: Page" }), { key: "Delete" });
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
 });
 

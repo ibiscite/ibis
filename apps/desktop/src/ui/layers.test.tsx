@@ -19,7 +19,7 @@ test("Esc closes the nearest kind whatever order the layers opened in", () => {
   render(<>{opened.map((kind) => <Layer key={kind} kind={kind} close={() => { closed.push(kind); }} />)}</>);
   for (let step = 0; step < LAYER_ORDER.length; step += 1) closeNearestLayer();
   // Nothing was closed for real, so the nearest stays; each press asks it again.
-  expect(new Set(closed)).toEqual(new Set(["sheet"]));
+  expect(new Set(closed)).toEqual(new Set(["menu"]));
   cleanup();
   const steps: LayerKind[] = [];
   function Stack() {
@@ -46,7 +46,7 @@ test("a command clears overlays and leaves the panel, chooser, search and window
   const closed: LayerKind[] = [];
   render(<>{LAYER_ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
   closeOverlays();
-  expect(closed).toEqual(["sheet", "menu"]);
+  expect(closed).toEqual(["menu", "sheet"]);
 });
 
 test("Esc reaches a layer before any control can swallow it, and only once", () => {

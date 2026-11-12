@@ -928,9 +928,10 @@ test("while a newer search is pending, no key, click or hint acts on the previou
   // Delayed success: the old rows still show, but nothing acts on or offers them.
   fireEvent.change(box, { target: { value: "pending" } });
   await waitFor(() => expect(pending.pending).toBeDefined());
-  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(box, { key: "Shift", shiftKey: true });
   expect(footerKeys()).toBe("Clear Search Esc");
-  fireEvent.keyUp(box, { key: "Alt" });
+  fireEvent.keyUp(box, { key: "Shift" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   // Neither Shift+click (add) nor a plain click (copy) acts on a stale row.
   fireEvent.click(screen.getByText("Old result"), { shiftKey: true });
@@ -2421,7 +2422,7 @@ const footerKeys = () => [...screen.getByRole("group", { name: "Keys" }).childre
   .filter((hint) => hint.getAttribute("aria-hidden") !== "true")
   .map((hint) => `${hint.querySelector(".key-hint-label")?.textContent} ${hint.querySelector(".key-caps")?.textContent}`).join(" · ");
 
-test("the footer says what Enter will copy, and holding Alt shows the other keys", async () => {
+test("the footer says what Enter will copy, and holding Shift over the footer shows the other keys", async () => {
   backend({ search: ({ query: { text: query } }) => (query ? [result("a", "First"), result("b", "Second")] : []) });
   render(<App />);
   const box = screen.getByLabelText("Search references");
@@ -2436,11 +2437,13 @@ test("the footer says what Enter will copy, and holding Alt shows the other keys
   fireEvent.keyDown(box, { key: "ArrowDown" });
   fireEvent.keyDown(box, { key: "Enter", shiftKey: true });
   expect(footerKeys()).toContain("Copy 2 as Typst Enter");
-  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(box, { key: "Shift", shiftKey: true });
   expect(footerKeys()).toBe("Remove from Citation Shift+Enter · Clear Search Esc");
-  fireEvent.keyUp(box, { key: "Alt" });
+  fireEvent.keyUp(box, { key: "Shift" });
   expect(footerKeys()).toContain("Copy 2 as Typst");
-  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(box, { key: "Shift", shiftKey: true });
   fireEvent.blur(window);
   expect(footerKeys()).not.toContain("Esc");
 });
@@ -2490,7 +2493,8 @@ test("alternate footer buttons use the current add, remove, clear and hide actio
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
   fireEvent.change(box, { target: { value: "first" } });
-  fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(box, { key: "Shift", shiftKey: true });
   fireEvent.click(await screen.findByRole("button", { name: "Add to Citation" }));
   expect(await screen.findByRole("group", { name: "Selected references" })).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Remove from Citation" }));
@@ -2507,7 +2511,10 @@ test.each([false, true])("Search hint layout survives pointer focus moving to Mo
   render(<App />);
   await screen.findByText("First");
   const box = screen.getByLabelText("Search references");
-  if (alt) fireEvent.keyDown(box, { key: "Alt", altKey: true });
+  if (alt) {
+    fireEvent.pointerOver(document.querySelector("footer")!);
+    fireEvent.keyDown(box, { key: "Shift", shiftKey: true });
+  }
   const hints = screen.getByRole("group", { name: "Keys" });
   const searchHint = hints.firstElementChild!;
   const text = searchHint.textContent;
@@ -2613,7 +2620,7 @@ test("? lists every key in a modal dialog, but a ? typed in the search is text",
     ["Show its details", "Space or ↑"], ["Remove the reference", "Backspace or Delete"]]);
   expect(rows).toContainEqual(["Undo", "Ctrl+Z"]);
   expect(rows).toContainEqual(["Make text larger or smaller", "Ctrl+Plus or Ctrl+Minus"]);
-  expect(rows).toContainEqual(["Show the source in its folder", "Ctrl+Alt+O"]);
+  expect(rows).toContainEqual(["Show the source in its folder", "Ctrl+Shift+O"]);
   expect(groups.find((group) => group[0]?.[0] === "Anywhere in Ibis")).toContainEqual(["More actions", "Ctrl+K"]);
   expect(rows).toContainEqual(["Show keyboard shortcuts", "Ctrl+/ or ?"]);
   expect(rows.some(([action]) => action === "Go to the first or last item")).toBe(false);

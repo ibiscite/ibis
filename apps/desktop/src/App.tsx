@@ -128,9 +128,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
   useUpdateOfferActivity(api, state, menus, choosingLibrary);
-  const [searchFocused, setSearchFocused] = useState(false);
-  // autoFocus can happen before React listens for focus events.
-  useEffect(() => setSearchFocused(document.activeElement === input.current), [input]);
   const snapshotRevision = library?.revision;
   const { requestCopy, chooseFormat, onFormatOpenChange } = useCitationCopy({
     api, session, state, destination, currentPin, formatButtonRef, refreshSnapshot, report, setFormatOpen,
@@ -164,7 +161,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld });
   usePickerMove(api, pickerSession.session);
   const { resultArea, followKeyboard } = useResultScroll({
-    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format, searchFocused,
+    input, active, selectAll: state.selectAll, pointer, selectedSize: selected.size, citationProblem, formatted, format,
   });
   // Success is brief; warnings stay available until explicitly dismissed.
   useEffect(() => {
@@ -183,13 +180,13 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     focusSearch: focusHome,
   });
   const source = usePickerSource({ api, pickerSession, libraryState, menus, results: sameSnapshot ? results : [], altHeld, perform, report });
-  const inspector = useCitationInspector();
+  const inspector = useCitationInspector(cancelCopy);
   const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
   const listProblem = inspector.panel ? null : citationProblem;
   const actions = usePickerActions({
-    api, pickerSession, menus, libraryState, searchState, destination, shown, inspector,
+    api, pickerSession, menus, libraryState, searchState, destination, shown,
     // The footer names what Enter copies now, or after the running search.
     offered: chosen.length > 0 || searchPending ? shownChoice : [], canPaste: destination.canPaste,
     shortcut, perform, dismissChooser: source.dismissChooser, toggle: rows.toggle,
@@ -242,8 +239,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     <PickerShown value={state.shown}>
     <main
       data-selection={showCitations && selected.size > 0 || undefined}
-      onFocus={(e) => setSearchFocused(e.target === input.current)}
-      onBlur={() => setSearchFocused(false)}
       onScrollCapture={pointer.resetHover}
     >
       <PickerHeader

@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, openCitationDetails, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, openCitationDetails, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 const library = { revision: "1", state: "loaded", has_snapshot: true, zotero: false, snapshot_zotero: false,
@@ -11,7 +11,7 @@ const library = { revision: "1", state: "loaded", has_snapshot: true, zotero: fa
 const search = () => screen.getByLabelText("Search references");
 const press = (key: string, modifiers = {}) => fireEvent.keyDown(document.activeElement!, { key, ...modifiers });
 const commandO = () => press("o", { ctrlKey: true });
-const chooseSources = () => press("o", { ctrlKey: true, shiftKey: true });
+const chooseSources = () => chooseFromMore("Choose Library…");
 const fileRow = () => screen.getByRole("option", { name: /^Choose a Library File…/ });
 const frame = () => act(async () => { await new Promise(requestAnimationFrame); });
 
@@ -39,7 +39,7 @@ test("Command-O leaves citation details before exposing a source failure and its
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
 });
 
-test.each([false, true])("source opening leaves Copy as before exposing an accessible failure and recovery (Option %s)", async (altKey) => {
+test.each([false, true])("source opening leaves Copy as before exposing an accessible failure and recovery (alternate %s)", async (shiftKey) => {
   const atOpen: { menu: HTMLElement | null; focus: Element | null }[] = [];
   const open = vi.fn(() => {
     atOpen.push({ menu: screen.queryByRole("dialog"), focus: document.activeElement });
@@ -52,7 +52,7 @@ test.each([false, true])("source opening leaves Copy as before exposing an acces
   fireEvent.click(trigger);
   await screen.findByRole("combobox", { name: /^Search (formats|actions)$/ });
   await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("combobox", { name: /^Search (formats|actions)$/ })));
-  press("o", { ctrlKey: true, altKey });
+  press("o", { ctrlKey: true, shiftKey });
   await waitFor(() => expect(open).toHaveBeenCalledOnce());
   expect(atOpen).toEqual([{ menu: null, focus: search() }]);
   expect(trigger.getAttribute("aria-expanded")).toBe("false");
@@ -89,7 +89,7 @@ test("Escape from Choose Library restores Search and its source shortcut", async
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => fileRow().focus());
   press("Escape");
@@ -107,7 +107,7 @@ test("watcher updates keep Choose Library and its focus until its own selection 
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   const file = fileRow();
   act(() => file.focus());
@@ -132,7 +132,7 @@ test("a failed source-selection command leaves the chooser available", async () 
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   fireEvent.click(zotero);
   await waitFor(() => expect(select).toHaveBeenCalledOnce());
@@ -146,12 +146,12 @@ test("a selection command from a dismissed chooser cannot dismiss a reopened cho
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   fireEvent.click(await screen.findByRole("option", { name: /^Use Zotero/ }));
   await waitFor(() => expect(finish).toBeTypeOf("function"));
   press("Escape");
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   const file = await screen.findByRole("option", { name: /^Choose a Library File…/ });
   act(() => file.focus());
   await act(async () => { finish(); });
@@ -164,7 +164,7 @@ test("Choose Library uses the welcome shortcut guidance and Escape restores Sear
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   await screen.findByRole("option", { name: /^Use Zotero/ });
   expect(screen.getByText("After this, open Ibis from any app with Ctrl+Shift+Y.")).toBeTruthy();
   expect(document.querySelector<HTMLElement>(".search-bar")!.hidden).toBe(true);
@@ -206,7 +206,7 @@ test("a stale found-file completion cannot clear the explicit chooser's newer re
   render(<App />);
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("thesis.bib"));
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   fireEvent.click(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
   const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
   fireEvent.click(file);
@@ -230,7 +230,7 @@ test("an accepted file drop leaves Choose Library and shows the dropped library'
   render(<App />);
   await screen.findByText("Invented dropped reference");
   act(() => search().focus());
-  chooseSources();
+  await chooseSources();
   await screen.findByRole("option", { name: /^Use Zotero/ });
   act(() => fileRow().focus());
   await act(async () => { await emit("library:file-dropped"); });

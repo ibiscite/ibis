@@ -2,6 +2,7 @@ import { cleanup, fireEvent, render, screen, within } from "@testing-library/rea
 import { afterEach, expect, test, vi } from "vitest";
 import { KeysDialog } from "../features/picker/KeysDialog";
 import { KEY_TABLE } from "../keys";
+import { say } from "../i18n";
 
 afterEach(cleanup);
 
@@ -13,6 +14,12 @@ test("the keys sheet presents compact groups with shared key caps and leaves out
   expect(dialog.querySelector(".keys-groups")).toBeTruthy();
   expect(dialog.querySelectorAll("kbd").length).toBeGreaterThan(4);
   expect(within(dialog).queryByText("Go to the first or last item")).toBeNull();
+});
+
+test.each([true, false])("the alternate source key follows the OS (macOS: %s)", (isMac) => {
+  render(<KeysDialog bindings={KEY_TABLE} isMac={isMac} onClose={vi.fn()} />);
+  const row = screen.getByText(say("shortcuts-action-reveal-source")).closest("tr")!;
+  expect(within(row).getByText(isMac ? "⌥⌘O" : "Ctrl+Shift+O")).toBeTruthy();
 });
 
 test("the keys sheet keeps its focus cycle and closes with Escape or Back", () => {

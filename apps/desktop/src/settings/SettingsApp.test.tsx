@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
 import type { CommandStatus, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
+import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
@@ -52,13 +52,21 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     const label = shortcutLabel(DEFAULT_PICKER_SHORTCUT, platform === "macos");
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
     for (const binding of KEY_TABLE) {
-      const row = document.getElementById(`key-${binding.action}`)!.closest("tr")!;
+      const keys = bindingKeys(binding, platform === "macos");
+      const node = document.getElementById(`key-${binding.action}`);
+      if (!keys.length) {
+        expect(node).toBeNull();
+        expect(screen.queryByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeNull();
+        continue;
+      }
+      expect(node, binding.action).not.toBeNull();
+      const row = node!.closest("tr")!;
       expect(row.querySelector('th[scope="row"]')?.textContent).toBe(say(SHORTCUT_ACTIONS[binding.action]));
       expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(say(SHORTCUT_REGIONS[binding.region]));
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
-      expect(row.querySelectorAll("kbd")).toHaveLength(binding.keys.length);
+      expect(row.querySelectorAll("kbd")).toHaveLength(keys.length);
       expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
-        .toBe(compact(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
+        .toBe(compact(keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
     }
   } finally {
     if (previous === undefined) delete document.documentElement.dataset.system;
@@ -925,9 +933,10 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
   const lists = [...document.querySelectorAll<HTMLElement>('tbody[id^="shortcuts-"]:not(#shortcuts-system)')];
-  for (const binding of KEY_TABLE) expect(screen.getByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeTruthy();
+  const bindings = KEY_TABLE.filter((binding) => bindingKeys(binding, currentPlatform() === "macos").length);
+  for (const binding of bindings) expect(screen.getByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeTruthy();
   expect(lists.flatMap((list) => within(list).queryAllByRole("button"))).toEqual([]);
-  expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(KEY_TABLE.length);
+  expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(bindings.length);
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true, shiftKey: true });
   await waitFor(() => expect(recorder.textContent).toBe(label("Alt+Shift+K")));

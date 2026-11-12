@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
-import { stripTypeScriptTypes } from "node:module";
+import { sharedKeys } from "./shared.mjs";
+const keys = await sharedKeys();
 const text = path => readFile(new URL(path, import.meta.url), "utf8");
 export const escape = value => value.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
 export const pages = [
@@ -30,7 +31,6 @@ export async function content(html, page = pages[0], input = new URL(".", import
   const read = path => readFile(input instanceof URL ? new URL(path, input) : join(input, path), "utf8");
   const headline = JSON.parse(await text("../brand/settings.json")).words.tagline;
   const version = JSON.parse(await text("../.release-please-manifest.json"))["."];
-  const keys = await import(`data:text/javascript,${encodeURIComponent(stripTypeScriptTypes(await text("../apps/desktop/src/keys.ts")))}`);
   const status = JSON.parse(await read("content/status.json"));
   const headings = { current: "In the current release", nightly: "In the nightly", planned: "Planned", notYet: "Not yet" };
   const lists = Object.entries(headings).map(([key, title]) => `<section id="${key}" class="row" aria-labelledby="${key}-h"><p class="margin"><span class="key">@${key.toLowerCase()}</span></p><div class="text"><h2 id="${key}-h">${title}</h2><ul class="roadmap" data-status="${key}">${status[key].map(item => `<li><div><strong>${escape(item.text)}</strong>${item.note ? `<span>${escape(item.note)}</span>` : ""}</div></li>`).join("")}</ul></div></section>`).join("\n");
