@@ -1379,7 +1379,7 @@ mod tests {
             "schema_version": 2, "output": "apa",
             "library": { "bibtex": "refs.bib" }, "shortcut": { "macos": "Alt+Space", "windows": "Alt+Space", "linux": "Alt+Space" }, "update_checks": false,
             "picker_windows": { "display-a": {
-                "width": 840, "height": 600, "custom_size": true, "x": 40, "y": 60
+                "width": 840, "height": 600, "custom_size": true, "position": [0.1, 0.2]
             } },
             "future_choice": { "kept": [true, null, "参考"] },
         });

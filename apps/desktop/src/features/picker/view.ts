@@ -4,7 +4,7 @@
 // come from outside, as PickerInputs.
 import type { LibraryStatus } from "../../api";
 import { styleOf, type OutputId } from "../../format/outputs";
-import { choiceKey } from "./choice";
+import { choiceKey, asTyped } from "./choice";
 import { COMMAND_PREFIX } from "./commands";
 import { destinationFormat, destinationReady, projectVersion, shouldAsk } from "./destination";
 import { ownedPreview, previewKey } from "./preview";
@@ -63,7 +63,7 @@ export function deriveView(s: SessionState): SessionView | null {
     && (search.inputs.recent === undefined || search.inputs.app === (d.destination?.app_id ?? null));
   const status = heard ? searchStatus(search, search.inputs!, s.session, o.statusFailed) : { sameSnapshot: false, ready: false, pending: true };
   const { results, list, interpretation } = search;
-  const highlighted = results.slice(s.active, s.active + 1).map((r) => ({ ...r, locator: interpretation?.locator }));
+  const highlighted = results.slice(s.active, s.active + 1).map((r) => asTyped(r, interpretation));
   // What the screen shows: the selection, otherwise the shown pasted list or highlighted result.
   const shownChoice = !o.showCitations ? [] : s.selected.size > 0 ? [...s.selected.values()] : !status.sameSnapshot ? [] : list ? results : highlighted;
   // What may be copied: the same, once the shown results answer the current query.

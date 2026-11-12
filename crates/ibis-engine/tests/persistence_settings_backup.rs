@@ -52,8 +52,7 @@ fn chosen() -> Settings {
             width: 640,
             height: 420,
             custom_size: true,
-            x: 10,
-            y: 20,
+            position: Some((0.1, 0.2)),
         },
     );
     settings.unknown.insert("accent".into(), json!("ibis"));
@@ -381,8 +380,7 @@ fn restoring_on_another_computer_keeps_its_local_settings_and_shortcut() {
             width: 500,
             height: 400,
             custom_size: false,
-            x: 0,
-            y: 0,
+            position: Some((0.0, 0.0)),
         },
     );
     let plan = backup::plan(&here, &made_elsewhere, |_| true);

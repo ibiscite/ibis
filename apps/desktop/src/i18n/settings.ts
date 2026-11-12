@@ -9,6 +9,7 @@ export const SHORTCUT_ACTIONS = {
   keys: "shortcuts-action-keys", settings: "shortcuts-action-settings", quit: "shortcuts-action-quit",
   undo: "shortcuts-action-undo", textSize: "shortcuts-action-text-size",
   citationMove: "shortcuts-action-citation-move", citationRemove: "shortcuts-action-citation-remove",
+  citationReorder: "shortcuts-action-citation-reorder", citationOpen: "shortcuts-action-citation-open", citationFocus: "shortcuts-action-citation-focus",
   menuMove: "shortcuts-action-menu-move", menuEnds: "shortcuts-action-menu-ends",
   menuChoose: "shortcuts-action-menu-choose", menuLeave: "shortcuts-action-menu-leave",
 } as const satisfies Record<string, MessageId>;
@@ -46,6 +47,7 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 export const SETTINGS_IDS = [
   "citations-unlisted",
   "settings-changed", "settings-reset", "settings-reset-row", "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-file-description",
+  "command-install", "command-remove", "command-checking", "command-missing", "command-matching", "command-different", "command-foreign", "command-profile", "command-copy", "command-copied", "command-failed",
   "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
   "restore-label", "restore-description", "restore-button", "restore-from", "restore-same", "restore-confirm", "restore-cancel", "restore-restarting",
   "backup-change", "backup-note-library", "backup-note-shortcut", "backup-note-repairs",

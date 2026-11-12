@@ -1,14 +1,231 @@
 use super::*;
 
-fn synthetic_sample(display: String, frame: PickerWindow) -> Sample {
+#[test]
+fn size_choices_and_bottom_right_resizes_leave_default_placement_automatic() {
+    let now = Instant::now();
+    for preset in [false, true] {
+        let mut owner = Owner::default();
+        let initial = synthetic_sample("macos:invented-display".into(), plan(None, false, (3000.0, 2000.0)));
+        let mut resized = initial.clone();
+        resized.frame.width = 840;
+        resized.frame.height = 600;
+        owner.prepared(initial);
+        if preset {
+            owner.choose(&resized.display.key, resized.frame, resized.display.usable, now);
+        } else {
+            owner.event(Event::Geometry, now);
+            owner.observe(resized.clone(), now, true);
+        }
+        let saved = owner.windows[&resized.display.key];
+        assert_eq!(saved.position, None, "size alone never pins the default position");
+        let reopened = plan(Some(restore(saved, (1600.0, 1200.0))), false, (1600.0, 1200.0));
+        assert_eq!((reopened.x, reopened.y), (380, 273));
+    }
+}
+
+#[test]
+fn automatic_topology_clamp_preserves_the_original_fraction_and_unknown_ids_are_ephemeral() {
+    let now = Instant::now();
+    let mut owner = Owner::default();
+    let first = synthetic_sample("macos:invented-display".into(), dragged(840, 600));
+    owner.observe(first.clone(), now, true);
+    let original = owner.windows[&first.display.key];
+    let mut shrunk = first;
+    shrunk.display.room = (900.0, 650.0);
+    shrunk.display.usable = shrunk.display.room;
+    shrunk.display.origin = (2000.0, -800.0);
+    shrunk.frame.x = 60;
+    shrunk.frame.y = 50;
+    owner.event(Event::Geometry, now);
+    owner.observe(shrunk.clone(), now, true);
+    assert_eq!(owner.windows[&shrunk.display.key], original);
+    shrunk.display.key.clear();
+    owner.event(Event::Geometry, now);
+    owner.observe(shrunk, now, true);
+    assert!(!owner.windows.contains_key(""));
+}
+
+#[test]
+fn remembered_fraction_survives_rearranging_and_shrinking_a_display_and_reset() {
+    let mut owner = Owner::default();
+    let now = Instant::now();
+    let mut screen = synthetic_sample("macos:invented-display-uuid".into(), dragged(720, 480)).display;
+    screen.room = (1600.0, 1000.0);
+    screen.usable = screen.room;
+    screen.origin = (-1600.0, 0.0);
+    let moved = Frame {
+        x: 800,
+        y: 400,
+        ..dragged(720, 480)
+    };
+    owner.prepared(Sample {
+        display: screen.clone(),
+        removed_display: None,
+        frame: Frame {
+            x: 100,
+            y: 100,
+            ..moved
+        },
+    });
+    owner.event(Event::Geometry, now);
+    owner.observe(
+        Sample {
+            display: screen.clone(),
+            frame: moved,
+            removed_display: None,
+        },
+        now,
+        true,
+    );
+    let saved = owner.windows[&screen.key];
+    assert_eq!(saved.position, Some((0.5, 0.4)));
+    // Same identity after moving the screen above/right, with a smaller work area.
+    screen.origin = (2000.0, -800.0);
+    screen.room = (1000.0, 700.0);
+    screen.usable = screen.room;
+    let reopened = plan(Some(restore(saved, screen.room)), false, screen.room);
+    assert_eq!((reopened.x, reopened.y), (280, 220));
+    owner.reset(
+        &screen.key,
+        Sample {
+            display: screen.clone(),
+            frame: reopened,
+            removed_display: None,
+        },
+        now,
+    );
+    let reset = owner
+        .windows
+        .get(&screen.key)
+        .copied()
+        .map(|saved| restore(saved, screen.room));
+    let default = plan(reset, false, screen.room);
+    assert_eq!((default.width, default.height), (720, 480));
+    assert_eq!((default.x, default.y), (140, 148));
+    assert_eq!(owner.windows[&screen.key].position, None);
+}
+
+fn synthetic_sample(display: String, frame: Frame) -> Sample {
     Sample {
         display: Display {
             key: display,
             scale: 1.0,
             origin: (0.0, 0.0),
             room: (3000.0, 2000.0),
+            usable: (3000.0, 2000.0),
         },
         frame,
+        removed_display: None,
+    }
+}
+
+#[test]
+fn sizing_hidden_choice_without_display_identity_survives_reopen_only_in_session_regression() {
+    let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+    let file = SettingsFile::new(directory.path().join("settings.json"));
+    let sizing = Sizing::default();
+    let room = (3000.0, 2000.0);
+    let large = chosen(None, (840, 600), false, room);
+    sizing
+        .shared
+        .state
+        .lock()
+        .unwrap_or_else(|error| panic!("{error}"))
+        .choose("", large, room, Instant::now());
+    assert_eq!(WindowSize::of(sizing.remembered("", room)), WindowSize::Large);
+    let reopened = plan(sizing.remembered("", room), false, room);
+    assert_eq!((reopened.width, reopened.height), (840, 600));
+    sizing.present("", reopened);
+    sizing
+        .shared
+        .state
+        .lock()
+        .unwrap_or_else(|error| panic!("{error}"))
+        .flush(Instant::now(), false);
+    assert_eq!(WindowSize::of(sizing.remembered("", room)), WindowSize::Large);
+
+    // Saving a different, identified display cannot leak the session choice.
+    let save = sizing
+        .record("macos:invented-display".into(), dragged(640, 400))
+        .unwrap_or_else(|| panic!("missing identified display save"));
+    assert_eq!(save.windows.len(), 1);
+    assert!(!save.windows.contains_key(""));
+    assert_eq!(sizing.persist(&file, save), Some(true));
+    let settings = ibis_engine::settings::load(&file.path).settings;
+    assert!(!settings.picker_windows.contains_key(""));
+    let relaunched = Sizing::default();
+    relaunched.load(&settings);
+    assert_eq!(WindowSize::of(relaunched.remembered("", room)), WindowSize::Medium);
+    assert_eq!(WindowSize::of(sizing.remembered("", room)), WindowSize::Large);
+}
+
+#[test]
+fn sizing_unplug_relocation_preserves_destination_placement_regression() {
+    let now = Instant::now();
+    let room = (3000.0, 2000.0);
+    let remembered = PickerWindow {
+        width: 720,
+        height: 480,
+        custom_size: false,
+        position: Some((0.6, 0.5)),
+    };
+    for (connected, intermediate, destination) in [
+        (false, false, None),
+        (false, false, Some(remembered)),
+        (false, true, None),
+        (false, true, Some(remembered)),
+        (true, false, Some(remembered)),
+    ] {
+        let mut owner = Owner::default();
+        if let Some(saved) = destination {
+            owner.windows.insert("a".into(), saved);
+        }
+        let mut before = synthetic_sample("b".into(), plan(None, false, room));
+        before.display.origin = (3000.0, 0.0);
+        owner.prepared(before.clone());
+        let observe = |owner: &mut Owner, mut sample: Sample| {
+            sample.removed_display = removed_display(
+                owner.last.as_ref().map(|last| last.display.key.as_str()),
+                &sample.display.key,
+                || {
+                    Some(if connected {
+                        vec!["a".into(), "b".into()]
+                    } else {
+                        vec!["a".into()]
+                    })
+                },
+            );
+            owner.event(Event::Geometry, now);
+            owner.observe(sample, now, true);
+        };
+        if intermediate {
+            // X11 can report B's removal before the window manager moves the
+            // picker: current_monitor is A, but the frame is still off-screen.
+            let mut offscreen = synthetic_sample("a".into(), before.frame);
+            offscreen.frame.x += 3000;
+            observe(&mut owner, offscreen);
+        }
+        let mut relocated = synthetic_sample("a".into(), before.frame);
+        relocated.frame.x = 240;
+        relocated.frame.y = 180;
+        let expected = if connected {
+            // Crossing between connected displays is still a deliberate move.
+            relocated.frame
+        } else {
+            plan(destination.map(|saved| restore(saved, room)), false, room)
+        };
+        observe(&mut owner, relocated);
+        let saved = owner.windows.get("a").copied();
+        assert_eq!(
+            plan(saved.map(|saved| restore(saved, room)), false, room),
+            expected,
+            "only unplug relocation preserves A's remembered spot or automatic default"
+        );
+        assert_eq!(
+            owner.pending_save.is_some(),
+            connected,
+            "only a deliberate crossing should schedule a save"
+        );
     }
 }
 
@@ -16,7 +233,7 @@ impl Sizing {
     fn forget(&self, display: &str) -> Option<Save> {
         self.shared.state.lock().ok()?.forget(display, Instant::now())
     }
-    fn record(&self, display: String, live: PickerWindow) -> Option<Save> {
+    fn record(&self, display: String, live: Frame) -> Option<Save> {
         let mut state = self.shared.state.lock().ok()?;
         let revision = state.revision;
         state.event(Event::Geometry, Instant::now());
@@ -25,7 +242,7 @@ impl Sizing {
             .then(|| state.pending_save.clone())
             .flatten()
     }
-    fn present(&self, display: &str, frame: PickerWindow) {
+    fn present(&self, display: &str, frame: Frame) {
         self.shared
             .state
             .lock()
@@ -37,8 +254,8 @@ impl Sizing {
     }
 }
 
-fn dragged(width: u32, height: u32) -> PickerWindow {
-    PickerWindow {
+fn dragged(width: u32, height: u32) -> Frame {
+    Frame {
         width,
         height,
         custom_size: true,
@@ -54,7 +271,7 @@ fn window_size_names_presets_and_calls_anything_else_custom() {
     assert_eq!(WindowSize::of(Some(dragged(720, 480))), WindowSize::Medium);
     assert_eq!(WindowSize::of(Some(dragged(840, 600))), WindowSize::Large);
     assert_eq!(WindowSize::of(Some(dragged(700, 500))), WindowSize::Custom);
-    let moved = PickerWindow {
+    let moved = Frame {
         custom_size: false,
         ..dragged(900, 700)
     };
@@ -68,7 +285,7 @@ fn window_size_names_presets_and_calls_anything_else_custom() {
 #[test]
 fn chosen_size_keeps_the_window_centred_and_fits_a_small_display() {
     let room = (1400.0, 900.0);
-    let saved = PickerWindow {
+    let saved = Frame {
         x: 340,
         y: 100,
         ..dragged(720, 480)
@@ -93,13 +310,19 @@ fn chosen_size_is_saved_once_and_a_late_write_cannot_replace_it() {
     let mut owner = Owner::default();
     let now = Instant::now();
     let frame = dragged(840, 600);
-    owner.choose("synthetic", frame, now);
-    owner.choose("synthetic", frame, now);
+    owner.choose("synthetic", frame, (3000.0, 2000.0), now);
+    owner.choose("synthetic", frame, (3000.0, 2000.0), now);
     assert_eq!(owner.revision, 1, "choosing the same size again saves nothing");
     let first = owner.pending_save.clone().map(|save| save.revision);
-    owner.choose("synthetic", dragged(640, 400), now);
+    owner.choose("synthetic", dragged(640, 400), (3000.0, 2000.0), now);
     assert_ne!(owner.pending_save.as_ref().map(|save| save.revision), first);
-    assert_eq!(owner.windows.get("synthetic"), Some(&dragged(640, 400)));
+    assert_eq!(
+        owner.windows.get("synthetic"),
+        Some(&PickerWindow {
+            position: None,
+            ..remember(dragged(640, 400), (3000.0, 2000.0))
+        })
+    );
 }
 
 #[test]
@@ -188,7 +411,10 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
             .unwrap_or_else(|| panic!("missing synthetic frame"));
         assert_eq!(sizing.persist(&app.state::<SettingsFile>(), geometry), Some(true));
         let saved = ibis_engine::settings::load(&path).settings;
-        assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
+        assert_eq!(
+            saved.picker_windows["display-a"],
+            remember(dragged(840, 600), (3000.0, 2000.0))
+        );
         assert_eq!(
             saved.unknown["accent"], "ibis",
             "the earlier choice's other field is saved"
@@ -196,7 +422,10 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
         assert_eq!(saved.larger_text.unwrap_or(false), !failed_newer_flush);
         let restarted = Sizing::default();
         restarted.load(&saved);
-        assert_eq!(restarted.remembered("display-a"), Some(dragged(840, 600)));
+        assert_eq!(
+            restarted.remembered("display-a", (3000.0, 2000.0)),
+            Some(dragged(840, 600))
+        );
         assert_eq!(
             plan(None, restarted.larger_text.load(Ordering::SeqCst), (1400.0, 900.0)).height,
             if failed_newer_flush { 480 } else { 552 }
@@ -208,7 +437,7 @@ fn sizing_takes_the_text_size_at_dispatch_and_keeps_it_if_its_save_fails() {
 fn sizing_clamps_size_and_place_to_the_current_work_area_including_tiny_displays() {
     assert_eq!(
         plan(Some(dragged(2000, 1400)), false, (800.0, 600.0)),
-        PickerWindow {
+        Frame {
             width: 800,
             height: 600,
             custom_size: true,
@@ -217,7 +446,7 @@ fn sizing_clamps_size_and_place_to_the_current_work_area_including_tiny_displays
         }
     );
     let frame = plan(
-        Some(PickerWindow {
+        Some(Frame {
             width: 200,
             height: 80,
             custom_size: true,
@@ -229,7 +458,7 @@ fn sizing_clamps_size_and_place_to_the_current_work_area_including_tiny_displays
     );
     assert_eq!(
         frame,
-        PickerWindow {
+        Frame {
             width: 480,
             height: 360,
             custom_size: true,
@@ -239,7 +468,7 @@ fn sizing_clamps_size_and_place_to_the_current_work_area_including_tiny_displays
     );
     assert_eq!(
         plan(None, true, (400.0, 300.0)),
-        PickerWindow {
+        Frame {
             width: 400,
             height: 300,
             custom_size: false,
@@ -289,7 +518,10 @@ fn sizing_failed_undo_save_keeps_the_restored_frame_and_rejects_the_old_reset_wr
     };
     assert_eq!(sizing.persist(&file, reset), None);
     assert_eq!(sizing.persist(&file, restored), Some(false));
-    assert_eq!(sizing.remembered("display-a"), Some(dragged(840, 600)));
+    assert_eq!(
+        sizing.remembered("display-a", (3000.0, 2000.0)),
+        Some(dragged(840, 600))
+    );
 }
 
 #[test]
@@ -310,7 +542,7 @@ fn sizing_a_delayed_event_reads_the_live_frame_and_cannot_restore_an_older_drag(
     assert_eq!(sizing.persist(&file, a), None);
     assert_eq!(
         ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
-        dragged(840, 600)
+        remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
 
@@ -325,7 +557,10 @@ fn sizing_failed_save_keeps_the_visible_frame_for_reopen_and_a_later_drag_can_sa
         .record("display-a".into(), dragged(640, 400))
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, save), Some(false));
-    assert_eq!(sizing.remembered("display-a"), Some(dragged(640, 400)));
+    assert_eq!(
+        sizing.remembered("display-a", (3000.0, 2000.0)),
+        Some(dragged(640, 400))
+    );
     std::fs::remove_dir(&path).unwrap_or_else(|error| panic!("{error}"));
     let save = sizing
         .record("display-a".into(), dragged(840, 600))
@@ -333,7 +568,7 @@ fn sizing_failed_save_keeps_the_visible_frame_for_reopen_and_a_later_drag_can_sa
     assert_eq!(sizing.persist(&file, save), Some(true));
     assert_eq!(
         ibis_engine::settings::load(&path).settings.picker_windows["display-a"],
-        dragged(840, 600)
+        remember(dragged(840, 600), (3000.0, 2000.0))
     );
 }
 
@@ -357,20 +592,37 @@ fn sizing_hide_reopen_relaunch_and_another_display_keep_independent_sizes_and_ot
     let restarted = Sizing::default();
     restarted.load(&settings);
     assert_eq!(
-        plan(restarted.remembered("display-a"), false, (1000.0, 700.0)),
+        plan(
+            restarted.remembered("display-a", (3000.0, 2000.0)),
+            false,
+            (1000.0, 700.0)
+        ),
         dragged(840, 600)
     );
     assert_eq!(
-        plan(restarted.remembered("display-b"), true, (800.0, 600.0)),
+        plan(
+            restarted.remembered("display-b", (3000.0, 2000.0)),
+            true,
+            (800.0, 600.0)
+        ),
         dragged(480, 360)
     );
     assert_eq!(
-        plan(restarted.remembered("display-c"), false, (800.0, 600.0)).height,
+        plan(
+            restarted.remembered("display-c", (3000.0, 2000.0)),
+            false,
+            (800.0, 600.0)
+        )
+        .height,
         480
     );
     assert_eq!(
-        plan(restarted.remembered("display-a"), false, (700.0, 500.0)),
-        PickerWindow {
+        plan(
+            restarted.remembered("display-a", (3000.0, 2000.0)),
+            false,
+            (700.0, 500.0)
+        ),
+        Frame {
             width: 700,
             height: 500,
             custom_size: true,
@@ -381,7 +633,7 @@ fn sizing_hide_reopen_relaunch_and_another_display_keep_independent_sizes_and_ot
 }
 
 #[test]
-fn sizing_reset_invalidates_pending_drag_and_restores_only_this_displays_default() {
+fn sizing_reset_invalidates_pending_drag_and_clears_only_this_displays_spot() {
     let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
     let file = SettingsFile::new(directory.path().join("settings.json"));
     let sizing = Sizing::default();
@@ -394,11 +646,36 @@ fn sizing_reset_invalidates_pending_drag_and_restores_only_this_displays_default
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert_eq!(sizing.persist(&file, reset), Some(true));
     assert_eq!(sizing.persist(&file, old), None);
-    assert_eq!(sizing.remembered("display-a"), None);
-    assert_eq!(sizing.remembered("display-b"), Some(dragged(640, 400)));
+    assert_eq!(
+        sizing
+            .shared
+            .state
+            .lock()
+            .ok()
+            .and_then(|state| state.windows.get("display-a").copied())
+            .and_then(|frame| frame.position),
+        None
+    );
+    assert_eq!(
+        sizing.remembered("display-b", (3000.0, 2000.0)),
+        Some(dragged(640, 400))
+    );
     let settings = ibis_engine::settings::load(&file.path).settings;
-    assert!(!settings.picker_windows.contains_key("display-a"));
-    assert_eq!(settings.picker_windows["display-b"], dragged(640, 400));
+    assert_eq!(settings.picker_windows["display-a"].position, None);
+    let reopened = plan(
+        Some(restore(settings.picker_windows["display-a"], (3000.0, 2000.0))),
+        false,
+        (3000.0, 2000.0),
+    );
+    assert_eq!(
+        (reopened.width, reopened.height),
+        (840, 600),
+        "Reset clears the spot and keeps the chosen size"
+    );
+    assert_eq!(
+        settings.picker_windows["display-b"],
+        remember(dragged(640, 400), (3000.0, 2000.0))
+    );
 }
 
 #[test]
@@ -406,7 +683,7 @@ fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_si
     let sizing = Sizing::default();
     let default = plan(None, false, (1400.0, 900.0));
     sizing.present("display-a", default);
-    let moved = PickerWindow {
+    let moved = Frame {
         x: 40,
         y: 60,
         ..default
@@ -416,11 +693,14 @@ fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_si
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert!(
         !sizing
-            .remembered("display-a")
+            .remembered("display-a", (3000.0, 2000.0))
             .unwrap_or_else(|| panic!("missing synthetic frame"))
             .custom_size
     );
-    assert_eq!(plan(sizing.remembered("display-a"), true, (1400.0, 900.0)).height, 552);
+    assert_eq!(
+        plan(sizing.remembered("display-a", (3000.0, 2000.0)), true, (1400.0, 900.0)).height,
+        552
+    );
     // Merely moving to B keeps its own default. An actual edge drag on B
     // chooses its custom frame; returning to A still uses A's default.
     sizing
@@ -428,17 +708,20 @@ fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_si
         .unwrap_or_else(|| panic!("missing synthetic frame"));
     assert!(
         !sizing
-            .remembered("display-b")
+            .remembered("display-b", (3000.0, 2000.0))
             .unwrap_or_else(|| panic!("missing synthetic frame"))
             .custom_size
     );
     sizing
         .record("display-b".into(), dragged(840, 600))
         .unwrap_or_else(|| panic!("missing synthetic frame"));
-    assert_eq!(sizing.remembered("display-b"), Some(dragged(840, 600)));
+    assert_eq!(
+        sizing.remembered("display-b", (3000.0, 2000.0)),
+        Some(dragged(840, 600))
+    );
     assert!(
         !sizing
-            .remembered("display-a")
+            .remembered("display-a", (3000.0, 2000.0))
             .unwrap_or_else(|| panic!("missing synthetic frame"))
             .custom_size
     );
@@ -446,7 +729,10 @@ fn sizing_moving_the_default_or_crossing_displays_does_not_replace_a_displays_si
     // B retains the size chosen there on the previous opening.
     sizing.present("display-a", default);
     sizing.record("display-b".into(), moved);
-    assert_eq!(sizing.remembered("display-b"), Some(dragged(840, 600)));
+    assert_eq!(
+        sizing.remembered("display-b", (3000.0, 2000.0)),
+        Some(dragged(840, 600))
+    );
 }
 
 #[test]
@@ -491,7 +777,10 @@ fn sizing_a_save_waiting_for_the_settings_owner_is_obsolete_before_it_can_write(
         );
     });
     let saved = ibis_engine::settings::load(&file.path).settings;
-    assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
+    assert_eq!(
+        saved.picker_windows["display-a"],
+        remember(dragged(840, 600), (3000.0, 2000.0))
+    );
     assert_eq!(saved.larger_text, Some(true));
 }
 
@@ -539,7 +828,7 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
     );
     assert_eq!(
         ibis_engine::settings::load(&file.path).settings.picker_windows["display-a"],
-        dragged(840, 600)
+        remember(dragged(840, 600), (3000.0, 2000.0))
     );
     sizing.record("display-a".into(), dragged(900, 640));
     assert!(sizing.shared.flush(FLUSH_TIMEOUT, true));
@@ -551,11 +840,17 @@ fn sizing_owned_worker_flushes_on_hide_then_drains_the_final_frame_before_exit()
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
     let saved = ibis_engine::settings::load(&file.path).settings;
-    assert_eq!(saved.picker_windows["display-a"], dragged(900, 640));
+    assert_eq!(
+        saved.picker_windows["display-a"],
+        remember(dragged(900, 640), (3000.0, 2000.0))
+    );
     assert_eq!(saved.larger_text, Some(true));
     let relaunched = Sizing::default();
     relaunched.load(&saved);
-    assert_eq!(relaunched.remembered("display-a"), Some(dragged(900, 640)));
+    assert_eq!(
+        relaunched.remembered("display-a", (3000.0, 2000.0)),
+        Some(dragged(900, 640))
+    );
 }
 
 #[test]
@@ -586,7 +881,10 @@ fn sizing_failed_final_io_reports_failure_and_still_finishes_the_owned_worker() 
     worker
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
-    assert_eq!(sizing.remembered("display-a"), Some(dragged(840, 600)));
+    assert_eq!(
+        sizing.remembered("display-a", (3000.0, 2000.0)),
+        Some(dragged(840, 600))
+    );
 }
 
 #[test]
@@ -628,6 +926,9 @@ fn sizing_exit_drain_is_bounded_even_when_another_settings_writer_is_blocked() {
         .join()
         .unwrap_or_else(|_| panic!("synthetic geometry worker panicked"));
     let saved = ibis_engine::settings::load(&file.path).settings;
-    assert_eq!(saved.picker_windows["display-a"], dragged(840, 600));
+    assert_eq!(
+        saved.picker_windows["display-a"],
+        remember(dragged(840, 600), (3000.0, 2000.0))
+    );
     assert_eq!(saved.larger_text, Some(true));
 }

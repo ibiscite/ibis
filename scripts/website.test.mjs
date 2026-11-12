@@ -3,6 +3,7 @@ import { mkdtemp, readFile, readdir, rm, writeFile, cp } from "node:fs/promises"
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
+import { anchors, links } from "./doc-links.mjs";
 import { build } from "../website/build.mjs";
 
 const source = new URL("../website/", import.meta.url);
@@ -55,7 +56,6 @@ test("public build has four canonical routes, local assets, safe headers and no 
     const guide = await readFile(join(dir, "setup"), "utf8");
     assert.equal(guide, original.replaceAll("](cli.md#", "](https://github.com/ibiscite/ibis/blob/main/docs/cli.md#"));
     assert.equal(await readFile(join(dir, "setup.md"), "utf8"), guide);
-    const { anchors, links } = await import("./doc-links.test.mjs");
     assert.deepEqual(links(guide), [], "the published guide has no relative links");
     assert.match(guide, /^Official address of this guide: https:\/\/ibiscite.org\/setup$/m);
     const llms = await readFile(join(dir, "llms.txt"), "utf8");

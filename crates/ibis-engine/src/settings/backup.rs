@@ -54,7 +54,7 @@ pub const LOCAL: [&str; 10] = [
 ];
 
 /// A backup read and checked whole.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Backup {
     /// The system the backup was made on.
     pub made_on: System,
@@ -345,7 +345,7 @@ pub enum Note {
 }
 
 /// What a restore would do, worked out from the settings as they are now.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Plan {
     /// The settings the plan was made from. A restore is refused if they changed.
     pub current: Settings,

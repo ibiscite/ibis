@@ -30,9 +30,7 @@ pub(crate) enum NativeIssue {
     Position,
     Pointer,
     TrayLibrary,
-    LoginMenuUpdate,
-    LoginMenuRead,
-    AutomaticMenuUpdate,
+    UpdateSetting,
     LibraryEvent,
     Notice,
     #[cfg(any(target_os = "windows", test))]
@@ -68,9 +66,7 @@ impl NativeIssue {
             Self::Position => "the picker could not be positioned",
             Self::Pointer => "the pointer position could not be read",
             Self::TrayLibrary => "the tray library status could not be updated",
-            Self::LoginMenuUpdate => "the login menu check could not be updated",
-            Self::LoginMenuRead => "the login menu check could not be read",
-            Self::AutomaticMenuUpdate => "the automatic update menu check could not be updated",
+            Self::UpdateSetting => "the automatic update setting could not be saved or announced",
             Self::LibraryEvent => "the library-changed event could not be sent",
             Self::Notice => "the Copied notice could not be shown",
             #[cfg(any(target_os = "windows", test))]
@@ -185,39 +181,6 @@ mod tests {
     }
 
     #[test]
-    fn menu_diagnostics_keep_fixed_labels_and_successful_check_values() {
-        for (issue, expected) in [
-            (
-                NativeIssue::LoginMenuUpdate,
-                "ibis: the login menu check could not be updated\n",
-            ),
-            (
-                NativeIssue::LoginMenuRead,
-                "ibis: the login menu check could not be read\n",
-            ),
-            (
-                NativeIssue::AutomaticMenuUpdate,
-                "ibis: the automatic update menu check could not be updated\n",
-            ),
-        ] {
-            let mut output = Vec::new();
-            let value = checked_with(Err::<bool, _>(PrivateError), issue, |message| {
-                write_diagnostic(&mut output, message)
-            });
-            assert_eq!(value, None);
-            assert_eq!(output, expected.as_bytes());
-        }
-        for value in [false, true] {
-            assert_eq!(
-                checked_with(Ok::<_, PrivateError>(value), NativeIssue::LoginMenuRead, |_| {
-                    panic!("a successful check read must not report a failure")
-                }),
-                Some(value)
-            );
-        }
-    }
-
-    #[test]
     fn repeated_pointer_failures_report_once_without_caching_the_result() {
         use std::sync::atomic::AtomicBool;
 
@@ -296,9 +259,7 @@ mod tests {
             NativeIssue::Startup,
             NativeIssue::TrayCreation,
             NativeIssue::Shortcut,
-            NativeIssue::LoginMenuUpdate,
-            NativeIssue::LoginMenuRead,
-            NativeIssue::AutomaticMenuUpdate,
+            NativeIssue::UpdateSetting,
         ] {
             assert!(
                 checked_with(Err::<(), _>(PrivateError), issue, |message| {

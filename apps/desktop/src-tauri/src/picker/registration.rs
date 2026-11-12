@@ -25,6 +25,11 @@ const NO_KEY_TYPES_THE_LETTER: &str =
 #[derive(Default)]
 pub(crate) struct Registered(Mutex<Option<(OpeningShortcut, Shortcut)>>);
 
+#[cfg(target_os = "macos")]
+pub(crate) fn registered_shortcut<R: tauri::Runtime>(app: &AppHandle<R>) -> Option<Shortcut> {
+    app.state::<Registered>().0.lock().ok()?.map(|(_, key)| key)
+}
+
 /// The key to register for `shortcut` on the active keyboard layout, and a
 /// note when no key types its letter. Only macOS registers physical keys.
 fn on_layout(requested: OpeningShortcut) -> (Shortcut, Option<&'static str>) {
@@ -176,6 +181,8 @@ fn relayout(app: &AppHandle) {
         layout_status(&mut status, moved, note);
         (status.error != before).then(|| status.clone())
     });
+    drop(registered);
+    crate::tray::show_shortcut(app);
     // An open picker shows the new note at once, not only when next opened.
     if let Some(status) = changed {
         report(app.emit("shortcut:status", status), NativeIssue::Shortcut);

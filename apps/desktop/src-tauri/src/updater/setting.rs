@@ -1,12 +1,8 @@
-//! Whether update checks run on their own. First launch, the tray and the
-//! picker's More menu (#1130) all queue the choice the person made, in the
-//! order they made it, to one worker that saves it off the main thread. A
-//! change is saved before it is applied, and the menus show only saved
-//! choices: the tray tick and More follow the `update:automatic` event sent
-//! after each save.
+//! Settings owns automatic update checks. One worker saves choices in order,
+//! off the main thread, and publishes each saved answer.
 
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver, Sender};
 
 use tauri::{AppHandle, Emitter, Manager};
@@ -14,50 +10,6 @@ use tauri::{AppHandle, Emitter, Manager};
 use super::{Updates, available, check, tell};
 use crate::diagnostics::{NativeIssue, report};
 use crate::preferences::SettingsFile;
-
-pub(crate) const AUTOMATIC_ON: &str = "update_auto_on";
-pub(crate) const AUTOMATIC_OFF: &str = "update_auto_off";
-
-/// The tray shows one of two items with fixed click intents.
-pub(crate) struct AutomaticMenuItem {
-    menu: tauri::menu::Menu<tauri::Wry>,
-    choices: [tauri::menu::CheckMenuItem<tauri::Wry>; 2],
-    position: usize,
-    shown: AtomicBool,
-}
-
-impl AutomaticMenuItem {
-    pub(crate) fn new(
-        menu: tauri::menu::Menu<tauri::Wry>,
-        choices: [tauri::menu::CheckMenuItem<tauri::Wry>; 2],
-        position: usize,
-    ) -> Self {
-        Self {
-            menu,
-            choices,
-            position,
-            shown: false.into(),
-        }
-    }
-
-    /// Each native item has an immutable intent in its ID. Replace the
-    /// displayed item after saving, so an older queued click keeps its intent
-    /// even if a newer save repaints the check before its event is handled.
-    fn show(&self, on: bool) -> tauri::Result<()> {
-        let shown = self.shown.load(Ordering::SeqCst);
-        let item = &self.choices[usize::from(on)];
-        item.set_checked(on)?;
-        if shown != on {
-            self.menu.insert(item, self.position)?;
-            if let Err(error) = self.menu.remove(&self.choices[usize::from(shown)]) {
-                report(self.menu.remove(item), NativeIssue::AutomaticMenuUpdate);
-                return Err(error);
-            }
-            self.shown.store(on, Ordering::SeqCst);
-        }
-        Ok(())
-    }
-}
 
 /// Whether checks run on their own, as last saved.
 pub(crate) fn automatic(app: &AppHandle) -> bool {
@@ -67,36 +19,6 @@ pub(crate) fn automatic(app: &AppHandle) -> bool {
 /// Apply a saved choice.
 pub(super) fn set_automatic(app: &AppHandle, on: bool) {
     app.state::<Updates>().automatic.store(on, Ordering::SeqCst);
-    show(app, on);
-}
-
-/// Show `on` in the tray. Queued, never awaited, so the worker never waits
-/// on the main thread.
-fn show(app: &AppHandle, _on: bool) {
-    let handle = app.clone();
-    let queued = app.run_on_main_thread(move || {
-        if let Some(item) = handle.try_state::<AutomaticMenuItem>() {
-            report(item.show(automatic(&handle)), NativeIssue::AutomaticMenuUpdate);
-        }
-    });
-    report(queued, NativeIssue::AutomaticMenuUpdate);
-}
-
-/// The clicked item's ID records the choice it displayed. Never read its
-/// mutable tick: a queued save may have repainted it before this event.
-pub(crate) fn toggle_automatic(app: &AppHandle, id: &str) {
-    if let Some(asked) = tray_choice(id) {
-        show(app, automatic(app));
-        change(app, asked);
-    }
-}
-
-fn tray_choice(id: &str) -> Option<bool> {
-    match id {
-        AUTOMATIC_ON => Some(true),
-        AUTOMATIC_OFF => Some(false),
-        _ => None,
-    }
 }
 
 /// The worker's queue, started on first use and again after a failure.
@@ -126,7 +48,7 @@ fn start(app: &AppHandle) -> Result<Sender<bool>, ()> {
     let worker = std::thread::Builder::new()
         .name("update-setting".to_owned())
         .spawn(move || serve(queue, |on| save(&handle, on)));
-    report(worker.as_ref().map(drop), NativeIssue::AutomaticMenuUpdate);
+    report(worker.as_ref().map(drop), NativeIssue::UpdateSetting);
     worker.map(|_| changes).map_err(drop)
 }
 
@@ -137,9 +59,9 @@ fn serve(queue: Receiver<bool>, mut save: impl FnMut(bool)) {
     }
 }
 
-/// Saved first, then applied: the menus and the running app change only once
+/// Saved first, then applied: Settings and the running app change only once
 /// the choice is on disk, so quitting at any moment never loses a choice that
-/// was shown as made. More hears what applies either way.
+/// was shown as made. Settings hears what applies either way.
 fn save(app: &AppHandle, on: bool) {
     let file = app.state::<SettingsFile>();
     let saved = file
@@ -164,7 +86,7 @@ fn save(app: &AppHandle, on: bool) {
     for window in ["main", crate::settings_window::LABEL] {
         report(
             app.emit_to(window, "update:automatic", automatic(app)),
-            NativeIssue::AutomaticMenuUpdate,
+            NativeIssue::UpdateSetting,
         );
     }
 }
@@ -176,7 +98,7 @@ pub(crate) fn apply_file_setting(app: &AppHandle, saved: Option<bool>) {
     for window in ["main", crate::settings_window::LABEL] {
         report(
             app.emit_to(window, "update:automatic", automatic(app)),
-            NativeIssue::AutomaticMenuUpdate,
+            NativeIssue::UpdateSetting,
         );
     }
 }
@@ -188,9 +110,8 @@ pub(crate) async fn update_checks(app: AppHandle) -> Option<bool> {
     available(&app).then(|| automatic(&app))
 }
 
-/// Turn automatic checks on or off, as asked in More. The saved answer
-/// arrives as the `update:automatic` event. Not async, so it runs on the main
-/// thread and is queued in click order with the tray's clicks.
+/// Turn automatic checks on or off from Settings. The saved answer arrives
+/// as the `update:automatic` event; changes are queued in click order.
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) fn set_update_checks(app: AppHandle, enabled: bool) {
@@ -261,24 +182,6 @@ mod tests {
             let said = ibis_engine::catalogue::text(id, None, &[]);
             assert!(said.is_some_and(|text| !text.is_empty()), "{id} is in the catalogue");
         }
-    }
-
-    #[test]
-    fn tray_click_keeps_its_intent_after_a_queued_repaint() -> Result<(), Box<dyn std::error::Error>> {
-        // The person clicked the checked item to turn updates off. A queued
-        // save repaints the check before the event arrives, but not its ID.
-        let clicked_id = AUTOMATIC_OFF;
-        let (changes, queue) = mpsc::channel();
-        for on in [Some(true), Some(true), tray_choice(clicked_id)].into_iter().flatten() {
-            changes.send(on)?;
-        }
-        drop(changes);
-        let mut saved = Vec::new();
-        serve(queue, |on| saved.push(on));
-        assert_eq!(saved, [true, true, false]);
-        assert_eq!(tray_choice(AUTOMATIC_ON), Some(true));
-        assert_eq!(tray_choice("update_now"), None);
-        Ok(())
     }
 
     #[test]

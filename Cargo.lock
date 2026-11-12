@@ -2070,6 +2070,7 @@ name = "ibis-core"
 version = "0.3.3"
 dependencies = [
  "memchr",
+ "nix",
  "proptest",
  "schemars 1.2.3",
  "serde",

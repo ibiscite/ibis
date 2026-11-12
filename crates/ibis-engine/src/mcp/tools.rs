@@ -80,7 +80,7 @@ pub(super) const TOOLS: [Tool; 4] = [
     Tool {
         name: "styles",
         title: "Find citation styles",
-        description: "Find the style ids cite accepts by journal or style name, among every official CSL style, and list the languages a citation can be written in. With no query, the common styles come first.",
+        description: "Find the style ids cite accepts by journal or style name, and the languages a citation can be written in. With no query, the common styles come first.",
         input: styles_input,
         output: styles_output,
         reads_library: |_| false,
@@ -262,8 +262,9 @@ fn search_input() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "query": {"type": "string", "minLength": 1, "description": "A few distinctive words: an author surname, title words, a year or a citation key."},
-            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10}
+            "query": {"type": "string", "minLength": 1, "description": "Distinctive words: an author surname, title words, a year or a key."},
+            "limit": {"type": "integer", "minimum": 1, "maximum": MAX_HITS, "default": 10},
+            "shorthand": {"type": "boolean", "description": "Read \"see\" before and \"417\" after the words into cited_with."}
         },
         "required": ["query"],
         "additionalProperties": false
@@ -276,7 +277,7 @@ fn record_output() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "ref": {"type": "string", "description": "Pass this to show or cite: the citation key, or an id when no key selects this record alone."},
+            "ref": {"type": "string", "description": "Pass to show or cite: the key, or an id when no key is unique."},
             "type": {}, "title": {}, "year": {}, "container": {}, "doi": {},
             "authors": {"type": "array", "items": {"type": "string"}}
         },
@@ -299,6 +300,8 @@ fn search_output() -> Value {
             "hits": {"type": "array", "items": hit},
             "complete": {"type": "boolean", "description": "False when more references match than these; use more distinctive words."},
             "missing": {"type": "array", "items": {"type": "string"}, "description": "Keys or identifiers from a pasted list that the library does not hold."},
+            "cited_with": {"type": "object", "description": "prefix and locator for the cite item"},
+            "searched_for": {"type": "string"},
             "provenance": {"type": "string"},
             "library_notes": {"type": "array", "items": {"type": "string"}, "description": "Why results may be missing or out of date. Tell the user."},
             "source_health": health_output(true)
@@ -321,10 +324,16 @@ fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Resul
             .filter(|limit| (1..=MAX_HITS).contains(limit))
             .ok_or_else(|| Refusal::bad(format!("limit must be a whole number from 1 to {MAX_HITS}.")))?,
     };
+    let shorthand = match arguments.get("shorthand") {
+        None => false,
+        Some(read) => read
+            .as_bool()
+            .ok_or_else(|| Refusal::bad("shorthand must be true or false."))?,
+    };
     // The engine probes one extra candidate and reports completeness.
     let result = engine.search(
         &SearchRequest {
-            interpret_locator: false,
+            interpret_locator: shorthand,
             query: query.to_owned(),
             limit,
             libraries: None,
@@ -359,6 +368,18 @@ fn search(engine: &Engine, _: &Formats, arguments: &Map<String, Value>) -> Resul
         hits.push(Value::Object(data));
     }
     let mut answer = json!({"hits": hits, "complete": complete, "provenance": PROVENANCE});
+    // What was read, in the cite tool's own item fields, for the reference it is cited with.
+    if let Some(read) = &result.shorthand {
+        let mut cited = Map::new();
+        if let Some(prefix) = &read.prefix {
+            cited.insert("prefix".into(), json!(prefix));
+        }
+        if let Some(locator) = &read.locator {
+            cited.insert("locator".into(), json!(locator.typed));
+        }
+        answer["cited_with"] = Value::Object(cited);
+        answer["searched_for"] = json!(read.search);
+    }
     if let Some(list) = result.list.as_ref().filter(|list| !list.missing.is_empty()) {
         answer["missing"] = json!(list.missing.iter().map(|key| view::clean(key)).collect::<Vec<_>>());
     }
@@ -464,7 +485,7 @@ fn cite_input() -> Value {
             "locator": {"type": "string", "description": "Where in the work, such as \"p. 12\", \"ch. 3\" or \"12-14\"."},
             "prefix": {"type": "string", "description": "Text before this item, such as \"see\"."},
             "suffix": {"type": "string", "description": "Text after this item."},
-            "omit_author": {"type": "boolean", "description": "Leave out the author, for when the sentence already names them."}
+            "omit_author": {"type": "boolean", "description": "Leave out the author the sentence already names."}
         },
         "required": ["ref"],
         "additionalProperties": false
@@ -474,10 +495,10 @@ fn cite_input() -> Value {
         "properties": {
             "items": {"type": "array", "items": item, "minItems": 1, "description": "The references, in order."},
             "records": {"type": "array", "items": {"type": "object"}, "minItems": 1, "description": "Instead of items: CSL-JSON objects, each with an id and a type. The library is not read."},
-            "format": {"type": "string", "enum": format_ids(), "description": "An output: a key syntax for the document's own citation processor, or one of the common styles."},
+            "format": {"type": "string", "enum": format_ids(), "description": "A key syntax for the document's own processor, or a common style."},
             "style": {"type": "string", "description": "Any style id from the styles tool, instead of format."},
             "locale": {"type": "string", "description": "A language for a style, such as de-DE, from the styles tool."},
-            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "How it reads. bibliography-only writes reference-list entries and needs a style."},
+            "form": {"type": "string", "enum": ["normal", "narrative", "author-only", "year-only", "full", "bibliography-only"], "description": "bibliography-only writes reference-list entries and needs a style."},
             "keep_order": {"type": "boolean", "description": "Keep this order where a style would sort."},
             "strict": {"type": "boolean", "description": crate::catalogue::text("mcp-strict-help", None, &[]).unwrap_or_default()},
             "for_app": {"type": "string", "description": "A macOS bundle ID or Windows executable: the output Ibis uses for that app."}

@@ -3,6 +3,9 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
+	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
+	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
 	/**
 	 * Choose a library with the system file dialog. The interface never passes
 	 * file paths; the result arrives as the `library:changed` event.
@@ -138,6 +141,11 @@ export const commands = {
 	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
+	/**
+	 * Asked when a person reaches for a citation's details by hand; true while the
+	 * hint has been shown fewer than [`SHORTHAND_HINTS`] times.
+	 */
+	shorthandHint: () => __TAURI_INVOKE<boolean>("shorthand_hint"),
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
@@ -210,9 +218,8 @@ export const commands = {
 	/** Whether update checks run on their own; `None` when this build has no updates. */
 	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
 	/**
-	 * Turn automatic checks on or off, as asked in More. The saved answer
-	 * arrives as the `update:automatic` event. Not async, so it runs on the main
-	 * thread and is queued in click order with the tray's clicks.
+	 * Turn automatic checks on or off from Settings. The saved answer arrives
+	 * as the `update:automatic` event; changes are queued in click order.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
@@ -266,9 +273,7 @@ export const commands = {
 	 * Hidden, the next `prepare` applies it before the window appears.
 	 */
 	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
-	/** The picker collects text from Search with Ibis once. */
 	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
-	/** A citation segment took its place: the trackpad's alignment tick. */
 	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
 	/** Double-clicking the search bar's empty area returns Ibis to its place. */
 	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
@@ -339,6 +344,17 @@ export type CommandError = {
 } | {
 	code: "failed";
 	message: string;
+};
+
+export type CommandState = "not-installed" | "matching" | "different" | "foreign";
+
+export type CommandStatus = {
+	installable: boolean;
+	profile_line: string | null;
+	removable: boolean;
+	state: CommandState;
+	used_path: string | null;
+	version: string | null;
 };
 
 export type Copied = {
@@ -615,13 +631,18 @@ export type LocatorInput = {
 	text: string;
 };
 
-/** The engine's interpretation, shown so the person can search as typed. */
+/**
+ * The engine's interpretation, shown so the person can search as typed: a
+ * signal read off the start (`see`) and a locator read off the end (`417`).
+ */
 export type LocatorQuery = {
-	locator: Locator;
+	locator?: Locator | null;
+	/** The signal exactly as typed, to become the reference's prefix. */
+	prefix?: string | null;
 	/** What remains to search for. */
 	search: string;
 	/** The text read as the locator, exactly as typed. */
-	typed: string;
+	typed?: string | null;
 };
 
 /**

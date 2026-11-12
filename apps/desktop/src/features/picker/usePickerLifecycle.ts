@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useEffect } from "react";
-import type { PickerApi } from "../../App";
 import type { Operation } from "./Notices";
 import { closeOverlays } from "../../ui/layers";
 import type { useOperations } from "./useOperations";
@@ -11,7 +11,7 @@ import { OPERATION_FAILURES } from "./Notices";
 import { say } from "../../i18n";
 
 export function usePickerLifecycle({ api, pickerSession, menus, destination, preferences, resetPointer, readShortcut, report, setAltHeld }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: Pick<ReturnType<typeof usePickerSession>, "session" | "send">;
   menus: Pick<ReturnType<typeof usePickerMenus>, "input" | "focusHome">;
   destination: ReturnType<typeof useDestination>;

@@ -266,17 +266,16 @@ pub enum Density {
     Comfortable,
 }
 
-/// Picker content size and position relative to a display's work area, in
-/// logical pixels. Display changes clamp these values before presentation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Picker content size in logical pixels and optional top-left position as
+/// fractions of the display's usable width and height. Keys are native stable
+/// display IDs.
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct PickerWindow {
     pub width: u32,
     pub height: u32,
-    /// Moving the header remembers a place without turning the default size
-    /// into a custom size. Only an edge drag sets this flag.
     pub custom_size: bool,
-    pub x: i32,
-    pub y: i32,
+    #[serde(default)]
+    pub position: Option<(f64, f64)>,
 }
 
 /// Quiet, device-local feedback. No reference text or library paths are stored.
@@ -289,9 +288,11 @@ pub struct Delights {
     pub welcome: bool,
     pub libraries: BTreeMap<String, u8>,
     pub fact_index: Option<u8>,
+    /// How often the picker has taught what can be typed with the search.
+    pub shorthand_hints: u8,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Settings {
     pub schema_version: u32,
