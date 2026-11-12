@@ -10,10 +10,9 @@
   background: transparent; color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line); text-align: start; cursor: default; outline: none;
 }
 .ui-side-navigation-tile {
-  flex: none; display: grid; place-items: center; width: var(--icon); height: var(--icon); border-radius: var(--r-icon);
+  flex: none; display: grid; place-items: center; width: var(--icon-tile); height: var(--icon-tile); border-radius: var(--r-icon);
   background: var(--page); color: var(--thumb); font-size: var(--type-label-size); font-weight: var(--strong); line-height: 1;
 }
-.ui-side-navigation-tile svg { display: block; width: var(--icon-compact); height: var(--icon-compact); }
 .ui-side-navigation-tile[data-page="general"] { --page: var(--page-general); }
 .ui-side-navigation-tile[data-page="look"] { --page: var(--page-look); }
 .ui-side-navigation-tile[data-page="citations"] { --page: var(--page-citations); }

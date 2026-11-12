@@ -7,11 +7,12 @@ import { PickerPicture } from "./PickerPicture";
 const sources = await vi.hoisted(async () => {
   const { readFileSync } = await vi.importActual<{ readFileSync: (url: URL, encoding: string) => string }>("node:fs");
   const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  return { picker: readFileSync(new FileURL("../ui/Window.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8") };
+  return { picker: readFileSync(new FileURL("../ui/Window.css", import.meta.url), "utf8"), button: readFileSync(new FileURL("../ui/Button.css", import.meta.url), "utf8"), iconButton: readFileSync(new FileURL("../ui/IconButton.css", import.meta.url), "utf8"), icon: readFileSync(new FileURL("../ui/Icon.css", import.meta.url), "utf8") };
 });
 vi.mock("../ui/Window.css?raw", () => ({ default: sources.picker }));
 vi.mock("../ui/Button.css?raw", () => ({ default: sources.button }));
 vi.mock("../ui/IconButton.css?raw", () => ({ default: sources.iconButton }));
+vi.mock("../ui/Icon.css?raw", () => ({ default: sources.icon }));
 
 test.each(["light", "dark"])("the %s snapshot owns its theme at the shadow host and retains the real controls and list styling", (appearance) => {
   const { container } = render(<PickerPicture appearance={appearance} />);
@@ -19,6 +20,7 @@ test.each(["light", "dark"])("the %s snapshot owns its theme at the shadow host 
   expect(host.style.colorScheme).toBe(appearance);
   expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(".ui-button[data-variant]");
   expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(".ui-icon-button.ui-button[data-variant]");
+  expect(host.shadowRoot!.querySelector("style")!.textContent).toContain(sources.icon);
   expect(host.shadowRoot!.querySelector("style")!.textContent).not.toContain("color-scheme: light dark;");
   expect(host.shadowRoot!.querySelector(".results-area > #results")).toBeTruthy();
 });

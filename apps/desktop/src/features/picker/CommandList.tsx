@@ -21,7 +21,7 @@ export function CommandList({ commands, active, hoverAllowed, onRun }: {
       {commands.map((command, i) => <Option key={command.id} id={`command-${i}`} className="command-row" role="option" aria-selected={i === active}
         aria-keyshortcuts={command.keys || undefined} aria-description={command.about} data-density="compact" data-active={i === active || undefined}
         hoverAllowed={hoverAllowed} onClick={() => onRun(command)}>
-        <span className="result-tile"><Icon name={command.icon} /></span>
+        <span className="result-tile"><Icon name={command.icon} size="tile" /></span>
         <span className="result-body">
           <span className="result-line">
             <strong className="result-title">{command.title}</strong>

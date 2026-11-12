@@ -16,7 +16,6 @@
    --remove-gap from the chip's edge on every side. The 32 px pointer target stays. */
 .shelf-segment { --remove-gap: calc((var(--control-small-h) - var(--space-4)) / 2); --remove-room: calc(var(--space-1) + var(--space-4) + var(--remove-gap)); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] { --icon-button-size: var(--space-4); position: absolute; z-index: var(--z-chrome); inset-block-start: 50%; inset-inline-end: calc(var(--remove-gap) - var(--band-control-pad, var(--space-2))); translate: 0 -50%; visibility: hidden; border: 0; border-radius: var(--r-small); color: var(--text-secondary); --ring-offset: var(--ring-inside); }
-.shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant] > svg { width: var(--space-3); height: var(--space-3); }
 .shelf-segment > .shelf-remove.ui-icon-button.ui-button[data-variant]:is([data-hovered], [data-pressed]) { background: var(--fill-control-hover); color: var(--text); }
 @media (hover: hover) {
   .shelf-segment:is(:hover, [data-hovered]):not(:has([data-focus-visible])) > .shelf-remove.ui-icon-button.ui-button[data-variant] { visibility: visible; }

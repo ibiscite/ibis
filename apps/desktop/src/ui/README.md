@@ -21,7 +21,8 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Component | Rule |
 | --- | --- |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
-| IconButton | Square, one size and glyph size per context, `--r-control`; rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
+| Icon | Lucide, one path, 16px for controls or 20px for tiles and toolbar, always a 1.5px rendered stroke. Centred on the label line; parts never resize it. |
+| IconButton | Square, `--r-control`; regular uses the control Icon, large uses the tile Icon. Rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
 | Search field (`ui/SearchBar`) | The picker's top band is the window's drag region; `SearchField` is its large frameless input with a hidden label, a clear button while it holds text, and a trailing slot (the page token). Controls in the band fill the field's height and nest their corners in the window's. |
 | TextField | A visible label above one single-line input; `--surface-field`, the shared control height and corner, and the same keyboard focus ring. Forms keep validation beside the field and own saving. |
 | List row (`ui/Option`) | Every list of options (results, commands, recent and sample rows) draws the same row: the leading tile, a title that wraps to two lines (one in Compact), the year on the first line and a quiet meta line. A screen fills its row's text, never its spacing or colours. |

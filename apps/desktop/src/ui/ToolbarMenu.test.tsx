@@ -5,6 +5,7 @@ import { createRef, StrictMode } from "react";
 import { closeOverlays } from "./layers";
 import { ToolbarMenu, type ToolbarMenuSection } from "./ToolbarMenu";
 import { setPlatform } from "../nativeAppearance";
+import { iconPaths, iconViewBox } from "../icon-paths";
 
 const sections: ToolbarMenuSection[] = [{ id: "keys", label: "Key formats", items: [
   { id: "pandoc", label: "Pandoc", sample: "[@key]" },
@@ -32,18 +33,14 @@ function mount(items = sections) {
   return { onAction, parentKeys, trigger: screen.getByRole("button", { name: "Copy as Pandoc" }), search: screen.getByRole("textbox") };
 }
 
-test.each([
-  ["macos", "0 0 20 20"],
-  ["windows", "0 0 20 20"],
-  ["linux", "0 0 20 20"],
-])("%s popup uses the shared Ibis decorative indicator without changing the button name", async (platform, viewBox) => {
+test.each(["macos", "windows", "linux"])("%s popup uses the shared decorative indicator without changing the button name", async (platform) => {
   setPlatform(platform === "macos" ? "MacIntel" : platform === "windows" ? "Win32" : "Linux x86_64");
   const { trigger } = mount();
   expect(trigger.classList.contains("ui-button")).toBe(true);
   expect(trigger.getAttribute("data-variant")).toBe("secondary");
   const indicator = trigger.querySelector("svg")!;
-  expect(indicator.getAttribute("viewBox")).toBe(viewBox);
-  expect(indicator.querySelector("path")!.getAttribute("d")).toBe("M7 7l3-3 3 3M7 13l3 3 3-3");
+  expect(indicator.getAttribute("viewBox")).toBe(iconViewBox);
+  expect(indicator.querySelector("path")!.getAttribute("d")).toBe(iconPaths.chevrons);
   expect(indicator.getAttribute("aria-hidden")).toBe("true");
   expect(indicator.getAttribute("focusable")).toBe("false");
   const drawing = indicator.outerHTML;
