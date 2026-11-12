@@ -1057,6 +1057,7 @@ library-lines = lines { $lines } and { $last }
 library-lines-and-others = lines { $lines } and { $last }, and others
 library-work-limit = The library is too large to read in full.
 library-cloud-synced = It is in a cloud-synced folder, so changes can arrive late.
+library-zotero-newer = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
 library-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
 time-just-now = just now
 time-on = on { $date }
@@ -1201,3 +1202,13 @@ command-profile = Add this line to your shell profile, then reopen your terminal
 command-copy = Copy
 command-copied = Copied
 command-failed = Could not change the ibis command. Check the folder permissions and try again.
+
+# Source status and reading warnings; separate from citation warnings.
+source-warning-zotero-newer-than-tested = Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.
+source-warning-cloud-synced-directory = The library is in a cloud-synced folder, so changes can be late.
+source-warning-citation-keys-unavailable = Better BibTeX keys could not be read, so some items have none.
+source-warning-syntax = An entry could not be read, so Ibis skips it.
+source-warning-duplicate-key = More than one entry uses the same key or id, so Ibis skips them all.
+source-warning-field = A field could not be fully converted; check this entry.
+source-warning-work-limit = The library is too large to read in full.
+source-warning-invalid-attachment = An attachment link is not valid.

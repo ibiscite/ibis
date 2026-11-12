@@ -37,8 +37,16 @@ impl Audience {
 }
 
 /// The groups of engine codes, each a message per code.
-pub const GROUPS: [&str; 8] = [
-    "error", "reason", "refusal", "warning", "loss", "notice", "form", "cause",
+pub const GROUPS: [&str; 9] = [
+    "error",
+    "reason",
+    "refusal",
+    "warning",
+    "source-warning",
+    "loss",
+    "notice",
+    "form",
+    "cause",
 ];
 
 fn bundle() -> &'static FluentBundle<FluentResource> {
@@ -156,6 +164,7 @@ mod tests {
             ("reason", names::<ErrorReason>()),
             ("refusal", names::<CitationError>()),
             ("warning", names::<CitationWarningCode>()),
+            ("source-warning", names::<ibis_sources::WarningCode>()),
             ("loss", names::<LossField>()),
             ("notice", names::<Notice>()),
             ("form", names::<CitationForm>()),

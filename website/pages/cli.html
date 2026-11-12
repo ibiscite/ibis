@@ -15,14 +15,54 @@
     <p>In the picker, put the details right in the search: a word before the reference, the reference, then a page.</p>
     <figure class="picker shorthand-picker"><div class="picker-panel" data-app-tokens data-platform="macos"><div class="picker-search"><div class="picker-field"><span class="picker-mark" aria-hidden="true"><img class="logo-light" src="/assets/ibis-mark.svg" alt="" width="24" height="24"><img class="logo-dark" src="/assets/ibis-mark-on-dark.svg" alt="" width="24" height="24"></span><input type="search" value="see vale 417" placeholder="Try see vale 417" aria-label="Search, as you would in the picker" spellcheck="false" autocomplete="off" data-shorthand-input></div></div></div></figure>
     <ol class="gloss" data-shorthand-parts aria-live="polite" data-before="before" data-empty="No match in the sample references. Try vale, fen or reed."></ol>
-    <p class="draft">Lantern gardens follow the rhythm of imaginary cities <code class="key" data-shorthand-out data-empty="[@key, p. 12]">[see @vale2024lanterns, p. 417]</code></p>
+    <div class="draft-stack">
+      <p class="draft draft-reserve" aria-hidden="true">Lantern gardens follow imaginary cities <code class="key">[@fen2023clouds, chap. 2]</code><span class="draft-end">&#8288;<span class="caret"></span>.</span></p>
+      <p class="draft draft-reserve" aria-hidden="true">Lantern gardens follow imaginary cities <code class="key">[@reed2025maps, pp. 12–14]</code><span class="draft-end">&#8288;<span class="caret"></span>.</span></p>
+      <p class="draft draft-reserve" aria-hidden="true">Lantern gardens follow imaginary cities <code class="key">[see @vale2024lanterns, p. 33]</code><span class="draft-end">&#8288;<span class="caret"></span>.</span></p>
+      <p class="draft draft-reserve" aria-hidden="true">Lantern gardens follow imaginary cities <code class="key">[see @vale2024lanterns, p. 417]</code><span class="draft-end">&#8288;<span class="caret"></span>.</span></p>
+      <p class="draft">Lantern gardens follow imaginary cities <code class="key" data-shorthand-out>[see @vale2024lanterns, p. 417]</code><span class="draft-end">&#8288;<span class="caret" aria-hidden="true"></span>.</span></p>
+    </div>
     <p class="small try">Try <button type="button" data-try>fen ch 2</button> <button type="button" data-try>reed 12-14</button> <button type="button" data-try>see vale 33</button></p></div>
 </section>
 <section id="agents" class="row" aria-labelledby="agents-h">
   <p class="margin"><span class="key">@agents</span></p>
-  <div class="text"><h2 id="agents-h">For AI agents</h2>
-    <p>AI agents can make up references that look real. Ibis’s MCP server lets an agent search your references, show their fields, format citations and find styles, and nothing else: it’s read-only and doesn’t share notes or attachments. Add this command to your agent’s MCP setup:</p>
-    <div class="code single"><pre><code>ibis mcp</code></pre><button class="copy" type="button" data-copy="ibis mcp" data-copied="Copied" data-failed="Select to copy" title="Copy"><svg class="icon icon-copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg><svg class="icon icon-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg><span>Copy</span></button></div></div>
+  <div class="text"><h2 id="agents-h">Your library, in your AI assistant</h2>
+    <p>Find references and format citations from the libraries you choose.</p>
+    <p class="small">Try asking</p>
+    <p class="draft">“Find the lantern gardens paper in my library and cite it as Pandoc.”</p>
+    <div data-agent-tabs>
+      <div class="chips" role="tablist" aria-label="Your AI assistant">
+        <button class="key" type="button" role="tab" id="agent-any" aria-controls="agent-any-panel" aria-selected="true" tabindex="0" title="Any assistant" data-guide="">@any</button>
+        <button class="key" type="button" role="tab" id="agent-claude" aria-controls="agent-claude-panel" aria-selected="false" tabindex="-1" title="Claude Code and Claude Desktop" data-guide="#claude">@claude</button>
+        <button class="key" type="button" role="tab" id="agent-codex" aria-controls="agent-codex-panel" aria-selected="false" tabindex="-1" title="Codex" data-guide="#codex">@codex</button>
+        <button class="key" type="button" role="tab" id="agent-cursor" aria-controls="agent-cursor-panel" aria-selected="false" tabindex="-1" title="Cursor" data-guide="#cursor">@cursor</button>
+        <button class="key" type="button" role="tab" id="agent-vscode" aria-controls="agent-vscode-panel" aria-selected="false" tabindex="-1" title="VS Code" data-guide="#vs-code">@vscode</button>
+        <button class="key" type="button" role="tab" id="agent-chatgpt" aria-controls="agent-chatgpt-panel" aria-selected="false" tabindex="-1" title="ChatGPT desktop" data-guide="#chatgpt-desktop">@chatgpt</button>
+      </div>
+      <div class="tab-panels">
+        <div id="agent-any-panel" role="tabpanel" aria-labelledby="agent-any" aria-hidden="false" tabindex="0">
+          <p class="small">Paste into your assistant</p>
+          {{agent-any-prompt}}
+        </div>
+        <div id="agent-claude-panel" role="tabpanel" aria-labelledby="agent-claude" aria-hidden="true" tabindex="0" inert>
+          {{agent-claude-command}}
+        </div>
+        <div id="agent-codex-panel" role="tabpanel" aria-labelledby="agent-codex" aria-hidden="true" tabindex="0" inert>
+          {{agent-codex-command}}
+        </div>
+        <div id="agent-cursor-panel" role="tabpanel" aria-labelledby="agent-cursor" aria-hidden="true" tabindex="0" inert>
+          <p class="actions"><a href="cursor://anysphere.cursor-deeplink/mcp/install?name=ibis&amp;config=eyJjb21tYW5kIjoiaWJpcyIsImFyZ3MiOlsibWNwIiwiLS1hcHAtbGlicmFyaWVzIl19">Add to <span class="outbound-end">Cursor<span class="outbound" aria-hidden="true"></span></span></a></p>
+        </div>
+        <div id="agent-vscode-panel" role="tabpanel" aria-labelledby="agent-vscode" aria-hidden="true" tabindex="0" inert>
+          <p class="actions"><a href="vscode:mcp/install?%7B%22name%22%3A%22ibis%22%2C%22type%22%3A%22stdio%22%2C%22command%22%3A%22ibis%22%2C%22args%22%3A%5B%22mcp%22%2C%22--app-libraries%22%5D%7D">Add to VS <span class="outbound-end">Code<span class="outbound" aria-hidden="true"></span></span></a></p>
+        </div>
+        <div id="agent-chatgpt-panel" role="tabpanel" aria-labelledby="agent-chatgpt" aria-hidden="true" tabindex="0" inert>
+          <p>ChatGPT desktop: Settings › MCP servers › Add server, command <code>ibis mcp --app-libraries</code>. Not available in ChatGPT on the web.</p>
+        </div>
+      </div>
+      <p class="small"><a href="/cli/#install">Install ibis <span class="outbound-end">first<span class="outbound" aria-hidden="true"></span></span></a> · <a href="https://github.com/ibiscite/ibis/blob/main/docs/agents.md" data-agent-guide>Setup guide</a></p>
+    </div>
+    <p class="small">Read-only access to the libraries you choose; your AI provider’s privacy policy applies.</p></div>
 </section>
 <section id="install" class="row" aria-labelledby="install-h">
   <p class="margin"><span class="key">@install</span></p>
