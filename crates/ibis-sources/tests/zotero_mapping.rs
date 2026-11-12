@@ -334,7 +334,11 @@ fn maximum_length_particle_and_date_inputs_have_bounded_work() {
     let result =
         mapped(json!({"date": date, "creators": [{"creatorType": "author", "firstName": given, "lastName": family}]}));
     assert_eq!(result.record.csl["issued"], json!({"literal": date}));
-    assert!(result.warnings.contains(&zotero::MappingWarning::DateParseLimit));
+    assert!(
+        result
+            .warnings
+            .contains(&zotero::MappingWarning::DateParseLimit("issued"))
+    );
     assert_eq!(result.record.csl["author"][0]["family"], "Synthetic");
     assert_eq!(result.record.csl["author"][0]["given"], "Example");
     assert!(started.elapsed() < std::time::Duration::from_secs(5));

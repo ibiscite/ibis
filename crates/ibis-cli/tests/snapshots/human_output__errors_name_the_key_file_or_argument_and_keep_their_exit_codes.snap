@@ -4,11 +4,13 @@ expression: said
 ---
 $ ibis --file errors.bib cite first absent
 exit 4
-stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
+stderr| ibis: no reference has the key 'absent'
+stderr|   Try: ibis search absent --file <tmp>/errors.bib
 
 $ ibis --file errors.bib show absent
 exit 4
-stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
+stderr| ibis: no reference has the key 'absent'
+stderr|   Try: ibis search absent --file <tmp>/errors.bib
 
 $ ibis --file duplicate-one.bib --file duplicate-two.bib cite same
 exit 3
@@ -59,5 +61,6 @@ stderr| ibis: --id must be a reference's id, the JSON that ibis search --json pr
 
 $ ibis show absent --json
 exit 4
-stdout| {"error":{"code":"not-found"},"ibis":1,"ok":false}
-stderr| ibis: no reference has the citation key 'absent'; find the right key with: ibis search <words>
+stdout| {"error":{"code":"not-found","next":["ibis","search","absent"],"suggestions":[]},"ibis":1,"ok":false}
+stderr| ibis: no reference has the key 'absent'
+stderr|   Try: ibis search absent

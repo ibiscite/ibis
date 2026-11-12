@@ -131,6 +131,8 @@ pub struct PastedList {
 pub struct SearchResult {
     pub snapshot: Fingerprints,
     pub hits: Vec<SearchHit>,
+    /// True when every match is included; independent of library source health.
+    pub complete: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub list: Option<PastedList>,
     /// The locator read off the end of the query, when one was asked for and found.
@@ -439,18 +441,24 @@ impl Engine {
         let query = locator
             .as_ref()
             .map_or(request.query.as_str(), |read| read.search.as_str());
-        let (hits, list) = match pasted {
+        let (mut hits, list) = match pasted {
             Some(list) => (list.hits, Some(PastedList { missing: list.missing })),
             None => (
                 state
                     .index
-                    .search(query, request.limit, request.libraries.as_deref(), &|| {
+                    .search(query, request.limit + 1, request.libraries.as_deref(), &|| {
                         cancel.is_cancelled()
                     })
                     .ok_or_else(|| error(ErrorCode::Cancelled))?,
                 None,
             ),
         };
+        // Pasted lists deliberately return the whole exact selection. Ordinary
+        // searches probe one extra candidate, then expose only the requested page.
+        let complete = list.is_some() || hits.len() <= request.limit;
+        if list.is_none() {
+            hits.truncate(request.limit);
+        }
         #[derive(Serialize)]
         struct HitView<'a> {
             item: &'a SnapshotObject,
@@ -461,6 +469,7 @@ impl Engine {
         }
         #[derive(Serialize)]
         struct SearchView<'a> {
+            complete: bool,
             snapshot: &'a Fingerprints,
             hits: Vec<HitView<'a>>,
             #[serde(skip_serializing_if = "Option::is_none")]
@@ -470,6 +479,7 @@ impl Engine {
             source_health: &'a health::SourceHealth,
         }
         let view = SearchView {
+            complete,
             source_health: &source_health,
             snapshot: state.index.snapshot().fingerprints(),
             list: list.as_ref(),
@@ -489,6 +499,7 @@ impl Engine {
         drop(view);
         cancel.check()?;
         Ok(SearchResult {
+            complete,
             snapshot: state.index.snapshot().fingerprints().clone(),
             list,
             hits: hits
