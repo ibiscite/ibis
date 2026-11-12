@@ -1519,6 +1519,7 @@ mod tests {
                 code: ibis_sources::WarningCode::Field,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             };

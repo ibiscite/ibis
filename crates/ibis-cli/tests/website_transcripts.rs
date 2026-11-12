@@ -3,6 +3,32 @@ use std::{io::Cursor, path::Path};
 
 #[test]
 fn website_transcripts_match_the_cli() -> Result<(), Box<dyn std::error::Error>> {
+    // Isolate terminal environment from other parallel tests and the caller's
+    // window size. The child stdout is a pipe; OutputMode still selects the
+    // terminal renderer, with an explicit 80-column fallback.
+    if std::env::var_os("IBIS_TERMINAL_TRANSCRIPT").is_none() {
+        for no_color in [true, false] {
+            let mut child = std::process::Command::new(std::env::current_exe()?);
+            child
+                .args(["--exact", "website_transcripts_match_the_cli", "--nocapture"])
+                .env("IBIS_TERMINAL_TRANSCRIPT", "1")
+                .env("COLUMNS", "80")
+                .env("CLICOLOR_FORCE", "1");
+            if no_color {
+                child.env("NO_COLOR", "").env("TERM", "xterm");
+            } else {
+                child.env_remove("NO_COLOR").env("TERM", "dumb");
+            }
+            let output = child.output()?;
+            assert!(
+                output.status.success(),
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            );
+        }
+        return Ok(());
+    }
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     let temporary = tempfile::tempdir()?;
     ibis_engine::identity::use_key_file(temporary.path().join("library-ids.key"), true);
@@ -53,12 +79,16 @@ fn website_transcripts_match_the_cli() -> Result<(), Box<dyn std::error::Error>>
             Cursor::new([]),
             &mut output,
             &mut errors,
-            ibis::OutputMode::Plain,
+            ibis::OutputMode::Terminal,
         );
         if expected.starts_with("ibis: ") {
             assert_ne!(code, 0, "{command}");
             assert!(output.is_empty(), "refusals never print a citation");
-            assert_eq!(String::from_utf8(errors)?, expected, "{command}");
+            let shown = String::from_utf8(errors)?.replace(
+                root.join("fixtures/website/sample.bib").to_str().ok_or("path")?,
+                "sample.bib",
+            );
+            assert_eq!(shown, expected, "{command}");
         } else {
             assert_eq!(code, 0, "{command}: {}", String::from_utf8_lossy(&errors));
             assert!(errors.is_empty(), "{command}");

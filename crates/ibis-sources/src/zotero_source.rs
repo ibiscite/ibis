@@ -338,6 +338,7 @@ impl ZoteroSource {
                     },
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 })
@@ -347,6 +348,7 @@ impl ZoteroSource {
                     code: WarningCode::CitationKeysUnavailable,
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 });
@@ -428,6 +430,7 @@ impl ZoteroSource {
                     code,
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 })
@@ -498,33 +501,62 @@ impl ZoteroSource {
                     {
                         mapped.record.citation_keys.clear();
                     }
-                    objects.push(LibraryObject::Record(mapped.record));
-                    warnings.extend(mapped.warnings.into_iter().map(|warning| SourceWarning {
-                        code: if warning == MappingWarning::DateParseLimit {
-                            WarningCode::WorkLimit
-                        } else {
-                            WarningCode::Field
-                        },
-                        line: None,
-                        key: None,
-                        cause: None,
-                        field: None,
+                    let label = mapped
+                        .record
+                        .citation_keys
+                        .first()
+                        .map(|key| key.value.clone())
+                        .or_else(|| {
+                            mapped
+                                .record
+                                .csl
+                                .get("title")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                        });
+                    warnings.extend(mapped.warnings.into_iter().map(|warning| {
+                        let (code, cause, field) = match warning {
+                            MappingWarning::UnknownField => {
+                                (WarningCode::Field, crate::WarningCause::UnknownField, None)
+                            }
+                            MappingWarning::SkippedCreator => {
+                                (WarningCode::Field, crate::WarningCause::Names, Some("creators"))
+                            }
+                            MappingWarning::InvalidCitationKey => {
+                                (WarningCode::Field, crate::WarningCause::Value, Some("citationKey"))
+                            }
+                            MappingWarning::InvalidAlias => {
+                                (WarningCode::Field, crate::WarningCause::Value, Some("extra"))
+                            }
+                            MappingWarning::PrivateUrl => (WarningCode::Field, crate::WarningCause::Link, Some("url")),
+                            MappingWarning::DateParseLimit(field) => {
+                                (WarningCode::WorkLimit, crate::WarningCause::TooLarge, Some(field))
+                            }
+                        };
+                        SourceWarning::at(code, None)
+                            .because(cause, field)
+                            .for_entry(label.as_deref())
                     }));
+                    objects.push(LibraryObject::Record(mapped.record));
                 }
-                Err(MappingError::UnsupportedType) => warnings.push(SourceWarning {
-                    code: WarningCode::Field,
-                    line: None,
-                    key: None,
-                    cause: None,
-                    field: None,
-                }),
-                Err(MappingError::InputLimit) => warnings.push(SourceWarning {
-                    code: WarningCode::WorkLimit,
-                    line: None,
-                    key: None,
-                    cause: None,
-                    field: None,
-                }),
+                Err(MappingError::UnsupportedType) => warnings.push(
+                    SourceWarning::at(WarningCode::Field, None)
+                        .because(crate::WarningCause::UnknownType, Some("itemType"))
+                        .for_entry(
+                            item.fields
+                                .get("citationKey")
+                                .or_else(|| item.fields.get("title"))
+                                .map(String::as_str),
+                        ),
+                ),
+                Err(MappingError::InputLimit) => warnings.push(
+                    SourceWarning::at(WarningCode::WorkLimit, None).for_entry(
+                        item.fields
+                            .get("citationKey")
+                            .or_else(|| item.fields.get("title"))
+                            .map(String::as_str),
+                    ),
+                ),
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
@@ -761,6 +793,43 @@ mod tests {
     use super::*;
     use ibis_core::zotero::api::Response;
     use serde_json::{Value, json};
+
+    #[test]
+    fn field_warnings_name_the_citation_key_or_title_and_the_date_field() {
+        for (field, expected) in [
+            ("date", "issued"),
+            ("accessDate", "accessed"),
+            ("originalDate", "original-date"),
+        ] {
+            for key in [None, Some("vale2024")] {
+                let mut item = ZoteroItem {
+                    key: "SYNTH001".into(),
+                    item_type: "book".into(),
+                    fields: BTreeMap::from([
+                        ("title".into(), "Invented Lantern".into()),
+                        (field.into(), "x".repeat(5000)),
+                    ]),
+                    ..ZoteroItem::default()
+                };
+                if let Some(key) = key {
+                    item.fields.insert("citationKey".into(), key.into());
+                }
+                let loaded = ZoteroSource::default()
+                    .map_items(LibraryId::digest(b"invented"), [item], vec![], &|| false)
+                    .unwrap();
+                let warning = loaded
+                    .warnings
+                    .iter()
+                    .find(|warning| warning.field.as_deref() == Some(expected))
+                    .unwrap();
+                assert_eq!(warning.entry.as_deref(), Some(key.unwrap_or("Invented Lantern")));
+                let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
+                    panic!("reference")
+                };
+                assert_eq!(record.csl[expected], json!({"literal":"x".repeat(5000)}));
+            }
+        }
+    }
     fn registry(profiles: &[(&str, &str)]) -> (tempfile::TempDir, discovery::Discovery) {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().join(".zotero/zotero");
@@ -925,6 +994,7 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             }]
@@ -956,6 +1026,7 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             }]

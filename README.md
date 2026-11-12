@@ -16,6 +16,7 @@ citation where you write. No account, no uploads, no telemetry; sources read wit
 Download the numbered [release](https://github.com/ibiscite/ibis/releases/latest) or
 [Ibis Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly).
 They install as separate apps. Both are early previews.
+See [how to recognise official Ibis](TRADEMARKS.md#how-to-recognise-official-ibis).
 
 | System | Ibis download |
 | --- | --- |
@@ -73,7 +74,12 @@ ibis cite vale2024lanterns --file refs.bib --style apa
 
 See the [CLI reference](docs/cli.md) for installation, JSON, projects,
 JSON-RPC and the [agent plugin](docs/cli.md#ai-agents-mcp).
-Connect your AI assistant with the [setup guide](docs/agents.md).
+Connect your AI assistant with the [setup guide](https://ibiscite.org/setup),
+or paste this prompt:
+
+```text
+Set up Ibis for me: https://ibiscite.org/setup
+```
 
 ## Help and feedback
 
