@@ -129,7 +129,8 @@ footer > .text { border-top: var(--border-width) solid var(--separator); padding
   .row { grid-template-columns: var(--website-margin) minmax(0, 1fr); }
   .row > .text { grid-column: 2; }
   .index { position: absolute; z-index: var(--z-chrome); inset-block-start: var(--website-top); inset-block-end: 0; inset-inline-start: var(--website-pad); width: var(--website-margin); padding: 0; text-align: end; }
-  .index-sticky { position: sticky; inset-block-start: var(--space-6); max-height: calc(100svh - 3rem); overflow-y: auto; }
+  .index-sticky { position: sticky; inset-block-start: var(--space-6); max-height: calc(100svh - 3rem); overflow-y: auto; scrollbar-width: none; }
+  .index-sticky::-webkit-scrollbar { display: none; }
   .logo { --logo-width: 13rem; margin-inline-start: auto; overflow: clip; }
   .logo img { margin-inline-end: var(--logo-edge); } /* Clipping only clear space keeps the sidebar from scrolling sideways. */
   .index ul { display: block; } .index nav a { justify-content: flex-end; font-size: var(--type-reading-size); }
@@ -283,3 +284,9 @@ main:not([data-page="home"]) h1 { font-size: clamp(calc(var(--type-search-size) 
 .next-page .arrow { width: var(--space-4); height: var(--space-4); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); }
 .next-page a:hover { color: var(--text); }
 @media (prefers-reduced-motion: no-preference) { .next-page .arrow { transition: translate var(--dur-1) var(--ease-out); } .next-page a:hover .arrow { translate: var(--space-1) 0; } }
+/* Short windows: the sidebar tightens so it always fits; it never shows a scroll bar. */
+@media (min-width: 62rem) and (max-height: 46rem) {
+  .logo { --logo-width: 10rem; }
+  .index nav a { min-height: 0; padding-block: .3rem; }
+  .appearance { margin-top: var(--space-3); }
+}
