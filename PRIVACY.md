@@ -112,3 +112,11 @@ app's values. Keep the shared WebView2 Runtime for other apps.
 Delete only confirmed Ibis staging files or app-specific crash reports.
 System logs, backups, clipboard history and shared caches are governed by
 their owners. These steps leave library files and Zotero data intact.
+
+## The website
+
+ibiscite.org is served by Cloudflare. Cloudflare counts visits from its own
+request records and shows the project only totals: page views, visits,
+countries and referring sites. The website has no analytics script, cookies
+or trackers, and the project never sees who you are. GitHub likewise shows
+the project only download totals for releases.
