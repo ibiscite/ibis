@@ -149,7 +149,7 @@ fn a_library_of_skipped_entries_is_not_called_empty() {
     );
     let (code, stdout, stderr) = lab.run(&["search", "first", "--file", &file]);
     assert_eq!((code, stdout.as_str()), (1, "No references found.\n"));
-    assert!(stderr.contains("see: ibis libraries"), "{stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
 }
 
 #[test]
@@ -182,18 +182,12 @@ fn show_prints_a_reference_for_reading_and_json_keeps_everything() {
 }
 
 #[test]
-fn the_warning_note_gives_a_command_that_works() {
+fn duplicate_entry_warnings_stay_in_libraries() {
     let lab = Lab::new("note");
     let file = lab.file("refs with space.bib", BIB);
     let (code, _, stderr) = lab.run(&["search", "lantern", "--file", &file]);
     assert_eq!(code, 1);
-    let command = stderr.split("see: ibis ").nth(1).unwrap().trim();
-    let quoted = if cfg!(windows) {
-        format!("\"{file}\"")
-    } else {
-        format!("'{file}'")
-    };
-    assert_eq!(command, format!("libraries --file {quoted}"));
+    assert!(stderr.is_empty(), "{stderr}");
     let (code, stdout, stderr) = lab.run(&["libraries", "--file", &file]);
     assert_eq!(code, 1, "{stderr}");
     assert!(stdout.contains("2 warnings"), "{stdout}");
@@ -382,7 +376,7 @@ fn a_library_read_whole_is_not_called_cut_short_by_another_limit() {
     for file in [file, padded] {
         let (code, _, stderr) = lab.run(&["cite", "missing", "--style", "apa", "--file", &file]);
         assert_eq!(code, 4, "{stderr}");
-        assert!(stderr.contains("no reference has the citation key"), "{stderr}");
+        assert!(stderr.contains("no reference has the key"), "{stderr}");
         assert!(!stderr.contains("too large"), "{stderr}");
     }
 }
