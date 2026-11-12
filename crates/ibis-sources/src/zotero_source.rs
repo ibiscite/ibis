@@ -9,6 +9,7 @@ use ibis_core::zotero::libraries;
 pub use ibis_core::zotero::libraries::Group;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
 use ibis_zotero_local::closed;
+pub use ibis_zotero_local::closed::ClosedError;
 pub use ibis_zotero_local::discovery;
 pub use ibis_zotero_local::live::{Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
@@ -49,7 +50,13 @@ impl ZoteroError {
         )
     }
     pub fn newer(self) -> bool {
-        matches!(self, Self::Closed(closed::ClosedError::TooNew))
+        matches!(self, Self::Closed(closed::ClosedError::TooNew { .. }))
+    }
+    pub fn schema_table(self) -> Option<ibis_core::contract::ZoteroTable> {
+        match self {
+            Self::Closed(closed::ClosedError::TooNew { table }) => Some(table),
+            _ => None,
+        }
     }
     pub fn limited(self) -> bool {
         matches!(
@@ -405,6 +412,7 @@ impl ZoteroSource {
                 .warnings
                 .iter()
                 .filter_map(|warning| match warning {
+                    closed::ClosedWarning::NewerThanTested => Some(WarningCode::ZoteroNewerThanTested),
                     closed::ClosedWarning::CloudSyncedDirectory => Some(WarningCode::CloudSyncedDirectory),
                     closed::ClosedWarning::ItemTooLarge { library_id, .. } if *library_id == found.library_id => {
                         Some(WarningCode::WorkLimit)
@@ -866,7 +874,9 @@ mod tests {
             Some(ErrorReason::ZoteroNoSpace)
         );
         for no_advice in [
-            ZoteroError::Closed(closed::ClosedError::TooNew),
+            ZoteroError::Closed(closed::ClosedError::TooNew {
+                table: closed::ZoteroTable::Items,
+            }),
             ZoteroError::Closed(closed::ClosedError::TooLarge),
             ZoteroError::Closed(closed::ClosedError::Cancelled),
             ZoteroError::Closed(closed::ClosedError::Changing),
@@ -1590,6 +1600,29 @@ mod tests {
             assert_eq!(ZoteroSource::new(&chosen).err(), Some(ZoteroError::Selection));
         }
         assert_eq!(ZoteroSource::default().libraries(), vec![Library::User]);
+    }
+
+    #[test]
+    fn newer_compatible_zotero_warns_on_the_library_and_not_its_records() {
+        let snapshot = closed::ClosedSnapshot {
+            schema_version: 132,
+            libraries: vec![closed_library(1, None, "Invented atlas", "")],
+            warnings: vec![closed::ClosedWarning::NewerThanTested],
+            better_bibtex_unknown: false,
+            owner: 0,
+        };
+        let loaded = ZoteroSource::default()
+            .publish_closed(&snapshot, &|| false)
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            loaded.warnings,
+            vec![SourceWarning::at(WarningCode::ZoteroNewerThanTested, None)]
+        );
+        let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
+            panic!("invented record");
+        };
+        assert!(record.warnings.is_empty());
     }
 
     fn closed_library(library_id: i64, group_id: Option<i64>, title: &str, bbt: &str) -> closed::ClosedLibrary {

@@ -1,13 +1,16 @@
 //! Query only the disposable copy. No CSL/legacy model adapters live here.
 use super::{
     ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, RawCreator, RawItem,
-    SourceMetadata, StoredValue,
+    SourceMetadata, StoredValue, ZoteroTable,
 };
 use rusqlite::config::DbConfig;
 use rusqlite::limits::Limit;
 use rusqlite::{Connection, OpenFlags, Row};
 use std::cell::Cell;
 use std::collections::{BTreeMap, BTreeSet};
+
+// Verified against Zotero 10.0.9; see fixtures/closed/README.md.
+const TESTED_SCHEMA: i64 = 131;
 
 const MAX_ITEMS: usize = 1_000_000;
 const MAX_VALUE: usize = 256 * 1024;
@@ -65,11 +68,11 @@ pub(super) fn read(
     if version < 123 {
         return Err(ClosedError::TooOld);
     }
-    if version > 130 {
-        return Err(ClosedError::TooNew);
-    }
-    for (table, fields) in TABLES {
-        validate_table(&db, table, fields)?;
+    for &(table, fields) in TABLES {
+        validate_table(&db, table.name(), fields).map_err(|error| match error {
+            ClosedError::Damaged if version > TESTED_SCHEMA => ClosedError::TooNew { table },
+            error => error,
+        })?;
     }
     let settings = validate_table(&db, "settings", &["setting", "key", "value"]).is_ok();
     let zotero = settings
@@ -120,7 +123,11 @@ pub(super) fn read(
         Ok(())
     })?;
     let mut items = BTreeMap::<i64, ClosedItem>::new();
-    let mut warnings = Vec::new();
+    let mut warnings = if version > TESTED_SCHEMA {
+        vec![ClosedWarning::NewerThanTested]
+    } else {
+        Vec::new()
+    };
     let mut identities = BTreeSet::new();
     each(&db, READ_SQL[1], &budget, |r| {
         let id: i64 = r.get(0)?;
@@ -379,11 +386,11 @@ const READ_SQL: [&str; 4] = [
 
 const OWNER_SQL: &str = "SELECT EXISTS(SELECT 1 FROM items I JOIN libraries L USING(libraryID) LEFT JOIN itemTypesCombined T USING(itemTypeID) WHERE L.type='user' AND T.typeName IS NOT 'annotation' AND NOT EXISTS(SELECT 1 FROM deletedItems D WHERE D.itemID=I.itemID) AND NOT EXISTS(SELECT 1 FROM itemNotes N WHERE N.itemID=I.itemID AND N.parentItemID IS NOT NULL) AND NOT EXISTS(SELECT 1 FROM itemAttachments A WHERE A.itemID=I.itemID AND A.parentItemID IS NOT NULL))";
 
-const TABLES: &[(&str, &[&str])] = &[
-    ("libraries", &["libraryID", "type"]),
-    ("groups", &["groupID", "libraryID", "name"]),
+const TABLES: &[(ZoteroTable, &[&str])] = &[
+    (ZoteroTable::Libraries, &["libraryID", "type"]),
+    (ZoteroTable::Groups, &["groupID", "libraryID", "name"]),
     (
-        "items",
+        ZoteroTable::Items,
         &[
             "itemID",
             "libraryID",
@@ -394,16 +401,22 @@ const TABLES: &[(&str, &[&str])] = &[
             "dateModified",
         ],
     ),
-    ("itemTypesCombined", &["itemTypeID", "typeName"]),
-    ("fieldsCombined", &["fieldID", "fieldName"]),
-    ("itemData", &["itemID", "fieldID", "valueID"]),
-    ("itemDataValues", &["valueID", "value"]),
-    ("creators", &["creatorID", "firstName", "lastName", "fieldMode"]),
-    ("creatorTypes", &["creatorTypeID", "creatorType"]),
-    ("itemCreators", &["itemID", "creatorID", "creatorTypeID", "orderIndex"]),
-    ("deletedItems", &["itemID"]),
-    ("itemNotes", &["itemID", "parentItemID"]),
-    ("itemAttachments", &["itemID", "parentItemID"]),
+    (ZoteroTable::ItemTypesCombined, &["itemTypeID", "typeName"]),
+    (ZoteroTable::FieldsCombined, &["fieldID", "fieldName"]),
+    (ZoteroTable::ItemData, &["itemID", "fieldID", "valueID"]),
+    (ZoteroTable::ItemDataValues, &["valueID", "value"]),
+    (
+        ZoteroTable::Creators,
+        &["creatorID", "firstName", "lastName", "fieldMode"],
+    ),
+    (ZoteroTable::CreatorTypes, &["creatorTypeID", "creatorType"]),
+    (
+        ZoteroTable::ItemCreators,
+        &["itemID", "creatorID", "creatorTypeID", "orderIndex"],
+    ),
+    (ZoteroTable::DeletedItems, &["itemID"]),
+    (ZoteroTable::ItemNotes, &["itemID", "parentItemID"]),
+    (ZoteroTable::ItemAttachments, &["itemID", "parentItemID"]),
 ];
 fn validate_table(db: &Connection, name: &str, columns: &[&str]) -> Result<(), ClosedError> {
     let sql: String = db
@@ -417,16 +430,73 @@ fn validate_table(db: &Connection, name: &str, columns: &[&str]) -> Result<(), C
         return Err(ClosedError::Damaged);
     }
     let mut statement = db
-        .prepare("SELECT name,hidden FROM pragma_table_xinfo(?1)")
+        .prepare("SELECT name,hidden,type,pk FROM pragma_table_xinfo(?1)")
         .map_err(failure)?;
     let names = statement
-        .query_map([name], |r| Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?)))
+        .query_map([name], |r| {
+            Ok((
+                r.get::<_, String>(0)?,
+                r.get::<_, i64>(1)?,
+                r.get::<_, String>(2)?,
+                r.get::<_, i64>(3)?,
+            ))
+        })
         .and_then(Iterator::collect::<rusqlite::Result<Vec<_>>>)
         .map_err(failure)?;
-    if names.iter().any(|(_, hidden)| *hidden != 0) || columns.iter().any(|c| !names.iter().any(|(n, _)| n == c)) {
+    if names.iter().any(|(_, hidden, _, _)| *hidden != 0)
+        || columns.iter().any(|column| {
+            !names
+                .iter()
+                .any(|(n, _, ty, _)| n == column && column_shape(name, column, ty))
+        })
+    {
+        return Err(ClosedError::Damaged);
+    }
+    // These joins must name one row, including when an otherwise empty
+    // library would not exercise them. Do not trust a future lookup layout
+    // that could silently duplicate or overwrite fields and item types.
+    let lookup_id = match name {
+        "itemTypesCombined" => Some("itemTypeID"),
+        "fieldsCombined" => Some("fieldID"),
+        "creatorTypes" => Some("creatorTypeID"),
+        "itemDataValues" => Some("valueID"),
+        "creators" => Some("creatorID"),
+        _ => None,
+    };
+    if let Some(id) = lookup_id
+        && (names.iter().filter(|(_, _, _, pk)| *pk != 0).count() != 1
+            || !names.iter().any(|(n, _, _, pk)| n == id && *pk == 1))
+    {
         return Err(ClosedError::Damaged);
     }
     Ok(())
+}
+
+fn column_shape(table: &str, column: &str, declared: &str) -> bool {
+    // SQLite's declared affinities, in its precedence order. Dates are TEXT
+    // in some stored layouts and TIMESTAMP (numeric affinity) in Zotero.
+    let ty = declared.to_ascii_uppercase();
+    let affinity = if ty.contains("INT") {
+        "integer"
+    } else if ["CHAR", "CLOB", "TEXT"].iter().any(|part| ty.contains(part)) {
+        "text"
+    } else if ty.is_empty() || ty.contains("BLOB") {
+        "blob"
+    } else if ["REAL", "FLOA", "DOUB"].iter().any(|part| ty.contains(part)) {
+        "real"
+    } else {
+        "numeric"
+    };
+    match column {
+        // These are intentionally untyped in Zotero. Values are checked
+        // again while reading; itemDataValues preserves numeric storage.
+        "value" => affinity == "blob",
+        "valueID" if table == "itemData" => matches!(affinity, "integer" | "blob"),
+        "dateAdded" | "dateModified" => matches!(affinity, "text" | "numeric"),
+        "schema" | "type" | "name" | "key" | "typeName" | "fieldName" | "firstName" | "lastName" | "creatorType"
+        | "setting" => affinity == "text",
+        _ => affinity == "integer",
+    }
 }
 fn each(
     db: &Connection,
