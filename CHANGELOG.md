@@ -1,5 +1,41 @@
 # Changelog
 
+## [0.3.4](https://github.com/ibiscite/ibis/compare/v0.3.3...v0.3.4) (2026-11-12)
+
+
+### Features
+
+* a shorter menu bar menu: the library live, problems with their fix ([#1871](https://github.com/ibiscite/ibis/issues/1871)) ([33e8f14](https://github.com/ibiscite/ibis/commit/33e8f14702623120f720dcb09b7abc82591543a8))
+* Backspace in an empty palette search goes back, as Esc does ([#1876](https://github.com/ibiscite/ibis/issues/1876)) ([74f84d8](https://github.com/ibiscite/ibis/commit/74f84d88b4ef750ab94a5c6d020fa8dff5c080e9))
+* build a citation as tokens, typed shorthand and its one-time hint ([#1845](https://github.com/ibiscite/ibis/issues/1845)) ([e7805da](https://github.com/ibiscite/ibis/commit/e7805da8aac35154669737b1308e30f72f4c79a6))
+* **cli:** readable terminal output, --keys, suggestions and more ([#1866](https://github.com/ibiscite/ibis/issues/1866)) ([8a843cf](https://github.com/ibiscite/ibis/commit/8a843cfe05f26ad075475d99b01b558e69c39efd))
+* install Ibis with Nix again (CLI everywhere, desktop on Linux) ([#1864](https://github.com/ibiscite/ibis/issues/1864)) ([152b9d9](https://github.com/ibiscite/ibis/commit/152b9d94c5412388787dd60833b57e062c29770e))
+* one Icon primitive on Lucide, two sizes, one stroke ([#1858](https://github.com/ibiscite/ibis/issues/1858)) ([358b688](https://github.com/ibiscite/ibis/commit/358b6887fa8661e907e98511d95160afb92ea7e4))
+* the app ships the matching ibis command and puts it on PATH ([#1877](https://github.com/ibiscite/ibis/issues/1877)) ([dec921d](https://github.com/ibiscite/ibis/commit/dec921dcea7fb2fc8f00ef5375cf0e479832780c))
+* the picker opens at the upper quarter of your writing screen ([#1883](https://github.com/ibiscite/ibis/issues/1883)) ([1f3933e](https://github.com/ibiscite/ibis/commit/1f3933ecac83c907440fb04a5c10481e27cc8e13))
+* **website:** a stable setup address for AI assistants, and llms.txt ([#1875](https://github.com/ibiscite/ibis/issues/1875)) ([df1193c](https://github.com/ibiscite/ibis/commit/df1193ce8f375adbd7f8686c5eb96d203c87d802))
+* **website:** connect your AI assistant with one line or one prompt ([#1870](https://github.com/ibiscite/ibis/issues/1870)) ([ec05906](https://github.com/ibiscite/ibis/commit/ec05906f5125623690a47e3d2ac9996174990cff))
+
+
+### Bug Fixes
+
+* a late copy never overwrites newer clipboard contents ([#1859](https://github.com/ibiscite/ibis/issues/1859)) ([6628089](https://github.com/ibiscite/ibis/commit/662808955cf63e75730679ce6803f9a3ff7c83dc))
+* closing a panel or cancelling a tool frees the formatter ([#1860](https://github.com/ibiscite/ibis/issues/1860)) ([9616c24](https://github.com/ibiscite/ibis/commit/9616c248ba05de4cd66b62ff751ec521a0a88997))
+* Show in Finder never opens Zotero; distinct icons; one Back ([#1881](https://github.com/ibiscite/ibis/issues/1881)) ([5ca7d0e](https://github.com/ibiscite/ibis/commit/5ca7d0e39d590e2787e4b53cbeec3a8543664a80))
+* switching between a .bib file and Zotero never gets stuck ([#1854](https://github.com/ibiscite/ibis/issues/1854)) ([a1c5d92](https://github.com/ibiscite/ibis/commit/a1c5d92bf2b02b50fc9d766e556a65f2f9f24deb))
+* **website:** pills fit their text, the demo format menu opens, and a polish pass ([#1863](https://github.com/ibiscite/ibis/issues/1863)) ([c667fd7](https://github.com/ibiscite/ibis/commit/c667fd785176f82a42a820c285bffd38bd81e2d9))
+* **website:** the shorthand demo never jumps, the caret follows the citation, and AI setup is plain per app ([#1869](https://github.com/ibiscite/ibis/issues/1869)) ([20d700d](https://github.com/ibiscite/ibis/commit/20d700d6962b09a573cb19fe235cde8518848125))
+* **website:** writing-app tabs and Try buttons keep their names on hover ([#1865](https://github.com/ibiscite/ibis/issues/1865)) ([d111012](https://github.com/ibiscite/ibis/commit/d111012892f7dbd81c8c019e5fdd5af0aa283dd7))
+* **zotero:** read Zotero 10.0.9, and newer Zotero versions whose tables still fit ([#1868](https://github.com/ibiscite/ibis/issues/1868)) ([bc0f813](https://github.com/ibiscite/ibis/commit/bc0f8138a08a511f7ca413d92fdc82b8ff5f9cff))
+
+
+### Documentation
+
+* decide opening references, picker placement and going back ([#1879](https://github.com/ibiscite/ibis/issues/1879)) ([6c4afea](https://github.com/ibiscite/ibis/commit/6c4afea106863dcbdac9e2dacf34bf080704ac2b))
+* explain website interest and download counts ([#1884](https://github.com/ibiscite/ibis/issues/1884)) ([228a6ba](https://github.com/ibiscite/ibis/commit/228a6ba8ee33ceb881601d078e2ae49102c3d8c4))
+* recognising official Ibis, contributing code, contract promise ([#1874](https://github.com/ibiscite/ibis/issues/1874)) ([e5d7ea2](https://github.com/ibiscite/ibis/commit/e5d7ea2d29052f029e169a435618daae08cbbe70))
+* say how the website's visits are counted ([#1873](https://github.com/ibiscite/ibis/issues/1873)) ([c3a8ca2](https://github.com/ibiscite/ibis/commit/c3a8ca2910d0d047b1417d9aa57f8c87a5914559))
+
 ## [0.3.3](https://github.com/ibiscite/ibis/compare/v0.3.2...v0.3.3) (2026-11-11)
 
 
