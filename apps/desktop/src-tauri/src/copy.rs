@@ -452,9 +452,7 @@ fn commit_shown(
             record(&copied);
         }
         if matches!(request.output, ibis_core::contract::OutputSpec::Key { .. }) {
-            let _ = app
-                .state::<crate::preferences::SettingsFile>()
-                .update(|settings| settings.key_formats_used = true);
+            app.state::<crate::preferences::SettingsFile>().record_key_format_use();
         }
         return Ok(copied);
     }
@@ -484,9 +482,7 @@ fn commit_shown(
     )?;
     record(&copied);
     if matches!(recited.output(), ibis_core::contract::OutputSpec::Key { .. }) {
-        let _ = app
-            .state::<crate::preferences::SettingsFile>()
-            .update(|settings| settings.key_formats_used = true);
+        app.state::<crate::preferences::SettingsFile>().record_key_format_use();
     }
     if let Some((id, chosen)) = format {
         app.state::<crate::notice::Notice>()

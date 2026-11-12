@@ -68,7 +68,7 @@ Package install/start and offline observation run separately in Preview.
 Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
 
 - **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
-  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  shortcut/focus, search, APA clipboard text, hide/reopen, settings, reload
   and recovery. After Enter copies, it checks the reason, explicitly pastes
   with Shift+Insert into its xterm editor and reads the citation back.
   Require passing `smoke.json`; 100k launch/memory figures are diagnostics.

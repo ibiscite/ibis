@@ -129,6 +129,16 @@ impl SettingsFile {
             .ok_or_else(|| "settings are unavailable".to_string())
     }
 
+    /// Best-effort usage bookkeeping after a successful key citation. Copy
+    /// commits run on the native thread: returning their reply (and hiding the
+    /// picker) must never wait for disk or the owner's outside-edit callbacks.
+    pub(crate) fn record_key_format_use(&self) {
+        let _ = self.owner.submit(|settings| {
+            settings.key_formats_used = true;
+            Ok::<_, settings::SettingsError>(())
+        });
+    }
+
     /// Run `work` on the settings file while no save can interleave, such as a
     /// restore that must find the settings it was shown.
     pub(crate) fn exclusive<T>(&self, work: impl FnOnce(&Path) -> T) -> Result<T, String> {
@@ -778,6 +788,65 @@ mod tests {
     use super::*;
     use ibis_engine::settings::LibrarySetting;
     use tauri::Manager;
+
+    #[test]
+    fn key_format_bookkeeping_returns_while_settings_are_busy_and_preserves_live_edits()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("settings.json");
+        std::fs::write(&path, br#"{"output":"apa"}"#)?;
+        let file = SettingsFile::new(path.clone());
+        let writing = file.hold();
+        let (sent, returned) = std::sync::mpsc::channel();
+        let copy_file = file.clone();
+        let copy = std::thread::spawn(move || {
+            copy_file.record_key_format_use();
+            let _ = sent.send(());
+        });
+        let completed = returned.recv_timeout(std::time::Duration::from_secs(3));
+        let edited = std::fs::write(
+            &path,
+            br#"{"shortcut":"Control+Alt+F12","future_choice":{"kept":true}}"#,
+        );
+        drop(writing);
+        copy.join().map_err(|_| "copy bookkeeping panicked")?;
+        edited?;
+        file.exclusive(|_| ())?;
+        assert!(completed.is_ok(), "copy completion waited for settings I/O");
+        let loaded = settings::load(&path);
+        assert!(loaded.problem.is_none());
+        assert!(loaded.settings.key_formats_used);
+        assert_eq!(loaded.settings.shortcut.here(), Some("Control+Alt+F12"));
+        assert_eq!(
+            loaded.settings.output, None,
+            "copy must not recreate a removed preference"
+        );
+        assert_eq!(
+            loaded.settings.unknown["future_choice"],
+            serde_json::json!({"kept": true})
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn key_format_bookkeeping_keeps_an_invalid_live_file_and_never_retries_the_failed_save()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("settings.json");
+        std::fs::write(path.with_extension("json.bak"), b"{}")?;
+        std::fs::write(&path, b"{ still editing")?;
+        let file = SettingsFile::new(path.clone());
+        file.record_key_format_use();
+        file.exclusive(|_| ())?;
+        assert_eq!(std::fs::read(&path)?, b"{ still editing");
+        std::fs::write(&path, b"{}")?;
+        file.exclusive(|_| ())?;
+        assert!(!settings::load(&path).settings.key_formats_used);
+        file.record_key_format_use();
+        file.exclusive(|_| ())?;
+        assert!(settings::load(&path).settings.key_formats_used);
+        Ok(())
+    }
 
     #[test]
     fn live_file_edits_update_windows_and_native_choices_but_invalid_edits_keep_the_last_valid_state() {

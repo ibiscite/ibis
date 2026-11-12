@@ -548,7 +548,7 @@ def quiet_key_window(key_window):
         return None
 
 
-def copy_with_diagnostics(native, report, key_window=None):
+def copy_with_diagnostics(native, report, key_window=None, *, expected="[@smoke000001]"):
     """Press Return once in the picker and require the exact citation.
 
     On macOS the search field's accessible focus is only the WebView's DOM
@@ -571,7 +571,7 @@ def copy_with_diagnostics(native, report, key_window=None):
 
     def copied():
         value = native.clipboard()
-        clipboard.update(polls=clipboard["polls"] + 1, expected=value == "[@smoke000001]",
+        clipboard.update(polls=clipboard["polls"] + 1, expected=value == expected,
                          sentinel=value == CLIPBOARD_SENTINEL, empty=value == "")
         return clipboard["expected"]
 
@@ -2559,10 +2559,13 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
+                # Linux captures no destination app. Decision 0042 now suggests
+                # APA for an unknown app, rather than the old Pandoc default.
+                citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the
                 # key-window wait stays out of the native copy check.
-                copy_with_diagnostics(native, report)
+                copy_with_diagnostics(native, report, expected=citation)
                 wait_for(lambda: not snapshot()["visible"], "copy hides picker")
                 try:
                     wait_for(native.editor_focused, "copy restores focus to previous editor")
@@ -2579,7 +2582,7 @@ def smoke_main(args):
                     before = native.editor_received()
                     assert before["available"], "Synthetic editor exited before the paste"
                     native.key("shift+Insert")
-                    wait_for(lambda: native.editor_received().get("text") == before["text"] + "[@smoke000001]",
+                    wait_for(lambda: native.editor_received().get("text") == before["text"] + citation,
                              "the person's paste puts exactly the citation into the editor", timeout=5)
 
             def live_settings_copy():
@@ -3813,16 +3816,18 @@ class ContractTests(unittest.TestCase):
         return patch.multiple(time, monotonic=clock.monotonic, sleep=clock.sleep)
 
     def test_native_copy_accepts_a_later_equality_poll_without_another_return(self):
-        native, report, clock = self.copy_setup(19)
-        sentinel = "Ibis native smoke clipboard sentinel"
-        native.clipboard.side_effect = [sentinel, sentinel, "[@smoke000001]"]
-        with self.copy_time(clock):
-            copy_with_diagnostics(native, report)
-        self.assertEqual(native.key.call_args_list, [call("Return")])
-        self.assertEqual(native.clipboard.call_count, 3)
-        self.assertEqual(native.snapshot.call_count, 1)
-        self.assertNotIn("copy_failure", report)
-        self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
+        for citation in ("[@smoke000001]", "(Example, 2026)"):
+            with self.subTest(citation=citation):
+                native, report, clock = self.copy_setup(19)
+                sentinel = "Ibis native smoke clipboard sentinel"
+                native.clipboard.side_effect = [sentinel, sentinel, citation]
+                with self.copy_time(clock):
+                    copy_with_diagnostics(native, report, expected=citation)
+                self.assertEqual(native.key.call_args_list, [call("Return")])
+                self.assertEqual(native.clipboard.call_count, 3)
+                self.assertEqual(native.snapshot.call_count, 1)
+                self.assertNotIn("copy_failure", report)
+                self.assertEqual(native.mock_calls[:4], [call.set_clipboard(sentinel), call.clipboard(), call.snapshot(), call.key("Return")])
 
     def test_return_waits_until_the_picker_owns_the_keyboard(self):
         native, report, clock = self.copy_setup(1)
