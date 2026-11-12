@@ -200,21 +200,73 @@ pub enum ErrorReason {
     RejectedRecord,
 }
 
+/// A fixed database identifier, never a name supplied by an untrusted source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub enum ZoteroTable {
+    Version,
+    Libraries,
+    Groups,
+    Items,
+    ItemTypesCombined,
+    FieldsCombined,
+    ItemData,
+    ItemDataValues,
+    Creators,
+    CreatorTypes,
+    ItemCreators,
+    DeletedItems,
+    ItemNotes,
+    ItemAttachments,
+}
+impl ZoteroTable {
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::Version => "version",
+            Self::Libraries => "libraries",
+            Self::Groups => "groups",
+            Self::Items => "items",
+            Self::ItemTypesCombined => "itemTypesCombined",
+            Self::FieldsCombined => "fieldsCombined",
+            Self::ItemData => "itemData",
+            Self::ItemDataValues => "itemDataValues",
+            Self::Creators => "creators",
+            Self::CreatorTypes => "creatorTypes",
+            Self::ItemCreators => "itemCreators",
+            Self::DeletedItems => "deletedItems",
+            Self::ItemNotes => "itemNotes",
+            Self::ItemAttachments => "itemAttachments",
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+pub struct ErrorDetail {
+    pub table: ZoteroTable,
+}
+
 /// Like every result, an error accepts fields it does not know (decision 0028).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct EngineError {
     pub code: ErrorCode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<ErrorReason>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<ErrorDetail>,
 }
 impl EngineError {
     pub const fn new(code: ErrorCode) -> Self {
-        Self { code, reason: None }
+        Self {
+            code,
+            reason: None,
+            detail: None,
+        }
     }
     pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
         Self {
             code,
             reason: Some(reason),
+            detail: None,
         }
     }
 }

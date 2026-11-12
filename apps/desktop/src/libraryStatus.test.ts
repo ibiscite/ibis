@@ -407,3 +407,11 @@ test("each Zotero problem names its own fix once when references are kept", () =
   expect(words("zotero_missing")).not.toContain("Open Zotero");
   expect(words("zotero_closed")).toContain("Open Zotero, then reload.");
 });
+
+
+test("a newer compatible Zotero library stays searchable and explains its source warning", () => {
+  const status = zotero({ warnings: 1, reading: [{ code: "zotero-newer-than-tested", line: null, key: null }] });
+  expect(libraryCondition(status).health).toBe("look");
+  expect(detail(status)[1]).toContain("Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can.");
+  expect(line(status)).toContain("1,204 references");
+});

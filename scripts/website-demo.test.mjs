@@ -137,6 +137,35 @@ test("website rows show plain titles and accessible reference details", () => {
     `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}`));
 });
 
+test("changing format updates the shelf and Copy label for one or several references", () => {
+  const { panel, add, copy } = demoPage("macos"), select = panel.querySelector("select");
+  for (const [value, label] of Object.entries(formats)) {
+    select.value = value; select.handlers.change();
+    assert.equal(copy.attrs["aria-label"], `Copy as ${label}`);
+    const expected = createDemo(); expected.state.format = value;
+    assert.equal(panel.querySelector("code").textContent, expected.output());
+  }
+  add.handlers.click();
+  const second = panel.querySelectorAll(".pick")[1];
+  second.handlers.click({ target: { closest: () => true } });
+  select.value = "cite"; select.handlers.change();
+  assert.equal(panel.querySelector("code").textContent, "\\cite{vale2024lanterns,fen2023clouds}");
+  assert.equal(copy.attrs["aria-label"], "Copy 2 as \\cite");
+});
+
+test("Escape clears search then closes; reopening keeps the citation shelf available", () => {
+  const { input, panel, picker } = demoPage("macos");
+  input.value = "clouds"; input.handlers.input();
+  const escape = { key: "Escape", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: input, preventDefault() {} };
+  panel.handlers.keydown(escape);
+  assert.equal(input.value, "");
+  assert.equal(panel.querySelector(".picker-shelf").hidden, false);
+  panel.handlers.keydown(escape); assert.equal(panel.hidden, true);
+  picker.open();
+  assert.equal(panel.querySelector(".picker-shelf").hidden, false);
+  assert.equal(panel.querySelector("code").textContent, "[@vale2024lanterns]");
+});
+
 test("key demo searches fields, selects and combines known samples in order", () => {
   const demo = createDemo();
   assert.equal(demo.output(), "[@vale2024lanterns]");
