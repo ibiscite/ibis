@@ -33,7 +33,7 @@ You can help without knowing the engine:
 
 ## Setup
 
-Use `rust-toolchain.toml`, Node 22+ and the pnpm version in
+Use `rust-toolchain.toml`, Node 26 (the current LTS; 22.13 or newer works) and the pnpm version in
 `apps/desktop/package.json`:
 
 ```sh
