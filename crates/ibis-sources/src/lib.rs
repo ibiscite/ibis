@@ -43,6 +43,8 @@ pub(crate) fn days_in_month(year: i32, month: u8) -> u8 {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum WarningCode {
+    /// Validated newer Zotero layout; a source status, not a record problem.
+    ZoteroNewerThanTested,
     CloudSyncedDirectory,
     /// Better BibTeX keeps keys this read could not get, so items without a
     /// key of their own have none rather than a guessed one.
@@ -59,9 +61,14 @@ pub struct SourceWarning {
     pub code: WarningCode,
     pub line: Option<usize>,
     /// The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's
-    /// own data and is shown only to them; no other warning carries source text.
+    /// own data and is shown only in their library diagnostics.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
+    /// The entry's citation key, or its title when no key is available. Like
+    /// `key`, this is source text for the person's diagnostics, never MCP.
+    /// Display labels are bounded to 256 characters.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub entry: Option<String>,
     /// Why the record was skipped or needs checking, as a fixed code.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cause: Option<WarningCause>,
@@ -76,9 +83,20 @@ impl SourceWarning {
             code,
             line,
             key: None,
+            entry: None,
             cause: None,
             field: None,
         }
+    }
+
+    pub fn for_entry(mut self, label: Option<&str>) -> Self {
+        self.entry = label
+            .filter(|label| !label.trim().is_empty())
+            .map(|label| match label.char_indices().nth(256) {
+                Some((end, _)) => format!("{}…", &label[..end]),
+                None => label.into(),
+            });
+        self
     }
 
     /// Supply a field only after recognizing it in the format's vocabulary.

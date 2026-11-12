@@ -89,6 +89,7 @@ fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
     };
     let cancel = Cancellation::default();
     let reply = engine.search(&request, &cancel).unwrap();
+    assert!(reply.complete);
     assert_eq!(reply.hits.len(), 205);
     assert_eq!(reply.hits[0].item.object.id().key, "key204");
     assert_eq!(reply.hits[204].item.object.id().key, "key0");
@@ -111,6 +112,43 @@ fn pasted_search_is_ordered_unlimited_and_reports_missing_keys() {
         .unwrap();
     assert!(empty.hits.is_empty());
     assert_eq!(empty.list.unwrap().missing.len(), 206);
+}
+
+#[test]
+fn search_reports_more_matches_at_the_maximum_limit_and_complete_empty_results() {
+    let LibraryObject::Record(base) = case().library.objects()[0].object.clone() else {
+        panic!("record")
+    };
+    let objects = (0..1001)
+        .map(|n| {
+            let mut record = base.clone();
+            record.id.key = format!("invented{n}");
+            record.citation_keys[0].value = record.id.key.clone();
+            LibraryObject::Record(record)
+        })
+        .collect();
+    let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
+    let request = SearchRequest {
+        query: "signals".into(),
+        limit: 1000,
+        libraries: None,
+        interpret_locator: false,
+    };
+    let found = engine.search(&request, &Cancellation::default()).unwrap();
+    assert_eq!(found.hits.len(), 1000);
+    assert!(!found.complete);
+    assert!(found.source_health.findings.is_empty());
+    let empty = engine
+        .search(
+            &SearchRequest {
+                query: "absent".into(),
+                ..request
+            },
+            &Cancellation::default(),
+        )
+        .unwrap();
+    assert!(empty.hits.is_empty());
+    assert!(empty.complete);
 }
 
 #[test]

@@ -69,6 +69,13 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "literal type scale sizes are at least 12 px at normal text size",
     breaks: ({ property, value }) => /^--type-(base|[\w-]+-size)$/.test(property) && /^\d*\.?\d+rem$/.test(value) && parseFloat(value) < .75,
     planted: ":root { --type-label-size: .7rem; }" },
+  { says: "only Icon sizes interface glyphs", applies: (file) => app(file) && file !== "ui/Icon.css",
+    breaks: ({ property, selector }) => /^(width|height|inline-size|block-size|min-width|min-height|max-width|max-height)$/.test(property)
+      && /(?:\bsvg\b|\.(?:ui-icon|type-icon|add-glyph|empty-icon|popup-indicator|ui-settings-search-glyph|copy-receipt-mark)(?![\w-]))/.test(selector)
+      && !/search-mark|update-ring|ui-about-icon/.test(selector),
+    planted: ".planted svg { width: var(--space-3); }" },
+  { says: "the glyph stroke cannot be changed by a part", applies: (file) => app(file) && file !== "ui/Progress.css",
+    breaks: ({ property }) => property === "stroke-width", planted: ".planted svg { stroke-width: 2; }" },
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
     breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
@@ -151,6 +158,8 @@ test("the motion tokens stay within 280 ms", () => {
 
 /** The cascade fixes a shared part needs, read from the parsed rules: each was a bug when missing. */
 const required: [file: string, selector: string, property: string, value: string, condition?: string][] = [
+  ["tokens.css", ":root", "--icon", "16px"],
+  ["tokens.css", ":root", "--icon-tile", "20px"],
   // A keyboard-focused choice keeps its fill and outranks the global ring, whatever loads after it.
   ["ui/ChoiceList.css", ".choice-screen .choice-row[data-focus-visible]", "box-shadow", "none"],
   ["ui/ChoiceList.css", ".choice-row[data-focused]", "background", "var(--selected)"],

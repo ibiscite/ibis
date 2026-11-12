@@ -117,6 +117,7 @@ function explained(found: readonly Notice[]) {
 const because = (found: readonly Notice[]) => { const where = explained(found); return where ? ` ${say("library-where", { lines: where })}` : ""; };
 
 const otherNotices = {
+  "zotero-newer-than-tested": "library-zotero-newer",
   "work-limit": "library-work-limit",
   "cloud-synced-directory": "library-cloud-synced",
   "citation-keys-unavailable": "library-keys-unavailable",

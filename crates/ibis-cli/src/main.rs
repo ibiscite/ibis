@@ -2,10 +2,10 @@
 use std::io::IsTerminal;
 fn main() -> std::process::ExitCode {
     let output = std::io::stdout();
-    let mode = if output.is_terminal() {
-        ibis::OutputMode::Terminal
-    } else {
-        ibis::OutputMode::Plain
+    let mode = ibis::OutputMode::Streams {
+        stdout: output.is_terminal(),
+        stderr: std::io::stderr().is_terminal(),
+        stdin: std::io::stdin().is_terminal(),
     };
     std::process::ExitCode::from(ibis::run(
         std::env::args_os().collect(),

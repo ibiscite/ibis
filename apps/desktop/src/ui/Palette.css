@@ -16,7 +16,6 @@
 .ui-palette-row[aria-disabled="true"] { color: var(--text-secondary); }
 /* Every row keeps the tile column, empty or not, so every label starts on one line. */
 .ui-palette-lead { flex: none; display: inline-flex; align-items: center; justify-content: center; width: var(--tile); color: var(--text-secondary); }
-.ui-palette-lead svg { width: var(--icon-small); height: var(--icon-small); }
 .ui-palette-row[data-active] .ui-palette-lead { color: inherit; }
 .ui-palette-label { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .ui-palette-detail, .ui-palette-keys { flex: none; margin-inline-start: auto; color: var(--text-secondary); }

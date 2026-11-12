@@ -408,6 +408,7 @@ export const PICKER_IDS = [
   "library-lines-and-others",
   "library-work-limit",
   "library-cloud-synced",
+  "library-zotero-newer",
   "library-keys-unavailable",
   "time-just-now",
   "time-on",

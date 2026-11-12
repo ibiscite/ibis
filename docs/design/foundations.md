@@ -64,10 +64,11 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Icons
 
-- macOS: SF Symbols and the system's own app and file icons where the system provides them, such as the installed Zotero icon (bundle id `org.zotero.zotero`, read through NSWorkspace).
-- Fallback, and on other systems: Ibis's own set in `brand/icons/`, built by `python3 brand/build.py`; a 20 pt grid, 16 pt live area, one stroke weight matched to SF Symbols Regular, one stroked path each. The icon guard rejects anything else. A missing app or failed icon read shows the books glyph.
+- One `Icon` primitive uses Lucide 1.72.0 (ISC, with the bundled Feather MIT notices) from `brand/icons/`, built by `python3 brand/build.py`. Controls, menus and rows use `--icon` (16px); tiles and toolbar use `--icon-tile` (20px). Both render a 1.5px stroke, centred on the label line; parts never resize glyphs. These pixel sizes stay fixed under Larger Text.
+- Missing glyphs are drawn only when no Lucide glyph fits: use its 24-unit grid, nominal 2-unit stroke, round caps and joins, no fill, and one path including any subpaths. The icon guard checks the source; the canvas checks rendered sizes and strokes ([decision 0044](../decisions/0044-lucide-icon-primitive.md)).
+- App and file icons come from the system, such as the installed Zotero icon (bundle id `org.zotero.zotero`, read through NSWorkspace), including on the Zotero setup card. A missing app or failed icon read shows the books glyph.
 - Ibis never ships Zotero's logo or other apps' artwork.
-- Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Pages have rounded corners and a folded corner, as the book and web icons round theirs; the article page carries a title line and two text lines. Toggled-on keeps the same outline; the control's fill carries state.
+- Seven type icons (article, book, chapter, thesis, web page, report, other) stay distinct from attachment drawings. Toggled-on keeps the same outline; the control's fill carries state.
 - Settings page icons use Apple's icon shape: a white glyph from the set above on a `--page-*` tile, one family for every page. Mac icon layers are flat, with no added bevels or shadows.
 
 ## The bird

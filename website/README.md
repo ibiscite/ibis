@@ -17,6 +17,11 @@ notice rules; the page's prose colours cannot override the app pictures.
 There is no maintained second palette. Check with
 `node --test scripts/website*.test.mjs`.
 
+`docs/agents.md` is the single source for `/setup` and `/setup.md`. The build
+publishes identical Markdown at both paths, resolving relative links to the
+GitHub repository while preserving anchors. `llms.txt` indexes the setup guide,
+CLI and MCP contract, privacy policy, and official name and logo policy.
+
 Browser checks in `scripts/website-controls.test.mjs` use an existing Playwright
 runtime when `IBIS_PLAYWRIGHT_MODULE` is set. `IBIS_CHROMIUM_EXECUTABLE` can select
 an existing browser. They serve build files through request interception; no local
@@ -36,13 +41,19 @@ The site is served at ibiscite.org through the Worker's custom domain, with
 Always Use HTTPS on. Domain and DNS settings are the maintainer's.
 
 `_headers` applies a self-only page CSP and revalidation to unversioned files;
-brand assets cache for one hour. SVGs have a separate sandboxed policy allowing
+it also sets `text/markdown; charset=utf-8` for both setup paths and
+`text/plain; charset=utf-8` for `/llms.txt`. Workers static assets apply these
+overrides to the extensionless `/setup` file and inherit the wildcard security
+headers; the existing assets-only Wrangler configuration needs no Worker script.
+Brand assets cache for one hour. SVGs have a separate sandboxed policy allowing
 their embedded animation styles, and workers.dev preview links send
 `X-Robots-Tag: noindex`. Missing paths get `404.html` with a 404 status. Pull
 requests get a preview link from Cloudflare Worker Previews (deploy command
 `npx wrangler preview`, `previews` block in `wrangler.jsonc`); the workers.dev
 production address stays off. No external fonts, scripts or analytics load.
 Check live HTTPS, CSP, caching, missing-path 404s, downloads and both themes.
+Check `/setup` and `/setup.md` return the same raw Markdown with the declared
+content type and security headers, and `/llms.txt` returns the index as text.
 For rollback, choose the previous reviewed deployment in Cloudflare; restore
 nameservers at the registrar only if abandoning Cloudflare DNS.
 
@@ -79,19 +90,30 @@ from indexing. Search engines decide when and whether to index the site.
    picker keeps the app's type and tokens.
 3. Reserve scarlet for keys, citations and the current item.
 4. Separate rows with hairlines; keep the same rhythm and 45rem reading measure
-   across pages. Hover follows the sidebar: text darkens, key chips gain an inset
-   ring and arrows nudge, without new scarlet or underlines.
+   across pages. Hover follows the sidebar: text darkens, key chips change fill
+   and colour, and page arrows nudge. Rings belong only to keyboard focus.
+   Download arrows drop into a drawn tray once per hover, inside a fixed icon box.
+   Separate the sidebar's groups with a short end-aligned hairline, vertical in the phone bar.
 5. Keep content visible: no disclosure toggles, accordions or `<details>`.
 6. Hover and press motion uses the app's timings. All motion is off under
-   reduced motion.
+   reduced motion. All citation pills hug their text at rest. With a fine hover
+   pointer, one shared cycle measures each form and eases the pill's width with
+   the site's short timing; neighbours slide with it. Make room before showing
+   longer text, centre it, and restore natural sizing on return or pointer leave.
 7. Show real Ibis output only, with Copy on every command. Label nightly
    features as nightly.
 8. A PR that changes the app's picker updates the demo in the same PR, using
    the shared app tokens scoped by the build and `demo.css`.
 9. Keep controls visually slim on touch screens; invisible hit areas provide
-   their full tap height. At phone width all six navigation keys fit, and the
-   picker search and footer each stay on one row. Citation carets stay attached
-   to the end of inline chips; outbound marks stay with the link's last word.
+   their full tap height. Native selects receive pointer activation directly;
+   hit-area overlays belong to buttons, never their labels. At phone width all
+   six navigation keys fit, and the picker search and footer each stay on one row.
+   The writer's caret follows the citation, outside it; outbound marks stay with the link's last word.
+10. Focus rings indicate keyboard input, including after script-driven focus
+    transfers. Pointer actions keep focus without a ring; the next keyboard action
+    restores it. Search examples share the demo's field parts and tokens, and
+    unmatched citations leave an empty insertion point. Follow sentences with paragraph spacing.
+11. [Nothing jumps](../docs/design.md#principles): changing regions keep their size; only changed content animates, briefly, in place.
 
 The interactive demo keeps the app's bundled sample references and changes only
 its own page; it never reads a visitor's library or clipboard. Search, combine,
@@ -100,8 +122,15 @@ picker illustration and the rest of each page remain visible.
 
 The shared app shortcut opens the home demo from every page, leaving text entry
 alone. The reading order and next-page rows come from `sections` in `content.mjs`.
-Scripts' shorthand cycles its examples after three idle seconds, pauses while
-hidden or under reduced motion, and stops permanently on focus, input or Try.
+Escape clears the demo search, then closes the picker; reopening keeps its choices
+and citation shelf. `?` outside text entry, or Keyboard shortcuts in the footer,
+opens keyboard help; Escape closes it and returns focus.
+Scripts' shorthand types after three idle seconds, explains the query live, then
+lands the citation after a short pause and holds it for 2.5 seconds. Its empty gloss
+stays blank to keep the reserved row quiet. It pauses while hidden or under reduced
+motion, and stops permanently on focus, input or Try. Draft citations are plain
+scarlet monospace text, with a 600 ms insertion tint; Reduce Motion removes the tint
+and shows the writer's caret steadily.
 
 ### Names
 A page's label, its `@key` and its address agree: the key is the label's main word, lowercased (`Features`, `@features`, `/features/`). Labels use the words a newcomer would search for.

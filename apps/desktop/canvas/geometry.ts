@@ -38,6 +38,9 @@ export const stacks = [".inspector-titles", ".inspector-column", ".citation-deta
 /** [C12] A grid of choice cards: one height, and each glyph level with its title's first line. */
 export const cards = { grid: '.choice-screen[data-grid] .choice-list', card: ".choice-row", glyph: ".choice-tile", title: ".result-title" } as const;
 
+/** Every interface glyph has one of two fixed pixel sizes and the same ink weight. */
+export const glyphs = { selector: "svg.ui-icon", sizes: [16, 20], stroke: 1.5 } as const;
+
 /** [D8] A ring hugs the control it names: a sheet, a menu or anything else only
  * the app focuses (tabindex -1) never draws one around itself. */
 export const rings = { containers: '[role="dialog"], [role="menu"], [tabindex="-1"]' } as const;
@@ -58,6 +61,21 @@ export function geometry(root: ParentNode = document): string[] {
   const lead = (rect: DOMRect, end = false) => rtl ? width - (end ? rect.left : rect.right) : end ? rect.right : rect.left;
   const visible = (node: Element) => { const rect = node.getBoundingClientRect(); return rect.width > 0 && rect.height > 0 && getComputedStyle(node).visibility !== "hidden"; };
   const name = (node: Element) => `${node.tagName.toLowerCase()}.${[...node.classList].join(".")}`;
+
+  for (const glyph of root.querySelectorAll<SVGSVGElement>(glyphs.selector)) {
+    if (!visible(glyph)) continue;
+    const rect = glyph.getBoundingClientRect();
+    if (!glyphs.sizes.some((size) => Math.abs(rect.width - size) < .02 && Math.abs(rect.height - size) < .02))
+      failures.push(`[icons] ${name(glyph)}: ${rect.width.toFixed(2)} × ${rect.height.toFixed(2)}px, expected 16 or 20px square`);
+    for (const path of glyph.querySelectorAll("path")) {
+      const matrix = path.getScreenCTM();
+      if (!matrix) continue;
+      const style = getComputedStyle(path), stroke = parseFloat(style.strokeWidth);
+      const scales = style.vectorEffect === "non-scaling-stroke" ? [1] : [Math.hypot(matrix.a, matrix.b), Math.hypot(matrix.c, matrix.d)];
+      if (scales.some((scale) => !Number.isFinite(stroke) || Math.abs(stroke * scale - glyphs.stroke) >= .02))
+        failures.push(`[icons] ${name(glyph)}: stroke ${(stroke * scales[0]!).toFixed(2)}px, expected 1.5px`);
+    }
+  }
 
   // The columns come from the tokens, never from another part that could be wrong too.
   const main = root.querySelector("main");

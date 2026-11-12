@@ -14,15 +14,16 @@
 .picker-mark img { display: block; width: var(--space-6); height: var(--space-6); object-fit: contain; }
 .picker-mark .logo-dark { display: none; }
 .picker input, .picker-query { flex: 1; min-width: 0; width: 0; border: 0; padding: 0; background: transparent; color: var(--text); font: var(--type-search-size)/var(--type-search-line) var(--font); letter-spacing: -.025em; }
+.picker input::placeholder { color: var(--text-secondary); opacity: 1; }
 /* The static query wraps inside its reserved column at large text sizes. */
 .picker-query { overflow-wrap: anywhere; }
-.picker input:focus-visible { outline: none; }
+.picker input:focus-visible { outline-offset: var(--ring-offset); }
 .picker select, .picker button, .picker-static-control, .draft button { min-height: var(--control-h); padding: var(--space-1) var(--space-2); border: 0; border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font: var(--type-body-size)/var(--type-body-line) var(--font); cursor: pointer; box-shadow: inset 0 0 0 var(--border-width) var(--stroke-field); }
 .picker-static-control { display: inline-flex; align-items: center; gap: var(--space-2); cursor: default; }
 /* Native select semantics, with one local chevron (including on iOS). */
 .picker-format { position: relative; display: inline-flex; flex: none; min-width: 0; max-width: 100%; }
 .picker-format select { appearance: none; min-width: 0; width: 100%; padding-inline-end: calc(var(--space-2) + 1.1em); }
-.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; width: 1em; height: 1em; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
+.picker-format svg { position: absolute; inset-inline-end: var(--space-2); inset-block-start: 50%; translate: 0 -50%; fill: none; stroke: var(--text-secondary); stroke-linecap: round; stroke-linejoin: round; pointer-events: none; }
 .picker input::-webkit-search-cancel-button { appearance: none; }
 .picker .picker-clear { display: grid; place-items: center; flex: none; width: var(--control-h); padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-secondary); font-size: var(--type-heading-size); }
 .picker button:disabled { color: var(--text-disabled); background: var(--fill-control); cursor: default; }
@@ -35,7 +36,6 @@
 .pick.is-selected .tile { background: var(--on-selected-fill); color: inherit; }
 .pick .tile.is-added { background: var(--scarlet); color: var(--on-scarlet); }
 .pick.is-selected .tile.is-added { background: var(--selected-text); color: var(--scarlet); }
-.tile svg, .picker-clear svg { width: var(--icon); height: var(--icon); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .tile .tile-add { display: none; }
 .pick.is-selected .tile .tile-kind { display: none; }
 .pick.is-selected .tile .tile-add { display: block; }
@@ -74,18 +74,18 @@
 .picker-actions kbd.pressed, .key-strip kbd.pressed { background: var(--fill-control-pressed); }
 .picker-primary kbd.pressed { background: var(--on-fill-p); }
 .picker-shelf .picker-status { flex: none; display: inline-flex; align-items: center; gap: var(--space-1); height: var(--control-small-h); padding-inline: var(--space-2); border-radius: var(--r-full); background: color-mix(in srgb, var(--status-ok) 14%, transparent); color: var(--text); font: var(--strong) var(--type-label-size)/var(--type-label-line) var(--font); white-space: nowrap; }
-.picker-status svg { inline-size: var(--icon); block-size: var(--icon); fill: none; stroke: currentColor; stroke-width: var(--icon-stroke); stroke-linecap: round; stroke-linejoin: round; }
 .demo-hint { display: block; margin-top: var(--space-2); color: var(--text-secondary); font: var(--type-body-size)/1.5 var(--font); }
 .demo-status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
 .picker-empty { flex: 1; min-height: 0; overflow-y: auto; display: grid; align-content: center; justify-items: center; text-align: center; padding: 2rem 1rem; color: var(--text-secondary); font-size: var(--type-body-size); }
 .picker-empty strong { color: var(--text); font-size: var(--type-title-size); }
 .picker-empty p { margin: var(--space-2) 0 var(--space-4); }
-.picker-empty svg { width: calc(3 * var(--space-4)); height: calc(3 * var(--space-4)); margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); stroke-width: var(--icon-stroke); }
+.picker-empty svg { margin-bottom: var(--space-3); fill: none; stroke: var(--text-tertiary); }
 .draft code { display: inline; white-space: normal; overflow-wrap: anywhere; }
 .paste-gap { display: inline-block; min-width: 7rem; line-height: 1; border-bottom: var(--ring-width) dashed var(--scarlet); }
 .draft .paste-slot { position: relative; display: inline-flex; align-items: center; gap: var(--space-1); vertical-align: .1em; min-height: 0; padding: .1em .5em; border: var(--border-width) dashed var(--scarlet); border-radius: var(--website-chip-radius); background: var(--website-accent-soft); color: var(--scarlet); font: var(--type-body-size)/1.4 var(--font); }
 .picker button, .draft button { position: relative; }
-:is(.picker button, .picker-format:has(select), .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
+/* A label overlay steals native select pointer activation: enlarge buttons only. */
+:is(.picker button, .draft button)::after { content: ""; position: absolute; inset-block: min(0px, calc((100% - var(--touch-target)) / 2)); inset-inline: 0; }
 .picker :is(.tile, .picker-clear)::after { inset-inline: min(0px, calc((100% - var(--touch-target)) / 2)); }
 .draft .paste-slot kbd { background: none; box-shadow: none; padding: 0; }
 @media (hover: hover) {

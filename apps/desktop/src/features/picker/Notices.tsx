@@ -71,7 +71,7 @@ export function Notices({ library, failures, error, citationProblem, copyError, 
       {copied && (confirmation || copied.warnings.length > 0) && (
         <div role={confirmation ? "status" : "group"} className="copy-notice">
           {confirmation && <p className="copy-receipt" data-outcome="copied">
-            <Icon name="check" className="copy-receipt-mark" />
+            <Icon name="check" size="tile" className="copy-receipt-mark" />
             <strong>{say("picker-copied")}</strong><code dir="auto" title={confirmation.text}>
               <span className="copy-receipt-excerpt">{confirmation.summary?.text ?? confirmation.text}</span>
               {Boolean(confirmation.summary?.more) && <span className="copy-receipt-more">+{confirmation.summary!.more} more</span>}

@@ -32,6 +32,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const activeFormatting = useRef<AbortController | null>(null);
   const delivery = useRef(0);
   const activeDelivery = useRef<AbortController | null>(null);
+  const pendingDelivery = useRef(false);
 
   const show = useCallback((next: SessionReferencesView) => {
     setView(next);
@@ -44,13 +45,14 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
       (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
   }, [sessionBibliography, style]);
-  const load = useCallback((read: () => Promise<SessionReferencesView>) => {
+  const load = useCallback((read: () => Promise<SessionReferencesView>, problem: string | null = null) => {
     formatting.current += 1;
     activeFormatting.current?.abort();
     delivery.current += 1;
     activeDelivery.current?.abort();
+    pendingDelivery.current = false;
     const request = ++listing.current;
-    setProblem(null);
+    setProblem(problem);
     read().then((next) => { if (request === listing.current) show(next); },
       () => { if (request === listing.current) setProblem(say("session-not-read")); });
   }, [show]);
@@ -59,12 +61,14 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     return () => {
       listing.current += 1; formatting.current += 1; delivery.current += 1;
       activeFormatting.current?.abort(); activeDelivery.current?.abort();
+      pendingDelivery.current = false;
     };
   }, [load, sessionReferences]);
 
   const edit = (change: SessionEdit) => {
     setStatus(null);
-    load(() => editSessionReferences(change));
+    const wasDelivering = pendingDelivery.current;
+    load(() => editSessionReferences(change), wasDelivering ? say("session-changed") : null);
   };
   /** Copy or save what is on screen; a list that moved on is shown again instead. */
   const deliver = (act: (signal: AbortSignal) => Promise<string | null>, failure: string) => {
@@ -72,11 +76,17 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     activeDelivery.current?.abort();
     const controller = new AbortController();
     activeDelivery.current = controller;
+    const owns = () => {
+      if (request !== delivery.current) return false;
+      pendingDelivery.current = false;
+      return true;
+    };
     setStatus(null);
     setProblem(null);
-    act(controller.signal).then((done) => { if (request === delivery.current && done) setStatus(done); }, (error) => {
-      if (request !== delivery.current || isCancelled(error)) return;
-      if (changed(error)) { setProblem(say("session-changed")); load(sessionReferences); } else setProblem(said(error, failure));
+    pendingDelivery.current = true;
+    act(controller.signal).then((done) => { if (owns() && done) setStatus(done); }, (error) => {
+      if (!owns() || isCancelled(error)) return;
+      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem(said(error, failure));
     });
   };
   const hash = bibliography?.content_hash;

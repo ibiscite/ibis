@@ -21,7 +21,7 @@
   border-radius: var(--r-small); background: var(--surface); box-shadow: var(--shadow-card);
   font-size: var(--type-body-size); font-weight: 500;
 }
-.ui-paste-guide-icon { width: var(--icon); height: var(--icon); flex: none; border-radius: var(--r-small); background: center / cover no-repeat; }
+.ui-paste-guide-icon { width: var(--icon-tile); height: var(--icon-tile); flex: none; border-radius: var(--r-small); background: center / cover no-repeat; }
 .ui-paste-guide-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ui-paste-guide-switch {
   position: relative; width: 26px; height: 15px; flex: none; border-radius: var(--r-full); background: var(--fill-control-pressed);

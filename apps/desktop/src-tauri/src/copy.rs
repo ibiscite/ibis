@@ -142,6 +142,27 @@ pub(crate) fn clipboard_mark() -> ClipboardMark {
     }
 }
 
+/// The picker and clipboard this request belongs to, captured before reciting.
+#[derive(Clone, Copy)]
+struct CopyIntent {
+    presentation: u64,
+    clipboard: ClipboardMark,
+}
+
+impl CopyIntent {
+    fn write<T>(
+        self,
+        presentation: u64,
+        clipboard: ClipboardMark,
+        write: impl FnOnce() -> Result<T, CommandError>,
+    ) -> Result<T, CommandError> {
+        if presentation != self.presentation || clipboard != self.clipboard {
+            return Err(CommandError::Cancelled);
+        }
+        write()
+    }
+}
+
 /// A copy's content, kept while it moves to the main thread to be written.
 pub(crate) struct OwnedContent {
     text: String,
@@ -184,6 +205,8 @@ pub(crate) fn write_copy_only_unless_written(
 mod clipboard;
 #[cfg(test)]
 mod engine_file_acceptance;
+#[cfg(test)]
+mod ownership_tests;
 
 /// Read-only examples owned by a prepared preview; never publishes a new ticket.
 #[tauri::command]
@@ -311,6 +334,10 @@ pub(crate) async fn copy_file_citation(
     library: State<'_, Mutex<Library>>,
 ) -> Result<Copied, CommandError> {
     const FAILED: &str = "The citation could not be copied. Try again.";
+    let intent = CopyIntent {
+        presentation: tauri::Manager::state::<crate::picker::PickerGeneration>(&app).current(),
+        clipboard: clipboard_mark(),
+    };
     // What the copy is for is fixed when it is asked for: a Forget or a new
     // target while it waits must not adopt it.
     let editor = tauri::Manager::state::<crate::editor_endpoint::Pending>(&app);
@@ -325,7 +352,7 @@ pub(crate) async fn copy_file_citation(
     let (send, committed) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
-        let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch));
+        let _ = send.send(commit_shown(&main, &recited, replaces, captured, epoch, intent));
     })
     .map_err(|_| CommandError::from(FAILED))?;
     tauri::async_runtime::spawn_blocking(move || committed.recv())
@@ -340,6 +367,7 @@ fn commit_shown(
     replaces: Vec<String>,
     captured: Option<(ibis_core::destination::AppId, String, Option<String>)>,
     epoch: std::sync::Arc<()>,
+    intent: CopyIntent,
 ) -> Result<Copied, CommandError> {
     use tauri::Manager;
     let library = app.state::<Mutex<Library>>();
@@ -387,15 +415,21 @@ fn commit_shown(
         }
         // Only a request that was answered may leave its citation on the clipboard.
         if request.clipboard {
-            write_copy_only(
-                &app,
-                ibis_core::contract::ClipboardContent {
-                    text: &text,
-                    html: html.as_deref(),
-                    rtf: rtf.as_deref(),
+            intent.write(
+                app.state::<crate::picker::PickerGeneration>().current(),
+                clipboard_mark(),
+                || {
+                    write_copy_only(
+                        &app,
+                        ibis_core::contract::ClipboardContent {
+                            text: &text,
+                            html: html.as_deref(),
+                            rtf: rtf.as_deref(),
+                        },
+                    )
+                    .map_err(CommandError::from)
                 },
-            )
-            .map_err(CommandError::from)?;
+            )?;
             session.lock().add(copied.cited.clone());
             record(&copied);
         }
@@ -409,14 +443,20 @@ fn commit_shown(
             session: &session,
         },
         |content| {
-            #[cfg(target_os = "windows")]
-            let delivery = {
-                let (token, sequence) = clipboard::write(&app, content)?;
-                crate::paste::remember_copy(&app, attempt, sequence, token)
-            };
-            #[cfg(not(target_os = "windows"))]
-            let delivery = clipboard::write(&app, content, &replaces)?;
-            Ok(delivery)
+            intent.write(
+                app.state::<crate::picker::PickerGeneration>().current(),
+                clipboard_mark(),
+                || {
+                    #[cfg(target_os = "windows")]
+                    let delivery = {
+                        let (token, sequence) = clipboard::write(&app, content).map_err(CommandError::from)?;
+                        crate::paste::remember_copy(&app, attempt, sequence, token)
+                    };
+                    #[cfg(not(target_os = "windows"))]
+                    let delivery = clipboard::write(&app, content, &replaces).map_err(CommandError::from)?;
+                    Ok(delivery)
+                },
+            )
         },
     )?;
     record(&copied);
@@ -446,7 +486,7 @@ pub(crate) fn commit_copy(
     file: &crate::library::engine_file::FileLibrary,
     recited: &crate::library::engine_file::Recited,
     context: ProjectCopy<'_>,
-    write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, String>,
+    write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<Option<u32>, CommandError>,
 ) -> Result<Copied, CommandError> {
     let (ticket, content_hash) = (recited.ticket(), recited.content_hash());
     context.project.commit(ticket, |current| {

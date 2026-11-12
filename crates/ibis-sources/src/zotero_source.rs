@@ -8,10 +8,12 @@ use ibis_core::zotero::api::{Transport, TransportError};
 use ibis_core::zotero::libraries;
 pub use ibis_core::zotero::libraries::Group;
 use ibis_zotero_local::bbt::{BbtError, BbtLibrary, LiveBbt};
+use ibis_zotero_local::closed;
+pub use ibis_zotero_local::closed::ClosedError;
+pub use ibis_zotero_local::discovery;
 pub use ibis_zotero_local::live::{Library, LiveError};
 use ibis_zotero_local::live::{Limits, LiveReader, LiveWarning};
 pub use ibis_zotero_local::{DEFAULT_PORT, LocalZotero};
-use ibis_zotero_local::{closed, discovery};
 use serde_json::Value;
 use std::collections::BTreeMap;
 use std::{
@@ -48,7 +50,13 @@ impl ZoteroError {
         )
     }
     pub fn newer(self) -> bool {
-        matches!(self, Self::Closed(closed::ClosedError::TooNew))
+        matches!(self, Self::Closed(closed::ClosedError::TooNew { .. }))
+    }
+    pub fn schema_table(self) -> Option<ibis_core::contract::ZoteroTable> {
+        match self {
+            Self::Closed(closed::ClosedError::TooNew { table }) => Some(table),
+            _ => None,
+        }
     }
     pub fn limited(self) -> bool {
         matches!(
@@ -177,6 +185,10 @@ impl ZoteroSource {
         self.profile = Profile::Known(identity.to_vec());
         self
     }
+    /// Resolve live/closed identity from read-only, caller-supplied discovery.
+    pub fn use_discovery(&mut self, found: &discovery::Discovery) {
+        self.profile = read_profile(Ok(found));
+    }
     /// The same profile, reading a new choice of libraries.
     pub fn choosing(&self, libraries: &[Library]) -> Result<Self, ZoteroError> {
         let mut chosen = Self::new(libraries)?;
@@ -252,7 +264,10 @@ impl ZoteroSource {
         let found = here();
         // A chosen profile only says which database a closed read copies;
         // it never changes the identity either read gives.
-        self.profile = read_profile(found.as_ref().map_err(|error| *error));
+        match &found {
+            Ok(found) => self.use_discovery(found),
+            Err(_) => self.profile = Profile::Running,
+        }
         match self.refresh_observed(DEFAULT_PORT, reload, &|| cancelled(), on_full) {
             Ok(loaded) => return Ok(loaded),
             Err(ZoteroError::Live(LiveError::Transport(TransportError::Unreachable))) => (),
@@ -323,6 +338,7 @@ impl ZoteroSource {
                     },
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 })
@@ -332,6 +348,7 @@ impl ZoteroSource {
                     code: WarningCode::CitationKeysUnavailable,
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 });
@@ -397,6 +414,7 @@ impl ZoteroSource {
                 .warnings
                 .iter()
                 .filter_map(|warning| match warning {
+                    closed::ClosedWarning::NewerThanTested => Some(WarningCode::ZoteroNewerThanTested),
                     closed::ClosedWarning::CloudSyncedDirectory => Some(WarningCode::CloudSyncedDirectory),
                     closed::ClosedWarning::ItemTooLarge { library_id, .. } if *library_id == found.library_id => {
                         Some(WarningCode::WorkLimit)
@@ -412,6 +430,7 @@ impl ZoteroSource {
                     code,
                     line: None,
                     key: None,
+                    entry: None,
                     cause: None,
                     field: None,
                 })
@@ -482,33 +501,62 @@ impl ZoteroSource {
                     {
                         mapped.record.citation_keys.clear();
                     }
-                    objects.push(LibraryObject::Record(mapped.record));
-                    warnings.extend(mapped.warnings.into_iter().map(|warning| SourceWarning {
-                        code: if warning == MappingWarning::DateParseLimit {
-                            WarningCode::WorkLimit
-                        } else {
-                            WarningCode::Field
-                        },
-                        line: None,
-                        key: None,
-                        cause: None,
-                        field: None,
+                    let label = mapped
+                        .record
+                        .citation_keys
+                        .first()
+                        .map(|key| key.value.clone())
+                        .or_else(|| {
+                            mapped
+                                .record
+                                .csl
+                                .get("title")
+                                .and_then(serde_json::Value::as_str)
+                                .map(str::to_owned)
+                        });
+                    warnings.extend(mapped.warnings.into_iter().map(|warning| {
+                        let (code, cause, field) = match warning {
+                            MappingWarning::UnknownField => {
+                                (WarningCode::Field, crate::WarningCause::UnknownField, None)
+                            }
+                            MappingWarning::SkippedCreator => {
+                                (WarningCode::Field, crate::WarningCause::Names, Some("creators"))
+                            }
+                            MappingWarning::InvalidCitationKey => {
+                                (WarningCode::Field, crate::WarningCause::Value, Some("citationKey"))
+                            }
+                            MappingWarning::InvalidAlias => {
+                                (WarningCode::Field, crate::WarningCause::Value, Some("extra"))
+                            }
+                            MappingWarning::PrivateUrl => (WarningCode::Field, crate::WarningCause::Link, Some("url")),
+                            MappingWarning::DateParseLimit(field) => {
+                                (WarningCode::WorkLimit, crate::WarningCause::TooLarge, Some(field))
+                            }
+                        };
+                        SourceWarning::at(code, None)
+                            .because(cause, field)
+                            .for_entry(label.as_deref())
                     }));
+                    objects.push(LibraryObject::Record(mapped.record));
                 }
-                Err(MappingError::UnsupportedType) => warnings.push(SourceWarning {
-                    code: WarningCode::Field,
-                    line: None,
-                    key: None,
-                    cause: None,
-                    field: None,
-                }),
-                Err(MappingError::InputLimit) => warnings.push(SourceWarning {
-                    code: WarningCode::WorkLimit,
-                    line: None,
-                    key: None,
-                    cause: None,
-                    field: None,
-                }),
+                Err(MappingError::UnsupportedType) => warnings.push(
+                    SourceWarning::at(WarningCode::Field, None)
+                        .because(crate::WarningCause::UnknownType, Some("itemType"))
+                        .for_entry(
+                            item.fields
+                                .get("citationKey")
+                                .or_else(|| item.fields.get("title"))
+                                .map(String::as_str),
+                        ),
+                ),
+                Err(MappingError::InputLimit) => warnings.push(
+                    SourceWarning::at(WarningCode::WorkLimit, None).for_entry(
+                        item.fields
+                            .get("citationKey")
+                            .or_else(|| item.fields.get("title"))
+                            .map(String::as_str),
+                    ),
+                ),
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
@@ -687,7 +735,14 @@ fn chosen_read_failed(error: ZoteroError, profile: Option<&str>) -> ZoteroError 
 /// A directory's spelling from discovery, which both read paths share.
 fn directory_identity(data: &Path) -> Vec<u8> {
     let mut identity = b"directory:".to_vec();
-    identity.extend_from_slice(data.as_os_str().as_encoded_bytes());
+    let platform = if cfg!(windows) {
+        discovery::Platform::Windows
+    } else if cfg!(target_os = "macos") {
+        discovery::Platform::MacOs
+    } else {
+        discovery::Platform::Linux
+    };
+    identity.extend_from_slice(&discovery::path_identity(data, platform));
     identity
 }
 
@@ -700,6 +755,9 @@ fn running_owner(transport: &mut impl Transport) -> Result<Vec<u8>, ZoteroError>
     let response = transport
         .get("users/0/items/top?limit=1&format=json")
         .map_err(LiveError::Transport)?;
+    if response.status == 403 {
+        return Err(LiveError::NotAllowed.into());
+    }
     if response.status != 200 {
         return Err(LiveError::Status(response.status).into());
     }
@@ -735,6 +793,43 @@ mod tests {
     use super::*;
     use ibis_core::zotero::api::Response;
     use serde_json::{Value, json};
+
+    #[test]
+    fn field_warnings_name_the_citation_key_or_title_and_the_date_field() {
+        for (field, expected) in [
+            ("date", "issued"),
+            ("accessDate", "accessed"),
+            ("originalDate", "original-date"),
+        ] {
+            for key in [None, Some("vale2024")] {
+                let mut item = ZoteroItem {
+                    key: "SYNTH001".into(),
+                    item_type: "book".into(),
+                    fields: BTreeMap::from([
+                        ("title".into(), "Invented Lantern".into()),
+                        (field.into(), "x".repeat(5000)),
+                    ]),
+                    ..ZoteroItem::default()
+                };
+                if let Some(key) = key {
+                    item.fields.insert("citationKey".into(), key.into());
+                }
+                let loaded = ZoteroSource::default()
+                    .map_items(LibraryId::digest(b"invented"), [item], vec![], &|| false)
+                    .unwrap();
+                let warning = loaded
+                    .warnings
+                    .iter()
+                    .find(|warning| warning.field.as_deref() == Some(expected))
+                    .unwrap();
+                assert_eq!(warning.entry.as_deref(), Some(key.unwrap_or("Invented Lantern")));
+                let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
+                    panic!("reference")
+                };
+                assert_eq!(record.csl[expected], json!({"literal":"x".repeat(5000)}));
+            }
+        }
+    }
     fn registry(profiles: &[(&str, &str)]) -> (tempfile::TempDir, discovery::Discovery) {
         let home = tempfile::tempdir().unwrap();
         let root = home.path().join(".zotero/zotero");
@@ -848,7 +943,9 @@ mod tests {
             Some(ErrorReason::ZoteroNoSpace)
         );
         for no_advice in [
-            ZoteroError::Closed(closed::ClosedError::TooNew),
+            ZoteroError::Closed(closed::ClosedError::TooNew {
+                table: closed::ZoteroTable::Items,
+            }),
             ZoteroError::Closed(closed::ClosedError::TooLarge),
             ZoteroError::Closed(closed::ClosedError::Cancelled),
             ZoteroError::Closed(closed::ClosedError::Changing),
@@ -897,6 +994,7 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             }]
@@ -928,6 +1026,7 @@ mod tests {
                 code: WarningCode::WorkLimit,
                 line: None,
                 key: None,
+                entry: None,
                 cause: None,
                 field: None,
             }]
@@ -1223,6 +1322,40 @@ mod tests {
 
     fn invented_libraries() -> Value {
         json!([{"id":1,"name":"My Library"},{"id":2,"name":"Invented group"}])
+    }
+
+    #[test]
+    fn owner_probe_sharing_refusal_recovers_for_unresolved_and_multiple_directories() {
+        struct Sharing(bool);
+        impl Transport for Sharing {
+            fn get(&mut self, path: &str) -> Result<Response, TransportError> {
+                if self.0 {
+                    Ok(Response {
+                        status: 403,
+                        headers: vec![],
+                        body: vec![],
+                    })
+                } else {
+                    ItemsApi(vec![
+                        json!({"key":"SYNTH234","itemType":"book","title":"Recovered atlas"}),
+                    ])
+                    .get(path)
+                }
+            }
+        }
+        let (_home, multiple) = registry(&[("First", "/invented/first"), ("Second", "/invented/second")]);
+        for found in [discovery::Discovery::default(), multiple] {
+            let mut source = ZoteroSource::default();
+            source.use_discovery(&found);
+            let refused = source.refresh(&mut Sharing(true), true, &|| false).unwrap_err();
+            assert_eq!(
+                refused.reason(),
+                Some(ibis_core::contract::ErrorReason::ZoteroSharingOff)
+            );
+            // The same source must recover; the owner probe's failure is not cached.
+            let loaded = source.refresh(&mut Sharing(false), true, &|| false).unwrap();
+            assert_eq!(loaded[0].snapshot.objects().len(), 1);
+        }
     }
 
     #[test]
@@ -1538,6 +1671,29 @@ mod tests {
             assert_eq!(ZoteroSource::new(&chosen).err(), Some(ZoteroError::Selection));
         }
         assert_eq!(ZoteroSource::default().libraries(), vec![Library::User]);
+    }
+
+    #[test]
+    fn newer_compatible_zotero_warns_on_the_library_and_not_its_records() {
+        let snapshot = closed::ClosedSnapshot {
+            schema_version: 132,
+            libraries: vec![closed_library(1, None, "Invented atlas", "")],
+            warnings: vec![closed::ClosedWarning::NewerThanTested],
+            better_bibtex_unknown: false,
+            owner: 0,
+        };
+        let loaded = ZoteroSource::default()
+            .publish_closed(&snapshot, &|| false)
+            .unwrap()
+            .remove(0);
+        assert_eq!(
+            loaded.warnings,
+            vec![SourceWarning::at(WarningCode::ZoteroNewerThanTested, None)]
+        );
+        let LibraryObject::Record(record) = &loaded.snapshot.objects()[0].object else {
+            panic!("invented record");
+        };
+        assert!(record.warnings.is_empty());
     }
 
     fn closed_library(library_id: i64, group_id: Option<i64>, title: &str, bbt: &str) -> closed::ClosedLibrary {

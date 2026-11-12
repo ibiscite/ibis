@@ -486,6 +486,7 @@ impl FileLibrary {
             info.refresh_error.map(|code| ibis_core::contract::EngineError {
                 code,
                 reason: info.refresh_reason,
+                detail: None,
             })
         });
         if let Some(failure) = failure {
@@ -493,6 +494,29 @@ impl FileLibrary {
         }
         // Empty libraries change the choice even when the object fingerprint stays equal.
         Ok(same)
+    }
+
+    pub(super) fn prepare_zotero_reload(
+        &self,
+        chosen: &ZoteroLibraries,
+        profile: Option<&str>,
+        force: bool,
+        cancel: &Cancellation,
+        guard: impl FnMut(
+            &mut dyn FnMut() -> Result<(), ibis_core::contract::EngineError>,
+        ) -> Result<(), ibis_core::contract::EngineError>,
+    ) -> Result<ibis_engine::PreparedZoteroReload, super::LoadError> {
+        let libraries: Vec<_> = chosen
+            .libraries()
+            .iter()
+            .map(|library| match library {
+                ZoteroLibrary::User => EngineZoteroLibrary::Personal,
+                ZoteroLibrary::Group(id) => EngineZoteroLibrary::Group(*id),
+            })
+            .collect();
+        self.engine
+            .prepare_zotero_reload_guarded(force, Some(&libraries), profile, cancel, guard)
+            .map_err(super::LoadError::Zotero)
     }
 
     pub(super) fn observe_once(
@@ -555,6 +579,7 @@ impl FileLibrary {
                 info.refresh_error.map(|code| ibis_core::contract::EngineError {
                     code,
                     reason: info.refresh_reason,
+                    detail: None,
                 })
             })
         {
@@ -1140,7 +1165,7 @@ impl FileLibrary {
     pub(crate) fn copy_recited(
         &self,
         recited: &Recited,
-        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), CommandError>,
     ) -> Result<crate::copy::Copied, CommandError> {
         let prepared = self.prepared.lock().map_err(|_| CommandError::SnapshotChanged)?;
         let (current, citation, _) = prepared.as_ref().ok_or(CommandError::SnapshotChanged)?;
@@ -1179,7 +1204,9 @@ impl FileLibrary {
         hash: &str,
         write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
     ) -> Result<crate::copy::Copied, CommandError> {
-        self.copy_recited(&self.recite(ticket, hash)?, write)
+        self.copy_recited(&self.recite(ticket, hash)?, |content| {
+            write(content).map_err(CommandError::from)
+        })
     }
 }
 

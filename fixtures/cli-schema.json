@@ -528,6 +528,13 @@
               "code": {
                 "$ref": "#/$defs/WarningCode"
               },
+              "entry": {
+                "description": "The entry's citation key, or its title when no key is available. Like\n`key`, this is source text for the person's diagnostics, never MCP.\nDisplay labels are bounded to 256 characters.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "field": {
                 "description": "The field to fix, named from the source format's vocabulary.",
                 "type": [
@@ -536,7 +543,7 @@
                 ]
               },
               "key": {
-                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only to them; no other warning carries source text.",
+                "description": "The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's\nown data and is shown only in their library diagnostics.",
                 "type": [
                   "string",
                   "null"
@@ -698,6 +705,11 @@
                   "work-limit",
                   "invalid-attachment"
                 ],
+                "type": "string"
+              },
+              {
+                "const": "zotero-newer-than-tested",
+                "description": "Validated newer Zotero layout; a source status, not a record problem.",
                 "type": "string"
               },
               {
@@ -1776,6 +1788,10 @@
         },
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
+          "complete": {
+            "description": "True when every match is included; independent of library source health.",
+            "type": "boolean"
+          },
           "hits": {
             "items": {
               "$ref": "#/$defs/SearchHit"
@@ -1814,6 +1830,7 @@
         "required": [
           "snapshot",
           "hits",
+          "complete",
           "source_health"
         ],
         "title": "SearchResult",

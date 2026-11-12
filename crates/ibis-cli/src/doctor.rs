@@ -58,7 +58,7 @@ pub(super) fn run(engine: &Engine, matches: &ArgMatches, mode: OutputMode) -> Re
     let data = json!({
         "contract_version": Version,
         "cli_version": ibis_core::VERSION,
-        "stdout_tty": mode == OutputMode::Terminal,
+        "stdout_tty": mode.stdout_terminal(),
         "capabilities": {"methods":Method::ALL, "key_outputs":key_outputs, "csl_styles":{
             "count":styles["total"], "locales":styles["locales"].as_array().map_or(0, Vec::len),
             "styles_release":styles["styles_release"], "locales_release":styles["locales_release"],
@@ -112,6 +112,10 @@ fn report_text(data: &Value, now_ms: u64) -> String {
     checks.push(("Library ids".to_owned(), &data["library_ids"]));
     for (label, result) in &checks {
         text.push_str(&summary(label, result));
+        for warning in result["warnings"].as_array().into_iter().flatten() {
+            text.push_str(&super::human::warning_line(warning));
+            text.push('\n');
+        }
         if let (Some("stale"), Some(time)) = (
             result["freshness"]["state"].as_str(),
             result["freshness"]["updated_at_ms"].as_u64(),
@@ -260,6 +264,7 @@ fn library_report(library: &LibraryInfo) -> Value {
     result["kind"] = json!(library.kind);
     result["id"] = json!(library.id);
     result["warning_count"] = json!(library.warnings_total);
+    result["warnings"] = json!(library.warnings);
     result["refresh_error"] = json!(library.refresh_error);
     result["freshness"] = json!({"state":if code == "refresh-failed" { "stale" } else { "current" }, "updated_at_ms":library.updated_at_ms});
     result
@@ -267,6 +272,38 @@ fn library_report(library: &LibraryInfo) -> Value {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn newer_zotero_warning_is_in_doctor_text_and_json() {
+        let mut library = LibraryInfo {
+            id: LibraryId::digest(b"synthetic-newer-zotero"),
+            kind: ibis_engine::LibraryKind::Zotero,
+            capabilities: vec![],
+            objects: 1,
+            warnings: vec![],
+            warnings_total: 0,
+            refresh_error: None,
+            refresh_reason: None,
+            updated_at_ms: 0,
+            watch_warning: None,
+            zotero: None,
+            duplicate_keys: Default::default(),
+            damaged_keys: Default::default(),
+            cut_short: false,
+        };
+        library.warnings = vec![ibis_engine::SourceWarning::at(
+            ibis_engine::WarningCode::ZoteroNewerThanTested,
+            None,
+        )];
+        library.warnings_total = 1;
+        let report = library_report(&library);
+        assert_eq!(report["warnings"][0]["code"], "zotero-newer-than-tested");
+        let text = report_text(&json!({"sources":[report]}), 0);
+        assert!(
+            text.contains("Zotero is newer than this version of Ibis was tested with."),
+            "{text}"
+        );
+    }
+
     use super::*;
     #[test]
     fn a_failed_refresh_reports_the_retained_snapshot_as_stale() {

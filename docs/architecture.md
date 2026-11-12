@@ -60,7 +60,9 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
 - **Closed:** copy the database and its WAL or journal to a private directory,
   check that the source stayed unchanged, run SQLite's quick check, read the
   copy and remove it. The live database is never opened. Changed copies are
-  retried at most three times. Unknown newer schemas are refused.
+  retried at most three times. Schemas newer than the tested ceiling read with a
+  source warning after required table, column and lookup shapes validate;
+  incompatible layouts are refused.
 
 A choice names the personal library or specific groups. Missing groups fail
 instead of falling back. Several closed profiles require a named choice.

@@ -7,6 +7,7 @@ import { createDemo, references, formats } from "../website/demo-model.mjs";
 
 // Like the page-control tests, run the real script against a small synthetic DOM.
 const keyScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/keys.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const iconScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/icon-paths.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
 const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
 const labels = Object.fromEntries([...template.match(/<figure class="picker"[\s\S]*?>/)[0].matchAll(/data-([\w-]+)="([^"]*)"/g)]
@@ -15,6 +16,7 @@ function demoPage(platform) {
   let copies = 0, pastes = 0;
   const element = tag => ({ tag, children: [], attrs: {}, handlers: {}, dataset: {}, className: "", classList: { toggle() {} },
     append(...children) { this.children.push(...children); },
+    prepend(...children) { this.children.unshift(...children); },
     replaceChildren(...children) { this.children = children; },
     get textContent() { return this.children.map(child => typeof child === "string" ? child : child.textContent).join(""); },
     set textContent(text) { this.children = [text]; },
@@ -36,9 +38,9 @@ function demoPage(platform) {
   figure.closest = selector => selector === "section" ? section : list;
   const document = { ...element("document"), documentElement: { dataset: { platform } }, createElement: element,
     createElementNS: (_namespace, tag) => element(tag), querySelector: selector => selector === "[data-picker]" ? figure : result };
-  const picker = runInNewContext(`${keyScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
+  const picker = runInNewContext(`${keyScript}\n${iconScript}\n${demoScript}\nsetupDemo({ onCopy, onPaste });`, { document, createDemo, references, formats,
     onCopy: () => { copies++; }, onPaste: () => { pastes++; },
-    typePaths: { book: [], article: [] }, iconPaths: { check: "", plus: "", close: "" }, matchMedia: () => ({ matches: false }) });
+    matchMedia: () => ({ matches: false }) });
   const panel = placeholder.replacement, [add, copy] = panel.querySelector(".picker-actions").children, input = panel.querySelector("input");
   return { add, copy, input, panel, figure, result, picker, feedback: () => ({ copies, pastes }), reopen: figure.querySelector("button") };
 }
@@ -133,6 +135,35 @@ test("website rows show plain titles and accessible reference details", () => {
   assert.deepEqual(rows.map(row => row.querySelector("strong").textContent), references.map(ref => ref.title));
   assert.deepEqual(rows.map(row => row.attrs["aria-label"]), references.map(ref =>
     `${ref.title}, ${ref.authors}, ${ref.year}, ${ref.where}, ${ref.key}`));
+});
+
+test("changing format updates the shelf and Copy label for one or several references", () => {
+  const { panel, add, copy } = demoPage("macos"), select = panel.querySelector("select");
+  for (const [value, label] of Object.entries(formats)) {
+    select.value = value; select.handlers.change();
+    assert.equal(copy.attrs["aria-label"], `Copy as ${label}`);
+    const expected = createDemo(); expected.state.format = value;
+    assert.equal(panel.querySelector("code").textContent, expected.output());
+  }
+  add.handlers.click();
+  const second = panel.querySelectorAll(".pick")[1];
+  second.handlers.click({ target: { closest: () => true } });
+  select.value = "cite"; select.handlers.change();
+  assert.equal(panel.querySelector("code").textContent, "\\cite{vale2024lanterns,fen2023clouds}");
+  assert.equal(copy.attrs["aria-label"], "Copy 2 as \\cite");
+});
+
+test("Escape clears search then closes; reopening keeps the citation shelf available", () => {
+  const { input, panel, picker } = demoPage("macos");
+  input.value = "clouds"; input.handlers.input();
+  const escape = { key: "Escape", ctrlKey: false, metaKey: false, altKey: false, shiftKey: false, target: input, preventDefault() {} };
+  panel.handlers.keydown(escape);
+  assert.equal(input.value, "");
+  assert.equal(panel.querySelector(".picker-shelf").hidden, false);
+  panel.handlers.keydown(escape); assert.equal(panel.hidden, true);
+  picker.open();
+  assert.equal(panel.querySelector(".picker-shelf").hidden, false);
+  assert.equal(panel.querySelector("code").textContent, "[@vale2024lanterns]");
 });
 
 test("key demo searches fields, selects and combines known samples in order", () => {

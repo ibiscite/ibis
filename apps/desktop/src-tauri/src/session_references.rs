@@ -160,8 +160,11 @@ pub(crate) async fn copy_session_bibliography(
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
     file.begin_bibliography(&cancel)?;
-    let items = session.items();
     let formatting = cancel.clone();
+    let (revision, items) = {
+        let list = session.lock();
+        (list.revision, list.items.clone())
+    };
     let content = tauri::async_runtime::spawn_blocking(move || {
         file.commit_session_bibliography(&items, &style, &content_hash, &formatting, |content| {
             Ok(crate::copy::OwnedContent::of(content))
@@ -172,10 +175,11 @@ pub(crate) async fn copy_session_bibliography(
     let (send, written) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
-        let result = cancel
-            .check()
-            .map_err(CommandError::from)
-            .and_then(|()| crate::copy::write_copy_only_unless_written(&main, &content, began));
+        let result = cancel.check().map_err(CommandError::from).and_then(|()| {
+            commit_list_copy(&main.state(), revision, || {
+                crate::copy::write_copy_only_unless_written(&main, &content, began)
+            })
+        });
         let _ = send.send(result);
     })
     .map_err(|_| CommandError::from(FAILED))?;
@@ -183,6 +187,20 @@ pub(crate) async fn copy_session_bibliography(
         .await
         .map_err(|_| CommandError::from(FAILED))?
         .map_err(|_| CommandError::from(FAILED))?
+}
+
+/// Keep edits out until the write finishes; a superseded list never reaches
+/// the clipboard, even if its formatter has already finished.
+fn commit_list_copy<T>(
+    session: &SessionReferences,
+    revision: u32,
+    write: impl FnOnce() -> Result<T, CommandError>,
+) -> Result<T, CommandError> {
+    let list = session.lock();
+    if list.revision != revision {
+        return Err(CommandError::SnapshotChanged);
+    }
+    write()
 }
 
 /// One of the app's own lines from the catalogue.
@@ -330,6 +348,72 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
 mod tests {
     use super::*;
     use ibis_core::contract::ClipboardContent;
+
+    #[test]
+    fn resetting_a_list_during_formatting_preserves_the_empty_list_and_clipboard()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("invented.bib");
+        std::fs::write(
+            &path,
+            "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
+        )?;
+        let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+        let query = serde_json::from_value(serde_json::json!({"text":"signals","interpret_locators":false}))?;
+        let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
+        let id = serde_json::from_value(rows["results"][0]["id"].clone())?;
+        let session = SessionReferences::default();
+        session.lock().add([id]);
+        let (revision, items) = {
+            let list = session.lock();
+            (list.revision, list.items.clone())
+        };
+        let shown = file
+            .session_bibliography(&items, "apa", &ibis_engine::Cancellation::default())
+            .map_err(|error| error.to_string())?
+            .ok_or("shown bibliography")?;
+        session.lock().reset();
+        // Let the queued formatter finish with its captured items after Reset.
+        let content = file
+            .commit_session_bibliography(
+                &items,
+                "apa",
+                &shown.content_hash,
+                &ibis_engine::Cancellation::default(),
+                |content| Ok(content.text.to_owned()),
+            )
+            .map_err(|error| error.to_string())?;
+        let mut clipboard = "Invented original clipboard".to_owned();
+        let copied = commit_list_copy(&session, revision, || {
+            clipboard = content;
+            Ok(())
+        });
+        assert_eq!(copied, Err(CommandError::SnapshotChanged));
+        assert!(session.items().is_empty());
+        assert_eq!(clipboard, "Invented original clipboard");
+
+        // Undo restores identical content, but does not revive the old copy.
+        session.lock().undo();
+        assert_eq!(
+            commit_list_copy(&session, revision, || Ok(())),
+            Err(CommandError::SnapshotChanged)
+        );
+        // A fresh request can write; failed clipboard I/O remains a failure.
+        let revision = session.lock().revision;
+        commit_list_copy(&session, revision, || {
+            clipboard = shown.text.clone();
+            Ok(())
+        })
+        .map_err(|error| error.to_string())?;
+        assert_eq!(clipboard, shown.text);
+        let failed = CommandError::from("The clipboard could not be written.");
+        assert_eq!(
+            commit_list_copy(&session, revision, || Err::<(), _>(failed.clone())),
+            Err(failed)
+        );
+        assert_eq!(clipboard, shown.text);
+        Ok(())
+    }
 
     #[test]
     fn an_export_gives_each_kind_of_file_or_refuses_one_it_cannot_write() {

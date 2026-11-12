@@ -65,7 +65,7 @@ pub enum MappingWarning {
     InvalidCitationKey,
     InvalidAlias,
     PrivateUrl,
-    DateParseLimit,
+    DateParseLimit(&'static str),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Error)]
@@ -217,7 +217,12 @@ pub fn map_item(library: LibraryId, item: &ZoteroItem) -> Result<MappedItem, Map
             });
         if let Some(value) = value.filter(|value| !value.is_empty()) {
             if value.len() > dates::MAX_PARSE_BYTES {
-                warn(&mut warnings, MappingWarning::DateParseLimit);
+                let field = match variable.as_str() {
+                    "accessed" => "accessed",
+                    "original-date" => "original-date",
+                    _ => "issued",
+                };
+                warn(&mut warnings, MappingWarning::DateParseLimit(field));
             }
             csl.insert(variable.clone(), dates::to_csl(value, field == "accessDate"));
         }
@@ -432,6 +437,13 @@ fn citation_key_label(label: &str) -> bool {
 }
 
 fn warn(warnings: &mut Vec<MappingWarning>, warning: MappingWarning) {
+    if matches!(warning, MappingWarning::DateParseLimit(_))
+        && warnings
+            .iter()
+            .any(|warning| matches!(warning, MappingWarning::DateParseLimit(_)))
+    {
+        return;
+    }
     if !warnings.contains(&warning) {
         warnings.push(warning);
     }
