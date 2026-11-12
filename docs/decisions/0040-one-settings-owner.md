@@ -9,6 +9,8 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   - One worker applies edits one at a time, in that order. Each runs as the engine
     transaction: the cross-process lock, a fresh read, the change, validation
     and an atomic write.
+  - An outcome returns after that turn's outside-edit checks and reports finish,
+    so the caller's next file edit cannot race the previous turn's final read.
   - A later choice therefore always lands after an earlier one, and nothing
     else orders writes: no field tickets, writer mutexes or interface queues.
   - The app submits at IPC dispatch, from a synchronous command, so two windows
@@ -25,6 +27,11 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
 - **Other processes (the command line) are ordered by the file lock.** A busy
   lock refuses at once, as before. Edits patch only the fields they mean to
   change, so a command-line change made between two app edits is kept.
+- **Outside edits are detected by content.** Watch the canonical settings
+  directory and a symlink target's directory. Non-access events for either
+  directory or its entries trigger a byte comparison, including replacement
+  saves and either side of a rename. Unchanged bytes and the owner's own writes
+  produce no outside-edit report; access events never schedule another read.
 - **A refused or failed save publishes nothing.** The edit's caller gets the
   refusal, and every later edit still runs.
 - **A failed choice is never sent again later.** A resend could land over a

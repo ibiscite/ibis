@@ -10,7 +10,12 @@ use std::time::Duration;
 use super::{Loaded, Settings, SettingsError};
 use crate::settings;
 
-type Work = Box<dyn FnOnce(&Path, u64) -> Option<Vec<u8>> + Send>;
+type Work = Box<dyn FnOnce(&Path, u64) -> Completion + Send>;
+#[derive(Default)]
+struct Completion {
+    written: Option<Vec<u8>>,
+    reply: Option<Box<dyn FnOnce() + Send>>,
+}
 struct Job {
     receipt: u64,
     work: Work,
@@ -110,6 +115,25 @@ fn enqueue(queue: &Mutex<Queue>, work: Work) -> Option<u64> {
     Some(receipt)
 }
 
+fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf>>, signal: &mpsc::SyncSender<()>) {
+    if event.is_ok_and(|event| {
+        // Inotify reports our own reads as opens. Treating them as edits would
+        // make every fingerprint schedule another fingerprint indefinitely.
+        !matches!(event.kind, notify::EventKind::Access(_))
+            && tracked.lock().is_ok_and(|folders| {
+                // Native events are hints: an atomic save can name only its
+                // replacement file or directory. The owner compares bytes.
+                event.paths.iter().any(|path| {
+                    folders
+                        .iter()
+                        .any(|folder| path == folder || path.parent() == Some(folder))
+                })
+            })
+    }) {
+        let _ = signal.try_send(());
+    }
+}
+
 impl Owner {
     pub fn open(path: PathBuf) -> Self {
         let (sender, jobs) = mpsc::channel::<Job>();
@@ -126,16 +150,20 @@ impl Owner {
                         seen = before;
                         let _ = catch_unwind(AssertUnwindSafe(|| report(&file, job.receipt - 1, &watching)));
                     }
-                    let written = catch_unwind(AssertUnwindSafe(|| (job.work)(&file, job.receipt)))
-                        .ok()
-                        .flatten();
-                    if let Some(bytes) = written {
+                    let completed =
+                        catch_unwind(AssertUnwindSafe(|| (job.work)(&file, job.receipt))).unwrap_or_default();
+                    if let Some(bytes) = completed.written {
                         seen = Fingerprint::Bytes(bytes);
                     }
                     let after = fingerprint(&file);
                     if after != seen {
                         seen = after;
                         let _ = catch_unwind(AssertUnwindSafe(|| report(&file, job.receipt + 1, &watching)));
+                    }
+                    // Finish the whole turn before returning its outcome. The
+                    // caller's next edit must not race this turn's final read.
+                    if let Some(reply) = completed.reply {
+                        reply();
                     }
                 }
             })
@@ -159,18 +187,15 @@ impl Owner {
         // A new profile has no file yet. Its folder must exist before native
         // watching starts, so the first editor save is observed too.
         std::fs::create_dir_all(&folder).ok()?;
+        // FSEvents reports canonical paths, including when the file is absent.
+        // Resolve the directory without following the settings symlink itself.
+        let folder = std::fs::canonicalize(folder).ok()?;
         let path = self.path.clone();
-        let tracked = Arc::new(Mutex::new(vec![path.clone()]));
+        let tracked = Arc::new(Mutex::new(vec![folder.clone()]));
         let relevant = Arc::clone(&tracked);
         let (signal, events) = mpsc::sync_channel::<()>(1);
         let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
-            if event.is_ok_and(|event| {
-                relevant
-                    .lock()
-                    .is_ok_and(|paths| event.paths.iter().any(|path| paths.contains(path)))
-            }) {
-                let _ = signal.try_send(());
-            }
+            signal_edit(event, &relevant, &signal);
         })
         .ok()?;
         watcher.watch(&folder, notify::RecursiveMode::NonRecursive).ok()?;
@@ -183,7 +208,7 @@ impl Owner {
         }
         // Compare the opening fingerprint once after registration: an edit
         // during startup may have happened before native events were watched.
-        enqueue(&self.jobs, Box::new(|_, _| None))?;
+        enqueue(&self.jobs, Box::new(|_, _| Completion::default()))?;
         let state = Arc::clone(&self.watch);
         let jobs = Arc::clone(&self.jobs);
         std::thread::Builder::new()
@@ -196,7 +221,7 @@ impl Owner {
                         let Some(watcher) = state.watcher.as_mut() else { return };
                         rebind(&path, &folder, &mut target_folder, watcher, &tracked);
                     }
-                    if enqueue(&jobs, Box::new(|_, _| None)).is_none() {
+                    if enqueue(&jobs, Box::new(|_, _| Completion::default())).is_none() {
                         return;
                     }
                 }
@@ -241,8 +266,12 @@ impl Owner {
             &self.jobs,
             Box::new(move |path, receipt| {
                 let (result, written) = tracking(|| work(receipt, path));
-                let _ = reply.send(result);
-                written
+                Completion {
+                    written,
+                    reply: Some(Box::new(move || {
+                        let _ = reply.send(result);
+                    })),
+                }
             }),
         );
         (receipt, Pending(outcome))
@@ -257,16 +286,23 @@ impl Owner {
     pub fn in_turn<T>(&self, work: impl FnOnce(&Path) -> T) -> Option<T> {
         let (start, turn) = mpsc::channel::<()>();
         let (finished, done) = mpsc::channel::<Option<Vec<u8>>>();
+        let (settled, completion) = mpsc::channel::<()>();
         enqueue(
             &self.jobs,
             Box::new(move |_, _| {
                 let _ = start.send(());
-                done.recv().ok().flatten()
+                Completion {
+                    written: done.recv().ok().flatten(),
+                    reply: Some(Box::new(move || {
+                        let _ = settled.send(());
+                    })),
+                }
             }),
         )?;
         turn.recv().ok()?;
         let (result, written) = tracking(|| work(&self.path));
         let _ = finished.send(written);
+        completion.recv().ok()?;
         Some(result)
     }
     pub fn close(&self) {
@@ -314,8 +350,10 @@ fn rebind(
             *target_folder = Some(desired);
         }
     }
-    if let Ok(mut paths) = tracked.lock() {
-        *paths = std::iter::once(path.to_path_buf()).chain(target).collect();
+    if let Ok(mut folders) = tracked.lock() {
+        *folders = std::iter::once(folder.to_path_buf())
+            .chain(target_folder.clone())
+            .collect();
     }
 }
 
@@ -347,6 +385,84 @@ mod tests {
             .unwrap_or_else(|error| panic!("no edit reported: {error}"))
     }
 
+    // Publish one complete editor save, without fs::write's transient truncation.
+    fn replace(path: &Path, bytes: &[u8]) {
+        let replacement = path.with_extension("replacement");
+        std::fs::write(&replacement, bytes).unwrap_or_else(|error| panic!("{error}"));
+        std::fs::rename(replacement, path).unwrap_or_else(|error| panic!("{error}"));
+    }
+
+    #[test]
+    fn reading_settings_does_not_schedule_another_read() {
+        use notify::event::{AccessKind, AccessMode};
+        let folder = PathBuf::from("synthetic");
+        let tracked = Mutex::new(vec![folder.clone()]);
+        let (signal, events) = mpsc::sync_channel(1);
+        for path in [folder.join("settings.json"), folder] {
+            for access in [
+                AccessKind::Read,
+                AccessKind::Open(AccessMode::Any),
+                AccessKind::Close(AccessMode::Read),
+            ] {
+                signal_edit(
+                    Ok(notify::Event::new(notify::EventKind::Access(access)).add_path(path.clone())),
+                    &tracked,
+                    &signal,
+                );
+                assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+            }
+        }
+    }
+
+    #[test]
+    fn replacement_and_directory_events_schedule_a_read_in_both_folders() {
+        use notify::EventKind;
+        use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
+        let folders = [PathBuf::from("synthetic/profile"), PathBuf::from("synthetic/linked")];
+        let tracked = Mutex::new(folders.to_vec());
+        let (signal, events) = mpsc::sync_channel(1);
+        for folder in &folders {
+            for path in [
+                folder.clone(),
+                folder.join("settings.json"),
+                folder.join("settings.replacement"),
+            ] {
+                for kind in [
+                    EventKind::Any,
+                    EventKind::Create(CreateKind::Any),
+                    EventKind::Modify(ModifyKind::Any),
+                    EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
+                    EventKind::Remove(RemoveKind::Any),
+                    EventKind::Other,
+                ] {
+                    signal_edit(Ok(notify::Event::new(kind).add_path(path.clone())), &tracked, &signal);
+                    assert_eq!(events.try_recv(), Ok(()), "{kind:?}: {path:?}");
+                }
+            }
+            // Backends may report either side first, or only one side at all.
+            let settings = folder.join("settings.json");
+            let outside = PathBuf::from("synthetic/outside/replacement");
+            for paths in [[outside.clone(), settings.clone()], [settings, outside]] {
+                signal_edit(
+                    Ok(
+                        notify::Event::new(EventKind::Modify(ModifyKind::Name(RenameMode::Both)))
+                            .add_path(paths[0].clone())
+                            .add_path(paths[1].clone()),
+                    ),
+                    &tracked,
+                    &signal,
+                );
+                assert_eq!(events.try_recv(), Ok(()));
+            }
+        }
+        signal_edit(
+            Ok(notify::Event::new(EventKind::Any).add_path(PathBuf::from("synthetic/unwatched/settings.json"))),
+            &tracked,
+            &signal,
+        );
+        assert!(matches!(events.try_recv(), Err(mpsc::TryRecvError::Empty)));
+    }
+
     #[test]
     fn first_run_watches_outside_edits_once_and_ignores_its_own_writes() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("temporary folder: {error}"));
@@ -364,8 +480,7 @@ mod tests {
         density(&owner, settings::Density::Comfortable).unwrap_or_else(|error| panic!("{error}"));
         let mut edited = owner.read().settings;
         edited.larger_text = Some(true);
-        std::fs::write(&path, serde_json::to_vec(&edited).unwrap_or_default())
-            .unwrap_or_else(|error| panic!("{error}"));
+        replace(&path, &serde_json::to_vec(&edited).unwrap_or_default());
         let reported = next(&edits);
         assert!(reported.problem.is_none());
         assert_eq!(
@@ -388,7 +503,9 @@ mod tests {
                 let _ = sender.send(loaded);
             })
             .unwrap_or_else(|| panic!("the temporary folder can be watched"));
-        std::fs::write(&path, b"{ invented half-typed").unwrap_or_else(|error| panic!("{error}"));
+        // Finish the opening comparison before simulating an editor's save.
+        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        replace(&path, b"{ invented half-typed");
         assert!(next(&edits).problem.is_some());
         assert!(density(&owner, settings::Density::Comfortable).is_err());
         assert_eq!(std::fs::read(&path).unwrap_or_default(), b"{ invented half-typed");
@@ -397,7 +514,7 @@ mod tests {
             density: Some(settings::Density::Comfortable),
             ..Settings::default()
         };
-        std::fs::write(&path, serde_json::to_vec(&fixed).unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));
+        replace(&path, &serde_json::to_vec(&fixed).unwrap_or_default());
         let reported = next(&edits);
         assert!(reported.problem.is_none());
         assert_eq!(reported.settings.density, Some(settings::Density::Comfortable));
@@ -482,27 +599,32 @@ mod tests {
     #[test]
     #[cfg(unix)]
     fn a_linked_file_is_live_and_rebinding_keeps_watching_its_new_target() {
-        let (directory, owner) = owner();
-        let targets = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let first = targets.path().join("first.json");
-        let second = targets.path().join("second.json");
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let first_folder = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let second_folder = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let first = first_folder.path().join("settings.json");
+        let second = second_folder.path().join("settings.json");
         std::fs::write(&first, b"{}").unwrap_or_else(|error| panic!("{error}"));
         std::fs::write(&second, b"{}").unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
         std::os::unix::fs::symlink(&first, &path).unwrap_or_else(|error| panic!("{error}"));
+        // The pre-existing link is the baseline, rather than an outside edit.
+        let owner = Owner::open(path.clone());
         let (sender, edits) = mpsc::channel();
         let _watching = owner
             .watch(move |_, loaded| {
                 let _ = sender.send(loaded);
             })
             .unwrap_or_else(|| panic!("watch"));
-        std::fs::write(&first, br#"{"larger_text":true}"#).unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        // Replacing the inode must keep observing this filename.
+        replace(&first, br#"{"larger_text":true}"#);
         assert_eq!(next(&edits).settings.larger_text, Some(true));
         let replacement = directory.path().join("replacement");
         std::os::unix::fs::symlink(&second, &replacement).unwrap_or_else(|error| panic!("{error}"));
         std::fs::rename(&replacement, &path).unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(next(&edits).settings.larger_text, None);
-        std::fs::write(&second, br#"{"menu_bar":false}"#).unwrap_or_else(|error| panic!("{error}"));
+        replace(&second, br#"{"menu_bar":false}"#);
         assert_eq!(next(&edits).settings.menu_bar, Some(false));
         owner.close();
         assert!(density(&owner, settings::Density::Compact).is_err());
