@@ -1736,6 +1736,45 @@ fn terminal_display(text: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn searching_a_newer_compatible_zotero_library_prints_results_without_a_note() {
+        let case: GoldenCase = serde_json::from_str(include_str!("../../../fixtures/cases/02-pandoc.json"))
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let engine = Engine::from_snapshot(std::sync::Arc::new(case.library));
+        let mut library = engine
+            .libraries()
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .libraries
+            .remove(0);
+        library.kind = ibis_engine::LibraryKind::Zotero;
+        library.warnings = vec![ibis_engine::SourceWarning::at(
+            ibis_engine::WarningCode::ZoteroNewerThanTested,
+            None,
+        )];
+        library.warnings_total = 1;
+        let health = ibis_engine::health::SourceHealth::of(std::iter::once(&library));
+        let result = engine
+            .dispatch(Method::Search, &json!({"query":"signals"}), &Cancellation::default())
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .with_health(&health)
+            .unwrap_or_else(|e| panic!("{e:?}"));
+        let result = human::with_summary(
+            result,
+            Method::Search,
+            false,
+            human::Holdings::References,
+            &Default::default(),
+        );
+        let (mut output, mut errors) = (Vec::new(), Vec::new());
+        let code = emit(false, Ok(result), None, "", &mut output, &mut errors, OutputMode::Plain);
+        assert_eq!(code, 0);
+        assert_eq!(
+            String::from_utf8(output).unwrap_or_else(|e| panic!("{e:?}")),
+            "Example2026\tAvery Taylor\t2026\tSynthetic signals\n"
+        );
+        assert!(errors.is_empty());
+    }
+
     use super::*;
     #[test]
     fn a_stalled_wait_gives_up_at_its_deadline() {

@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+pub use ibis_core::contract::ZoteroTable;
 use thiserror::Error;
 
 mod database;
@@ -50,7 +51,7 @@ pub enum ClosedError {
     #[error("this Zotero database is too old; update Zotero or open it")]
     TooOld,
     #[error("this Zotero database is newer than Ibis knows; update Ibis or open Zotero")]
-    TooNew,
+    TooNew { table: ZoteroTable },
     #[error("Zotero's database exceeds the closed-reader limit")]
     TooLarge,
     #[error("Zotero's database needs journal recovery; open Zotero first")]
@@ -148,6 +149,7 @@ pub struct ClosedSnapshot {
 
 #[derive(Clone, PartialEq, Eq)]
 pub enum ClosedWarning {
+    NewerThanTested,
     CloudSyncedDirectory,
     /// The bounded source key identifies an omitted item without its contents.
     ItemTooLarge {
