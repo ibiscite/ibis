@@ -14,6 +14,18 @@ refuses unbundled executables, and allows only copy even with modifier keys.
 Its stateless source stays on the main thread for the session's lifetime.
 Changes to these modules need independent security-boundary review.
 
+`placement/macos.rs` is a geometry-only exception (2026-11-12, decision 0047).
+With an existing Accessibility grant, it reads the frontmost application's
+`AXFocusedWindow`, then that window's `AXPosition` and `AXSize`, under one 40 ms
+deadline. Every opaque result is retained and type-checked; no title, document,
+value, selection or text is read, logged or sent to the webview. A changed app,
+failed read or missing grant falls back to the pointer without a prompt. This
+module also owns the SDK's `CGDisplayCreateUUIDFromDisplayID` call, adopting its
+retained UUID to key local position memory; no display identity is published.
+All other screen geometry uses the existing safe AppKit bindings. Check for
+`safeAreaInsets` before sending it (macOS 12+); older systems use zero insets
+and keep `visibleFrame` as the usable area.
+
 `sizing/display_events.rs` is also a scoped exception (2026-10-31): the locked
 bindings provide only unsafe registration for AppKit screen-parameter
 notifications and Win32 window subclasses. It uses the existing objc2/block2

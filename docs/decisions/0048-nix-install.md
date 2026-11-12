@@ -1,4 +1,4 @@
-# 0045 Nix install
+# 0048 Nix install
 
 2026-11-11 (maintainer). Nix installation returns after its removal in #1206
 on 2026-10-26: source packages give Nix users a reproducible install while

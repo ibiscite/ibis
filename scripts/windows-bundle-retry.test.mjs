@@ -62,7 +62,7 @@ console.log("packaged pristine executable");
       CONFIG: config, STUB_CALLS: calls, STUB_EXE: executable, STUB_FAILURES: JSON.stringify(failures),
       STUB_BUILD_STATUS: String(buildStatus), STUB_ASSET: assets[0], STUB_GATEWAY: gateway },
   });
-  const flags = ["--ci", "--target", target, ...(nightly ? ["--config", config] : [])];
+  const flags = ["--ci", "--target", target, "--config", "src-tauri/tauri.bundle.conf.json", ...(nightly ? ["--config", config] : [])];
   return { ...result, calls: readFileSync(calls, "utf8").trim().split("\n").map(JSON.parse),
     build: ["tauri", "build", "--no-bundle", ...flags, "--", "--locked"],
     bundle: ["tauri", "bundle", ...flags, "--features", "tauri/custom-protocol"] };

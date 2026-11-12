@@ -121,7 +121,8 @@ test.each([false, true])("empty, controls, results, selection, no matches and ke
 test("a failed size save is visible and a later successful save clears it without sizing IPC", async () => {
   const calls = backend();
   let saved: (success: boolean) => void = () => {};
-  render(<App api={{ ...api, onWindowSizeSaved: async (handler) => { saved = handler; return () => {}; } }} />);
+  vi.spyOn(api, "onWindowSizeSaved").mockImplementation(async (handler) => { saved = handler; return () => {}; });
+  render(<App />);
   await screen.findByText("Type to find a reference");
   act(() => saved(false));
   expect(screen.getByRole("alert").textContent).toMatch(/save the window size/);
@@ -163,7 +164,8 @@ test("clearing a settings notice keeps the pointer's newer place even before its
     }
     return new DOMRect();
   });
-  render(<App api={{ ...api, onLibraryChanged: async (handler) => { changed = handler; return () => {}; } }} />);
+  vi.spyOn(api, "onLibraryChanged").mockImplementation(async (handler) => { changed = handler; return () => {}; });
+  render(<App />);
   await screen.findByText("Type to find a reference");
   const search = screen.getByRole<HTMLInputElement>("combobox");
   fireEvent.change(search, { target: { value: "invented" } });

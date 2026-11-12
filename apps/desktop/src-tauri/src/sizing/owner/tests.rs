@@ -338,8 +338,8 @@ fn sizing_close_retires_a_pending_read_and_reopen_accepts_the_next_change() {
     assert_eq!(reads.get(), 1);
 }
 
-fn frame(width: u32, height: u32) -> PickerWindow {
-    PickerWindow {
+fn frame(width: u32, height: u32) -> Frame {
+    Frame {
         width,
         height,
         x: 40,
@@ -354,6 +354,7 @@ fn screen(key: &str, scale: f64, room: (f64, f64)) -> Display {
         scale,
         origin: (0.0, 0.0),
         room,
+        usable: room,
     }
 }
 
@@ -369,6 +370,7 @@ impl Native {
         let live = Sample {
             display: screen("a", 1.0, (1000.0, 700.0)),
             frame: frame(720, 480),
+            removed_display: None,
         };
         let mut owner = Owner::default();
         owner.prepared(live.clone());
@@ -422,7 +424,10 @@ fn sizing_dpi_dispatch_does_not_turn_the_old_client_area_into_a_new_drag() {
     let mut native = Native::new();
     let mut custom = frame(840, 600);
     custom.custom_size = true;
-    native.owner.windows.insert("b".into(), custom);
+    native
+        .owner
+        .windows
+        .insert("b".into(), remember(custom, (1280.0, 800.0)));
     native.live.display = screen("b", 2.0, (1280.0, 800.0));
     // WM_DPICHANGED reports 200% before SetWindowPos doubles the client area.
     native.live.frame = frame(360, 240);
@@ -431,13 +436,13 @@ fn sizing_dpi_dispatch_does_not_turn_the_old_client_area_into_a_new_drag() {
         logical: (720, 480),
     });
     native.owner.observe(native.live.clone(), native.now, false);
-    assert_eq!(native.owner.windows["b"], custom);
+    assert_eq!(native.owner.windows["b"], remember(custom, native.live.display.usable));
     assert_eq!(native.owner.revision, 0, "unsettled DPI geometry is never accepted");
     native.live.frame = frame(720, 480);
     native.event(Event::Geometry);
     native.settle();
     assert_eq!((native.live.frame.width, native.live.frame.height), (720, 480));
-    assert_eq!(native.owner.windows["b"], custom);
+    assert_eq!(native.owner.windows["b"], remember(custom, native.live.display.usable));
     native.drag(900, 640);
     assert_eq!(
         (native.owner.windows["b"].width, native.owner.windows["b"].height),
@@ -516,12 +521,15 @@ fn sizing_reset_undo_restores_the_visible_frame_and_only_the_removed_display_set
     native.drag(840, 600);
     let previous = native.live.clone();
     let saved = native.owner.windows["a"];
-    native.owner.windows.insert("b".into(), frame(900, 640));
+    native
+        .owner
+        .windows
+        .insert("b".into(), remember(frame(900, 640), (1000.0, 700.0)));
     let revision = native
         .owner
         .reset("a", previous.clone(), native.now)
         .unwrap_or_else(|| panic!("reset refused"));
-    assert!(!native.owner.windows.contains_key("a"));
+    assert_eq!(native.owner.windows["a"].position, None);
     let undo = native
         .owner
         .undo_for(revision)
@@ -529,7 +537,7 @@ fn sizing_reset_undo_restores_the_visible_frame_and_only_the_removed_display_set
     assert_eq!(undo.previous.frame, previous.frame);
     assert!(native.owner.restore(revision, native.now));
     assert_eq!(native.owner.windows["a"], saved);
-    assert_eq!(native.owner.windows["b"], frame(900, 640));
+    assert_eq!(native.owner.windows["b"], remember(frame(900, 640), (1000.0, 700.0)));
     assert!(!native.owner.restore(revision, native.now));
 }
 

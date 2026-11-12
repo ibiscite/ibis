@@ -89,12 +89,8 @@ impl InstallationFailure {
     }
 }
 
-/// Native update control, kept with the ordered settings saver.
-/// Both menu items carry a fixed choice through delayed click events.
-pub(crate) use setting::AutomaticMenuItem;
-
-/// Builds without the update key (development, or before the key exists) have
-/// no updates at all, so the menu items and the question are left out.
+/// Builds without the update key cannot update themselves. Settings and the
+/// menu check explain this; the automatic-checks question is left out.
 pub(crate) fn available(app: &AppHandle) -> bool {
     has_update_key(app.config().plugins.0.get("updater"))
 }
@@ -225,7 +221,6 @@ pub(super) async fn check(app: &AppHandle, asked: bool) -> CheckResult {
 /// The existing tray command changes only its words when an update is pending.
 pub(crate) struct UpdateMenuItem(pub(crate) tauri::menu::MenuItem<tauri::Wry>);
 pub(crate) use offer::CheckResult;
-pub(crate) use offer::menu_label as update_menu_label;
 
 /// Whether an automatic check found an update that has not been presented.
 #[tauri::command]

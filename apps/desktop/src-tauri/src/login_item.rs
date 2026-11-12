@@ -19,10 +19,7 @@ mod linux;
 use std::sync::Mutex;
 
 use serde::Serialize;
-use tauri::menu::CheckMenuItem;
 use tauri::{AppHandle, Manager};
-
-use crate::diagnostics::{NativeIssue, checked, report};
 
 /// Passed by the login entry (Windows and Linux), so Ibis starts without
 /// showing the picker. macOS reports a login launch in its open event instead.
@@ -126,7 +123,7 @@ pub(crate) fn change(entry: Option<&dyn Entry>, on: bool, approval: bool) -> Rea
 pub(crate) struct LoginItems {
     name: String,
     entry: Option<Box<dyn Entry>>,
-    /// One change at a time, from the picker or the menu.
+    /// Serialize Settings changes with system reads.
     changing: Mutex<()>,
 }
 
@@ -139,6 +136,7 @@ impl LoginItems {
         }
     }
 
+    #[cfg(test)]
     pub(crate) fn available(&self) -> bool {
         self.entry.is_some()
     }
@@ -156,29 +154,13 @@ impl LoginItems {
     }
 
     pub(crate) fn read(&self) -> LoginItem {
-        self.read_then(|_| {})
+        let _changing = self.changing.lock();
+        self.named(self.reading())
     }
 
-    #[cfg(test)]
     pub(crate) fn change(&self, on: bool) -> LoginItem {
-        self.change_then(on, |_| {})
-    }
-
-    /// Read the state and pass it to `show` before another change can start,
-    /// so the menu never ends on an older answer than the last change.
-    pub(crate) fn read_then(&self, show: impl FnOnce(&LoginItem)) -> LoginItem {
         let _changing = self.changing.lock();
-        let item = self.named(self.reading());
-        show(&item);
-        item
-    }
-
-    /// Change the state and pass the outcome to `show` under the same lock.
-    pub(crate) fn change_then(&self, on: bool, show: impl FnOnce(&LoginItem)) -> LoginItem {
-        let _changing = self.changing.lock();
-        let item = self.named(change(self.entry.as_deref(), on, cfg!(target_os = "macos")));
-        show(&item);
-        item
+        self.named(change(self.entry.as_deref(), on, cfg!(target_os = "macos")))
     }
 
     /// An entry left by an earlier copy of Ibis (a moved AppImage, say) is
@@ -336,33 +318,20 @@ pub(crate) fn launched_as_macos_login_item() -> bool {
         })
 }
 
-/// The menu bar or tray item, kept in step with the system.
-pub(crate) struct LoginMenuItem(pub(crate) CheckMenuItem<tauri::Wry>);
-
-/// Read the system state and show it in the menu.
+/// Read the system state for Settings.
 pub(crate) fn current(app: &AppHandle) -> LoginItem {
-    match app.try_state::<LoginItems>() {
-        Some(items) => items.read_then(|item| show_in_menu(app, item)),
-        None => unsupported(app),
-    }
+    app.try_state::<LoginItems>()
+        .map_or_else(|| unsupported(app), |items| items.read())
 }
 
 fn unsupported(app: &AppHandle) -> LoginItem {
     LoginItems::new(&app.package_info().name, None).read()
 }
 
-fn show_in_menu(app: &AppHandle, item: &LoginItem) {
-    if let Some(menu) = app.try_state::<LoginMenuItem>() {
-        report(menu.0.set_checked(item.enabled), NativeIssue::LoginMenuUpdate);
-    }
-}
-
-/// Change the choice and show the outcome in the menu.
+/// Change the choice in the system and return its actual state to Settings.
 pub(crate) fn set(app: &AppHandle, on: bool) -> LoginItem {
-    match app.try_state::<LoginItems>() {
-        Some(items) => items.change_then(on, |item| show_in_menu(app, item)),
-        None => unsupported(app),
-    }
+    app.try_state::<LoginItems>()
+        .map_or_else(|| unsupported(app), |items| items.change(on))
 }
 
 /// Whether Ibis starts when the person logs in, read from the system now.
@@ -385,84 +354,6 @@ pub(crate) async fn set_login_item(app: AppHandle, enabled: bool) -> LoginItem {
     tauri::async_runtime::spawn_blocking(move || set(&app, enabled))
         .await
         .unwrap_or(fallback)
-}
-
-/// The menu item was chosen: the menu already shows the new tick, so ask for
-/// that, then show what really happened and explain a refusal.
-pub(crate) fn toggle_from_menu(app: &AppHandle) {
-    let app = app.clone();
-    tauri::async_runtime::spawn_blocking(move || {
-        // Without the tick there is no request to act on: show the system
-        // state again and change nothing.
-        let Some(wanted) = app
-            .try_state::<LoginMenuItem>()
-            .and_then(|menu| checked(menu.0.is_checked(), NativeIssue::LoginMenuRead))
-        else {
-            current(&app);
-            return;
-        };
-        let item = set(&app, wanted);
-        if let Some(problem) = item.problem {
-            use tauri_plugin_dialog::DialogExt;
-            let name = app.package_info().name.clone();
-            app.dialog()
-                .message(problem_message(problem, &name))
-                .title(menu_label())
-                .show(|_| {});
-        }
-    });
-}
-
-/// The system these words are for: "macos", "windows" or "linux".
-fn system() -> &'static str {
-    if cfg!(target_os = "macos") {
-        "macos"
-    } else if cfg!(target_os = "windows") {
-        "windows"
-    } else {
-        "linux"
-    }
-}
-
-/// The menu item's label in this system's own words (#581).
-pub(crate) fn menu_label() -> &'static str {
-    label_for(system())
-}
-
-fn label_for(system: &str) -> &'static str {
-    match system {
-        "macos" => "Open at Login",
-        "windows" => "Start when you sign in",
-        _ => "Start on Login",
-    }
-}
-
-/// What to tell the person, and where to look, in the menu bar or tray.
-/// Settings says the same through its `general-login-*` words.
-pub(crate) fn problem_message(problem: LoginItemProblem, name: &str) -> String {
-    problem_for(problem, name, system())
-}
-
-fn problem_for(problem: LoginItemProblem, name: &str, system: &str) -> String {
-    let (place, when) = match system {
-        "macos" => ("System Settings > General > Login Items", "log in"),
-        "windows" => ("Settings > Apps > Startup", "sign in"),
-        _ => ("your desktop's startup applications settings", "log in"),
-    };
-    match problem {
-        LoginItemProblem::Unsupported => {
-            format!("This system cannot start {name} when you {when}. You can add it in {place}.")
-        }
-        LoginItemProblem::NeedsApproval => {
-            format!("macOS is waiting for your approval. Turn on {name} in {place}.")
-        }
-        LoginItemProblem::Refused => {
-            format!("The system did not let {name} change this. You can change it in {place}.")
-        }
-        LoginItemProblem::Unreadable => {
-            format!("{name} could not check whether it starts when you {when}. Look in {place}.")
-        }
-    }
 }
 
 #[cfg(test)]
@@ -775,36 +666,5 @@ mod tests {
             }
         }
         Ok(())
-    }
-
-    #[test]
-    fn problems_say_where_to_look() {
-        for problem in [
-            LoginItemProblem::Unsupported,
-            LoginItemProblem::NeedsApproval,
-            LoginItemProblem::Refused,
-            LoginItemProblem::Unreadable,
-        ] {
-            let message = problem_message(problem, "Ibis Nightly");
-            assert!(message.contains("Ibis Nightly"), "{message}");
-            assert!(message.ends_with('.'), "{message}");
-        }
-        assert_eq!(
-            ["macos", "windows", "linux"].map(label_for),
-            ["Open at Login", "Start when you sign in", "Start on Login"]
-        );
-        assert_eq!(menu_label(), label_for(system()));
-        let mac = problem_for(LoginItemProblem::NeedsApproval, "Ibis", "macos");
-        assert!(mac.ends_with("General > Login Items."), "{mac}");
-        let windows = problem_for(LoginItemProblem::Unreadable, "Ibis", "windows");
-        assert_eq!(
-            windows,
-            "Ibis could not check whether it starts when you sign in. Look in Settings > Apps > Startup."
-        );
-        let linux = problem_for(LoginItemProblem::Unsupported, "Ibis", "linux");
-        assert!(
-            linux.contains("when you log in") && linux.contains("startup applications"),
-            "{linux}"
-        );
     }
 }

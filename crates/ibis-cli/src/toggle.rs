@@ -7,10 +7,40 @@ use std::time::{Duration, Instant};
 const ANSWER_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
-    let sibling = std::env::current_exe()
-        .ok()
-        .map(|exe| exe.with_file_name(format!("ibis-desktop{}", std::env::consts::EXE_SUFFIX)))
-        .filter(|path| path.is_file());
+    let executable = std::env::current_exe().ok();
+    let bundled = executable
+        .as_deref()
+        .and_then(|exe| bundled_app(exe, std::env::consts::OS, Path::is_file));
+    let managed = std::env::var_os("HOME").map(PathBuf::from).and_then(|home| {
+        let install =
+            ibis_core::command_install::CommandInstall::new(home, vec![], PathBuf::new(), None, String::new());
+        executable
+            .as_ref()
+            .filter(|exe| exe.canonicalize().ok() == install.destination().canonicalize().ok())
+            .and_then(|_| install.installed_app().ok().flatten())
+    });
+    let sibling = bundled.or(managed);
+    // The AppImage launcher's mount exists only for this invocation.
+    let image = executable
+        .as_deref()
+        .filter(|_| cfg!(target_os = "linux"))
+        .and_then(|exe| {
+            ibis_core::command_install::appimage_for(
+                exe,
+                std::env::var_os("APPIMAGE").map(PathBuf::from),
+                std::env::var_os("APPDIR").map(PathBuf::from),
+            )
+        });
+    let selected = app.or({
+        if cfg!(target_os = "macos") {
+            // Launch Services opens app bundles; adjacent executables run directly.
+            sibling
+                .as_deref()
+                .filter(|path| path.extension().is_some_and(|extension| extension == "app"))
+        } else {
+            image.as_deref()
+        }
+    });
     // Per-user (NSIS) first, then machine-wide (MSI or NSIS for all users).
     let install_roots: Vec<PathBuf> = ["LOCALAPPDATA", "ProgramFiles"]
         .into_iter()
@@ -21,7 +51,7 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
     let mut command = desktop_command(
         std::env::consts::OS,
         sibling.as_deref(),
-        app,
+        selected,
         &install_roots,
         Path::is_file,
     );
@@ -40,6 +70,32 @@ pub fn run(app: Option<&Path>) -> Result<(), EngineError> {
     // macOS starts the app through `open`, which returns once Launch Services has it.
     let launcher = cfg!(target_os = "macos") && command.get_program() == "open";
     wait_for_answer(&mut child, launcher, &receipt.path, ANSWER_TIMEOUT)
+}
+
+/// Resolve only known package layouts. Never search or execute arbitrary files.
+fn bundled_app(exe: &Path, platform: &str, mut exists: impl FnMut(&Path) -> bool) -> Option<PathBuf> {
+    if platform == "macos" {
+        let app = exe.ancestors().nth(3)?;
+        if app.extension().is_some_and(|extension| extension == "app") {
+            return Some(app.to_owned());
+        }
+    }
+    if platform == "linux" && exe.parent()?.file_name().is_some_and(|name| name == "binaries") {
+        let product = exe.parent()?.parent()?;
+        let binary = if product.file_name()?.to_str()? == "Ibis Nightly" {
+            "ibis-nightly"
+        } else {
+            "ibis-desktop"
+        };
+        let prefix = product.parent()?.parent()?;
+        let app = prefix.join("bin").join(binary);
+        return exists(&app).then_some(app);
+    }
+    let sibling = exe.with_file_name(format!(
+        "ibis-desktop{}",
+        if platform == "windows" { ".exe" } else { "" }
+    ));
+    exists(&sibling).then_some(sibling)
 }
 
 /// Succeed only on Ibis's receipt. A program that exits without one is not
@@ -243,6 +299,46 @@ mod toggle_tests {
             });
             assert_eq!(command.get_program(), expected);
             assert_eq!(command.get_args().collect::<Vec<_>>(), ["toggle"]);
+        }
+    }
+}
+
+#[cfg(test)]
+mod bundled_tests {
+    use super::*;
+
+    // AppImages exist only on Linux; the Unix paths mean nothing on Windows.
+    #[cfg(unix)]
+    #[test]
+    fn inherited_appimage_variables_cannot_replace_the_bundled_or_managed_app() {
+        use ibis_core::command_install::appimage_for;
+        let image = PathBuf::from("/invented/Other.AppImage");
+        let mount = PathBuf::from("/tmp/.mount-other");
+        for exe in [
+            Path::new("/usr/lib/Ibis/binaries/ibis"),
+            Path::new("/invented/.local/bin/ibis"),
+        ] {
+            assert_eq!(appimage_for(exe, Some(image.clone()), Some(mount.clone())), None);
+        }
+        let own_cli = mount.join("usr/lib/Ibis/binaries/ibis");
+        assert_eq!(appimage_for(&own_cli, Some(image.clone()), Some(mount)), Some(image));
+    }
+
+    #[test]
+    fn a_bundled_mac_command_opens_its_own_app_even_when_nightly_is_also_installed() {
+        let exe = Path::new("/invented/Ibis Nightly.app/Contents/MacOS/ibis");
+        assert_eq!(
+            bundled_app(exe, "macos", |_| false),
+            Some(PathBuf::from("/invented/Ibis Nightly.app"))
+        );
+    }
+
+    #[test]
+    fn linux_resource_commands_find_their_stable_or_nightly_app() {
+        for (product, binary) in [("Ibis", "ibis-desktop"), ("Ibis Nightly", "ibis-nightly")] {
+            let exe = PathBuf::from(format!("/usr/lib/{product}/binaries/ibis"));
+            let expected = PathBuf::from(format!("/usr/bin/{binary}"));
+            assert_eq!(bundled_app(&exe, "linux", |p| p == expected), Some(expected));
         }
     }
 }

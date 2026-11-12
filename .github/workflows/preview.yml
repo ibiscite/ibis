@@ -242,13 +242,21 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Install web dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
+
+      # The command line ships on its own too, for people, scripts and AI
+      # agents. It runs here where it can, so a binary that cannot start is
+      # never published (Intel macOS is cross-built on Apple silicon).
+      - name: Build the command line
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/build-cli.sh
 
       # On Windows retry a gateway failure fetching a pinned NSIS tool.
       # On macOS hdiutil can fail with "Resource busy" when creating the disk
@@ -261,7 +269,8 @@ jobs:
           CONFIG: ${{ steps.identity.outputs.config }}
         run: |
           if [ "$RUNNER_OS" = Windows ]; then exec bash ../../scripts/build-windows-packages.sh; fi
-          build() { pnpm tauri build --ci --target "$TARGET" ${CONFIG:+--config "$CONFIG"} -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
+          if [ "$RUNNER_OS" = Linux ]; then LINUX_BUNDLE=src-tauri/tauri.linux.bundle.conf.json; fi
+          build() { pnpm tauri build --ci --target "$TARGET" --config src-tauri/tauri.bundle.conf.json ${LINUX_BUNDLE:+--config "$LINUX_BUNDLE"} ${CONFIG:+--config "$CONFIG"} -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
           if ! build; then
             if [ "$RUNNER_OS" = macOS ] && grep -q 'hdiutil: create failed - Resource busy' build.log; then
               echo "::warning::hdiutil reported Resource busy; retrying the build once"
@@ -271,14 +280,6 @@ jobs:
               exit 1
             fi
           fi
-
-      # The command line ships on its own too, for people, scripts and AI
-      # agents. It runs here where it can, so a binary that cannot start is
-      # never published (Intel macOS is cross-built on Apple silicon).
-      - name: Build the command line
-        env:
-          TARGET: ${{ matrix.target }}
-        run: bash scripts/build-cli.sh
 
       - name: Capture the picker (Linux and macOS)
         if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'
@@ -406,7 +407,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - name: Render every style at the previous release and at this one
         env:
           OUT: ${{ runner.temp }}/style-changes
@@ -453,7 +454,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
       - name: Build the web interface
@@ -671,7 +672,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
@@ -803,7 +804,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.

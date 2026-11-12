@@ -11,6 +11,19 @@ use tauri::{AppHandle, Monitor, WebviewWindow};
 
 use crate::diagnostics::{NativeIssue, checked, checked_once};
 
+#[cfg(target_os = "linux")]
+mod linux;
+#[cfg(target_os = "macos")]
+mod macos;
+#[cfg(target_os = "windows")]
+mod windows;
+#[cfg(target_os = "linux")]
+use linux as native;
+#[cfg(target_os = "macos")]
+use macos as native;
+#[cfg(target_os = "windows")]
+use windows as native;
+
 static POINTER_FAILURE_REPORTED: AtomicBool = AtomicBool::new(false);
 
 /// A rectangle in the shared coordinate space.
@@ -34,6 +47,18 @@ impl Area {
         let w = (self.x + self.width).min(other.x + other.width) - self.x.max(other.x);
         let h = (self.y + self.height).min(other.y + other.height) - self.y.max(other.y);
         w.max(0.0) * h.max(0.0)
+    }
+
+    #[cfg(any(target_os = "macos", test))]
+    fn intersection(self, other: Area) -> Area {
+        let x = self.x.max(other.x);
+        let y = self.y.max(other.y);
+        Area {
+            x,
+            y,
+            width: (self.x + self.width).min(other.x + other.width) - x,
+            height: (self.y + self.height).min(other.y + other.height) - y,
+        }
     }
 
     /// Whether the other rectangle lies inside this one. Allows one unit of
@@ -63,14 +88,12 @@ pub(crate) enum Placement {
 
 /// Choose where the picker goes when it is shown.
 ///
-/// The target is the display with the pointer, or the nearest one when the
-/// pointer is in a gap between displays. Without a pointer position (Wayland)
-/// it is the display showing most of the picker, then the primary display. A
-/// picker the user moved keeps its place while it is fully visible there; one
-/// left on another display, on a disconnected display or partly off the screen
-/// after a resolution change is centred on the target.
+/// Prefer the focused window's display, then the pointer. Without either
+/// (Wayland), request the picker's current display, then the primary display.
+/// Only a remembered deliberate move overrides the default, in sizing.
 pub(crate) fn choose(
     displays: &[Display],
+    focused: Option<Area>,
     pointer: Option<(f64, f64)>,
     window: Option<Area>,
     primary: Option<usize>,
@@ -90,14 +113,14 @@ pub(crate) fn choose(
             .max_by(|a, b| a.1.total_cmp(&b.1))
             .map(|(i, _)| i)
     };
-    let target = pointer
-        .and_then(nearest)
+    let target = focused
+        .and_then(showing)
+        .or_else(|| pointer.and_then(nearest))
         .or_else(|| window.and_then(showing))
         .or(primary.filter(|&i| i < displays.len()))
         .or(if displays.is_empty() { None } else { Some(0) });
     match (target, window) {
         (None, _) => Placement::Keep,
-        (Some(i), Some(window)) if displays[i].usable.holds(&window) => Placement::Keep,
         (Some(i), _) => Placement::Centre(i),
     }
 }
@@ -105,29 +128,38 @@ pub(crate) fn choose(
 /// Debug previews may retain an explicitly positioned window on its display.
 fn choose_for_show(
     displays: &[Display],
+    focused: Option<Area>,
     pointer: Option<(f64, f64)>,
-    window: impl FnOnce() -> Option<Area>,
+    window: impl Fn() -> Option<Area>,
     primary: Option<usize>,
-    first_show: bool,
     preview: Option<&WindowConfig>,
     debug: bool,
 ) -> Placement {
     let explicit = debug
         && preview.is_some_and(|c| !c.center && c.x.is_some_and(f64::is_finite) && c.y.is_some_and(f64::is_finite));
+    if explicit && let Some(window) = window() {
+        let target = choose(displays, None, None, Some(window), primary);
+        return match target {
+            Placement::Centre(i) if displays[i].usable.holds(&window) => Placement::Keep,
+            target => target,
+        };
+    }
     choose(
         displays,
+        focused,
         if explicit { None } else { pointer },
-        if first_show && !explicit { None } else { window() },
+        window(),
         primary,
     )
 }
 
 /// The picker's top-left corner on a display: centred across its usable area,
-/// a fifth of the way down. A picker larger than the area starts at its corner.
-pub(crate) fn launcher_position(usable: Area, width: f64, height: f64) -> (f64, f64) {
+/// with the search row's centre a quarter of the way down. Clamp the whole
+/// frame; a picker larger than the area starts at its corner.
+pub(crate) fn launcher_position(usable: Area, width: f64, height: f64, search_centre: f64) -> (f64, f64) {
     (
         usable.x + (usable.width - width).max(0.0) / 2.0,
-        usable.y + (usable.height - height).max(0.0) / 5.0,
+        usable.y + (usable.height * 0.25 - search_centre).clamp(0.0, (usable.height - height).max(0.0)),
     )
 }
 
@@ -151,7 +183,7 @@ fn area(x: i32, y: i32, width: u32, height: u32, scale: f64) -> Area {
 pub(crate) fn display(monitor: &Monitor) -> Display {
     let (position, size, work) = (monitor.position(), monitor.size(), monitor.work_area());
     let scale = monitor.scale_factor();
-    Display {
+    let mut display = Display {
         bounds: area(position.x, position.y, size.width, size.height, scale),
         usable: area(
             work.position.x,
@@ -160,7 +192,15 @@ pub(crate) fn display(monitor: &Monitor) -> Display {
             work.size.height,
             scale,
         ),
+    };
+    if let Some(usable) = native::usable(monitor) {
+        display.usable = usable;
     }
+    display
+}
+
+pub(crate) fn display_key(monitor: &Monitor) -> Option<String> {
+    native::display_key(monitor)
 }
 
 pub(crate) fn window_area(window: &WebviewWindow) -> Option<Area> {
@@ -169,7 +209,7 @@ pub(crate) fn window_area(window: &WebviewWindow) -> Option<Area> {
 
 /// Resolve the display before sizing or moving the hidden picker. The bool
 /// preserves an existing fully visible position (including debug previews).
-pub(crate) fn active_monitor(app: &AppHandle, window: &WebviewWindow, first_show: bool) -> Option<(Monitor, bool)> {
+pub(crate) fn active_monitor(app: &AppHandle, window: &WebviewWindow) -> Option<(Monitor, bool)> {
     let monitors = checked(app.available_monitors(), NativeIssue::Monitor)?;
     let displays: Vec<Display> = monitors.iter().map(display).collect();
     let primary = checked(app.primary_monitor(), NativeIssue::Monitor).flatten();
@@ -181,10 +221,10 @@ pub(crate) fn active_monitor(app: &AppHandle, window: &WebviewWindow, first_show
     let config = app.config().app.windows.iter().find(|c| c.label == window.label());
     match choose_for_show(
         &displays,
+        native::focused_window(),
         pointer,
         || window_area(window),
         primary,
-        first_show,
         config,
         cfg!(debug_assertions),
     ) {
@@ -196,251 +236,4 @@ pub(crate) fn active_monitor(app: &AppHandle, window: &WebviewWindow, first_show
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    const fn rect(x: f64, y: f64, width: f64, height: f64) -> Area {
-        Area { x, y, width, height }
-    }
-
-    /// A laptop with a menu bar, and a larger display above and to its left,
-    /// so the second display has negative coordinates.
-    const LAPTOP: Display = Display {
-        bounds: rect(0.0, 0.0, 1728.0, 1117.0),
-        usable: rect(0.0, 38.0, 1728.0, 1079.0),
-    };
-    const EXTERNAL: Display = Display {
-        bounds: rect(-3440.0, -1440.0, 3440.0, 1440.0),
-        usable: rect(-3440.0, -1415.0, 3440.0, 1360.0),
-    };
-    const DISPLAYS: [Display; 2] = [LAPTOP, EXTERNAL];
-    const PICKER_ON_LAPTOP: Area = rect(504.0, 246.0, 720.0, 480.0);
-
-    #[test]
-    fn explicit_debug_previews_keep_their_display_on_startup_and_reopen() {
-        let preview = WindowConfig {
-            x: Some(504.0),
-            y: Some(246.0),
-            center: false,
-            ..WindowConfig::default()
-        };
-        for first_show in [true, false] {
-            assert_eq!(
-                choose_for_show(
-                    &DISPLAYS,
-                    Some((-100.0, -100.0)),
-                    || Some(PICKER_ON_LAPTOP),
-                    Some(0),
-                    first_show,
-                    Some(&preview),
-                    true,
-                ),
-                Placement::Keep
-            );
-            let external = rect(-2000.0, -1000.0, 720.0, 480.0);
-            assert_eq!(
-                choose_for_show(
-                    &DISPLAYS,
-                    Some((100.0, 100.0)),
-                    || Some(external),
-                    Some(0),
-                    first_show,
-                    Some(&preview),
-                    true,
-                ),
-                Placement::Keep
-            );
-            for (window, expected) in [
-                (rect(1500.0, 600.0, 720.0, 480.0), Placement::Centre(0)),
-                (rect(5000.0, 5000.0, 720.0, 480.0), Placement::Centre(0)),
-            ] {
-                assert_eq!(
-                    choose_for_show(
-                        &DISPLAYS,
-                        Some((-100.0, -100.0)),
-                        || Some(window),
-                        Some(0),
-                        first_show,
-                        Some(&preview),
-                        true,
-                    ),
-                    expected
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn defaults_release_and_incomplete_preview_coordinates_still_follow_the_pointer() {
-        let explicit = WindowConfig {
-            x: Some(504.0),
-            y: Some(246.0),
-            ..WindowConfig::default()
-        };
-        assert_eq!(
-            choose_for_show(
-                &DISPLAYS,
-                Some((-100.0, -100.0)),
-                || panic!("release startup does not read current geometry"),
-                Some(0),
-                true,
-                Some(&explicit),
-                false
-            ),
-            Placement::Centre(1)
-        );
-        for first_show in [true, false] {
-            assert_eq!(
-                choose_for_show(
-                    &DISPLAYS,
-                    Some((-100.0, -100.0)),
-                    || Some(PICKER_ON_LAPTOP),
-                    Some(0),
-                    first_show,
-                    Some(&explicit),
-                    false
-                ),
-                Placement::Centre(1)
-            );
-        }
-        for preview in [
-            None,
-            Some(WindowConfig::default()),
-            Some(WindowConfig {
-                center: true,
-                ..explicit.clone()
-            }),
-            Some(WindowConfig {
-                x: None,
-                ..explicit.clone()
-            }),
-            Some(WindowConfig {
-                y: None,
-                ..explicit.clone()
-            }),
-            Some(WindowConfig {
-                x: Some(f64::NAN),
-                ..explicit.clone()
-            }),
-            Some(WindowConfig {
-                y: Some(f64::INFINITY),
-                ..explicit.clone()
-            }),
-        ] {
-            for first_show in [true, false] {
-                assert_eq!(
-                    choose_for_show(
-                        &DISPLAYS,
-                        Some((-100.0, -100.0)),
-                        || Some(PICKER_ON_LAPTOP),
-                        Some(0),
-                        first_show,
-                        preview.as_ref(),
-                        true,
-                    ),
-                    Placement::Centre(1)
-                );
-            }
-        }
-    }
-
-    #[test]
-    fn the_picker_moves_to_the_display_with_the_pointer() {
-        assert_eq!(
-            choose(&DISPLAYS, Some((-100.0, -100.0)), Some(PICKER_ON_LAPTOP), Some(0)),
-            Placement::Centre(1)
-        );
-        assert_eq!(
-            choose(
-                &DISPLAYS,
-                Some((100.0, 100.0)),
-                Some(rect(-2000.0, -1000.0, 720.0, 480.0)),
-                Some(0)
-            ),
-            Placement::Centre(0)
-        );
-    }
-
-    #[test]
-    fn a_picker_the_user_placed_keeps_its_place_on_that_display() {
-        let moved = rect(1000.0, 600.0, 720.0, 480.0);
-        assert_eq!(
-            choose(&DISPLAYS, Some((100.0, 100.0)), Some(moved), Some(0)),
-            Placement::Keep
-        );
-    }
-
-    #[test]
-    fn a_picker_partly_off_the_usable_area_is_centred_again() {
-        // After a resolution change, or under the menu bar.
-        let partly_off = rect(1500.0, 600.0, 720.0, 480.0);
-        assert_eq!(
-            choose(&DISPLAYS, Some((100.0, 100.0)), Some(partly_off), Some(0)),
-            Placement::Centre(0)
-        );
-        let under_menu_bar = rect(500.0, 0.0, 720.0, 480.0);
-        assert_eq!(
-            choose(&DISPLAYS, Some((100.0, 100.0)), Some(under_menu_bar), Some(0)),
-            Placement::Centre(0)
-        );
-    }
-
-    #[test]
-    fn edges_and_gaps_between_displays_choose_the_nearest_display() {
-        assert_eq!(choose(&DISPLAYS, Some((0.0, 0.0)), None, None), Placement::Centre(0));
-        assert_eq!(choose(&DISPLAYS, Some((-0.5, -0.5)), None, None), Placement::Centre(1));
-        // Displays of different heights leave a gap the pointer can round into.
-        assert_eq!(choose(&DISPLAYS, Some((-10.0, 50.0)), None, None), Placement::Centre(0));
-        assert_eq!(
-            choose(&DISPLAYS, Some((-500.0, 50.0)), None, None),
-            Placement::Centre(1)
-        );
-    }
-
-    #[test]
-    fn without_a_pointer_the_picker_stays_on_its_display_or_returns_to_the_primary_one() {
-        assert_eq!(
-            choose(&DISPLAYS, None, Some(PICKER_ON_LAPTOP), Some(1)),
-            Placement::Keep
-        );
-        // Its display was disconnected: the picker is nowhere to be seen.
-        let lost = rect(5000.0, 5000.0, 720.0, 480.0);
-        assert_eq!(choose(&DISPLAYS, None, Some(lost), Some(1)), Placement::Centre(1));
-        assert_eq!(choose(&DISPLAYS, None, Some(lost), None), Placement::Centre(0));
-        assert_eq!(choose(&DISPLAYS, None, None, Some(7)), Placement::Centre(0));
-    }
-
-    #[test]
-    fn with_no_display_information_the_picker_is_left_alone() {
-        assert_eq!(
-            choose(&[], Some((0.0, 0.0)), Some(PICKER_ON_LAPTOP), Some(0)),
-            Placement::Keep
-        );
-    }
-
-    #[test]
-    fn the_picker_is_centred_high_on_the_usable_area() {
-        assert_eq!(launcher_position(EXTERNAL.usable, 720.0, 480.0), (-2080.0, -1239.0));
-    }
-
-    #[test]
-    fn a_picker_larger_than_the_display_starts_at_its_corner() {
-        assert_eq!(
-            launcher_position(rect(10.0, 20.0, 300.0, 200.0), 720.0, 480.0),
-            (10.0, 20.0)
-        );
-    }
-
-    /// Native values reach the shared space the way each platform reports
-    /// them: per-display points on macOS, shared pixels elsewhere.
-    #[test]
-    fn native_values_are_compared_in_one_space() {
-        let retina = area(-6880, -2880, 6880, 2880, 2.0);
-        if MACOS {
-            assert_eq!(retina, rect(-3440.0, -1440.0, 3440.0, 1440.0));
-        } else {
-            assert_eq!(retina, rect(-6880.0, -2880.0, 6880.0, 2880.0));
-        }
-        assert_eq!(area(10, 20, 300, 200, 1.0), rect(10.0, 20.0, 300.0, 200.0));
-    }
-}
+mod tests;
