@@ -5,23 +5,23 @@
       <p>Ibis isn’t signed by Apple or Microsoft yet, so your computer warns you the first time you open it. The steps below show what to click.</p>
       <div class="platform" data-os="mac">
         <h3>Mac</h3>
-        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg"><strong>Mac with Apple silicon</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li>
-          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg"><strong>Mac with Intel</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Apple-silicon.dmg"><strong>Mac with Apple silicon</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li>
+          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-macOS-Intel.dmg"><strong>Mac with Intel</strong><span>Disk image</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li></ul>
         <p class="small">Which Mac? Choose Apple menu → About This Mac. “Chip: Apple M…” means Apple silicon; “Processor: Intel” means Intel.</p>
         <ol class="install"><li>Open the disk image and drag Ibis to Applications.</li>
           <li>Open Ibis. If macOS says it can’t check the app, make sure you downloaded it here, then choose System Settings → Privacy &amp; Security → Open Anyway.</li></ol>
       </div>
       <div class="platform" data-os="windows">
         <h3>Windows</h3>
-        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe"><strong>Installer</strong><span>64-bit PCs</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Windows-setup.exe"><strong>Installer</strong><span>64-bit PCs</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li></ul>
         <ol class="install"><li>Run the installer. If the WebView2 Runtime is missing, it downloads it once.</li>
           <li>At the SmartScreen warning, choose More info → Run anyway, if offered.</li></ol>
         <p class="small">Blocked by Smart App Control or a work computer? See the <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md">compatibility guide</a>.</p>
       </div>
       <div class="platform" data-os="linux">
         <h3>Linux</h3>
-        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage"><strong>AppImage</strong><span>Most distributions, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li>
-          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.deb"><strong>Debian or Ubuntu</strong><span>.deb package, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/></svg></a></li></ul>
+        <ul class="rows"><li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.AppImage"><strong>AppImage</strong><span>Most distributions, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li>
+          <li><a href="https://github.com/ibiscite/ibis/releases/download/stable/Ibis-Linux.deb"><strong>Debian or Ubuntu</strong><span>.deb package, 64-bit</span><svg class="arrow" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5v10M3.5 8.5 8 13l4.5-4.5"/><path class="tray" d="M3.5 14.5h9" pathLength="1"/></svg></a></li></ul>
         <ol class="install"><li>Allow the AppImage to run as a program, then open it. Some systems need <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md">FUSE support</a>.</li>
           <li>On Wayland, open Ibis from your app launcher; its shortcut isn’t available there yet. Ibis Nightly lets you <a href="https://github.com/ibiscite/ibis/blob/main/docs/compatibility.md#bind-a-system-shortcut">set one in your desktop’s settings</a>.</li></ol>
       </div>

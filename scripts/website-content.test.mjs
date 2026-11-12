@@ -114,7 +114,8 @@ test("Get shows every download, installation notes and shared setup steps withou
 test("Features renders all four status lists from one source and credits shipped 0.3.2 features", async () => {
   const html = await page("features/");
   const status = JSON.parse(await read("content/status.json"));
-  assert.deepEqual([...html.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map(m => m[1]),
+  const main = html.match(/<main\b[^>]*>([\s\S]*?)<\/main>/)[1];
+  assert.deepEqual([...main.matchAll(/<h2[^>]*>([^<]+)<\/h2>/g)].map(m => m[1]),
     ["In the current release", "In the nightly", "Planned", "Not yet"]);
   const lists = [...html.matchAll(/<ul class="roadmap" data-status="([^"]+)">([\s\S]*?)<\/ul>/g)];
   assert.deepEqual(lists.map(m => m[1]), Object.keys(status));
