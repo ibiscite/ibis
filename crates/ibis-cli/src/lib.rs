@@ -2004,9 +2004,18 @@ mod tests {
             false,
             human::Holdings::References,
             &Default::default(),
+            out::Out::new(OutputMode::Plain),
         );
         let (mut output, mut errors) = (Vec::new(), Vec::new());
-        let code = emit(false, Ok(result), None, "", &mut output, &mut errors, OutputMode::Plain);
+        let code = emit(
+            false,
+            Ok(result),
+            None,
+            Presentation::default(),
+            &mut output,
+            &mut errors,
+            OutputMode::Plain,
+        );
         assert_eq!(code, 0);
         assert_eq!(
             String::from_utf8(output).unwrap_or_else(|e| panic!("{e:?}")),

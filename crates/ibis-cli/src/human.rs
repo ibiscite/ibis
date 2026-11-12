@@ -980,8 +980,14 @@ mod tests {
             "id":"lib_synthetic", "kind":"zotero", "objects":1, "warnings_total":1,
             "warnings":[{"code":"zotero-newer-than-tested","line":null}]
         }]});
-        let said = summary(Method::Libraries, &data, Holdings::References, &BTreeMap::new())
-            .unwrap_or_else(|| panic!("library summary"));
+        let said = summary(
+            Method::Libraries,
+            &data,
+            Holdings::References,
+            &BTreeMap::new(),
+            Out::new(crate::OutputMode::Plain),
+        )
+        .unwrap_or_else(|| panic!("library summary"));
         assert!(said.contains("Zotero is newer than this version of Ibis was tested with. Results look right, but update Ibis when you can."), "{said}");
     }
 
