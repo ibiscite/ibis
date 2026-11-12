@@ -237,12 +237,14 @@ function agentApps() {
   const region = document.querySelector("[data-agent-tabs]");
   if (!region) return;
   const panels = [...region.querySelectorAll('[role="tabpanel"]')];
+  const guide = region.querySelector("[data-agent-guide]"), guideBase = guide.href.split("#")[0];
   chipTabs(region, tab => {
     for (const panel of panels) {
       const inactive = panel.id !== tab.getAttribute("aria-controls");
       panel.setAttribute("aria-hidden", String(inactive));
       panel.inert = inactive;
     }
+    guide.href = guideBase + tab.dataset.guide;
   });
 }
 // Copy a command: the button says Copied for a moment, and screen readers hear it.
