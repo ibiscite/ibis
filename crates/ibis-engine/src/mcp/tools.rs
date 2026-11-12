@@ -45,7 +45,7 @@ pub(super) struct Tool {
     answer: fn(&Engine, &Map<String, Value>) -> Result<Value, Refusal>,
 }
 
-pub(super) const TOOLS: [Tool; 4] = [
+pub(super) const TOOLS: [Tool; 5] = [
     Tool {
         name: "search",
         title: "Search references",
@@ -81,6 +81,23 @@ pub(super) const TOOLS: [Tool; 4] = [
         output: styles_output,
         reads_library: |_| false,
         answer: styles,
+    },
+    Tool {
+        name: "status",
+        title: "Ibis readiness",
+        description: "Check Ibis version, chosen libraries, names, counts and health before searching or after a tool fails. No paths, notes or links.",
+        input: || json!({"type":"object","properties":{},"additionalProperties":false}),
+        output: || {
+            json!({"type":"object","properties":{
+                "version":{"type":"string"}, "libraries_chosen":{"type":"boolean"},
+                "health":{"type":"string"}, "libraries":{"type":"array"}
+            }})
+        },
+        reads_library: |_| false,
+        answer: |engine, _| {
+            Ok(serde_json::to_value(crate::readiness::from_engine(engine, None, false))
+                .map_err(|_| EngineError::new(ErrorCode::Internal))?)
+        },
     },
 ];
 
@@ -131,8 +148,15 @@ impl From<EngineError> for Refusal {
 }
 
 /// A tool's answer, or the error an agent reads instead.
-pub(super) fn call(engine: &Engine, problem: Option<&Refusal>, tool: &Tool, arguments: &Value) -> Value {
-    let answered = answer(engine, problem, tool, arguments).and_then(|(text, data)| {
+pub(super) fn call(
+    engine: &Engine,
+    problem: Option<&Refusal>,
+    chosen: Option<bool>,
+    unavailable: &[String],
+    tool: &Tool,
+    arguments: &Value,
+) -> Value {
+    let answered = answer(engine, problem, chosen, unavailable, tool, arguments).and_then(|(text, data)| {
         // The answer goes twice, as text and as structured content: the bound is on what is sent.
         let result = json!({
             "content": [{"type": "text", "text": text}],
@@ -159,6 +183,8 @@ pub(super) fn tool_error(Refusal { code, advice }: Refusal) -> Value {
 fn answer(
     engine: &Engine,
     problem: Option<&Refusal>,
+    chosen: Option<bool>,
+    unavailable: &[String],
     tool: &Tool,
     arguments: &Value,
 ) -> Result<(String, Value), Refusal> {
@@ -174,7 +200,21 @@ fn answer(
             return Err(Refusal::new(ErrorCode::SourceUnavailable, NO_LIBRARY));
         }
     }
-    let data = (tool.answer)(engine, arguments)?;
+    let data = if tool.name == "status" {
+        let mut status = crate::readiness::from_engine(engine, chosen, problem.is_some());
+        for name in unavailable {
+            if !status.libraries.iter().any(|library| &library.display_name == name) {
+                status.libraries.push(crate::readiness::Library {
+                    display_name: name.clone(),
+                    item_count: 0,
+                    health: "not available; choose it again in Ibis".into(),
+                });
+            }
+        }
+        serde_json::to_value(status).map_err(|_| EngineError::new(ErrorCode::Internal))?
+    } else {
+        (tool.answer)(engine, arguments)?
+    };
     Ok((data.to_string(), data))
 }
 

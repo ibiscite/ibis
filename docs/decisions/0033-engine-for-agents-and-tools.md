@@ -34,3 +34,15 @@ comments through `ibis` and `ibis mcp` only after the person turns this on for a
 library in the app. It is off by default, can be turned off at any time and
 never includes private links. Without it, agents get references and citations
 only. This replaces the earlier exclusion of notes and annotations from MCP.
+
+2026-11-11 (maintainer, [#1867](https://github.com/ibiscite/ibis/issues/1867)):
+`ibis agents setup|status|remove` supplies the reusable connection layer for
+the later Settings button. Setup and remove may write local AI clients'
+configuration; library access and MCP remain read-only and offline. Generate
+adapters from the one plugin source, pin the running executable by absolute
+path, preserve unrelated settings, and keep ownership records and first-change
+backups. Unknown ownership and unsafe or changed files stop a write. Plugin
+registration is reported separately from installation/confirmation in the
+client. Codex and ChatGPT share their personal marketplace. Unix writes use
+directory-relative no-follow operations; other platforms refuse until they
+have an equivalent safe writer. The security boundary needs independent review.

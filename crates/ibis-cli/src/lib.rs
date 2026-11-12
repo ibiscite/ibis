@@ -9,6 +9,7 @@ use std::{
     path::{Path, PathBuf},
     time::Duration,
 };
+pub mod agents;
 mod app_libraries;
 mod completions;
 mod doctor;
@@ -436,6 +437,7 @@ fn command() -> Command {
         .subcommand(
             Command::new("mcp").about("Serve read-only search and citation tools to AI agents (MCP over stdio)"),
         )
+        .subcommand(agents::cli::command())
         .subcommand(
             Command::new("toggle").about("Show or hide the desktop picker").arg(
                 Arg::new("app")
@@ -621,7 +623,7 @@ fn run_engine<R: BufRead, W: Write + Send, E: Write>(
     let json = matches.get_flag("json");
     if defaults == Defaults::App {
         // Doctor writes nothing: without a saved key its ids last only for its report.
-        ibis_engine::identity::use_saved_key(matches.subcommand_name() != Some("doctor"));
+        ibis_engine::identity::use_saved_key(!matches!(matches.subcommand_name(), Some("doctor" | "agents")));
     }
     let engine = if matches!(matches.subcommand_name(), Some("serve" | "mcp")) {
         engine
@@ -846,6 +848,9 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
     if name == "settings" {
         return Ok(Execution::Result(settings_backup::run(args)?, None));
     }
+    if name == "agents" {
+        return Ok(Execution::Result(agents::cli::run(args, input, errors, mode)?, None));
+    }
     if name == "projects" {
         return Ok(Execution::Result(writing_projects::run(engine, args)?, None));
     }
@@ -879,13 +884,17 @@ fn execute<R: BufRead, W: Write + Send, E: Write>(
             None,
         ));
     }
-    let opened = open_libraries(engine, matches, name, defaults);
+    let mut library_names = vec![];
+    let opened = open_libraries(engine, matches, name, defaults, &mut library_names);
     if name == "mcp" {
         let session = match opened {
             Ok(_) => ibis_engine::mcp::Session::default(),
             Err(failure) => {
                 let _ = writeln!(errors, "ibis: {}", terminal_display(&failure.sentence()));
+                let chosen = !library_names.is_empty();
                 ibis_engine::mcp::Session::without_libraries(failure.refusal())
+                    .with_libraries_chosen(chosen)
+                    .with_unavailable_libraries(library_names)
             }
         };
         return Ok(Execution::Stdio(
@@ -915,6 +924,7 @@ fn open_libraries(
     matches: &ArgMatches,
     name: &str,
     defaults: Defaults,
+    library_names: &mut Vec<String>,
 ) -> Result<std::collections::BTreeMap<String, String>, Failure> {
     let cancel = Cancellation::default();
     let mut names = std::collections::BTreeMap::new();
@@ -980,6 +990,11 @@ fn open_libraries(
             }
         }
     }
+    library_names.extend((1..=files.len()).map(|index| format!("Reference library {index}")));
+    if personal {
+        library_names.push("Zotero personal library".into());
+    }
+    library_names.extend(groups.iter().map(|id| format!("Zotero group {id}")));
     // A path named on the command line is the person's own, even if the app chose it too.
     let chosen_in = |path: &PathBuf| app.as_ref().filter(|_| !named_files.contains(path)).map(|app| app.app);
     for path in files {

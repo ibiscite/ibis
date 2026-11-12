@@ -2,7 +2,7 @@
 use std::io::IsTerminal;
 fn main() -> std::process::ExitCode {
     let output = std::io::stdout();
-    let mode = if output.is_terminal() {
+    let mode = if output.is_terminal() && std::io::stdin().is_terminal() {
         ibis::OutputMode::Terminal
     } else {
         ibis::OutputMode::Plain

@@ -12,6 +12,14 @@ Ibis MCP server and reads the reference libraries you choose. It searches and
 formats citations without changing those libraries. It is not a hosted citation
 service operated by the Ibis contributors.
 
+`ibis agents setup` generates local adapters and registers them in the selected
+AI apps' settings. Generated adapters launch the selected Ibis executable by
+its absolute path. The setup command uses no network. Claude Desktop asks for
+its own extension installation confirmation; some clients finish installation
+in their Plugins screen. Ownership records contain Ibis's own entries, and
+one-time `*.ibis-backup` files preserve existing client settings. Those backups
+can contain the original settings' private values and remain on this computer.
+
 ## Data and other services
 
 The MCP server passes bibliographic data and citations to the AI client that

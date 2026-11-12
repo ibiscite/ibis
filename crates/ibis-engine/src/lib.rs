@@ -8,6 +8,7 @@ pub mod cayw;
 pub mod catalogue;
 
 pub mod mcp;
+pub mod readiness;
 
 pub mod outputs;
 

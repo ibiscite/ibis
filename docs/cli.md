@@ -151,6 +151,24 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 
 **`ibis mcp`**: Serve read-only search and citation tools to AI agents (MCP over stdio)
 
+**`ibis agents`**: Connect Ibis to AI apps on this computer
+
+**`ibis agents setup`**: Connect an AI app to Ibis and its citation skill
+
+| Option | Does |
+| --- | --- |
+| `--client NAME` | Which AI app to connect or remove; repeat for several: claude-code, claude-desktop, codex, chatgpt-desktop, cursor, vscode, gemini |
+| `--dry-run` | Show the planned changes without writing files or opening apps |
+| `--yes` | Connect selected apps, or all found apps, without asking; required when not at a terminal |
+
+**`ibis agents status`**: Show AI app connections and library readiness
+
+**`ibis agents remove`**: Remove only the connections and skill files Ibis added
+
+| Option | Does |
+| --- | --- |
+| `--client NAME` | Which AI app to connect or remove; repeat for several: claude-code, claude-desktop, codex, chatgpt-desktop, cursor, vscode, gemini |
+
 **`ibis toggle`**: Show or hide the desktop picker
 
 | Option | Does |
@@ -433,11 +451,12 @@ requests finish before exit. Process exit codes do not apply per request.
 
 ## AI agents (MCP)
 
-`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves four
+`ibis mcp --file refs.bib`, or `ibis mcp --app-libraries`, serves five
 read-only tools over stdio:
 
 | Tool | Input and result |
 | --- | --- |
+| `status` | No arguments; Ibis version, whether libraries are chosen, each library's display name, item count and health. No paths, notes or links; works when library startup fails. |
 | `search` | `query`, optional `limit` (1–25, default 10); short hits with checked `ref` values and `complete`. |
 | `show` | `ref`; bibliographic fields. |
 | `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings and receipt. |
@@ -460,12 +479,69 @@ printed citation. Values and answers are bounded (256 KiB per answer). Raw
 CLI search/show JSON is not this privacy projection. MCP opens no external
 connection; an AI client can send received data to its own service.
 
-The repository's [plugin](../plugins/ibis/skills/ibis-cite/SKILL.md) supplies
-MCP configuration and a citation skill for Claude Code/Codex. It requires
-`ibis` on PATH and does not install the executable. It reads app libraries,
-stops if MCP is unavailable and requires confirmation of partial/typo matches.
-The skill directory can also be copied to a client's skill folder. Marketplace
-or directory approval is not established by the repository configuration.
+### Connect an AI app
+
+```sh
+ibis agents setup                         # find apps and choose on a terminal
+ibis agents setup --client cursor --client codex
+ibis agents setup --client cursor --dry-run --yes
+ibis agents setup --yes                   # connect every app found
+ibis agents status
+ibis agents status --json
+ibis agents remove --client cursor        # omit --client to remove all
+```
+
+Setup needs `--yes` when stdin or stdout is not a terminal. A dry run lists
+the files it would change and opens no app. Repeating setup writes nothing
+when the connection is current; Claude Desktop's confirmation opens again so a
+cancelled installation can be retried. Detection uses client directories, application
+bundles and executable names; it never runs a client to detect it.
+
+Adapters are generated from `plugins/ibis/`, including its one citation skill.
+Every MCP command is the canonical absolute path of the running `ibis`, with
+`mcp --app-libraries`; connections created by setup do not depend on PATH. On macOS,
+generated files and ownership records live under
+`~/Library/Application Support/com.ibiscite.ibis/agents/`; on Linux, under
+`${XDG_DATA_HOME:-~/.local/share}/ibis/agents/`.
+
+| Client | Connection and files |
+| --- | --- |
+| `claude-code` | A generated local marketplace and plugin under `agents/claude-code/`, registered through `extraKnownMarketplaces` and `enabledPlugins` in `~/.claude/settings.json`. [Claude's settings](https://code.claude.com/docs/en/settings-reference#extraknownmarketplaces) and [loading rules](https://code.claude.com/docs/en/plugins/loading) describe this mechanism. Restart Claude Code to finish loading. The local plugin version changes with its executable or skill, and its local marketplace refreshes automatically. |
+| `claude-desktop` | `agents/claude-desktop/manifest.json` and `ibis.mcpb`, using the [MCPB manifest](https://github.com/modelcontextprotocol/mcpb/blob/main/MANIFEST.md). Setup opens the bundle for [Claude Desktop's install confirmation](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). Status keeps that confirmation pending; automatic local skill installation is unavailable. Remove deletes Ibis's generated bundle; uninstall an approved extension in Claude Desktop. |
+| `codex`, `chatgpt-desktop` | A generated agent-plugins folder under `agents/codex/`, registered in `~/.agents/plugins/marketplace.json` through the [personal marketplace](https://developers.openai.com/plugins/build/plugins#install-a-local-plugin-manually). Finish installing in Plugins, then start a new session. These apps share their registration; removing one preserves the other's connection. |
+| `cursor` | An `ibis` server in [`~/.cursor/mcp.json`](https://cursor.com/docs/mcp#configuration-locations) and the skill in [`~/.cursor/skills/ibis-cite/SKILL.md`](https://cursor.com/docs/skills#skill-directories). |
+| `vscode` | Native Copilot's [`~/.copilot/mcp-config.json`](https://code.visualstudio.com/docs/agents/reference/mcp-configuration#portable-configuration), plus [`~/.copilot/skills/ibis-cite/SKILL.md`](https://code.visualstudio.com/docs/agent-customization/agent-skills#skill-locations). |
+| `gemini` | [`~/.gemini/extensions/ibis/`](https://geminicli.com/docs/extensions/reference/) with `gemini-extension.json` and `skills/ibis-cite/SKILL.md`. Restart Gemini CLI to load the extension. |
+
+`CLAUDE_CONFIG_DIR`, `CODEX_HOME` and `COPILOT_HOME` are honored inside the
+home directory. Remove a connection before changing its settings directory.
+Safe setup/removal currently supports Unix (macOS and Linux); other platforms
+refuse settings writes. Symlinks, hard-linked files, world-writable locations,
+malformed or duplicate JSON, and files or directories changed after planning
+are refused. Ibis preserves unrelated JSON/JSONC text and TOML comments and
+order. Files are replaced atomically with the same permissions; the first
+change to an existing client file keeps a one-time `*.ibis-backup`.
+
+Remove checks ownership and preserves changed or unowned entries. It disables
+a verified installed OpenAI plugin through its specific `config.toml` setting,
+leaving the client-managed cache in place. Generated Claude plugins default to
+disabled, so removing their enablement also disables cached copies. Existing
+client sessions need a restart to pick up connection changes. Empty directories
+and backups remain. Setup and removal use no network, shell command strings or
+elevated permissions.
+
+Gemini's own `settings.json` takes precedence over extension servers. Setup
+refuses an existing global `ibis` server and preserves other servers and comments
+there; status reports a global Ibis connection as managed outside setup.
+
+Status reports each app's discovery and connection state, pending app steps,
+and old or missing Ibis commands. It checks cached plugin files before claiming
+a plugin is connected. Its JSON readiness view excludes paths, notes and links;
+file libraries use neutral display names such as "Reference library 1".
+ChatGPT on the web cannot run these local tools. The
+[citation skill](../plugins/ibis/skills/ibis-cite/SKILL.md) checks `status` before
+the first search or after a tool fails, stays MCP-first and requires confirmation
+of partial/typo matches. Marketplace or directory approval is not implied.
 
 Settings backup/restore instructions live in
 [moving to a new computer](moving-to-a-new-computer.md).

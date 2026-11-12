@@ -16,7 +16,7 @@
       "interface": {
         "displayName": "Ibis",
         "shortDescription": "Cite from your own library",
-        "longDescription": "Search your Zotero, BibTeX or CSL-JSON reference library and format citations from real records. Ibis reads the library chosen in the Ibis app, stays read-only and works offline. Requires the ibis command on PATH with support for --app-libraries and a connected Ibis MCP server.",
+        "longDescription": "Search your Zotero, BibTeX or CSL-JSON reference library and format citations from real records. Ibis reads the library chosen in the Ibis app, stays read-only and works offline. Connect the matching Ibis command and citation skill with ibis agents setup.",
         "developerName": "Ibis contributors",
         "category": "Productivity",
         "websiteURL": "https://ibiscite.org",

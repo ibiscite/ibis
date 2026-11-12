@@ -464,7 +464,7 @@ fn an_agent_can_tell_the_tools_apart_from_their_descriptions() {
     )
     .unwrap();
     let tools = listed["result"]["tools"].as_array().unwrap();
-    assert_eq!(tools.len(), 4);
+    assert_eq!(tools.len(), 5);
     for tool in tools {
         assert!(tool["description"].as_str().unwrap().len() > 40, "{tool}");
         assert_eq!(tool["inputSchema"]["additionalProperties"], false, "{tool}");

@@ -416,5 +416,38 @@
       "type": "object"
     },
     "title": "Find citation styles"
+  },
+  {
+    "annotations": {
+      "destructiveHint": false,
+      "idempotentHint": true,
+      "openWorldHint": false,
+      "readOnlyHint": true
+    },
+    "description": "Check Ibis version, chosen libraries, names, counts and health before searching or after a tool fails. No paths, notes or links.",
+    "inputSchema": {
+      "additionalProperties": false,
+      "properties": {},
+      "type": "object"
+    },
+    "name": "status",
+    "outputSchema": {
+      "properties": {
+        "health": {
+          "type": "string"
+        },
+        "libraries": {
+          "type": "array"
+        },
+        "libraries_chosen": {
+          "type": "boolean"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "title": "Ibis readiness"
   }
 ]
