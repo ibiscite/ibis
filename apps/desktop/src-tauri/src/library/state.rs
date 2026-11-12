@@ -7,7 +7,7 @@ use std::time::SystemTime;
 
 use super::engine_file::FileLibrary;
 use super::error::LoadError;
-use super::load::{FileReload, Loaded};
+use super::load::{LibraryReload, Loaded};
 use super::source::Source;
 use super::status::{LibraryStatus, status};
 
@@ -188,7 +188,7 @@ pub(super) fn install_loaded(
 ) -> Option<LibraryStatus> {
     match loaded {
         Ok(Loaded::New(new)) => install(library, requests, request, Ok(*new)),
-        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload),
+        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload, false),
         Err(error) => install(library, requests, request, Err(error)),
         Ok(Loaded::Unchanged) => {
             let mut library = library.lock().ok()?;
@@ -208,13 +208,27 @@ pub(super) fn install_loaded(
     }
 }
 
+pub(super) fn install_automatic_loaded(
+    library: &Mutex<Library>,
+    requests: &LoadRequests,
+    request: u64,
+    loaded: Result<Loaded, LoadError>,
+) -> Option<LibraryStatus> {
+    match loaded {
+        Ok(Loaded::New(new)) => install_automatic(library, requests, request, Ok(*new)),
+        Ok(Loaded::Reload(reload)) => install_reload(library, requests, request, *reload, true),
+        loaded => install_loaded(library, requests, request, loaded),
+    }
+}
+
 /// Publication and status reconciliation share the immutable request's selection
 /// guard. No cancelled completion can alter the engine retained by a failed choice.
 fn install_reload(
     library: &Mutex<Library>,
     requests: &LoadRequests,
     request: u64,
-    reload: FileReload,
+    reload: LibraryReload,
+    automatic: bool,
 ) -> Option<LibraryStatus> {
     let mut library = library.lock().ok()?;
     if requests.0.load(Ordering::SeqCst) != request
@@ -226,7 +240,7 @@ fn install_reload(
     {
         return None;
     }
-    match reload.file.accept_reload(reload.prepared) {
+    match reload.accept() {
         Ok(()) => {
             library.opening = false;
             library.checking = false;
@@ -236,7 +250,9 @@ fn install_reload(
             let now = SystemTime::now();
             library.checked_at = Some(now);
             library.observe_revision(now);
-            library.choice_save_warning = None;
+            if !automatic {
+                library.choice_save_warning = None;
+            }
         }
         Err(error) => {
             library.opening = false;
