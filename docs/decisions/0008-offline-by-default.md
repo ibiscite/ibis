@@ -52,10 +52,16 @@ The groundwork is built so each later feature uses it:
 - **Send only what the person gave:** the DOI or the words they typed. Never
   library contents, file paths, document text or record identities. A dropped
   PDF's DOI is read locally; only the DOI leaves.
-- **Named services only:** `doi.org`, `api.crossref.org` and `api.openalex.org`
-  over HTTPS with certificate checks. No redirects off that list, no cookies, a
-  generic user agent with no personal details, timeouts and a response size
-  limit. Answers are untrusted input, checked before anything shows them.
+- **Named services only** (maintainer, 2026-11-13): `doi.org`, which hands a
+  DOI to `api.crossref.org` or `data.crosscite.org` (DataCite, for arXiv and
+  Zenodo); `api.openalex.org`, only to turn a PubMed ID into a DOI; and
+  `openlibrary.org` for ISBNs. HTTPS with certificate checks. Redirects are
+  never followed automatically: one `Location` from `doi.org` is accepted only
+  if it is HTTPS on exactly one of the listed hosts. A pasted URL is never
+  fetched. No cookies, no email address (Crossref's public pool), a generic
+  user agent, timeouts, a 1 MiB answer limit, one request at a time and at most
+  50 per action, respecting 429. Only CSL-JSON answers are used; Ibis writes any
+  BibTeX itself. Answers are untrusted input, checked before anything shows them.
 - **One owner.** A single engine module holds the only HTTP client for lookups
   and refuses while the switch is off; a test proves nothing is sent then.
 - **Nothing changes the library** without the person's own action. Adding an
