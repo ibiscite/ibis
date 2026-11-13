@@ -70,6 +70,16 @@ test("formatted segments preserve engine emphasis and keep source strings inert"
   expect(document.querySelector(".shelf script")).toBeNull();
 });
 
+test("preview and rich-text drag preserve consecutive spaces", () => {
+  const text = "A  B";
+  render(shelf({ selected: chosen([record("a")]), shown: output(text) }));
+  expect(document.querySelector(".preview-text")?.textContent).toBe(text);
+  const setData = vi.fn();
+  fireEvent.dragStart(document.querySelector(".shelf-leading")!, { dataTransfer: { setData } });
+  expect(setData).toHaveBeenCalledWith("text/plain", text);
+  expect(setData).toHaveBeenCalledWith("text/html", '<span class="display-run">A &nbsp;B</span>');
+});
+
 test("short names distinguish identical author/year labels without using the citation key as identity", () => {
   expect(referenceLabels([record("a"), record("b", "Okafor", "2019"), record("c", "", null)])).toEqual(["García 2021", "Okafor 2019", "c"]);
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);

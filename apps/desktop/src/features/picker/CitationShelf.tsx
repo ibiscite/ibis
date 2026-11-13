@@ -340,7 +340,15 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
             if (!dragged?.text) return event.preventDefault();
             event.dataTransfer.effectAllowed = "copy";
             event.dataTransfer.setData("text/plain", dragged.text);
-            if (!keys) event.dataTransfer.setData("text/html", renderToStaticMarkup(<>{renderDisplay(dragged.display)}</>));
+            if (!keys) {
+              let space = false;
+              const preserveSpaces = (value: string) => value.replace(/./gs, (character) => {
+                const repeated = character === " " && space;
+                space = character === " ";
+                return repeated ? "\u00a0" : character;
+              });
+              event.dataTransfer.setData("text/html", renderToStaticMarkup(<>{renderDisplay(dragged.display, preserveSpaces)}</>).replace(/\u00a0/g, "&nbsp;"));
+            }
           }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? say("picker-selected-references") : undefined}>
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}

@@ -8,7 +8,7 @@ function renderRun(run: DisplayRun, key: number, text: ReactNode): ReactNode {
   if (run.italic) node = createElement("i", null, node);
   if (run.bold) node = createElement("b", null, node);
   if (run.script === "superscript" || run.script === "subscript") node = createElement(run.script === "superscript" ? "sup" : "sub", null, node);
-  return createElement("span", { key, style: {
+  return createElement("span", { key, className: "display-run", style: {
     ...(run.small_caps ? { fontVariant: "small-caps" } : {}),
     ...(run.underline ? { textDecoration: "underline" } : {}),
   } }, node);
