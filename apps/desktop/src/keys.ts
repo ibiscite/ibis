@@ -50,6 +50,12 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "menu", action: "menuLeave", keys: ["Tab"] },
 ];
 
+/** The catalogue and Settings search name Enter by the same current behavior. */
+export function shortcutBindings(enterPastes: boolean): readonly KeyBinding[] {
+  return KEY_TABLE.map((binding) => binding.action === "copy" && !enterPastes
+    ? { ...binding, label: "shortcuts-action-copy-only" } : binding);
+}
+
 /** The accelerator a table row lists first for an action. */
 export function keysFor(action: KeyAction, mac = currentPlatform() === "macos"): string {
   const binding = KEY_TABLE.find((binding) => binding.action === action);

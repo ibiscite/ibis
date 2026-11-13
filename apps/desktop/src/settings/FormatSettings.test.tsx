@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import type { FormatSettingsView } from "../bindings";
-import { FormatSettings } from "./FormatSettings";
+import { FormatSettings as FormatRows, useFormatSettings } from "./FormatSettings";
 import type { SettingsApi } from "./api";
 
 afterEach(cleanup);
@@ -17,11 +17,15 @@ function api() {
     openSettingsFile: vi.fn(async () => null), onPreferencesChanged: async () => () => {} } as unknown as SettingsApi;
 }
 
+function FormatSettings({ api }: { api: SettingsApi }) {
+  return <FormatRows settings={useFormatSettings(api)} highlighted={null} />;
+}
+
 test("forgetting an app restores its usual format and hides the empty group", async () => {
   const native = api();
   const read = vi.mocked(native.formatSettings!);
   read.mockResolvedValueOnce(remembered).mockResolvedValueOnce(empty);
-  render(<FormatSettings api={native} onKeyVisibility={vi.fn()} />);
+  render(<FormatSettings api={native} />);
   fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
   await waitFor(() => expect(screen.queryByText("Word")).toBeNull());
   expect(native.forgetAppFormat).toHaveBeenCalledExactlyOnceWith("macos:example.word");
@@ -31,7 +35,7 @@ test("forgetting an app restores its usual format and hides the empty group", as
 test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app and reports the failure", async () => {
   const native = api();
   vi.mocked(native.forgetAppFormat!).mockRejectedValueOnce(new Error("synthetic refusal"));
-  render(<FormatSettings api={native} onKeyVisibility={vi.fn()} />);
+  render(<FormatSettings api={native} />);
   fireEvent.click(await screen.findByRole("button", { name: "Forget" }));
   await screen.findByRole("alert");
   expect(screen.getByText("Word")).toBeTruthy();
@@ -41,14 +45,14 @@ test.each(["refused", "failed I/O"])("a forget that is %s keeps the saved app an
 test("an older file snapshot cannot restore an app after a newer read or close and reopen", async () => {
   const native = api(), older = pending<FormatSettingsView>(), newer = pending<FormatSettingsView>();
   vi.mocked(native.formatSettings!).mockReturnValueOnce(older.promise).mockReturnValueOnce(newer.promise).mockResolvedValue(empty);
-  const visibility = vi.fn();
-  const mounted = render(<FormatSettings api={native} onKeyVisibility={visibility} />);
+  const mounted = render(<FormatSettings api={native} />);
   fireEvent.focus(window);
-  await act(async () => newer.resolve({ ...empty, key_output_visible: true }));
-  expect(visibility).toHaveBeenLastCalledWith(true);
+  await act(async () => newer.resolve(remembered));
+  expect(screen.getByText("Word")).toBeTruthy();
   mounted.unmount();
-  render(<FormatSettings api={native} onKeyVisibility={visibility} />);
-  await waitFor(() => expect(visibility).toHaveBeenLastCalledWith(false));
+  render(<FormatSettings api={native} />);
+  await act(async () => {});
+  expect(screen.queryByText("Word")).toBeNull();
   await act(async () => older.resolve(remembered));
   expect(screen.queryByText("Word")).toBeNull();
 });

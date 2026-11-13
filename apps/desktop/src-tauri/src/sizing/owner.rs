@@ -48,6 +48,13 @@ pub(super) struct Undo {
     saved: Option<PickerWindow>,
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct SizeUndo {
+    pub revision: u64,
+    pub display: String,
+    pub saved: Option<PickerWindow>,
+}
+
 #[derive(Default)]
 pub(super) struct Owner {
     pub windows: BTreeMap<String, PickerWindow>,
@@ -69,6 +76,7 @@ pub(super) struct Owner {
     pub finished: bool,
     pub started: bool,
     pub undo: Option<Undo>,
+    pub size_undo: Option<SizeUndo>,
 }
 
 /// Keep the native read outside the owner's lock, including reentrant events.
@@ -149,6 +157,7 @@ impl Owner {
         if display.is_empty() {
             self.session = Some(frame);
             self.undo = None;
+            self.size_undo = None;
         } else {
             self.windows.insert(display.to_owned(), frame);
             self.queue_save(now);
@@ -286,16 +295,67 @@ impl Owner {
     }
 
     /// A size chosen in Settings, kept for this display like a dragged one.
-    pub fn choose(&mut self, display: &str, frame: Frame, room: (f64, f64), now: Instant) {
+    pub fn choose(&mut self, display: &str, frame: Frame, room: (f64, f64), now: Instant) -> u64 {
         let mut frame = remember(frame, room);
         if self.window(display).and_then(|saved| saved.position).is_none() {
             frame.position = None;
         }
-        self.keep(display, frame, now);
+        let saved = self.window(display).copied();
+        if saved != Some(frame) {
+            self.keep(display, frame, now);
+            if display.is_empty() {
+                // Issue a save receipt without persisting the session-only frame.
+                self.queue_save(now);
+            }
+            self.size_undo = Some(SizeUndo {
+                revision: self.revision,
+                display: display.into(),
+                saved,
+            });
+        }
+        self.revision
+    }
+
+    pub fn size_undo_for(&self, revision: u64, display: &str) -> Option<SizeUndo> {
+        self.size_undo
+            .as_ref()
+            .filter(|undo| {
+                !self.stopping && self.revision == revision && undo.revision == revision && undo.display == display
+            })
+            .cloned()
+    }
+
+    pub fn restore_size(&mut self, revision: u64, display: &str, now: Instant) -> bool {
+        let Some(undo) = self.size_undo_for(revision, display) else {
+            return false;
+        };
+        let saved = self.window(display).copied();
+        if display.is_empty() {
+            self.session = undo.saved;
+        } else {
+            match undo.saved {
+                Some(frame) => {
+                    self.windows.insert(undo.display, frame);
+                }
+                None => {
+                    self.windows.remove(&undo.display);
+                }
+            }
+        }
+        self.queue_save(now);
+        // A failed persistence of Undo can roll back with the new revision;
+        // the original ticket is still spent and can never consume later state.
+        self.size_undo = Some(SizeUndo {
+            revision: self.revision,
+            display: display.into(),
+            saved,
+        });
+        true
     }
 
     pub fn queue_save(&mut self, now: Instant) {
         self.undo = None;
+        self.size_undo = None;
         self.revision += 1;
         self.pending_save = Some(Save {
             revision: self.revision,

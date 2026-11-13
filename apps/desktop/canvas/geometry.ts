@@ -9,8 +9,8 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
+  marks: [".result-tile", ".ui-palette-lead", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring", ".ui-view-back .ui-icon"],
+  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
   outside: ".choice-screen, .inspector, .menu-popover, [inert]",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
@@ -19,6 +19,14 @@ export const columns = {
 /** [C21] Pop-ups that fill a form row: the menu sits under the button's leading
  * edge and is never narrower than it. */
 export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]', trigger: '.citation-field .ui-popup-button[aria-expanded="true"]' } as const;
+
+/** [C8] The leading footer selector is one of the footer's small controls;
+ * its menu opens above it with the same leading edge and a clear gap. */
+export const footerSelector = {
+  trigger: ".library-bar .library-status-trigger",
+  controls: ".library-bar .enter-hints .ui-button, .library-bar .more .more-button",
+  popover: ".menu-popover:has(#library-menu)",
+} as const;
 
 /** [C9] Action menus fit their labels until the window limits their width,
  * scrolling or not: a scroll bar never takes its width from a label. Pop-up
@@ -87,9 +95,15 @@ export function geometry(root: ParentNode = document): string[] {
   for (const back of root.querySelectorAll(".ui-view-back")) {
     if (!visible(back)) continue;
     const rect = back.getBoundingClientRect();
-    const minimum = matchMedia("(pointer: coarse)").matches ? 44 : 32;
-    if (rect.width + tolerance < minimum || rect.height + tolerance < minimum)
-      failures.push(`[Back] target ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)}px, expected at least ${minimum}px`);
+    const scale = (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16) / 16;
+    const minimum = (matchMedia("(pointer: coarse)").matches ? 44 : 32) * scale;
+    if (Math.abs(rect.width - minimum) > tolerance || Math.abs(rect.height - minimum) > tolerance)
+      failures.push(`[Back] target ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)}px, expected ${minimum}px square`);
+    const field = back.closest(".ui-view-head")?.querySelector(".ui-view-field");
+    if (field && visible(field)) {
+      const search = field.getBoundingClientRect(), delta = rect.top + rect.height / 2 - (search.top + search.height / 2);
+      if (Math.abs(delta) > tolerance) failures.push(`[Back] centre ${delta.toFixed(1)}px off the search field vertically`);
+    }
   }
 
   // The columns come from the tokens, never from another part that could be wrong too.
@@ -118,10 +132,31 @@ export function geometry(root: ParentNode = document): string[] {
     }
     for (const node of held(columns.words.join(", "))) {
       const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-      // Field and title-chip words start inside their padding and border.
+      // Field and title words start inside their padding and border.
       const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
       const start = lead(rect) + inset;
       if (Math.abs(start - titleStart) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, title column ${titleStart.toFixed(1)}`);
+    }
+  }
+
+  const selector = root.querySelector(footerSelector.trigger);
+  if (selector && visible(selector)) {
+    const button = selector.getBoundingClientRect();
+    for (const control of root.querySelectorAll(footerSelector.controls)) {
+      if (!visible(control)) continue;
+      const rect = control.getBoundingClientRect();
+      if (Math.abs(button.height - rect.height) > tolerance)
+        failures.push(`[C8] library selector ${button.height.toFixed(1)}px tall, footer control ${name(control)} ${rect.height.toFixed(1)}px`);
+      const delta = button.top + button.height / 2 - (rect.top + rect.height / 2);
+      if (Math.abs(delta) > tolerance) failures.push(`[C8] library selector centre ${delta.toFixed(1)}px off footer control ${name(control)}`);
+    }
+    const popover = root.querySelector(footerSelector.popover);
+    if (popover && visible(popover)) {
+      const menu = popover.getBoundingClientRect();
+      if (Math.abs(lead(menu) - lead(button)) > tolerance)
+        failures.push(`[C8] library menu starts ${lead(menu).toFixed(1)}, selector ${lead(button).toFixed(1)}`);
+      if (menu.bottom > button.top - tolerance)
+        failures.push(`[C8] library menu ends ${menu.bottom.toFixed(1)}, must leave a gap above selector ${button.top.toFixed(1)}`);
     }
   }
 

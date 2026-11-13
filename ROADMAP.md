@@ -114,7 +114,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 
 ### 1.0 Stable
 
-No new features. People test everything, then the maintainer moves to 1.0. Gates: VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew, Nix, winget and MCP Registry listings before 1.0 ([decision 0047](docs/decisions/0046-official-names-and-listings.md)), with Linux support stated per desktop; the documentation site; licence notices and supply-chain records. macOS keeps its self-signed identity and Windows installers stay unsigned; paid signing is revisited near 1.0 (decision 0032).
+No new features. People test everything, then the maintainer moves to 1.0. Gates: VoiceOver, NVDA and Orca; a versioned engine contract proved by real clients; Flathub, Homebrew, Nix, winget and MCP Registry listings ([decision 0046](docs/decisions/0046-official-names-and-listings.md)), with Linux support stated per desktop; the documentation site; licence notices and supply-chain records. macOS keeps its self-signed identity and Windows installers stay unsigned; paid signing is revisited near 1.0 (decision 0032).
 
 - Qualify minimum OS versions, real Wayland consent/focus and cloud/network file-provider recovery per platform; build and protocol fakes do not establish these (from compatibility and architecture).
 - Extend the existing native editor journeys with LibreOffice rich-text readback on Mac and Windows, checking placement, replacement and refusal with replayable evidence (from testing).

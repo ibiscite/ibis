@@ -9,9 +9,10 @@ import { ShortcutRecorder } from "./ShortcutRecorder";
 import { ShortcutEcho, useKeyPulse } from "./Delights";
 
 /** Both Settings pages edit the same owner. This component only presents it. */
-export function ShortcutSetting({ id, rowId, status, problem, saving, highlighted, onRecord, onConfigure, echo = false, table = false }: {
+export function ShortcutSetting({ id, rowId, details, status, problem, saving, highlighted, onRecord, onConfigure, echo = false, table = false }: {
   id: string; rowId: string; status: ShortcutStatus | null; problem: ShortcutProblem | null;
   saving: boolean; highlighted: boolean;
+  details: { label: string; description?: string };
   onRecord: (shortcut: string | null) => void; onConfigure: () => void;
   echo?: boolean; table?: boolean;
 }) {
@@ -21,6 +22,8 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
   const defaultLabel = shortcutLabel(DEFAULT_PICKER_SHORTCUT, mac);
   const isDefault = status && /^[a-z]$/i.test(status.shortcut.split("+").at(-1)?.trim() ?? "")
     && shortcutLabel(status.shortcut, mac).split("+").sort().join("+") === defaultLabel.split("+").sort().join("+");
+  const reset = status && !status.desktop && !isDefault && <Button variant="quiet" size="small" isDisabled={saving}
+    aria-label={text("settings-use-default", { setting: details.label })} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>;
   const controls = <>
       {status?.desktop ? <>
         <span role="status">{status.shortcut || text("shortcuts-not-assigned")}</span>
@@ -31,7 +34,7 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
 </>;
   if (table) return <>
     <tr id={rowId} data-echo={pressed || undefined} data-highlighted={highlighted || undefined}><th scope="row">{text(SHORTCUT_ACTIONS.open)}</th><td><span className="ui-settings-keys">{controls}
-      {status && !status.desktop && !isDefault && <Button size="small" isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>}
+      {reset}
     </span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
@@ -39,11 +42,11 @@ export function ShortcutSetting({ id, rowId, status, problem, saving, highlighte
     </td></tr>}
   </>;
   return <Section id={id}><Group>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={text("shortcuts-open")} highlighted={highlighted} changed={Boolean(status && !status.desktop && !isDefault)}
-      description={status?.desktop?.guidance ?? (status ? text("shortcuts-description") : undefined)}
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} changed={Boolean(reset)}
+      description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
       problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
       {controls}
-      {status && !status.desktop && !isDefault && <Button size="small" isDisabled={saving} onPress={() => onRecord(null)}>{text("shortcuts-use-default")}</Button>}
+      {reset}
     </Row></ShortcutEcho>
 
   </Group></Section>;

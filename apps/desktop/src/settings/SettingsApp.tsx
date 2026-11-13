@@ -1,3 +1,8 @@
+import { composing } from "../composition";
+import { filterPalette } from "../ui/Palette";
+import { Details } from "../ui/Details";
+import { useSettingUndo } from "../ui/useSettingUndo";
+import { useRowReveal } from "../ui/useRowReveal";
 import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
@@ -22,7 +27,7 @@ import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
-import { FormatSettings } from "./FormatSettings";
+import { FormatSettings, useFormatSettings } from "./FormatSettings";
 import { Switch } from "../ui/Switch";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
@@ -30,7 +35,7 @@ import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
 
-import { PAGES, ROWS, rowDetails, type Page } from "./rows";
+import { PAGES, ROWS, settingsRows, rowDetails, preferenceDefault, type Page } from "./rows";
 import { LookPage } from "./LookPage";
 import { initialPreferences, preferenceState } from "./preferenceState";
 const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
@@ -50,6 +55,9 @@ export function pageOf(name: string | null): { page: Page; focus: "paste" | null
 /** The Settings window: a sidebar of pages, each a stack of titled groups of
  * rows (docs/design/settings.md). Every change applies at once. */
 /** How far below a page's top a scrolled-to group lands: under the title, which stays put. */
+class WindowSizeSaveError extends Error {
+  constructor(readonly retryTicket: number | null) { super("Window size could not be saved"); }
+}
 const underTitle = (page: HTMLElement) => page.querySelector<HTMLElement>(".ui-settings-page-title")?.offsetHeight ?? 0;
 
 export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPage: string | null }) {
@@ -62,9 +70,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
-  const [keyFormatVisible, setKeyFormatVisible] = useState(false);
+  const formatSettings = useFormatSettings(api);
+  const keyFormatVisible = Boolean(formatSettings.view?.key_output_visible || preferences?.key_output);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
+  const latestLogin = useRef<LoginItem | null>(null);
+  const latestUpdates = useRef<boolean | null>(null);
+  const updateWrite = useRef<{ on: boolean; resolve: () => void; reject: () => void } | null>(null);
   const [version, setVersion] = useState("");
   const [readProblems, setReadProblems] = useState<ReadonlySet<string>>(() => new Set());
   const readProblem = useCallback((id: string, failed: boolean) => setReadProblems((current) => {
@@ -75,10 +87,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [problemRow, setProblemRow] = useState<{ id: string; message: MessageId } | null>(null);
   const [windowSize, setWindowSize] = useState<WindowSize | null>(null);
   const windowSizes = useRef(0);
+  const windowUndoRevision = useRef<number | null>(null);
+  const latestWindowSize = useRef<WindowSize | null>(null);
+  const windowSaved = useRef<{ revision: number; saved: boolean } | null>(null);
+  const windowSaveWaiter = useRef<{ revision: number; resolve: () => void; reject: () => void } | null>(null);
   const cause = useRef<string | null>(null);
   const edits = useRef(0);
   const live = useRef(true);
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  const resultsRef = useRef<HTMLDivElement>(null);
+  const searchOpener = useRef<HTMLElement | null>(null);
+  const [revealTarget, setRevealTarget] = useState<{ id: string; ticket: number } | null>(null);
+  useRowReveal(revealTarget, pageRef);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
   useEffect(() => { live.current = true; return () => { live.current = false; }; }, []);
@@ -163,6 +184,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const [detour, setDetour] = useState(initialPage === "paste");
   const [returnFailed, setReturnFailed] = useState(false);
   const [focused, setFocused] = useState(true);
+  const settingUndo = useSettingUndo(!focused, searchRef);
+  const clearSettingUndo = useCallback(() => { windowUndoRevision.current = null; settingUndo.clear(); }, [settingUndo.clear]);
   const queue = useMemo(() => new PreferencePatchQueue({
     read: async () => ({ preferences: await api.pickerPreferences() }),
     submit: (patch) => api.savePickerPreferences(patch),
@@ -173,6 +196,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (event.type === "error") {
       if (event.source === "read") dispatchPreference({ type: "read-failed" });
     } else if (event.type === "invalidated") {
+      clearSettingUndo();
       dispatchPreference(event);
     } else if (event.type === "read" || event.type === "saved") {
       if (event.type === "read") dispatchPreference({ type: "read", value: event.value.preferences });
@@ -187,7 +211,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         }
       });
     }
-  }), [queue]);
+  }), [queue, clearSettingUndo]);
   useAppearance(preferences);
   useEffect(() => {
     const root = document.documentElement;
@@ -195,7 +219,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     return () => { delete root.dataset.largerText; };
   }, [preferences?.larger_text]);
   // Shortcuts reads it too, to name what Enter does; only General waits for a grant.
-  const permission = usePastePermission(api, page === "general" || page === "shortcuts", page === "general" && preferences?.paste === true);
+  const permission = usePastePermission(api, page === "general" || page === "shortcuts" || Boolean(query.trim()), page === "general" && preferences?.paste === true);
   const enterPastes = permission?.pastes === true && (!permission.needed || permission.granted) && preferences?.paste === true;
 
   useEffect(() => {
@@ -235,12 +259,13 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (withPreferences !== false) void queue.load(() => active);
       if (!loginBusy.current) {
         const loginRequest = ++loginReads.current;
-        api.loginItem().then((next) => { if (active && loginRequest === loginReads.current) { setLogin(next); readProblem("login", false); } })
+        api.loginItem().then((next) => { if (active && loginRequest === loginReads.current) { if (latestLogin.current && latestLogin.current.enabled !== next.enabled) clearSettingUndo(); latestLogin.current = next; setLogin(next); readProblem("login", false); } })
           .catch(() => { if (active && loginRequest === loginReads.current) readProblem("login", true); });
       }
+      if (updateWrite.current) return;
       const updateRequest = ++updateReads.current;
       api.updateChecks().then((next) => {
-        if (active && updateRequest === updateReads.current) { setUpdates(next); readProblem("automatic", false); }
+        if (active && updateRequest === updateReads.current) { if (latestUpdates.current !== null && latestUpdates.current !== next) clearSettingUndo(); latestUpdates.current = next; setUpdates(next); readProblem("automatic", false); }
       }).catch(() => {
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
@@ -259,11 +284,16 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       if (active) { latestShortcut.current = next; setShortcut(next); clearShortcutUndo(); }
     });
     void shortcuts.catch(() => { if (active) setShortcutProblem({ id: "shortcuts-read-failed" }); }).then(() => { if (active) readShortcut(); });
-    const page = api.onPage((name) => { const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
+    const page = api.onPage((name) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setQuery(""); const next = pageOf(name); setDetour(name === "paste"); setDip(0); setPage(next.page); setFocus(next.focus ?? "top"); });
     const automatic = api.onUpdateChecks((next) => {
       if (!active) return;
       updateReads.current += 1;
+      if (!updateWrite.current) clearSettingUndo();
+      latestUpdates.current = next;
       setUpdates(next);
+      const pending = updateWrite.current;
+      updateWrite.current = null;
+      if (pending) { if (pending.on === next) pending.resolve(); else pending.reject(); }
       if (updateIntent.current !== null) {
         setProblemRow(updateIntent.current === next ? null : { id: "automatic", message: "settings-choice-failed" });
         if (updateIntent.current === next) updateIntent.current = null;
@@ -273,6 +303,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     const close = api.onCloseRequested(() => queue.finishSaving());
     return () => {
       active = false;
+      updateWrite.current?.reject(); updateWrite.current = null;
       window.removeEventListener("focus", readAll);
       window.removeEventListener("focus", readShortcut);
       void preferenceEvents.then((stop) => stop()).catch(() => undefined);
@@ -281,7 +312,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       void automatic.then((stop) => stop()).catch(() => undefined);
       void close.then((stop) => stop()).catch(() => undefined);
     };
-  }, [api, queue, readProblem, clearShortcutUndo]);
+  }, [api, queue, readProblem, clearShortcutUndo, clearSettingUndo]);
   useEffect(() => {
     const scroller = pageRef.current;
     if (!focus || !scroller) return;
@@ -295,21 +326,35 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setFocus(null);
   }, [focus, preferences, permission]);
 
-  const change = (next: Partial<PickerPreferences>) => {
-    if (!preferences) return;
+  useEffect(() => {
+    const find = (event: KeyboardEvent) => {
+      if (composing(event) || event.key.toLowerCase() !== "f" || event.altKey || event.shiftKey
+        || !(platform === "macos" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey)) return;
+      event.preventDefault(); event.stopPropagation();
+      if (document.activeElement !== searchRef.current && document.activeElement instanceof HTMLElement) searchOpener.current = document.activeElement;
+      setRevealTarget(null);
+      searchRef.current?.focus(); searchRef.current?.select();
+    };
+    window.addEventListener("keydown", find, true);
+    return () => window.removeEventListener("keydown", find, true);
+  }, [platform]);
+
+  const change = (next: Partial<PickerPreferences>, restoring = false): Promise<void> => {
+    if (!preferences) return Promise.reject(new Error("Settings unavailable"));
+    if (!restoring) clearSettingUndo();
     edits.current += 1;
-    cause.current = next.output !== undefined ? "default-format" : next.key_output !== undefined ? "key-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
+    cause.current = next.output !== undefined ? "default-format" : next.key_output !== undefined ? "default-key-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
       : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "recent-citations";
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next } });
-    queue.change(next);
+    return queue.change(next);
   };
   const changeShortcut = (next: string | null, restoring = false, ticket = shortcutUndoTicket.current): Promise<void> => {
     if (shortcutBusy.current || ticket !== shortcutUndoTicket.current) return Promise.resolve();
     shortcutBusy.current = true;
     const previous = shortcut?.shortcut;
-    if (!restoring) clearShortcutUndo();
+    if (!restoring) { clearShortcutUndo(); clearSettingUndo(); }
     const request = ++shortcutReads.current;
     setShortcutSaving(true);
     setShortcutProblem(null);
@@ -337,70 +382,140 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     void api.configureShortcuts().catch(() => setShortcutProblem({ id: "shortcuts-configure-failed" }))
       .finally(() => { shortcutBusy.current = false; setShortcutSaving(false); });
   };
-  const changeLogin = (on: boolean) => {
-    if (loginBusy.current) return;
+  const changeLogin = async (on: boolean, restoring = false) => {
+    if (loginBusy.current) throw new Error("Login change pending");
+    if (!restoring) clearSettingUndo();
     setProblemRow(null); readProblem("login", false); loginBusy.current = true;
     const request = ++loginReads.current;
     setLoginSaving(true);
-    void queue.enqueue(() => api.setLoginItem(on)).then((next) => { if (live.current && request === loginReads.current) setLogin(next); })
-      .catch(() => { if (live.current && request === loginReads.current) setProblemRow({ id: "login", message: "settings-choice-failed" }); })
-      .finally(() => { if (live.current && request === loginReads.current) setLoginSaving(false); loginBusy.current = false; });
+    try {
+      const next = await queue.enqueue(() => api.setLoginItem(on));
+      if (!live.current || request !== loginReads.current) throw new Error("Login change superseded");
+      latestLogin.current = next; setLogin(next);
+      if (next.enabled !== on || next.problem) throw new Error("Login change refused");
+    } catch (error) {
+      if (live.current && request === loginReads.current) setProblemRow({ id: "login", message: "settings-choice-failed" });
+      throw error;
+    } finally {
+      loginBusy.current = false;
+      if (live.current && request === loginReads.current) setLoginSaving(false);
+    }
   };
-  const changeAutomatic = (on: boolean) => {
-    setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true); const operation = ++updateReads.current;
-    const saved = updates;
-    void api.setUpdateChecks(on).catch(() => {
-      if (live.current && operation === updateReads.current) { setUpdates(saved); setProblemRow({ id: "automatic", message: "settings-choice-failed" }); }
-    }).finally(() => { if (live.current) setUpdatesSaving(false); });
+  const changeUpdates = async (on: boolean, restoring = false) => {
+    if (updateWrite.current) throw new Error("Update change pending");
+    if (!restoring) clearSettingUndo();
+    setProblemRow(null); updateIntent.current = on; setUpdatesSaving(true);
+    const operation = ++updateReads.current;
+    let refuse = () => {};
+    const applied = new Promise<void>((resolve, reject) => { refuse = () => reject(new Error("Update change refused")); updateWrite.current = { on, resolve, reject: refuse }; });
+    try { await Promise.all([api.setUpdateChecks(on), applied]); }
+    catch (error) {
+      if (live.current && operation === updateReads.current) {
+        refuse(); updateWrite.current = null;
+        setProblemRow({ id: "automatic", message: "settings-choice-failed" });
+      }
+      throw error;
+    } finally { if (live.current) setUpdatesSaving(false); }
   };
-  const resettable: Record<string, [string, Partial<PickerPreferences>]> = {
-    "default-format": ["output", { output: "apa" }], "key-format": ["key_output", { key_output: "pandoc" }],
-    appearance: ["appearance", { appearance: "system" }], accent: ["accent", { accent: "system" }],
-    rows: ["density", { density: "comfortable" }], "text-size": ["larger_text", { larger_text: false }],
-    "paste-label": ["paste", { paste: true }], "menu-bar": ["menu_bar", { menu_bar: true }],
-    "small-surprises": ["small_surprises", { small_surprises: true }], "recent-citations": ["recent_citations", { recent_citations: true }],
+  const resetPreference = (id: string) => {
+    const row = ROWS.find((row) => row.id === id);
+    const reset = row && preferences && preferenceDefault(row, preferences);
+    const defaultValue = row?.default;
+    if (id === "login" && typeof defaultValue === "boolean" && login && login.enabled !== defaultValue && !login.problem) return { label: rowDetails(id, text).label, disabled: loginSaving,
+      onReset: () => { void settingUndo.reset(rowDetails(id, text).label, () => changeLogin(defaultValue), () => changeLogin(login.enabled, true)); } };
+    if (id === "automatic" && typeof defaultValue === "boolean" && updates !== null && updates !== defaultValue) return { label: rowDetails(id, text).label, disabled: updatesSaving,
+      onReset: () => { void settingUndo.reset(rowDetails(id, text).label, () => changeUpdates(defaultValue), () => changeUpdates(updates, true)); } };
+    if (id === "window-size" && defaultValue === "medium" && windowSize && windowSize !== defaultValue) return { label: rowDetails(id, text).label,
+      onReset: () => {
+        let ticket: number | null = null;
+        void settingUndo.reset(rowDetails(id, text).label,
+          async () => { ticket = await chooseWindowSize(defaultValue, null, true); windowUndoRevision.current = ticket; },
+          async () => {
+            if (ticket === null) throw new Error("Window Undo unavailable");
+            try { await chooseWindowSize(windowSize, ticket, true, true); }
+            catch (error) {
+              if (error instanceof WindowSizeSaveError) {
+                ticket = error.retryTicket; windowUndoRevision.current = ticket;
+                if (ticket === null) clearSettingUndo();
+              }
+              throw error;
+            }
+          });
+      } };
+    if (!row || !reset || preference.status === "unknown") return undefined;
+    return { label: rowDetails(id, text).label, onReset: () => {
+      void settingUndo.reset(rowDetails(id, text).label, async () => {
+        await change(reset.patch);
+      }, async () => { await change(reset.previous, true); });
+    } };
   };
-  const feedback = (id: string) => ({ highlighted: highlighted === id,
-    changed: Boolean(resettable[id] && preferences && Object.entries(resettable[id][1]).some(([field, value]) =>
-      (preferences[field as keyof PickerPreferences] ?? value) !== value)),
-    onReset: resettable[id] ? () => change(resettable[id]![1]) : undefined,
-    problem: readProblems.has(id) ? text("settings-read-failed")
+  const feedback = (id: string) => ({ reset: resetPreference(id), highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? text(preference.problem.message)
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
-  const selectPage = (next: Page) => { highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
+  const selectPage = (next: Page) => { setRevealTarget(null); highlightOperation.current += 1; setHighlighted(null); setDetour(false); setPage(next); setFocus("top"); setDip(0); };
   const reveal = (row: typeof ROWS[number]) => {
-    selectPage(row.page); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
+    selectPage(row.page); setFocus(null); setQuery(""); setHighlighted(row.id === "about-ibis" && query.trim().toLowerCase() === "thoth" ? "about-name" : row.id);
     if (row.id === "about-ibis" && query.trim().toLowerCase() !== "thoth") setDip(dip + 1);
     const operation = ++highlightOperation.current;
+    setRevealTarget({ id: row.id === "open-shortcut" && row.page === "general" ? "general-open-shortcut" : row.id, ticket: operation });
     window.setTimeout(() => { if (live.current && operation === highlightOperation.current) setHighlighted(null); }, 2000);
   };
-  useEffect(() => {
-    if (!highlighted || !preferences || !pageRef.current) return;
-    const target = document.getElementById(highlighted === "open-shortcut" && page === "general" ? "general-open-shortcut" : highlighted)?.closest(".ui-row, tr, .ui-about-check");
-    if (target) pageRef.current.scrollTop += target.getBoundingClientRect().top - pageRef.current.getBoundingClientRect().top - underTitle(pageRef.current);
-  }, [highlighted, page, preferences]);
   // Look reads on showing, so a size dragged meanwhile appears as Custom.
   const readWindowSize = useCallback((request: number) => api.windowSize().then((size) => {
-    if (live.current && request === windowSizes.current) { setWindowSize(size); readProblem("window-size", size === null); }
-  }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); }), [api, readProblem]);
+    if (live.current && request === windowSizes.current) { if (latestWindowSize.current !== null && latestWindowSize.current !== size) clearSettingUndo(); latestWindowSize.current = size; setWindowSize(size); readProblem("window-size", size === null); }
+  }, () => { if (live.current && request === windowSizes.current) readProblem("window-size", true); }), [api, readProblem, clearSettingUndo]);
   useEffect(() => {
     if (focused && page === "look") void readWindowSize(++windowSizes.current);
   }, [focused, page, readWindowSize]);
   useEffect(() => {
-    const stop = api.onWindowSaved((saved) => {
+    const stop = api.onWindowSaved((saved, revision) => {
+      windowSaved.current = { revision, saved };
+      if (windowUndoRevision.current !== null && revision > windowUndoRevision.current) clearSettingUndo();
+      const pending = windowSaveWaiter.current;
+      if (pending && revision >= pending.revision) {
+        windowSaveWaiter.current = null;
+        if (saved && revision === pending.revision) pending.resolve(); else pending.reject();
+      }
       if (live.current && !saved) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
     });
-    return () => { void stop.then((unlisten) => unlisten()); };
-  }, [api]);
-  const chooseWindowSize = (size: WindowSize) => {
+    return () => { windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null; void stop.then((unlisten) => unlisten()); };
+  }, [api, clearSettingUndo]);
+  const chooseWindowSize = async (size: WindowSize, undo: number | null = null, waitForSave = false, restoring = false): Promise<number> => {
+    if (!restoring) clearSettingUndo();
+    else windowUndoRevision.current = null;
     const request = ++windowSizes.current;
-    setProblemRow(null); setWindowSize(size);
-    api.setWindowSize(size).catch(() => {
-      if (!live.current || request !== windowSizes.current) return;
-      setProblemRow({ id: "window-size", message: "settings-choice-failed" });
-      void readWindowSize(request);
-    });
+    windowSaveWaiter.current?.reject(); windowSaveWaiter.current = null;
+    const previous = latestWindowSize.current;
+    let revision: number | undefined;
+    setProblemRow(null); latestWindowSize.current = size; setWindowSize(size);
+    try {
+      revision = undo === null ? await api.setWindowSize(size) : await api.setWindowSize("custom", undo);
+      if (!live.current || request !== windowSizes.current) throw new Error("Window choice superseded");
+      if (waitForSave) {
+        if (windowSaved.current && windowSaved.current.revision >= revision) {
+          if (windowSaved.current.revision !== revision || !windowSaved.current.saved) throw new Error("Window choice not saved");
+        } else {
+          await new Promise<void>((resolve, reject) => { windowSaveWaiter.current = { revision: revision!, resolve, reject: () => reject(new Error("Window choice not saved")) }; });
+        }
+      }
+      return revision;
+    } catch (error) {
+      let retryTicket: number | null = null;
+      if (live.current && request === windowSizes.current) {
+        if (waitForSave && revision !== undefined) {
+          // A reset that did not save returns to its native snapshot, including
+          // Custom dimensions. The ticket refuses any later geometry choice.
+          try {
+            retryTicket = await api.setWindowSize("custom", revision);
+            if (live.current && request === windowSizes.current) { latestWindowSize.current = previous; setWindowSize(previous); }
+          } catch { void readWindowSize(request); }
+        } else void readWindowSize(request);
+        if (live.current && request === windowSizes.current) setProblemRow({ id: "window-size", message: "settings-choice-failed" });
+      }
+      if (waitForSave) throw new WindowSizeSaveError(retryTicket);
+      throw error;
+    }
   };
   const copyVersion = () => {
     const operation = ++versionCopy.current;
@@ -412,26 +527,55 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       window.setTimeout(() => { if (live.current && operation === versionCopy.current) setVersionCopied(false); }, 1500);
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
-  const matches = query.trim() ? ROWS.filter((row) => (row.id !== "menu-bar" || platform === "macos") && [row.label, row.description, row.keywords].some((id) => id && text(id, { platform }).toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()))) : [];
+  const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
+    && (row.id !== "default-key-format" || keyFormatVisible)
+    && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
+    && (row.id !== "paste-label" || permission?.pastes === true)
+    && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))
+    && (row.id !== "cli-command" || Boolean(api.cliStatus && api.setCliInstalled && api.copyCliProfile))
+    && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
+  const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
+    label: text(row.label, { platform }), detail: row.description ? text(row.description, { platform }) : undefined,
+    keywords: row.keywords ? text(row.keywords, { platform }) : undefined })) }], query).flatMap((group) => group.items.map((item) => item.id)) : []);
+  const matches = PAGES.flatMap((page) => availableRows.filter((row) => row.page === page && matchedIds.has(row.id)));
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
   const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
-    rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
+    details={rowDetails("open-shortcut", text)} rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
     table={page === "shortcuts"} saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
     onRecord={changeShortcut} onConfigure={configureShortcut} />;
 
   return (
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
-      <nav className="settings-sidebar" aria-label={text("settings-pages")}>
-        <SettingsSearch label={text("settings-search")} value={query} onChange={setQuery} onSubmit={() => { if (matches[0]) reveal(matches[0]); }} />
-        {query.trim() ? <SideResults label={text("settings-results")} status={text("settings-results-count", { count: matches.length })} empty={text("settings-no-results")}
+      <nav className="settings-sidebar" aria-label={text("settings-pages")} onKeyDownCapture={(event) => {
+        if (composing(event.nativeEvent) || event.key !== "Escape") return;
+        event.preventDefault(); event.stopPropagation();
+        setRevealTarget(null);
+        if (query) { setQuery(""); searchRef.current?.focus(); }
+        else {
+          const back = searchOpener.current;
+          if (back?.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
+          else event.currentTarget.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+        }
+      }}>
+        <SettingsSearch inputRef={searchRef} label={text("settings-search")} value={query}
+          onChange={(value) => { setRevealTarget(null); setQuery(value); }}
+          onKeyDown={(event) => {
+            if ((event.key === "ArrowDown" || event.key === "ArrowUp") && matches.length) {
+              event.preventDefault();
+              const options = resultsRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
+              options?.[event.key === "ArrowDown" ? 0 : options.length - 1]?.focus();
+            }
+          }} onSubmit={() => { if (matches[0]) reveal(matches[0]); }} />
+        {query.trim() ? <SideResults listRef={resultsRef} label={text("settings-results")} status={text("settings-results-count", { count: matches.length })} empty={text("settings-no-results", { query })}
           results={matches.map((row) => ({ id: row.id, label: text(row.label, { platform }), page: row.page, pageLabel: text(`settings-${row.page}`), tile: PAGE_TILES[row.page] }))}
           onChoose={(id) => reveal(matches.find((row) => row.id === id)!)} />
         : <SideNavigation label={text("settings-pages")} value={page} options={PAGES.map((value) => ({ value, label: text(`settings-${value}`), tile: PAGE_TILES[value], gapBefore: value === "about" }))}
           onChange={selectPage} />}
       </nav>
       <NoticeSlot>
+        {settingUndo.notice}
         {shortcutUndo && <UndoNotice key={undoTicket} action={text("undo-shortcut")} message={text("settings-shortcut-restored")} paused={!focused}
           onUndo={() => changeShortcut(shortcutUndo, true, undoTicket)}
           onExpire={() => { if (undoTicket === shortcutUndoTicket.current) clearShortcutUndo(); }} />}
@@ -444,15 +588,15 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           <>
             {shortcutSetting}
             <Section id="startup"><Group>
-                <Row id="login" label={text("general-login-label", { platform })} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : text("general-login-description")} {...feedback("login")} changed={login?.enabled ?? false} onReset={() => changeLogin(false)}>
+                <Row id="login" {...rowDetails("login", text)} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : rowDetails("login", text).description} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
-                    onChange={changeLogin} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
+                    onChange={(on) => { void changeLogin(on).catch(() => undefined); }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
                 </Row>
-                {platform === "macos" && <Row id="menu-bar" label={text("general-menu-bar-label")} description={text("general-menu-bar-description")} {...feedback("menu-bar")}>
+                {platform === "macos" && <Row id="menu-bar" {...rowDetails("menu-bar", text)} {...feedback("menu-bar")}>
                   <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected={preferences?.menu_bar ?? true}
                     onChange={(on) => change({ menu_bar: on })} isDisabled={!preferences} />
                 </Row>}
-                <Row id="small-surprises" label={text("general-small-surprises-label")} description={text("general-small-surprises-description")} {...feedback("small-surprises")}>
+                <Row id="small-surprises" {...rowDetails("small-surprises", text)} {...feedback("small-surprises")}>
                   <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
                 </Row>
             </Group></Section>
@@ -461,7 +605,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 {/* Only systems where Ibis pastes ask for a permission first. */}
                 {permission?.pastes && (
                 <Section id="paste" title={text("general-paste-title")}><Group>
-                  <Row id="paste-label" label={text("general-paste-label")} description={text("general-paste-description", { platform })} {...feedback("paste-label")}>
+                  <Row id="paste-label" {...rowDetails("paste-label", text)} {...feedback("paste-label")}>
                     <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
                       onChange={(on) => change({ paste: on })} />
                   </Row>
@@ -478,24 +622,24 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               </>
             )}
             {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
-            <BackupRows api={api} />
+            <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
           </>
         )}
-        {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={chooseWindowSize} />}
+        {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={(size) => { void chooseWindowSize(size).catch(() => undefined); }} />}
         {page === "citations" && <><Section id="citation-choices"><Group>
-          {preferences && <Row id="default-format" label={text("citations-documents")} description={text("citations-default-description")} {...feedback("default-format")}>
+          {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
           </Row>}
-          {preferences && (keyFormatVisible || preferences.key_output) && <Row id="key-format" label={text("citations-keys")} {...feedback("key-format")}>
+          {preferences && keyFormatVisible && <Row id="default-key-format" {...rowDetails("default-key-format", text)} {...feedback("default-key-format")}>
             <DefaultFormat preferences={preferences} kind="keys" change={change} />
           </Row>}
           {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
             <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
           </Row>}
-          {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow highlighted={highlighted === "editor-endpoint"}
+          {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow resetSetting={settingUndo.reset} onEdit={clearSettingUndo} highlighted={highlighted === "editor-endpoint"}
             api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint, onEditorEndpoint: api.onEditorEndpoint }} />}
-        </Group></Section><FormatSettings api={api} onKeyVisibility={setKeyFormatVisible} /></>}
-        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} />}
+        </Group></Section><FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
+        {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>
             {/* Centred, as System Settings' About (maintainer, 2026-11-10, option C):
@@ -518,9 +662,9 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
             <Section id="about-updates" title={text("about-updates")}><Group>
-              <Row id="automatic" label={text("about-automatic")} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : text("about-automatic-description")} {...feedback("automatic")} changed={updates === true} onReset={() => changeAutomatic(false)}>
+              <Row id="automatic" {...rowDetails("automatic", text)} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : rowDetails("automatic", text).description} {...feedback("automatic")}>
                 {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
-                    isDisabled={updatesSaving || updates === null} onChange={changeAutomatic} />}
+                    isDisabled={updatesSaving || updates === null} onChange={(on) => { void changeUpdates(on).catch(() => undefined); }} />}
               </Row>
             </Group></Section>
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>

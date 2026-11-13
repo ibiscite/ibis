@@ -1,0 +1,109 @@
+name: Nix
+
+on:
+  pull_request:
+    paths:
+      - .github/workflows/nix.yml
+      - flake.nix
+      - flake.lock
+      - nix/**
+      - Cargo.lock
+      - Cargo.toml
+      - apps/desktop/package.json
+      - apps/desktop/pnpm-lock.yaml
+      - pnpm-lock.yaml
+      - scripts/nix-pnpm-hash*.mjs
+  schedule:
+    - cron: "29 6 * * 1"
+  workflow_dispatch:
+
+# This workflow reports independently; it is not a dependency of CI result.
+permissions:
+  contents: read
+
+concurrency:
+  group: nix-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  cli:
+    name: Nix CLI (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          enable_kvm: false
+      - name: Lock the pinned nixpkgs revision
+        run: nix flake lock
+      - name: Build and run the CLI
+        shell: bash
+        run: |
+          if ! nix build --print-build-logs .#ibis; then
+            echo '::error::Nix CLI build failed. Reproduce with: nix build --print-build-logs .#ibis'
+            echo 'Fix the first build error in this pull request; see docs/nix.md.'
+            exit 1
+          fi
+          ./result/bin/ibis --version
+          nix run . -- --version
+      - name: Preserve the generated lock
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nix-cli-${{ matrix.os }}
+          path: flake.lock
+          if-no-files-found: ignore
+
+  desktop:
+    name: Nix desktop (Linux)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Set up Node.js for hash diagnostics
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          package-manager-cache: false
+      - name: Install Nix
+        uses: cachix/install-nix-action@75c75c31ebece974e48ebc36b4ad125bd97bd97b # v31.11.3
+        with:
+          enable_kvm: false
+      - name: Lock the pinned nixpkgs revision
+        run: nix flake lock
+      - name: Build the desktop and check the installed package
+        shell: bash
+        run: |
+          if ! nix build --print-build-logs .#ibis-desktop 2>&1 | tee nix-build.log; then
+            echo '::error::Nix desktop build failed. Reproduce with: nix build --print-build-logs .#ibis-desktop'
+            echo 'For a pnpm dependency hash mismatch, run the command below and include nix/pnpm-deps-hash in this pull request:'
+            node scripts/nix-pnpm-hash.mjs --from-log nix-build.log
+            echo 'For other failures, fix the first build error; see docs/nix.md.'
+            exit 1
+          fi
+          if ! nix flake check --print-build-logs 2>&1 | tee -a nix-build.log; then
+            echo '::error::Nix package checks failed. Reproduce with: nix flake check --print-build-logs'
+            node scripts/nix-pnpm-hash.mjs --from-log nix-build.log
+            exit 1
+          fi
+      - name: Preserve the generated lock and build log
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: nix-desktop-linux
+          path: |
+            flake.lock
+            nix-build.log
+          if-no-files-found: ignore

@@ -43,6 +43,10 @@ archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
 `ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH. From a checkout:
 `cargo run -p ibis -- --help`.
 
+With Nix on Linux or macOS (x86_64 and aarch64),
+`nix profile add github:ibiscite/ibis` installs the CLI and shell completions.
+See [Nix installation](nix.md) for version pins and declarative configuration.
+
 The standalone macOS CLI is unsigned; the bundled command follows the app's
 signing. If a trusted standalone download is quarantined,
 `xattr -d com.apple.quarantine ibis` removes that attribute.

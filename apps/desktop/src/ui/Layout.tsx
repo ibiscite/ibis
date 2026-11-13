@@ -3,6 +3,7 @@ import { Button as AriaButton } from "react-aria-components";
 import { Icon } from "../icons";
 import { useInterfaceMessages } from "../i18n";
 import { Button } from "./Button";
+import { settingControl } from "./settingFocus";
 import "./Layout.css";
 
 /** The layout parts (maintainer, 2026-11-10). Screens compose these and never set
@@ -42,17 +43,17 @@ export function Group({ label, children }: { label?: string; children: ReactNode
  * description, then its accessory (a control or buttons) at the end, which wraps
  * below when the row is narrow. `labelHidden` keeps the label for screen readers
  * only, for a row whose control names itself (a picture choice). */
-export function Row({ id, label, description, icon, children, problem, highlighted, labelHidden = false, item = false, changed = false, onReset }: {
+export function Row({ id, label, description, icon, children, problem, highlighted, pending, reset, labelHidden = false, item = false, changed = Boolean(reset) }: {
   id?: string; label: ReactNode; description?: ReactNode; icon?: ReactNode; children?: ReactNode;
-  problem?: string; highlighted?: boolean; labelHidden?: boolean;
+  problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
+  reset?: { label: string; onReset: () => void; disabled?: boolean };
   /** In a labelled Group (a list). */
   item?: boolean;
   changed?: boolean;
-  onReset?: () => void;
 }) {
   const { text } = useInterfaceMessages();
   const Element = item ? "li" : "div";
-  return <Element className="ui-row" data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
+  return <Element className="ui-row" aria-busy={pending || undefined} data-bare={labelHidden || undefined} data-highlighted={highlighted || undefined}>
     <span className={labelHidden ? "visually-hidden" : "ui-row-lead"}>
       {icon && !labelHidden && <span className="ui-row-icon" aria-hidden="true">{icon}</span>}
       <span className="ui-row-text">
@@ -62,7 +63,12 @@ export function Row({ id, label, description, icon, children, problem, highlight
       </span>
     </span>
     {children}
-    {changed && onReset && <Button variant="quiet" size="small" aria-label={text("settings-reset-row", { setting: typeof label === "string" ? label : "" })} onPress={onReset}>{text("settings-reset")}</Button>}
+    {reset && <Button variant="quiet" size="small" data-setting-reset aria-label={text("settings-use-default", { setting: reset.label })}
+      isDisabled={reset.disabled} onPress={(event) => {
+        const row = event.target.closest<HTMLElement>(".ui-row");
+        if (row) settingControl(row)?.focus({ preventScroll: true });
+        reset.onReset();
+      }}>{text("shortcuts-use-default")}</Button>}
     {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
   </Element>;
 }

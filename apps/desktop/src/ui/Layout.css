@@ -30,7 +30,10 @@
    System Settings draws it. A highlighted row's fill is its own edge. */
 .ui-row + .ui-row::before { content: ""; position: absolute; inset-block-start: 0; inset-inline: var(--row-pad); border-top: var(--border-width) solid var(--separator); }
 .ui-row[data-highlighted]::before, .ui-row[data-highlighted] + .ui-row::before { display: none; }
+.ui-row { transition: background-color var(--dur-1) ease-out; }
 .ui-row[data-highlighted] { background: var(--highlight); }
+.ui-details { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.ui-details > .ui-button { align-self: start; margin-inline-start: var(--heading-offset); }
 .ui-row-lead { display: flex; flex: 1 1 var(--status-min); align-items: center; gap: var(--row-gap); min-width: 0; }
 .ui-row-icon { display: inline-flex; flex: none; justify-content: center; width: var(--tile); color: var(--text-secondary); }
 .ui-row-text { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }

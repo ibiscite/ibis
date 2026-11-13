@@ -271,8 +271,10 @@ export const commands = {
 	/**
 	 * Kept like a dragged size: the one writer saves it and reports the outcome.
 	 * Hidden, the next `prepare` applies it before the window appears.
+	 * Returns the save revision. An Undo ticket restores that revision's exact
+	 * previous frame on the same display; later geometry invalidates it.
 	 */
-	setWindowSize: (size: WindowSize) => __TAURI_INVOKE<null>("set_window_size", { size }),
+	setWindowSize: (size: WindowSize, undo: number | null) => __TAURI_INVOKE<number>("set_window_size", { size, undo }),
 	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
 	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
 	/** Double-clicking the search bar's empty area returns Ibis to its place. */
