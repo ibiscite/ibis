@@ -100,13 +100,16 @@ the anchor older links use.
 [0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
-[0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
+[0027](decisions/0027-process-until-1-0.md): agents' merge authority and the testing rhythm.
 
 ## 0047 Opening references, where the picker appears, and going back
 [0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.
 
 ## 0048 Nix install
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
+
+## 0049 Local machines gate merges
+[0049](decisions/0049-local-gate.md): parallel local checks authorize the exact head; GitHub confirms main after merge, and release qualification stays intact.
 
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
