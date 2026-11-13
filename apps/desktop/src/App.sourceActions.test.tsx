@@ -45,7 +45,7 @@ test("one quiet footer fix has the runtime icon, label and keys, with a short st
   expect(document.querySelector(".library-age")?.textContent).toBe(" · 2 h");
   expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("last read 2 hours ago");
   expect(footer().queryByRole("button", { name: "Shortcuts" })).toBeNull();
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
 });
 
 test("a missing file's Find recovery keeps its document glyph in the footer and More", async () => {

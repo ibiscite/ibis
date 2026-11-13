@@ -77,7 +77,7 @@ test.each(["macos", "windows", "linux"])("%s: a fresh closed Zotero snapshot sta
   const calls = backend({ library_status: () => library(), reload_library: () => null });
   render(<App />);
   await waitFor(() => expect(status().textContent).toBe("Zotero · 12 references"));
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   fireEvent.click(within(footer()).getByRole("button", { name: "Library" }));
   const menu = await screen.findByRole("menu", { name: "Library" });
   // Library detail, separator, Choose Library and Reload Library. Only macOS
@@ -224,7 +224,7 @@ test("a stale snapshot has one footer problem and action, and a successful read 
   expect(footer().textContent).toContain("2 h");
   // The older copy is still searched: a warning, never the stop of nothing to search.
   expect(document.querySelector(".status-dot")?.getAttribute("data-health")).toBe("look");
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   // The fix shows its key, as More shows ⌘K, and does what its words say: open Zotero, not the row.
   const fix = within(footer()).getByRole("button", { name: "Open Zotero" });
   expect(fix.getAttribute("aria-keyshortcuts")).toBe("Control+O");
@@ -250,7 +250,7 @@ test("a moved file keeps its usable references and offers Find once in the foote
   render(<App />);
   await screen.findByText("Retained reference");
   expect(status().textContent).toBe("thesis.bib moved");
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   fireEvent.click(within(footer()).getByRole("button", { name: "Find ⁨thesis.bib⁩…" }));
   await waitFor(() => expect(choose).toHaveBeenCalledOnce());
 });
@@ -282,7 +282,7 @@ test("a refused switch keeps the file searchable and the engine's recovery instr
   expect(tooltip).toContain("Settings › Advanced");
   expect(tooltip).not.toContain("Open Zotero");
   expect(footer().querySelector(".library-detail")?.textContent).toContain(reason);
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   expect(within(footer()).getByRole("button", { name: "Choose Library…" })).toBeTruthy();
 });
 

@@ -86,7 +86,8 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
 }
 
 function ResultGroup({ record, previous, children }: { record: SearchResult; previous?: SearchResult; children: React.ReactNode }) {
-  return <>{record.recent && record.recent !== previous?.recent && <li role="presentation" className="results-heading recent-heading">
+  // The first group's heading is the list's, in the frame's line (PickerResults).
+  return <>{record.recent && previous && record.recent !== previous.recent && <li role="presentation" className="results-heading recent-heading">
     <h2 id={`recent-${record.recent}`}>{record.recent === "cited" ? "Cited here recently" : "Recently added"}</h2>
   </li>}{children}</>;
 }

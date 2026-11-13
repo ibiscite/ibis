@@ -1,4 +1,4 @@
-/* Each window's one place for what passes [Notices]: its status area, in the layout.
+/* Each window's one place for what passes [Notices]: in the picker the frame's notice line (ui/Frame), in Settings its status area; in the layout either way.
    Nothing here floats, casts a shadow or opens a layer, so a notice never covers a
    row and can sit behind any open menu. */
 .notice-slot { display: flex; align-items: center; min-width: 0; font-size: var(--type-body-size); line-height: var(--type-body-line); }

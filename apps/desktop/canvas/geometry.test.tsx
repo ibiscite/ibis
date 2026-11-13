@@ -1,7 +1,63 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import { CitationDetails } from "../src/ui/CitationDetails";
-import { geometry } from "./geometry";
+import { anchorMoves, geometry, layerRoles, occlusion, overflow, paintOnly } from "./geometry";
+
+test("the frame guard catches an anchor that moves between states, and not an edge it does not hold", () => {
+  const idle = { search: { start: 64, end: 600, top: 18, height: 36 }, "first row": { start: 8, end: 712, top: 90, height: 52 } };
+  // A wider trailing control moves the field's end, which is not held.
+  expect(anchorMoves(idle, { ...idle, search: { ...idle.search, end: 500 } }, "loading")).toEqual([]);
+  expect(anchorMoves(idle, { ...idle, "first row": { ...idle["first row"], top: 122 } }, "project-check-conflict"))
+    .toEqual(["[C24 frame] first row top +32.0px in project-check-conflict"]);
+  // A state that draws no rows moves none.
+  expect(anchorMoves(idle, { search: idle.search }, "error")).toEqual([]);
+});
+
+test("the cover guard catches a control under another layer and skips inert ones", () => {
+  const view = render(<main><button type="button">Covered</button><div className="cover" /><div inert><button type="button">Behind a sheet</button></div></main>);
+  const cover = view.container.querySelector(".cover")!;
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 80, 24));
+  const point = vi.fn<(x: number, y: number) => Element | null>(() => cover);
+  document.elementFromPoint = point;
+  try {
+    expect(occlusion(view.container)).toEqual(["[C24 cover] button is covered by div.cover"]);
+    point.mockImplementation(() => screen.getByText("Covered"));
+    expect(occlusion(view.container)).toEqual([]);
+  } finally { boxes.mockRestore(); view.unmount(); }
+});
+
+test("the states guard catches hover that grows a chip and moves its neighbour", () => {
+  const view = render(<main><button type="button" className="chip">Vale 2021</button><button type="button" className="next">Aster 2026</button></main>);
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    const grown = view.container.querySelector(".chip[data-hovered]") ? 16 : 0;
+    return this.matches(".chip") ? new DOMRect(10, 10, 80 + grown, 24) : new DOMRect(94 + grown, 10, 80, 24);
+  });
+  try {
+    expect(paintOnly(view.container)).toEqual(["[C24 states] button.chip [data-hovered] changes its own width by 16.0px"]);
+  } finally { boxes.mockRestore(); view.unmount(); }
+});
+
+test("the layer guard catches a light menu in a dark window", () => {
+  document.documentElement.dataset.appearance = "dark";
+  vi.stubGlobal("matchMedia", () => ({ matches: false }));
+  const view = render(<div className="menu-popover" style={{ background: "rgb(246, 246, 247)", color: "rgb(0, 0, 0)" }}>Menu</div>);
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(10, 10, 200, 100));
+  try {
+    expect(layerRoles(view.container)).toContainEqual(expect.stringContaining("[C24 layers] div.menu-popover: luminance 0.92 in a dark window"));
+    view.container.querySelector<HTMLElement>(".menu-popover")!.style.background = "rgb(44, 44, 46)";
+    view.container.querySelector<HTMLElement>(".menu-popover")!.style.color = "rgb(255, 255, 255)";
+    expect(layerRoles(view.container).filter((failure) => !failure.includes("no layer role"))).toEqual([]);
+  } finally { boxes.mockRestore(); view.unmount(); delete document.documentElement.dataset.appearance; vi.unstubAllGlobals(); }
+});
+
+test("the words guard catches a message cut in its one-line slot", () => {
+  const words = document.createElement("span");
+  words.style.lineHeight = "18px";
+  Object.defineProperties(words, { scrollWidth: { value: 340, configurable: true }, clientWidth: { value: 220 }, scrollHeight: { value: 18, configurable: true } });
+  expect(overflow(words, 1)).toBe("cut by 120px");
+  Object.defineProperties(words, { scrollWidth: { value: 220 }, scrollHeight: { value: 36 } });
+  expect(overflow(words, 1)).toBe("2 lines");
+});
 
 test("form alignment measures a combined locator's fill and still reports a misplaced field", () => {
   const view = render(<CitationDetails locator={null} form="normal" prefix="see" suffix="" choices={{ current_form: "normal", forms: [

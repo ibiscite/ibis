@@ -31,7 +31,7 @@ test.each(["success", "refusal"])("a found-file request A completing with %s aft
   const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
   pressRow(file);
   pressRow(file);
-  const failure = "That file could not be opened from the list. Pick it again from the new list.";
+  const failure = "That file could not be opened. Pick it again from the new list.";
   const alert = await screen.findByText(failure);
   expect(alert.getAttribute("role")).toBe("alert");
   await waitFor(() => expect(findSources).toHaveBeenCalledTimes(2));
