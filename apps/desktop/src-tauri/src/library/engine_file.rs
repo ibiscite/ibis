@@ -77,7 +77,7 @@ pub(crate) struct FileSelection {
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct SessionBibliography {
     pub(crate) text: String,
-    pub(crate) html: Option<String>,
+    pub(crate) display: ibis_core::contract::DisplayTree,
     pub(crate) content_hash: String,
     pub(crate) warnings: Vec<String>,
     /// References this style cannot write, by key or title. They are named so
@@ -144,13 +144,6 @@ fn field_hint(error: ibis_core::locator::FieldError) -> String {
     }
 }
 #[derive(Serialize, schemars::JsonSchema)]
-pub(crate) struct CitationSpan {
-    pub(crate) item: Option<usize>,
-    pub(crate) text: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) runs: Option<Vec<ibis_core::contract::DisplayRun>>,
-}
-#[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FormOption {
     pub(crate) form: ReferenceForm,
     pub(crate) example: Option<String>,
@@ -166,9 +159,8 @@ pub(crate) struct FilePreview {
     pub(crate) ticket: String,
     pub(crate) content_hash: String,
     pub(crate) text: String,
-    pub(crate) html: Option<String>,
+    pub(crate) display: ibis_core::contract::DisplayTree,
     pub(crate) warnings: Vec<String>,
-    pub(crate) spans: Vec<CitationSpan>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) problem: Option<String>,
     /// Why this key citation is refused: a key in the project bibliography
@@ -357,7 +349,7 @@ impl FileLibrary {
             let result = citation.into_result();
             SessionBibliography {
                 text: result.text,
-                html: result.html,
+                display: result.display,
                 content_hash: result.content_hash.as_str().to_owned(),
                 warnings,
                 left_out,
@@ -972,28 +964,8 @@ impl FileLibrary {
             ticket: reservation.to_string(),
             content_hash: result.content_hash.as_str().to_owned(),
             text: result.text.clone(),
-            html: result.html.clone(),
+            display: result.display.clone(),
             warnings: citation_warnings_named(&citation),
-            spans: result
-                .display
-                .nodes
-                .iter()
-                .map(|node| CitationSpan {
-                    item: node.item,
-                    text: node.content.iter().map(|run| run.text.as_str()).collect(),
-                    runs: node
-                        .content
-                        .iter()
-                        .any(|run| {
-                            run.italic
-                                || run.bold
-                                || run.small_caps
-                                || run.underline
-                                || run.script != ibis_core::contract::Script::Normal
-                        })
-                        .then(|| node.content.clone()),
-                })
-                .collect(),
             problem: None,
             project_refusal: None,
             notices: result.notices.clone(),

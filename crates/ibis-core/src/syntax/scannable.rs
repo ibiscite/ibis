@@ -69,6 +69,7 @@ pub fn cite(
                     code: *code,
                 }));
                 markers.push(DisplayNode {
+                    blocks: vec![],
                     item: Some(index),
                     content: vec![DisplayRun {
                         text,

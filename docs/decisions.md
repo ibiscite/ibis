@@ -113,3 +113,6 @@ the anchor older links use.
 
 ## 0051 References in and out
 [0051](decisions/0051-references-in-and-out.md): six lasting concepts with one owner each; share a selection first (offline), then paste a DOI to cite, then add through Zotero's write API; attachments only when ticked for a share.
+
+## 0052 The engine owns the library and citations
+[0052](decisions/0052-engine-owns-library-and-citations.md): one engine per process with a library owner and citation sessions by id; one validator, one display contract and one vocabulary; front ends keep platform effects. Lands in six slices.

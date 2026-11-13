@@ -22,7 +22,7 @@
 import { emit } from "@tauri-apps/api/event";
 import type { AppPaste, CopiedReason, Copied, Delivered, FilePreview, NoticeMessage, SearchQuery, SearchReply } from "../bindings";
 import { readNotice, renderNotice } from "../copyFeedback";
-import { backend, prepared, receipt, type PreviewRequest } from "./app";
+import { backend, prepared, receipt, displayTree, type PreviewRequest } from "./app";
 
 type Job<Args, Input> = {
   args: Args;
@@ -55,7 +55,7 @@ class Work<Args, Input = void, Output = void> {
   }
 }
 
-type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "html" | "warnings" | "spans">>;
+type PreviewContent = Pick<FilePreview, "text"> & Partial<Pick<FilePreview, "display" | "warnings">> & { clipboardHtml?: string };
 type DeliveryRequest = { text: string; delivery: number | null };
 type Capture = { window: number | null; surface: number | null; reason: CopiedReason | null; selection: string | null; unread: boolean };
 type Proof = DeliveryRequest & Capture & { replaces: string[] | null; delivery: number; sequence: number; presentation: number; app: string; epoch: number; written: number; paste: AppPaste | null };
@@ -72,6 +72,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
   const appSaves = new Work<{ appId: string; output: string | null; paste: AppPaste | null }>();
   const appChoices = new Map<string, AppChoice>();
   let holdAppSaves = false;
+  const clipboardHtml = new Map<string, string | null>();
   const clipboard = { text: "", html: null as string | null, owner: null as "ibis" | "external" | null, sequence: 0 };
   const document = {
     app: "Example Writer", text, selection,
@@ -165,14 +166,14 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
     preview_file_citation: (args) => {
       const request = ++latestPreview;
       return preview.enqueue(args, (content) => {
-        const value = receipt(content.text, content.html ?? null, content.warnings ?? []);
+        const value = receipt(content.text, content.display ?? null, content.warnings ?? []);
+        clipboardHtml.set(value.ticket, content.clipboardHtml ?? null);
         const bodies = args.items.map((item) => `@${item.id.key}`);
-        if (content.spans) value.spans = content.spans;
-        else if (content.text === `[${bodies.join("; ")}]`) value.spans = [
+        if (!content.display && content.text === `[${bodies.join("; ")}]`) value.display = displayTree([
           { item: null, text: "[" },
           ...bodies.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]),
           { item: null, text: "]" },
-        ];
+        ]);
         if (request === latestPreview) activeTicket = value.ticket;
         return value;
       });
@@ -185,7 +186,7 @@ export function deliveryHarness(text = "Draft: [citation].", selection: [number,
         if (generation !== copyGeneration || sequence !== clipboard.sequence) throw { code: "cancelled" };
         const { preview } = prepared(args);
         if (args.ticket !== activeTicket) throw { code: "snapshot_changed" };
-        Object.assign(clipboard, { text: preview.text, html: preview.html, owner: "ibis", sequence: clipboard.sequence + 1 });
+        Object.assign(clipboard, { text: preview.text, html: clipboardHtml.get(preview.ticket) ?? null, owner: "ibis", sequence: clipboard.sequence + 1 });
         const token = ++nextDelivery;
         proof = { ...(captured ?? capture()), replaces: replaces.length > 0 ? replaces : null, presentation, app: document.app, text: preview.text, delivery: token, sequence: clipboard.sequence, epoch: lifecycle.epoch, written: lifecycle.elapsed, paste: appChoices.get(target.appId)?.paste ?? null };
         return { text: clipboard.text, warnings: preview.warnings, delivery: token };

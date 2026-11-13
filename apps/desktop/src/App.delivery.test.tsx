@@ -184,7 +184,7 @@ test("Enter waits for a preview, then copies and replaces the document selection
   await enter(false, true);
   expect(harness.clipboard.owner).toBeNull();
   expect(harness.document.text).toBe("Draft: [citation].");
-  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]", html: "<i>[@a]</i>" }); });
+  await act(async () => { harness.preview.pending[0]!.complete({ text: "[@a]", clipboardHtml: "<i>[@a]</i>" }); });
   expect(harness.copy.pending).toHaveLength(1);
   await finishCopy(harness);
   expect(harness.clipboard).toEqual({ text: "[@a]", html: "<i>[@a]</i>", owner: "ibis", sequence: 1 });

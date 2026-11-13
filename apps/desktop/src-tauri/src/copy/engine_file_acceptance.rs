@@ -67,7 +67,7 @@ fn file_preview_and_native_canonical_copy_equal_ibis_cite() -> Result<(), Box<dy
                 .preview(file.reserve_preview(), vec![selection], style.unwrap_or("pandoc"))
                 .map_err(|_| "native preview")?;
             assert_eq!(preview.text, expected.text);
-            assert_eq!(preview.html, expected.html);
+            assert_eq!(preview.display, expected.display);
             assert_eq!(preview.content_hash, expected.content_hash.as_str());
             assert_eq!(preview.text, text);
             let mut writes = 0;
@@ -175,7 +175,7 @@ fn reference_fields_and_order_match_the_real_cli() -> Result<(), Box<dyn std::er
             .preview_for(file.reserve_preview(), selections, output, keep_order, None)
             .map_err(|e| format!("native preview: {e}"))?;
         assert_eq!(preview.text, expected.text);
-        assert_eq!(preview.html, expected.html);
+        assert_eq!(preview.display, expected.display);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
         if format == "apa" && count == 2 {
             assert_eq!(preview.text.find("Zulu") < preview.text.find("Alpha"), keep_order);
@@ -266,7 +266,6 @@ fn italics_and_non_latin_text_reach_every_clipboard_flavor_from_one_result() -> 
         return Err("three flavors".into());
     };
     assert_eq!(text, &preview.text);
-    assert_eq!(Some(html), preview.html.as_ref());
     assert!(text.contains("Ŝynthetic 山田 Atlas"), "{text}");
     assert!(html.contains("<i>Ŝynthetic 山田 Atlas</i>"), "{html}");
     // RTF is 7-bit: italics as {\i …} and other characters as \uN escapes.

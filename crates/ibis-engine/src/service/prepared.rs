@@ -219,6 +219,7 @@ impl PreparedCitation {
             })
             .transpose()?;
         display.nodes.push(DisplayNode {
+            blocks: vec![],
             item: None,
             content: vec![DisplayRun {
                 text: " [Sample]".into(),
