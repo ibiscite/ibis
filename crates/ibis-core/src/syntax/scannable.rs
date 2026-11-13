@@ -6,7 +6,8 @@
 //! the library comes from the engine's own record of what it read, never from
 //! anything the record says. The marker has no escape for `|`, `{` or `}`:
 //! text that would need one is refused, and the whole citation with it.
-use super::{MAX_CITATION_ITEMS, MAX_OUTPUT_BYTES, validate_annotation, validate_request};
+use super::MAX_OUTPUT_BYTES;
+use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 use crate::summary::RecordSummary;
 
@@ -50,18 +51,18 @@ pub fn cite(
     request: &CitationRequest,
     origin: impl Fn(&LibraryId) -> Option<ZoteroOrigin>,
 ) -> Result<CitationResult, CitationError> {
-    if request.items.is_empty() {
-        return Err(CitationError::EmptySelection);
-    }
-    if request.items.len() > MAX_CITATION_ITEMS {
-        return Err(CitationError::TooManyItems);
-    }
-    validate_request(request)?;
+    let checked = citation::check(snapshot, None, request, |item| ItemSupport {
+        locator: item
+            .locator
+            .as_ref()
+            .is_none_or(|locator| !locator.value.contains(RESERVED)),
+        form: item.form.unwrap_or(request.form) == CitationForm::Normal,
+    })?;
     let mut outcomes = Vec::with_capacity(request.items.len());
     let mut markers = Vec::with_capacity(request.items.len());
     let mut warnings = Vec::new();
     for (index, item) in request.items.iter().enumerate() {
-        match marker(snapshot, request, item, &origin) {
+        match checked[index].and_then(|record| marker(record, item, &origin)) {
             Ok((text, record)) => {
                 warnings.extend(record.warnings.iter().map(|code| CitationWarning {
                     item: index,
@@ -102,26 +103,10 @@ pub fn cite(
 }
 
 fn marker<'a>(
-    snapshot: &'a Snapshot,
-    request: &CitationRequest,
+    record: &'a Record,
     item: &CitationItem,
     origin: &impl Fn(&LibraryId) -> Option<ZoteroOrigin>,
 ) -> Result<(String, &'a Record), CitationError> {
-    let object = snapshot.get(&item.item).ok_or(CitationError::MissingItem)?;
-    if item
-        .expected_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-    {
-        return Err(CitationError::ChangedItem);
-    }
-    let LibraryObject::Record(record) = &object.object else {
-        return Err(CitationError::NotCitable);
-    };
-    validate_annotation(snapshot, item)?;
-    if item.form.unwrap_or(request.form) != CitationForm::Normal {
-        return Err(CitationError::UnsupportedForm);
-    }
     let identifier = identifier(origin(&record.id.library), &record.id.key)?;
     let locator = match &item.locator {
         None => String::new(),
@@ -138,9 +123,6 @@ fn marker<'a>(
                 .filter(|_| !legal)
                 .ok_or(CitationError::UnsupportedForm)?;
             let value = locator.value.trim();
-            if value.is_empty() || value.contains(RESERVED) || value.chars().any(char::is_control) {
-                return Err(CitationError::InvalidLocator);
-            }
             format!("{label} {value}")
         }
     };
