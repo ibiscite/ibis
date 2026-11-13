@@ -352,6 +352,9 @@ test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row do
   await screen.findByText("Third");
   // Each shown row carries its number for the keys sheet and assistive technology.
   expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
+  // Held, each number takes its row's leading tile; the year, citation context, stays.
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile > .result-pick")?.textContent, row.querySelector(".result-year")?.textContent]))
+    .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
   // No fourth row: the key is left alone.
   expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
   // The command list stands in for the results: no row has a number.
@@ -1530,11 +1533,8 @@ test("rows with the same first author and year are told apart by their container
   // Two authors are both named, as in Comfortable; "et al." starts at three.
   expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
   // Read aloud as one name, its parts are separated, never "Okafor2021".
-  // What is read: the row's ⌘1 is drawn for the eye only.
-  const read = line?.cloneNode(true) as Element | undefined;
-  read?.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
-  expect(read?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
-  expect(line?.querySelector(":scope > .result-year > span")?.textContent).toBe("2021");
+  expect(line?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
+  expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container")).toBeNull();
   // The container is out of sight in Compact, so a match there is named.

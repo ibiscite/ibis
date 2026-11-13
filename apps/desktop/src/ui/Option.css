@@ -40,11 +40,13 @@
 .result-line, .result-meta { display: flex; align-items: baseline; gap: var(--space-3); min-width: 0; }
 .result-title { flex: 1; min-width: 0; overflow-wrap: anywhere; font-size: var(--type-title-size); font-weight: var(--strong); line-height: var(--type-title-line); letter-spacing: -.01em; }
 .result-year, .result-meta, .result-why, .result-project, .result-first-author { color: var(--text-secondary); font-size: var(--type-body-size); line-height: var(--type-body-line); }
-.result-year { position: relative; flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
-/* A row's ⌘1–9 number takes the year's place while the command key is held: paint only, nothing moves. */
-.result-pick { position: absolute; inset-inline-end: 0; font: inherit; white-space: nowrap; visibility: hidden; }
+.result-year { flex-shrink: 0; margin-inline-start: auto; font-variant-numeric: tabular-nums; }
+/* A row's ⌘1–9 number takes the leading tile's place while the command key is
+   held, in the same box: paint only, nothing moves, and the year stays readable. */
+.result-tile > :is(.type-icon, .result-pick) { grid-area: 1 / 1; }
+.result-pick { white-space: nowrap; visibility: hidden; }
 :root[data-keys-held] .result-pick { visibility: visible; }
-:root[data-keys-held] .result-year:has(.result-pick) > span { visibility: hidden; }
+:root[data-keys-held] .result-tile:has(> .result-pick) > :not(.result-pick) { visibility: hidden; }
 /* The meta line wraps only when the byline, type and library badge cannot
    all fit at their sizes; then they move under the byline. A body at least
    25em wide (after reserving the tile and year columns) keeps one line, and

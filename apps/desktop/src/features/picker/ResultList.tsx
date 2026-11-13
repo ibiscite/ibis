@@ -141,6 +141,8 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           name in the tooltip. Keyboards use Shift+Enter. */}
       <span className="result-tile">
         <TypeIcon itemType={r.item_type} />
+        {/* While the command key is held, the row's number takes the tile's place (ui/HeldKeys); the year stays. */}
+        {pickKeys && <kbd className="result-pick" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
@@ -153,9 +155,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
           {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
-          {/* While the command key is held, the row's number stands in the year's place (ui/HeldKeys). */}
-          <span className="result-year"><span>{r.year ?? say("picker-no-date")}</span>
-            {pickKeys && <kbd className="result-pick" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}</span>
+          <span className="result-year">{r.year ?? say("picker-no-date")}</span>
           <span className="visually-hidden">, </span>
         </span>
         <span className="result-meta">
