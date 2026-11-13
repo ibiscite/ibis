@@ -5,7 +5,7 @@ import { isMac } from "../../platform";
 import type { CitationLineActions } from "./CitationShelf";
 import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
-import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
+import { closeOverlays, goBack, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
 import { commandFor, type PickerCommand } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -50,9 +50,9 @@ export function usePickerKeys({
     else if (command === "more") {
       if (menuOpen) { closeOverlays(); moreButton.current?.focus(); } else openMore();
     } else if (command === "keys") {
-      if (keysOpen) closeNearestLayer(event); else openKeys();
+      if (keysOpen) goBack("escape", event); else openKeys();
     } else if (command === "format") {
-      if (formatOpen) closeNearestLayer(event); else openFormat();
+      if (formatOpen) goBack("escape", event); else openFormat();
     } else if (command === "changeLast") changeLast();
     else if (command === "chooseSource") chooseSources();
     else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
@@ -110,7 +110,7 @@ export function usePickerKeys({
     if (composingKey(e) || e.key === "Process") return;
     if (e.key === "Escape") {
       // One press, one step: holding Esc must not walk down to hiding.
-      if (repeated || closeNearestLayer(e)) consumeKey(e);
+      if (repeated || goBack("escape", e)) consumeKey(e);
       return;
     }
     const target = lost ? document.activeElement : e.target;
