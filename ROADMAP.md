@@ -105,7 +105,7 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - **References in and out** (maintainer, 2026-11-13): Ibis grows from citing to everyday reference handling, each step quick and on open standards.
   - **In:** paste or drop a DOI (or another standard identifier) and cite it, link it, save it to a `.bib` file, or add it to Zotero.
   - **Out:** select references and share them as DOI links, a `.bib` or CSL-JSON file, a zip, by email or through the system's share sheet.
-  - **Groundwork first:** identifiers read locally, the one lookup module from decision 0008, and a single selection → format → destination path that every share and save uses. Writing to a library is decided before any write ships.
+  - **Groundwork first:** identifiers read locally, the one lookup module from decision 0008, and a single selection → format → destination path that every share and save uses. Order, writes and attachments: [decision 0051](docs/decisions/0051-references-in-and-out.md).
 
 ### 0.7 Everywhere you work
 
@@ -145,4 +145,4 @@ Research briefs beyond exported passages, decision memory, resuming research and
 
 ## Not planned
 
-Ibis is the fast front door to your references, not a reference manager: no organising, merging or attaching files (Zotero does this), no citation key generation, export translators or auto-export (Better BibTeX does this), no Ibis plugin for Word, Google Docs or Zotero and no live citation fields of Ibis's own (Zotero's plugins and ODF/DOCX Scan do this), no reading other managers' private databases or cloud accounts, no general file or web search, no AI writing and no legal citation short forms.
+Ibis is the fast front door to your references and the companion around them, not a library organiser: no organising, merging or attaching files inside a library (Zotero does this), no auto-export (Better BibTeX does this), no citation key generation until `.bib` writes are decided (decision 0051), no Ibis plugin for Word, Google Docs or Zotero and no live citation fields of Ibis's own (Zotero's plugins and ODF/DOCX Scan do this), no reading other managers' private databases or cloud accounts, no general file or web search, no AI writing and no legal citation short forms.
