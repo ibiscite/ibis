@@ -2,7 +2,7 @@
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
-import { vi } from "vitest";
+import { expect, vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
 import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
@@ -108,10 +108,19 @@ export function citationDetails(): HTMLElement | null {
 /** Picks a form by its output in Show as: a segment, or with more than three, its pop-up's item. */
 export async function chooseForm(name: string) {
   const details = await waitFor(() => within(citationDetails()!));
-  const radio = details.queryByRole("radio", { name });
-  if (radio) return void fireEvent.click(radio);
   fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
   fireEvent.click(await screen.findByRole("menuitemradio", { name }));
+}
+
+/** The text each form in Show as would paste, read from its menu, which closes again. */
+export async function formExamples(): Promise<string[]> {
+  const details = await waitFor(() => within(citationDetails()!));
+  fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));
+  const rows = await screen.findAllByRole("menuitemradio");
+  const examples = rows.map((row) => row.querySelector(".toolbar-menu-sample")?.textContent ?? "");
+  fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+  await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+  return examples;
 }
 
 /** The details' Text before or Text after field, asked for if it is not shown yet. */

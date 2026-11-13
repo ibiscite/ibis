@@ -417,7 +417,7 @@ test("a command clears every layer in its way, and the keys for an open layer cl
   expect(document.activeElement).toBe(search());
 });
 
-test("the inspector stays live: a command opens over it and Esc comes back through it", async () => {
+test("a command opened over the details closes them, and Settings returns to Search", async () => {
   const opened = vi.fn(() => null);
   backend({ library_status: () => library, search: () => [result("picked", "Invented reference")], open_settings: opened });
   render(<App />);
@@ -426,8 +426,10 @@ test("the inspector stays live: a command opens over it and Esc comes back throu
   await waitFor(() => expect(document.activeElement).toBe(page));
   fireEvent.change(page, { target: { value: "12" } });
   press("k", { ctrlKey: true });
-  await screen.findByRole("dialog", { name: "Actions" });
-  expect(page.isConnected).toBe(true);
+  const palette = await screen.findByRole("dialog", { name: "Actions" });
+  await waitFor(() => expect(page.isConnected).toBe(false));
+  expect(document.querySelectorAll(".ui-popover")).toHaveLength(0);
+  expect(palette.contains(document.activeElement)).toBe(true);
   press(",", { ctrlKey: true });
   await waitFor(() => expect(opened).toHaveBeenCalledOnce());
   expect(screen.queryByRole("menu")).toBeNull();

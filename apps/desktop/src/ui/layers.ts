@@ -1,13 +1,15 @@
 // The view stack: what is open in a window, nearest first, and the one key
 // listener that walks back through it. Screens and controls register what they
 // open and never handle a going-back key themselves (decision 0047).
-import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
+import { createContext, useContext, useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { isBackShortcut } from "../keys";
 
-/** What is open, nearest first. A palette and a sheet are views: they take the window's place. */
-export const LAYER_ORDER = ["menu", "palette", "sheet", "panel", "chooser", "search", "window"] as const;
+/** What is open, nearest first. A menu and a popover are transient: they float
+ * over the window, one at a time. A palette and a sheet are views: they take the
+ * window's place. A panel sits in the window, beside the list. */
+export const LAYER_ORDER = ["menu", "popover", "palette", "sheet", "panel", "chooser", "search", "window"] as const;
 export type LayerKind = (typeof LAYER_ORDER)[number];
 
 /** The ways back: Esc; the platform's Back (⌘[, Alt+Left, the mouse's Back
@@ -16,16 +18,22 @@ export type Gesture = "escape" | "back" | "erase";
 /** Decision 0047's table: which ways back each layer answers. The nearest layer
  * decides alone, so an open pop-up keeps Back and Backspace from the view under it. */
 export const GOING_BACK: Record<LayerKind, readonly Gesture[]> = {
-  menu: ["escape"], palette: ["escape", "back", "erase"], sheet: ["escape", "back"], panel: ["escape", "back"],
+  menu: ["escape"], popover: ["escape", "back"], palette: ["escape", "back", "erase"], sheet: ["escape", "back"], panel: ["escape", "back"],
   chooser: ["escape"], search: ["escape"], window: ["escape"],
 };
-const VIEWS: readonly LayerKind[] = ["palette", "sheet"];
 
 /** A layer closes itself. Given the key that asked, it returns focus to what
  * opened it, or returns false to hand that key on (a menu with a submenu open).
  * Without a key a command is clearing the way: it closes at once and goes home. */
 export type LayerClose = (event?: KeyboardEvent) => boolean | void;
-type Layer = { kind: LayerKind; close: LayerClose };
+type Layer = { kind: LayerKind; close: LayerClose; parent: Scope | null };
+const TRANSIENT: readonly LayerKind[] = ["menu", "popover"];
+const VIEWS: readonly LayerKind[] = ["palette", "sheet"];
+// What opens over the picker or Settings. Search and the window register too, but
+// typing is not opening anything, so they close nothing.
+const SURFACES: readonly LayerKind[] = [...TRANSIENT, ...VIEWS, "panel"];
+// Read when asked: a surface that mounts open registers before the layer around it.
+const within = (layer: Layer, outer: Layer) => { for (let at = layer.parent?.current; at; at = at.parent?.current) if (at === outer) return true; return false; };
 
 /** The window's own keys and where its keyboard rests. Without an owner the
  * listener still closes layers, so Settings' menus follow the same rule. */
@@ -41,7 +49,8 @@ let settling = false;
 let listening = false;
 
 const rank = (layer: Layer) => LAYER_ORDER.indexOf(layer.kind);
-const nearest = () => layers.reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
+const nearest = () => layers.filter((layer) => !layers.some((other) => within(other, layer)))
+  .reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
 
 /** Whether the keyboard rests where no key handler or text field can use it. */
 export function focusLost(): boolean {
@@ -146,19 +155,40 @@ function settle() {
 /** A layer's handle: whether it is nearest, so its own keys act only then, and
  * `leave`, which takes it off the stack at once, before it unmounts, so what is
  * under it shows before focus returns there. */
-export type LayerHandle = { nearest: () => boolean; leave: () => void };
+export type LayerHandle = { nearest: () => boolean; leave: () => void; scope: Scope };
+type Scope = { readonly current: Layer | null };
+/** The layer whatever renders inside it belongs to (ui/Layer). It crosses portals. */
+export const LayerParent = createContext<Scope | null>(null);
+
+// One rule, so no opener has to clear the way itself: a surface opening closes
+// every open transient it is not inside or around, and a view every other view.
+// It runs after the commit that opened it, where a closing layer may flush, and
+// focus stays where the new surface put it.
+function displace(layer: Layer) {
+  const rivals = layers.filter((other) => other !== layer && !within(layer, other) && !within(other, layer)
+    && (TRANSIENT.includes(other.kind) || VIEWS.includes(layer.kind) && VIEWS.includes(other.kind))).reverse();
+  if (!rivals.length) return;
+  queueMicrotask(() => {
+    if (!layers.includes(layer)) return;
+    const focused = document.activeElement;
+    for (const rival of rivals) if (layers.includes(rival)) flushSync(() => { rival.close(); });
+    if (focused instanceof HTMLElement && focused.isConnected && document.activeElement !== focused) focused.focus({ preventScroll: true });
+  });
+}
 
 /** Keep a layer on the stack while `open`. `close` may change every render. */
 export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): LayerHandle {
   const latest = useRef(close);
   const registered = useRef<Layer | null>(null);
+  const parent = useContext(LayerParent);
   useLayoutEffect(() => { latest.current = close; });
   useLayoutEffect(() => {
     if (!open) return;
-    const layer: Layer = { kind, close: (event) => latest.current(event) };
+    const layer: Layer = { kind, close: (event) => latest.current(event), parent };
     registered.current = layer;
     layers.push(layer);
     changed();
+    if (SURFACES.includes(kind)) displace(layer);
     return () => {
       registered.current = null;
       const at = layers.indexOf(layer);
@@ -166,9 +196,10 @@ export function useLayer(kind: LayerKind, open: boolean, close: LayerClose): Lay
       settling = true;
       queueMicrotask(settle);
     };
-  }, [kind, open]);
+  }, [kind, open, parent]);
   const handle = useRef<LayerHandle>(null);
   handle.current ??= {
+    scope: registered,
     nearest: () => registered.current !== null && nearest() === registered.current,
     leave: () => {
       const at = registered.current ? layers.indexOf(registered.current) : -1;
