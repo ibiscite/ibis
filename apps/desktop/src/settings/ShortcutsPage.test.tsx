@@ -18,7 +18,7 @@ test("Shortcuts filters action names, keeps alternatives whole, edits only Open 
   expect(within(quit).queryByRole("button")).toBeNull();
   const move = within(table).getByRole("row", { name: /Move through results/ });
   expect([...move.querySelectorAll("kbd")].map((node) => node.textContent)).toEqual(["↓", "↑"]);
-  fireEvent.change(screen.getByRole("searchbox", { name: "Filter shortcuts" }), { target: { value: "quit" } });
+  fireEvent.change(screen.getByRole("searchbox", { name: "Filter shortcuts" }), { target: { value: "íbis quít" } });
   expect(within(table).getByRole("row", { name: /Quit Ibis/ })).toBeTruthy();
   expect(within(table).queryByText("Move through results")).toBeNull();
   fireEvent.change(screen.getByRole("searchbox", { name: "Filter shortcuts" }), { target: { value: "unmatched action" } });

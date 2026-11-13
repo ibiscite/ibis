@@ -57,3 +57,14 @@ test("a failure to change it says so", async () => {
   fireEvent.click(toggle);
   await screen.findByText("The endpoint could not be changed. Try again.");
 });
+
+
+test("Use Default switches the editor endpoint off and Undo restores it", async () => {
+  const api = row({ editorEndpoint: vi.fn(async () => on) });
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Cite from your editor" }));
+  const undo = await screen.findByRole("button", { name: "Undo Restore Default for Cite from your editor" });
+  expect(screen.getByRole("switch", { name: "Cite from your editor" })).toHaveProperty("checked", false);
+  fireEvent.click(undo);
+  await waitFor(() => expect(screen.getByRole("switch", { name: "Cite from your editor" })).toHaveProperty("checked", true));
+  expect(vi.mocked(api.setEditorEndpoint).mock.calls).toEqual([[false], [true]]);
+});

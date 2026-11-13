@@ -77,9 +77,9 @@ export class PreferencePatchQueue {
     return operation;
   }
 
-  change(change: Patch): void {
+  change(change: Patch): Promise<void> {
     const fields = Object.keys(change) as (keyof PickerPreferences)[];
-    if (!fields.length) return;
+    if (!fields.length) return Promise.resolve();
     const revision = ++this.revision;
     const reading = this.reads;
     const notification = this.notifications;
@@ -134,6 +134,7 @@ export class PreferencePatchQueue {
     // Subscribers may show progress/failure; the queue always handles rejection.
     void save.catch(() => undefined);
     this.emit({ type: "saving", promise: save });
+    return save;
   }
 
   /** A settled field leaves the overlay, unless chosen again since. */

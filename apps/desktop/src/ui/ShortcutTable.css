@@ -40,6 +40,7 @@
 @media (prefers-contrast: more) { .ui-settings-keys kbd[data-plain] { color: var(--text); } }
 .ui-shortcut-filter.ui-settings-search { margin: 0; }
 
+.ui-shortcut-table tr > * { transition: background-color var(--dur-1) ease-out; }
 .ui-shortcut-table tr[data-highlighted] > * { background-color: var(--highlight); }
 
 /* A pressed shortcut's row briefly takes the pressed fill, a clear step above the card's. */

@@ -1,5 +1,5 @@
-import type { ComponentPropsWithRef, ReactNode } from "react";
-import { ListBox, ListBoxItem } from "react-aria-components";
+import type { ComponentPropsWithRef, ReactNode, RefObject } from "react";
+import { Header, ListBox, ListBoxItem, ListBoxSection } from "react-aria-components";
 import "./SideNavigation.css";
 
 function SideRow({ page, tile, children }: { page: string; tile?: ReactNode; children: ReactNode }) {
@@ -37,21 +37,25 @@ export function SideNavigation<T extends string>({ label, value, options, onChan
 }
 
 /** Search results are sidebar rows: the page's tile, then the setting, read as one list. */
-export function SideResults({ label, status, empty, results, onChoose }: {
+export function SideResults({ label, status, empty, results, onChoose, listRef }: {
   label: string;
   status: string;
   empty: string;
   results: readonly { id: string; label: string; page: string; pageLabel: string; tile?: ReactNode }[];
   onChoose: (id: string) => void;
+  listRef?: RefObject<HTMLDivElement | null>;
 }) {
   if (!results.length) return <p className="ui-side-navigation-empty" role="status">{empty}</p>;
   return <>
     <p className="visually-hidden" role="status">{status}</p>
-    <ListBox className="ui-side-navigation" aria-label={label} selectionMode="none" onAction={(key) => onChoose(String(key))}>
-      {results.map((result) => <ListBoxItem key={result.id} id={result.id} textValue={result.label}
+    <ListBox ref={listRef} className="ui-side-navigation" aria-label={label} selectionMode="none" onAction={(key) => onChoose(String(key))}>
+      {[...new Set(results.map((result) => result.page))].map((page) => <ListBoxSection key={page} id={page} className="ui-side-results-group">
+        <Header className="ui-side-results-heading">{results.find((result) => result.page === page)!.pageLabel}</Header>
+        {results.filter((result) => result.page === page).map((result) => <ListBoxItem key={result.id} id={result.id} textValue={result.label}
         aria-label={result.label === result.pageLabel ? result.label : `${result.label}, ${result.pageLabel}`} className="ui-side-navigation-item">
         <SideRow page={result.page} tile={result.tile}>{result.label}</SideRow>
       </ListBoxItem>)}
+      </ListBoxSection>)}
     </ListBox>
   </>;
 }

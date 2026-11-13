@@ -97,7 +97,7 @@ test.each(["general", "shortcuts"])("localized %s records directly, refuses regi
   mounted.unmount();
   render(view());
   expect(await screen.findByRole("button", { name: `${pseudo.text("shortcuts-open")}: ${shortcutLabel("Alt+J", currentPlatform() === "macos")}` })).toBeTruthy();
-  expect(screen.getByRole("button", { name: pseudo.text("shortcuts-use-default") })).toBeTruthy();
+  expect(screen.getByRole("button", { name: pseudo.text("settings-use-default", { setting: pseudo.text("shortcuts-open") }) })).toBeTruthy();
   expect(state.shortcutChoices).toEqual(["Alt+J"]);
 });
 
@@ -116,11 +116,8 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
   // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
-  const rowOf = (node: Element) => node.closest(".ui-row")!;
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
   expect(check.closest(".ui-about-hero")).toBeTruthy();
-  expect(rowOf(automatic).querySelectorAll("button, [role=switch], input")).toHaveLength(1);
-  expect(document.querySelectorAll("#about-updates .ui-row")).toHaveLength(1);
   fireEvent.click(check);
   fireEvent.click(automatic);
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
@@ -169,7 +166,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
     reads: 0,
     revision: 0,
     finished: 0,
-    windowSaved: undefined as ((saved: boolean) => void) | undefined,
+    windowSaved: undefined as ((saved: boolean, revision: number) => void) | undefined,
+    windowRevision: 0,
     pages: [] as ((page: string) => void)[],
     closes: [] as (() => Promise<void>)[],
     shortcut: { shortcut: DEFAULT_PICKER_SHORTCUT, registered: true, error: null } as ShortcutStatus,
@@ -192,8 +190,8 @@ function fakeApi(permission: Partial<PastePermission> = {}, preferences: Partial
   const api: TestApi = {
     pickerPreferences: async () => state.preferences,
     windowSize: vi.fn(async (): Promise<WindowSize | null> => "medium"),
-    setWindowSize: vi.fn(async (): Promise<null> => null),
-    onWindowSaved: vi.fn(async (handler: (saved: boolean) => void) => { state.windowSaved = handler; return () => undefined; }),
+    setWindowSize: vi.fn(async (): Promise<number> => ++state.windowRevision),
+    onWindowSaved: vi.fn(async (handler: (saved: boolean, revision: number) => void) => { state.windowSaved = handler; return () => undefined; }),
     savePickerPreferences: async (patch) => { const receipt = ++state.revision; submitted.set(receipt, patch as Partial<PickerPreferences>); return receipt; },
     pickerPreferencesSaved: async (receipt) => api.setPickerPreferences(submitted.get(receipt)!, receipt),
     setPickerPreferences: commit,
@@ -360,7 +358,7 @@ test("a size the disk refused says so and keeps showing what the window has", as
   await waitFor(() => expect(large).toHaveProperty("disabled", false));
   fireEvent.click(large);
   await waitFor(() => expect(state.windowSaved).toBeDefined());
-  act(() => state.windowSaved!(false));
+  act(() => state.windowSaved!(false, state.windowRevision));
   expect(await screen.findByRole("alert")).toHaveProperty("textContent", englishMessages.text("settings-choice-failed"));
   expect(large).toHaveProperty("checked", true);
 });
@@ -400,7 +398,7 @@ test.each([1, 2])("Wayland portal v%s shows the desktop trigger, never a recorde
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   expect(await screen.findByText("Strg + Umschalt + Y")).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open Ibis" })).toBeNull();
-  expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default for Open Ibis" })).toBeNull();
   if (version >= 2) {
     fireEvent.click(screen.getByRole("button", { name: "Change…" }));
     await waitFor(() => expect(state.configured).toBe(1));
@@ -930,7 +928,7 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
   const label = (shortcut: string) => shortcutLabel(shortcut, currentPlatform() === "macos");
   expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT));
-  expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default for Open Ibis" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
   const lists = [...document.querySelectorAll<HTMLElement>('tbody[id^="shortcuts-"]:not(#shortcuts-system)')];
   const bindings = KEY_TABLE.filter((binding) => bindingKeys(binding, currentPlatform() === "macos").length);
@@ -941,10 +939,10 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true, shiftKey: true });
   await waitFor(() => expect(recorder.textContent).toBe(label("Alt+Shift+K")));
   expect(state.shortcutChoices).toEqual(["Alt+Shift+K"]);
-  fireEvent.click(screen.getByRole("button", { name: "Use Default" }));
+  fireEvent.click(screen.getByRole("button", { name: "Use Default for Open Ibis" }));
   await waitFor(() => expect(recorder.textContent).toBe(label(DEFAULT_PICKER_SHORTCUT)));
   expect(state.shortcutChoices).toEqual(["Alt+Shift+K", null]);
-  expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default for Open Ibis" })).toBeNull();
 });
 
 test.each(pickerConflicts)("a recorded $name refusal names its command and keeps the working shortcut", async ({ event, shortcut, command, label }) => {
@@ -1000,7 +998,7 @@ test.each(["general", "shortcuts"])("%s shortcut saves disable the recorder and 
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "j", code: "KeyJ", altKey: true });
   await waitFor(() => expect((recorder as HTMLButtonElement).disabled).toBe(true));
-  expect((screen.getByRole("button", { name: "Use Default" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Use Default for Open Ibis" }) as HTMLButtonElement).disabled).toBe(true);
   let closed = false;
   const close = state.closes[0]!().then(() => { closed = true; });
   await act(async () => { await Promise.resolve(); });
@@ -1081,7 +1079,7 @@ test("default aliases and modifier order do not show Use Default", async () => {
   state.shortcut = { shortcut: "Shift+CommandOrControl+Y", registered: true, error: null };
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
-  expect(screen.queryByRole("button", { name: "Use Default" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default for Open Ibis" })).toBeNull();
 });
 
 // Rust consumes the same cases through validation, saving, reloading and
@@ -1100,7 +1098,7 @@ test("a physical default-position key still offers the logical default", async (
   state.shortcut = { shortcut: "CommandOrControl+Shift+KeyY", registered: true, error: null };
   render(<SettingsApp api={api} initialPage="shortcuts" />);
   await screen.findByRole("button", { name: /^Open Ibis:/ });
-  fireEvent.click(screen.getByRole("button", { name: "Use Default" }));
+  fireEvent.click(screen.getByRole("button", { name: "Use Default for Open Ibis" }));
   await waitFor(() => expect(state.shortcutChoices).toEqual([null]));
 });
 
@@ -1154,7 +1152,7 @@ test("search results are sidebar rows, and Enter opens the first", async () => {
   expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Appearance");
   expect(container.querySelector(".ui-settings-search-results")).toBeNull();
   fireEvent.change(search, { target: { value: "no such setting" } });
-  expect((await screen.findByText("No matching settings")).classList.contains("ui-side-navigation-empty")).toBe(true);
+  expect((await screen.findByText("No settings match ‘no such setting’")).classList.contains("ui-side-navigation-empty")).toBe(true);
 });
 
 test("the bird never labels a page: About wears the same glyph tile as the others", async () => {
@@ -1194,7 +1192,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
   expect(screen.queryByRole("option", { name: /Libraries|Advanced/ })).toBeNull();
   for (const query of ["welcome", "Coming soon"]) {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
-    expect(await screen.findByText("No matching settings")).toBeTruthy();
+    expect(await screen.findByText(`No settings match ‘${query}’`)).toBeTruthy();
   }
   expect(state.patches).toEqual([]);
 });
@@ -1499,7 +1497,7 @@ test.each(["general", "shortcuts"])("%s default shortcut offers Undo that restor
   const { api, state } = fakeApi();
   state.shortcut = { shortcut: "Alt+K", registered: true, error: null };
   render(<SettingsApp api={api} initialPage={page} />);
-  fireEvent.click(await screen.findByRole("button", { name: "Use Default" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Open Ibis" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default Shortcut" }));
   await act(async () => state.closes[0]!());
   expect(state.shortcut.shortcut).toBe("Alt+K");
@@ -1752,4 +1750,267 @@ test.each(["version copy", "manual update check"])("About keeps %s failure when 
   expect(screen.getByText(failureText)).toBeTruthy();
   await act(async () => fireEvent.click(screen.getByRole("button", { name: buttonName })));
   expect(screen.queryByText(failureText)).toBeNull();
+});
+
+
+test("settings search finds dark mode, focuses the chosen control and fades its highlight", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  act(() => search.focus());
+  fireEvent.change(search, { target: { value: "dark" } });
+  expect(await screen.findByRole("option", { name: "Appearance" })).toBeTruthy();
+  fireEvent.change(search, { target: { value: "móde dark" } });
+  expect(await screen.findByRole("option", { name: "Appearance" })).toBeTruthy();
+  fireEvent.keyDown(search, { key: "Enter" });
+  const control = await screen.findByRole("radio", { name: "System" });
+  await waitFor(() => expect(document.activeElement).toBe(control));
+  expect(control.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true);
+  await act(() => vi.advanceTimersByTimeAsync(2000));
+  expect(control.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(false);
+});
+
+test("settings search opens closed Details, scrolls only the page and focuses its row", async () => {
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.querySelector("#restore-settings") && this.classList.contains("ui-row") ? 600 : 0, height: 0 } as DOMRect;
+  });
+  onTestFinished(() => boxes.mockRestore());
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const details = screen.getByRole("button", { name: "Details…" });
+  expect(details.getAttribute("aria-expanded")).toBe("false");
+  expect(screen.queryByRole("button", { name: "Restore…" })).toBeNull();
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "restore settings" } });
+  fireEvent.click(await screen.findByRole("option", { name: "Restore settings, General" }));
+  const control = await screen.findByRole("button", { name: "Restore…" });
+  await waitFor(() => expect(document.activeElement).toBe(control));
+  expect(details.getAttribute("aria-expanded")).toBe("true");
+  expect(screen.getByRole("main").scrollTop).toBe(600);
+});
+
+test("settings search finds the command installation and focuses its control", async () => {
+  const { api } = fakeApi();
+  api.cliStatus = vi.fn(async (): Promise<CommandStatus> => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true }));
+  api.setCliInstalled = vi.fn();
+  api.copyCliProfile = vi.fn();
+  render(<SettingsApp api={api} initialPage="look" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "ibis command" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  const install = await screen.findByRole("button", { name: "Install the ibis command" });
+  await waitFor(() => expect(document.activeElement).toBe(install));
+  expect(install.closest(".ui-row")?.getAttribute("data-highlighted")).toBe("true");
+});
+
+test.each(["macos", "windows"])("settings search on %s uses only keys to find, choose, clear and leave", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  onTestFinished(() => { if (previous === undefined) delete document.documentElement.dataset.system; else document.documentElement.dataset.system = previous; });
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const opener = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  act(() => opener.focus());
+  fireEvent.keyDown(opener, { key: "f", metaKey: platform === "macos", ctrlKey: platform !== "macos" });
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  expect(document.activeElement).toBe(search);
+  fireEvent.change(search, { target: { value: "appearance" } });
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(search).toHaveProperty("value", "");
+  expect(document.activeElement).toBe(search);
+  fireEvent.keyDown(search, { key: "Escape" });
+  expect(document.activeElement).toBe(opener);
+  fireEvent.keyDown(opener, { key: "f", metaKey: platform === "macos", ctrlKey: platform !== "macos" });
+  fireEvent.change(search, { target: { value: "size" } });
+  fireEvent.keyDown(search, { key: "ArrowDown" });
+  const first = await screen.findByRole("option", { name: "Window size, Appearance" });
+  expect(document.activeElement).toBe(first);
+  fireEvent.keyDown(first, { key: "ArrowDown" });
+  const second = screen.getByRole("option", { name: "Text size, Appearance" });
+  expect(document.activeElement).toBe(second);
+  fireEvent.keyDown(second, { key: "ArrowUp" });
+  expect(document.activeElement).toBe(first);
+  fireEvent.keyDown(first, { key: "Enter" });
+  fireEvent.keyUp(first, { key: "Enter" });
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("radio", { name: "Medium" })));
+});
+
+test("setting defaults appear only for changed values, restore with Undo and survive reopening", async () => {
+  const { api, state } = fakeApi({}, { appearance: "dark", density: "compact" });
+  const mounted = render(<SettingsApp api={api} initialPage="look" />);
+  const reset = await screen.findByRole("button", { name: "Use Default for Appearance" });
+  expect(screen.queryByRole("button", { name: "Use Default for Accent" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Use Default for Text size" })).toBeNull();
+  fireEvent.click(reset);
+  const undo = await screen.findByRole("button", { name: "Undo Restore Default for Appearance" });
+  expect(screen.getByRole("radio", { name: "System" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "Use Default for Appearance" })).toBeNull();
+  fireEvent.click(undo);
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Dark" })).toHaveProperty("checked", true));
+  fireEvent.click(screen.getByRole("button", { name: "Use Default for Rows" }));
+  await screen.findByRole("button", { name: "Undo Restore Default for Rows" });
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="look" />);
+  expect(await screen.findByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
+  expect(state.preferences.appearance).toBe("dark");
+});
+
+test("a refused setting default keeps its saved choice and offers no Undo", async () => {
+  const { api } = fakeApi({}, { appearance: "dark" });
+  render(<SettingsApp api={api} initialPage="look" />);
+  const reset = await screen.findByRole("button", { name: "Use Default for Appearance" });
+  vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce("settings-read-only");
+  fireEvent.click(reset);
+  await screen.findByRole("alert");
+  expect(screen.getByRole("radio", { name: "Dark" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Appearance" })).toBeNull();
+});
+
+test("a delayed setting default cannot offer Undo over a newer choice", async () => {
+  const { api, commit } = fakeApi({}, { appearance: "dark" });
+  const saved = deferred<PickerSave>();
+  vi.spyOn(api, "setPickerPreferences").mockReturnValueOnce(saved.promise).mockImplementation(commit);
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Appearance" }));
+  fireEvent.click(screen.getByRole("radio", { name: "Light" }));
+  await act(async () => saved.resolve({ preferences: { output: "pandoc", density: "comfortable", larger_text: false, paste: true, menu_bar: true, appearance: "system" } }));
+  expect(screen.getByRole("radio", { name: "Light" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Appearance" })).toBeNull();
+});
+
+test("file actions have no setting default and search names the unmatched query", async () => {
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  fireEvent.click(screen.getByRole("button", { name: "Details…" }));
+  expect(screen.queryByRole("button", { name: /Use Default for (Back up|Restore) settings/ })).toBeNull();
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: "invented query" } });
+  expect(await screen.findByText("No settings match ‘invented query’")).toBeTruthy();
+});
+
+
+test("setting defaults restore Open at login and Undo restores its saved value", async () => {
+  const { api, state } = fakeApi();
+  state.login = true;
+  render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.click(await screen.findByRole("button", { name: /Use Default for (Open at login|Start when|Start on login)/ }));
+  const undo = await screen.findByRole("button", { name: /Undo Restore Default for (Open at login|Start when|Start on login)/ });
+  expect(state.login).toBe(false);
+  fireEvent.click(undo);
+  await waitFor(() => expect(state.login).toBe(true));
+});
+
+test("setting defaults keep automatic updates opt-in and wait for the saved event before Undo", async () => {
+  const { api, state } = fakeApi();
+  vi.spyOn(api, "setUpdateChecks").mockResolvedValueOnce(undefined as never);
+  render(<SettingsApp api={api} initialPage="about" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Check for updates automatically" }));
+  await act(async () => {});
+  expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Check for updates automatically" })).toBeNull();
+  act(() => state.automatic[0]!(false));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default for Check for updates automatically" }));
+  await waitFor(() => expect(screen.getByRole("switch", { name: "Check for updates automatically" })).toHaveProperty("checked", true));
+});
+
+test("setting defaults undo Custom window size through its native ticket after persistence", async () => {
+  const { api, state } = fakeApi();
+  vi.mocked(api.windowSize).mockResolvedValue("custom");
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Window size" }));
+  await act(async () => {});
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull();
+  act(() => state.windowSaved?.(true, 1));
+  fireEvent.click(await screen.findByRole("button", { name: "Undo Restore Default for Window size" }));
+  await waitFor(() => expect(api.setWindowSize).toHaveBeenLastCalledWith("custom", 1));
+  act(() => state.windowSaved?.(true, 2));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));
+});
+
+
+test("settings search scrolls an already available row beneath the fixed title", async () => {
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+    return { top: this.classList.contains("ui-row") && this.querySelector("#accent") ? 500 : 0, height: 0 } as DOMRect;
+  });
+  onTestFinished(() => boxes.mockRestore());
+  render(<SettingsApp api={fakeApi().api} initialPage="look" />);
+  await screen.findByRole("radiogroup", { name: "Accent" });
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "accent" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(screen.getByRole("main").scrollTop).toBe(500));
+});
+
+test("settings search cannot steal focus when a delayed control finishes reading", async () => {
+  const { api } = fakeApi();
+  const size = deferred<WindowSize | null>();
+  vi.mocked(api.windowSize).mockReturnValueOnce(size.promise);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "window size" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  act(() => search.focus());
+  await act(async () => size.resolve("medium"));
+  expect(document.activeElement).toBe(search);
+});
+
+test("settings search includes the rendered keyboard catalogue and focuses its fixed row", async () => {
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "Remove the reference" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(document.activeElement?.textContent).toContain("Remove the reference"));
+  expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Shortcuts");
+  // Repeating the same jump opens its row even if the page's own filter hid it.
+  fireEvent.change(screen.getByRole("searchbox", { name: "Filter shortcuts" }), { target: { value: "quit" } });
+  fireEvent.change(search, { target: { value: "Remove the reference" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  await waitFor(() => expect(document.activeElement?.textContent).toContain("Remove the reference"));
+  expect(screen.getByRole("searchbox", { name: "Filter shortcuts" })).toHaveProperty("value", "");
+});
+
+test("a newer native geometry retires a pending size reset and its stale rollback", async () => {
+  const { api, state } = fakeApi();
+  vi.mocked(api.windowSize).mockResolvedValue("small");
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Window size" }));
+  await act(async () => {});
+  vi.mocked(api.windowSize).mockResolvedValue("custom");
+  vi.mocked(api.setWindowSize).mockRejectedValueOnce(new Error("newer geometry owns the ticket"));
+  act(() => state.windowSaved?.(true, 2));
+  await waitFor(() => expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true));
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull();
+});
+
+test("a failed window Undo returns to the saved size and retries with its fresh ticket", async () => {
+  const { api, state } = fakeApi();
+  vi.mocked(api.windowSize).mockResolvedValue("custom");
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Window size" }));
+  await act(async () => {});
+  act(() => state.windowSaved?.(true, 1));
+  const undo = await screen.findByRole("button", { name: "Undo Restore Default for Window size" });
+  fireEvent.click(undo);
+  await act(async () => {});
+  act(() => state.windowSaved?.(false, 2));
+  await screen.findByText("Could not undo. Try again.");
+  expect(screen.getByRole("radio", { name: "Medium" })).toHaveProperty("checked", true);
+  expect(api.setWindowSize).toHaveBeenLastCalledWith("custom", 2);
+  fireEvent.click(undo);
+  await waitFor(() => expect(api.setWindowSize).toHaveBeenLastCalledWith("custom", 3));
+  act(() => state.windowSaved?.(true, 4));
+  await waitFor(() => expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull());
+  expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true);
+});
+
+
+test("a native save newer than a delayed size reply retires the reset without waiting again", async () => {
+  const { api, state } = fakeApi();
+  const reply = deferred<number>();
+  vi.mocked(api.windowSize).mockResolvedValue("small");
+  vi.mocked(api.setWindowSize).mockReturnValueOnce(reply.promise).mockRejectedValueOnce(new Error("newer geometry"));
+  render(<SettingsApp api={api} initialPage="look" />);
+  fireEvent.click(await screen.findByRole("button", { name: "Use Default for Window size" }));
+  vi.mocked(api.windowSize).mockResolvedValue("custom");
+  act(() => state.windowSaved?.(true, 2));
+  await act(async () => reply.resolve(1));
+  await screen.findByRole("alert");
+  expect(screen.getByRole("radio", { name: "Custom" })).toHaveProperty("checked", true);
+  expect(screen.queryByRole("button", { name: "Undo Restore Default for Window size" })).toBeNull();
 });

@@ -676,3 +676,91 @@ fn sizing_late_native_events_and_save_completions_cannot_consume_a_newer_drag() 
     assert!(current.revision > old.revision);
     assert_eq!(current.windows["a"].width, 900);
 }
+
+#[test]
+fn sizing_size_undo_restores_custom_dimensions_and_survives_an_older_completion() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let mut custom = native.live.frame;
+    custom.width = 777;
+    custom.height = 555;
+    custom.custom_size = true;
+    let room = native.live.display.usable;
+    native.owner.choose(&display, custom, room, native.now);
+    let saved = native.owner.window(&display).copied();
+    let mut medium = custom;
+    medium.width = 720;
+    medium.height = 480;
+    medium.custom_size = false;
+    let ticket = native.owner.choose(&display, medium, room, native.now);
+    native.owner.complete(ticket - 1);
+    assert!(native.owner.restore_size(ticket, &display, native.now));
+    assert_eq!(native.owner.window(&display).copied(), saved);
+    assert!(
+        !native.owner.restore_size(ticket, &display, native.now),
+        "Undo is spent once"
+    );
+}
+
+#[test]
+fn sizing_size_undo_refuses_another_display_or_newer_geometry() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let room = native.live.display.usable;
+    let ticket = native.owner.choose(&display, native.live.frame, room, native.now);
+    assert!(!native.owner.restore_size(ticket, "another-display", native.now));
+    let mut newer = native.live.frame;
+    newer.width += 1;
+    native.owner.choose(&display, newer, room, native.now);
+    assert!(!native.owner.restore_size(ticket, &display, native.now));
+    assert_eq!(
+        native.owner.window(&display).map(|saved| saved.width),
+        Some(newer.width)
+    );
+}
+
+#[test]
+fn sizing_failed_size_undo_can_roll_back_and_retry_without_reusing_spent_tickets() {
+    let mut native = Native::new();
+    let display = native.live.display.key.clone();
+    let mut custom = native.live.frame;
+    custom.width = 777;
+    custom.custom_size = true;
+    let room = native.live.display.usable;
+    native.owner.choose(&display, custom, room, native.now);
+    let saved = native.owner.window(&display).copied();
+    let medium = native.live.frame;
+    let reset = native.owner.choose(&display, medium, room, native.now);
+    let reset_frame = native.owner.window(&display).copied();
+    assert!(native.owner.restore_size(reset, &display, native.now));
+    let failed_undo = native.owner.revision;
+    assert!(native.owner.restore_size(failed_undo, &display, native.now));
+    assert_eq!(native.owner.window(&display).copied(), reset_frame);
+    assert!(!native.owner.restore_size(reset, &display, native.now));
+    assert!(native.owner.restore_size(native.owner.revision, &display, native.now));
+    assert_eq!(native.owner.window(&display).copied(), saved);
+}
+
+#[test]
+fn sizing_size_undo_without_display_identity_restores_session_and_refuses_a_later_drag() {
+    let mut native = Native::new();
+    native.live.display.key.clear();
+    native.owner.prepared(native.live.clone());
+    let room = native.live.display.usable;
+    let mut custom = native.live.frame;
+    custom.width = 777;
+    custom.custom_size = true;
+    let ticket = native.owner.choose("", custom, room, native.now);
+    assert!(native.owner.restore_size(ticket, "", native.now));
+    assert_eq!(native.owner.window(""), None);
+    assert!(!native.owner.restore_size(ticket, "", native.now));
+
+    let ticket = native.owner.choose("", custom, room, native.now);
+    native.drag(800, 580);
+    assert!(!native.owner.restore_size(ticket, "", native.now));
+    assert_eq!(native.owner.window("").map(|saved| saved.width), Some(800));
+    assert!(
+        !native.owner.windows.contains_key(""),
+        "unknown displays never reach disk"
+    );
+}

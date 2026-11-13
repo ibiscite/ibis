@@ -46,7 +46,7 @@ export function CliCommandRow({ api, highlighted }: { api: Api; highlighted: boo
     "not-installed": "command-missing", matching: "command-matching", different: "command-different", foreign: "command-foreign",
   }[status.state] as "command-missing" | "command-matching" | "command-different" | "command-foreign", { version: status.version ?? "", path: status.used_path ?? "" });
   return <Section id="command"><Group>
-    <Row id="cli-command" {...rowDetails("cli-command", text)} description={description} highlighted={highlighted} problem={failed ? text("command-failed") : undefined}>
+    <Row id="cli-command" {...rowDetails("cli-command", text)} description={description} highlighted={highlighted} pending={!status && !failed} problem={failed ? text("command-failed") : undefined}>
       <Buttons>
         {status?.installable && <Button isDisabled={busy} onPress={() => change(true)}>{text("command-install")}</Button>}
         {status?.removable && <Button isDisabled={busy} onPress={() => change(false)}>{text("command-remove")}</Button>}
