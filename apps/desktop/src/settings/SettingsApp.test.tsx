@@ -64,9 +64,10 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
       expect(row.querySelector('th[scope="row"]')?.textContent).toBe(say(SHORTCUT_ACTIONS[binding.action]));
       expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(say(SHORTCUT_REGIONS[binding.region]));
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
-      expect(row.querySelectorAll("kbd")).toHaveLength(keys.length);
-      expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
-        .toBe(compact(keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
+      // A run of keys is written first to last, as ⌘1–9.
+      const written = binding.run ? [`${keyLabel(keys[0]!, platform === "macos")}–${keys.length}`] : keys.map((keys) => keyLabel(keys, platform === "macos"));
+      expect(row.querySelectorAll("kbd")).toHaveLength(written.length);
+      expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or "))).toBe(compact(written.join(" or ")));
     }
   } finally {
     if (previous === undefined) delete document.documentElement.dataset.system;

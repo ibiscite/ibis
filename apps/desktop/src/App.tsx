@@ -41,6 +41,7 @@ import { HeldKeys } from "./ui/HeldKeys";
 import { useNativeRequests } from "./features/picker/useNativeRequests";
 import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
+import { useShownRows } from "./features/picker/useShownRows";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
 import { projectCheckNotice } from "./features/picker/ProjectContextStatus";
@@ -197,11 +198,19 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const previewKeys = output.ask?.selection.map((item) => item.id.key).filter(Boolean).join("\u0000") ?? "";
   const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
+  // The command list (">") stands in for the results: ⌘1–9 has no row then.
+  const commandsShown = useRef(false);
   // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
   const citationLine = useRef<CitationLineActions | null>(null);
+  // ⌘1–9 picks a row in view, as a double-click on it does, only while the list is shown.
+  const numbered = useShownRows(resultArea, results);
   const keys = usePickerKeys({
     api, pickerSession, menus, source, results, showCitations, copyChosen: rows.copyChosen, actions, pointer, followKeyboard,
     quitAfterSaving, commandKeys, citationLine,
+    pick: (number) => {
+      const index = numbered.first + number - 1, record = results[index];
+      return ready && showCitations && !commandsShown.current && number <= numbered.count && record ? () => rows.onChoose(index, record, "copy") : null;
+    },
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
       delights.dismiss();
@@ -220,6 +229,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     query: showCitations ? query : "", run: keys.run, setQuery,
     source: source.sourceAvailable ? source.sourceAction.label : null, changeLast: actions.canChangeLast,
   });
+  commandsShown.current = commands.mode;
   // Peek (⌘Y): the highlighted reference's full details under its row, as Quick Look.
   const [peeked, setPeeked] = useState<string | null>(null);
   const peekRecord = !commands.mode && showCitations ? results[active] : undefined;
@@ -280,7 +290,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
           shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={rows}
           density={density} resultArea={resultArea} setQuery={setQuery} peck={delights.peck}
-          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} />
+          project={styleOf(format) === null ? project.status : null} commands={commands.mode ? commands : null} numbered={numbered} />
       </PickerScroll>
       {/* Keep the selection live region mounted when choices remove citation controls. */}
       <PickerCitationShelf

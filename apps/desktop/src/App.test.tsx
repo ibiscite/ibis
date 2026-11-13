@@ -344,6 +344,27 @@ test("C5 click selects without copying and double-click copies the highlighted c
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
 });
 
+test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row does, only while the list is shown", async () => {
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  backend({ search: () => [result("a", "First"), result("b", "Second"), result("c", "Third")], copy_file_citation: copied });
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  await screen.findByText("Third");
+  // Each shown row carries its number for the keys sheet and assistive technology.
+  expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
+  // No fourth row: the key is left alone.
+  expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
+  // The command list stands in for the results: no row has a number.
+  fireEvent.change(search, { target: { value: ">" } });
+  expect(fireEvent.keyDown(search, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  fireEvent.change(search, { target: { value: "" } });
+  await screen.findByText("Third");
+  // AZERTY types & on the 2 key's neighbour; the physical key decides.
+  expect(fireEvent.keyDown(search, { key: "é", code: "Digit2", ctrlKey: true })).toBe(false);
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
+});
+
 test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
   const context = vi.fn(() => action);
   const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
@@ -1509,8 +1530,11 @@ test("rows with the same first author and year are told apart by their container
   // Two authors are both named, as in Comfortable; "et al." starts at three.
   expect(line?.querySelector(".result-first-author")?.textContent).toBe("García, Okafor");
   // Read aloud as one name, its parts are separated, never "Okafor2021".
-  expect(line?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
-  expect(line?.querySelector(":scope > .result-year")?.textContent).toBe("2021");
+  // What is read: the row's ⌘1 is drawn for the eye only.
+  const read = line?.cloneNode(true) as Element | undefined;
+  read?.querySelectorAll("[aria-hidden]").forEach((node) => node.remove());
+  expect(read?.textContent).toBe("Sleep spindles, García, Okafor, 2021, ");
+  expect(line?.querySelector(":scope > .result-year > span")?.textContent).toBe("2021");
   expect(rows[2]?.querySelector(".result-first-author")?.textContent).toBe("Smith");
   expect(rows[0]?.querySelector(".result-container")).toBeNull();
   // The container is out of sight in Compact, so a match there is named.

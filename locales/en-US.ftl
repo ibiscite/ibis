@@ -421,6 +421,7 @@ shortcuts-action-paste = Paste the citation
 shortcuts-action-copy-only = Copy the citation
 shortcuts-action-add = Add another reference
 shortcuts-action-move = Move through results
+shortcuts-action-pick = Paste or copy a result by its number
 shortcuts-action-peek = Peek at the highlighted reference
 shortcuts-action-escape = Step back or hide
 shortcuts-action-format = Change the format

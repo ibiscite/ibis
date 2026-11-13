@@ -3,6 +3,7 @@ import { memo, useCallback, useLayoutEffect, useMemo, useRef } from "react";
 import type { Density, ProjectStatus, SearchResult } from "../../api";
 import { rowClickAction } from "../../copyFeedback";
 import { isMac } from "../../platform";
+import { PICK_KEYS, ariaKeys, keyLabel } from "../../keys";
 import { AddGlyph, TypeIcon } from "../../icons";
 import { say } from "../../i18n";
 import { PointerButton } from "../../ui/Button";
@@ -28,8 +29,10 @@ type RowHandlers = {
 
 /** The result list: one option per search result, the highlighted one active.
  * Rows are memoised; moving the highlight re-renders only the rows it leaves and reaches. */
-export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, project = null, onMouseMove, onChoose, onToggle, onContext }: {
+export function ResultList({ results, active, selected, density, hoverAllowed = false, libraryOf, project = null, numbered = { first: 0, count: 0 }, onMouseMove, onChoose, onToggle, onContext }: {
   results: SearchResult[];
+  /** The rows ⌘1–9 picks: the first one's index and how many (useShownRows). */
+  numbered?: { first: number; count: number };
   project?: ProjectStatus | null;
   active: number;
   selected: Map<string, SearchResult>;
@@ -79,7 +82,8 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     <ul id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
-          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers} />
+          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers}
+          pick={i >= numbered.first && i < numbered.first + numbered.count ? i - numbered.first + 1 : undefined} />
       </ResultGroup>)}
     </ul>
   );
@@ -93,7 +97,7 @@ function ResultGroup({ record, previous, children }: { record: SearchResult; pre
 }
 
 /** One search result as an option of the result list. */
-export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, project, handlers }: {
+export const ResultRow = memo(function ResultRow({ record: r, index: i, active, added, density, hoverAllowed, library, project, pick, handlers }: {
   record: SearchResult;
   index: number;
   active: boolean;
@@ -104,8 +108,11 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   library: string | null;
   /** This row's key against the project bibliography, in words. */
   project?: string | null;
+  /** Its number for ⌘1–9, while it is one of the first nine rows in view. */
+  pick?: number;
   handlers: RowHandlers;
 }) {
+  const pickKeys = pick ? PICK_KEYS[pick - 1]! : undefined;
   const compact = density === "compact";
   // A match in the container is always named: the row may shorten the container.
   const why = hiddenMatch(r.matched);
@@ -115,6 +122,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
       role="option"
       aria-selected={active}
       aria-describedby={r.recent ? `recent-${r.recent}` : undefined}
+      aria-keyshortcuts={pickKeys && ariaKeys(pickKeys, isMac)}
       data-density={density}
       data-citation-selected={added || undefined}
       data-active={active || undefined}
@@ -145,7 +153,9 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           {/* Spoken pauses: the parts are separate on screen but one accessible name. */}
           <span className="visually-hidden">, </span>
           {compact && r.first_author && <><span className="result-first-author" dir="auto">{abbreviatedAuthors(r) ? <>{r.first_author} {etAl}</> : r.authors}</span><span className="visually-hidden">, </span></>}
-          <span className="result-year">{r.year ?? say("picker-no-date")}</span>
+          {/* While the command key is held, the row's number stands in the year's place (ui/HeldKeys). */}
+          <span className="result-year"><span>{r.year ?? say("picker-no-date")}</span>
+            {pickKeys && <kbd className="result-pick" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}</span>
           <span className="visually-hidden">, </span>
         </span>
         <span className="result-meta">

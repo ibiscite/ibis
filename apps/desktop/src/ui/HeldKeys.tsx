@@ -28,11 +28,12 @@ export function HeldKeys() {
   const timer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const held = currentPlatform() === "macos" ? "Meta" : "Control";
-    const end = () => { window.clearTimeout(timer.current); timer.current = undefined; setShown([]); };
+    // While held, rows numbered for ⌘1–9 show their number (Option.css).
+    const end = () => { window.clearTimeout(timer.current); timer.current = undefined; setShown([]); delete document.documentElement.dataset.keysHeld; };
     const down = (event: KeyboardEvent) => {
       if (event.repeat) return;
       end();
-      if (event.key === held) timer.current = window.setTimeout(() => setShown(keyedControls()), HOLD_MS);
+      if (event.key === held) timer.current = window.setTimeout(() => { document.documentElement.dataset.keysHeld = ""; setShown(keyedControls()); }, HOLD_MS);
     };
     window.addEventListener("keydown", down, true);
     window.addEventListener("keyup", end, true);

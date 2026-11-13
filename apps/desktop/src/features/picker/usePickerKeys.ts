@@ -1,6 +1,6 @@
 import type * as nativeApi from "../../api";
 import { useRef, type RefObject } from "react";
-import { keysFor, matchesAccelerator } from "../../keys";
+import { keysFor, matchesAccelerator, pickNumber } from "../../keys";
 import { isMac } from "../../platform";
 import type { CitationLineActions } from "./CitationShelf";
 import { currentPlatform } from "../../platform";
@@ -19,8 +19,10 @@ import type { usePointerSelection } from "../../pointerSelection";
  * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  quitAfterSaving, onEmptyEnter, commandKeys, citationLine,
+  quitAfterSaving, onEmptyEnter, commandKeys, citationLine, pick,
 }: {
+  /** ⌘1–9: what picking the shown row with that number does, or null while there is no such row. */
+  pick?: (number: number) => (() => void) | null;
   /** ⌘↓ goes from Search to the citation's last token. */
   citationLine?: RefObject<CitationLineActions | null>;
   api: typeof nativeApi;
@@ -116,9 +118,14 @@ export function usePickerKeys({
     const target = lost ? document.activeElement : e.target;
     const command = commandFor(e, target);
     if (command === "settings" && !openSettings) return;
+    const picking = command ? null : pickNumber(e);
+    const picked = picking && !overlayOpen() ? pick?.(picking) : null;
     if (command) {
       consumeKey(e);
       if (!repeated) run(command, e);
+    } else if (picked) {
+      consumeKey(e);
+      if (!repeated) picked();
     } else if (target === input.current) searchKey(e);
   };
   useKeyOwner({ keyDown, home: focusHome });

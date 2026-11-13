@@ -22,8 +22,10 @@ const noLibrary = () => null;
 
 export function PickerResults({
   api, libraryState, searchState, state, source, scope, shortcut, perform, focusHome, pointer, rows, density,
-  resultArea, setQuery, peck, project, commands,
+  resultArea, setQuery, peck, project, commands, numbered,
 }: {
+  /** The rows ⌘1–9 picks (useShownRows). */
+  numbered?: { first: number; count: number };
   /** ">" in the search: the commands, in place of the references. */
   commands?: { list: readonly PickerCommandEntry[]; active: number; run: (command: PickerCommandEntry) => void } | null;
   /** The bibliography rows are marked against; null for formatted output. */
@@ -91,7 +93,7 @@ export function PickerResults({
     </p>
     {busy && emptyState}
     {showCitations && <ResultList results={results} active={active} selected={selected} density={density} hoverAllowed={pointer.hoverAllowed}
-      libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} onMouseMove={pointer.onMouseMove}
+      libraryOf={severalLibraries ? libraryOf : noLibrary} project={project} numbered={numbered} onMouseMove={pointer.onMouseMove}
       onChoose={rows.onChoose} onContext={rows.onContext} onToggle={rows.onToggle} />}
     {!busy && emptyState}
     {library?.sample && !choosingLibrary && <SampleLibraryExit useSampleLibrary={api.useSampleLibrary} perform={perform} />}
