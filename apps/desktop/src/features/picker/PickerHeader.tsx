@@ -51,9 +51,8 @@ export function PickerHeader({ hidden = false, onResetPosition, inputRef, query,
     return twice;
   };
   return (
-    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")}
+    <SearchBar hidden={hidden} title={say("picker-drag-search-bar")} mark={<IbisMark className="search-mark" size="search" />}
       onMouseDown={emptyArea} onMouseUp={(event) => { if (emptyArea(event)) onResetPosition?.(); }}>
-      <IbisMark className="search-mark" size="search" />
       <SearchField
         id="search"
         label={say("picker-search-label")}

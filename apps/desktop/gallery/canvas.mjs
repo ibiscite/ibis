@@ -60,6 +60,14 @@ for (const scenario of scenarios) for (const mode of modes) for (const theme of 
   if (errors.length) failures.push(`${scenario}/${theme}${mode.suffix}: ${errors[0]}`);
   await page.close();
 }
+// The guards across states (canvas/audit.ts): every scenario at the default
+// window, words and covers at the narrowest, More in a short window.
+for (const [viewport, pass] of [[{ width: 720, height: 480 }, "frame"], [{ width: 480, height: 360 }, "narrow"], [{ width: 640, height: 240 }, "short"]]) {
+  const page = await load(viewport);
+  await page.emulateMedia({ colorScheme: "light", forcedColors: "none", contrast: "no-preference" });
+  failures.push(...await page.evaluate((pass) => window.IbisCanvas.audit(document.getElementById("host"), { pass, theme: "light" }), pass));
+  await page.close();
+}
 await browser.close();
 if (failures.length) throw new Error(failures.join("\n"));
 console.log(`Canvas: ${pictures} pictures.`);

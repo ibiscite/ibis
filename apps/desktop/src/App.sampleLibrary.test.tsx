@@ -76,7 +76,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain(text));
   fireEvent.keyDown(input, { key: "Enter" });
   if (formatted) {
-    expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-receipt strong" })).toBeTruthy();
+    expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
     expect(prepared(copied.mock.calls[0]?.[0]).preview.text).toBe(apa);
     expect(notice).not.toHaveBeenCalled();
     expect(screen.getByRole("list", { name: "Copy warnings" }).textContent).toContain(apaWarnings[0]);
@@ -211,7 +211,7 @@ test.each(["setup", "real"] as const)("sample copy notices leave with the sample
   fireEvent.change(input, { target: { value: "lantern" } });
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain(apa));
   fireEvent.keyDown(input, { key: "Enter" });
-  expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-receipt strong" })).toBeTruthy();
+  expect(await screen.findByText("Copied", { selector: ".shelf-copied, .copy-notice strong" })).toBeTruthy();
   if (next === "real") await act(() => switchTo("real"));
   else press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   await waitFor(() => expect(document.querySelector(".copy-notice")).toBeNull());

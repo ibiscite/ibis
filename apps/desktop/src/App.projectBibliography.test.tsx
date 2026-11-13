@@ -186,7 +186,7 @@ test.each<[EntryCopy, RegExp]>([
   picker("missing", () => file(), { copy_project_entry: (args) => { sent.push(args); return outcome; } });
   await waitFor(() => expect(shownRow()).toContain("Missing from thesis.bib"));
   await chooseFromMore("Copy Entry for \u2068thesis.bib\u2069");
-  await waitFor(() => expect(plain(document.querySelector(".notices")?.textContent)).toMatch(words));
+  await waitFor(() => expect(plain(document.querySelector(".ui-line-notice")?.textContent)).toMatch(words));
   expect(sent).toEqual([{ id: row("missing").id, generation: 1 }]);
 });
 

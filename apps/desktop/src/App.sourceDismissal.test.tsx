@@ -211,7 +211,7 @@ test("a stale found-file completion cannot clear the explicit chooser's newer re
   const file = await screen.findByRole("option", { name: /^Use example\.bib/ });
   fireEvent.click(file);
   fireEvent.click(file);
-  const text = "That file could not be opened from the list. Pick it again from the new list.";
+  const text = "That file could not be opened. Pick it again from the new list.";
   const failure = await screen.findByText(text);
   await waitFor(() => expect(find).toHaveBeenCalledTimes(2));
   await act(async () => { finishA(); });
@@ -249,7 +249,7 @@ test("a dropped file Ibis cannot use says what it accepts, until the next good d
     search: () => ({ revision: library.revision, results: [{ ...result("kept", "Invented kept reference"), revision: library.revision }] }) });
   render(<App />);
   await screen.findByText("Invented kept reference");
-  const refusal = "Ibis opens one BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file at a time.";
+  const refusal = "Drop one BibTeX, BibLaTeX, CSL-JSON, RIS or CSV file at a time.";
   await act(async () => { await emit("library:file-refused"); });
   expect(screen.getByRole("alert").textContent).toBe(refusal);
   expect(screen.getByText("Invented kept reference")).toBeTruthy();

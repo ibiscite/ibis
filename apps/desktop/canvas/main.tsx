@@ -16,6 +16,7 @@ import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
+import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
 import type { SettingsApi } from "../src/settings/api";
@@ -35,7 +36,7 @@ import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "unknown-app", "unknown-app-empty", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -66,6 +67,7 @@ const fixtures: Partial<Record<Scenario, {
   more: { library: zoteroLibrary },
   "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
+  "unknown-app-empty": { query: "" },
   commands: { query: ">" },
   "page-in-search": { query: "invented 417" },
   peek: { keys: [{ key: "y", code: "KeyY", metaKey: true }] },
@@ -107,6 +109,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
   const projectContext = scenario.startsWith("project-");
+  // The picker opens over a known app that Ibis copies into, as it usually does;
+  // "unknown-app" is the one whose app could not be read, over results and over an empty search.
+  const knownApp = !scenario.startsWith("unknown-app");
   const project = writingProjects.active!;
   const refusal = scenario === "project-check-conflict" ? "A key in thesis.bib identifies a different work. Resolve the conflict before citing it." : null;
   const library: LibraryStatus = {
@@ -162,7 +167,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       { form: "author-only", example: "Aster", reason: null },
       { form: "year-only", example: "(2026)", reason: null },
     ] } satisfies ReferenceDetails),
-    picker_destination: () => projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+    picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+      automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
+      writing_project: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false,
       writing_project: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
     writing_projects: () => writingProjects,
@@ -402,6 +409,11 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   };
   mounts.set(host, unmount);
   return unmount;
+}
+
+/** Every guard of canvas/geometry.ts over the scenarios, for the runners: see canvas/audit.ts. */
+export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3] = {}): Promise<string[]> {
+  return runAudit(host, mount, scenarios, options);
 }
 
 const host = document.querySelector<HTMLElement>("[data-ibis-canvas]");

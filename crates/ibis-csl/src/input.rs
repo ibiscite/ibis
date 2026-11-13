@@ -1,4 +1,5 @@
 use crate::{FormatError, Limits, catalog};
+use ibis_core::citation::{self, ItemSupport};
 use ibis_core::contract::*;
 use serde::Serialize;
 use serde_json::{Value, json};
@@ -218,13 +219,32 @@ pub(crate) fn prepare(
     request: &CitationRequest,
     limits: &Limits,
 ) -> Result<Prepared, FormatError> {
-    if request.items.is_empty() || request.items.len() > 1000 {
-        return Err(FormatError::InvalidRequest);
-    }
     let OutputSpec::Csl { style } = &request.output else {
         return Err(FormatError::UnsupportedStyle);
     };
     prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
+}
+
+/// Compile only trusted formatting material, without waiting for a library.
+pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, FormatError> {
+    let style = catalog::resolve(style)?;
+    let locale = locale
+        .map(catalog::locale_tag)
+        .transpose()?
+        .map(str::to_owned)
+        .or_else(|| style.forced_locale.clone());
+    Ok(Prepared {
+        json: json!({"style":style.rules,"numeric":style.traits.numeric,"sentence_titles":style.sentence_titles,
+            "items":[],"cites":[],"keep_order":false,"locale":locale,"warm":true})
+        .to_string(),
+        xml: style.xml.clone(),
+        language: locale.unwrap_or_else(|| style.language.clone()),
+        outcomes: vec![],
+        losses: vec![],
+        notices: vec![],
+        warnings: vec![],
+        empty: false,
+    })
 }
 
 fn prepare_with_style(
@@ -274,6 +294,17 @@ fn prepare_with_style(
                 .iter()
                 .all(|pick| entry(pick.form.unwrap_or(request.form)))
         };
+    let checked = citation::check(snapshot, None, request, |pick| ItemSupport {
+        locator: true,
+        form: !refuses_form(
+            style,
+            pick.form.unwrap_or(request.form),
+            bibliography,
+            request.items.len(),
+            pick.suppress_author,
+        ),
+    })
+    .map_err(|_| FormatError::InvalidRequest)?;
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();
@@ -291,20 +322,12 @@ fn prepare_with_style(
     let mut remaining = limits.input_bytes;
     for (index, pick) in request.items.iter().enumerate() {
         let form = pick.form.unwrap_or(request.form);
-        let refusal = if refuses_form(style, form, bibliography, request.items.len(), pick.suppress_author) {
-            Some(CitationError::UnsupportedForm)
-        } else {
-            validate_pick(snapshot, pick)
-        };
-        if let Some(error) = refusal {
-            outcomes.push(ItemOutcome::Refused { item: index, error });
-            continue;
-        }
-        let Some(object) = snapshot.get(&pick.item) else {
-            return Err(FormatError::InvalidRequest);
-        };
-        let LibraryObject::Record(record) = &object.object else {
-            return Err(FormatError::InvalidRequest);
+        let record = match checked[index] {
+            Ok(record) => record,
+            Err(error) => {
+                outcomes.push(ItemOutcome::Refused { item: index, error });
+                continue;
+            }
         };
         warnings.extend(record.warnings.iter().map(|code| CitationWarning {
             item: index,
@@ -456,13 +479,6 @@ fn prepare_with_style(
         }
         if !bibliography {
             if let Some(locator) = &pick.locator {
-                if locator.value.trim().is_empty() || locator.value.chars().any(char::is_control) {
-                    outcomes.push(ItemOutcome::Refused {
-                        item: index,
-                        error: CitationError::InvalidLocator,
-                    });
-                    continue;
-                }
                 cite["label"] = serde_json::to_value(locator.term).map_err(|_| FormatError::InvalidRequest)?;
                 cite["locator"] = json!(
                     locator
@@ -600,54 +616,6 @@ fn year(issued: Option<&Value>) -> Option<String> {
     (digits.len() == 4)
         .then_some(digits)
         .or_else(|| (!date.is_empty()).then_some(date))
-}
-
-fn validate_pick(snapshot: &Snapshot, pick: &CitationItem) -> Option<CitationError> {
-    if pick
-        .locator
-        .as_ref()
-        .is_some_and(|locator| locator.value.trim().is_empty() || locator.value.chars().any(char::is_control))
-    {
-        return Some(CitationError::InvalidLocator);
-    }
-    let Some(object) = snapshot.get(&pick.item) else {
-        return Some(CitationError::MissingItem);
-    };
-    if !matches!(object.object, LibraryObject::Record(_)) {
-        return Some(CitationError::NotCitable);
-    }
-    if pick
-        .expected_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-    {
-        return Some(CitationError::ChangedItem);
-    }
-    if let Some(id) = &pick.annotation {
-        let Some(annotation) = snapshot.get(id) else {
-            return Some(CitationError::AnnotationMismatch);
-        };
-        if pick
-            .expected_annotation_cite
-            .as_ref()
-            .is_some_and(|expected| expected != &annotation.fingerprints.cite)
-        {
-            return Some(CitationError::AnnotationMismatch);
-        }
-        let LibraryObject::Annotation(annotation) = &annotation.object else {
-            return Some(CitationError::AnnotationMismatch);
-        };
-        let Some(attachment) = snapshot.get(&annotation.parent) else {
-            return Some(CitationError::AnnotationMismatch);
-        };
-        if !matches!(&attachment.object,LibraryObject::Attachment(attachment) if attachment.parent.as_ref()==Some(&pick.item))
-        {
-            return Some(CitationError::AnnotationMismatch);
-        }
-    } else if pick.expected_annotation_cite.is_some() {
-        return Some(CitationError::AnnotationMismatch);
-    }
-    None
 }
 
 fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {

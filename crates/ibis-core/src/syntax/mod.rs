@@ -3,6 +3,7 @@
 
 use std::collections::HashMap;
 
+use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 
 pub(crate) mod escape;
@@ -506,12 +507,6 @@ struct Pick<'a> {
 /// The immutable snapshot is the complete resolution boundary. Engine callers
 /// choose their newest snapshot atomically before invoking this pure method.
 pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationResult, CitationError> {
-    if request.items.is_empty() {
-        return Err(CitationError::EmptySelection);
-    }
-    if request.items.len() > MAX_CITATION_ITEMS {
-        return Err(CitationError::TooManyItems);
-    }
     let mut caps = capabilities(&request.output)?;
     // Markers name Zotero items, which only the engine can vouch for.
     if caps.zotero_items {
@@ -530,7 +525,23 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
             .find(|entry| entry.syntax == caps.syntax && entry.command == Some(command))
             .ok_or(CitationError::UnsupportedOutput)?;
     }
-    validate_request(request)?;
+    let checked = citation::check(snapshot, None, request, |item| {
+        let form = item.form.unwrap_or(request.form);
+        ItemSupport {
+            locator: item.locator.as_ref().is_none_or(|locator| {
+                escape::locator_fits(caps.escaping, locator)
+                    && !(caps.escaping == Escaping::Pandoc
+                        && item.suffix.iter().any(|run| !run.text.trim().is_empty())
+                        && locator.value.contains(['{', '}', '[', ']', '\\']))
+            }),
+            form: caps.forms.contains(&form)
+                && (request.items.len() == 1 || !caps.single_item_forms.contains(&form))
+                && !(item.suppress_author && matches!(form, Narrative | CitationForm::AuthorOnly | CitationForm::Full))
+                // Natbib's numerical mode silently discards author-only postnotes.
+                && !(caps.syntax == KeySyntax::Natbib && form == CitationForm::AuthorOnly
+                    && (item.locator.is_some() || item.suffix.iter().any(|run| !run.text.trim().is_empty()))),
+        }
+    })?;
     let owners = key_owners(snapshot);
     let mut outcomes = Vec::with_capacity(request.items.len());
     let mut picks = Vec::with_capacity(request.items.len());
@@ -541,7 +552,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     // libraries can share one; an export naming both would be unreadable.
     let mut exported = HashMap::<&str, &ItemRef>::new();
     for (index, item) in request.items.iter().enumerate() {
-        match resolve(snapshot, item, request.form, caps, request.items.len(), &owners) {
+        match checked[index].and_then(|record| resolve(record, item, request.form, caps, &owners)) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
             Ok((record, key, form)) => {
                 warnings.extend(record.warnings.iter().map(|code| CitationWarning {
@@ -677,37 +688,13 @@ fn key_owners(snapshot: &Snapshot) -> HashMap<&str, Option<&ItemRef>> {
 }
 
 fn resolve<'a>(
-    snapshot: &'a Snapshot,
+    record: &'a Record,
     item: &CitationItem,
     default_form: CitationForm,
     caps: &SyntaxCapabilities,
-    count: usize,
     owners: &HashMap<&str, Option<&ItemRef>>,
 ) -> Result<(&'a Record, &'a str, CitationForm), CitationError> {
-    let object = snapshot.get(&item.item).ok_or(CitationError::MissingItem)?;
-    if item
-        .expected_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-    {
-        return Err(CitationError::ChangedItem);
-    }
-    let LibraryObject::Record(record) = &object.object else {
-        return Err(CitationError::NotCitable);
-    };
-    validate_annotation(snapshot, item)?;
     let form = item.form.unwrap_or(default_form);
-    if !caps.forms.contains(&form)
-        || count != 1 && caps.single_item_forms.contains(&form)
-        || item.suppress_author && matches!(form, Narrative | CitationForm::AuthorOnly | CitationForm::Full)
-        // Natbib's numerical mode silently discards author-only postnotes.
-        // The key renderer cannot know the destination document's mode.
-        || caps.syntax == KeySyntax::Natbib
-            && form == CitationForm::AuthorOnly
-            && (item.locator.is_some() || item.suffix.iter().any(|run| !run.text.trim().is_empty()))
-    {
-        return Err(CitationError::UnsupportedForm);
-    }
     let key = record
         .citation_key()
         .map_err(|error| match error {
@@ -728,22 +715,6 @@ fn resolve<'a>(
     {
         return Err(CitationError::InvalidKey);
     }
-    if item.locator.as_ref().is_some_and(|locator| {
-        locator.value.trim().is_empty()
-            || locator.value.chars().any(char::is_control)
-            || !escape::locator_fits(caps.escaping, locator)
-    }) {
-        return Err(CitationError::InvalidLocator);
-    }
-    if caps.escaping == Escaping::Pandoc
-        && item.suffix.iter().any(|run| !run.text.trim().is_empty())
-        && let Some(locator) = &item.locator
-        && locator.value.contains(['{', '}', '[', ']', '\\'])
-    {
-        // Pandoc reparses the Markdown inlines as a braced locator. Nested
-        // delimiters or escapes cannot preserve its boundary with a suffix.
-        return Err(CitationError::InvalidLocator);
-    }
     if item
         .prefix
         .iter()
@@ -753,74 +724,4 @@ fn resolve<'a>(
         return Err(CitationError::InvalidRichText);
     }
     Ok((record, key, form))
-}
-
-pub(super) fn validate_annotation(snapshot: &Snapshot, item: &CitationItem) -> Result<(), CitationError> {
-    let Some(id) = &item.annotation else {
-        return if item.expected_annotation_cite.is_some() {
-            Err(CitationError::AnnotationMismatch)
-        } else {
-            Ok(())
-        };
-    };
-    let object = snapshot.get(id).ok_or(CitationError::MissingItem)?;
-    if item
-        .expected_annotation_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-    {
-        return Err(CitationError::ChangedItem);
-    }
-    let LibraryObject::Annotation(annotation) = &object.object else {
-        return Err(CitationError::AnnotationMismatch);
-    };
-    let Some(parent) = snapshot.get(&annotation.parent) else {
-        return Err(CitationError::AnnotationMismatch);
-    };
-    let LibraryObject::Attachment(attachment) = &parent.object else {
-        return Err(CitationError::AnnotationMismatch);
-    };
-    if attachment.parent.as_ref() != Some(&item.item) {
-        return Err(CitationError::AnnotationMismatch);
-    }
-    match (&annotation.page_label, &item.locator) {
-        (Some(page), Some(locator)) if locator.term == LocatorTerm::Page && page.trim() == locator.value.trim() => {
-            Ok(())
-        }
-        _ => Err(CitationError::AnnotationMismatch),
-    }
-}
-
-pub(super) fn validate_request(request: &CitationRequest) -> Result<(), CitationError> {
-    for locale in [request.input_language.as_deref(), request.output_locale.as_deref()]
-        .into_iter()
-        .flatten()
-    {
-        if locale.len() > 63
-            || locale.is_empty()
-            || !locale.split('-').enumerate().all(|(index, part)| {
-                !part.is_empty()
-                    && part.len() <= 8
-                    && part
-                        .bytes()
-                        .all(|byte| byte.is_ascii_alphabetic() || index > 0 && byte.is_ascii_digit())
-            })
-        {
-            return Err(CitationError::InvalidLocale);
-        }
-    }
-    let mut bytes = 0_usize;
-    for item in &request.items {
-        bytes = bytes.saturating_add(item.locator.as_ref().map_or(0, |locator| locator.value.len()));
-        if item.prefix.len().saturating_add(item.suffix.len()) > 10_000 {
-            return Err(CitationError::InvalidRichText);
-        }
-        for run in item.prefix.iter().chain(&item.suffix) {
-            bytes = bytes.saturating_add(run.text.len()).saturating_add(16);
-        }
-        if bytes > MAX_CITATION_BYTES {
-            return Err(CitationError::InvalidRichText);
-        }
-    }
-    Ok(())
 }

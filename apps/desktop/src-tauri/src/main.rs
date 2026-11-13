@@ -287,6 +287,7 @@ fn main() {
             ibis_engine::identity::use_saved_key(true);
             let settings_path = app.path().app_config_dir()?.join("settings.json");
             let loaded = settings::load(&settings_path);
+            library::engine_file::warm_formatter(loaded.settings.output.clone());
             app.manage(SettingsFile::new(settings_path.clone()));
             let remember = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
             session_references::manage(app.handle(), &settings_path, remember);
