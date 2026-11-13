@@ -42,6 +42,9 @@ saves, reads bounded regular files, tracks only bytes actually written, and
 watches both a symlink and its target. Invalid existing files refuse ordinary
 writes even with a good backup; restore is explicit. Valid edits apply only
 changed preference fields, including shortcut replacement and recording recents.
+Watch hints already queued are coalesced without waiting for a quiet period, so
+reverting a shortcut does not leave the previous key active during a debounce.
+Completed editor writes trigger a read too; Ibis's own reads do not.
 
 After successful paste, a suggestion is remembered only while its captured
 engine answer still applies. Its explanation is durable and once per kind.

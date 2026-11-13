@@ -860,6 +860,84 @@ mod tests {
     }
 
     #[test]
+    fn live_shortcut_edits_and_side_file_restores_leave_the_original_registered()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use tauri_plugin_global_shortcut::Shortcut;
+
+        for side_files_present in [false, true] {
+            let directory = tempfile::tempdir()?;
+            let path = directory.path().join("settings.json");
+            let file = SettingsFile::new(path.clone());
+            file.update(|settings| settings.shortcut.set_here(Some("Control+Shift+Y".into())))?;
+            let original: Shortcut = "Control+Shift+Y".parse()?;
+            let edited: Shortcut = "Control+Alt+F12".parse()?;
+            if side_files_present {
+                for suffix in ["json.bak", "json.tmp"] {
+                    std::fs::write(path.with_extension(suffix), b"{}")?;
+                }
+            }
+            let prior: Vec<_> = ["json", "json.bak", "json.tmp"]
+                .map(|suffix| {
+                    let path = path.with_extension(suffix);
+                    let bytes = std::fs::read(&path).ok();
+                    (path, bytes)
+                })
+                .into();
+            let app = tauri::test::mock_builder()
+                .manage(file.clone())
+                .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+            // Only the OS backend is simulated: use the production replacement
+            // rule to track which key would actually open the picker.
+            let registered = Arc::new(Mutex::new(vec![original]));
+            let backend = Arc::clone(&registered);
+            let _watching = file
+                .watch_with(app.handle().clone(), move |_, _, _, settings| {
+                    let key: Shortcut = settings
+                        .shortcut
+                        .here()
+                        .unwrap_or_default()
+                        .parse()
+                        .unwrap_or_else(|error| panic!("{error}"));
+                    let current = backend.lock().unwrap_or_else(|error| panic!("{error}"))[0];
+                    if key != current {
+                        crate::picker::replace_with(
+                            Some(current),
+                            key,
+                            |key| {
+                                backend.lock().unwrap_or_else(|error| panic!("{error}")).push(key);
+                                Ok(())
+                            },
+                            |key| {
+                                backend
+                                    .lock()
+                                    .unwrap_or_else(|error| panic!("{error}"))
+                                    .retain(|saved| *saved != key);
+                                Ok(())
+                            },
+                        )
+                        .unwrap_or_else(|error| panic!("{error}"));
+                    }
+                })
+                .ok_or("settings folder could not be watched")?;
+            std::fs::write(&path, br#"{"shortcut":"Control+Alt+F12"}"#)?;
+            // Queue barriers control observation, independently of OS timing.
+            file.exclusive(|_| ())?;
+            assert_eq!(*registered.lock().map_err(|_| "registration poisoned")?, [edited]);
+            for (path, bytes) in prior {
+                if let Some(bytes) = bytes {
+                    std::fs::write(path, bytes)?;
+                } else if path.exists() {
+                    std::fs::remove_file(path)?;
+                }
+            }
+            file.exclusive(|_| ())?;
+            assert_eq!(settings::load(&path).settings.shortcut.here(), Some("Control+Shift+Y"));
+            assert_eq!(*registered.lock().map_err(|_| "registration poisoned")?, [original]);
+        }
+        Ok(())
+    }
+
+    #[test]
     fn repeated_or_unchanged_live_preferences_publish_no_change_event() {
         use tauri::Listener;
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));

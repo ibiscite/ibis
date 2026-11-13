@@ -90,7 +90,16 @@ impl Drop for Watching {
         }
     }
 }
-const SETTLE: Duration = Duration::from_millis(150);
+fn watch_edits(mut receive: impl FnMut(Option<Duration>) -> bool, mut changed: impl FnMut() -> bool) {
+    while receive(None) {
+        // Coalesce hints already waiting, but never wait for silence: a person
+        // may press a restored shortcut immediately after their editor saves.
+        while receive(Some(Duration::ZERO)) {}
+        if !changed() {
+            return;
+        }
+    }
+}
 
 #[must_use = "a change's outcome says whether it was saved"]
 pub struct Pending<T>(Receiver<T>);
@@ -133,7 +142,11 @@ fn signal_edit(event: notify::Result<notify::Event>, tracked: &Mutex<Vec<PathBuf
     if event.is_ok_and(|event| {
         // Inotify reports our own reads as opens. Treating them as edits would
         // make every fingerprint schedule another fingerprint indefinitely.
-        !matches!(event.kind, notify::EventKind::Access(_))
+        (!matches!(event.kind, notify::EventKind::Access(_))
+            || matches!(
+                event.kind,
+                notify::EventKind::Access(notify::event::AccessKind::Close(notify::event::AccessMode::Write))
+            ))
             && tracked.lock().is_ok_and(|folders| {
                 // Native events are hints: an atomic save can name only its
                 // replacement file or directory. The owner compares bytes.
@@ -220,17 +233,20 @@ impl Owner {
         std::thread::Builder::new()
             .name("ibis-settings-watch".into())
             .spawn(move || {
-                while events.recv().is_ok() {
-                    while events.recv_timeout(SETTLE).is_ok() {}
-                    {
-                        let Ok(mut state) = state.lock() else { return };
-                        let Some(watcher) = state.watcher.as_mut() else { return };
+                watch_edits(
+                    |timeout| match timeout {
+                        Some(timeout) => events.recv_timeout(timeout).is_ok(),
+                        None => events.recv().is_ok(),
+                    },
+                    || {
+                        let Ok(mut state) = state.lock() else { return false };
+                        let Some(watcher) = state.watcher.as_mut() else {
+                            return false;
+                        };
                         rebind(&path, &folder, &mut target_folder, watcher, &tracked);
-                    }
-                    if enqueue(&jobs, Box::new(|_, _| Completion::default())).is_none() {
-                        return;
-                    }
-                }
+                        enqueue(&jobs, Box::new(|_, _| Completion::default())).is_some()
+                    },
+                );
             })
             .ok()?;
         Some(Watching {
@@ -399,6 +415,70 @@ mod tests {
     }
 
     #[test]
+    fn a_quick_external_shortcut_revert_applies_before_the_next_keypress() -> Result<(), Box<dyn std::error::Error>> {
+        let (directory, owner) = owner();
+        owner.change(|settings| {
+            settings.shortcut.set_here(Some("Control+Shift+Y".into()));
+            Ok::<_, SettingsError>(())
+        })?;
+        let path = directory.path().join("settings.json");
+        let original = std::fs::read(&path)?;
+        let applied = Arc::new(Mutex::new(String::from("Control+Shift+Y")));
+        let observed = Arc::clone(&applied);
+        owner.watch.lock().map_err(|_| "watch poisoned")?.edited = Some(Arc::new(move |_, loaded| {
+            if loaded.problem.is_none() {
+                *observed.lock().unwrap_or_else(|error| panic!("{error}")) =
+                    loaded.settings.shortcut.here().unwrap_or_default().to_owned();
+            }
+        }));
+        std::fs::write(&path, br#"{"shortcut":"Control+Alt+F12"}"#)?;
+        // A citation's settings turn can apply A before the native watcher runs.
+        assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+        assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Alt+F12");
+
+        // Fake time, no native watcher or sleeps: restore primary, backup and
+        // temporary in order, then press the original shortcut a millisecond
+        // later. Waiting for silence must not keep A active for that keypress.
+        let mut now = Duration::ZERO;
+        let mut events = std::collections::VecDeque::from([
+            (Duration::ZERO, Some(path.clone())),
+            (Duration::from_millis(1), Some(path.with_extension("json.bak"))),
+            (Duration::from_millis(2), Some(path.with_extension("json.tmp"))),
+            (Duration::from_millis(3), None),
+        ]);
+        watch_edits(
+            |timeout| {
+                let deadline = timeout.map(|timeout| now + timeout);
+                while let Some((at, _)) = events.front() {
+                    if deadline.is_some_and(|deadline| *at > deadline) {
+                        now = deadline.unwrap_or(now);
+                        return false;
+                    }
+                    let (at, file) = events.pop_front().unwrap_or_else(|| unreachable!());
+                    now = at;
+                    if let Some(file) = file {
+                        std::fs::write(file, &original).unwrap_or_else(|error| panic!("{error}"));
+                        return true;
+                    }
+                    assert_eq!(
+                        *applied.lock().unwrap_or_else(|error| panic!("{error}")),
+                        "Control+Shift+Y",
+                        "the original shortcut must work when pressed after restoring the files"
+                    );
+                }
+                false
+            },
+            || {
+                assert_eq!(owner.submit_on_file(|_| ()).wait(), Some(()));
+                true
+            },
+        );
+        assert_eq!(*applied.lock().map_err(|_| "shortcut poisoned")?, "Control+Shift+Y");
+        assert_eq!(owner.read().settings.shortcut.here(), Some("Control+Shift+Y"));
+        Ok(())
+    }
+
+    #[test]
     fn an_edit_report_uses_the_captured_read_even_if_the_editor_finishes_before_delivery() {
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
         let path = directory.path().join("settings.json");
@@ -456,7 +536,7 @@ mod tests {
     #[test]
     fn replacement_and_directory_events_schedule_a_read_in_both_folders() {
         use notify::EventKind;
-        use notify::event::{CreateKind, ModifyKind, RemoveKind, RenameMode};
+        use notify::event::{AccessKind, AccessMode, CreateKind, ModifyKind, RemoveKind, RenameMode};
         let folders = [PathBuf::from("synthetic/profile"), PathBuf::from("synthetic/linked")];
         let tracked = Mutex::new(folders.to_vec());
         let (signal, events) = mpsc::sync_channel(1);
@@ -473,6 +553,9 @@ mod tests {
                     EventKind::Modify(ModifyKind::Name(RenameMode::Any)),
                     EventKind::Remove(RemoveKind::Any),
                     EventKind::Other,
+                    // A read during truncate/write needs the completed save's
+                    // final hint, even when modify events were coalesced.
+                    EventKind::Access(AccessKind::Close(AccessMode::Write)),
                 ] {
                     signal_edit(Ok(notify::Event::new(kind).add_path(path.clone())), &tracked, &signal);
                     assert_eq!(events.try_recv(), Ok(()), "{kind:?}: {path:?}");
