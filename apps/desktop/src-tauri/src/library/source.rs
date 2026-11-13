@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use ibis_core::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
+use ibis_engine::settings::{LibrarySetting, ZoteroLibraries, ZoteroLibrary};
 
 /// Where references come from: a BibTeX or BibLaTeX file, or Zotero
 /// libraries read through Zotero's local API while Zotero runs.

@@ -158,6 +158,17 @@ test("a pasted citation no library holds says so", () => {
   expect(buttons).toEqual(["Clear Search"]);
 });
 
+test("nothing matched is never a dead end: the library itself is offered, to add what is missing", () => {
+  const open = vi.fn();
+  const { buttons } = obstacle({ query: "qxzq", fallback: { label: "Open invented.bib", keys: "CmdOrCtrl+O", open } });
+  expect(buttons[0]).toBe("Clear Search");
+  fireEvent.click(screen.getByRole("button", { name: /^Open invented\.bib/ }));
+  expect(open).toHaveBeenCalledOnce();
+  cleanup();
+  // A filter or a narrowed search has its own nearer fix, and only that.
+  expect(obstacle({ unfiltered: "smith", fallback: { label: "Open invented.bib", open } }).buttons).toEqual(["Remove Filter"]);
+});
+
 test("a filter goes first: it is the nearest thing to undo", () => {
   expect(obstacle({ unfiltered: "smith", narrowed: true, missing: true }).title).toBe("No matches with this filter");
 });

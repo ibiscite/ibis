@@ -2,13 +2,13 @@
 use crate::library::CommandError;
 use ibis_core::contract::{FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
 
-impl From<&ibis_core::settings::SettingsError> for CommandError {
-    fn from(error: &ibis_core::settings::SettingsError) -> Self {
+impl From<&ibis_engine::settings::SettingsError> for CommandError {
+    fn from(error: &ibis_engine::settings::SettingsError) -> Self {
         Self::Presented(error.into())
     }
 }
-impl From<ibis_core::settings::SettingsError> for CommandError {
-    fn from(error: ibis_core::settings::SettingsError) -> Self {
+impl From<ibis_engine::settings::SettingsError> for CommandError {
+    fn from(error: ibis_engine::settings::SettingsError) -> Self {
         Self::from(&error)
     }
 }
@@ -16,6 +16,7 @@ impl From<ibis_core::settings::SettingsError> for CommandError {
 #[derive(serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
 pub(crate) enum NativeOperation {
+    OpenSettingsFile,
     CliStatus,
     SetCliInstalled,
     CopyCliProfile,
@@ -44,7 +45,8 @@ impl NativeOperation {
             }
             Self::FindZotero => (R::Retry, F::LibraryPicker),
             Self::RowContext => (R::Retry, F::Search),
-            Self::CliStatus
+            Self::OpenSettingsFile
+            | Self::CliStatus
             | Self::SetCliInstalled
             | Self::CopyCliProfile
             | Self::HidePicker
@@ -68,9 +70,9 @@ impl NativeOperation {
     }
 }
 
-impl From<ibis_core::settings::backup::BackupProblem> for CommandError {
-    fn from(error: ibis_core::settings::backup::BackupProblem) -> Self {
-        use ibis_core::settings::backup::BackupProblem as B;
+impl From<ibis_engine::settings::backup::BackupProblem> for CommandError {
+    fn from(error: ibis_engine::settings::backup::BackupProblem) -> Self {
+        use ibis_engine::settings::backup::BackupProblem as B;
         let (code, recovery) = match error {
             B::NotDownloaded => ("not-downloaded", R::DownloadFile),
             B::Unreadable => ("unreadable", R::ChooseBackup),
@@ -80,6 +82,7 @@ impl From<ibis_core::settings::backup::BackupProblem> for CommandError {
             B::Invalid => ("invalid", R::ChooseBackup),
             B::SettingsUnusable => ("settings-unusable", R::Retry),
             B::Changed => ("changed", R::ChooseBackup),
+            B::Busy => ("busy", R::Retry),
             B::NotSaved => ("not-saved", R::Retry),
         };
         Self::Presented(Problem {
@@ -126,7 +129,7 @@ impl From<crate::destination::AppChoiceError> for CommandError {
     fn from(error: crate::destination::AppChoiceError) -> Self {
         use crate::destination::AppChoiceError as A;
         let (code, id) = match error {
-            A::NotSaved { .. } => ("not-saved", "app-command-output-not-saved"),
+            A::NotSaved { problem } => return Self::Presented(problem),
             A::DeliveryNotSaved => ("delivery_not_saved", "app-command-delivery-not-saved"),
         };
         Self::Presented(Problem {

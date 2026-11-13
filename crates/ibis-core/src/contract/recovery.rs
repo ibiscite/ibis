@@ -230,39 +230,3 @@ impl CitationError {
         }
     }
 }
-
-impl From<&crate::settings::writing_projects::ProjectError> for Problem {
-    fn from(error: &crate::settings::writing_projects::ProjectError) -> Self {
-        use crate::settings::writing_projects::ProjectError as P;
-        let (code, recovery, focus) = match error {
-            P::InvalidName => ("invalid-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::DuplicateName => ("duplicate-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::NotFound => ("not-found", Recovery::ChooseProject, FocusTarget::ProjectMenu),
-            P::TooMany => ("too-many", Recovery::RemoveProject, FocusTarget::ProjectMenu),
-            P::Invalid => ("invalid", Recovery::ReviewSettings, FocusTarget::Settings),
-            P::Settings(error) => return error.into(),
-        };
-        Self {
-            code: format!("project-{code}"),
-            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery, focus),
-        }
-    }
-}
-
-impl From<&crate::settings::SettingsError> for Problem {
-    fn from(error: &crate::settings::SettingsError) -> Self {
-        use crate::settings::SettingsError as S;
-        let (code, recovery, focus) = match error {
-            S::Unreadable(_) => ("unreadable", Recovery::Retry, FocusTarget::RecoveryAction),
-            S::Invalid(_) | S::InvalidZoteroLibraryEntry { .. } => {
-                ("invalid", Recovery::ReviewSettings, FocusTarget::Settings)
-            }
-            S::NewerVersion(_) => ("newer", Recovery::UpgradeIbis, FocusTarget::RecoveryAction),
-            S::Backup(inner) => return inner.as_ref().into(),
-        };
-        Self {
-            code: format!("settings-{code}"),
-            info: RecoveryInfo::new(&format!("app-settings-error-{code}"), recovery, focus),
-        }
-    }
-}

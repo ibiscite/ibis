@@ -167,7 +167,7 @@ pub(super) fn load_source_guarded(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
 
     #[test]
     fn cancelled_loads_stop_before_source_acquisition() {

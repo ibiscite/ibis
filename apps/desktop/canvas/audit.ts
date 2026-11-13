@@ -3,7 +3,9 @@
 // window size and an appearance and print what this returns. Invented data only.
 import { englishMessages, type MessageId } from "../src/i18n";
 import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
-import { anchorBoxes, anchorMoves, frameStates, geometry, layerRoles, occlusion, overflow, paintOnly, settle, slots } from "./geometry";
+import { HOLD_MS } from "../src/ui/HeldKeys";
+import { currentPlatform } from "../src/platform";
+import { anchorBoxes, anchorMoves, frameStates, geometry, heldKeys, layerRoles, occlusion, overflow, paintOnly, settle, slots } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
 
@@ -12,6 +14,23 @@ export const geometryScreens = ["results", "first-run", "shelf", "reference-deta
 
 /** Scenarios with something floating, for the layer check in every appearance. */
 export const layerScreens = ["more", "format-menu", "library-menu", "show-as-menu", "reference-details", "peek", "shortcuts", "writing-projects", "cited-since-opening"];
+
+/** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
+ * every held key and the row numbers drawn over a list with a citation. */
+export const heldScreens = ["shelf", "compact", "right-to-left"];
+
+/** Holds the command key alone for longer than the hold (ui/HeldKeys), returns what
+ * the check finds, and lets go. The same keydown a person's key sends. */
+async function whileHeld(check: () => string[]): Promise<string[]> {
+  const key = currentPlatform() === "macos" ? "Meta" : "Control";
+  window.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true }));
+  await new Promise((done) => setTimeout(done, HOLD_MS + 100));
+  await settle();
+  try { return check(); } finally {
+    window.dispatchEvent(new KeyboardEvent("keyup", { key, bubbles: true }));
+    await settle();
+  }
+}
 
 /** Each catalogue message a slot can show, with the longest invented values its
  * callers pass. A message added to a slot's caller is added here. */
@@ -53,7 +72,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (pass === "inventory") {
     for (const scenario of picker) {
       await show(scenario);
-      const shown = document.querySelector(".ui-notice-line > :is(.ui-line-notice, .notice-slot), .ui-notice-host > :is(.ui-line-notice, .notice-slot)");
+      const shown = document.querySelector(".ui-notice-line > :is(.ui-line-notice, .notice-slot)");
       const top = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().top) : "-"; };
       const bottom = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().bottom) : "-"; };
       failures.push(`${scenario}: search ends ${bottom(".search-bar")}, line ${top(".ui-notice-line")}–${bottom(".ui-notice-line")}, first row ${top('#results [role="option"]')}; ${shown?.textContent?.trim() || "no notice"}`);
@@ -116,6 +135,10 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
     for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
       if (words.textContent && !declared.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
     failures.push(...found.map((failure) => `${scenario}: ${failure}`));
+    if (heldScreens.includes(scenario)) {
+      const held = await whileHeld(() => document.documentElement.hasAttribute("data-keys-held") ? [...heldKeys(), ...occlusion()] : ["[C24 held] the hold drew nothing"]);
+      failures.push(...held.map((failure) => `${scenario} (held): ${failure}`));
+    }
     if (scenario === "results") idle.boxes = anchorBoxes();
     if ((frameStates as readonly string[]).includes(scenario)) states.set(scenario, anchorBoxes());
   }

@@ -5,9 +5,10 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 import { recordId } from "../test-fixtures";
 import { isStyle, listedOutput } from "../format/outputs";
+import { fixtureDestination, formatAnswer } from "./format";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
 
 export async function resetApp() {
@@ -150,16 +151,21 @@ type Prepared = { request: PreviewRequest; preview: FilePreview };
 const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
+/** Invented ownership groups in the engine display contract. */
+export function displayTree(spans: { item: number | null; text: string; runs?: DisplayRun[] }[]): DisplayTree {
+  return { nodes: spans.map(({ item, text, runs }) => ({ item, content: runs ?? [{ text, italic: false, bold: false, script: "normal" }], blocks: [] })) };
+}
+
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
-  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
+  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
 export function lineReceipt(words: readonly string[], warnings: string[] = []): FilePreview {
   const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
-  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), spans };
+  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
 }
 
 /** The keys of the references in the citation being built, in the line's order. */
@@ -224,7 +230,10 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
     save_picker_preferences: ({ preferences: patch }) => { const receipt = ++revision; submitted.set(receipt, patch as Partial<api.PickerPreferences>); return receipt; },
     picker_preferences_saved: () => null,
     // Opened from no app Ibis knows: the default format applies.
-    picker_destination: () => ({ app: null, app_id: null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: async () => {
+      await Promise.resolve();
+      return { app: null, app_id: null, app_identity: null, format: formatAnswer(preferences.key_output ?? preferences.output, "yours"), unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
+    },
     remember_app_output: () => null,
     login_item: () => ({ name: "Ibis", enabled: false, problem: null }),
     set_login_item: ({ enabled }) => ({ name: "Ibis", enabled, problem: null }),
@@ -249,7 +258,11 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       // A test's save handler sees the choice the receipt stands for.
       const receipt = cmd === "picker_preferences_saved" ? (args as { receipt: number }).receipt : 0;
       const value = handler((receipt ? { ...args as object, preferences: submitted.get(receipt) } : args ?? {}) as Parameters<Handler>[0]);
-      if (cmd === "picker_preferences") return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      if (cmd === "picker_destination") return Promise.resolve(value).then((destination) => fixtureDestination(destination as api.PickerDestination));
+      if (cmd === "picker_preferences") {
+        if (value && typeof value === "object" && !("then" in value)) preferences = { ...preferences, ...value as api.PickerPreferences };
+        return Promise.resolve(value).then((loaded) => { preferences = { ...preferences, ...loaded as api.PickerPreferences }; return preferences; });
+      }
       if (cmd === "picker_preferences_saved") return Promise.resolve(value).then(() => {
         // The owner applies choices in the order they were submitted: a field
         // a later choice already saved keeps that later value.

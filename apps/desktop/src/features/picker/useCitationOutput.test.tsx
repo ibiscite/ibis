@@ -1,4 +1,5 @@
 import { recordId } from "../../test-fixtures";
+import { displayTree } from "../../testing/app";
 import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { initialSession } from "./session";
 import { useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
@@ -53,7 +54,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): FilePreview {
-  return { effective_output: null, text, spans: [{ item: 0, text }], html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { effective_output: null, text, display: displayTree([{ item: 0, text }]), warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {

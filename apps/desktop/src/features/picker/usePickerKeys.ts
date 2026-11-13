@@ -1,11 +1,11 @@
 import type * as nativeApi from "../../api";
 import { useRef, type RefObject } from "react";
-import { keysFor, matchesAccelerator } from "../../keys";
+import { keysFor, matchesAccelerator, pickNumber } from "../../keys";
 import { isMac } from "../../platform";
 import type { CitationLineActions } from "./CitationShelf";
 import { currentPlatform } from "../../platform";
 import { focusChoices } from "../../ui/ChoiceList";
-import { closeNearestLayer, closeOverlays, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
+import { closeOverlays, goBack, composingKey, consumeKey, focusLost, overlayOpen, useKeyOwner } from "../../ui/layers";
 import { commandFor, type PickerCommand } from "./shortcuts";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -19,8 +19,10 @@ import type { usePointerSelection } from "../../pointerSelection";
  * wherever focus is; a key and its menu item run the same command. */
 export function usePickerKeys({
   api, pickerSession, menus, source, results, showCitations, copyChosen, actions, pointer, followKeyboard,
-  quitAfterSaving, onEmptyEnter, commandKeys, citationLine,
+  quitAfterSaving, onEmptyEnter, commandKeys, citationLine, pick, findOpen = false,
 }: {
+  /** ⌘1–9: what picking the shown row with that number does, or null while there is no such row. */
+  pick?: (number: number) => (() => void) | null;
   /** ⌘↓ goes from Search to the citation's last token. */
   citationLine?: RefObject<CitationLineActions | null>;
   api: typeof nativeApi;
@@ -37,6 +39,7 @@ export function usePickerKeys({
   onEmptyEnter?: () => void;
   /** ">" in the search: the command list answers ↑ ↓ and Enter instead of the references. */
   commandKeys?: { current: ((event: KeyboardEvent) => boolean) | null };
+  findOpen?: boolean;
 }) {
   const { session, cancelCopy, setActive } = pickerSession;
   const { input, moreButton, menuOpen, keysOpen, formatOpen, togglePin, openKeys, openMore, openFormat, focusHome, runFromMenu } = menus;
@@ -50,12 +53,12 @@ export function usePickerKeys({
     else if (command === "more") {
       if (menuOpen) { closeOverlays(); moreButton.current?.focus(); } else openMore();
     } else if (command === "keys") {
-      if (keysOpen) closeNearestLayer(event); else openKeys();
+      if (keysOpen) goBack("escape", event); else openKeys();
     } else if (command === "format") {
-      if (formatOpen) closeNearestLayer(event); else openFormat();
+      if (formatOpen) goBack("escape", event); else openFormat();
     } else if (command === "changeLast") changeLast();
     else if (command === "chooseSource") chooseSources();
-    else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource");
+    else if (command === "source" || command === "revealSource") openSource(false, command === "revealSource" ? true : undefined);
     else if (command === "settings") { if (openSettings) runFromMenu("settings", () => openSettings(null, session.getSnapshot().presentation)); }
     else runFromMenu("quit", quitAfterSaving);
   };
@@ -88,7 +91,8 @@ export function usePickerKeys({
       toggleHighlighted();
     } else if (e.key === "Enter") {
       e.preventDefault();
-      copyChosen();
+      if (findOpen && !e.altKey) { if (results.length > 0) openSource(false, false); }
+      else copyChosen();
     }
   };
   const lastShowing = useRef<number | null>(null);
@@ -110,15 +114,20 @@ export function usePickerKeys({
     if (composingKey(e) || e.key === "Process") return;
     if (e.key === "Escape") {
       // One press, one step: holding Esc must not walk down to hiding.
-      if (repeated || closeNearestLayer(e)) consumeKey(e);
+      if (repeated || goBack("escape", e)) consumeKey(e);
       return;
     }
     const target = lost ? document.activeElement : e.target;
     const command = commandFor(e, target);
     if (command === "settings" && !openSettings) return;
+    const picking = command ? null : pickNumber(e);
+    const picked = picking && !overlayOpen() ? pick?.(picking) : null;
     if (command) {
       consumeKey(e);
       if (!repeated) run(command, e);
+    } else if (picked) {
+      consumeKey(e);
+      if (!repeated) picked();
     } else if (target === input.current) searchKey(e);
   };
   useKeyOwner({ keyDown, home: focusHome });

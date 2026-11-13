@@ -240,7 +240,7 @@ fn save(path: Option<PathBuf>, entries: &mut Vec<(String, Vec<ItemRef>)>) -> io:
         text = serde_json::to_string(entries)?;
     }
     path.as_ref()
-        .map_or(Ok(()), |path| ibis_core::settings::backup::save(path, &text, true))
+        .map_or(Ok(()), |path| crate::settings::backup::save(path, &text, true))
 }
 
 /// Resolve current records, then source-added records, without repeating rows.

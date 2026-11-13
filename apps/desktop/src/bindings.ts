@@ -100,8 +100,8 @@ export const commands = {
 	 * file. The text goes to the clipboard here and never through the web view.
 	 */
 	copyProjectEntry: (id: RecentIdentity, generation: number) => __TAURI_INVOKE<EntryCopy>("copy_project_entry", { id, generation }),
-	writingProjects: () => __TAURI_INVOKE<WritingProjectsView>("writing_projects"),
-	editWritingProject: (context: string, action: WritingProjectEdit) => __TAURI_INVOKE<WritingProjectsView>("edit_writing_project", { context, action }),
+	writings: () => __TAURI_INVOKE<WritingsView>("writings"),
+	editWriting: (context: string, action: WritingEdit) => __TAURI_INVOKE<WritingsView>("edit_writing", { context, action }),
 	/** `None` when no editor is waiting. */
 	editorRequest: () => __TAURI_INVOKE<EditorWaiting | null>("editor_request"),
 	editorEndpoint: () => __TAURI_INVOKE<EndpointStatus>("editor_endpoint"),
@@ -157,6 +157,15 @@ export const commands = {
 	 * to the per-app file; a delivery that fails after its format saved says so.
 	 */
 	rememberAppOutput: (appId: string, output: string | null, paste: AppPaste | null, identity: string | null) => __TAURI_INVOKE<null>("remember_app_output", { appId, output, paste, identity }),
+	/** Forget only the current app's format, after checking the captured target. */
+	forgetAppOutput: (appId: string, identity: string | null) => __TAURI_INVOKE<null>("forget_app_output", { appId, identity }),
+	formatSettings: () => __TAURI_INVOKE<FormatSettingsView>("format_settings"),
+	forgetAppFormat: (id: string) => __TAURI_INVOKE<null>("forget_app_format", { id }),
+	/**
+	 * Open the native-owned settings path in its registered editor. An absent
+	 * file is created through the owner; unreadable existing bytes stay intact.
+	 */
+	openSettingsFile: () => __TAURI_INVOKE<null>("open_settings_file"),
 	/** Whether Ibis starts when the person logs in, read from the system now. */
 	loginItem: () => __TAURI_INVOKE<LoginItem>("login_item"),
 	/** Start Ibis when the person logs in, or stop doing so. */
@@ -200,6 +209,8 @@ export const commands = {
 	 * the event that announced it.
 	 */
 	copiedNotice: () => __TAURI_INVOKE<NoticeMessage | null>("copied_notice"),
+	/** The one-time suggestion receipt opens the matching choices in Settings. */
+	changeSuggestedFormat: () => __TAURI_INVOKE<void>("change_suggested_format"),
 	/** Initial command runs asynchronously; native mutations stay on the main thread. */
 	nativeAppearance: () => __TAURI_INVOKE<string>("native_appearance"),
 	/** Show only native Copy and Add/Remove actions. Cancellation returns no action. */
@@ -284,6 +295,12 @@ export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
 
+export type AppFormat = {
+	app: string;
+	format: string;
+	id: string;
+};
+
 /** A deliberate delivery choice for one captured app, independent of its format. */
 export type AppPaste = "paste" | "copy-only";
 
@@ -291,16 +308,10 @@ export type AppPaste = "paste" | "copy-only";
 export type Appearance = "system" | "light" | "dark";
 
 /** Why a backup or restore did not happen; the Settings window words it. */
-export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "changed";
+export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "busy" | "changed";
 
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
-
-export type CitationSpan = {
-	item: number | null;
-	runs?: DisplayRun[] | null;
-	text: string;
-};
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
@@ -376,6 +387,29 @@ export type DesktopShortcut = {
 };
 
 /**
+ * A block covers content runs in [start, end). Blocks are in opening order;
+ * ranges are nested or disjoint, never crossing. Equal ranges retain nesting.
+ */
+export type DisplayBlock = {
+	end: number;
+	kind: DisplayBlockKind;
+	start: number;
+};
+
+/** Passive CSL layout, independent of HTML class names or CSS. */
+export type DisplayBlockKind = "entry" | "margin" | "inline" | "block" | "indent";
+
+/**
+ * One display group owns ordered text leaves and their block layout;
+ * shared punctuation has no item.
+ */
+export type DisplayNode = {
+	blocks: DisplayBlock[];
+	content: DisplayRun[];
+	item: number | null;
+};
+
+/**
  * Output-only passive presentation. The smaller request TextRun contract stays
  * independent of the additional styles a citation processor may produce.
  */
@@ -386,6 +420,11 @@ export type DisplayRun = {
 	small_caps?: boolean;
 	text: string;
 	underline?: boolean;
+};
+
+/** Ownership groups with bounded-depth passive blocks and styled text leaves. */
+export type DisplayTree = {
+	nodes: DisplayNode[];
 };
 
 /**
@@ -417,10 +456,10 @@ export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "
 
 export type FilePreview = {
 	content_hash: string;
+	display: DisplayTree;
 	/** The effective output after an editor request overrides the picker. */
 	effective_output: string | null;
 	failure?: Problem | null;
-	html: string | null;
 	/**
 	 * What the engine says about this citation that is no warning, such as a
 	 * full first note; the web view words each from the catalogue.
@@ -432,7 +471,6 @@ export type FilePreview = {
 	 * names a different work.
 	 */
 	project_refusal?: string | null;
-	spans: CitationSpan[];
 	text: string;
 	ticket: string;
 	warnings: string[];
@@ -462,6 +500,29 @@ export type FormOption = {
 	reason: string | null;
 };
 
+/** The format a citation for one app uses, and why. */
+export type FormatChoice = {
+	from: FormatFrom;
+	/** Its id in the engine's `outputs` list, when it is listed there. */
+	id?: string | null;
+	kind: FormatKind;
+	/** The output written. */
+	output: OutputSpec;
+	writing?: WritingName | null;
+};
+
+/** Which level chose a citation's format (decision 0042); the engine decides. */
+export type FormatFrom = "writing" | "app" | "yours" | "suggestion";
+
+/** The kinds of app a format is chosen for. People never see the word. */
+export type FormatKind = "documents" | "keys";
+
+export type FormatSettingsView = {
+	apps: AppFormat[];
+	key_output_visible: boolean;
+	writings: WritingView[];
+};
+
 /** A `.bib` file found on this computer. */
 export type FoundFile = {
 	/** The name of the folder holding it, without the rest of its path. */
@@ -479,6 +540,8 @@ export type ItemRef = {
 	key: RecordId;
 	library: LibraryId;
 };
+
+export type KeySyntax = "pandoc" | "biblatex" | "natbib" | "latex" | "context" | "typst" | "org-cite" | "myst" | "multi-markdown" | "ascii-doc" | "jupyter" | "jekyll-scholar" | "scannable-cite" | "keys" | "csl-json" | "cayw-json";
 
 /**
  * A library's opaque token. It says nothing about the library: its kind and
@@ -639,11 +702,22 @@ export type NoticeMessage = {
 	 * document uses one.
 	 */
 	plugin_note?: boolean;
+	suggested_format?: string | null;
 	text: string;
 };
 
-/** An app ID that cannot tell Ibis which output its document needs. */
-export type OutputQuestion = "browser" | "editor";
+export type OutputSpec = {
+	/** A command name for syntaxes that support it; engines validate its grammar. */
+	command: string | null;
+	kind: "key";
+	syntax: KeySyntax;
+} | {
+	kind: "csl";
+	style: string;
+} | {
+	kind: "preset";
+	name: string;
+};
 
 /** Where Settings opens. */
 export type Page = "general" | "look" | "libraries" | "advanced" | "shortcuts" | "citations" | "about" | "paste";
@@ -672,25 +746,27 @@ export type PickerDestination = {
 	app_id: string | null;
 	/** Opaque app-location fingerprint; no path crosses IPC. */
 	app_identity: string | null;
-	/** The app suggestion, an engine output id; `None` follows the saved default. */
-	automatic: string | null;
 	/** A proven ordinary target can accept an explicit delivery choice, including recovery. */
 	can_choose_paste: boolean;
 	/** The current paste policy permits an attempt; final delivery checks still apply. */
 	can_paste: boolean;
 	context_version?: [number, number] | null;
-	/** The app cannot identify document syntax; ask until an output is remembered. */
-	output_question: OutputQuestion | null;
+	find_open: boolean;
+	/**
+	 * The engine's answer: the format the next citation uses and which level
+	 * chose it (decision 0042). The picker shows it as it is.
+	 */
+	format: FormatChoice;
 	/** The separate delivery choice; never inferred from a remembered format. */
 	paste: AppPaste | null;
 	/** An unrecognised app has a proven target but no delivery choice yet. */
 	paste_question: boolean;
-	/** The output the person chose to always use for this app. */
-	remembered: string | null;
 	/** This app needs a delivery choice after an unreadable per-app file; formats use defaults. */
 	unreadable: boolean;
+	/** Your format for this kind, used by the return-to-usual action. */
+	usual_format: string;
+	writing?: WritingView | null;
 	writing_context?: string | null;
-	writing_project?: WritingProjectView | null;
 };
 
 /**
@@ -701,6 +777,7 @@ export type PickerPreferences = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density: Density;
+	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;
@@ -721,6 +798,7 @@ export type PickerPreferencesPatch = {
 	accent?: Accent | null;
 	appearance?: Appearance | null;
 	density?: Density | null;
+	key_output?: string | null;
 	larger_text?: boolean | null;
 	menu_bar?: boolean | null;
 	/** Only an id the engine lists; any other refuses the whole change. */
@@ -745,6 +823,7 @@ export type PreferenceChange = {
 	 * unchanged value in the snapshot.
 	 */
 	fields: string[];
+	key_output?: string | null;
 	larger_text: boolean;
 	/** The menu bar item; on by default. */
 	menu_bar: boolean;
@@ -982,7 +1061,7 @@ export type SearchResult = {
  */
 export type SessionBibliography = {
 	content_hash: string;
-	html: string | null;
+	display: DisplayTree;
 	/**
 	 * References this style cannot write, by key or title. They are named so
 	 * that the rest can still be used.
@@ -1066,7 +1145,7 @@ export type UndoView = {
 /** Settings › Look's window size. Any other dragged size is Custom. */
 export type WindowSize = "small" | "medium" | "large" | "custom";
 
-export type WritingProjectEdit = {
+export type WritingEdit = {
 	kind: "create";
 	name: string;
 	output: string;
@@ -1086,21 +1165,27 @@ export type WritingProjectEdit = {
 	output: string;
 };
 
-export type WritingProjectView = {
+/** The writing that chose a format. */
+export type WritingName = {
+	id: string;
+	name: string;
+};
+
+export type WritingView = {
 	bibliography: string | null;
 	id: string;
 	name: string;
-	/** A CLI project can name outputs not yet available in the picker. */
+	/** A writing can name outputs not yet available in the picker. */
 	output: string | null;
 };
 
-export type WritingProjectsView = {
-	active?: WritingProjectView | null;
+export type WritingsView = {
+	active?: WritingView | null;
 	/** Owns one picker opening and captured destination; never a path or title. */
 	context: string;
-	projects: WritingProjectView[];
 	selected: string | null;
 	session_only: boolean;
+	writings: WritingView[];
 };
 
 /** A Zotero group library the user can choose. */

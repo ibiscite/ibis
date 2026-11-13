@@ -5,7 +5,7 @@ use std::os::unix::fs::FileTypeExt;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
 
-use ibis_core::settings::{self, Settings, SettingsError};
+use ibis_engine::settings::{self, Settings, SettingsError};
 
 #[test]
 fn special_settings_files_never_block_or_replace_a_recovery_file() {

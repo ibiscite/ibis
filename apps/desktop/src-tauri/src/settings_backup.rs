@@ -247,8 +247,8 @@ pub(crate) fn cancel_settings_restore(pending: State<'_, PendingRestore>, ticket
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ibis_core::settings::backup as rules;
-    use ibis_core::settings::{LibrarySetting, Settings};
+    use ibis_engine::settings::backup as rules;
+    use ibis_engine::settings::{LibrarySetting, Settings};
 
     fn plan(settings: &Settings) -> Plan {
         let text = rules::export(settings, "0.0.0").unwrap_or_else(|error| panic!("{error}"));

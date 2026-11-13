@@ -309,7 +309,7 @@ fn export_path(path: std::path::PathBuf) -> (std::path::PathBuf, bool) {
 
 /// Save only the name the dialog confirmed; a completed extension cannot overwrite.
 fn save_export(path: &std::path::Path, text: &str, replace: bool) -> Result<(), CommandError> {
-    ibis_core::settings::backup::save(path, text, replace).map_err(|error| match error.kind() {
+    ibis_engine::settings::backup::save(path, text, replace).map_err(|error| match error.kind() {
         std::io::ErrorKind::AlreadyExists => CommandError::BibliographyNameTaken,
         _ => CommandError::BibliographyNotSaved,
     })
@@ -339,7 +339,7 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
                 .filter(|_| chose)
             {
                 let history = app.state::<SessionReferences>();
-                let loaded = ibis_core::settings::load(&settings_path);
+                let loaded = ibis_engine::settings::load(&settings_path);
                 let saved = loaded.problem.is_none() && loaded.settings.recent_citations.unwrap_or(true);
                 if !on && saved {
                     let _ = history.forget();

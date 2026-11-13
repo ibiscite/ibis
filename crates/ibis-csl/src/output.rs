@@ -96,12 +96,12 @@ pub(crate) fn result(
     } else {
         escape_space_pairs(&text)
     };
-    let runs = parse_html(&html)?;
-    if runs.iter().any(|run| unsupported_controls(&run.text))
-        || !(presentation_matches(&text, &runs, superscripts)
-            || presentation_matches(&presentation, &runs, superscripts)
-            || blocks_match(&text, &html, superscripts))
-    {
+    let parsed = parse_html(&html)?;
+    let runs = &parsed.runs;
+    let exact =
+        presentation_matches(&text, runs, superscripts) || presentation_matches(&presentation, runs, superscripts);
+    let folded = !exact && blocks_match(&text, &html, superscripts);
+    if runs.iter().any(|run| unsupported_controls(&run.text)) || !(exact || folded) {
         return Err(FormatError::Runtime);
     }
     let items: Vec<_> = input
@@ -129,36 +129,55 @@ pub(crate) fn result(
     }));
     // Project validated presentation equivalents onto the canonical text while
     // retaining emphasis. Clipboard HTML and RTF remain untouched.
-    let canonical = canonical_runs(&text, &runs, superscripts);
+    let canonical =
+        project_runs(&text, runs, superscripts, folded || text_parts.is_some()).ok_or(FormatError::Runtime)?;
     let mut offset = 0;
     let nodes = spans
         .into_iter()
         .map(|span| {
             let end = offset + span.text.len();
-            let content = if let Some(runs) = &canonical {
-                let mut position = 0;
-                runs.iter()
-                    .filter_map(|run| {
-                        let start = position;
-                        position += run.text.len();
-                        let from = offset.max(start);
-                        let to = end.min(position);
-                        (from < to).then(|| DisplayRun {
-                            text: run.text[from - start..to - start].into(),
-                            ..run.clone()
-                        })
+            let mut position = 0;
+            let projected: Vec<_> = canonical
+                .iter()
+                .filter_map(|(run, source)| {
+                    let start = position;
+                    position += run.text.len();
+                    let from = offset.max(start);
+                    let to = end.min(position);
+                    (from < to).then(|| {
+                        (
+                            DisplayRun {
+                                text: run.text[from - start..to - start].into(),
+                                ..run.clone()
+                            },
+                            *source,
+                        )
                     })
-                    .collect()
-            } else {
-                vec![DisplayRun {
-                    text: span.text,
-                    ..DisplayRun::default()
-                }]
-            };
+                })
+                .collect();
+            let blocks = parsed
+                .blocks
+                .iter()
+                .filter_map(|block| {
+                    let mut covered = projected.iter().enumerate().filter_map(|(index, (_, source))| {
+                        source
+                            .filter(|source| block.start <= *source && *source < block.end)
+                            .map(|_| index)
+                    });
+                    let start = covered.next()?;
+                    let end = covered.next_back().unwrap_or(start) + 1;
+                    Some(DisplayBlock {
+                        kind: block.kind,
+                        start,
+                        end,
+                    })
+                })
+                .collect();
             offset = end;
             DisplayNode {
                 item: span.item.map(|item| items[item]),
-                content,
+                content: projected.into_iter().map(|(run, _)| run).collect(),
+                blocks,
             }
         })
         .collect();
@@ -248,7 +267,7 @@ fn blocks_match(text: &str, html: &str, superscripts: &BTreeMap<char, String>) -
         let tag = format!("<div class=\"{class}\">");
         spaced = spaced.replace(&tag, &format!(" {tag}"));
     }
-    let Ok(runs) = parse_html(&spaced) else {
+    let Ok(parsed) = parse_html(&spaced) else {
         return false;
     };
     let collapse = |text: &str, out: &mut String, last_space: &mut bool| {
@@ -265,7 +284,8 @@ fn blocks_match(text: &str, html: &str, superscripts: &BTreeMap<char, String>) -
         }
     };
     let mut last_space = true;
-    let runs: Vec<_> = runs
+    let runs: Vec<_> = parsed
+        .runs
         .iter()
         .map(|run| {
             let mut text = String::new();
@@ -322,14 +342,45 @@ fn presentation_matches(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap
     shown.next().is_none()
 }
 
+#[cfg(test)]
 fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char, String>) -> Option<Vec<DisplayRun>> {
+    project_runs(text, runs, superscripts, false).map(|runs| runs.into_iter().map(|(run, _)| run).collect())
+}
+
+// Keep the source run identity while projecting text so block boundaries survive
+// glyph expansion and the processor's bibliography whitespace folding.
+fn project_runs(
+    text: &str,
+    runs: &[DisplayRun],
+    superscripts: &BTreeMap<char, String>,
+    fold_blocks: bool,
+) -> Option<Vec<(DisplayRun, Option<usize>)>> {
     let mut shown = runs
         .iter()
-        .flat_map(|run| run.text.chars().map(move |ch| (ch, run)))
+        .enumerate()
+        .flat_map(|(index, run)| run.text.chars().map(move |ch| (ch, run, index)))
         .peekable();
-    let mut result: Vec<DisplayRun> = Vec::new();
+    let mut result: Vec<(DisplayRun, Option<usize>)> = Vec::new();
     for original in text.chars() {
-        let &(ch, run) = shown.peek()?;
+        if fold_blocks && !js_space(original) {
+            while shown.peek().is_some_and(|(ch, _, _)| js_space(*ch)) {
+                shown.next();
+            }
+        }
+        if fold_blocks && js_space(original) && !shown.peek().is_some_and(|(ch, _, _)| js_space(*ch)) {
+            let source = (original != '\n')
+                .then(|| result.last().and_then(|(_, source)| *source))
+                .flatten();
+            result.push((
+                DisplayRun {
+                    text: original.to_string(),
+                    ..DisplayRun::default()
+                },
+                source,
+            ));
+            continue;
+        }
+        let &(ch, run, source) = shown.peek()?;
         let script = if original == ch || js_space(original) && js_space(ch) {
             shown.next();
             run.script
@@ -348,7 +399,7 @@ fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char,
                 Script::Normal => return None,
             };
             for expected in expansion.chars() {
-                let (actual, style) = shown.next()?;
+                let (actual, style, _) = shown.next()?;
                 if actual != expected || style.script != run.script {
                     return None;
                 }
@@ -356,8 +407,9 @@ fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char,
             // The canonical character already carries its raised/lowered glyph.
             Script::Normal
         };
-        if let Some(last) = result.last_mut().filter(|last| {
-            last.italic == run.italic
+        if let Some((last, _)) = result.last_mut().filter(|(last, previous)| {
+            *previous == Some(source)
+                && last.italic == run.italic
                 && last.bold == run.bold
                 && last.script == script
                 && last.small_caps == run.small_caps
@@ -365,14 +417,22 @@ fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char,
         }) {
             last.text.push(original);
         } else {
-            result.push(DisplayRun {
-                text: original.to_string(),
-                italic: run.italic,
-                bold: run.bold,
-                script,
-                small_caps: run.small_caps,
-                underline: run.underline,
-            });
+            result.push((
+                DisplayRun {
+                    text: original.to_string(),
+                    italic: run.italic,
+                    bold: run.bold,
+                    script,
+                    small_caps: run.small_caps,
+                    underline: run.underline,
+                },
+                Some(source),
+            ));
+        }
+    }
+    if fold_blocks {
+        while shown.peek().is_some_and(|(ch, _, _)| js_space(*ch)) {
+            shown.next();
         }
     }
     shown.next().is_none().then_some(result)
@@ -380,10 +440,16 @@ fn canonical_runs(text: &str, runs: &[DisplayRun], superscripts: &BTreeMap<char,
 
 /// Only processor-generated passive tags are permitted in canonical clipboard HTML.
 /// Output is rejected rather than silently changing a citation's visible text.
-fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
+struct Parsed {
+    runs: Vec<DisplayRun>,
+    blocks: Vec<DisplayBlock>,
+}
+
+fn parse_html(html: &str) -> Result<Parsed, FormatError> {
     let mut runs = Vec::new();
+    let mut blocks: Vec<DisplayBlock> = Vec::new();
     let mut stack = vec![DisplayRun::default()];
-    let mut names = Vec::new();
+    let mut names: Vec<(&str, Option<usize>, Option<usize>)> = Vec::new();
     let mut rest = html;
     while !rest.is_empty() {
         if let Some(after) = rest.strip_prefix('<') {
@@ -396,12 +462,15 @@ fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
                 if !matches!(tag, "/i" | "/b" | "/sup" | "/sub" | "/span" | "/div") || stack.len() == 1 {
                     return Err(FormatError::Runtime);
                 }
-                let (name, entry_start) = names.pop().ok_or(FormatError::Runtime)?;
+                let (name, entry_start, block_index) = names.pop().ok_or(FormatError::Runtime)?;
                 if name != closing {
                     return Err(FormatError::Runtime);
                 }
                 if let Some(start) = entry_start {
                     trim_entry(&mut runs[start..]);
+                }
+                if let Some(index) = block_index {
+                    blocks[index].end = runs.len();
                 }
                 stack.pop();
             } else {
@@ -447,9 +516,27 @@ fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
                 if stack.len() >= 32 {
                     return Err(FormatError::ResourceLimit);
                 }
+                let block = match tag {
+                    "div class=\"csl-entry\"" => Some(DisplayBlockKind::Entry),
+                    "div class=\"csl-left-margin\"" => Some(DisplayBlockKind::Margin),
+                    "div class=\"csl-right-inline\"" => Some(DisplayBlockKind::Inline),
+                    "div class=\"csl-block\"" => Some(DisplayBlockKind::Block),
+                    "div class=\"csl-indent\"" => Some(DisplayBlockKind::Indent),
+                    _ => None,
+                };
+                let block_index = block.map(|kind| {
+                    let index = blocks.len();
+                    blocks.push(DisplayBlock {
+                        kind,
+                        start: runs.len(),
+                        end: runs.len(),
+                    });
+                    index
+                });
                 names.push((
                     tag.split_whitespace().next().ok_or(FormatError::Runtime)?,
                     (tag == "div class=\"csl-entry\"").then_some(runs.len()),
+                    block_index,
                 ));
                 stack.push(style);
             }
@@ -465,7 +552,7 @@ fn parse_html(html: &str) -> Result<Vec<DisplayRun>, FormatError> {
     if stack.len() != 1 {
         return Err(FormatError::Runtime);
     }
-    Ok(runs)
+    Ok(Parsed { runs, blocks })
 }
 
 // Bibliography text trims each entry; HTML may keep a space just inside its div.
@@ -537,7 +624,7 @@ mod tests {
     }
     #[test]
     fn decodes_entities_once_and_preserves_allowed_styles() {
-        let runs = parse_html("<i>例 &#38; &#x1F600; &amp;lt;</i>").unwrap();
+        let runs = parse_html("<i>例 &#38; &#x1F600; &amp;lt;</i>").unwrap().runs;
         assert_eq!(runs[0].text, "例 & 😀 &lt;");
         assert!(runs[0].italic);
     }
@@ -554,12 +641,14 @@ mod tests {
     }
     #[test]
     fn baseline_returns_to_normal_script() {
-        let runs = parse_html("<sup>a<span style=\"baseline\">b</span></sup>").unwrap();
+        let runs = parse_html("<sup>a<span style=\"baseline\">b</span></sup>")
+            .unwrap()
+            .runs;
         assert_eq!(runs[1].script, Script::Normal);
     }
     #[test]
     fn passive_style_resets_and_canonical_projection_preserve_every_display_flag() {
-        let runs = parse_html("<span style=\"font-variant: small-caps;text-decoration:underline\">Caps<span style=\"font-variant:normal;text-decoration:none\">Plain</span>Tail</span>").unwrap();
+        let runs = parse_html("<span style=\"font-variant: small-caps;text-decoration:underline\">Caps<span style=\"font-variant:normal;text-decoration:none\">Plain</span>Tail</span>").unwrap().runs;
         assert!(runs[0].small_caps && runs[0].underline);
         assert!(!runs[1].small_caps && !runs[1].underline);
         assert!(runs[2].small_caps && runs[2].underline);
@@ -632,6 +721,37 @@ mod review_tests {
         assert!(output("avery  Taylor", html, "canonical").is_err());
         // Inline citation spacing is still exact.
         assert!(output("avery Taylor", " <i>avery</i> Taylor", "canonical").is_err());
+    }
+    #[test]
+    fn bibliography_blocks_preserve_layout_entities_and_style_resets() {
+        let rendered = output(
+            "[1] Invented & Plain Tail",
+            "<div class=\"csl-entry\"><div class=\"csl-left-margin\">[1]</div><div class=\"csl-right-inline\"><div class=\"csl-indent\"><i>Invented &amp; <span style=\"font-style:normal\">Plain</span> Tail</i></div></div></div>",
+            "canonical",
+        ).unwrap();
+        let node = &rendered.display.nodes[0];
+        assert_eq!(
+            node.content.iter().map(|run| run.text.as_str()).collect::<String>(),
+            rendered.text
+        );
+        assert_eq!(
+            node.blocks.iter().map(|block| block.kind).collect::<Vec<_>>(),
+            vec![
+                DisplayBlockKind::Entry,
+                DisplayBlockKind::Margin,
+                DisplayBlockKind::Inline,
+                DisplayBlockKind::Indent,
+            ]
+        );
+        assert_eq!((node.blocks[0].start, node.blocks[0].end), (0, node.content.len()));
+        assert_eq!(node.content[node.blocks[1].start].text, "[1]");
+        assert!(
+            node.content
+                .iter()
+                .any(|run| run.italic && run.text.contains("Invented &"))
+        );
+        assert!(node.content.iter().any(|run| !run.italic && run.text == "Plain"));
+        assert!(node.content.last().unwrap().italic);
     }
     #[test]
     fn bibliography_line_folding_requires_original_text_evidence() {

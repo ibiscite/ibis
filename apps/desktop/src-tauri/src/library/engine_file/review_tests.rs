@@ -559,7 +559,13 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
         )
         .map_err(|_| "preview")?;
     assert_eq!(
-        preview.spans.iter().map(|span| span.text.as_str()).collect::<String>(),
+        preview
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
         preview.text
     );
     let choices = file
@@ -774,7 +780,7 @@ fn remembered_file_choice_uses_the_observation_that_supplied_the_loaded_bytes() 
         ..Default::default()
     })));
     let chosen = crate::library::tasks::remembered_choice(&source, &loaded).ok_or("choice")?;
-    assert_eq!(chosen, ibis_core::settings::LibrarySetting::Bibtex(b.canonicalize()?));
+    assert_eq!(chosen, ibis_engine::settings::LibrarySetting::Bibtex(b.canonicalize()?));
     Ok(())
 }
 

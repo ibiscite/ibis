@@ -42,7 +42,7 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
     </td></tr>}
   </>;
   return <Section id={id}><Group>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted}
+    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} changed={Boolean(reset)}
       description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
       problem={problem ? text(problem.id, problem.args) : undefined}>
       {controls}

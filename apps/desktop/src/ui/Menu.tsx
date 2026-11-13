@@ -175,11 +175,13 @@ export function MenuRow({ itemId, ...props }: ComponentPropsWithRef<"div"> & { i
 
 const ActionFocusContext = createContext<(() => void) | null>(null);
 
-/** A wrapping, read-only menu header, also spoken through its section label. */
+/** A wrapping, read-only menu header, also spoken through its section label.
+ * Each fact of the detail ("My Library · checked 3 minutes ago, 1:54 AM") takes
+ * its own line, so a menu's width never breaks a phrase such as a time apart. */
 export function MenuDetail({ title, detail }: { title: string; detail?: string | null }) {
   return <p className="menu-detail" aria-hidden="true">
     <span className="menu-detail-title">{title}</span>
-    {detail && <span>{detail}</span>}
+    {detail?.split(" · ").map((fact) => <span key={fact}>{fact}</span>)}
   </p>;
 }
 

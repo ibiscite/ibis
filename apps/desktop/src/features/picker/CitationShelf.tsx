@@ -1,9 +1,10 @@
+import { renderToStaticMarkup } from "react-dom/server";
 import { Icon } from "../../icons";
 import { useCallback, useEffect, useId, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type Ref, type RefObject } from "react";
 import type { SearchResult } from "../../api";
 import type { FilePreview, Notice } from "../../bindings";
 import { outputName, writesEntries, type FormattedCitation, type OutputId } from "../../format/outputs";
-import { render, renderRuns } from "../../format/markup";
+import { renderDisplay, renderNode } from "../../format/display";
 import { say } from "../../i18n";
 import { choiceKey, idKey, type CitationDetailsChange, type CitationReference } from "./choice";
 import { closestMatchWarnings } from "./rows";
@@ -198,7 +199,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   const fromPrevious = !ready && retainedSegments;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
-  const segments = visible?.spans ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
+  const segments = visible?.display.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), node })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
   const shownOrder = [...new Set(segments?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
   // With the order kept (always, for keys) the line is the person's order, which
@@ -296,7 +297,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   }));
   // A token is the reference's own words; the brackets and separators the output
   // adds are shared and quieter, never part of a token, for one reference too.
-  const spanned = Boolean(visible?.spans?.some((span) => span.item === null));
+  const spanned = Boolean(visible?.display.nodes.some((span) => span.item === null));
   const token = (reference: CitationReference, name: string, words: string, contents: React.ReactNode, describedBy: string | undefined, index?: number) =>
     <CitationToken key={idKey(reference.id)} reference={idKey(reference.id)} referenceKey={reference.key} aria-label={say("citation-details-edit", { reference: name })}
       handle={names(words, reference) ? undefined : referenceLabel(reference)} title={words}
@@ -308,15 +309,15 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
       onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => { if (event.key === "Enter") onSubmit?.(); else edit(reference, event.target as HTMLElement); }}>
       {index === undefined ? contents : <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>}
     </CitationToken>;
-  const manySegments = (!single || spanned) && !copied && segments?.map((span, index) => {
+  const manySegments = references.length > 0 && (!single || spanned) && !copied && segments?.map((span, index) => {
     const reference = span.item === null ? undefined : referenceAt(span.item);
-    const contents = !keys && "runs" in span && span.runs ? renderRuns(span.runs) : keyText(span.text);
+    const contents = "node" in span ? renderNode(span.node, keyText) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     return token(reference, labels[references.indexOf(reference)]!, span.text, contents, `${citationId}-${index}`, index);
   });
   const singleWords = text ?? labels[0] ?? "";
   const singleSegment = single && !spanned && onChangeReference && !copied
-    ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? keys ? keyText(text) : visible && visible.markup.length ? render(visible.markup) : text : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
+    ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? visible ? renderDisplay(visible.display, keyText) : keyText(text) : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
     : null;
   return <>
     <p className="visually-hidden" role="status" aria-label={say("picker-citation-selection")} aria-live="polite" aria-atomic="true">
@@ -339,12 +340,20 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
             if (!dragged?.text) return event.preventDefault();
             event.dataTransfer.effectAllowed = "copy";
             event.dataTransfer.setData("text/plain", dragged.text);
-            if (!keys && dragged.html) event.dataTransfer.setData("text/html", dragged.html);
+            if (!keys) {
+              let space = false;
+              const preserveSpaces = (value: string) => value.replace(/./gs, (character) => {
+                const repeated = character === " " && space;
+                space = character === " ";
+                return repeated ? "\u00a0" : character;
+              });
+              event.dataTransfer.setData("text/html", renderToStaticMarkup(<>{renderDisplay(dragged.display, preserveSpaces)}</>).replace(/\u00a0/g, "&nbsp;"));
+            }
           }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? say("picker-selected-references") : undefined}>
-          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
+          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
-            {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
+            {ready && !keys ? renderDisplay(ready.display, keyText) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
             : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
           {copied && <Beak closing />}

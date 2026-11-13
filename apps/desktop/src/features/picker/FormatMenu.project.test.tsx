@@ -8,7 +8,7 @@ afterEach(cleanup);
 function Example({ projects = () => undefined }: { projects?: () => void }) {
   const search = useRef<HTMLInputElement>(null);
   return <><input ref={search} aria-label="Search" /><FormatMenu app="Example Browser" format="autocite" source="remembered" pick="app"
-    writingProject={{ name: "Thesis" }} onWritingProjects={projects} onChange={() => undefined} disabled={false} styles searchRef={search} /></>;
+    writing={{ name: "Thesis" }} onWritings={projects} onChange={() => undefined} disabled={false} styles searchRef={search} /></>;
 }
 
 test("the selected project stays visible and the format menu explains where changes go", () => {
@@ -17,16 +17,16 @@ test("the selected project stays visible and the format menu explains where chan
   expect(format.textContent).toContain("Thesis");
   expect(format.textContent).not.toContain("Example Browser");
   fireEvent.click(format);
-  expect(screen.getByRole("dialog").textContent).toContain("Writing Projects…");
+  expect(screen.getByRole("dialog").textContent).toContain("New writing…");
   expect(screen.getAllByText(/Saved for .*Thesis/).length).toBeGreaterThan(0);
-  expect(screen.getByText(/Your pick changes this project’s format/)).toBeTruthy();
+  expect(screen.getByText(/Your pick changes this writing’s format/)).toBeTruthy();
 });
 
-test("Writing Projects opens its sheet without choosing a citation format", () => {
+test("Writings opens its sheet without choosing a citation format", () => {
   const projects = vi.fn();
   render(<Example projects={projects} />);
   fireEvent.click(screen.getByRole("button", { name: /^Citation format/ }));
-  fireEvent.click(screen.getByRole("option", { name: "Writing Projects…" }));
+  fireEvent.click(screen.getByRole("option", { name: "New writing…" }));
   expect(projects).toHaveBeenCalledOnce();
   expect(screen.queryByRole("dialog")).toBeNull();
 });

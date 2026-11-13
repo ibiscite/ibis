@@ -18,3 +18,8 @@ kbd { font: inherit; font-size: var(--type-label-size); font-weight: 500; displa
 .key-caps kbd[data-single]:not([data-plain]) { padding-inline: 0; min-width: var(--key); }
 .key-caps kbd[data-label="↵"] { line-height: calc(var(--key) - 2 * var(--border-width) + .2em); }
 .key-caps[data-echo] kbd { background: var(--fill-control-pressed); }
+/* A key written as macOS menus write key equivalents, where keys are read, not
+   pressed on screen (Settings, a held row's number): plain secondary text in the
+   surrounding size, full ink under Increase Contrast, no box even in forced colours. */
+kbd[data-plain] { height: auto; min-width: 0; padding: 0; margin: 0; border-width: 0; background: transparent; color: var(--text-secondary); font-size: inherit; font-weight: 400; line-height: inherit; }
+@media (prefers-contrast: more) { kbd[data-plain] { color: var(--text); } }

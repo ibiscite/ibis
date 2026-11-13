@@ -7,7 +7,7 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 
 | Location | Responsibility |
 | --- | --- |
-| `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search, settings and delivery rules. |
+| `crates/ibis-core` | Shared model, citation requests/results, key syntaxes, search and delivery rules. |
 | `crates/ibis-zotero-local` | Zotero local API client. |
 | `crates/ibis-sources` | Read-only file and Zotero adapters, discovery, database snapshots and file watches. |
 | `crates/ibis-csl` | citeproc-js in QuickJS, ICU4X collation, bundled CSL styles and locales. |
@@ -128,8 +128,8 @@ One-shot CLI reads install no watches.
 
 Known cloud placeholders are refused before reading, without requesting a
 download. Filesystem probes have a two-second wait and eight-call limit.
-Desktop loads have a two-minute deadline and at most four complete loads in
-flight. Blocked OS calls can outlive the wait, but their late results cannot
+Desktop loads have a two-minute deadline and at most four loads per source
+family in flight. Blocked OS calls can outlive the wait, but their late results cannot
 publish. A failed refresh keeps the previous snapshot and reports its health.
 New selections and publications retire stale candidates and their watchers.
 
@@ -180,12 +180,20 @@ It recognises all 29 CSL locator terms, ranges and quoted literal labels.
 A typed label overrides the field's default type; an incomplete label is an
 error. Canonical locators stay distinct from raw editor text.
 
-Writing projects save an output and optional bibliography, with a stable ID.
-The picker remembers selection per app; CLI requests name a project explicitly.
-Bibliography checking is advice unless a DOI conflicts. For key outputs,
-`--strict` also requires a complete current read finding every emitted key
-unambiguously. Project generations and bibliography revisions retire old
-previews and pending delivery. See [project commands](cli.md#writing-projects).
+A writing is an optional name, format and read-only `.bib` in `settings.json`
+([decision 0042](decisions/0042-formats-apps-and-writings.md)). The picker remembers
+one per app; unidentified targets use session-only selection. CLI/editor context
+selects one explicitly, including a unique match from supplied document front
+matter; no client guesses. Each citation uses the saved definition. Failed saves
+keep the old writing, format and bibliography together.
+
+Bibliography checks are advice unless a key is known to identify another work.
+For key outputs, `--strict` also requires a complete current read finding every
+emitted key unambiguously. Captured definitions and monotonic activation identities
+retire stale choosers, previews and delivery proofs, including A → B → A; final
+context checks guard clipboard commits. Receipts include an opaque definition
+hash and bibliography evidence, never paths. Writings grant no paste authority.
+See [writing commands](cli.md#writings).
 
 <a id="task-contexts-planned"></a>
 Cross-client task-context plans are in [the roadmap](../ROADMAP.md#consolidation-now-alongside-finishing-03).
@@ -202,11 +210,17 @@ work. Library notifications use channels rather than polling.
 native app. Generated bindings and output lists come from Rust; front ends
 do not maintain separate output vocabularies.
 
-`ibis_engine::settings::Owner` serializes settings changes. Core holds the
-cross-process lock and performs atomic saves. Backup validation and preparation
-are shared; desktop owns dialogs and single-use restore previews. Formats per
-app live in `settings.json`; paste choices live in `apps.json`. Storage and
-data flows are documented in [PRIVACY.md](../PRIVACY.md).
+`ibis_engine::settings::Owner` serializes settings changes; engine settings hold
+the cross-process lock and perform atomic saves. Backup validation and preparation
+are shared; desktop owns dialogs and single-use restore previews.
+
+The engine chooses one output: the selected writing, the app's remembered format, the person's
+format for its kind (documents or keys), then a suggestion, naming its source.
+First run asks nothing; the first successful suggested paste remembers the
+app's format and reports it once per kind. Delayed delivery cannot overwrite
+newer choices. Formats per app live in `settings.json`; paste choices live in
+`apps.json`. Nothing polls while hidden. Storage and data flows are documented
+in [PRIVACY.md](../PRIVACY.md).
 
 Native copy writes the prepared result. Paste uses a one-use proof tied to
 the target, picker presentation and clipboard generation:

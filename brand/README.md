@@ -112,8 +112,7 @@ matches the font check, rather than the host's native font substitutions.
 Never edit generated SVGs, PNGs, icon containers or `src/brand.ts`
 by hand.
 
-`node scripts/check.mjs` includes the drift check; Linux CI runs it with
-`--brand-assets`. It rebuilds into a temporary folder and names every stale,
+`python3 brand/build.py --check` is the drift check; Linux CI runs it. It rebuilds into a temporary folder and names every stale,
 missing or unexpected generated file, without changing the checkout.
 
 Design explorations (the design canvas, rejected options, screenshots) stay outside the repository. When one is chosen, record it in `docs/design.md` and here.

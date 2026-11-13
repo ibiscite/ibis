@@ -141,8 +141,10 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
 /** What the result list says when it has no rows: an empty library, no
  * matches and what to try next, a hint to type, first-run setup, or how to
  * recover a library that could not be opened. */
-export function EmptyState({ library, query, narrowed, unfiltered = null, missing = false, onChooseLibrary, onClearSearch, onRemoveFilter, onSearchAll, onReload, setup, source, peck, zotero }: {
+export function EmptyState({ library, query, narrowed, unfiltered = null, missing = false, onChooseLibrary, onClearSearch, onRemoveFilter, onSearchAll, onReload, setup, source, fallback, peck, zotero }: {
   peck?: boolean;
+  /** Where a search that found nothing can go next: the library itself, to add what is missing (⌘O). */
+  fallback?: { label: string; keys?: string; open: () => void };
   library: LibraryStatus | null;
   query: string;
   /** Some Zotero libraries are left out of the search, so searching all may help. */
@@ -196,6 +198,8 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
         {filtered ? <Button variant="primary" className="empty-primary" onPress={() => onRemoveFilter?.(unfiltered!)}>{say("picker-remove-filter")}</Button>
           : scoped ? <Button variant="primary" className="empty-primary" onPress={onSearchAll}>{say("picker-search-all-libraries")}</Button>
           : <Button variant="primary" className="empty-primary" onPress={onClearSearch}>{say("picker-clear-search")}</Button>}
+        {/* Nothing matched is never a dead end: the library is one key away. */}
+        {!filtered && !scoped && fallback && <Button variant="quiet" label={fallback.label} keys={fallback.keys} onPress={fallback.open} />}
       </div> : null}
     </div>
   );

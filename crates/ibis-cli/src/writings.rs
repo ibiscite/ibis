@@ -1,21 +1,21 @@
-//! Writing projects use the same checked settings model as the app. CLI
+//! Writings use the same checked settings model as the app. CLI
 //! selection belongs to one request, never the GUI's selected app or document.
 use crate::{Failure, human, settings_backup};
 use clap::{Arg, ArgAction, ArgMatches, Command};
 use ibis_core::contract::{ErrorCode, ExitCode, OutputSpec};
-use ibis_core::settings::{
+use ibis_engine::settings::{
     self,
-    writing_projects::{self as projects, ProjectError, WritingProject},
+    writings::{self, Writing, WritingError},
 };
-use ibis_engine::{DispatchResult, Engine, ProjectAssessmentState, WritingProjectCitation, request::StylesRequest};
+use ibis_engine::{DispatchResult, Engine, ProjectAssessmentState, WritingCitation, request::StylesRequest};
 use serde_json::{Value, json};
 use std::path::{Path, PathBuf};
 
 /// A whole definition edit, through the one settings owner (decision 0040).
 fn change<T: Send + 'static>(
     path: &Path,
-    edit: impl FnOnce(&mut ibis_core::settings::Settings) -> Result<T, projects::ProjectError>,
-) -> Result<T, projects::ProjectError> {
+    edit: impl FnOnce(&mut ibis_engine::settings::Settings) -> Result<T, writings::WritingError>,
+) -> Result<T, writings::WritingError> {
     ibis_engine::settings::Owner::open(path.to_path_buf())
         .change(edit)
         .map(|(_, result)| result)
@@ -24,15 +24,15 @@ fn change<T: Send + 'static>(
 pub(crate) fn command() -> Command {
     let id = || {
         Arg::new("id")
-            .value_name("PROJECT_ID")
+            .value_name("NAME")
             .required(true)
-            .help("The stable project ID printed by ibis projects list")
+            .help("The writing name printed by ibis writings list")
     };
     let name = || {
         Arg::new("name")
             .value_name("NAME")
             .required(true)
-            .help("A unique name for this writing project")
+            .help("A unique name for this writing")
     };
     let format = || {
         Arg::new("format")
@@ -53,48 +53,90 @@ pub(crate) fn command() -> Command {
         Arg::new("bibliography")
             .long("bibliography")
             .value_name("FILE")
-            .help("The read-only project bibliography to check, as a .bib file")
+            .help("The read-only writing bibliography to check, as a .bib file")
             .value_parser(clap::value_parser!(PathBuf))
     };
-    Command::new("projects")
-        .about("Remember a writing project's citation output and optional bibliography")
-        .after_help("Projects stay on this computer. Their bibliography is read-only; no project choice grants paste permission.\nUse a project for one citation: ibis cite KEY --project PROJECT_ID")
+    Command::new("writings")
+        .about("Remember a writing's citation output and optional bibliography")
+        .after_help("Writings stay on this computer. Their bibliography is read-only; no writing choice grants paste permission.\nUse a writing for one citation: ibis cite KEY --writing NAME")
         .subcommand_required(true).arg_required_else_help(true)
-        .arg(Arg::new("nightly").long("nightly").global(true).action(ArgAction::SetTrue).help("Use Ibis Nightly's project definitions"))
-        .subcommand(Command::new("list").about("List project IDs, names, outputs and bibliography file names"))
-        .subcommand(Command::new("schema").about("The JSON Schema of cite --project's result"))
-        .subcommand(Command::new("create").about("Create a writing project").arg(name()).arg(format().required_unless_present("style")).arg(style()).arg(bibliography()))
-        .subcommand(Command::new("rename").about("Rename a project, keeping its ID").arg(id()).arg(name()))
-        .subcommand(Command::new("remove").about("Remove a project and its app selections; keep its bibliography file").arg(id()))
-        .subcommand(Command::new("update").about("Change a project's output or bibliography").arg(id()).arg(format()).arg(style()).arg(bibliography().conflicts_with("no-bibliography"))
-            .arg(Arg::new("no-bibliography").long("no-bibliography").action(ArgAction::SetTrue).help("Stop checking a bibliography in this project")))
+        .arg(Arg::new("nightly").long("nightly").global(true).action(ArgAction::SetTrue).help("Use Ibis Nightly's writing definitions"))
+        .subcommand(Command::new("list").about("List writing names, formats and bibliography file names"))
+        .subcommand(Command::new("schema").about("The JSON Schema of cite --writing's result"))
+        .subcommand(Command::new("create").about("Create a writing").arg(name()).arg(format().required_unless_present("style")).arg(style()).arg(bibliography()))
+        .subcommand(Command::new("rename").about("Rename a writing").arg(id()).arg(name()))
+        .subcommand(Command::new("remove").about("Remove a writing and its app selections; keep its bibliography file").arg(id()))
+        .subcommand(Command::new("update").about("Change a writing's output or bibliography").arg(id()).arg(format()).arg(style()).arg(bibliography().conflicts_with("no-bibliography"))
+            .arg(Arg::new("no-bibliography").long("no-bibliography").action(ArgAction::SetTrue).help("Stop checking a bibliography in this writing")))
 }
 
-fn failure(error: ProjectError) -> Failure {
+fn failure(error: WritingError) -> Failure {
     let code = match &error {
-        ProjectError::NotFound => ErrorCode::NotFound,
-        ProjectError::Settings(settings::SettingsError::NewerVersion(_)) => ErrorCode::NewerFormat,
-        ProjectError::Settings(_) => ErrorCode::SourceUnavailable,
+        WritingError::NotFound => ErrorCode::NotFound,
+        WritingError::ContextUnavailable => ErrorCode::SourceUnavailable,
+        WritingError::Settings(error) => ibis_engine::settings_backup::settings_code(error),
         _ => ErrorCode::BadInput,
     };
-    Failure::new(code, error.to_string())
+    let message = match &error {
+        WritingError::Settings(problem) => ibis_engine::settings_backup::settings_message(problem),
+        error => error.to_string(),
+    };
+    Failure::new(code, message)
 }
 
 fn load(nightly: bool) -> Result<(PathBuf, settings::Settings), Failure> {
     let (_, path) = settings_backup::settings_file(nightly)?;
     let loaded = settings::load(&path);
     if let Some(problem) = loaded.problem {
-        return Err(failure(ProjectError::Settings(problem)));
+        return Err(failure(WritingError::Settings(problem)));
     }
     Ok((path, loaded.settings))
 }
 
-pub(crate) fn chosen(args: &ArgMatches) -> Result<Option<WritingProject>, Failure> {
-    let Some(id) = args.get_one::<String>("project") else {
-        return Ok(None);
+pub(crate) struct Context {
+    pub writing: Option<Writing>,
+    pub settings: Option<settings::Settings>,
+}
+
+pub(crate) fn chosen(args: &ArgMatches) -> Result<Context, Failure> {
+    let name = args.get_one::<String>("writing");
+    let document = args.get_one::<PathBuf>("document");
+    let app = args.get_one::<String>("for-app");
+    if name.is_none() && document.is_none() && app.is_none() {
+        return Ok(Context {
+            writing: None,
+            settings: None,
+        });
+    }
+    let settings = if app.is_some() {
+        crate::app_libraries::format_settings(args.get_flag("nightly"))?
+    } else {
+        load(args.get_flag("nightly"))?.1
     };
-    let (_, settings) = load(args.get_flag("nightly"))?;
-    projects::find(&settings, id).cloned().map(Some).map_err(failure)
+    let writing = if let Some(name) = name {
+        Some(writings::find(&settings, name).cloned().map_err(failure)?)
+    } else if let Some(app) = app {
+        let app = ibis_core::destination::AppId::named(app, ibis_core::destination::System::HERE);
+        for_app(&settings, &app)?
+    } else {
+        writings::from_context(&settings, document.map(PathBuf::as_path), None, None).map_err(failure)?
+    };
+    Ok(Context {
+        writing,
+        settings: Some(settings),
+    })
+}
+
+pub(crate) fn for_app(
+    settings: &settings::Settings,
+    app: &ibis_core::destination::AppId,
+) -> Result<Option<Writing>, Failure> {
+    let chosen = ibis_engine::format::choose(settings, Some(app));
+    chosen
+        .writing
+        .as_ref()
+        .map(|writing| writings::find(settings, &writing.name).cloned().map_err(failure))
+        .transpose()
 }
 
 fn output(engine: &Engine, args: &ArgMatches) -> Result<Option<OutputSpec>, Failure> {
@@ -153,10 +195,9 @@ fn bibliography(args: &ArgMatches) -> Result<Option<PathBuf>, Failure> {
         .transpose()
 }
 
-fn view(project: &WritingProject) -> Value {
-    json!({"id":project.id,"name":project.name,"output":project.output,
-        "bibliography":project.bibliography.as_ref().and_then(|path| path.file_name()).map(|name| name.to_string_lossy()),
-        "revision":project.revision()})
+fn view(writing: &Writing) -> Value {
+    json!({"name":writing.name,"format":writing.format,
+        "bibliography":writing.bibliography.as_ref().and_then(|path| path.file_name()).map(|name| name.to_string_lossy())})
 }
 
 pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, Failure> {
@@ -166,7 +207,7 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
         .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose list, create, rename, update or remove."))?;
     if action == "schema" {
         return Ok(DispatchResult {
-            data: WritingProjectCitation::schema(),
+            data: WritingCitation::schema(),
             text: None,
             source_findings: false,
             exit_code: ExitCode::Ok,
@@ -174,35 +215,34 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
     }
     let (path, settings) = load(nightly)?;
     let result = if action == "list" {
-        let rows: Vec<_> = settings.writing_projects.iter().map(view).collect();
+        let rows: Vec<_> = settings.writings.iter().map(view).collect();
         let text = if rows.is_empty() {
-            "No writing projects yet. Create one with: ibis projects create NAME --format pandoc".into()
+            "No writings yet. Create one with: ibis writings create NAME --format pandoc".into()
         } else {
             settings
-                .writing_projects
+                .writings
                 .iter()
-                .map(|project| {
-                    let bibliography = project
+                .map(|writing| {
+                    let bibliography = writing
                         .bibliography
                         .as_ref()
                         .and_then(|path| path.file_name())
                         .map(|name| human::field(&name.to_string_lossy()))
                         .unwrap_or_else(|| {
-                            ibis_engine::catalogue::text("cli-project-without-bibliography", None, &[])
+                            ibis_engine::catalogue::text("cli-writing-without-bibliography", None, &[])
                                 .unwrap_or_default()
                         });
                     format!(
-                        "{}\t{}\t{}\t{bibliography}",
-                        project.id,
-                        human::field(&project.name),
-                        crate::output_name(&project.output)
+                        "{}\t{}\t{bibliography}",
+                        human::field(&writing.name),
+                        crate::output_name(&writing.format)
                     )
                 })
                 .collect::<Vec<_>>()
                 .join("\n")
         };
         return Ok(DispatchResult {
-            data: json!({"projects": rows}),
+            data: json!({"writings": rows}),
             text: Some(text),
             source_findings: false,
             exit_code: ExitCode::Ok,
@@ -220,23 +260,23 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
                     .ok_or_else(|| Failure::new(ErrorCode::Usage, "Choose --format or --style."))?;
                 let bibliography = bibliography(args)?;
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                change(&path, |settings| projects::create(settings, name, output, bibliography))
+                change(&path, |settings| writings::create(settings, name, output, bibliography))
             }
             "rename" => {
                 let name = args.get_one::<String>("name").cloned().unwrap_or_default();
-                change(&path, |settings| projects::rename(settings, id, name))
+                change(&path, |settings| writings::rename(settings, id, name))
             }
-            "remove" => change(&path, |settings| projects::remove(settings, id)),
+            "remove" => change(&path, |settings| writings::remove(settings, id)),
             "update" => {
                 let output = output(engine, args)?;
                 let bibliography = bibliography(args)?;
                 let clear = args.get_flag("no-bibliography");
                 change(&path, |settings| {
-                    let old = projects::find(settings, id)?.clone();
-                    projects::update(
+                    let old = writings::find(settings, id)?.clone();
+                    writings::update(
                         settings,
                         id,
-                        output.unwrap_or(old.output),
+                        output.unwrap_or(old.format),
                         if clear { None } else { bibliography.or(old.bibliography) },
                     )
                 })
@@ -251,9 +291,9 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
         .map_err(failure)?
     };
     Ok(DispatchResult {
-        data: json!({"project":view(&result),"action":action}),
+        data: json!({"writing":view(&result),"action":action}),
         text: Some(format!(
-            "{} writing project {}.{}",
+            "{} writing {}.{}",
             match action {
                 "create" => "Created",
                 "rename" => "Renamed",
@@ -274,20 +314,20 @@ pub(crate) fn run(engine: &Engine, args: &ArgMatches) -> Result<DispatchResult, 
 
 pub(crate) fn with_check(
     mut result: DispatchResult,
-    project: Option<WritingProjectCitation>,
+    writing: Option<WritingCitation>,
 ) -> Result<DispatchResult, Failure> {
-    let Some(project) = project else {
+    let Some(writing) = writing else {
         return Ok(result);
     };
-    if project.project.as_ref().is_some_and(|check| !check.settled())
-        || project
+    if writing.bibliography.as_ref().is_some_and(|check| !check.settled())
+        || writing
             .assessment
             .as_ref()
             .is_some_and(|assessment| assessment.state != ProjectAssessmentState::Ready)
     {
         result.exit_code = ExitCode::Findings;
     }
-    result.data = serde_json::to_value(project)
-        .map_err(|_| Failure::new(ErrorCode::Internal, "The project citation is unavailable."))?;
-    Ok(result)
+    result.data = serde_json::to_value(writing)
+        .map_err(|_| Failure::new(ErrorCode::Internal, "The writing citation is unavailable."))?;
+    Ok(result.bounded()?)
 }

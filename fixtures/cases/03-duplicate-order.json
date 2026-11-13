@@ -5,6 +5,7 @@
       "display": {
         "nodes": [
           {
+            "blocks": [],
             "content": [
               {
                 "bold": false,
@@ -16,6 +17,7 @@
             "item": null
           },
           {
+            "blocks": [],
             "content": [
               {
                 "bold": false,
@@ -27,6 +29,7 @@
             "item": 0
           },
           {
+            "blocks": [],
             "content": [
               {
                 "bold": false,
@@ -38,6 +41,7 @@
             "item": null
           },
           {
+            "blocks": [],
             "content": [
               {
                 "bold": false,
@@ -49,6 +53,7 @@
             "item": 1
           },
           {
+            "blocks": [],
             "content": [
               {
                 "bold": false,

@@ -66,7 +66,7 @@ fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn
             )
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
-        assert_eq!(preview.html, expected.html);
+        assert_eq!(preview.display, expected.display);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
         let mut writes = 0;
         bridge
@@ -137,7 +137,7 @@ fn automatic_private_zotero_reload_refuses_old_copies_as_soon_as_a_switch_is_det
     use std::sync::Mutex;
     let server = fixture::Server::new();
     let bridge = Arc::new(opened(&server)?);
-    let source = Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into());
+    let source = Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into());
     let library = Arc::new(Mutex::new(Library {
         source: Some(source.clone()),
         requested: Some(source.clone()),
@@ -195,7 +195,7 @@ fn automatic_private_zotero_reload_refuses_old_copies_as_soon_as_a_switch_is_det
 
 #[test]
 fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
     let both = ZoteroLibraries::new(vec![ZoteroLibrary::Group(7), ZoteroLibrary::User]).ok_or("choice")?;
@@ -280,7 +280,7 @@ fn chosen_groups_keep_source_identity_counts_and_scopes_consistent() -> Result<(
 
 #[test]
 fn full_reload_fetches_payloads_even_when_the_choice_order_differs() -> Result<(), Box<dyn std::error::Error>> {
-    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
     let bridge = Arc::new(
@@ -325,7 +325,7 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
         Source,
         load::{Loaded, load_source},
     };
-    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
     server.empty_group.store(true, Ordering::SeqCst);
     let engine = Engine::with_zotero_port(server.port).map_err(|_| "synthetic engine")?;
@@ -358,7 +358,7 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
         assert_eq!(library.source, Some(source));
         assert_eq!(
             library.source.as_ref().ok_or("source")?.setting(),
-            Some(ibis_core::settings::LibrarySetting::Zotero(chosen.clone()))
+            Some(ibis_engine::settings::LibrarySetting::Zotero(chosen.clone()))
         );
         let status = crate::library::status::status(&library);
         assert_eq!(status.zotero_libraries, chosen.libraries());
@@ -377,7 +377,7 @@ fn empty_group_membership_is_installed_even_when_records_are_unchanged() -> Resu
 fn zotero_that_turns_sharing_on_opens_with_no_change_to_the_choice() -> Result<(), Box<dyn std::error::Error>> {
     use crate::library::LoadError;
     use crate::library::status::LibraryProblem;
-    use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+    use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
     let server = fixture::Server::new();
     server.sharing_off.store(true, Ordering::Relaxed);
     let chosen: ZoteroLibraries = ZoteroLibrary::User.into();

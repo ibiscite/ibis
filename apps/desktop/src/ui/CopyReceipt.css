@@ -6,6 +6,8 @@
    with its "+N more" in view. */
 .copy-receipt { box-sizing: border-box; display: grid; grid-template-columns: var(--icon-tile) minmax(0, 1fr); align-items: center; column-gap: var(--space-3); row-gap: 0; padding: var(--space-2) var(--space-4) var(--space-2) var(--space-3); border: var(--border-width) solid var(--separator); border-radius: var(--r-large); background: var(--surface); color: var(--text-secondary); box-shadow: var(--shadow-toast); font: 400 var(--type-label-size) / var(--type-label-line) var(--font); }
 .copy-receipt > strong { grid-column: 2; min-width: 0; font: inherit; overflow-wrap: anywhere; text-wrap: balance; }
+.copy-receipt-change { appearance: none; border: none; padding: 0; background: transparent; color: var(--accent); font: inherit; cursor: pointer; }
+.copy-receipt-change:focus-visible { outline: var(--border-width) solid var(--accent); outline-offset: var(--space-1); }
 .copy-receipt > code { grid-column: 2; min-width: 0; display: flex; align-items: baseline; gap: var(--space-2); overflow: hidden; white-space: nowrap; color: var(--text); font: 400 var(--type-body-size) / var(--type-body-line) var(--mono); }
 .copy-receipt-mark { grid-row: 1 / span 2; border-radius: var(--r-full); background: var(--status-ok-fill); color: var(--status-ok); }
 @media (prefers-contrast: more), (forced-colors: active) {

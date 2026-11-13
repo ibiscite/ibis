@@ -16,8 +16,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use ibis_core::contract::{CitationForm, OutputSpec};
-use ibis_core::settings::{self, EditorEndpoint};
 use ibis_engine::cayw::{self, CaywPick, CaywRequest};
+use ibis_engine::settings::{self, EditorEndpoint};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -47,6 +47,18 @@ pub(crate) struct EditorRequest {
     pub(crate) clipboard: bool,
     /// The output's one name from the engine's list; a style outside it is its id.
     pub(crate) label: String,
+    pub(crate) writing: Option<settings::writings::Writing>,
+}
+
+impl EditorRequest {
+    pub(crate) fn bibliography(&self) -> Option<crate::project::Current> {
+        let path = self.writing.as_ref()?.bibliography.as_ref()?;
+        Some(crate::project::Current {
+            generation: self.id as u32,
+            name: ibis_engine::project_name(path),
+            read: ibis_engine::ProjectRead::read(path, None),
+        })
+    }
 }
 
 /// One request at a time. An answer counts only for the request it names.
@@ -69,6 +81,7 @@ impl Pending {
     /// made for the picker's own output can answer for it. `stopped` is read
     /// under the same lock: switching off sets it before it ends any request
     /// here, so a request still reading the style cannot begin after that.
+    #[cfg(test)]
     fn begin(
         &self,
         pick: &CaywPick,
@@ -76,6 +89,21 @@ impl Pending {
         stopped: &AtomicBool,
         retire: impl FnOnce(),
     ) -> Option<(u64, Receiver<Option<String>>)> {
+        self.begin_context(pick, style, None, stopped, retire)
+    }
+
+    fn begin_context(
+        &self,
+        pick: &CaywPick,
+        style: &str,
+        writing: Option<settings::writings::Writing>,
+        stopped: &AtomicBool,
+        retire: impl FnOnce(),
+    ) -> Option<(u64, Receiver<Option<String>>)> {
+        let output = writing
+            .as_ref()
+            .map_or_else(|| pick.spec(style), |writing| writing.format.clone());
+        let output = ibis_engine::outputs::resolve(&output).ok()?;
         let mut active = self.lock();
         if active.is_some() || stopped.load(Ordering::SeqCst) {
             return None;
@@ -84,7 +112,6 @@ impl Pending {
         let id = self.next.fetch_add(1, Ordering::SeqCst) + 1;
         let (send, receive) = mpsc::sync_channel(1);
         // A numbered style writes whole entries by itself, as in the picker.
-        let output = pick.spec(style);
         let label = ibis_engine::outputs::named(&output).map_or_else(|| style.to_owned(), |entry| entry.name.clone());
         let request = EditorRequest {
             id,
@@ -92,6 +119,7 @@ impl Pending {
             form: pick.form,
             clipboard: pick.clipboard,
             label,
+            writing,
         };
         *active = Some((request, send));
         Some((id, receive))
@@ -149,6 +177,9 @@ trait Host: Send + Sync + 'static {
     fn pending(&self) -> &Pending;
     fn ready(&self) -> bool;
     fn style(&self) -> String;
+    fn writing(&self, _pick: &CaywPick) -> Result<Option<settings::writings::Writing>, cayw::Refusal> {
+        Ok(None)
+    }
     /// A request began or ended; the picker should ask again.
     fn changed(&self);
     /// Retire the picker's prepared receipt. Called under the request lock.
@@ -219,7 +250,17 @@ fn serve<H: Host>(mut stream: TcpStream, port: u16, token: &str, host: Arc<H>, s
         Err(refusal) => reply(&mut stream, refusal.status(), refusal.message()),
         Ok(CaywRequest::Probe) => reply(&mut stream, (200, "OK"), if host.ready() { "ready" } else { "No" }),
         Ok(CaywRequest::Pick(pick)) => {
-            let Some((id, answer)) = host.pending().begin(&pick, &host.style(), stop, || host.retire()) else {
+            let writing = match host.writing(&pick) {
+                Ok(writing) => writing,
+                Err(refusal) => {
+                    reply(&mut stream, refusal.status(), refusal.message());
+                    return;
+                }
+            };
+            let Some((id, answer)) = host
+                .pending()
+                .begin_context(&pick, &host.style(), writing, stop, || host.retire())
+            else {
                 if stop.load(Ordering::SeqCst) {
                     let _ = stream.shutdown(Shutdown::Both);
                 } else {
@@ -310,6 +351,22 @@ fn listen<H: Host>(port: u16, token: String, host: Arc<H>) -> std::io::Result<Li
 struct AppHost(AppHandle);
 
 impl Host for AppHost {
+    fn writing(&self, pick: &CaywPick) -> Result<Option<settings::writings::Writing>, cayw::Refusal> {
+        if pick.document.is_none() && pick.bibliography.is_none() && pick.csl.is_none() {
+            return Ok(None);
+        }
+        let loaded = settings::load(&self.0.state::<SettingsFile>().path);
+        if loaded.problem.is_some() {
+            return Err(cayw::Refusal::Option);
+        }
+        settings::writings::from_context(
+            &loaded.settings,
+            pick.document.as_deref(),
+            pick.bibliography.as_deref(),
+            pick.csl.as_deref(),
+        )
+        .map_err(|_| cayw::Refusal::Option)
+    }
     fn pending(&self) -> &Pending {
         self.0.state::<Pending>().inner()
     }
@@ -392,7 +449,7 @@ fn new_token() -> Option<String> {
 
 /// The listening socket and what became of the last attempt to open it.
 #[derive(Default)]
-pub(crate) struct Endpoint(Mutex<(Option<Listening>, Option<EndpointProblem>)>);
+pub(crate) struct Endpoint(Mutex<(Option<Listening>, Option<EndpointProblem>)>, Mutex<()>);
 
 fn open(app: &AppHandle, endpoint: &EditorEndpoint) -> Option<EndpointProblem> {
     if !usable(endpoint) {
@@ -417,9 +474,7 @@ pub(crate) fn start(app: &AppHandle, saved: Option<EditorEndpoint>) {
         // Whoever holds the port could learn the saved token from an editor, so
         // it is forgotten; switching on again makes a new address.
         if problem.is_some() {
-            let _ = app
-                .state::<SettingsFile>()
-                .update(|settings| settings.editor_endpoint = None);
+            forget_unavailable(&app.state::<SettingsFile>(), &endpoint);
         }
         let state = app.state::<Endpoint>();
         state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).1 = problem;
@@ -431,6 +486,14 @@ pub(crate) fn start(app: &AppHandle, saved: Option<EditorEndpoint>) {
         let host = AppHost(handle.clone());
         if handle.state::<Pending>().cancel_any(|| host.retire()) {
             host.changed();
+        }
+    });
+}
+
+fn forget_unavailable(file: &SettingsFile, failed: &EditorEndpoint) {
+    let _ = file.update(|settings| {
+        if settings.editor_endpoint.as_ref() == Some(failed) {
+            settings.editor_endpoint = None;
         }
     });
 }
@@ -460,6 +523,7 @@ pub(crate) fn editor_endpoint(app: AppHandle) -> EndpointStatus {
 #[ibis_desktop_macros::command]
 pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
     let state = app.state::<Endpoint>();
+    let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let closing = {
         let mut state = state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
         state.1 = None;
@@ -503,6 +567,31 @@ pub(crate) fn set_editor_endpoint(on: bool, app: AppHandle) -> EndpointStatus {
     status(&app)
 }
 
+/// Replace a live-file endpoint under the same native lock as Settings. A
+/// queued old edit may not close or rebind a newer endpoint, and failure never
+/// erases the person's file edit or silently leaves the old token working.
+pub(crate) fn apply_file_setting(app: &AppHandle, expected: Option<EditorEndpoint>) {
+    let state = app.state::<Endpoint>();
+    let _changing = state.1.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let loaded = settings::load(&app.state::<SettingsFile>().path);
+    if loaded.problem.is_some() || loaded.settings.editor_endpoint != expected {
+        return;
+    }
+    let closing = {
+        let mut state = state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        state.1 = None;
+        state.0.take()
+    };
+    drop(closing);
+    let host = AppHost(app.clone());
+    if app.state::<Pending>().cancel_any(|| host.retire()) {
+        host.changed();
+    }
+    let problem = expected.as_ref().and_then(|expected| open(app, expected));
+    state.0.lock().unwrap_or_else(|poisoned| poisoned.into_inner()).1 = problem;
+    report(app.emit("editor:endpoint", status(app)), NativeIssue::PickerEvent);
+}
+
 /// Put the address on the clipboard for pasting into an editor's settings.
 #[tauri::command]
 #[ibis_desktop_macros::command]
@@ -540,6 +629,26 @@ mod tests {
     use std::sync::Mutex as StdMutex;
 
     const TOKEN: &str = "0123456789abcdef0123456789abcdef";
+
+    #[test]
+    fn a_failed_older_endpoint_never_erases_a_newer_file_choice() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let file = SettingsFile::new(directory.path().join("settings.json"));
+        let older = EditorEndpoint {
+            port: DEFAULT_PORT,
+            token: TOKEN.into(),
+        };
+        let newer = EditorEndpoint {
+            port: DEFAULT_PORT + 1,
+            token: "fedcba9876543210fedcba9876543210".into(),
+        };
+        file.update(|settings| settings.editor_endpoint = Some(newer.clone()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        forget_unavailable(&file, &older);
+        assert_eq!(settings::load(&file.path).settings.editor_endpoint, Some(newer.clone()));
+        forget_unavailable(&file, &newer);
+        assert_eq!(settings::load(&file.path).settings.editor_endpoint, None);
+    }
 
     type Then = Box<dyn FnOnce(&Pending) + Send>;
 
@@ -800,6 +909,9 @@ mod tests {
     fn a_formatted_request_takes_the_persons_style_and_its_one_name() {
         let pending = Pending::default();
         let pick = CaywPick {
+            document: None,
+            bibliography: None,
+            csl: None,
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
@@ -815,6 +927,70 @@ mod tests {
     }
 
     #[test]
+    fn an_editors_preset_writing_previews_checks_and_copies_the_selected_format()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::library::engine_file::{FileLibrary, FileSelection};
+        use serde_json::json;
+        let directory = tempfile::tempdir()?;
+        let source = directory.path().join("library.bib");
+        let bibliography = directory.path().join("thesis.bib");
+        std::fs::write(&source, "@book{demo,title={Synthetic book}}\n")?;
+        std::fs::write(&bibliography, "@book{other,title={Other book}}\n")?;
+        let writing = settings::writings::Writing {
+            name: "Thesis".into(),
+            format: OutputSpec::Preset { name: "pandoc".into() },
+            bibliography: Some(bibliography),
+        };
+        let pick = CaywPick {
+            output: CaywOutput::Style,
+            form: CitationForm::Normal,
+            clipboard: false,
+            document: None,
+            bibliography: None,
+            csl: None,
+        };
+        let pending = Pending::default();
+        let (id, answer) = pending
+            .begin_context(&pick, "apa", Some(writing), &AtomicBool::new(false), || {})
+            .ok_or("editor request missing")?;
+        let request = pending.current().ok_or("editor request missing")?;
+        let file = FileLibrary::open(&source).unwrap_or_else(|error| panic!("{error}"));
+        let query = serde_json::from_value(json!({"text":"demo","interpret_locators":false}))?;
+        let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
+        let row = &rows["results"][0];
+        let selection: FileSelection =
+            serde_json::from_value(json!({"id":row["id"],"cite":row["cite"],"locator":null}))?;
+        let preview = file
+            .preview_for(
+                file.reserve_preview(),
+                vec![selection],
+                &request.output,
+                false,
+                Some(&request),
+            )
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert!(
+            file.prepared_for(&preview.ticket, &request),
+            "Enter accepts the preview prepared for this request"
+        );
+        let check = request.bibliography();
+        assert_eq!(
+            file.prepared_project_warnings(&preview.ticket, &preview.content_hash, check.as_ref())
+                .unwrap_or_else(|error| panic!("{error}")),
+            ["demo is missing from thesis.bib."]
+        );
+        let copied = file
+            .copy(&preview.ticket, &preview.content_hash, |content| {
+                assert_eq!(content.text, "[@demo]");
+                Ok(())
+            })
+            .unwrap_or_else(|error| panic!("{error}"));
+        assert!(pending.answer(id, &copied.text, || {}));
+        assert_eq!(answer.recv()?.as_deref(), Some("[@demo]"));
+        Ok(())
+    }
+
+    #[test]
     fn editor_picker_never_shows_the_foreground_apps_recent_citations() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
         let history = ibis_engine::recents::SessionReferences::default();
@@ -827,6 +1003,9 @@ mod tests {
         history.record(&epoch, Some("invented.writer"), &[id]);
         let pending = Pending::default();
         let pick = CaywPick {
+            document: None,
+            bibliography: None,
+            csl: None,
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,
@@ -854,6 +1033,9 @@ mod tests {
         };
         let pending = Pending::default();
         let pick = CaywPick {
+            document: None,
+            bibliography: None,
+            csl: None,
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: true,
@@ -880,6 +1062,9 @@ mod tests {
     fn a_key_request_stays_a_key_whatever_the_persons_style() {
         let pending = Pending::default();
         let pick = CaywPick {
+            document: None,
+            bibliography: None,
+            csl: None,
             output: CaywOutput::Key(OutputSpec::Key {
                 syntax: ibis_core::contract::KeySyntax::Pandoc,
                 command: None,
@@ -900,6 +1085,9 @@ mod tests {
     fn a_receipt_is_retired_as_a_request_begins_and_as_it_ends() {
         let pending = Pending::default();
         let pick = CaywPick {
+            document: None,
+            bibliography: None,
+            csl: None,
             output: CaywOutput::Style,
             form: CitationForm::Normal,
             clipboard: false,

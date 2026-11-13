@@ -10,7 +10,7 @@ Approved directions from ROADMAP.md; planned behaviour. No new notebook, source 
 
 **Check the bibliography.** Does the exact key occur in one chosen read-only `.bib`? Name that file, never "the whole document". Kept separate from loaded search libraries; an unknown result is never "missing", and Ibis never silently swaps a key.
 
-With a writing project selected, choosing or removing this bibliography changes that project. With none selected it changes the standalone check. A project with no bibliography never borrows the standalone check or a previous project's file.
+With a writing selected, choosing or removing this bibliography changes that writing. With none selected the check lasts only for this session. A writing with no bibliography never borrows an earlier writing's file.
 
 | Checked-file state | What the person sees |
 | --- | --- |
@@ -23,7 +23,7 @@ With a writing project selected, choosing or removing this bibliography changes 
 
 Built for key outputs: **More › Check Against a .bib File…** chooses the file, and each result row then says its state in words, naming the file ("In thesis.bib"), with the lines to look at for a repeated or doubtful key. The file is read when chosen, at launch and when the picker opens; nothing polls. More names the file, what is wrong with it if anything, and offers **Stop Checking thesis.bib**. A key known to identify a different work is refused: Enter neither copies nor pastes that key, keeps the selection and explains the conflict. This rule replaces warn-and-copy for that case (maintainer, 2026-11-04, decision 0028). Other states outside "In" join the citation's warnings, in the preview and in the copy's own result, so Enter copies, says why and stays open, an unreadable file included. Copy Entry says the entry comes as the file has it, `file` and `note` fields included. Formatted citations show no marks: a style has no key to check.
 
-**Unreadable project bibliography** (maintainer, 2026-11-05; decision 0028): a check is advice, not a gate. When thesis.bib can't be read, the citation stays available and says "Couldn't check thesis.bib" with Retry; only a key known to name a different work is refused. A key written more than once is a warning too, since no entry can be chosen between them. Last-good copies of the bibliography and one-off unverified actions are withdrawn.
+**Unreadable writing bibliography** (maintainer, 2026-11-05; decision 0028): a check is advice, not a gate. When thesis.bib can't be read, the citation stays available and says "Couldn't check thesis.bib" with Retry; only a key known to name a different work is refused. A key written more than once is a warning too, since no entry can be chosen between them. Last-good copies of the bibliography and one-off unverified actions are withdrawn.
 
 - **Copy bibliography entry** (More, on a missing row) keeps the key, never edits a source, and supplies a self-contained entry or explains how to export one.
 - **Find a passage**: search Zotero highlights, notes and comments, labelled Highlight, Comment or Note; a note is never treated as a quotation from a guessed reference; image-only annotations show "No text quotation".

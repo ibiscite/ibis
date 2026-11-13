@@ -2,7 +2,7 @@
 
 use std::sync::{Arc, Mutex};
 
-use ibis_core::settings::{ZoteroLibraries, ZoteroLibrary};
+use ibis_engine::settings::{ZoteroLibraries, ZoteroLibrary};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State, path::BaseDirectory};
 

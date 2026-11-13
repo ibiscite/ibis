@@ -13,8 +13,7 @@ pub struct PreparedCitation {
 impl PreparedCitation {
     /// Caller owns the selected bibliography and binds it to this task's
     /// immutable context. Rechecking never consumes or changes the preview.
-    /// A check is advice: only a key known to name a different work, or a
-    /// strict request without a complete current read, withholds the citation.
+    /// A check is advice: only a key known to name a different work withholds the citation.
     pub fn project_evidence(&self, read: &ProjectRead) -> ProjectAssessment {
         let checks = self.project_checks(read);
         let conflicts: Vec<_> = if self.uses_citation_keys() {
@@ -38,13 +37,6 @@ impl PreparedCitation {
                 ProjectAssessmentState::Conflict,
                 Some(format!(
                     "A key in {name} identifies a different work. Resolve the conflict before citing it."
-                )),
-            )
-        } else if self.request.strict && self.uses_citation_keys() && !read.current_complete() {
-            (
-                ProjectAssessmentState::Paused,
-                Some(format!(
-                    "A current successful check of {name} is required. Retry before citing."
                 )),
             )
         } else {
@@ -219,6 +211,7 @@ impl PreparedCitation {
             })
             .transpose()?;
         display.nodes.push(DisplayNode {
+            blocks: vec![],
             item: None,
             content: vec![DisplayRun {
                 text: " [Sample]".into(),

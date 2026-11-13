@@ -1,8 +1,12 @@
-/* Sits just outside the control it names, above everything, so it never hides
-   it, and takes no clicks. */
+/* Sits beside the control it names, above everything, so it covers no words and
+   no other control, and takes no clicks; placed by ui/HeldKeys. Unplaced, it is
+   measured out of sight. Where no side is free it fills the control's own box,
+   standing in for its label until the key is let go. */
 .ui-held-key {
   position: fixed; z-index: var(--z-overlay); pointer-events: none;
   border-radius: var(--r-small);
 }
-.ui-held-key[data-side="above"] { translate: -50% calc(-100% - var(--space-1)); }
-.ui-held-key[data-side="below"] { translate: -50% var(--space-1); }
+.ui-held-key:not([data-side]) { visibility: hidden; left: 0; top: 0; }
+.ui-held-key[data-side="inside"] { display: flex; align-items: center; justify-content: center; border-radius: var(--r-control); }
+/* Inside its control the key stands in for the label, as a row's key stands in for its icon: no cap on the plate. */
+.ui-held-key[data-side="inside"] kbd { background: transparent; }

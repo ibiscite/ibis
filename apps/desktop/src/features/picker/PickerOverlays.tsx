@@ -10,7 +10,7 @@ import { KeysDialog } from "./KeysDialog";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";
-import { WritingProjectsDialog, type WritingProjectDraft } from "./WritingProjects";
+import { WritingsDialog, type WritingDraft } from "./Writings";
 import { defaultOutput, defaultStyle, type OutputId } from "../../format/outputs";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -25,13 +25,13 @@ export function PickerOverlays({ api, style, format, menus, bindings }: {
   bindings: readonly KeyBinding[];
 }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
-  const projectDraft = useRef<WritingProjectDraft>({ form: null, place: { current: null } });
+  const writingDraft = useRef<WritingDraft>({ form: null, place: { current: null } });
   return <>
     {menus.keysOpen && <KeysDialog bindings={bindings} isMac={currentPlatform() === "macos"} onClose={menus.closeKeys} />}
-    {menus.projectsOpen && <WritingProjectsDialog
-      api={{ writingProjects: api.writingProjects, editWritingProject: api.editWritingProject,
-        chooseProject: api.chooseProject, stopProject: api.stopProject, onProjectChanged: api.onProjectChanged }}
-      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} draft={projectDraft} />}
+    {menus.projectsOpen && <WritingsDialog
+      api={{ writings: api.writings, editWriting: api.editWriting,
+        chooseProject: api.chooseProject, stopProject: api.stopProject, onProjectChanged: api.onProjectChanged, onWritingsChanged: api.onWritingsChanged }}
+      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} draft={writingDraft} />}
     {menus.sessionOpen && <SessionReferencesDialog style={style ?? defaultStyle} onClose={menus.closeSession}
         api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
   </>;

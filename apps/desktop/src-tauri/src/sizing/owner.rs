@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use super::{Frame, remember};
-use ibis_core::settings::PickerWindow;
+use ibis_engine::settings::PickerWindow;
 
 pub(super) const SAVE_DELAY: Duration = Duration::from_millis(500);
 pub(super) const MINIMUM: (u32, u32) = (480, 360);

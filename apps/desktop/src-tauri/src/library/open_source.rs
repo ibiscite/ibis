@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 #[cfg(not(target_os = "windows"))]
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use ibis_core::contract::{ItemRef, LibraryObject};
 use ibis_engine::request::ZoteroLibrary;
@@ -12,6 +13,8 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
 
 mod icons;
+
+static OPENS: AtomicU64 = AtomicU64::new(0);
 
 use super::state::Library;
 use super::{CommandError, Source};
@@ -51,6 +54,7 @@ pub(crate) async fn open_library_source(
     // Named by the picker: this body runs after Tauri schedules it, and a
     // launch that ends later gives way for the opening that asked alone.
     let presentation = app.state::<PickerGeneration>().originating(presentation);
+    let request = OPENS.fetch_add(1, Ordering::SeqCst).wrapping_add(1);
     let target = {
         let library = library.lock().map_err(|_| failed())?;
         target(
@@ -61,9 +65,32 @@ pub(crate) async fn open_library_source(
             zotero_only,
         )?
     };
-    tauri::async_runtime::spawn_blocking(move || launch(target, reveal))
-        .await
-        .map_err(|_| failed())??;
+    let owner = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = match target {
+            Target::ZoteroItem(uri) if !reveal => {
+                Target::ZoteroItem(ibis_engine::zotero_open::pdf_uri(&uri).unwrap_or(uri))
+            }
+            target => target,
+        };
+        if OPENS.load(Ordering::SeqCst) != request || owner.state::<PickerGeneration>().current() != presentation {
+            return Err(CommandError::Cancelled);
+        }
+        // Attachment lookup can wait on Zotero. Recheck the immutable source
+        // observation before launching anything after that wait.
+        let library = owner.state::<Mutex<Library>>();
+        let library = library.lock().map_err(|_| failed())?;
+        self::target(
+            &library,
+            item.as_ref().map(|item| &item.0),
+            &expected_revision,
+            &expected_source_generation,
+            zotero_only,
+        )?;
+        launch(target, reveal)
+    })
+    .await
+    .map_err(|_| failed())??;
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || yield_to_window(&handle, presentation, Takeover::Beside)),

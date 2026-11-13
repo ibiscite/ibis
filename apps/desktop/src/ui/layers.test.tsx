@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
-import { LAYER_ORDER, closeNearestLayer, closeOverlays, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
+import { LAYER_ORDER, closeOverlays, goBack, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
 
 afterEach(cleanup);
 
@@ -17,7 +17,7 @@ test("Esc closes the nearest kind whatever order the layers opened in", () => {
   const closed: LayerKind[] = [];
   const opened = ["window", "chooser", "sheet", "search", "panel", "menu"] as const;
   render(<>{opened.map((kind) => <Layer key={kind} kind={kind} close={() => { closed.push(kind); }} />)}</>);
-  for (let step = 0; step < LAYER_ORDER.length; step += 1) closeNearestLayer();
+  for (let step = 0; step < LAYER_ORDER.length; step += 1) goBack();
   // Nothing was closed for real, so the nearest stays; each press asks it again.
   expect(new Set(closed)).toEqual(new Set(["menu"]));
   cleanup();
@@ -28,16 +28,16 @@ test("Esc closes the nearest kind whatever order the layers opened in", () => {
       close={() => { steps.push(kind); setOpen((current) => current.filter((other) => other !== kind)); }} />)}</>;
   }
   render(<Stack />);
-  for (let step = 0; step < LAYER_ORDER.length; step += 1) act(() => { closeNearestLayer(); });
+  for (let step = 0; step < LAYER_ORDER.length; step += 1) act(() => { goBack(); });
   expect(steps).toEqual([...LAYER_ORDER]);
-  expect(closeNearestLayer()).toBe(false);
+  expect(goBack()).toBe(false);
 });
 
 test("the latest layer of one kind is nearest, and a layer may hand its key on", () => {
   const first = vi.fn(), second = vi.fn(() => false);
   render(<><Layer kind="menu" close={first} /><Layer kind="menu" close={second} /></>);
   const event = new KeyboardEvent("keydown", { key: "Escape" });
-  expect(closeNearestLayer(event)).toBe(false);
+  expect(goBack("escape", event)).toBe(false);
   expect(second).toHaveBeenCalledWith(event);
   expect(first).not.toHaveBeenCalled();
 });
@@ -46,7 +46,7 @@ test("a command clears overlays and leaves the panel, chooser, search and window
   const closed: LayerKind[] = [];
   render(<>{LAYER_ORDER.map((kind) => <Layer key={kind} kind={kind} close={(event) => { if (event) throw new Error("asked by a key"); closed.push(kind); }} />)}</>);
   closeOverlays();
-  expect(closed).toEqual(["menu", "sheet"]);
+  expect(closed).toEqual(["menu", "palette", "sheet"]);
 });
 
 test("Esc reaches a layer before any control can swallow it, and only once", () => {

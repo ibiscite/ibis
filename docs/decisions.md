@@ -40,7 +40,7 @@ the anchor older links use.
 [0016](decisions/0016-settings.md): `settings.json`, atomic saves, no migrations before 1.0, backups and restore.
 
 ## 0031 What Ibis remembers per app
-[0031](decisions/0031-what-ibis-remembers-per-app.md): writing projects, a format per app, `apps.json`, recent citations and app-ID evidence.
+[0031](decisions/0031-what-ibis-remembers-per-app.md): `apps.json`, recent citations and app-ID evidence. Format and writing rules are replaced by 0042.
 
 ## 0019 Updates
 [0019](decisions/0019-updates.md): Tauri's updater, opt-in, signed; offers never take Enter; release naming.
@@ -100,7 +100,7 @@ the anchor older links use.
 [0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
-[0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
+[0027](decisions/0027-process-until-1-0.md): agents' merge authority and the testing rhythm.
 
 ## 0047 Opening references, where the picker appears, and going back
 [0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.
@@ -108,8 +108,14 @@ the anchor older links use.
 ## 0048 Nix install
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
 
+## 0049 Local machines gate merges
+[0049](decisions/0049-local-gate.md): parallel local checks authorize the exact head; GitHub confirms main after merge, and release qualification stays intact.
+
 ## 0050 The menu bar menu
 [0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
 
 ## 0051 References in and out
 [0051](decisions/0051-references-in-and-out.md): six lasting concepts with one owner each; share a selection first (offline), then paste a DOI to cite, then add through Zotero's write API; attachments only when ticked for a share.
+
+## 0052 The engine owns the library and citations
+[0052](decisions/0052-engine-owns-library-and-citations.md): one engine per process with a library owner and citation sessions by id; one validator, one display contract and one vocabulary; front ends keep platform effects. Lands in six slices.
