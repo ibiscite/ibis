@@ -20,13 +20,13 @@ main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-are
 /* The heading starts on the row inset, as section headings do. */
 .ui-heading-slot { flex: 1 1 auto; min-width: 0; margin-inline-start: calc(-1 * var(--title-start)); }
 .ui-heading-slot > .results-heading { padding-block: 0; }
-/* With no list, notices take the room above the empty state, over its padding. */
-.ui-notice-host { position: absolute; inset-block-start: 0; inset-inline: 0; z-index: var(--z-chrome); block-size: var(--notice-line-h); }
-.ui-notice-host:not(:has(> .ui-line-notice, > .notice-slot)) { display: none; }
+/* With no list, the line itself moves to the room above the empty state, over its
+   padding at the content's top, so its notice is never drawn anew. */
+main.ui-frame[data-notice-room] > .ui-notice-line { grid-area: middle; align-self: start; z-index: var(--z-chrome); }
 
 /* A notice shows its words on the label column, cut with an ellipsis if they must
    be, and its actions at the end. */
-:is(.ui-notice-line, .ui-notice-host) { font: var(--type-body-size) / var(--type-body-line) var(--font); }
+.ui-notice-line { font: var(--type-body-size) / var(--type-body-line) var(--font); }
 .ui-line-notice { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .ui-line-words { flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); user-select: text; }
 .ui-line-notice > :not(.ui-line-words) { flex: none; }
@@ -38,7 +38,7 @@ ul.ui-line-words > li + li::before { content: " · "; }
 .ui-line-words code { font-family: var(--mono); color: var(--text); }
 /* The window's notice slot (ui/NoticeSlot: Undo, a remark, an update) starts on
    the icon column, so an update's ring sits where row tiles do. */
-:is(.ui-notice-line, .ui-notice-host) > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: calc(-1 * var(--title-start)); }
+.ui-notice-line > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: calc(-1 * var(--title-start)); }
 /* One notice shows; the rest wait their turn, out of sight and out of reach. */
-:is(.ui-notice-line, .ui-notice-host) > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
+.ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
 .ui-line-words:focus-visible { outline-offset: var(--ring-inside); }

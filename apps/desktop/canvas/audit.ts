@@ -53,7 +53,7 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
   if (pass === "inventory") {
     for (const scenario of picker) {
       await show(scenario);
-      const shown = document.querySelector(".ui-notice-line > :is(.ui-line-notice, .notice-slot), .ui-notice-host > :is(.ui-line-notice, .notice-slot)");
+      const shown = document.querySelector(".ui-notice-line > :is(.ui-line-notice, .notice-slot)");
       const top = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().top) : "-"; };
       const bottom = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().bottom) : "-"; };
       failures.push(`${scenario}: search ends ${bottom(".search-bar")}, line ${top(".ui-notice-line")}–${bottom(".ui-notice-line")}, first row ${top('#results [role="option"]')}; ${shown?.textContent?.trim() || "no notice"}`);
