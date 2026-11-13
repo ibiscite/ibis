@@ -212,6 +212,7 @@ impl Engine {
         // Retire the active engine only while the client still owns this read.
         let candidate = Engine {
             shared: Arc::new(Shared::new(base.clone())),
+            formatting: self.formatting.clone(),
             resources: Arc::new(resources),
             watch_files: false,
         };
