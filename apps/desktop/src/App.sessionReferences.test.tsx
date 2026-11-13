@@ -3,14 +3,14 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import type { SessionBibliography, SessionReferencesView } from "./api";
-import { backend, chooseFromMore, receipt, resetApp, result } from "./testing/app";
+import { backend, chooseFromMore, displayTree, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
 const plain = (text: string | null | undefined) => (text ?? "").replace(/[⁨⁩]/g, "");
 const taylor = result("taylor2026", "Synthetic signals"), morgan = result("morgan2025", "Synthetic noise");
 const list = (over: Partial<SessionReferencesView> = {}): SessionReferencesView => ({ revision: 1, rows: [taylor, morgan], absent: 0, overflowed: false, undo: null, ...over });
-const formatted = (text: string, left_out: string[] = []): SessionBibliography => ({ text, html: `<p>${text}</p>`, content_hash: `hash-${text}`, warnings: [], left_out });
+const formatted = (text: string, left_out: string[] = []): SessionBibliography => ({ text, display: displayTree([{ item: 0, text }]), content_hash: `hash-${text}`, warnings: [], left_out });
 
 async function open() {
   render(<App />);

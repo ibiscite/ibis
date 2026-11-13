@@ -75,12 +75,14 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             .preview(file.reserve_preview(), vec![selection], remembered.id())
             .map_err(|_| "native preview")?;
         assert_eq!(preview.text, expected, "{output:?}");
+        // APA's HTML for this fixture equals its text; key outputs have no HTML.
+        let expected_html = matches!(output.spec(), OutputSpec::Csl { .. }).then_some(expected.as_str());
         let mut writes = 0;
         let copied = file
             .copy(&preview.ticket, &preview.content_hash, |content| {
                 writes += 1;
                 assert_eq!(content.text, preview.text);
-                assert_eq!(content.html, preview.html.as_deref());
+                assert_eq!(content.html, expected_html, "{output:?}");
                 Ok(())
             })
             .map_err(|_| "canonical copy")?;

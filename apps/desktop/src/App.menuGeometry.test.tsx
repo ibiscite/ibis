@@ -173,7 +173,7 @@ test("startup shortcut notices take the frame's notice place, outside the list",
   render(<App />);
   const notice = await screen.findByText(/Your shortcut setting was not used/);
   expect(notice.closest(".results-area")).toBeNull();
-  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
+  expect(notice.closest(".ui-notice-line")).not.toBeNull();
 });
 
 test.each([false, true])("desktop shortcut guidance appears once and its notice takes the frame's notice place (welcome=%s)", async (welcome) => {
@@ -188,6 +188,6 @@ test.each([false, true])("desktop shortcut guidance appears once and its notice 
   const notice = await screen.findByText(/Synthetic desktop shortcut refusal/);
   expect(screen.getAllByText(guidance, { exact: false })).toHaveLength(1);
   expect(notice.textContent?.includes(guidance)).toBe(!welcome);
-  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
+  expect(notice.closest(".ui-notice-line")).not.toBeNull();
   expect(document.querySelector("main")?.firstElementChild).toBe(document.querySelector(".search-bar"));
 });

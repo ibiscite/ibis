@@ -89,6 +89,7 @@ pub(super) fn flatten(tree: &DisplayTree) -> String {
 }
 fn node(item: Option<usize>, text: String) -> DisplayNode {
     DisplayNode {
+        blocks: vec![],
         item,
         content: vec![DisplayRun {
             text,

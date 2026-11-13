@@ -211,6 +211,7 @@ impl PreparedCitation {
             })
             .transpose()?;
         display.nodes.push(DisplayNode {
+            blocks: vec![],
             item: None,
             content: vec![DisplayRun {
                 text: " [Sample]".into(),
@@ -339,14 +340,25 @@ impl Engine {
         if fresh.zotero_generation != prepared.zotero_generation {
             return Err(CitationCommitError::PreviewChanged);
         }
-        if fresh.result.copy_content(items).is_none() {
-            return Err(refusal(&fresh.result));
-        }
-        // An annotation's page means its file as it was shown.
-        for (item, pick) in prepared.request.items.iter().enumerate() {
-            if let Some(error) = annotation_error(&fresh.context.snapshot, pick, Some(&prepared.context.snapshot)) {
+        // Check the shown identities and annotation files before any later
+        // locator or form refusal from the fresh rendering.
+        let checked = ibis_core::citation::check(
+            &fresh.context.snapshot,
+            Some(&prepared.context.snapshot),
+            &prepared.request,
+            |_| ibis_core::citation::ItemSupport::ALL,
+        )
+        .map_err(|_| error(ErrorCode::BadInput))?;
+        for (item, (checked, rendered)) in checked.into_iter().zip(&fresh.result.outcomes).enumerate() {
+            if let Err(error) = checked {
                 return Err(CitationCommitError::Refused { item, error });
             }
+            if let ItemOutcome::Refused { item, error } = *rendered {
+                return Err(CitationCommitError::Refused { item, error });
+            }
+        }
+        if fresh.result.copy_content(items).is_none() {
+            return Err(refusal(&fresh.result));
         }
         let fresh = if prepared.sample { fresh.mark_sample()? } else { fresh };
         if fresh.result.content_hash != prepared.result.content_hash {
@@ -394,54 +406,5 @@ fn refusal(result: &CitationResult) -> CitationCommitError {
 impl std::fmt::Debug for PreparedCitation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PreparedCitation").finish_non_exhaustive()
-    }
-}
-
-pub(super) fn annotation_error(
-    snapshot: &Snapshot,
-    pick: &CitationItem,
-    original: Option<&Snapshot>,
-) -> Option<CitationError> {
-    let Some(id) = &pick.annotation else {
-        return pick
-            .expected_annotation_cite
-            .as_ref()
-            .map(|_| CitationError::AnnotationMismatch);
-    };
-    let invalid = || Some(CitationError::AnnotationMismatch);
-    let Some(object) = snapshot.get(id) else {
-        return invalid();
-    };
-    if pick
-        .expected_annotation_cite
-        .as_ref()
-        .is_some_and(|expected| expected != &object.fingerprints.cite)
-        || original.is_some_and(|old| {
-            old.get(id)
-                .is_none_or(|old| old.fingerprints.cite != object.fingerprints.cite)
-        })
-    {
-        return invalid();
-    }
-    let LibraryObject::Annotation(annotation) = &object.object else {
-        return invalid();
-    };
-    let Some(parent) = snapshot.get(&annotation.parent) else {
-        return invalid();
-    };
-    let LibraryObject::Attachment(attachment) = &parent.object else {
-        return invalid();
-    };
-    if attachment.parent.as_ref() != Some(&pick.item)
-        || original.is_some_and(|old| {
-            old.get(&annotation.parent)
-                .is_none_or(|old| old.fingerprints.cite != parent.fingerprints.cite)
-        })
-    {
-        return invalid();
-    }
-    match (&annotation.page_label, &pick.locator) {
-        (Some(page), Some(locator)) if locator.term == LocatorTerm::Page && page.trim() == locator.value.trim() => None,
-        _ => invalid(),
     }
 }

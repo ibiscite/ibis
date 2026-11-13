@@ -4,6 +4,9 @@ use ibis_core::{
     contract::*,
     search::{MatchField, SnapshotIndex},
 };
+pub use ibis_csl::{
+    LocaleEntry as LocaleInfo, Release as UpstreamRelease, StyleEntry as StyleInfo, StylePage as StylesResult,
+};
 pub use ibis_sources::{LibraryKind, SourceCapability, SourceWarning, WarningCause, WarningCode};
 use schemars::{JsonSchema, schema_for};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -140,49 +143,6 @@ pub struct SearchResult {
     pub shorthand: Option<ibis_core::shorthand::Shorthand>,
     /// The libraries searched, as they were when these hits were found.
     pub source_health: health::SourceHealth,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StylesResult {
-    pub styles: Vec<StyleInfo>,
-    /// How many styles match the request, beyond this page.
-    pub total: usize,
-    /// Every language a style can be written in.
-    pub locales: Vec<LocaleInfo>,
-    /// Styles change only with an Ibis release; these say which release.
-    pub styles_release: UpstreamRelease,
-    pub locales_release: UpstreamRelease,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct StyleInfo {
-    pub id: String,
-    pub title: String,
-    /// The style's own last-changed date: its only version marker.
-    pub updated: String,
-    /// One of the styles offered first.
-    pub curated: bool,
-    /// The independent style whose rules this one uses.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub parent: Option<String>,
-    /// The language this style is written in unless a request names another.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub default_locale: Option<String>,
-    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub format: Option<String>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub fields: Vec<String>,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct LocaleInfo {
-    pub tag: String,
-    pub native: String,
-    pub english: String,
-}
-#[derive(Debug, Clone, Serialize, JsonSchema)]
-pub struct UpstreamRelease {
-    pub repo: String,
-    pub tag: String,
-    pub commit: String,
 }
 #[derive(Debug)]
 pub struct DispatchResult {
@@ -719,9 +679,6 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let snapshot = &context.snapshot;
-        if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-            return Err(error(ErrorCode::BadInput));
-        }
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         let resolved;

@@ -2,7 +2,6 @@ import { useLayoutEffect, useRef, type KeyboardEventHandler, type ReactNode, typ
 import { IconButton } from "./IconButton";
 import { useScrollEdges } from "./ScrollArea";
 import { composingKey, useLayer } from "./layers";
-import { useBackNavigation } from "./useBackNavigation";
 import "./Inspector.css";
 
 /** One thing's details, in a panel beside the list. Everything around it stays
@@ -21,14 +20,13 @@ export function Inspector({ ref, id, label, heading, byline, closeLabel, documen
   onKeyDown?: KeyboardEventHandler<HTMLElement>;
 }) {
   const column = useRef<HTMLDivElement>(null);
-  const ownsKeys = useLayer("panel", true, onClose);
-  useBackNavigation(onClose, ownsKeys);
+  const layer = useLayer("panel", true, onClose);
   useScrollEdges(column);
   // With nothing to edit, the column itself takes the keys, so they can scroll it.
   // biome-ignore lint/correctness/useExhaustiveDependencies: focus is taken once, on opening.
   useLayoutEffect(() => { if (readOnly) column.current?.focus({ preventScroll: true }); }, []);
   return <section ref={ref} id={id} className="inspector" data-reading={reading || undefined} aria-label={label}
-    onKeyDown={(event) => { if (ownsKeys() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
+    onKeyDown={(event) => { if (layer.nearest() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
     <div className="inspector-body">
       <div className="inspector-sidebar">
         <div ref={column} className="inspector-column scroll-area" tabIndex={readOnly ? 0 : undefined}>

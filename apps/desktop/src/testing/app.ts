@@ -5,7 +5,7 @@ import { clearMocks, mockIPC, mockWindows } from "@tauri-apps/api/mocks";
 import { vi } from "vitest";
 import { emit, listen } from "@tauri-apps/api/event";
 import type * as api from "../api";
-import type { Density, FilePreview, FileSelection, PreviewIntent } from "../bindings";
+import type { Density, DisplayRun, DisplayTree, FilePreview, FileSelection, PreviewIntent } from "../bindings";
 import { isStyle, listedOutput } from "../format/outputs";
 import { fixtureDestination, formatAnswer } from "./format";
 import { forgetRecentFormats } from "../features/picker/FormatMenu";
@@ -145,16 +145,21 @@ type Prepared = { request: PreviewRequest; preview: FilePreview };
 const receipts = new Map<string, Prepared>();
 let receiptNumber = 0;
 
+/** Invented ownership groups in the engine display contract. */
+export function displayTree(spans: { item: number | null; text: string; runs?: DisplayRun[] }[]): DisplayTree {
+  return { nodes: spans.map(({ item, text, runs }) => ({ item, content: runs ?? [{ text, italic: false, bold: false, script: "normal" }], blocks: [] })) };
+}
+
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
-export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
+export function receipt(text: string, display: DisplayTree | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
-  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
+  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, display: display ?? displayTree([{ item: 0, text }]), warnings };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
 export function lineReceipt(words: readonly string[], warnings: string[] = []): FilePreview {
   const spans = words.flatMap((text, item) => [...(item ? [{ item: null, text: "; " }] : []), { item, text }]);
-  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), spans };
+  return { ...receipt(spans.map((span) => span.text).join(""), null, warnings), display: displayTree(spans) };
 }
 
 /** The keys of the references in the citation being built, in the line's order. */

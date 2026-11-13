@@ -73,6 +73,7 @@ mod shelf_summary_tests {
     fn shelf_summary_keeps_narrative_remainders_and_counts_remaining_references() {
         let text = format!("Taylor (2026, p. {})", "12–30 ".repeat(40));
         let node = |item, text: String| DisplayNode {
+            blocks: vec![],
             item,
             content: vec![DisplayRun {
                 text,

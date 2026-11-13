@@ -43,7 +43,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: var(--border-outside); }
   .shelf-mark { color: CanvasText; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }
@@ -57,6 +57,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
    text on the column's edge, no box, so nothing is framed twice. */
 .inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .inspector-citation[data-keys] { font-family: var(--mono); }
-.inspector-citation .csl-entry { display: inline; }
 .inspector-problem svg { margin-inline-end: var(--space-1); color: var(--status-error); }
 

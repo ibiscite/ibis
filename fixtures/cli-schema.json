@@ -3565,9 +3565,50 @@
             ],
             "type": "object"
           },
-          "DisplayNode": {
-            "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+          "DisplayBlock": {
+            "description": "A block covers content runs in [start, end). Blocks are in opening order;\nranges are nested or disjoint, never crossing. Equal ranges retain nesting.",
             "properties": {
+              "end": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "$ref": "#/$defs/DisplayBlockKind"
+              },
+              "start": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          "DisplayBlockKind": {
+            "description": "Passive CSL layout, independent of HTML class names or CSS.",
+            "enum": [
+              "entry",
+              "margin",
+              "inline",
+              "block",
+              "indent"
+            ],
+            "type": "string"
+          },
+          "DisplayNode": {
+            "description": "One display group owns ordered text leaves and their block layout;\nshared punctuation has no item.",
+            "properties": {
+              "blocks": {
+                "items": {
+                  "$ref": "#/$defs/DisplayBlock"
+                },
+                "type": "array"
+              },
               "content": {
                 "items": {
                   "$ref": "#/$defs/DisplayRun"
@@ -3584,7 +3625,8 @@
               }
             },
             "required": [
-              "content"
+              "content",
+              "blocks"
             ],
             "type": "object"
           },
@@ -3619,7 +3661,7 @@
             "type": "object"
           },
           "DisplayTree": {
-            "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+            "description": "Ownership groups with bounded-depth passive blocks and styled text leaves.",
             "properties": {
               "nodes": {
                 "items": {
@@ -5082,9 +5124,50 @@
             ],
             "type": "object"
           },
-          "DisplayNode": {
-            "description": "One display group owns ordered text leaves; shared punctuation has no item.",
+          "DisplayBlock": {
+            "description": "A block covers content runs in [start, end). Blocks are in opening order;\nranges are nested or disjoint, never crossing. Equal ranges retain nesting.",
             "properties": {
+              "end": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              },
+              "kind": {
+                "$ref": "#/$defs/DisplayBlockKind"
+              },
+              "start": {
+                "format": "uint",
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "kind",
+              "start",
+              "end"
+            ],
+            "type": "object"
+          },
+          "DisplayBlockKind": {
+            "description": "Passive CSL layout, independent of HTML class names or CSS.",
+            "enum": [
+              "entry",
+              "margin",
+              "inline",
+              "block",
+              "indent"
+            ],
+            "type": "string"
+          },
+          "DisplayNode": {
+            "description": "One display group owns ordered text leaves and their block layout;\nshared punctuation has no item.",
+            "properties": {
+              "blocks": {
+                "items": {
+                  "$ref": "#/$defs/DisplayBlock"
+                },
+                "type": "array"
+              },
               "content": {
                 "items": {
                   "$ref": "#/$defs/DisplayRun"
@@ -5101,7 +5184,8 @@
               }
             },
             "required": [
-              "content"
+              "content",
+              "blocks"
             ],
             "type": "object"
           },
@@ -5136,7 +5220,7 @@
             "type": "object"
           },
           "DisplayTree": {
-            "description": "A bounded-depth tree: root -> ownership groups -> styled text leaves.",
+            "description": "Ownership groups with bounded-depth passive blocks and styled text leaves.",
             "properties": {
               "nodes": {
                 "items": {

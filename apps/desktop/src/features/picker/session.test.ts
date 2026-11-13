@@ -8,7 +8,7 @@ import type { CopiedReason } from "../../bindings";
 
 const a: CitationReference = { ...testStates[1]!.results[0]!, locator: { label: "page", value: "١٢–١٤" } };
 const b = testStates[1]!.results[1]!;
-const prepared = { text: "canonical engine text", html: "", markup: ["canonical engine text"], warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
+const prepared = { display: { nodes: [] }, text: "canonical engine text", warnings: [], fileTicket: "ticket-b", fileHash: "hash-b" };
 function scenario() {
   let state = { ...initialSession(), presentation: 0 as number | null };
   let effects: ReturnType<typeof reduceSession>[1] = [];

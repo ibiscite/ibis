@@ -53,7 +53,10 @@ test("empty-library choices use arrows and Enter, keep focus after cancelling an
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
   const search = screen.getByLabelText("Search references");
   act(() => search.focus());
+  // The primary card, the one that fills the library, comes first.
   fireEvent.keyDown(search, { key: "ArrowDown", code: "ArrowDown" });
+  expect(document.activeElement).toBe(choiceRow(/^Open .*empty.bib/));
+  fireEvent.keyDown(document.activeElement!, { key: "ArrowDown", code: "ArrowDown" });
   expect(document.activeElement).toBe(zotero);
   fireEvent.keyDown(zotero, { key: "ArrowDown", code: "ArrowDown" });
   const file = choiceRow(FILE_ROW);

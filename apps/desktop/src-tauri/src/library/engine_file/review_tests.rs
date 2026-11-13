@@ -520,7 +520,13 @@ fn shelf_form_metadata_uses_the_prepared_snapshot_and_true_year_only() -> Result
         )
         .map_err(|_| "preview")?;
     assert_eq!(
-        preview.spans.iter().map(|span| span.text.as_str()).collect::<String>(),
+        preview
+            .display
+            .nodes
+            .iter()
+            .flat_map(|node| &node.content)
+            .map(|run| run.text.as_str())
+            .collect::<String>(),
         preview.text
     );
     let choices = file

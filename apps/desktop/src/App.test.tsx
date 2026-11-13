@@ -9,7 +9,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
-import { backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -53,7 +53,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
         ...(item ? [{ item: null, text: "; " }] : []),
         { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     },
     copy_file_citation: copied,
   });
@@ -343,6 +343,31 @@ test("C5 click selects without copying and double-click copies the highlighted c
   expect(document.activeElement).toBe(screen.getByLabelText("Search references"));
   fireEvent.click(screen.getByText("Second"), { detail: 2 });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+});
+
+test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row does, only while the list is shown", async () => {
+  const copied = vi.fn(() => ({ text: "[@b]", warnings: [] }));
+  backend({ search: () => [result("a", "First"), result("b", "Second"), result("c", "Third")], copy_file_citation: copied });
+  render(<App />);
+  const search = screen.getByLabelText("Search references");
+  await screen.findByText("Third");
+  // Each shown row carries its number for the keys sheet and assistive technology.
+  expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
+  // Held, each number takes its row's leading tile; the year, citation context, stays.
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile")?.getAttribute("data-key"), row.querySelector(".result-year")?.textContent]))
+    .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
+  screen.getAllByRole("option").forEach((row, i) => expect(row.textContent).not.toContain(`Ctrl+${i + 1}`));
+  // No fourth row: the key is left alone.
+  expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
+  // The command list stands in for the results: no row has a number.
+  fireEvent.change(search, { target: { value: ">" } });
+  expect(fireEvent.keyDown(search, { key: "2", code: "Digit2", ctrlKey: true })).toBe(true);
+  fireEvent.change(search, { target: { value: "" } });
+  await screen.findByText("Third");
+  // AZERTY types & on the 2 key's neighbour; the physical key decides.
+  expect(fireEvent.keyDown(search, { key: "é", code: "Digit2", ctrlKey: true })).toBe(false);
+  await waitFor(() => expect(copied).toHaveBeenCalledOnce());
+  expect(screen.getByRole("option", { name: /Second/ }).getAttribute("aria-selected")).toBe("true");
 });
 
 test.each([null, "toggle", "copy"])("C5 native context completion %s uses the current row without a browser menu", async (action) => {
@@ -1291,7 +1316,7 @@ test.each(["", "sleep"])("an empty loaded library is explained even for query %s
   const title = await screen.findByText("No references in empty 研究.bib");
   expect(title.compareDocumentPosition(screen.getByRole("listbox", { name: "No references in empty 研究.bib" })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(document.querySelector(".results-heading")).toBeNull();
-  expect(screen.getByText("Choose a library with references.")).toBeTruthy();
+  expect(screen.getByText("Add references to it, or choose another library.")).toBeTruthy();
   expect(screen.queryByText("Type to find a reference")).toBeNull();
   expect(screen.queryByText("No matching references")).toBeNull();
   expect(screen.getByRole("option", { name: /^Choose a Library File…/ })).toBeTruthy();
@@ -1312,7 +1337,10 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items, output }) => output === "ieee"
-      ? receipt("Garcia, First", "Garcia, <i>First</i><img src=x onerror=alert(1)>")
+      ? receipt("Garcia, First", displayTree([{ item: 0, text: "Garcia, First", runs: [
+          { text: "Garcia, ", italic: false, bold: false, script: "normal" },
+          { text: "First", italic: true, bold: false, script: "normal" },
+        ] }]))
       : receipt(items.length > 1 ? "(Garcia, 2021); Second" : "(Garcia, 2021)", null,
           items.length > 1 ? ["“Second”: this style could not format the reference"] : []),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { text: preview.text, warnings: preview.warnings }; },
@@ -1335,7 +1363,7 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   await within(preview).findByText("(Garcia, 2021); Second");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second", html: null });
+  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second" });
   await screen.findByText("Copied");
   expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
 });

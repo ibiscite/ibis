@@ -2,7 +2,6 @@
 import * as nativeApi from "../../api";
 import type { Delivered } from "../../bindings";
 import { say } from "../../i18n";
-import { parse } from "../../format/markup";
 import type { OutputId } from "../../format/outputs";
 import type { ProjectEdit } from "./destination";
 import type { Operation } from "./Notices";
@@ -122,8 +121,8 @@ export function createSessionController(initial = initialSession()) {
         const { request, ask } = effect;
         try {
           const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
-          dispatch({ type: "previewed", request, preview, value: { markup: preview.html ? parse(preview.html) : [preview.text], text: preview.text, html: preview.html ?? "",
-            warnings: preview.warnings, spans: preview.spans, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
+          dispatch({ type: "previewed", request, preview, value: { display: preview.display, text: preview.text,
+            warnings: preview.warnings, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {
           dispatch({ type: "preview-failed", request, failure: previewFailure(error) });
         } finally {

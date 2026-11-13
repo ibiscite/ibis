@@ -1,5 +1,5 @@
 //! Formatting and cancellation stay behind the same typed engine boundary.
-use super::{Engine, LocaleInfo, StyleInfo, StylesResult, UpstreamRelease, error};
+use super::{Engine, StylesResult, error};
 use crate::request::StylesRequest;
 use ibis_core::contract::*;
 use ibis_csl::{CancellationToken, FormatError};
@@ -130,41 +130,7 @@ impl Engine {
         if !(1..=20_000).contains(&request.limit) || request.query.as_ref().is_some_and(|query| query.len() > 1024) {
             return Err(error(ErrorCode::BadInput));
         }
-        let page = ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset)
-            .map_err(formatter_error)?;
-        let release = |release: ibis_csl::Release| UpstreamRelease {
-            repo: release.repo,
-            tag: release.tag,
-            commit: release.commit,
-        };
-        Ok(StylesResult {
-            styles: page
-                .styles
-                .into_iter()
-                .map(|style| StyleInfo {
-                    id: style.id,
-                    title: style.title,
-                    updated: style.updated,
-                    curated: style.curated,
-                    parent: style.parent,
-                    default_locale: style.default_locale,
-                    format: style.format,
-                    fields: style.fields,
-                })
-                .collect(),
-            total: page.total,
-            locales: page
-                .locales
-                .into_iter()
-                .map(|locale| LocaleInfo {
-                    tag: locale.tag,
-                    native: locale.native,
-                    english: locale.english,
-                })
-                .collect(),
-            styles_release: release(page.styles_release),
-            locales_release: release(page.locales_release),
-        })
+        ibis_csl::styles(request.query.as_deref().unwrap_or(""), request.limit, request.offset).map_err(formatter_error)
     }
     pub(super) fn formatted(
         &self,
@@ -176,29 +142,6 @@ impl Engine {
         // The request is wrong, not its items: refuse it whole, before formatting.
         ibis_csl::Formatter::check_output(&request.output, request.output_locale.as_deref())
             .map_err(formatter_error)?;
-        let annotations: Vec<_> = request
-            .items
-            .iter()
-            .map(|pick| super::prepared::annotation_error(snapshot, pick, None))
-            .collect();
-        if annotations.iter().any(Option::is_some) {
-            return Ok(CitationResult::new(
-                String::new(),
-                None,
-                None,
-                DisplayTree::default(),
-                annotations
-                    .into_iter()
-                    .enumerate()
-                    .map(|(item, error)| ItemOutcome::Refused {
-                        item,
-                        error: error.unwrap_or(CitationError::UnsupportedForm),
-                    })
-                    .collect(),
-                vec![],
-                vec![],
-            ));
-        }
         let formatter = self.formatting.formatter()?;
         let task = match formatter.submit(snapshot.clone(), request.clone()) {
             Ok(task) => task,

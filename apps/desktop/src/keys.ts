@@ -7,9 +7,13 @@ export type KeyAction = keyof typeof SHORTCUT_ACTIONS;
 /** One key binding the picker really handles, in accelerator syntax. */
 export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; otherKeys?: readonly string[]; displayLabel?: string;
   /** The action's words right now, when they differ from the table's (Enter that only copies). */
-  label?: MessageId };
+  label?: MessageId;
+  /** The keys are one run, written first to last ("⌘1–9"). */
+  run?: true };
 /** The app's unset shortcut setting. */
 export const DEFAULT_PICKER_SHORTCUT = "CmdOrCtrl+Shift+Y";
+/** ⌘1–9 (Ctrl elsewhere): the shown result with that number. */
+export const PICK_KEYS = Array.from({ length: 9 }, (_, i) => `CmdOrCtrl+${i + 1}`);
 
 /** Every key the picker handles. The keys overlay, the footer hints and the
  * More menu read their labels from here, so the list cannot drift from them.
@@ -19,6 +23,8 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   // ⌘-click is rowClickAction's toggle; listed with the key that does the same.
   { region: "search", action: "add", keys: ["Shift+Enter", "CmdOrCtrl+Click"] },
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
+  // The first nine rows in view, numbered while the command key is held: usePickerKeys.
+  { region: "search", action: "pick", keys: PICK_KEYS, run: true },
   // Quick Look's key: Space types a space in the search, so peeking is ⌘Y as in Finder by keyboard.
   { region: "search", action: "peek", keys: ["CmdOrCtrl+Y"] },
   // Search to the citation's last token: usePickerKeys' searchKey.
@@ -138,6 +144,12 @@ export function shortcutLabel(shortcut: string, mac: boolean): string {
     return plain.length === 1 ? plain.toUpperCase() : plain;
   });
   return joinKeyLabels(keys, mac);
+}
+
+/** The number a press of ⌘1–9 (Ctrl elsewhere) picks, or null. */
+export function pickNumber(e: KeyPress, mac = currentPlatform() === "macos"): number | null {
+  const at = PICK_KEYS.findIndex((keys) => matchesAccelerator(e, keys, mac));
+  return at < 0 ? null : at + 1;
 }
 
 /** The parts of a key press a shortcut depends on. */

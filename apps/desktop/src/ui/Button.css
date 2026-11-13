@@ -8,10 +8,10 @@
   cursor: default; touch-action: manipulation;
 }
 /* Drawn at the Mac's large size; the hit area stays 32 px or more. */
-.ui-button[data-variant]::after { content: ""; position: absolute; inset: calc(-1 * (var(--control-h) - var(--action-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
+.ui-button[data-variant]::after { content: ""; position: absolute; inset: calc(-1 * (var(--control-h) - var(--action-h)) / 2 - var(--border-width)) var(--border-outside); }
 .ui-button[data-size="small"] { min-height: var(--control-small-h); padding-inline: var(--space-2); }
 /* A 24 px fill still has a 32 px pointer target, inside the footer's padding. */
-.ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) calc(-1 * var(--border-width)); }
+.ui-button[data-size="small"]::after { inset: calc(-1 * (var(--control-h) - var(--control-small-h)) / 2 - var(--border-width)) var(--border-outside); }
 .ui-button[data-variant="quiet"], .ui-button[data-variant="icon"] { background: transparent; border-color: transparent; color: var(--control-icon-color, var(--text-secondary)); }
 /* A quiet button's words are label colour, as a Mac borderless button's title, so they keep 4.5:1. */
 .ui-button[data-variant="quiet"] { color: var(--control-icon-color, var(--text)); }

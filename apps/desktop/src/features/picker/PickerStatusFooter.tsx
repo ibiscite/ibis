@@ -8,7 +8,7 @@ import { PickerFooter } from "./PickerFooter";
 import { PickerLibraryStatus } from "./PickerLibraryStatus";
 import { PickerMenu } from "./PickerMenu";
 import { libraryOperations, OPERATION_FAILURES } from "./Notices";
-import { closeNearestLayer } from "../../ui/layers";
+import { goBack } from "../../ui/layers";
 import type { useZoteroScope } from "./useZoteroScope";
 import type { usePickerSource } from "./usePickerSource";
 import type { usePickerMenus } from "./usePickerMenus";
@@ -71,7 +71,7 @@ export function PickerStatusFooter({
       groupsFailed={failures.zoteroGroups} failure={sourceOpen.failure?.message ?? [...libraryOperations].filter((operation) => operation !== "zoteroGroups" && failures[operation]).map((operation) => say(OPERATION_FAILURES[operation])).join(" ")} />}
 
     hints={command ? { ...hints, enter: command.label, shiftEnter: null } : hints}
-    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => closeNearestLayer() }}
+    altHeld={altHeld} actions={{ copy: command ? command.run : copyChosen, add: toggleHighlighted, escape: () => goBack() }}
     more={
       <PickerMenu isOpen={menuOpen} onOpenChange={(open) => (open ? openMore() : closeMore())}
         buttonRef={moreButton} searchRef={input} libraryDetail={libraryDetail}

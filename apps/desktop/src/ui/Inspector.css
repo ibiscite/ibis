@@ -5,7 +5,7 @@
    meets the search bar's divider at the top and the shelf at the bottom. The
    content keeps S from both inside it. */
 @container (max-width: 36rem) {
-  .inspector { --inspector-pad: calc(var(--inset) + var(--row-pad)); grid-area: middle; width: auto; margin-block: 0; border: 0; }
+  .inspector { --inspector-pad: var(--row-start); grid-area: middle; width: auto; margin-block: 0; border: 0; }
   .picker-content:has(~ .inspector) { visibility: hidden; }
 }
 .inspector-body { display: flex; flex-direction: column; height: 100%; overflow: hidden; }

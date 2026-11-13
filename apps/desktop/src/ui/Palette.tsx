@@ -4,7 +4,9 @@ import { Icon } from "../icons";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
-import { ViewFrame, leaveView } from "./ViewFrame";
+import { flushSync } from "react-dom";
+import { useLayer } from "./layers";
+import { ViewFrame } from "./ViewFrame";
 import { say } from "../i18n";
 import "./Palette.css";
 
@@ -70,22 +72,25 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const current = items.find((item) => item.id === highlight.id) ?? items[0];
   const listId = useId(), titleId = useId(), descriptionId = useId();
   const optionId = (item: PaletteItem) => `${id}-${item.id}`;
-  const field = useRef<HTMLInputElement>(null), frame = useRef<HTMLDivElement>(null);
+  const field = useRef<HTMLInputElement>(null);
   const pointer = useRef<{ x: number; y: number } | null>(null);
-  const leave = () => { if (frame.current) leaveView(frame.current); };
   const mac = currentPlatform() === "macos";
   // Esc, a click outside or Back hands the keyboard back to whatever had it.
   const opener = useRef<Element | null>(null);
   // Once a row runs, the palette is done: an action clearing the way (a sheet
   // opening) closes it without handing focus back.
   const acted = useRef(false);
-  const dismiss = () => {
+  // Esc, Back and an empty Backspace go back (ui/layers). A command can open
+  // native UI next, so the palette is already gone then.
+  const layer = useLayer("palette", true, () => { flushSync(dismiss); });
+  const leave = layer.leave;
+  function dismiss() {
     if (acted.current) return;
     leave();
     const back = invoker?.current ?? opener.current;
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
-  };
+  }
   useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
   // Reveal after the new highlight and its preview have laid out. Each key
   // owns one reveal, including at a list boundary; hover and later preview
@@ -113,13 +118,11 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     else if (event.key === "Home" && !query) { event.preventDefault(); move(-items.length); }
     else if (event.key === "End" && !query) { event.preventDefault(); move(items.length); }
     else if (event.key === "Enter") { event.preventDefault(); if (!event.repeat) run(current); }
-    // Backspace in an empty search goes back, as Esc does; a held key that just cleared the search stays.
-    else if (event.key === "Backspace" && !query && !event.repeat) { event.preventDefault(); dismiss(); }
     // Tab leaves the palette for Search, as Tab leaves a menu.
     else if (event.key === "Tab") { event.preventDefault(); acted.current = true; leave(); onClose("tab"); }
   };
   return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={description ? descriptionId : undefined}
-    back={{ label: say("palette-back"), onBack: dismiss }} status={subtitle} frameRef={frame}
+    back={{ label: say("palette-back"), onBack: dismiss }} layer={layer} status={subtitle}
     onKeyDown={keyDown}
     onPointerMove={(event) => {
       if (event.pointerType === "touch") return;

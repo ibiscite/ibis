@@ -66,7 +66,7 @@ fn raw_zotero_picker_preview_and_copy_match_the_real_cli() -> Result<(), Box<dyn
             )
             .map_err(|e| e.to_string())?;
         assert_eq!(preview.text, expected.text);
-        assert_eq!(preview.html, expected.html);
+        assert_eq!(preview.display, expected.display);
         assert_eq!(preview.content_hash, expected.content_hash.as_str());
         let mut writes = 0;
         bridge

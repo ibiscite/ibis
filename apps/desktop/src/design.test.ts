@@ -115,6 +115,17 @@ test.each(rules)("$says", (rule) => {
   expect(declarations("planted.css", rule.planted).some(rule.breaks), "the rule sees what it forbids").toBe(true);
 });
 
+// [C3] Alignment is decided once, by bands and tokens, never copied as arithmetic:
+// the count of calc() in the app's stylesheets may only fall. Lower the ceiling
+// when it does; a part that needs a column takes a Band or a token instead.
+const CALC_CEILING = 121;
+test(`calc() in the app's stylesheets stays at or under ${CALC_CEILING}`, () => {
+  const count = (css: string) => css.replace(/\/\*[^]*?\*\//g, "").match(/\bcalc\(/g)?.length ?? 0;
+  const found = sheets.filter(([file]) => !file.startsWith("website/")).reduce((sum, [, css]) => sum + count(css), 0);
+  expect(found).toBeLessThanOrEqual(CALC_CEILING);
+  expect(count("/* calc(1px) */ .planted { width: calc(1px + 1rem); }"), "the count sees what it limits").toBe(1);
+});
+
 /** Movements without a Reduce Motion answer: the same selector in the same file
  * answers under prefers-reduced-motion: reduce, or the movement reads a token
  * that the reduced :root redefines. */

@@ -98,11 +98,13 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
     : sources ? [zotero === "available" ? say("setup-zotero-open") : zotero === "closed" ? say("setup-zotero-installed") : "",
       files.length ? say("setup-bib-found", { count: files.length }) : ""].filter(Boolean).join(" ") : say("setup-find-help");
 
+  // An empty library has one primary card, the one that fills it, first; the other routes stay quiet.
+  const fill: Choice[] = empty?.source ? [{ id: "source", title: empty.source.label, help: empty.source.help, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source"), suggested: true }] : [];
   const choices: Choice[] = [
+    ...fill,
     { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <SourceIcon size="tile" icon={zoteroIcon?.read === librarySource ? zoteroIcon?.icon ?? null : null} />,
       tag: zoteroHere || empty?.zotero ? say("setup-found-on", { platform: currentPlatform() }) : undefined, suggested: welcome && zoteroHere },
     { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="library-big" /> },
-    ...(empty?.source ? [{ id: "source", title: empty.source.label, help: empty.source.help, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),
     ...(!empty && findSources ? [{
       id: "find", title: onlyFile ? text("choice-use-file", { name: onlyFile.name })
         : files.length > 1 ? say("setup-choose-found") : search === 0 ? say("setup-find-libraries") : say("setup-look-again"),

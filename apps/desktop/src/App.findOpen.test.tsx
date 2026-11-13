@@ -24,6 +24,10 @@ test("inside Zotero Enter opens the PDF or item, Command-O shows it, and Alt-Ent
   fireEvent.keyDown(search, { key: "o", ctrlKey: !isMac, metaKey: isMac });
   await waitFor(() => expect(open).toHaveBeenCalledTimes(2));
   expect(open.mock.calls[1]?.[0]).toMatchObject({ reveal: true });
+  fireEvent.keyDown(search, { key: "1", code: "Digit1", ctrlKey: !isMac, metaKey: isMac });
+  await waitFor(() => expect(open).toHaveBeenCalledTimes(3));
+  expect(open.mock.calls[2]?.[0]).toMatchObject({ reveal: false });
+  expect(calls).not.toContain("copy_file_citation");
   fireEvent.keyDown(search, { key: "Enter", altKey: true });
   await waitFor(() => expect(calls).toContain("copy_file_citation"));
 });

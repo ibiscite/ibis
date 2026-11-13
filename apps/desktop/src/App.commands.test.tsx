@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
-import { backend, resetApp, result } from "./testing/app";
+import { backend, displayTree, receipt, resetApp, result } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -53,8 +53,12 @@ test("⌘Y peeks at the highlighted reference without taking focus, and ⌘Y or 
   await waitFor(() => expect(screen.queryByRole("region", { name: /^Details of/ })).toBeNull());
 });
 
-test("the shelf's beak drags exactly what Enter pastes", async () => {
-  backend({ search: () => [result("vale2021", "The quiet garden")] });
+test.each(["pandoc", "apa"])("the shelf's beak drags %s from the display tree", async (output) => {
+  const text = "Invented <img src=x> title";
+  backend({ search: () => [result("vale2021", "The quiet garden")],
+    picker_preferences: () => ({ output, density: "comfortable", larger_text: false, paste: true, menu_bar: true }),
+    preview_file_citation: () => receipt(text, displayTree([{ item: 0, text, runs: [{ text, italic: true, bold: false, script: "normal" }] }])),
+  });
   render(<App />);
   fireEvent.change(screen.getByLabelText("Search references"), { target: { value: "quiet" } });
   const preview = await screen.findByRole("region", { name: "Preview" });
@@ -62,4 +66,8 @@ test("the shelf's beak drags exactly what Enter pastes", async () => {
   const data = new Map<string, string>();
   fireEvent.dragStart(beak, { dataTransfer: { setData: (type: string, value: string) => data.set(type, value), effectAllowed: "" } });
   expect(data.get("text/plain")).toBe(preview.querySelector(".preview-text")?.textContent);
+  if (output === "apa") {
+    expect(data.get("text/html")).toContain("<i>Invented &lt;img src=x&gt; title</i>");
+    expect(data.get("text/html")).not.toContain("<img");
+  } else expect(data.has("text/html")).toBe(false);
 });

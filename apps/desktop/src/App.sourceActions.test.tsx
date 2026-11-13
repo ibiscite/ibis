@@ -272,7 +272,8 @@ test.each(["file", "zotero-running", "zotero-closed"])("empty choices show each 
   render(<App />);
   await screen.findByRole("heading", { name: /^No references/ });
   const goals = screen.getAllByRole("option").map((node) => node.querySelector(".result-title")?.textContent);
-  expect(goals).toEqual(["Use Zotero", "Choose a Library File…", ...kind === "file" ? ["Open ⁨thesis.bib⁩"] : kind === "zotero-closed" ? ["Open Zotero"] : []]);
+  // The card that fills the library comes first, as the one primary card.
+  expect(goals).toEqual([...kind === "file" ? ["Open ⁨thesis.bib⁩"] : kind === "zotero-closed" ? ["Open Zotero"] : [], "Use Zotero", "Choose a Library File…"]);
   expect(screen.getByRole("option", { name: /^Choose a Library File/ }).querySelector("svg path")?.getAttribute("d")).toBe(iconPaths["library-big"]);
   expect(footer().queryByRole("button", { name: /Open Zotero|Open .*thesis/ })).toBeNull();
   commandO();
