@@ -45,6 +45,17 @@ impl<'de> Deserialize<'de> for LibraryId {
     }
 }
 
+/// Wire-string identity. TypeScript deliberately cannot render it as text.
+pub struct RecordId;
+impl JsonSchema for RecordId {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RecordId".into()
+    }
+    fn json_schema(_: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        schemars::json_schema!({"type":"string", "x-ibis-opaque":"RecordId"})
+    }
+}
+
 /// Identity inside one library; citation keys are intentionally separate.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
@@ -52,6 +63,7 @@ impl<'de> Deserialize<'de> for LibraryId {
 /// source tags and collections cannot collide with native item keys.
 pub struct ItemRef {
     pub library: LibraryId,
+    #[schemars(with = "RecordId")]
     pub key: String,
 }
 

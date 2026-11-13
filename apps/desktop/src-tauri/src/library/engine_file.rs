@@ -93,33 +93,25 @@ impl ReferenceForm {
             .map_or(CitationForm::Normal, |(_, form)| *form)
     }
 }
-/// How to correct a locator field the engine could not read.
-fn field_hint(error: ibis_core::locator::FieldError) -> String {
+/// Invalid field input retains its recovery and field focus until rendering.
+fn field_failure(error: ibis_core::locator::FieldError, index: usize) -> CommandError {
     use ibis_core::locator::FieldError;
     let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = error;
-    let missing = matches!(error, FieldError::MissingValue(_));
-    if term == LocatorTerm::Page {
-        return if missing {
-            "Page needs a page or range. Enter one after the label, or clear Page."
-        } else {
-            "Page needs a valid page or range after its label. Correct it, or clear Page."
-        }
-        .into();
+    let mut problem = CitationError::InvalidLocator.problem();
+    problem.info.message.id = match (term == LocatorTerm::Page, matches!(error, FieldError::MissingValue(_))) {
+        (true, true) => "app-command-page-missing",
+        (true, false) => "app-command-page-invalid",
+        (false, true) => "app-command-locator-missing",
+        (false, false) => "app-command-locator-invalid",
     }
-    let name = serde_json::to_value(term)
-        .ok()
-        .and_then(|value| value.as_str().map(|name| name.replace('-', " ")))
-        .unwrap_or_default();
-    let mut chars = name.chars();
-    let name: String = chars
-        .next()
-        .map(|first| first.to_uppercase().chain(chars).collect())
-        .unwrap_or_default();
-    if missing {
-        format!("{name} needs a value. Enter one after the label, or clear the locator.")
-    } else {
-        format!("{name} needs a valid value after its label. Correct it, or clear the locator.")
-    }
+    .into();
+    let id = ibis_engine::catalogue::id("locator", term);
+    let label = ibis_engine::catalogue::text(&id, None, &[]).unwrap_or_default();
+    problem.info = problem
+        .info
+        .argument("number", (index + 1).to_string())
+        .argument("label", label);
+    CommandError::Presented(problem)
 }
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct CitationSpan {
@@ -149,6 +141,8 @@ pub(crate) struct FilePreview {
     pub(crate) spans: Vec<CitationSpan>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) problem: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) failure: Option<ibis_core::contract::Problem>,
     /// Why this key citation is refused: a key in the project bibliography
     /// names a different work.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -189,18 +183,11 @@ pub(super) fn zotero_profiles() -> Result<Vec<String>, ibis_core::contract::Engi
 }
 
 impl FileLibrary {
-    pub(crate) fn recents(&self, ids: &[ItemRef], include_added: bool) -> Result<SearchReply, String> {
+    pub(crate) fn recents(&self, ids: &[ItemRef], include_added: bool) -> Result<SearchReply, CommandError> {
         use super::search::RecentGroup;
-        let snapshot = self
-            .engine
-            .snapshot()
-            .map_err(|_| "Recent references are unavailable.")?;
+        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
         let revision = snapshot.fingerprints().full.as_str().to_owned();
-        let sources = self
-            .engine
-            .libraries()
-            .map_err(|_| "Recent references are unavailable.")?
-            .libraries;
+        let sources = self.engine.libraries().map_err(CommandError::from)?.libraries;
         let picked = ibis_engine::recents::resolve(&snapshot, ids, include_added);
         let results = picked
             .into_iter()
@@ -221,11 +208,8 @@ impl FileLibrary {
     }
     /// Rows for listed records in the open library, in the list's order. Each
     /// comes from the current snapshot; the list itself holds identities only.
-    pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, String> {
-        let snapshot = self
-            .engine
-            .snapshot()
-            .map_err(|_| "The references could not be read. Try again.")?;
+    pub(crate) fn session_rows(&self, ids: &[ItemRef]) -> Result<Vec<SearchResult>, CommandError> {
+        let snapshot = self.engine.snapshot().map_err(CommandError::from)?;
         let revision = snapshot.fingerprints().full.as_str();
         Ok(ids
             .iter()
@@ -306,11 +290,14 @@ impl FileLibrary {
             }
             cancel.check().map_err(CommandError::from)?;
             if kept.is_empty() {
-                return Err(format!("This style can't write these references: {}.", left_out.join(", ")).into());
+                let mut problem = CitationError::UnsupportedForm.problem();
+                problem.info.message.id = "app-command-bibliography-unsupported".into();
+                problem.info = problem.info.argument("references", left_out.join(", "));
+                return Err(CommandError::Presented(problem));
             }
             let (citation, whole) = self.bibliography_of(kept, style, cancel)?;
             if !whole {
-                return Err("These references cannot be written as a bibliography in this style.".into());
+                return Err(CitationError::UnsupportedForm.into());
             }
             (citation, left_out)
         };
@@ -599,7 +586,7 @@ impl FileLibrary {
         limit: usize,
         scope: Option<Vec<String>>,
         cancel: &Cancellation,
-    ) -> Result<SearchReply, String> {
+    ) -> Result<SearchReply, CommandError> {
         if query.text.trim().is_empty() {
             return Ok(SearchReply {
                 revision: self.revision(),
@@ -611,7 +598,7 @@ impl FileLibrary {
         let sources: HashMap<_, _> = self
             .engine
             .libraries()
-            .map_err(|_| "The library could not be searched.".to_string())?
+            .map_err(CommandError::from)?
             .libraries
             .iter()
             .map(|info| (info.id.as_str().to_owned(), native_source(info)))
@@ -630,7 +617,11 @@ impl FileLibrary {
         let libraries: Option<Vec<LibraryId>> = scope
             .map(|ids| ids.iter().map(|id| LibraryId::new(id)).collect::<Result<_, _>>())
             .transpose()
-            .map_err(|_| "Invalid library scope.".to_string())?;
+            .map_err(|_| {
+                CommandError::from(ibis_core::contract::EngineError::new(
+                    ibis_core::contract::ErrorCode::BadInput,
+                ))
+            })?;
         let outcome = self.engine.search(
             &SearchRequest {
                 interpret_locator: query.interpret_locators,
@@ -649,7 +640,7 @@ impl FileLibrary {
                     ..SearchReply::default()
                 });
             }
-            Err(_) => return Err("The library could not be searched.".to_string()),
+            Err(error) => return Err(error.into()),
         };
         let revision = reply.snapshot.full.as_str().to_owned();
         let results: Vec<_> = reply
@@ -732,10 +723,10 @@ impl FileLibrary {
             .map(|project| citation.project_evidence(&project.read)))
     }
 
-    pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, String> {
+    pub(crate) fn original_entry(&self, id: &ItemRef) -> Result<ibis_engine::EntryResult, CommandError> {
         self.engine
             .original_entry(id, &Cancellation::default())
-            .map_err(|_| "The entry could not be read.".to_owned())
+            .map_err(CommandError::from)
     }
 
     pub(crate) fn reserve_preview(&self) -> u64 {
@@ -812,7 +803,7 @@ impl FileLibrary {
             .flatten()
             .fold(0_usize, |sum, text| sum.saturating_add(text.len()));
         if items.len() > ibis_core::syntax::MAX_CITATION_ITEMS || bytes > ibis_core::syntax::MAX_CITATION_BYTES {
-            return Err(CommandError::failed("app-command-citation-too-large"));
+            return Err(CommandError::CitationTooLarge);
         }
         let literal = |text: Option<String>| {
             text.filter(|text| !text.is_empty())
@@ -832,15 +823,16 @@ impl FileLibrary {
             .map(|(index, item)| {
                 let locator = match (item.locator, item.locator_input) {
                     (Some(_), Some(_)) => {
-                        return Err(CommandError::from(format!(
-                            "Reference {}: a typed locator and a captured locator cannot be combined.",
-                            index + 1
-                        )));
+                        let mut problem = CitationError::InvalidLocator.problem();
+                        problem.info.message.id = "app-command-locator-conflict".into();
+                        problem.info = problem.info.argument("number", (index + 1).to_string());
+                        return Err(CommandError::Presented(problem));
                     }
                     (locator, None) => locator.map(Into::into),
-                    (None, Some(input)) => Some(ibis_core::locator::read_field(input.label, &input.text).map_err(
-                        |error| CommandError::from(format!("Reference {}: {}", index + 1, field_hint(error))),
-                    )?),
+                    (None, Some(input)) => Some(
+                        ibis_core::locator::read_field(input.label, &input.text)
+                            .map_err(|error| field_failure(error, index))?,
+                    ),
                 };
                 Ok(CitationItem {
                     item: item.id,
@@ -890,27 +882,29 @@ impl FileLibrary {
                 return Err(CommandError::SharedCitationKey { key });
             }
             if let Some(item) = refused(CitationError::UnsupportedForm) {
-                let form = if request.items[item].form == Some(ibis_core::contract::CitationForm::Narrative) {
-                    "Name in the sentence"
-                } else if request.items[item].form == Some(CitationForm::YearOnly) {
-                    "Year only"
-                } else {
-                    "This citation form"
-                };
-                let problem = format!(
-                    "Reference {}: {form} cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.",
-                    item + 1
-                );
+                let mut failure = CitationError::UnsupportedForm.problem();
+                failure.info.message.id = "app-command-unsupported-form".into();
+                let form = request.items[item].form.unwrap_or(request.form);
+                let label = ibis_engine::catalogue::text(&ibis_engine::catalogue::id("form", form), None, &[])
+                    .unwrap_or_default();
+                failure.info = failure
+                    .info
+                    .argument("number", (item + 1).to_string())
+                    .argument("form", label);
+                let problem = ibis_engine::catalogue::problem(&failure, ibis_engine::catalogue::Audience::App);
                 let mut preview = self.publish_preview(reservation, citation, original_output)?;
                 preview.problem = Some(problem);
+                preview.failure = Some(failure);
                 return Ok(preview);
             }
-            return Err(if refused(CitationError::ConflictingKey).is_some() {
-                "These references have conflicting citation keys. Resolve them in your library or choose a formatted style."
-            } else {
-                "These references cannot be copied in this format."
-            }
-            .into());
+            return Err(result
+                .outcomes
+                .iter()
+                .find_map(|outcome| match outcome {
+                    ItemOutcome::Refused { error, .. } => Some(CommandError::from(*error)),
+                    _ => None,
+                })
+                .unwrap_or_else(|| CommandError::from(CitationError::FormatterUnavailable)));
         }
         self.publish_preview(reservation, citation, original_output)
     }
@@ -973,6 +967,7 @@ impl FileLibrary {
                 })
                 .collect(),
             problem: None,
+            failure: None,
             project_refusal: None,
             notices: result.notices.clone(),
         };

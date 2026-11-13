@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { testStates } from "../../test-fixtures";
+import { testStates, recordId } from "../../test-fixtures";
 import { enterLabel } from "./enterLabel";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { arrangeView } from "../../testing/sessionView";
@@ -162,7 +162,7 @@ test("a minute away abandons the citation's fields and order choice", () => {
 
 test("removing a reference offers an owned Undo that restores its position and complete details", () => {
   const s = scenario();
-  const c = { ...b, id: { library: "synthetic", key: "third" }, key: "third" };
+  const c = { ...b, id: { library: "synthetic", key: recordId("third") }, key: "third" };
   s.send({ type: "toggle", result: a, locator: a.locator });
   s.send({ type: "reference", reference: s.state.selected.get(idKey(a.id))!, change: { form: "year-only" } });
   s.send({ type: "toggle", result: b });

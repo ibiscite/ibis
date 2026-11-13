@@ -284,17 +284,6 @@ export type AboutLink = "website" | "source" | "problem" | "licences";
 
 export type Accent = "system" | "ibis";
 
-/**
- * Why a choice for an app was not saved, so the picker can say which part
- * was kept without reading the words.
- */
-export type AppChoiceError = {
-	code: "not_saved";
-	message: string;
-} | {
-	code: "delivery_not_saved";
-};
-
 /** A deliberate delivery choice for one captured app, independent of its format. */
 export type AppPaste = "paste" | "copy-only";
 
@@ -313,22 +302,12 @@ export type CitationSpan = {
 	text: string;
 };
 
-/**
- * A failed command as the interface receives it: the interface decides
- * from `code`, never from the text in `message`.
- */
+/** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
-	code: "snapshot_changed";
-} | {
-	code: "library_loading";
-} | {
-	code: "cancelled";
-} | {
-	code: "shared_citation_key";
-	key: string;
-} | {
-	code: "failed";
-	message: string;
+	code: string;
+	focus: FocusTarget;
+	message: Message;
+	recovery: Recovery;
 };
 
 export type CommandState = "not-installed" | "matching" | "different" | "foreign";
@@ -438,6 +417,7 @@ export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "
 
 export type FilePreview = {
 	content_hash: string;
+	failure?: Problem | null;
 	html: string | null;
 	/**
 	 * What the engine says about this citation that is no warning, such as a
@@ -472,6 +452,8 @@ export type FileSelection = {
 	suffix?: string | null;
 };
 
+export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
+
 export type FormOption = {
 	example: string | null;
 	form: ReferenceForm;
@@ -492,7 +474,7 @@ export type FoundFile = {
  * source tags and collections cannot collide with native item keys.
  */
 export type ItemRef = {
-	key: string;
+	key: RecordId;
 	library: LibraryId;
 };
 
@@ -517,6 +499,8 @@ export type LibraryStatus = {
 	 */
 	checked_at: number | null;
 	error: string | null;
+	/** Canonical engine failure. Rendering and recovery use these facts. */
+	failure?: Problem | null;
 	/** A successfully opened snapshot, including a valid empty library. */
 	has_snapshot: boolean;
 	/** A searched source cannot be watched, so edits show only after a reload. */
@@ -533,6 +517,7 @@ export type LibraryStatus = {
 	 */
 	reading: ReadingNotice[];
 	references: number;
+	retained_failure?: Problem | null;
 	revision: string;
 	/** The searchable snapshot contains only bundled invented references. */
 	sample?: boolean;
@@ -625,6 +610,13 @@ export type LoginItemProblem = "unsupported" | "needs_approval" | "refused" | "u
 /** Which part of a record matched a query term. */
 export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyword" | "container" | "abstract" | "identifier";
 
+export type Message = {
+	args: { [key: string]: string };
+	id: string;
+};
+
+export type NoRecoveryReason = "cancelled" | "in-progress";
+
 /** Something the person should know before restoring. */
 export type Note = "library-not-found" | "shortcut-kept" | "repairs-settings";
 
@@ -669,9 +661,6 @@ export type PastePermission = {
 export type PastedList = {
 	missing: string[];
 };
-
-/** Command identifiers shared with KEY_TABLE and the refusal's translated name. */
-export type PickerCommand = "format" | "pin" | "keys" | "more" | "change-last" | "source" | "settings" | "quit";
 
 /** What the picker needs to know about the app it was opened from. */
 export type PickerDestination = {
@@ -778,6 +767,14 @@ export type PreviewIntent = {
 	request: number;
 };
 
+/** The desktop and MCP receive this same shape, without pre-rendered English. */
+export type Problem = {
+	code: string;
+	focus: FocusTarget;
+	message: Message;
+	recovery: Recovery;
+};
+
 /** The state of one emitted key in the project bibliography, for the row. */
 export type ProjectKeyState = "in" | "missing" | "could-not-check" | "repeated" | "may-name-another";
 
@@ -825,6 +822,64 @@ export type ReceiptSummary = {
 export type RecentGroup = "cited" | "added";
 
 export type RecentIdentity = unknown;
+
+export type RecordId = { readonly __RecordId: unique symbol };
+
+/** Exactly one next action; absence must have an explicit, machine-readable reason. */
+export type Recovery = {
+	action: "choose-style";
+} | {
+	action: "choose-form";
+} | {
+	action: "locate-file";
+} | {
+	action: "choose-library";
+} | {
+	action: "open-zotero-sharing-help";
+} | {
+	action: "open-zotero";
+} | {
+	action: "retry";
+} | {
+	action: "choose-project";
+} | {
+	action: "rename-project";
+} | {
+	action: "remove-project";
+} | {
+	action: "reopen-project-menu";
+} | {
+	action: "finish-editor-request";
+} | {
+	action: "review-settings";
+} | {
+	action: "edit-citation";
+} | {
+	action: "edit-input";
+} | {
+	action: "select-references";
+} | {
+	action: "reduce-selection";
+} | {
+	action: "choose-locale";
+} | {
+	action: "review-library";
+} | {
+	action: "free-disk-space";
+} | {
+	action: "upgrade-ibis";
+} | {
+	action: "choose-backup";
+} | {
+	action: "download-file";
+} | {
+	action: "choose-shortcut";
+} | {
+	action: "open-ibis";
+} | {
+	action: "none";
+	reason: NoRecoveryReason;
+};
 
 export type ReferenceDetails = {
 	current_form: ReferenceForm | null;
@@ -955,11 +1010,6 @@ export type SessionReferencesView = {
 	rows: SearchResult[];
 	undo: UndoView | null;
 };
-
-/** Why a shortcut change failed. Only NotSaved changes the working shortcut. */
-export type ShortcutRefusal = "invalid" | "needs-modifier" | "app-shortcut" | {
-	"picker-shortcut": PickerCommand;
-} | "alt-gr" | "in-use" | "unavailable" | "not-saved";
 
 /** Whether the global shortcut is working, shown in the interface. */
 export type ShortcutStatus = {

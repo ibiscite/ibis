@@ -93,7 +93,7 @@ fn format_refuses_any_other_name_with_the_listed_ones() -> Result {
         assert_eq!(code, 2, "{wrong}");
         assert_eq!(
             serde_json::from_str::<Value>(&text)?,
-            json!({"ibis":1,"ok":false,"error":{"code":"usage"}})
+            json!({"ibis":1,"ok":false,"error":{"code":"usage","message":{"id":"error-usage","args":{}},"recovery":{"action":"edit-input"},"focus":"request"}})
         );
         assert!(
             errors.contains("pandoc") && errors.contains("textcite") && errors.contains("apa"),

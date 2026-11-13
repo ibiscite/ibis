@@ -1,4 +1,4 @@
-import type { PickerCommand, ShortcutRefusal } from "../bindings";
+import type { Problem } from "../bindings";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
@@ -16,29 +16,18 @@ export const SHORTCUT_REGIONS = {
   search: "shortcuts-region-search", library: "shortcuts-region-library", picker: "shortcuts-region-picker",
   menu: "shortcuts-region-menu", system: "shortcuts-region-system", citation: "shortcuts-region-citation",
 } as const satisfies Record<string, MessageId>;
-export const SHORTCUT_COMMANDS = {
-  format: "shortcuts-command-format", pin: "shortcuts-command-pin", keys: "shortcuts-command-keys",
-  source: "shortcuts-command-source", more: "shortcuts-command-more", "change-last": "shortcuts-command-change-last",
-  settings: "shortcuts-command-settings", quit: "shortcuts-command-quit",
-} as const satisfies Record<PickerCommand, MessageId>;
-const REFUSALS = {
-  invalid: "shortcuts-refusal-invalid", "needs-modifier": "shortcuts-refusal-needs-modifier",
-  "app-shortcut": "shortcuts-refusal-app-shortcut", "alt-gr": "shortcuts-refusal-alt-gr",
-  "in-use": "shortcuts-refusal-in-use", unavailable: "shortcuts-refusal-unavailable",
-  "not-saved": "shortcuts-refusal-not-saved",
-} as const satisfies Record<Extract<ShortcutRefusal, string>, MessageId>;
-export type ShortcutProblem = Readonly<{ id: MessageId; command?: PickerCommand }>;
+export type ShortcutProblem = Readonly<{ id: MessageId; args?: Record<string, string>; failure?: Problem }>;
+const REFUSAL_IDS = new Set<string>([
+  "shortcuts-refusal-invalid", "shortcuts-refusal-needs-modifier", "shortcuts-refusal-app-shortcut",
+  "shortcuts-refusal-alt-gr", "shortcuts-refusal-in-use", "shortcuts-refusal-unavailable",
+  "shortcuts-refusal-not-saved", "shortcuts-picker-conflict",
+]);
 
-/** The existing code-to-copy mapping only; native intent and text stay native. */
+/** Native failures already name their catalogue message and arguments. */
 export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
-  if (typeof refusal === "string" && Object.hasOwn(REFUSALS, refusal)) {
-    return { id: REFUSALS[refusal as Extract<ShortcutRefusal, string>] };
-  }
-  if (typeof refusal === "object" && refusal !== null && "picker-shortcut" in refusal) {
-    const command = refusal["picker-shortcut"];
-    if (typeof command === "string" && Object.hasOwn(SHORTCUT_COMMANDS, command)) {
-      return { id: "shortcuts-picker-conflict", command: command as PickerCommand };
-    }
+  const problem = typeof refusal === "object" && refusal !== null ? refusal as Partial<Problem> : null;
+  if (problem?.message && REFUSAL_IDS.has(problem.message.id)) {
+    return { id: problem.message.id as MessageId, args: problem.message.args, failure: problem as Problem };
   }
   return { id: "shortcuts-failed" };
 }

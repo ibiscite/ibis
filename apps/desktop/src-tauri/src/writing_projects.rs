@@ -13,6 +13,7 @@ use ibis_core::settings::{self, Settings};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::library::CommandError;
 use crate::output::OutputRef;
 use crate::preferences::SettingsFile;
 
@@ -100,6 +101,37 @@ impl From<ProjectError> for ChangeError {
 impl From<settings::SettingsError> for ChangeError {
     fn from(error: settings::SettingsError) -> Self {
         Self::Project(ProjectError::Settings(error))
+    }
+}
+
+impl From<ChangeError> for CommandError {
+    fn from(error: ChangeError) -> Self {
+        use ibis_core::contract::{FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
+        let (code, id, recovery, focus) = match error {
+            ChangeError::Project(error) => return Self::Presented((&error).into()),
+            ChangeError::Stale | ChangeError::Destination => (
+                "project-changed",
+                "app-project-error-changed",
+                R::ReopenProjectMenu,
+                F::ProjectMenu,
+            ),
+            ChangeError::Editor => (
+                "editor-pending",
+                "app-project-error-editor",
+                R::FinishEditorRequest,
+                F::Citation,
+            ),
+            ChangeError::Unsupported => (
+                "project-output-unavailable",
+                "app-project-error-output",
+                R::ChooseStyle,
+                F::FormatPicker,
+            ),
+        };
+        Self::Presented(Problem {
+            code: code.into(),
+            info: RecoveryInfo::new(id, recovery, focus),
+        })
     }
 }
 
@@ -375,17 +407,18 @@ fn shown(app: &AppHandle, settings: &Settings, target: &Target, session: Option<
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, String> {
+pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, CommandError> {
     let target = current_target(&app);
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(&app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     if target.editor {
-        return Err(EDITOR.to_owned());
+        return Err(CommandError::from(ChangeError::Editor));
     }
-    let settings = saved_settings(&app, &target)?;
+    let settings =
+        saved_settings(&app, &target).map_err(|_| CommandError::Presented((&ProjectError::Invalid).into()))?;
     Ok(shown(&app, &settings, &target, session.as_deref()))
 }
 
@@ -395,16 +428,16 @@ pub(crate) fn edit_writing_project(
     app: AppHandle,
     context: String,
     action: WritingProjectEdit,
-) -> Result<WritingProjectsView, String> {
+) -> Result<WritingProjectsView, CommandError> {
     let target = current_target(&app);
     if context_token(&app, &target) != context {
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     if target.editor {
-        return Err(EDITOR.to_owned());
+        return Err(CommandError::from(ChangeError::Editor));
     }
     let runtime = app.state::<Runtime>();
-    let mut session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let mut session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     let (settings, replacement) = app
         .state::<SettingsFile>()
         .exclusive(|path| {
@@ -415,7 +448,7 @@ pub(crate) fn edit_writing_project(
                 edit(settings, &target, session.as_deref(), &action)
             })
         })?
-        .map_err(|error| error.to_string())?;
+        .map_err(CommandError::from)?;
     // Only a save changes the session-only choice.
     if target.binding.is_none() {
         *session = replacement;
@@ -424,7 +457,7 @@ pub(crate) fn edit_writing_project(
     if current != target {
         let _ = activate(&app, &settings, &current, session.as_deref());
         let _ = app.emit("writing-projects:changed", ());
-        return Err(REOPEN.to_owned());
+        return Err(CommandError::from(ChangeError::Destination));
     }
     let view = shown(&app, &settings, &target, session.as_deref());
     let _ = app.emit("writing-projects:changed", ());

@@ -1,5 +1,7 @@
 //! Saving choices made in the picker to the settings file.
 
+use crate::library::CommandError;
+
 use std::path::{Path, PathBuf};
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Mutex};
@@ -308,7 +310,9 @@ impl From<PickerPreferences> for PickerPreferencesPatch {
 /// The preferences the picker starts with.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -> Result<PickerPreferences, String> {
+pub(crate) async fn picker_preferences(
+    settings_file: State<'_, SettingsFile>,
+) -> Result<PickerPreferences, CommandError> {
     // Off the main thread: a settings write in progress must never stall a paste.
     let settings_file = settings_file.inner().clone();
     tauri::async_runtime::spawn_blocking(move || {
@@ -323,21 +327,22 @@ pub(crate) async fn picker_preferences(settings_file: State<'_, SettingsFile>) -
         })?
     })
     .await
-    .map_err(|_| "settings are unavailable".to_string())?
+    .map_err(|_| CommandError::NotPrepared)?
 }
 
-fn read_preferences(path: &Path) -> Result<PickerPreferences, String> {
+fn read_preferences(path: &Path) -> Result<PickerPreferences, CommandError> {
     read_preference_settings(path).map(|saved| PickerPreferences::from_settings(&saved))
 }
 
-fn read_preference_settings(path: &Path) -> Result<settings::Settings, String> {
+fn read_preference_settings(path: &Path) -> Result<settings::Settings, CommandError> {
     let loaded = settings::load(path);
     if let Some(problem) = &loaded.problem
         && !loaded.recovering()
     {
-        return Err(settings_message(problem));
+        return Err(CommandError::from(problem));
     }
-    look_from_settings(&loaded.settings)?;
+    look_from_settings(&loaded.settings)
+        .map_err(|_| CommandError::Presented((&settings::SettingsError::Invalid(String::new())).into()))?;
     Ok(loaded.settings)
 }
 
@@ -352,7 +357,7 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
     settings_file: State<'_, SettingsFile>,
     app: AppHandle<R>,
     window: tauri::Window<R>,
-) -> Result<u64, String> {
+) -> Result<u64, CommandError> {
     // Geometry takes the text size now, even if the save then fails.
     if let Some(larger) = preferences.larger_text
         && let Some(sizing) = app.try_state::<crate::sizing::Sizing>()
@@ -397,19 +402,16 @@ pub(crate) fn save_picker_preferences<R: tauri::Runtime>(
 pub(crate) async fn picker_preferences_saved(
     receipt: u64,
     settings_file: State<'_, SettingsFile>,
-) -> Result<PickerSave, String> {
+) -> Result<PickerSave, CommandError> {
     let submitted = settings_file.take_receipt(receipt)?;
     tauri::async_runtime::spawn_blocking(move || {
-        let saved = submitted
-            .outcome
-            .recv()
-            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))?;
+        let saved = submitted.outcome.recv().unwrap_or(Err(CommandError::NotPrepared))?;
         Ok(PickerSave {
             preferences: PickerPreferences::from_settings(&saved),
         })
     })
     .await
-    .map_err(|_| "picker preferences could not be saved".to_string())?
+    .map_err(|_| CommandError::NotPrepared)?
 }
 
 /// Preference changes handed to the owner, by receipt, until their window asks
@@ -424,7 +426,7 @@ struct Receipts {
 const MAX_RECEIPTS: usize = 256;
 
 struct Submitted {
-    outcome: std::sync::mpsc::Receiver<Result<settings::Settings, String>>,
+    outcome: std::sync::mpsc::Receiver<Result<settings::Settings, CommandError>>,
 }
 
 impl SettingsFile {
@@ -435,18 +437,15 @@ impl SettingsFile {
     fn submit_preferences(
         &self,
         preferences: PickerPreferencesPatch,
-        after: impl FnOnce(u64, &Result<settings::Settings, String>) + Send + 'static,
-    ) -> Result<u64, String> {
-        let mut receipts = self
-            .receipts
-            .lock()
-            .map_err(|_| "settings are unavailable".to_string())?;
+        after: impl FnOnce(u64, &Result<settings::Settings, CommandError>) + Send + 'static,
+    ) -> Result<u64, CommandError> {
+        let mut receipts = self.receipts.lock().map_err(|_| CommandError::NotPrepared)?;
         // The generated bridge represents receipts as JavaScript numbers.
         let receipt = receipts
             .next
             .checked_add(1)
             .filter(|value| *value < 1 << 53)
-            .ok_or_else(|| "settings are unavailable".to_string())?;
+            .ok_or(CommandError::NotPrepared)?;
         receipts.next = receipt;
         let surprises = Arc::clone(&self.surprises);
         // Submitted under the receipts lock, so receipts follow the owner's order.
@@ -460,9 +459,7 @@ impl SettingsFile {
         });
         let (reply, outcome) = std::sync::mpsc::channel();
         tauri::async_runtime::spawn_blocking(move || {
-            let saved = saved
-                .wait()
-                .unwrap_or_else(|| Err("settings are unavailable".to_string()));
+            let saved = saved.wait().unwrap_or(Err(CommandError::NotPrepared));
             after(receipt, &saved);
             let _ = reply.send(saved);
         });
@@ -473,12 +470,12 @@ impl SettingsFile {
         Ok(receipt)
     }
 
-    fn take_receipt(&self, receipt: u64) -> Result<Submitted, String> {
+    fn take_receipt(&self, receipt: u64) -> Result<Submitted, CommandError> {
         self.receipts
             .lock()
             .ok()
             .and_then(|mut receipts| receipts.submitted.remove(&receipt))
-            .ok_or_else(|| "preference change was not submitted".to_string())
+            .ok_or(CommandError::NotPrepared)
     }
 
     #[cfg(test)]
@@ -486,7 +483,7 @@ impl SettingsFile {
         &self,
         preferences: impl Into<PickerPreferencesPatch>,
         output: Option<&str>,
-    ) -> Result<settings::Settings, String> {
+    ) -> Result<settings::Settings, CommandError> {
         let mut preferences = preferences.into();
         if let Some(id) = output {
             preferences.output = Some(crate::output::listed(id).ok_or("not a listed output")?);
@@ -495,15 +492,22 @@ impl SettingsFile {
         self.take_receipt(receipt)?
             .outcome
             .recv()
-            .unwrap_or_else(|_| Err("settings are unavailable".to_string()))
+            .unwrap_or(Err(CommandError::NotPrepared))
     }
 }
 
 /// One preference change, as the owner runs it: only the fields it names.
-fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Result<settings::Settings, String> {
+fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Result<settings::Settings, CommandError> {
     read_preference_settings(path)?;
     if std::fs::metadata(path).is_ok_and(|metadata| metadata.permissions().readonly()) {
-        return Err("settings-read-only".into());
+        return Err(CommandError::Presented(ibis_core::contract::Problem {
+            code: "settings-read-only".into(),
+            info: ibis_core::contract::RecoveryInfo::new(
+                "app-settings-error-read-only",
+                ibis_core::contract::Recovery::ReviewSettings,
+                ibis_core::contract::FocusTarget::Settings,
+            ),
+        }));
     }
     settings::update(path, |s| {
         if let Some(appearance) = preferences.appearance {
@@ -543,7 +547,7 @@ fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Resu
             s.recent_citations = Some(on).filter(|on| !on);
         }
     })
-    .map_err(|error| settings_message(&error))
+    .map_err(CommandError::from)
 }
 
 #[cfg(test)]
@@ -751,7 +755,7 @@ mod tests {
             let Err(error) = read_preferences(&path) else {
                 panic!("unreadable choices cannot become saved defaults");
             };
-            assert!(!error.contains("synthetic-private-value"));
+            assert!(!error.to_string().contains("synthetic-private-value"));
             assert!(
                 file.save_preferences(
                     PickerPreferencesPatch {
@@ -777,7 +781,7 @@ mod tests {
             None,
         );
         std::fs::set_permissions(&path, original).unwrap_or_else(|e| panic!("{e}"));
-        assert!(refused.is_err_and(|problem| problem == "settings-read-only"));
+        assert!(refused.is_err_and(|problem| problem.problem().code == "settings-read-only"));
         assert_eq!(
             read_preferences(&path).unwrap_or_else(|e| panic!("{e}")).density,
             Density::Comfortable
@@ -1065,15 +1069,26 @@ mod tests {
             .unwrap_or_else(|e| panic!("cannot build window fixture: {e}"));
         let chosen = PickerPreferences::from_settings(&settings::Settings::default());
         for (text, expected) in [
-            (r#"{"density":"synthetic-private-value"}"#, "settings.json is not valid"),
+            (r#"{"density":"synthetic-private-value"}"#, "settings-invalid"),
             (
                 r#"{"schema_version":3,"private":"synthetic-private-value"}"#,
-                "settings.json was written by a newer version of Ibis",
+                "settings-newer",
             ),
         ] {
             std::fs::write(&path, text).unwrap_or_else(|e| panic!("{e}"));
             let result = save_over_ipc(&window, chosen, None);
-            assert_eq!(result.err(), Some(serde_json::json!(expected)));
+            let error = result.err().unwrap_or_else(|| panic!("invalid settings were saved"));
+            assert_eq!(error["code"], expected);
+            assert!(error["message"]["id"].is_string());
+            assert_eq!(
+                error["recovery"]["action"],
+                if expected == "settings-newer" {
+                    "upgrade-ibis"
+                } else {
+                    "review-settings"
+                }
+            );
+            assert!(!error.to_string().contains("synthetic-private-value"));
             assert_eq!(std::fs::read_to_string(&path).unwrap_or_default(), text);
         }
     }
@@ -1094,8 +1109,9 @@ mod tests {
         assert!(!notice.contains("synthetic-private-target"));
         assert_eq!(
             file.save_preferences(PickerPreferences::from_settings(&loaded.settings), None)
-                .err(),
-            Some("settings.json could not be read".to_string())
+                .err()
+                .map(|error| error.problem().code),
+            Some("settings-unreadable".to_string())
         );
         assert_eq!(std::fs::read_link(&file.path).unwrap_or_else(|e| panic!("{e}")), target);
         assert!(!target.exists());
@@ -1136,8 +1152,9 @@ mod tests {
             for _ in 0..2 {
                 assert_eq!(
                     file.save_preferences(PickerPreferences::from_settings(&loaded.settings), Some("keys"))
-                        .err(),
-                    Some(expected.to_string())
+                        .err()
+                        .map(|error| error.problem()),
+                    loaded.problem.as_ref().map(|error| CommandError::from(error).problem())
                 );
             }
             assert!(!file.path.exists());
@@ -1510,6 +1527,7 @@ mod tests {
                 !failed
                     .err()
                     .unwrap_or_else(|| panic!("expected a failed settings save"))
+                    .to_string()
                     .contains("synthetic-private-value")
             );
             assert_eq!(std::fs::read_to_string(&file.path).unwrap_or_default(), text);
@@ -1519,8 +1537,10 @@ mod tests {
         assert_eq!(
             file.save_preferences(chosen, Some("cite"))
                 .err()
-                .unwrap_or_else(|| panic!("expected an unreadable settings save to fail")),
-            "settings.json could not be read"
+                .unwrap_or_else(|| panic!("expected an unreadable settings save to fail"))
+                .problem()
+                .code,
+            "settings-unreadable"
         );
         assert!(file.path.is_dir());
     }

@@ -42,6 +42,11 @@ pub(crate) struct LibraryStatus {
     pub(crate) error: Option<String>,
     /// What kind of failure `error` is, so the picker can offer the fix.
     pub(crate) problem: Option<LibraryProblem>,
+    /// Canonical engine failure. Rendering and recovery use these facts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) failure: Option<ibis_core::contract::Problem>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) retained_failure: Option<ibis_core::contract::Problem>,
     // Native presentation facts do not alter the serialized picker contract.
     #[serde(skip)]
     pub(crate) error_reason: Option<LoadError>,
@@ -202,6 +207,8 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
             .error
             .map(|error| error.with_snapshot_context(references > 0, zotero)),
         problem: library.error.map(LibraryProblem::from),
+        failure: library.error.map(LoadError::problem),
+        retained_failure: library.retained_error.map(LoadError::problem),
         error_reason: library.error,
         kept_references,
         note: match &library.retained_error {
@@ -232,6 +239,8 @@ pub(crate) fn status(library: &Library) -> LibraryStatus {
                 result.kept_references = references > 0;
                 result.error = Some(refresh_failure(info.kind, info.refresh_error, info.refresh_reason));
                 result.error_reason = refresh_error(info.kind, info.refresh_error, info.refresh_reason);
+                result.failure = result.error_reason.map(LoadError::problem);
+                result.problem = result.error_reason.map(LibraryProblem::from);
             }
         }
     }
@@ -513,11 +522,16 @@ mod tests {
         assert!(missing.stale);
         assert_eq!(missing.references, 1);
         assert_eq!(missing.revision, loaded.revision);
+        let failure = serde_json::to_value(&missing.failure)?;
+        assert_eq!(failure["code"], "missing-file");
+        assert_eq!(failure["recovery"]["action"], "locate-file");
+        assert_eq!(failure["focus"], "library-picker");
         assert_eq!(library_line(&missing), "invented.bib was moved or is unavailable");
         assert_eq!(
             missing.error_reason,
-            Some(LoadError::FileRefresh(ibis_core::contract::EngineError::new(
-                ibis_core::contract::ErrorCode::SourceUnavailable
+            Some(LoadError::FileRefresh(ibis_core::contract::EngineError::because(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+                ibis_core::contract::ErrorReason::MissingFile
             )))
         );
 
@@ -544,7 +558,13 @@ mod tests {
         let replacement = directory.path().join("missing.bib");
         let (request, _, _) = begin_open(&library, &requests, replacement.clone()).ok_or("open")?;
         let rejected = install(&library, &requests, request, load_library(replacement, false)).ok_or("install")?;
-        assert_eq!(rejected.error_reason, Some(LoadError::FILE_UNAVAILABLE));
+        assert_eq!(
+            rejected.error_reason,
+            Some(LoadError::File(ibis_core::contract::EngineError::because(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+                ibis_core::contract::ErrorReason::MissingFile
+            )))
+        );
         let file = library.lock().map_err(|_| "library")?.file.clone().ok_or("file")?;
         std::fs::write(&path, "[{")?;
         assert_eq!(file.reload(), Err(crate::library::error::REFRESH_INCOMPLETE));
@@ -590,6 +610,7 @@ mod tests {
             "live_updates_off",
             "error",
             "problem",
+            "failure",
             "note",
             "settings_notice",
             "snapshot_zotero",

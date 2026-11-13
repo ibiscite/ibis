@@ -27,7 +27,7 @@ test("closing slow bibliography formatting lets citation B finish before the aba
       started = busy = true;
       return new Promise(() => {});
     },
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.id.key ? "Citation B" : "Citation A"),
   });
   const dialog = await open();
   await waitFor(() => expect(started).toBe(true));
@@ -47,7 +47,7 @@ test.each(["Copy Bibliography", "Save…"])("closing slow %s formatting lets cit
   backend({ search: () => [taylor, morgan], session_references: () => list(),
     session_bibliography: () => formatted("Bibliography A"),
     copy_session_bibliography: deliver, export_session_bibliography: deliver,
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.key ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === morgan.id.key ? "Citation B" : "Citation A"),
   });
   const dialog = await open();
   await within(dialog).findByText("Bibliography A");

@@ -47,16 +47,13 @@ export function writesEntries(id: OutputId): boolean {
   return outputOf(id).entries;
 }
 
-/** What a format would show for the chosen keys, without asking the engine: a key
- * syntax writes the first key into its own pattern ("\\autocite{garcia2021}",
- * "+2" when there are more); a style shows its pattern on the engine's invented
- * example, since only the engine can format real references. Null when there is
- * neither a pattern nor a key. */
-export function previewOf(id: OutputId, keys: readonly string[]): { text: string; more: number; example: boolean } | null {
+/** Actual previews are formatted by the engine. Other formats use its labeled
+ * example until they have a prepared result of their own. Lookup IDs are never text. */
+export function previewOf(id: OutputId, formatted: Pick<FormattedCitation, "text"> | null): { text: string; more: number; example: boolean } | null {
+  if (formatted?.text) return { text: formatted.text, more: 0, example: false };
   const output = outputOf(id);
   if (!output.example) return null;
-  if (output.style || !keys[0]) return { text: output.example, more: 0, example: true };
-  return { text: output.example.replace(/\bkey\b/g, keys[0]), more: keys.length - 1, example: false };
+  return { text: output.example, more: 0, example: true };
 }
 
 /** The outputs in the engine's order: key syntaxes, then common styles. */

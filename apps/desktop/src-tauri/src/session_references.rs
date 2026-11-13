@@ -53,7 +53,7 @@ fn open_file(library: &Mutex<Library>) -> Option<std::sync::Arc<FileLibrary>> {
     library.lock().ok()?.file.clone()
 }
 
-fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, String> {
+fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView, CommandError> {
     let rows = file
         .map(|file| file.session_rows(&list.items))
         .transpose()?
@@ -81,7 +81,7 @@ fn view(list: &List, file: Option<&FileLibrary>) -> Result<SessionReferencesView
 pub(crate) fn session_references(
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<SessionReferencesView, String> {
+) -> Result<SessionReferencesView, CommandError> {
     let file = open_file(&library);
     view(&session.lock(), file.as_deref())
 }
@@ -92,7 +92,7 @@ pub(crate) fn edit_session_references(
     edit: SessionEdit,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<SessionReferencesView, String> {
+) -> Result<SessionReferencesView, CommandError> {
     let file = open_file(&library);
     let mut list = session.lock();
     match edit {
@@ -111,7 +111,9 @@ pub(crate) fn edit_session_references(
 fn style_of(id: &str) -> Result<String, CommandError> {
     match crate::output::listed(id).map(crate::output::OutputRef::spec) {
         Some(ibis_core::contract::OutputSpec::Csl { style }) => Ok(style.clone()),
-        _ => Err(CommandError::from("Choose a citation style to write a bibliography.")),
+        _ => Err(CommandError::from(
+            ibis_core::contract::CitationError::UnsupportedOutput,
+        )),
     }
 }
 
@@ -568,7 +570,7 @@ mod bibliography_tests {
         let (_dir, file, ids) =
             opened("@book{others2026,title={Synthetic signals},author={Taylor, Avery and others},year={2026}}\n");
         match file.session_bibliography(&ids, "apa", &Cancellation::default()) {
-            Err(CommandError::Failed { message }) => assert!(message.contains("others2026"), "{message}"),
+            Err(error) => assert!(error.to_string().contains("others2026"), "{error}"),
             _ => panic!("a refusal that names the reference"),
         }
     }

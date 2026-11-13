@@ -1,3 +1,5 @@
+import { fixtureCitationKey } from "./testing/app";
+import { recordId } from "./test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -15,7 +17,7 @@ test("closing slow inspector formatting lets citation B finish before the abando
       started = busy = true;
       return new Promise(() => {});
     },
-    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === "b" ? "Citation B" : "Citation A"),
+    preview_file_citation: ({ items }) => busy ? new Promise(() => {}) : receipt(items[0]?.id.key === recordId("b") ? "Citation B" : "Citation A"),
   });
   render(<App />);
   await openCitationDetails();
@@ -322,7 +324,7 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
     expect(document.activeElement).toBe(page);
     expect(screen.getByRole("dialog", { name: `Citation details for ${title}` }).contains(page)).toBe(true);
     fireEvent.change(page, { target: { value } });
-    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === key)?.locator_input?.text).toBe(value));
+    await waitFor(() => expect(previews.at(-1)?.items.find((item) => item.id.key === recordId(key ?? ""))?.locator_input?.text).toBe(value));
     closeCitationDetails();
   }
   expect(previews.at(-1)?.items).toMatchObject([
@@ -788,7 +790,7 @@ test("an output with no forms keeps its one line while a page is typed, with no 
  * With `held`, each preview waits under "kept:" or "sorted:" and its order until released. */
 function sortingStyle(held?: Map<string, () => void>) {
   return ({ items, intent }: PreviewRequest) => {
-    const order = items.map(({ id }, index) => ({ key: id.key, index }));
+    const order = items.map(({ id }, index) => ({ key: fixtureCitationKey(id), index }));
     if (!intent.keep_order) order.sort((x, y) => x.key.localeCompare(y.key));
     const spans = order.flatMap(({ key, index }, n) => [...n ? [{ item: null, text: "; " }] : [], { item: index, text: `(${key})` }]);
     const preview = { ...receipt(spans.map((span) => span.text).join("")), spans };

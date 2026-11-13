@@ -94,7 +94,7 @@ fn single_results_match_byte_for_byte_and_overflow_is_a_resource_error() {
     assert_eq!(code, 5);
     assert_eq!(
         serde_json::from_slice::<Value>(&output).unwrap(),
-        json!({"ibis":1,"ok":false,"error":{"code":"resource-limit"}})
+        json!({"ibis":1,"ok":false,"error":{"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"}})
     );
     let response = rpc(engine);
     assert_eq!(response["error"]["code"], -32000);
@@ -206,7 +206,7 @@ fn renderer_and_transport_quotas_are_resource_errors_on_real_cli_and_stdio() {
             assert_eq!(output.status.code(), Some(5), "CLI repeats: {count}; RPC: {response}");
             assert_eq!(
                 serde_json::from_slice::<Value>(&output.stdout).unwrap(),
-                json!({"ibis":1,"ok":false,"error":{"code":"resource-limit"}})
+                json!({"ibis":1,"ok":false,"error":{"code":"resource-limit","message":{"id":"error-resource-limit","args":{}},"recovery":{"action":"reduce-selection"},"focus":"search"}})
             );
             assert_eq!(response["error"]["code"], -32000, "RPC repeats: {count}");
             assert_eq!(response["error"]["data"]["code"], "resource-limit");

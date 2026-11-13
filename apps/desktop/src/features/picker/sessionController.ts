@@ -1,6 +1,6 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
-import type { Delivered } from "../../bindings";
+import type { Delivered, Problem } from "../../bindings";
 import { say } from "../../i18n";
 import { parse } from "../../format/markup";
 import type { OutputId } from "../../format/outputs";
@@ -157,7 +157,11 @@ function previewFailure(error: unknown): PreviewFailure {
   if (nativeApi.isCancelled(error)) return { kind: "cancelled" };
   if (nativeApi.isSnapshotChanged(error)) return { kind: "stale" };
   const shared = nativeApi.sharedCitationKey(error);
-  if (shared) return { kind: "failed", problem: say("picker-shared-key", { key: shared }) };
-  const failure = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : null;
-  return { kind: "failed", ...failure?.code === "failed" && typeof failure.message === "string" ? { problem: failure.message } : {} };
+  if (shared) return { kind: "failed", problem: say("picker-shared-key", { key: shared }), failure: error as Problem };
+  const failure = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
+  if (failure?.message && typeof failure.message.id === "string" && failure.recovery && failure.focus) {
+    return { kind: "failed", failure: failure as Problem,
+      problem: say(failure.message.id as Parameters<typeof say>[0], failure.message.args) };
+  }
+  return { kind: "failed" };
 }

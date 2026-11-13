@@ -773,6 +773,7 @@ fn every_tool_answer_has_the_fields_its_output_schema_requires() {
             .unwrap()["outputSchema"]
             .clone();
         assert_eq!(schema["type"], "object", "{name}");
+        let schema = &schema["oneOf"][0];
         let answer = tool(&engine, name, arguments);
         assert_eq!(answer["isError"], false, "{name}: {answer}");
         let content = &answer["structuredContent"];

@@ -172,6 +172,8 @@ pub enum ErrorReason {
     AmbiguousKey,
     /// A key output needs a citation key this reference does not have.
     MissingKey,
+    /// The selected library file was moved, renamed or removed.
+    MissingFile,
     /// The program started as the Ibis app does not exist.
     AppMissing,
     /// The program started as the Ibis app is not Ibis.
@@ -246,13 +248,42 @@ pub struct ErrorDetail {
 }
 
 /// Like every result, an error accepts fields it does not know (decision 0028).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(into = "PresentedError")]
 pub struct EngineError {
     pub code: ErrorCode,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub reason: Option<ErrorReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<ErrorDetail>,
+}
+#[derive(Serialize, JsonSchema)]
+struct PresentedError {
+    code: ErrorCode,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<ErrorReason>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    detail: Option<ErrorDetail>,
+    #[serde(flatten)]
+    info: super::RecoveryInfo,
+}
+impl From<EngineError> for PresentedError {
+    fn from(error: EngineError) -> Self {
+        Self {
+            code: error.code,
+            reason: error.reason,
+            detail: error.detail,
+            info: error.recovery_info(),
+        }
+    }
+}
+impl JsonSchema for EngineError {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "EngineError".into()
+    }
+    fn json_schema(generator: &mut SchemaGenerator) -> Schema {
+        PresentedError::json_schema(generator)
+    }
 }
 impl EngineError {
     pub const fn new(code: ErrorCode) -> Self {

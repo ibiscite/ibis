@@ -43,6 +43,88 @@ fn run(file: &str, args: &[&str], input: &[u8], mode: ibis::OutputMode) -> Resul
 }
 
 #[test]
+fn duplicate_suggested_keys_offer_an_executable_id_route_and_keys_explain_omissions() -> Result {
+    let dir = tempfile::tempdir()?;
+    let a = dir.path().join("a.bib");
+    let b = dir.path().join("b.bib");
+    std::fs::write(&a, "@book{same, title={Invented lantern A}}")?;
+    std::fs::write(&b, "@book{same, title={Invented lantern B}}")?;
+    let a = a.to_str().ok_or("path")?;
+    let b = b.to_str().ok_or("path")?;
+    let (_, output, _) = run(
+        a,
+        &["--file", b, "show", "samx", "--json"],
+        b"",
+        ibis::OutputMode::Plain,
+    )?;
+    let error: Value = serde_json::from_str(&output)?;
+    let next = error["error"]["next"].as_array().ok_or("next")?;
+    assert_eq!(
+        next[1], "search",
+        "an ambiguous suggestion must use search --json and the id route"
+    );
+    assert!(next.contains(&json!("--json")), "{next:?}");
+    let next_args = next.iter().skip(1).filter_map(Value::as_str).collect::<Vec<_>>();
+    let (code, choices, errors) = run(a, &next_args, b"", ibis::OutputMode::Plain)?;
+    assert_eq!(code, 0, "{errors}");
+    let choices: Value = serde_json::from_str(&choices)?;
+    let hits = choices["data"]["hits"].as_array().ok_or("choices")?;
+    assert_eq!(hits.len(), 2);
+    for hit in hits {
+        let id = hit["item"]["object"]["data"]["id"].to_string();
+        let (code, selected, errors) = run(
+            a,
+            &["--file", b, "show", "--id", &id, "--json"],
+            b"",
+            ibis::OutputMode::Plain,
+        )?;
+        assert_eq!(code, 0, "{selected}{errors}");
+    }
+    let (_, keys, explanation) = run(
+        a,
+        &["--file", b, "search", "lantern", "--keys", "--limit", "1"],
+        b"",
+        ibis::OutputMode::Plain,
+    )?;
+    assert!(
+        keys.is_empty(),
+        "even a duplicate beyond the requested page makes a bare key unsafe: {keys}"
+    );
+    assert!(
+        explanation.contains("ambiguous") && explanation.contains("--json"),
+        "{explanation}"
+    );
+    Ok(())
+}
+
+#[test]
+fn sentinel_record_ids_never_enter_cli_human_output() -> Result {
+    let dir = tempfile::tempdir()?;
+    let path = dir.path().join("invented.json");
+    std::fs::write(
+        &path,
+        json!([
+            {"id":"SENTINEL-ID-keyless", "type":"book", "title":"Invented keyless lantern"},
+            {"id":"SENTINEL-ID-keyed", "citation-key":"lantern2026", "type":"book", "title":"Invented keyed lantern"}
+        ])
+        .to_string(),
+    )?;
+    let path = path.to_str().ok_or("path")?;
+    for mode in [ibis::OutputMode::Plain, ibis::OutputMode::Terminal] {
+        for args in [
+            vec!["search", "lantern"],
+            vec!["search", "lantern", "--keys"],
+            vec!["show", "lantern2026"],
+            vec!["cite", "lantern2026"],
+        ] {
+            let (_, output, errors) = run(path, &args, b"", mode)?;
+            assert!(!format!("{output}{errors}").contains("SENTINEL-ID"), "{output}{errors}");
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn keys_are_exact_ranked_lines_even_at_a_terminal_and_keyless_hits_are_counted() -> Result {
     let (_dir, file) = library()?;
     let (_, output, _) = run(&file, &["search", "lantern", "--json"], b"", ibis::OutputMode::Plain)?;

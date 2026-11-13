@@ -216,7 +216,11 @@ fn strict_refuses_item_source_warnings_even_without_library_warnings() {
         json!({"items":[{"ref":"one"}],"format":"pandoc","strict":true}),
     );
     assert_eq!(mcp["isError"], true);
-    assert!(mcp.get("structuredContent").is_none());
+    assert_eq!(
+        mcp["structuredContent"]["error"]["message"]["id"],
+        "reason-strict-citation"
+    );
+    assert!(mcp["structuredContent"].get("text").is_none());
 }
 
 #[test]
@@ -257,7 +261,11 @@ fn strict_refuses_losses_and_partial_citations_instead_of_returning_text() {
         json!({"items":[{"ref":"one","locator":"12"}],"format":"keys","strict":true}),
     );
     assert_eq!(mcp["isError"], true);
-    assert!(mcp.get("structuredContent").is_none());
+    assert_eq!(
+        mcp["structuredContent"]["error"]["message"]["id"],
+        "reason-strict-citation"
+    );
+    assert!(mcp["structuredContent"].get("text").is_none());
     assert!(mcp["content"][0]["text"].as_str().unwrap().contains("Strict"));
     request["items"][0].as_object_mut().unwrap().remove("locator");
     request["items"][0]["expected_cite"] = json!(ibis_core::contract::Fingerprint::of_bytes(b"changed"));

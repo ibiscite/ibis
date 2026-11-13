@@ -1,3 +1,4 @@
+import { recordId } from "./test-fixtures";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -17,7 +18,7 @@ test.each(["initial", "new query"])("Enter during %s loading waits for current r
   const calls = backend({
     search: ({ query }) => when === "new query" && !query.text ? [result("old", "Old result")]
       : new Promise((resolve) => { finishSearch = resolve; }),
-    preview_file_citation: ({ items }) => items[0]!.id.key === "old" ? receipt("@old")
+    preview_file_citation: ({ items }) => items[0]!.id.key === recordId("old") ? receipt("@old")
       : new Promise((resolve) => { finishPreview = resolve; }),
     copy_file_citation: (args) => { const { preview } = prepared(args); copied.push(preview.text); return { text: preview.text, warnings: [] }; },
   });

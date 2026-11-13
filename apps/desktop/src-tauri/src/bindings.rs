@@ -180,6 +180,36 @@ fn contract() -> Value {
 mod tests {
     use std::collections::BTreeSet;
 
+    #[test]
+    fn every_command_failure_is_data_with_required_recovery() {
+        let contract = super::contract();
+        let definitions = contract["output"].as_object().unwrap_or_else(|| panic!("definitions"));
+        for command in contract["commands"].as_array().unwrap_or_else(|| panic!("commands")) {
+            let mut error = &command["error"];
+            if error.is_null() {
+                continue;
+            }
+            if let Some(reference) = error["$ref"].as_str() {
+                error = &definitions[reference.trim_start_matches("#/$defs/")];
+            }
+            assert_ne!(
+                error["type"], "string",
+                "{} throws a plain string: {error}",
+                command["name"]
+            );
+            let required = error["required"]
+                .as_array()
+                .unwrap_or_else(|| panic!("{} needs structured error data: {error}", command["name"]));
+            for field in ["code", "message", "recovery", "focus"] {
+                assert!(
+                    required.iter().any(|name| name == field),
+                    "{} lacks {field}: {error}",
+                    command["name"]
+                );
+            }
+        }
+    }
+
     include!("../app_commands.rs");
 
     /// What the Settings window may call: saved choices, never the library or copies.

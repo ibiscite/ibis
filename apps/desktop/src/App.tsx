@@ -193,10 +193,8 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     // A waiting editor's output replaces the picker's.
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
-  // The format chooser's preview reads the chosen references' keys and never asks
-  // the engine: an engine preview would replace the ticket the shelf copies with.
-  const previewKeys = output.ask?.selection.map((item) => item.id.key).filter(Boolean).join("\u0000") ?? "";
-  const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
+  const formatPreview = useCallback<FormatPreview>((other) => previewOf(other,
+    other === destination.format && shown && typeof shown === "object" ? shown : null), [destination.format, shown]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
   const citationLine = useRef<CitationLineActions | null>(null);

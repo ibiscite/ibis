@@ -120,6 +120,7 @@ fn zotero_error(failure: ZoteroError) -> EngineError {
 pub(super) fn source_error(error: SourceError) -> EngineError {
     use ibis_core::contract::ErrorReason;
     super::error(match error {
+        SourceError::Missing => return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile),
         SourceError::UnknownFormat => return EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownFormat),
         SourceError::CsvTemplate => return EngineError::because(ErrorCode::BadInput, ErrorReason::CsvTemplate),
         SourceError::TooLarge => ErrorCode::ResourceLimit,
@@ -887,7 +888,9 @@ mod tests {
         assert_eq!(
             serde_json::to_value(failure).unwrap(),
             serde_json::json!({
-                "code":"newer-format", "detail":{"table":"fieldsCombined"}
+                "code":"newer-format", "detail":{"table":"fieldsCombined"},
+                "message":{"id":"error-newer-format","args":{}},
+                "recovery":{"action":"upgrade-ibis"},"focus":"recovery-action"
             })
         );
     }
@@ -1057,6 +1060,15 @@ mod tests {
         assert_eq!(info.libraries[0].objects, 1);
         assert_eq!(info.libraries[0].refresh_error, Some(ErrorCode::BadInput));
         assert_eq!(info.libraries[0].refresh_reason, Some(ErrorReason::UnknownFormat));
+        // A missing file must stay missing through a watcher publication too.
+        std::fs::rename(&path, dir.path().join("moved.bak")).unwrap();
+        let refused = ibis_sources::load_file(&path).map(|_| ()).unwrap_err();
+        engine.shared.file_changed(id, generation, Err(refused));
+        let info = engine.libraries().unwrap();
+        let health = serde_json::to_value(crate::health::SourceHealth::of(&info.libraries)).unwrap();
+        assert_eq!(info.libraries[0].objects, 1);
+        assert_eq!(health["findings"][0]["reason"], "missing-file");
+        assert_eq!(health["findings"][0]["recovery"]["action"], "locate-file");
     }
 
     #[test]

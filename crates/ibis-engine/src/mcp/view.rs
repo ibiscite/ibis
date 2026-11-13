@@ -5,11 +5,10 @@
 use super::MAX_LIST;
 use crate::request::ItemSelector;
 use ibis_core::citable::{citable_fields, is_variable};
-use ibis_core::contract::{ItemRef, LibraryId, Record};
+use ibis_core::contract::{EngineError, ErrorCode, Fingerprint, ItemRef, Record, Snapshot};
 use ibis_core::model::{is_hidden, strip_markup};
 use ibis_core::summary::RecordSummary;
 use serde_json::{Map, Value};
-use std::fmt::Write;
 
 /// Characters kept of any one text value.
 pub const MAX_TEXT: usize = 1_000;
@@ -94,19 +93,11 @@ pub(super) fn scrub(text: &str) -> String {
     text.chars().filter(|character| !is_hidden(*character)).collect()
 }
 
-/// The id form of a ref: a reserved marker, the library, then the record's key,
-/// escaped so nothing from the library arrives unread.
+/// An opaque selector for a record identity, without exposing its lookup key.
 pub fn reference(id: &ItemRef) -> String {
-    let mut text = format!("{ID_MARK}{}/", id.library.as_str());
-    for byte in id.key.bytes() {
-        if byte.is_ascii_alphanumeric() || b"._:-".contains(&byte) {
-            text.push(char::from(byte));
-        } else {
-            // Writing to a String cannot fail.
-            let _ = write!(text, "%{byte:02X}");
-        }
-    }
-    text
+    // A digest is a selector, never source text or the engine's lookup key.
+    let identity = serde_json::to_vec(id).unwrap_or_default();
+    format!("{ID_MARK}{}", Fingerprint::of_bytes(&identity).as_str())
 }
 
 /// A ref as search returns it: the record, then a short check of what it said then.
@@ -115,39 +106,27 @@ pub(super) fn checked(base: String, fingerprint: &str) -> String {
 }
 
 /// Reads a ref into the record it names and the check it carries, if any.
-pub(super) fn parse(reference: &str) -> (ItemSelector, Option<&str>) {
-    match reference.rsplit_once('#') {
+pub(super) fn parse<'a>(
+    reference: &'a str,
+    snapshot: &Snapshot,
+) -> Result<(ItemSelector, Option<&'a str>), EngineError> {
+    let (base, check) = match reference.rsplit_once('#') {
         Some((base, check)) if check.len() == CHECK_LENGTH && check.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
-            (selector(base), Some(check))
+            (base, Some(check))
         }
-        _ => (selector(reference), None),
-    }
-}
-
-/// Text that is not an id is a citation key.
-pub(super) fn selector(reference: &str) -> ItemSelector {
-    reference
-        .strip_prefix(ID_MARK)
-        .and_then(|id| id.split_once('/'))
-        .and_then(|(library, key)| {
-            Some(ItemRef {
-                library: LibraryId::new(library).ok()?,
-                key: unescaped(key)?,
-            })
-        })
-        .map_or_else(|| ItemSelector::Key(reference.to_owned()), ItemSelector::Id)
-}
-
-fn unescaped(text: &str) -> Option<String> {
-    let mut bytes = Vec::with_capacity(text.len());
-    let mut rest = text.bytes();
-    while let Some(byte) = rest.next() {
-        if byte == b'%' {
-            let pair = [rest.next()?, rest.next()?];
-            bytes.push(u8::from_str_radix(std::str::from_utf8(&pair).ok()?, 16).ok()?);
-        } else {
-            bytes.push(byte);
-        }
-    }
-    String::from_utf8(bytes).ok()
+        _ => (reference, None),
+    };
+    let item = if base.starts_with(ID_MARK) {
+        let id = snapshot
+            .objects()
+            .iter()
+            .map(|object| object.object.id())
+            .find(|id| self::reference(id) == base)
+            .cloned()
+            .ok_or_else(|| EngineError::new(ErrorCode::NotFound))?;
+        ItemSelector::Id(id)
+    } else {
+        ItemSelector::Key(base.to_owned())
+    };
+    Ok((item, check))
 }

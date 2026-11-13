@@ -27,7 +27,7 @@ enum Target {
 
 /// Why a source could not be opened, whatever the cause.
 fn failed() -> CommandError {
-    CommandError::failed("app-command-source-not-opened")
+    CommandError::SourceNotOpened
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
@@ -209,7 +209,16 @@ fn zotero_uri(library: ZoteroLibrary, key: &str) -> Result<String, CommandError>
 }
 
 fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
-    let path = path.canonicalize().map_err(|_| failed())?;
+    let path = path.canonicalize().map_err(|error| {
+        if error.kind() == std::io::ErrorKind::NotFound {
+            CommandError::from(ibis_core::contract::EngineError::because(
+                ibis_core::contract::ErrorCode::SourceUnavailable,
+                ibis_core::contract::ErrorReason::MissingFile,
+            ))
+        } else {
+            failed()
+        }
+    })?;
     let supported = path
         .extension()
         .and_then(|extension| extension.to_str())

@@ -100,7 +100,7 @@ try {
             args.items.forEach((item, index) => {
               if (index) spans.push({ item: null, text: "; " });
               const page = item.locator_input?.text || item.locator?.value;
-              const key = shelfDetails === "rtl" ? `${"مثال-".repeat(48)}${index}` : ["single", "receipt"].includes(shelfDetails) ? `${"invented-long-key-".repeat(16)}${index}` : item.id.key;
+              const key = shelfDetails === "rtl" ? `${"مثال-".repeat(48)}${index}` : ["single", "receipt"].includes(shelfDetails) ? `${"invented-long-key-".repeat(16)}${index}` : item.key;
               const text = args.style === "ieee" ? "Aster, Invented reference, 2026."
                 : args.style === "apa" ? item.form === "year-only" ? `(2026${page ? `, p. ${page}` : ""})` : item.form === "narrative" ? `Aster (2026${page ? `, p. ${page}` : ""})` : `(Aster, 2026${page ? `, p. ${page}` : ""})`
                 : `${item.form === "year-only" ? "-" : ""}@${key}${page ? `, p. ${page}` : ""}`;

@@ -15,6 +15,7 @@ mod desktop_theme;
 mod destination;
 mod diagnostics;
 mod editor_endpoint;
+mod errors;
 mod feedback;
 mod library;
 mod login_item;

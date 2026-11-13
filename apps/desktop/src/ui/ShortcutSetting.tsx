@@ -1,6 +1,6 @@
 import type { ShortcutStatus } from "../bindings";
 import { useInterfaceMessages } from "../i18n";
-import { SHORTCUT_ACTIONS, SHORTCUT_COMMANDS, type ShortcutProblem } from "../i18n/settings";
+import { SHORTCUT_ACTIONS, type ShortcutProblem } from "../i18n/settings";
 import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
@@ -38,13 +38,13 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
     </span></td></tr>
     {(problem || status?.desktop?.guidance) && <tr><td colSpan={2}>
       {status?.desktop?.guidance && <Note>{status.desktop.guidance}</Note>}
-      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined)}</p>}
+      {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</p>}
     </td></tr>}
   </>;
   return <Section id={id}><Group>
     <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted}
       description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
-      problem={problem ? text(problem.id, problem.command ? { command: text(SHORTCUT_COMMANDS[problem.command]) } : undefined) : undefined}>
+      problem={problem ? text(problem.id, problem.args) : undefined}>
       {controls}
       {reset}
     </Row></ShortcutEcho>

@@ -1,3 +1,4 @@
+import { recordId } from "../../test-fixtures";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { createRef, useState } from "react";
@@ -9,7 +10,7 @@ import { useCitationInspector } from "./useCitationInspector";
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 function record(key: string, first_author = "García", year: string | null = "2021"): SearchResult {
-  return { revision: "1", id: { library: "invented.bib", key }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
+  return { revision: "1", id: { library: "invented.bib", key: recordId(key) }, key, cite: "1", source: "invented.bib", title: `Invented title ${key}`, authors: first_author,
     year, matched: ["title"], partial: false, first_author, author_count: 1, container: null, item_type: "book" };
 }
 const chosen = (records: CitationReference[]) => new Map(records.map((r) => [r.key, r]));
@@ -84,8 +85,8 @@ test("formatted segments keep passive small caps and underline from the engine",
 });
 
 test("colliding keys from different libraries have distinct visible and screen-reader names", () => {
-  const first = { ...record("shared"), id: { library: "invented-one", key: "shared" }, source: "invented-one", title: "First invented work" };
-  const second = { ...first, id: { library: "invented-two", key: "shared" }, source: "invented-two", title: "Second invented work" };
+  const first = { ...record("shared"), id: { library: "invented-one", key: recordId("shared") }, source: "invented-one", title: "First invented work" };
+  const second = { ...first, id: { library: "invented-two", key: recordId("shared") }, source: "invented-two", title: "Second invented work" };
   const change = vi.fn();
   render(shelf({ selected: new Map([["first", first], ["second", second]]), onChangeReference: change,
     referenceLibrary: (r) => r.source === "invented-one" ? "First library" : "Second library",
