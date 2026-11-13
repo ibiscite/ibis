@@ -64,9 +64,10 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
       expect(row.querySelector('th[scope="row"]')?.textContent).toBe(say(SHORTCUT_ACTIONS[binding.action]));
       expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(say(SHORTCUT_REGIONS[binding.region]));
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
-      expect(row.querySelectorAll("kbd")).toHaveLength(keys.length);
-      expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
-        .toBe(compact(keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
+      // A run of keys is written first to last, as ⌘1–9.
+      const written = binding.run ? [`${keyLabel(keys[0]!, platform === "macos")}–${keys.length}`] : keys.map((keys) => keyLabel(keys, platform === "macos"));
+      expect(row.querySelectorAll("kbd")).toHaveLength(written.length);
+      expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or "))).toBe(compact(written.join(" or ")));
     }
   } finally {
     if (previous === undefined) delete document.documentElement.dataset.system;
@@ -1561,6 +1562,20 @@ test("General cancels recording on Escape, Tab and page changes without saving",
   fireEvent.click(screen.getByRole("option", { name: "General" }));
   expect(screen.getByRole("button", { name: /^Open Ibis:/ }).textContent).toBe(original);
   expect(state.shortcutChoices).toEqual([]);
+});
+
+test("with a search typed, Esc in the shortcut recorder still cancels the recording, not the search", async () => {
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  act(() => search.focus());
+  fireEvent.change(search, { target: { value: "shortcut" } });
+  act(() => recorder.focus());
+  fireEvent.click(recorder);
+  expect(recorder.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.keyDown(recorder, { key: "Escape", code: "Escape" });
+  expect(recorder.getAttribute("aria-pressed")).toBe("false");
+  expect(search).toHaveProperty("value", "shortcut");
 });
 
 test("a newer shortcut event survives an older General save after switching pages", async () => {

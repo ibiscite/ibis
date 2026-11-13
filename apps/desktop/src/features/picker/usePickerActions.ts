@@ -89,7 +89,7 @@ export function usePickerActions({
     choiceKey([prepared]) !== choiceKey([{ ...prepared, locator: usingLocator.locator ?? prepared.locator, prefix: usingLocator.prefix ?? prepared.prefix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
-  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")
+  const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" || nearest === "palette" ? say("key-close-menu")
     : nearest === "search" ? say("key-clear-search") : say("key-hide");
   const rememberedCitation = showCitations && destination.ready && state.view?.remembersLast && destination.appId ? state.lastCitations.get(destination.appId) : undefined;
   const lastCitation = rememberedCitation && (rememberedCitation.project ?? null) === (destination.writingProject?.id ?? null)

@@ -43,7 +43,7 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
   .shelf[data-copied]::before, .shelf-copied path { animation: none; }
 }
 @media (prefers-contrast: more), (forced-colors: active) {
-  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: calc(-1 * var(--border-width)); }
+  .shelf { outline: var(--border-width) solid CanvasText; outline-offset: var(--border-outside); }
   .shelf-mark { color: CanvasText; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }

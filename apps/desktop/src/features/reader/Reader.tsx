@@ -11,9 +11,9 @@ import "../../ui/Overlay.css";
 /** A reference's pages beside its details (decision 0038): thumbnails, the
  * pages, and one toolbar line. The Page value is the one truth: the thumbnails
  * show it, and choosing a page writes it. Scrolling never changes it. */
-export function Reader({ source, title, page, onPageChange, onClose }: {
+export function Reader({ source, title, page, onPageChange }: {
   source: PageSource; title: string; page: string;
-  onPageChange: (value: string) => void; onClose: () => void;
+  onPageChange: (value: string) => void;
 }) {
   // Printed numbers the person confirmed this opening, for pages without one.
   // The parent keys a Reader by its document, so a new document starts afresh.
@@ -69,7 +69,6 @@ export function Reader({ source, title, page, onPageChange, onClose }: {
     else if (event.altKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
       event.preventDefault(); show(Math.max(0, Math.min(labels.length - 1, current + (event.key === "ArrowDown" ? 1 : -1))));
     }
-    else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); onClose(); }
   };
   const label = labels[current];
   const ask = unnumbered !== null && <form className="reader-ask" onSubmit={(event) => {

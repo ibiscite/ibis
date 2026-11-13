@@ -4,12 +4,12 @@
    The surface is the shared overlay (Overlay.css). */
 .menu-popover {
   /* Labels start after the item padding, one icon/check column and the gap. */
-  --menu-label-start: calc(var(--space-2) + var(--icon) + var(--space-2));
+  --menu-gutter: calc(var(--icon) + var(--space-2)); --menu-label-start: calc(var(--space-2) + var(--menu-gutter));
 }
 
 .menu-popover {
-  box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 2 * var(--inset))); max-width: calc(100vw - 2 * var(--inset));
-  max-height: calc(100vh - 2 * var(--inset));
+  box-sizing: border-box; width: max-content; min-width: min(14rem, var(--overlay-max-inline)); max-width: var(--overlay-max-inline);
+  max-height: var(--overlay-max-block);
   display: flex; flex-direction: column; padding-block: var(--space-1); overflow: hidden; overflow-wrap: anywhere;
   border-radius: var(--r-large);
   font: var(--type-body-size) / var(--type-body-line) var(--font);
@@ -31,9 +31,11 @@
 /* The one section title, as macOS menus write one: small, bold and secondary,
    aligned with the item labels, so it never reads as an item. */
 .menu-heading { padding-block: var(--space-2) var(--space-1); padding-inline: var(--menu-label-start) var(--space-2); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
-.menu-detail { width: 0; min-width: 100%; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
+.menu-detail { width: max-content; min-width: 100%; max-width: 20rem; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 /* A menu heading: small, bold and secondary like .menu-heading, never an item. */
 .menu-detail-title { font-weight: var(--strong); }
+/* The detail widens the menu to its longest fact, up to its limit, so a short
+   fact such as a time stays whole; a longer sentence wraps there. */
 .menu-item {
   display: flex; flex: none; align-items: center; min-height: var(--control-small-h); padding-block: var(--space-1); padding-inline: var(--space-2);
   border-radius: var(--r-control); outline: none; cursor: default; text-align: start;

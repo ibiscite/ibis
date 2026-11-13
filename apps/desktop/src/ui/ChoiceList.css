@@ -14,6 +14,9 @@ main .picker-content .results-area:has(.choice-screen) { display: flex; flex-dir
 .choice-footnote { margin-top: var(--space-4); }
 .choice-help { margin-top: var(--space-1); }
 .choice-tag { max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.choice-line-title > .result-title { flex: 0 1 auto; }
+.choice-line-title > .choice-keys { margin-inline-start: 0; white-space: nowrap; }
+.choice-row[data-focused] .choice-keys { color: var(--selected-text-secondary); }
 .choice-row[data-suggested] .choice-tile { background: var(--accent); color: var(--text-on-accent); }
 /* The focused row is the active one, filled as a selected result row. */
 .choice-screen .choice-row[data-focus-visible] { outline: none; box-shadow: none; }

@@ -6,6 +6,9 @@
 .ui-palette[data-preview] .ui-palette-list { flex: 0 1 50%; min-width: 14rem; border-inline-end: var(--border-width) solid var(--separator); }
 .ui-palette-section > ul { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: var(--row-spacing); }
 .ui-palette-section + .ui-palette-section { margin-block-start: var(--space-2); }
+/* A group without a heading continues the list above at the rows' own pitch:
+   a gap no heading explains reads as one row standing taller than the rest. */
+.ui-palette-section + .ui-palette-section:not(:has(> .ui-palette-heading)) { margin-block-start: var(--row-spacing); }
 /* As the picker's result headings. */
 .ui-palette-heading { padding: var(--space-1) var(--row-pad); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); font-weight: var(--strong); }
 .ui-palette-row {

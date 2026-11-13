@@ -66,6 +66,11 @@ export const stubs = { line: ".library-bar .library-words, .update-text", words:
 const tolerance = 1;
 
 /** Every rule broken on the mounted screen, as "[tag] part: detail". Empty when all hold. */
+/** Record identities are the engine's, never people's words. Every fixture's
+ * record ID carries this sentinel and differs from its citation key, so an ID
+ * shown in place of a key, a title or a name is seen wherever it appears. */
+export const identities = { sentinel: "zz-record-id-", said: "[title], [aria-label], [aria-description], [placeholder]" } as const;
+
 export function geometry(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const rtl = getComputedStyle(document.documentElement).direction === "rtl";
@@ -251,6 +256,10 @@ export function geometry(root: ParentNode = document): string[] {
     const cut = [...line.querySelectorAll<HTMLElement>(stubs.words)].some((words) => visible(words) && words.getBoundingClientRect().top < bottom - tolerance && words.scrollWidth > words.clientWidth + tolerance);
     if (cut && line.clientWidth + tolerance < short) failures.push(`[C8] ${name(line)}: cut to ${line.clientWidth}px, under --status-short (${short.toFixed(0)}px)`);
   }
+  const body = root instanceof Document ? root.body : root instanceof HTMLElement ? root : null;
+  const said = [body?.innerText ?? "", ...[...root.querySelectorAll(identities.said)].flatMap((node) => ["title", "aria-label", "aria-description", "placeholder"].map((attribute) => node.getAttribute(attribute) ?? ""))];
+  const leak = said.find((text) => text.includes(identities.sentinel));
+  if (leak !== undefined) failures.push(`[ids] a record ID reached people's words: ${leak.slice(Math.max(0, leak.indexOf(identities.sentinel) - 40), leak.indexOf(identities.sentinel) + 30)}`);
   return failures;
 }
 
@@ -381,6 +390,69 @@ export function occlusion(root: ParentNode = document): string[] {
     failures.push(`[C24 cover] ${label(node)} is covered by ${label(hit)}`);
   }
   return failures;
+}
+
+/** Words on screen, each with the part of it a person can see. */
+function wordBoxes(root: ParentNode): { node: Node; box: DOMRect }[] {
+  const found: { node: Node; box: DOMRect }[] = [];
+  const walker = document.createTreeWalker(root instanceof Document ? root.body : root as Node, NodeFilter.SHOW_TEXT);
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    const parent = text.parentElement;
+    if (!text.textContent?.trim() || !parent || parent.closest(".visually-hidden")) continue;
+    const style = getComputedStyle(parent);
+    if (style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const clip = seen(parent);
+    if (!clip) continue;
+    for (const rect of range.getClientRects()) {
+      const left = Math.max(rect.left, clip.left), top = Math.max(rect.top, clip.top), right = Math.min(rect.right, clip.right), bottom = Math.min(rect.bottom, clip.bottom);
+      if (right - left >= 1 && bottom - top >= 1) found.push({ node: text, box: new DOMRect(left, top, right - left, bottom - top) });
+    }
+  }
+  return found;
+}
+
+const overlaps = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+
+/** [C24 held] A key shown while ⌘ (Ctrl) is held covers no words and no other
+ * control: it sits beside its control, or wholly inside the control it names,
+ * covering only that control's own words. Held badges take no pointer, so
+ * occlusion() cannot see them; this is their cover check. */
+export function heldKeys(root: ParentNode = document): string[] {
+  const failures: string[] = [];
+  const words = wordBoxes(root);
+  // Generated content has no text node or DOM box. Measure a temporary grid item
+  // with the same paint properties so the guard also sees each row's key.
+  const rowKeys = [...root.querySelectorAll<HTMLElement>(".result-tile[data-key]")].flatMap((tile) => {
+    const style = getComputedStyle(tile, "::before");
+    if (style.content === "none" || style.content === "normal") return [];
+    const marker = document.createElement("span");
+    marker.textContent = tile.dataset.key ?? "";
+    marker.setAttribute("aria-hidden", "true");
+    Object.assign(marker.style, { gridArea: "1 / 1", justifySelf: "end", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "isolate", font: style.font, fontVariantNumeric: style.fontVariantNumeric, lineHeight: style.lineHeight, marginInlineEnd: style.marginInlineEnd, visibility: "hidden" });
+    tile.append(marker);
+    const box = marker.getBoundingClientRect();
+    marker.remove();
+    return [{ node: tile, box }];
+  });
+  const shown = [...root.querySelectorAll(controls)].filter(live).map((node) => ({ node, box: seen(node) })).filter((part): part is { node: Element; box: DOMRect } => !!part.box);
+  for (const badge of root.querySelectorAll(".ui-held-key")) {
+    const box = badge.getBoundingClientRect();
+    const name = `"${badge.textContent}"`;
+    if (box.left < 0 || box.top < 0 || box.right > innerWidth || box.bottom > innerHeight) failures.push(`[C24 held] ${name} leaves the window`);
+    // The control the badge sits inside, if any: its own words may be covered.
+    const own = shown.find(({ box: control }) => box.left >= control.left - 1 && box.right <= control.right + 1 && box.top >= control.top - 1 && box.bottom <= control.bottom + 1)?.node;
+    for (const { node, box: control } of shown)
+      if (node !== own && !node.contains(own ?? null) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
+    for (const { node, box: text } of words)
+      if (!badge.contains(node) && !own?.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
+    for (const { node, box: key } of rowKeys)
+      if (!own?.contains(node) && overlaps(box, key)) failures.push(`[C24 held] ${name} covers the row key "${node.dataset.key}"`);
+    for (const other of root.querySelectorAll(".ui-held-key"))
+      if (other !== badge && overlaps(box, other.getBoundingClientRect())) failures.push(`[C24 held] ${name} covers the key "${other.textContent}"`);
+  }
+  return [...new Set(failures)];
 }
 
 /** The states a control draws: React Aria's attributes, set as the canvas States board sets them. */

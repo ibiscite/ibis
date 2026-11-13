@@ -13,6 +13,7 @@ import { type ShortcutProblem, shortcutRefusalMessage } from "../i18n/settings";
 import { PreferencePatchQueue } from "../preferencePatchQueue";
 import { currentPlatform } from "../platform";
 import { NoticeSlot } from "../ui/NoticeSlot";
+import { useLayer } from "../ui/layers";
 import { useScrollEdges } from "../ui/ScrollArea";
 import { UndoNotice } from "../ui/UndoNotice";
 import { Button } from "../ui/Button";
@@ -96,6 +97,18 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const resultsRef = useRef<HTMLDivElement>(null);
   const searchOpener = useRef<HTMLElement | null>(null);
   const [revealTarget, setRevealTarget] = useState<{ id: string; ticket: number } | null>(null);
+  // Search is on the view stack (ui/layers) while the keyboard is in the sidebar:
+  // Esc clears it, then leaves it for where you were. On the page, Esc stays the
+  // page's (the shortcut recorder cancels with it).
+  const sidebar = useRef<HTMLElement>(null);
+  const [inSidebar, setInSidebar] = useState(false);
+  useLayer("search", inSidebar, () => {
+    setRevealTarget(null);
+    if (query) { setQuery(""); searchRef.current?.focus(); return; }
+    const back = searchOpener.current;
+    if (back?.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
+    else sidebar.current?.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
+  });
   useRowReveal(revealTarget, pageRef);
   const [highlighted, setHighlighted] = useState<string | null>(null);
   const highlightOperation = useRef(0);
@@ -543,17 +556,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   return (
     <div className="settings">
       <div className="settings-titlebar" data-tauri-drag-region />
-      <nav className="settings-sidebar" aria-label={text("settings-pages")} onKeyDownCapture={(event) => {
-        if (composing(event.nativeEvent) || event.key !== "Escape") return;
-        event.preventDefault(); event.stopPropagation();
-        setRevealTarget(null);
-        if (query) { setQuery(""); searchRef.current?.focus(); }
-        else {
-          const back = searchOpener.current;
-          if (back?.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
-          else event.currentTarget.querySelector<HTMLElement>('[aria-current="page"]')?.focus();
-        }
-      }}>
+      <nav ref={sidebar} className="settings-sidebar" aria-label={text("settings-pages")} onFocus={() => setInSidebar(true)}
+        onBlur={(event) => { if (!event.currentTarget.contains(event.relatedTarget)) setInSidebar(false); }}>
         <SettingsSearch inputRef={searchRef} label={text("settings-search")} value={query}
           onChange={(value) => { setRevealTarget(null); setQuery(value); }}
           onKeyDown={(event) => {
@@ -582,7 +586,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "general" && (
           <>
             {shortcutSetting}
-            <Section id="startup"><Group>
+            <Section id="startup" title={text("general-behavior-title")}><Group>
                 <Row id="login" {...rowDetails("login", text)} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : rowDetails("login", text).description} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
                     onChange={(on) => { void changeLogin(on).catch(() => undefined); }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
