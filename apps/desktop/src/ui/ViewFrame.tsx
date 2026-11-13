@@ -1,5 +1,6 @@
 import { useLayoutEffect, useRef, type HTMLAttributes, type ReactNode, type RefObject } from "react";
 import { createPortal, flushSync } from "react-dom";
+import { Band } from "./Band";
 import { Button } from "./Button";
 import { IconButton } from "./IconButton";
 import { KeyHint } from "./KeyCaps";
@@ -47,20 +48,20 @@ export function ViewFrame({ title, titleId, search, back, status, actions, leadi
   }, [frame]);
   return createPortal(<div ref={frame} className="ui-view" aria-labelledby={titleId} {...dialog}
     onKeyDown={(event) => { if (ownsKeys() && !composingKey(event.nativeEvent)) onKeyDown?.(event); }}>
-    <div className="ui-view-head">
-      {/* The pointer's Back; the footer's Back is the one keys and screen readers reach. */}
-      <IconButton icon="back" className="ui-view-back" aria-label={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />
+    {/* The pointer's Back, in the icon column; the footer's Back is the one keys and screen readers reach. */}
+    <Band className="ui-view-head" icon={<IconButton icon="back" className="ui-view-back" aria-label={back.label} aria-hidden excludeFromTabOrder onPress={back.onBack} />}>
       {search ? <span id={titleId} className="visually-hidden">{title}</span>
         : <h2 id={titleId} className="ui-view-title">{title}</h2>}
       {search}
-    </div>
+    </Band>
     <div className="ui-view-body">{children}</div>
-    <div className="ui-view-foot">
-      <span className="ui-view-status">{status}{leadingActions}</span>
+    <Band className="ui-view-foot" trailing={<>
       {actions}
       <Button variant="quiet" size="small" className="ui-view-back-hint" aria-keyshortcuts="Escape" onPress={back.onBack}>
         <KeyHint label={back.label} keys="Escape" hidden />
       </Button>
-    </div>
+    </>}>
+      <span className="ui-view-status">{status}{leadingActions}</span>
+    </Band>
   </div>, document.body);
 }

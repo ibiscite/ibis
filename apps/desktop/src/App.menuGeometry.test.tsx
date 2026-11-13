@@ -131,67 +131,6 @@ test("a failed size save is visible and a later successful save clears it withou
   expect(calls).not.toContain("fit_picker");
 });
 
-test("clearing a settings notice keeps the pointer's newer place even before its scroll event", async () => {
-  const library: api.LibraryStatus = {
-    source_generation: "1", source_is_requested: true,
-    state: "loaded", revision: "1", has_snapshot: true, zotero: false, zotero_libraries: [],
-    name: "invented.bib", snapshot_name: "invented.bib", references: 14, source_counts: {},
-    warnings: 0, reading: [], live_updates_off: false, error: null, problem: null, note: null, settings_notice: null,
-    snapshot_zotero: false, stale: false, updated_at: null, checked_at: null,
-  };
-  const found = Array.from({ length: 14 }, (_, i) => result(`synthetic${i}`, `Invented reference ${i}`));
-  backend({ library_status: () => library, search: ({ query }) => query.text ? found : [] });
-  let changed!: (status: api.LibraryStatus) => void;
-  const hasNotice = (node: HTMLElement) => !!node.closest("main")?.querySelector(".notices [role=alert]");
-  const computed = window.getComputedStyle;
-  vi.spyOn(window, "getComputedStyle").mockImplementation((node) => {
-    if (!node.matches(".results-area, .picker-content")) return computed(node);
-    const style = document.createElement("div").style;
-    style.overflowY = node.matches(".results-area") && hasNotice(node as HTMLElement) ? "visible" : "auto";
-    return style;
-  });
-  const scrollTop = Object.getOwnPropertyDescriptor(Element.prototype, "scrollTop")!;
-  vi.spyOn(HTMLElement.prototype, "scrollTop", "get").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".results-area") && hasNotice(this) || this.matches(".picker-content") && !hasNotice(this)) scrollTop.set!.call(this, 0);
-    return scrollTop.get!.call(this);
-  });
-  vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
-    if (this.matches(".notices")) return new DOMRect(0, 53, 720, hasNotice(this) ? 42 : 0);
-    if (this.matches("[role=option]")) {
-      const middle = this.closest(".picker-content")!;
-      const area = middle.querySelector<HTMLElement>(".results-area")!;
-      return new DOMRect(8, 89 + Number(this.id.slice(7)) * 60 + (hasNotice(this) ? 42 : 0) - area.scrollTop - middle.scrollTop, 704, 58);
-    }
-    return new DOMRect();
-  });
-  vi.spyOn(api, "onLibraryChanged").mockImplementation(async (handler) => { changed = handler; return () => {}; });
-  render(<App />);
-  await screen.findByText("Type to find a reference");
-  const search = screen.getByRole<HTMLInputElement>("combobox");
-  fireEvent.change(search, { target: { value: "invented" } });
-  const row = await screen.findByRole("option", { name: /Invented reference 8/ });
-  const area = document.querySelector<HTMLElement>(".results-area")!;
-  const middle = document.querySelector<HTMLElement>(".picker-content")!;
-  area.scrollTop = 380; fireEvent.scroll(area);
-  fireEvent.click(row, { detail: 1 });
-  search.setSelectionRange(2, 5);
-  expect(row.getBoundingClientRect().top).toBe(189);
-  await act(async () => changed({ ...library, settings_notice: "Synthetic asynchronous settings notice." }));
-  expect(row.getBoundingClientRect().top).toBe(189);
-  middle.scrollTop += 60;
-  expect(row.getBoundingClientRect().top).toBe(129);
-  await act(async () => changed(library));
-  // The unchanged asynchronous search/preview replies must preserve this too.
-  expect(screen.queryByRole("alert")).toBeNull();
-  expect(row.getAttribute("aria-selected")).toBe("true");
-  expect(row.getBoundingClientRect().top).toBe(129);
-  expect([area.scrollTop, middle.scrollTop]).toEqual([440, 0]);
-  expect(document.activeElement).toBe(search);
-  expect([search.selectionStart, search.selectionEnd]).toEqual([2, 5]);
-  fireEvent.scroll(middle);
-  expect(row.getBoundingClientRect().top).toBe(129);
-});
-
 test("resizing while editing keeps the selected title readable without moving Page focus", async () => {
   backend({ search: () => [result("a", "First invented work")] });
   render(<App />);
@@ -229,15 +168,15 @@ test("resizing while editing keeps the selected title readable without moving Pa
   expect(document.activeElement).toBe(page);
 });
 
-test("startup shortcut notices belong to the middle scroller beside other notices", async () => {
+test("startup shortcut notices take the frame's notice place, outside the list", async () => {
   backend({ shortcut_status: () => ({ shortcut: "Alt+Y", registered: true, error: "Synthetic shortcut refusal" }) });
   render(<App />);
   const notice = await screen.findByText(/Your shortcut setting was not used/);
-  expect(notice.closest(".picker-content")).not.toBeNull();
-  expect(notice.closest(".notices")).not.toBeNull();
+  expect(notice.closest(".results-area")).toBeNull();
+  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
 });
 
-test.each([false, true])("desktop shortcut guidance appears once and its notice stays in the middle scroller (welcome=%s)", async (welcome) => {
+test.each([false, true])("desktop shortcut guidance appears once and its notice takes the frame's notice place (welcome=%s)", async (welcome) => {
   const guidance = "Use the desktop shortcut controls for Ibis.";
   backend({
     shortcut_status: () => ({ shortcut: "Alt+Y", registered: false, error: "Synthetic desktop shortcut refusal", desktop: { configurable: true, guidance } }),
@@ -249,6 +188,6 @@ test.each([false, true])("desktop shortcut guidance appears once and its notice 
   const notice = await screen.findByText(/Synthetic desktop shortcut refusal/);
   expect(screen.getAllByText(guidance, { exact: false })).toHaveLength(1);
   expect(notice.textContent?.includes(guidance)).toBe(!welcome);
-  expect(notice.closest(".notices")?.closest(".picker-content")).not.toBeNull();
+  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
   expect(document.querySelector("main")?.firstElementChild).toBe(document.querySelector(".search-bar"));
 });

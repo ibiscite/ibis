@@ -66,7 +66,7 @@ test("welcome makes no shortcut promise while status is pending or its read fail
   const group = within(await welcome());
   expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
   await act(async () => refuse(new Error("synthetic shortcut read failure")));
-  expect(await screen.findByText("Ibis could not check the shortcut. Open Ibis from the menu bar or tray.")).toBeTruthy();
+  expect(await screen.findByText("Could not check the shortcut. Open Ibis from the menu bar or tray.")).toBeTruthy();
   expect(group.queryByText(/After this, open Ibis from any app with/)).toBeNull();
 });
 
