@@ -49,7 +49,8 @@ let settling = false;
 let listening = false;
 
 const rank = (layer: Layer) => LAYER_ORDER.indexOf(layer.kind);
-const nearest = () => layers.reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
+const nearest = () => layers.filter((layer) => !layers.some((other) => within(other, layer)))
+  .reduce<Layer | undefined>((best, layer) => !best || rank(layer) <= rank(best) ? layer : best, undefined);
 
 /** Whether the keyboard rests where no key handler or text field can use it. */
 export function focusLost(): boolean {

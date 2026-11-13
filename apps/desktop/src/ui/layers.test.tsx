@@ -19,6 +19,13 @@ function Nearest() {
   return <output>{useNearestLayer() ?? "none"}</output>;
 }
 
+test("Esc closes a sheet inside a popover before the popover", () => {
+  const { queryByText } = render(<Scoped kind="popover"><Scoped kind="sheet" /></Scoped>);
+  fireEvent.keyDown(document.body, { key: "Escape" });
+  expect(queryByText("sheet")).toBeNull();
+  expect(queryByText("popover")).toBeTruthy();
+});
+
 test("Esc closes the nearest kind whatever order the layers opened in", () => {
   const closed: LayerKind[] = [];
   const opened = ["window", "chooser", "sheet", "search", "panel", "menu"] as const;

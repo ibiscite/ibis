@@ -499,8 +499,8 @@ export const surfaces = {
 /** [C24 layers] One surface floats at a time: a menu opened inside another surface
  * (ui/Layer marks it) is the only second one. */
 export function oneSurface(root: ParentNode = document): string[] {
-  const shown = [...root.querySelectorAll(surfaces.selector)].filter((node) => node.getBoundingClientRect().width
-    && !node.matches("[data-layer-within]") && !node.parentElement?.closest(surfaces.selector));
+  const shown = [...root.querySelectorAll("[data-layer-surface]")].filter((node) => node.getBoundingClientRect().width
+    && !node.matches("[data-layer-within]") && !node.parentElement?.closest("[data-layer-surface]"));
   return shown.length > 1 ? [`[C24 layers] ${shown.length} surfaces at once: ${shown.map(label).join(", ")}`] : [];
 }
 

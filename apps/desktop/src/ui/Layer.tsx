@@ -18,7 +18,7 @@ export function Floating({ kind, open, onClose, children, ...popover }: Omit<Com
 }) {
   const layer = useLayer(kind, open, onClose);
   // Marked when it opened inside another layer, which stays open under it.
-  return <Popover {...popover} data-layer={kind} data-layer-within={useContext(LayerParent) !== null || undefined}>
+  return <Popover {...popover} data-layer-surface data-layer={kind} data-layer-within={useContext(LayerParent) !== null || undefined}>
     <LayerScope layer={layer}>{children}</LayerScope>
   </Popover>;
 }

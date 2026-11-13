@@ -2,9 +2,38 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
+import { oneSurface } from "../canvas/geometry";
+import { inventedSource, PageSources } from "./features/reader/source";
 import { displayTree, backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, formExamples, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
 
 afterEach(resetApp);
+
+test("the surface guard ignores the reader HUD but catches a second registered surface", async () => {
+  backend({ search: () => [result("a", "Invented work")] });
+  const book = inventedSource();
+  render(<PageSources.Provider value={() => book}><App /></PageSources.Provider>);
+  await screen.findByText("Invented work");
+  fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: true });
+  await openCitationDetails();
+  fireEvent.click(screen.getByRole("button", { name: "Show PDF" }));
+  await waitFor(() => expect(document.querySelector(".reader-hud")).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: /^Show as / }));
+  await screen.findByRole("menuitemradio", { name: "Year only" });
+  const boxes = vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 100, 100));
+  try {
+    expect(oneSurface()).toEqual([]);
+    fireEvent.keyDown(document.body, { key: "Escape" });
+    fireEvent.click(screen.getByRole("button", { name: "Hide PDF" }));
+    const details = (await screen.findByRole("dialog", { name: /^Citation details/ })).closest<HTMLElement>("[data-layer-surface]")!;
+    const retained = details.cloneNode(true) as HTMLElement;
+    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
+    await screen.findByRole("dialog", { name: "Actions" });
+    // Simulate the displacement rule being off: the original details remain visible.
+    document.body.append(retained);
+    expect(oneSurface()).toEqual([expect.stringContaining("2 surfaces at once")]);
+    retained.remove();
+  } finally { boxes.mockRestore(); }
+});
 
 test("closing slow inspector formatting lets citation B finish before the abandoned examples", async () => {
   let busy = false;
