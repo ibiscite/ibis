@@ -600,7 +600,15 @@ fn validate_settings(settings: &Settings) -> Result<(), SettingsError> {
 /// primary when a backup is recovered, and other primary problems unconditionally.
 /// With no primary, a refused backup reports its own error instead of being treated as absent.
 pub fn load(path: &Path) -> Loaded {
-    let (primary_read, primary) = match read_regular(path) {
+    load_bytes(path, read_regular_bytes(path))
+}
+
+/// Load the observation already captured by the owner, without rereading a
+/// primary that an editor may have changed since its fingerprint was taken.
+fn load_bytes(path: &Path, primary: io::Result<Vec<u8>>) -> Loaded {
+    let primary = primary
+        .and_then(|bytes| String::from_utf8(bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error)));
+    let (primary_read, primary) = match primary {
         Ok(text) => (PrimaryRead::Present, parse(&text)),
         Err(e)
             if e.kind() == io::ErrorKind::NotFound

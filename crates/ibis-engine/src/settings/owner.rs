@@ -100,11 +100,25 @@ impl<T> Pending<T> {
     }
 }
 
-fn report(path: &Path, receipt: u64, watch: &Mutex<WatchState>) {
+fn report(path: &Path, receipt: u64, watch: &Mutex<WatchState>, primary: std::io::Result<Vec<u8>>) {
     let edited = watch.lock().ok().and_then(|state| state.edited.clone());
     if let Some(edited) = edited {
-        edited(receipt, settings::load(path));
+        edited(receipt, settings::load_bytes(path, primary));
     }
+}
+
+fn observe(path: &Path, receipt: u64, watch: &Mutex<WatchState>, seen: &mut Fingerprint) {
+    let primary = settings::read_regular_bytes(path);
+    match (&*seen, &primary) {
+        (Fingerprint::Bytes(previous), Ok(bytes)) if previous == bytes => return,
+        (Fingerprint::Failed(previous), Err(error)) if *previous == error.kind() => return,
+        _ => {}
+    }
+    *seen = match &primary {
+        Ok(bytes) => Fingerprint::Bytes(bytes.clone()),
+        Err(error) => Fingerprint::Failed(error.kind()),
+    };
+    let _ = catch_unwind(AssertUnwindSafe(|| report(path, receipt, watch, primary)));
 }
 fn enqueue(queue: &Mutex<Queue>, work: Work) -> Option<u64> {
     let mut queue = queue.lock().ok()?;
@@ -145,21 +159,13 @@ impl Owner {
             .name("ibis-settings".into())
             .spawn(move || {
                 for job in jobs {
-                    let before = fingerprint(&file);
-                    if before != seen {
-                        seen = before;
-                        let _ = catch_unwind(AssertUnwindSafe(|| report(&file, job.receipt - 1, &watching)));
-                    }
+                    observe(&file, job.receipt - 1, &watching, &mut seen);
                     let completed =
                         catch_unwind(AssertUnwindSafe(|| (job.work)(&file, job.receipt))).unwrap_or_default();
                     if let Some(bytes) = completed.written {
                         seen = Fingerprint::Bytes(bytes);
                     }
-                    let after = fingerprint(&file);
-                    if after != seen {
-                        seen = after;
-                        let _ = catch_unwind(AssertUnwindSafe(|| report(&file, job.receipt + 1, &watching)));
-                    }
+                    observe(&file, job.receipt + 1, &watching, &mut seen);
                     // Finish the whole turn before returning its outcome. The
                     // caller's next edit must not race this turn's final read.
                     if let Some(reply) = completed.reply {
@@ -390,6 +396,39 @@ mod tests {
         let replacement = path.with_extension("replacement");
         std::fs::write(&replacement, bytes).unwrap_or_else(|error| panic!("{error}"));
         std::fs::rename(replacement, path).unwrap_or_else(|error| panic!("{error}"));
+    }
+
+    #[test]
+    fn an_edit_report_uses_the_captured_read_even_if_the_editor_finishes_before_delivery() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("settings.json");
+        let (sender, edits) = mpsc::channel();
+        let watch = Mutex::new(WatchState {
+            edited: Some(Arc::new(move |_, loaded| {
+                let _ = sender.send(loaded);
+            })),
+            ..Default::default()
+        });
+        // An opening/queued turn can read between an editor's truncate and
+        // write. Finish the write before delivering that captured observation.
+        std::fs::write(&path, b"").unwrap_or_else(|error| panic!("{error}"));
+        let partial = settings::read_regular_bytes(&path);
+        replace(&path, br#"{"larger_text":true,"update_checks":false}"#);
+        report(&path, 3, &watch, partial);
+        let reported = next(&edits);
+        assert!(
+            reported.problem.is_some(),
+            "a partial read must not report the later valid settings: {reported:?}"
+        );
+
+        let valid = settings::read_regular_bytes(&path);
+        replace(&path, br#"{"appearance":"invented","larger_text":false}"#);
+        report(&path, 5, &watch, valid);
+        let reported = next(&edits);
+        assert!(reported.problem.is_none());
+        assert_eq!(reported.settings.larger_text, Some(true));
+        assert_eq!(reported.settings.update_checks, Some(false));
+        assert!(!reported.settings.unknown.contains_key("appearance"));
     }
 
     #[test]

@@ -197,51 +197,62 @@ impl SettingsFile {
     ) -> Option<ibis_engine::settings::Watching> {
         let file = self.clone();
         self.owner.watch(move |revision, loaded| {
-            crate::library::refresh_settings_notice(&app, &file);
-            if loaded.problem.is_some() {
-                return;
+            file.apply_file_edit(&app, revision, loaded, &native);
+        })
+    }
+
+    fn apply_file_edit<R: tauri::Runtime>(
+        &self,
+        app: &AppHandle<R>,
+        revision: u64,
+        loaded: settings::Loaded,
+        native: &impl Fn(&Self, &AppHandle<R>, u64, &settings::Settings),
+    ) {
+        crate::library::refresh_settings_notice(app, self);
+        if loaded.problem.is_some() {
+            return;
+        }
+        if look_from_settings(&loaded.settings).is_err() {
+            return;
+        }
+        let preferences = PickerPreferences::from_settings(&loaded.settings);
+        let fields = match self.last_valid.lock() {
+            Ok(mut previous) => {
+                let fields = changed_fields(*previous, preferences);
+                *previous = preferences;
+                fields
             }
-            if look_from_settings(&loaded.settings).is_err() {
-                return;
-            }
-            let preferences = PickerPreferences::from_settings(&loaded.settings);
-            let fields = match file.last_valid.lock() {
-                Ok(mut previous) => {
-                    let fields = changed_fields(*previous, preferences);
-                    *previous = preferences;
-                    fields
-                }
-                Err(_) => return,
-            };
-            file.surprises
-                .store(loaded.settings.small_surprises.unwrap_or(true), Ordering::SeqCst);
-            file.apply_text_size(&app, preferences.larger_text, revision);
-            if let Some(history) = app.try_state::<crate::session_references::SessionReferences>() {
-                let _ = history.set_enabled(loaded.settings.recent_citations.unwrap_or(true));
-            }
-            crate::shortcut_setting::apply_file_shortcut(
-                &app,
-                loaded.settings.shortcut.here().map(str::to_owned),
-                revision,
-            );
-            crate::tray::show_in_menu_bar(&app, preferences.menu_bar, revision);
-            native(&file, &app, revision, &loaded.settings);
+            Err(_) => return,
+        };
+        self.surprises
+            .store(loaded.settings.small_surprises.unwrap_or(true), Ordering::SeqCst);
+        self.apply_text_size(app, preferences.larger_text, revision);
+        if let Some(history) = app.try_state::<crate::session_references::SessionReferences>() {
+            let _ = history.set_enabled(loaded.settings.recent_citations.unwrap_or(true));
+        }
+        crate::shortcut_setting::apply_file_shortcut(app, loaded.settings.shortcut.here().map(str::to_owned), revision);
+        crate::tray::show_in_menu_bar(app, preferences.menu_bar, revision);
+        native(self, app, revision, &loaded.settings);
+        crate::diagnostics::report(
+            app.emit("writings:changed", ()),
+            crate::diagnostics::NativeIssue::PickerEvent,
+        );
+        // Native reports and formatting-only edits can repeat the same valid
+        // preferences. Refresh notices/effects, but publish only real changes.
+        if fields.is_empty() {
+            return;
+        }
+        let change = PreferenceChange {
+            revision,
+            fields,
+            preferences,
+        };
+        for window in ["main", "settings"] {
             crate::diagnostics::report(
-                app.emit("writings:changed", ()),
+                app.emit_to(window, "preferences:changed", change.clone()),
                 crate::diagnostics::NativeIssue::PickerEvent,
             );
-            let change = PreferenceChange {
-                revision,
-                fields,
-                preferences,
-            };
-            for window in ["main", "settings"] {
-                crate::diagnostics::report(
-                    app.emit_to(window, "preferences:changed", change.clone()),
-                    crate::diagnostics::NativeIssue::PickerEvent,
-                );
-            }
-        })
+        }
     }
 
     /// Call in the settings turn after an app-owned native choice was saved.
@@ -849,6 +860,77 @@ mod tests {
     }
 
     #[test]
+    fn repeated_or_unchanged_live_preferences_publish_no_change_event() {
+        use tauri::Listener;
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("settings.json");
+        settings::ensure_file(&path).unwrap_or_else(|error| panic!("{error}"));
+        let app = tauri::test::mock_builder()
+            .manage(SettingsFile::new(path.clone()))
+            .manage(Mutex::new(crate::library::Library::default()))
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap_or_else(|error| panic!("{error}"));
+        let main = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap_or_else(|error| panic!("{error}"));
+        let (sent, events) = std::sync::mpsc::channel();
+        main.listen("preferences:changed", move |event| {
+            let _ = sent.send(event.payload().to_owned());
+        });
+        let native = std::cell::Cell::new(None);
+        let apply_native = |_: &SettingsFile, _: &AppHandle<_>, _, saved: &settings::Settings| {
+            native.set(Some(saved.update_checks));
+        };
+        let file = app.state::<SettingsFile>();
+        let apply = |revision, text| {
+            std::fs::write(&path, text).unwrap_or_else(|error| panic!("{error}"));
+            file.apply_file_edit(app.handle(), revision, settings::load(&path), &apply_native);
+        };
+        apply(3, r#"{"larger_text":true,"update_checks":false}"#);
+        let event = events.try_recv().unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&event).unwrap_or_default()["fields"],
+            serde_json::json!(["larger_text"])
+        );
+        // Repeat a captured report, reformat the file, then repair invalid
+        // edits to the same valid choices. None changes the shown preferences.
+        for (revision, text) in [
+            (5, r#"{"larger_text":true,"update_checks":false}"#),
+            (7, r#"{ "update_checks": false, "larger_text": true }"#),
+            (9, "{ still editing"),
+            (
+                11,
+                r#"{"appearance":"invented","larger_text":false,"update_checks":true}"#,
+            ),
+            (13, r#"{"larger_text":true,"update_checks":false}"#),
+        ] {
+            apply(revision, text);
+            let unexpected = events.try_recv();
+            assert!(unexpected.is_err(), "revision {revision}: {unexpected:?}");
+            assert_eq!(native.get(), Some(Some(false)));
+        }
+        assert!(
+            app.state::<Mutex<crate::library::Library>>()
+                .lock()
+                .unwrap_or_else(|error| panic!("{error}"))
+                .settings_notice
+                .is_none()
+        );
+        // A native-only choice still applies without a preference event.
+        apply(15, r#"{"larger_text":true,"update_checks":true}"#);
+        assert_eq!(native.get(), Some(Some(true)));
+        assert!(events.try_recv().is_err());
+        apply(17, r#"{"larger_text":false,"update_checks":true}"#);
+        let event = events.try_recv().unwrap_or_else(|error| panic!("{error}"));
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(&event).unwrap_or_default()["larger_text"],
+            false
+        );
+        assert_eq!(native.get(), Some(Some(true)));
+        assert!(events.try_recv().is_err());
+    }
+
+    #[test]
     fn live_file_edits_update_windows_and_native_choices_but_invalid_edits_keep_the_last_valid_state() {
         use tauri::Listener;
         let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
@@ -894,7 +976,8 @@ mod tests {
         )
         .unwrap_or_else(|error| panic!("{error}"));
         file.exclusive(|_| ()).unwrap_or_else(|error| panic!("{error}"));
-        assert!(events.try_recv().is_err());
+        let unexpected = events.try_recv();
+        assert!(unexpected.is_err(), "unexpected event: {unexpected:?}");
         assert_eq!(
             *native.lock().unwrap_or_else(|error| panic!("{error}")),
             Some(Some(false))
