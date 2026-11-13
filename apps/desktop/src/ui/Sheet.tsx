@@ -93,7 +93,7 @@ export function Sheet({ title, closeLabel, description, actions, leadingActions,
 
 /** What a sheet will copy or save, kept as written and selectable, on a card. */
 export function SheetOutput({ children }: { children: ReactNode }) {
-  return <div className="ui-group"><p className="ui-sheet-output" dir="auto">{children}</p></div>;
+  return <div className="ui-group"><div className="ui-sheet-output" dir="auto">{children}</div></div>;
 }
 
 /** A line reserved under a sheet's content for a spinner or a problem, so nothing above it moves. */

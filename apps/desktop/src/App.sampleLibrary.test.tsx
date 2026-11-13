@@ -36,7 +36,7 @@ function setup(density: Density = "comfortable", formatted = true) {
   const notice = vi.fn(() => ({ outcome: "copied", reason: "paste-off", app: null }));
   const preview = vi.fn(async ({ items }: { items: { id: { library: string } }[] }) =>
     receipt(items[0]?.id.library === "samples" ? formatted ? apa : sampleKeys : "(Fen, 2023)",
-      formatted ? items[0]?.id.library === "samples" ? "(Vale, 2024)<span> [Sample]</span>" : "(Fen, 2023)" : null,
+      null,
       formatted ? apaWarnings : []));
   const calls = backend({
     library_status: status,

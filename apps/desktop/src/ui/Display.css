@@ -1,0 +1,5 @@
+/* Passive display blocks shared by citation previews and bibliographies. */
+.csl-entry { display: flow-root; }
+.csl-entry:has(> .csl-margin) { display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: .5em; }
+.csl-inline { min-width: 0; }
+.csl-indent { margin-inline-start: 2em; }

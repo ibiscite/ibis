@@ -29,7 +29,8 @@ function opened(destination: () => PickerDestination, overrides: Parameters<type
     preview_file_citation: (request) => {
       previews.push(request);
       const number = previews.length;
-      return { ticket: `ticket-${number}`, content_hash: `hash-${number}`, text: isStyle(listedOutput(request.output) ?? "pandoc") ? `(Smith, 2020) ${request.output}` : `synthetic ${request.output}`, html: null, warnings: [] };
+      const text = isStyle(listedOutput(request.output) ?? "pandoc") ? `(Smith, 2020) ${request.output}` : `synthetic ${request.output}`;
+      return { ...receipt(text), ticket: `ticket-${number}`, content_hash: `hash-${number}` };
     },
     copy_file_citation: (args) => {
       copies.push({ ticket: args.ticket, contentHash: args.contentHash });
@@ -175,7 +176,7 @@ test("the question appears even when the global key preview fails, then waits fo
   fireEvent.click(await screen.findByRole("option", { name: "APA" }));
   await waitFor(() => expect(formatShown()).toBe("APA · Example Browser"));
   expect(copies).toEqual([]);
-  await act(async () => finish({ ticket: "style-ticket", content_hash: "style-hash", text: "Synthetic APA", html: null, warnings: [] }));
+  await act(async () => finish({ ticket: "style-ticket", content_hash: "style-hash", text: "Synthetic APA", display: receipt("Synthetic APA").display, warnings: [] }));
   await waitFor(() => expect(copies).toEqual([{ ticket: "style-ticket", contentHash: "style-hash" }]));
 });
 
@@ -468,7 +469,7 @@ test("a new pick cancels an Enter that was waiting for another output's preview"
   const typst = new Promise((done) => { finish = done; });
   const { copies } = opened(() => ({ ...BROWSER, remembered: "cite" }), {
     preview_file_citation: ({ output }) => output === "typst" ? typst : {
-      ticket: `ticket-${output}`, content_hash: `hash-${output}`, text: `synthetic ${output}`, html: null, warnings: [],
+      ticket: `ticket-${output}`, content_hash: `hash-${output}`, text: `synthetic ${output}`, display: receipt(`synthetic ${output}`).display, warnings: [],
     },
   });
   await screen.findByText("First");
@@ -478,7 +479,7 @@ test("a new pick cancels an Enter that was waiting for another output's preview"
   fireEvent.keyDown(search, { key: "Enter" });
   await pick("Pandoc");
   await waitFor(() => expect(formatShown()).toBe("Pandoc · Example Browser"));
-  await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", html: null, warnings: [] }); });
+  await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", display: receipt("old Typst").display, warnings: [] }); });
   expect(copies).toEqual([]);
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(copies).toEqual([{ ticket: "ticket-pandoc", contentHash: "hash-pandoc" }]));

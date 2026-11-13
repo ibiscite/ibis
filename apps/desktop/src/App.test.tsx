@@ -8,7 +8,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
-import { backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -52,7 +52,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
         ...(item ? [{ item: null, text: "; " }] : []),
         { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     },
     copy_file_citation: copied,
   });
@@ -1311,7 +1311,10 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items, output }) => output === "ieee"
-      ? receipt("Garcia, First", "Garcia, <i>First</i><img src=x onerror=alert(1)>")
+      ? receipt("Garcia, First", displayTree([{ item: 0, text: "Garcia, First", runs: [
+          { text: "Garcia, ", italic: false, bold: false, script: "normal" },
+          { text: "First", italic: true, bold: false, script: "normal" },
+        ] }]))
       : receipt(items.length > 1 ? "(Garcia, 2021); Second" : "(Garcia, 2021)", null,
           items.length > 1 ? ["“Second”: this style could not format the reference"] : []),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { text: preview.text, warnings: preview.warnings }; },
@@ -1334,7 +1337,7 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   await within(preview).findByText("(Garcia, 2021); Second");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second", html: null });
+  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second" });
   await screen.findByText("Copied");
   expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
 });

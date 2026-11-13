@@ -1,3 +1,4 @@
+import { renderDisplay } from "../../format/display";
 import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
@@ -119,7 +120,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     {view && view.absent > 0 && <p role="status">{say("session-absent", { count: view.absent })}</p>}
     {view?.overflowed && <p role="status">{say("session-full")}</p>}
     {bibliography && <Section title={say("session-bibliography-in", { style: isolate(name) })} id="session-bibliography" level={3}>
-      <SheetOutput>{bibliography.text}</SheetOutput>
+      <SheetOutput>{renderDisplay(bibliography.display)}</SheetOutput>
       {bibliography.warnings.map((warning) => <p key={warning} role="status">{warning}</p>)}
       {bibliography.left_out.length > 0 && <p role="status">{say("session-left-out", { names: bibliography.left_out.map(isolate).join(", ") })}</p>}
     </Section>}

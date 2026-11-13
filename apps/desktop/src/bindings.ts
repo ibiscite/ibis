@@ -307,12 +307,6 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
 
-export type CitationSpan = {
-	item: number | null;
-	runs?: DisplayRun[] | null;
-	text: string;
-};
-
 /**
  * A failed command as the interface receives it: the interface decides
  * from `code`, never from the text in `message`.
@@ -397,6 +391,29 @@ export type DesktopShortcut = {
 };
 
 /**
+ * A block covers content runs in [start, end). Blocks are in opening order;
+ * ranges are nested or disjoint, never crossing. Equal ranges retain nesting.
+ */
+export type DisplayBlock = {
+	end: number;
+	kind: DisplayBlockKind;
+	start: number;
+};
+
+/** Passive CSL layout, independent of HTML class names or CSS. */
+export type DisplayBlockKind = "entry" | "margin" | "inline" | "block" | "indent";
+
+/**
+ * One display group owns ordered text leaves and their block layout;
+ * shared punctuation has no item.
+ */
+export type DisplayNode = {
+	blocks: DisplayBlock[];
+	content: DisplayRun[];
+	item: number | null;
+};
+
+/**
  * Output-only passive presentation. The smaller request TextRun contract stays
  * independent of the additional styles a citation processor may produce.
  */
@@ -407,6 +424,11 @@ export type DisplayRun = {
 	small_caps?: boolean;
 	text: string;
 	underline?: boolean;
+};
+
+/** Ownership groups with bounded-depth passive blocks and styled text leaves. */
+export type DisplayTree = {
+	nodes: DisplayNode[];
 };
 
 /**
@@ -438,7 +460,7 @@ export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "
 
 export type FilePreview = {
 	content_hash: string;
-	html: string | null;
+	display: DisplayTree;
 	/**
 	 * What the engine says about this citation that is no warning, such as a
 	 * full first note; the web view words each from the catalogue.
@@ -450,7 +472,6 @@ export type FilePreview = {
 	 * names a different work.
 	 */
 	project_refusal?: string | null;
-	spans: CitationSpan[];
 	text: string;
 	ticket: string;
 	warnings: string[];
@@ -923,7 +944,7 @@ export type SearchResult = {
  */
 export type SessionBibliography = {
 	content_hash: string;
-	html: string | null;
+	display: DisplayTree;
 	/**
 	 * References this style cannot write, by key or title. They are named so
 	 * that the rest can still be used.

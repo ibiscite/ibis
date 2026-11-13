@@ -148,7 +148,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
       spans.push({ item: null, text: !style || numbered ? "]" : ")" });
       const text = spans.map((span) => span.text).join("");
       receipts.set(ticket, { text, items });
-      return { ticket, content_hash: ticket, text, spans, html: null, warnings: [], project_refusal: refusal };
+      return { ticket, content_hash: ticket, text, display: { nodes: spans.map(({ item, text }) => ({ item, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] })) }, warnings: [], project_refusal: refusal };
     },
     copy_file_citation: ({ ticket }) => {
       const receipt = receipts.get(ticket);
@@ -350,7 +350,7 @@ function CitedSinceOpeningBoard() {
   return <><style>{pickerStyles}</style><App preview={{ query: "invented" }} />
     <SessionReferencesDialog style="apa" onClose={() => {}} api={{
       sessionReferences: async () => view, editSessionReferences: async () => view,
-      sessionBibliography: async () => ({ content_hash: "synthetic", html: null, left_out: [], text, warnings: [] }),
+      sessionBibliography: async () => ({ content_hash: "synthetic", display: { nodes: [{ item: null, blocks: [], content: [{ text, italic: false, bold: false, script: "normal" }] }] }, left_out: [], text, warnings: [] }),
       copySessionBibliography: async () => null, exportSessionBibliography: async () => null,
     }} />
   </>;

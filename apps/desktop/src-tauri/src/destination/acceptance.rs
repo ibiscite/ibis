@@ -78,7 +78,7 @@ fn app_outputs_and_remembered_key_workflows_copy_the_exact_preview() -> Result<(
             .copy(&preview.ticket, &preview.content_hash, |content| {
                 writes += 1;
                 assert_eq!(content.text, preview.text);
-                assert_eq!(content.html, preview.html.as_deref());
+                assert!(content.html.is_none());
                 Ok(())
             })
             .map_err(|_| "canonical copy")?;

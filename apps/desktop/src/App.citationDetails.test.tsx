@@ -2,7 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
+import { displayTree, backend, chooseForm, chooseFromMore, paletteRow, prepared, receipt, resetApp, result, openCitationDetails, textField, closeCitationDetails, type PreviewRequest, inCitation, findInCitation, citationDetails, citationKeys, lineReceipt, removeFromCitation } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -520,7 +520,7 @@ test("true Year only is sent to the engine; an engine refusal can be corrected f
     preview_file_citation: (request) => {
       previews.push(request);
       return request.items[0]?.form === "year-only"
-        ? { ...receipt(""), spans: [], problem: "Year only cannot show this reference’s year in this output." }
+        ? { ...receipt(""), display: displayTree([]), problem: "Year only cannot show this reference’s year in this output." }
         : receipt("(Smith, 2020)");
     },
   });
@@ -700,7 +700,7 @@ test("examples from the last answer stay while a page is typed, so the choices n
 test("pressing another token moves the details to it and retires the first reference's examples", async () => {
   const replies: { item: number; resolve: (value: unknown) => void }[] = [];
   backend({ search: () => [result("a", "First work"), result("b", "Second work")],
-    preview_file_citation: (request) => ({ ...receipt("(First; Second)"), spans: [{ item: 0, text: "First" }, { item: null, text: "; " }, { item: 1, text: "Second" }].slice(0, request.items.length * 2 - 1) }),
+    preview_file_citation: (request) => ({ ...receipt("(First; Second)"), display: displayTree([{ item: 0, text: "First" }, { item: null, text: "; " }, { item: 1, text: "Second" }].slice(0, request.items.length * 2 - 1)) }),
     citation_details: (args) => args.intent?.cancel ? null : new Promise((resolve) => replies.push({ item: Number(args.item), resolve })) });
   render(<App />);
   fireEvent.click(await screen.findByText("First work"), { ctrlKey: true });
@@ -791,7 +791,7 @@ function sortingStyle(held?: Map<string, () => void>) {
     const order = items.map(({ id }, index) => ({ key: id.key, index }));
     if (!intent.keep_order) order.sort((x, y) => x.key.localeCompare(y.key));
     const spans = order.flatMap(({ key, index }, n) => [...n ? [{ item: null, text: "; " }] : [], { item: index, text: `(${key})` }]);
-    const preview = { ...receipt(spans.map((span) => span.text).join("")), spans };
+    const preview = { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     if (!held) return preview;
     return new Promise<typeof preview>((resolve) => held.set(`${intent.keep_order ? "kept" : "sorted"}:${order.map(({ key }) => key).join(",")}`, () => resolve(preview)));
   };
