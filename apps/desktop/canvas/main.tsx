@@ -15,6 +15,7 @@ import { isStyle } from "../src/format/outputs";
 import { setPlatform } from "../src/nativeAppearance";
 export { setNativeAccent } from "../src/nativeAccent";
 export { geometry } from "./geometry";
+import { audit as runAudit } from "./audit";
 import { SettingsApp } from "../src/settings/SettingsApp";
 import { demoApi } from "../src/settings/demo";
 import type { SettingsApi } from "../src/settings/api";
@@ -401,6 +402,11 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
   };
   mounts.set(host, unmount);
   return unmount;
+}
+
+/** Every guard of canvas/geometry.ts over the scenarios, for the runners: see canvas/audit.ts. */
+export function audit(host: HTMLElement, options: Parameters<typeof runAudit>[3] = {}): Promise<string[]> {
+  return runAudit(host, mount, scenarios, options);
 }
 
 const host = document.querySelector<HTMLElement>("[data-ibis-canvas]");
