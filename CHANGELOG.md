@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.6](https://github.com/ibiscite/ibis/compare/v0.3.5...v0.3.6) (2026-11-13)
+
+
+### Features
+
+* search every setting and restore any change with Use Default ([#1887](https://github.com/ibiscite/ibis/issues/1887)) ([a3c18d6](https://github.com/ibiscite/ibis/commit/a3c18d69ce449b671d78b0f801df8de1ded089c7))
+
+
+### Bug Fixes
+
+* **windows:** the MSI installs and uninstalls with its PATH steps ([#1889](https://github.com/ibiscite/ibis/issues/1889)) ([f5d16a8](https://github.com/ibiscite/ibis/commit/f5d16a8d3f51a67d52c9ba207aca5d95e44fd348))
+
 ## [0.3.5](https://github.com/ibiscite/ibis/compare/v0.3.4...v0.3.5) (2026-11-13)
 
 
