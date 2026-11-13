@@ -1564,6 +1564,20 @@ test("General cancels recording on Escape, Tab and page changes without saving",
   expect(state.shortcutChoices).toEqual([]);
 });
 
+test("with a search typed, Esc in the shortcut recorder still cancels the recording, not the search", async () => {
+  render(<SettingsApp api={fakeApi().api} initialPage="general" />);
+  const recorder = await screen.findByRole("button", { name: /^Open Ibis:/ });
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  act(() => search.focus());
+  fireEvent.change(search, { target: { value: "shortcut" } });
+  act(() => recorder.focus());
+  fireEvent.click(recorder);
+  expect(recorder.getAttribute("aria-pressed")).toBe("true");
+  fireEvent.keyDown(recorder, { key: "Escape", code: "Escape" });
+  expect(recorder.getAttribute("aria-pressed")).toBe("false");
+  expect(search).toHaveProperty("value", "shortcut");
+});
+
 test("a newer shortcut event survives an older General save after switching pages", async () => {
   const { api, state } = fakeApi();
   const save = deferred<ShortcutStatus>();

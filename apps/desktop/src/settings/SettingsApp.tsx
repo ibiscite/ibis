@@ -97,10 +97,12 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const resultsRef = useRef<HTMLDivElement>(null);
   const searchOpener = useRef<HTMLElement | null>(null);
   const [revealTarget, setRevealTarget] = useState<{ id: string; ticket: number } | null>(null);
-  // Search is on the view stack (ui/layers): Esc clears it, then leaves it for where you were.
+  // Search is on the view stack (ui/layers) while the keyboard is in the sidebar:
+  // Esc clears it, then leaves it for where you were. On the page, Esc stays the
+  // page's (the shortcut recorder cancels with it).
   const sidebar = useRef<HTMLElement>(null);
   const [inSidebar, setInSidebar] = useState(false);
-  useLayer("search", Boolean(query) || inSidebar, () => {
+  useLayer("search", inSidebar, () => {
     setRevealTarget(null);
     if (query) { setQuery(""); searchRef.current?.focus(); return; }
     const back = searchOpener.current;

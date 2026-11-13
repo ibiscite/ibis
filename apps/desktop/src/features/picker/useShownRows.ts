@@ -24,8 +24,10 @@ export function useShownRows(area: RefObject<HTMLElement | null>, results: reado
     const later = () => { if (!frame) frame = requestAnimationFrame(measure); };
     measure();
     scroller.addEventListener("scroll", later, true);
-    window.addEventListener("resize", later);
-    return () => { cancelAnimationFrame(frame); scroller.removeEventListener("scroll", later, true); window.removeEventListener("resize", later); };
+    // Density, text size, the shelf and the window all change what is in view.
+    const resized = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(later);
+    resized?.observe(node); resized?.observe(scroller);
+    return () => { cancelAnimationFrame(frame); scroller.removeEventListener("scroll", later, true); resized?.disconnect(); };
   }, [area, results]);
   return shown;
 }

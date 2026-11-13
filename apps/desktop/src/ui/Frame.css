@@ -23,7 +23,7 @@ main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-are
 .ui-heading-slot > .results-heading { padding-block: 0; }
 /* With no list, the line itself moves to the room above the empty state, over its
    padding at the content's top, so its notice is never drawn anew. */
-main.ui-frame[data-notice-room] > .ui-notice-line { grid-area: middle; align-self: start; z-index: var(--z-chrome); }
+main.ui-frame[data-notice-room] > .ui-notice-line:not(:has(> .ui-heading-slot:not(:empty))) { grid-area: middle; align-self: start; z-index: var(--z-chrome); }
 
 /* A notice shows its words on the label column, cut with an ellipsis if they must
    be, and its actions at the end. */

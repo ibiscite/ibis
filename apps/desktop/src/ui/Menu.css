@@ -34,9 +34,8 @@
 .menu-detail { width: max-content; min-width: 100%; max-width: 20rem; margin: 0; padding: var(--space-1) 0 var(--space-2); display: flex; flex-direction: column; gap: var(--space-1); color: var(--text-secondary); font-size: var(--type-label-size); line-height: var(--type-label-line); overflow-wrap: break-word; }
 /* A menu heading: small, bold and secondary like .menu-heading, never an item. */
 .menu-detail-title { font-weight: var(--strong); }
-/* Each fact keeps its phrase whole (a time never breaks before its AM): the menu
-   widens to the longest, up to its limit, and a longer one ends in an ellipsis. */
-.menu-detail > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The detail widens the menu to its longest fact, up to its limit, so a short
+   fact such as a time stays whole; a longer sentence wraps there. */
 .menu-item {
   display: flex; flex: none; align-items: center; min-height: var(--control-small-h); padding-block: var(--space-1); padding-inline: var(--space-2);
   border-radius: var(--r-control); outline: none; cursor: default; text-align: start;

@@ -210,7 +210,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     quitAfterSaving, commandKeys, citationLine,
     pick: (number) => {
       const index = numbered.first + number - 1, record = results[index];
-      return ready && showCitations && !commandsShown.current && number <= numbered.count && record ? () => rows.onChoose(index, record, "copy") : null;
+      // The list must be drawn: reading a PDF folds it away.
+      const drawn = resultArea.current?.checkVisibility?.() ?? true;
+      return ready && showCitations && drawn && !commandsShown.current && number <= numbered.count && record ? () => rows.onChoose(index, record, "copy") : null;
     },
     onEmptyEnter: () => {
       if (chosen.length > 0 || searchPending || state.pendingCopy) return;
