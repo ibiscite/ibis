@@ -39,3 +39,27 @@ nothing leaves the app.
 "References used this session" (#356) holds record identities in memory, cleared by
 quitting or a reset, and leaves memory only through a file the person saves. It is a new
 data flow of references already read, with no network use (2026-11-02).
+
+2026-11-13, opt-in online lookup (maintainer): Ibis stays offline by default, as
+promised, and the person may turn on online lookup for practical tasks: pasting
+or dropping a DOI, finding a reference that is not in the library, open search.
+The groundwork is built so each later feature uses it:
+- **One switch, off by default.** Setup asks once with nothing preselected;
+  Settings changes it at any time. The command line, JSON-RPC and MCP obey the
+  same setting, and an agent can never turn it on.
+- **Ask before the first use** of each lookup, saying exactly what is sent and
+  to which service.
+- **Send only what the person gave:** the DOI or the words they typed. Never
+  library contents, file paths, document text or record identities. A dropped
+  PDF's DOI is read locally; only the DOI leaves.
+- **Named services only:** `doi.org`, `api.crossref.org` and `api.openalex.org`
+  over HTTPS with certificate checks. No redirects off that list, no cookies, a
+  generic user agent with no personal details, timeouts and a response size
+  limit. Answers are untrusted input, checked before anything shows them.
+- **One owner.** A single engine module holds the only HTTP client for lookups
+  and refuses while the switch is off; a test proves nothing is sent then.
+- **Nothing changes the library** without the person's own action. Adding an
+  item to Zotero goes through its local write API, decided separately.
+- **Shipping:** PRIVACY.md, the README and the website change in the same pull
+  request, to "offline by default; online lookup only if you turn it on". As a
+  network change, it needs an independent review before it merges.

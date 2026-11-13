@@ -2,6 +2,8 @@
 
 Ibis is a writing companion for the references people already keep. One shortcut, in any app, finds anything in their sources (a reference, its PDF page, a highlight or a note), shows it to be sure, and cites or quotes it where they are writing. People writing in LaTeX, Markdown, Quarto and Typst decide close calls; first-time and expert users, every major operating system and many languages all count. Ibis stays about references and research material, never a general file or web search (maintainer, 2026-11-05).
 
+**Where Ibis is going** (maintainer, 2026-11-13): the most robust and capable open-source companion for everything in working with literature: adding, finding, remembering, citing and sharing references, and the workflows that join them, for academics, journalists and any researcher at every stage. It works with every source and writing app, stays fast and reliable, and is open and customisable: simple for a first-time user and deep for an expert, as an engine, a command line, an MCP server and an app. Writing is where it starts; [references in and out](#06-your-document) is the next step, and each step is built on lasting engine concepts so the next one is small. Until a decision allows writes, the sources rule below still holds.
+
 Every feature in the releases below ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
 
 ## How we build
@@ -99,7 +101,11 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
-- **Opt-in online lookup** (maintainer, 2026-11-11): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **Opt-in online lookup** (maintainer, 2026-11-11; rules in [decision 0008](docs/decisions/0008-offline-by-default.md)): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **References in and out** (maintainer, 2026-11-13): Ibis grows from citing to everyday reference handling, each step quick and on open standards.
+  - **In:** paste or drop a DOI (or another standard identifier) and cite it, link it, save it to a `.bib` file, or add it to Zotero.
+  - **Out:** select references and share them as DOI links, a `.bib` or CSL-JSON file, a zip, by email or through the system's share sheet.
+  - **Groundwork first:** identifiers read locally, the one lookup module from decision 0008, and a single selection → format → destination path that every share and save uses. Writing to a library is decided before any write ships.
 
 ### 0.7 Everywhere you work
 
