@@ -3,7 +3,7 @@
    segments and the count. Hover and open steps are even: band, tertiary, system fill.
    At rest the count shows only its chevron, whose glyph is drawn inside its box, so
    it takes no end padding and the glyph ends on the year column [C3]. */
-.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--fill-control); }
+.shelf { --band-control-pad: var(--space-2); --band-control-pad-end: 0px; --band-control-radius: var(--r-small); --band-control-hover: var(--fill-control); --band-control-pressed: var(--fill-control-pressed); --shelf-target: var(--control-h); position: relative; flex: none; min-height: 0; overflow: visible; margin: 0 var(--inset) var(--inset); border-radius: var(--r-control); background: var(--layer-inset); }
 .shelf::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--status-ok-wash); opacity: 0; pointer-events: none; }
 main:has(> .shelf) > footer { border-top-color: transparent; }
 /* Text starts on the title column; trailing controls keep the same gap S to the
@@ -48,7 +48,8 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
   .shelf-copied { color: CanvasText; border: var(--border-width) solid CanvasText; }
 }
 
-.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding: var(--row-gap) var(--band-control-pad); margin: calc(-1 * var(--row-gap)) calc(-1 * var(--band-control-pad)); }
+/* Room for the tokens' rings at the line's ends, never above or below the shelf: the rows above keep their own clicks. */
+.shelf-fragments { display: flex; align-items: center; flex: 0 1 auto; min-width: 0; overflow: hidden; padding-inline: var(--band-control-pad); margin-inline: calc(-1 * var(--band-control-pad)); }
 .shelf-shared { flex: none; white-space: pre; }
 .shelf-punctuation { color: var(--text-secondary); }
 
@@ -56,6 +57,5 @@ main:has(> .shelf) > footer { border-top-color: transparent; }
    text on the column's edge, no box, so nothing is framed twice. */
 .inspector-citation { display: block; margin: var(--space-2) 0 0; font-size: var(--type-body-size); line-height: var(--type-body-line); white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; }
 .inspector-citation[data-keys] { font-family: var(--mono); }
-.inspector-citation .csl-entry { display: inline; }
 .inspector-problem svg { margin-inline-end: var(--space-1); color: var(--status-error); }
 

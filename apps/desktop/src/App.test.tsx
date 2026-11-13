@@ -8,7 +8,7 @@ import capability from "../src-tauri/capabilities/default.json";
 import config from "../src-tauri/tauri.conf.json";
 import { OUTPUTS } from "./bindings";
 import { outputName, type OutputId } from "./format/outputs";
-import { backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
+import { displayTree, backend, chooseFromMore, paletteRow, chooseFromLibrary, libraryButton, prepared, receipt, resetApp, result, type PreviewRequest, type SyntheticId, openCitationDetails, closeCitationDetails, inCitation, findInCitation, removeFromCitation, citationKeys } from "./testing/app";
 
 afterEach(resetApp);
 
@@ -52,7 +52,7 @@ test("editing Page in a pasted list preserves every reference in preview and cop
         ...(item ? [{ item: null, text: "; " }] : []),
         { item, text: `@${id.key}${locator_input ? `, p. ${locator_input.text}` : ""}` },
       ]);
-      return { ...receipt(spans.map((span) => span.text).join("")), spans };
+      return { ...receipt(spans.map((span) => span.text).join("")), display: displayTree(spans) };
     },
     copy_file_citation: copied,
   });
@@ -264,7 +264,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   const refusal = await screen.findByRole("alert");
   expect(refusal.textContent).toContain(message);
   expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
-  expect(refusal.closest(".notices")).toBeTruthy();
+  expect(refusal.closest(".shelf")).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
@@ -374,7 +374,7 @@ test.each(["query", "hide", "selection", "revision", "highlight", "failure"])("C
   if (change === "revision") await act(async () => { await emit("library:changed", { state: "loaded", has_snapshot: true, revision: "2", references: 2 }); });
   if (change === "selection") fireEvent.click(screen.getByText("First"), { shiftKey: true });
   if (change === "failure") {
-    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The reference menu could not open. Use Enter to copy or Shift+Enter to add.");
+    expect(await screen.findByRole("alert")).toHaveProperty("textContent", "The row menu could not open. Enter copies, Shift+Enter adds.");
     expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
   } else await act(async () => { finish(change === "highlight" ? "toggle" : "copy"); await pending; });
   expect(copied).not.toHaveBeenCalled();
@@ -983,7 +983,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     note: null,
   });
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("could not be opened");
 });
 
@@ -1105,7 +1105,7 @@ test("failed status and saved choice reads show safe notices without hiding sear
   await screen.findByText("Available reference");
   expect(screen.getByText("Ibis could not check your library. Choose the file again.").getAttribute("role")).toBe("alert");
   // Unreadable choices are not replaced with defaults on disk; the default format applies meanwhile.
-  expect(await screen.findByText("Ibis could not read or save your picker choices. They apply until Ibis restarts.")).toBeTruthy();
+  expect(await screen.findByText("Your picker choices could not be saved. They apply until restart.")).toBeTruthy();
   expect(screen.getByRole("region", { name: "Picker actions" }).textContent).not.toContain("No library chosen");
   expect(formatValue()).toBe("pandoc");
   expect(document.body.textContent).not.toContain("SYNTHETIC_PRIVATE_PAYLOAD");
@@ -1311,7 +1311,10 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   backend({
     search: () => [result("a", "First"), result("b", "Second")],
     preview_file_citation: ({ items, output }) => output === "ieee"
-      ? receipt("Garcia, First", "Garcia, <i>First</i><img src=x onerror=alert(1)>")
+      ? receipt("Garcia, First", displayTree([{ item: 0, text: "Garcia, First", runs: [
+          { text: "Garcia, ", italic: false, bold: false, script: "normal" },
+          { text: "First", italic: true, bold: false, script: "normal" },
+        ] }]))
       : receipt(items.length > 1 ? "(Garcia, 2021); Second" : "(Garcia, 2021)", null,
           items.length > 1 ? ["“Second”: this style could not format the reference"] : []),
     copy_file_citation: (args) => { const { preview } = prepared(args); copies.push(preview); return { text: preview.text, warnings: preview.warnings }; },
@@ -1334,7 +1337,7 @@ test("a citation style shows a safe engine preview and copies its receipt with w
   await within(preview).findByText("(Garcia, 2021); Second");
   fireEvent.keyDown(box, { key: "Enter" });
   await waitFor(() => expect(copies).toHaveLength(1));
-  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second", html: null });
+  expect(copies[0]).toMatchObject({ text: "(Garcia, 2021); Second" });
   await screen.findByText("Copied");
   expect(screen.getAllByText(/“Second”: this style could not format the reference/).length).toBeGreaterThan(0);
 });
@@ -1825,13 +1828,13 @@ test("rapid A-B-A choices keep the last failed choice applied and never resend i
   chooseFormat("cite");
   expect(keys).toEqual(["cite"]);
   await act(async () => { finish(); await firstSave; });
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   expect(remembered).toBe("pandoc");
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
   // The unsaved choice still applies in the picker until Ibis restarts.
   expect(formatValue()).toBe("cite");
   chooseFormat("typst");
-  await waitFor(() => expect(screen.queryByText(/could not read or save your picker choices/)).toBeNull());
+  await waitFor(() => expect(screen.queryByText(/picker choices could not be saved/)).toBeNull());
   // The failed choice is never sent again: the next save is the next choice.
   expect(keys).toEqual(["cite", "pandoc", "cite", "typst"]);
   expect(remembered).toBe("typst");
@@ -1896,7 +1899,7 @@ test("a refused preference save reports failure and still allows Quit", async ()
   render(<App />);
   await waitFor(() => expect(formatValue()).toBe("typst"));
   chooseFormat("cite");
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   await chooseFromMore("Quit Ibis");
   await waitFor(() => expect(calls).toContain("quit"));
   expect(screen.queryByText(/SYNTHETIC_PRIVATE_SAVE_ERROR/)).toBeNull();
@@ -1941,7 +1944,7 @@ test("unreadable saved choices are reported and never overwritten with defaults"
     picker_preferences_saved: ({ preferences }) => { saved.push(preferences); throw new Error("synthetic refusal"); },
   });
   render(<App />);
-  await screen.findByText(/could not read or save your picker choices/);
+  await screen.findByText(/picker choices could not be saved/);
   // Nothing could be read, so the engine's default applies for now.
   expect(formatValue()).toBe("pandoc");
   chooseFormat("apa");
@@ -1992,7 +1995,7 @@ test("a refused choice from an older list looks again and shows the new list", a
   pressRow(await screen.findByRole("option", { name: /^Use v1\.bib/ }));
   expect(await screen.findByRole("option", { name: /^Use v2\.bib/ })).toBeTruthy();
   expect(screen.queryByRole("option", { name: /^Use v1\.bib/ })).toBeNull();
-  expect(screen.getByText("That file could not be opened from the list. Pick it again from the new list.")).toBeTruthy();
+  expect(screen.getByText("That file could not be opened. Pick it again from the new list.")).toBeTruthy();
 });
 
 test("when looking for libraries fails, setup still offers the file chooser and Zotero and says why", async () => {
@@ -2002,7 +2005,7 @@ test("when looking for libraries fails, setup still offers the file chooser and 
   });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
-  expect(await screen.findByText("Ibis could not look for libraries on this computer. Choose a file instead.")).toBeTruthy();
+  expect(await screen.findByText("Ibis could not look for libraries here. Choose a file instead.")).toBeTruthy();
   expect(choiceRow(FILE_ROW).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Use Zotero/).getAttribute("aria-disabled")).toBeNull();
   expect(choiceRow(/^Look Again/).getAttribute("aria-disabled")).toBeNull();
@@ -2017,7 +2020,7 @@ test("setup failures go away once a library is chosen", async () => {
   });
   render(<App />);
   pressRow(await screen.findByRole("option", { name: /^Find Them on This Computer/ }));
-  const failure = "Ibis could not look for libraries on this computer. Choose a file instead.";
+  const failure = "Ibis could not look for libraries here. Choose a file instead.";
   await screen.findByText(failure);
   status = { ...NO_LIBRARY, state: "loaded", has_snapshot: true, name: "refs.bib", snapshot_name: "refs.bib", references: 1 };
   await act(async () => { await emit("library:changed", status); });

@@ -96,7 +96,7 @@ fn same_through_the_picker(
         (Ok(expected), Ok(preview)) if expected.copy_content(request.items.len()).is_some() => {
             assert!(!preview.text.is_empty(), "{name}");
             assert_eq!(preview.text, expected.text, "{name}");
-            assert_eq!(preview.html, expected.html, "{name}");
+            assert_eq!(preview.display, expected.display, "{name}");
             assert_eq!(preview.content_hash, expected.content_hash.as_str(), "{name}");
             let copied = file
                 .copy(&preview.ticket, &preview.content_hash, |content| {
@@ -242,7 +242,7 @@ fn page_and_range_with_each_picker_form_match_canonical_output() -> Result<(), B
                 }
                 let preview = preview.map_err(|e| e.to_string())?;
                 assert_eq!(preview.text, expected.text, "{output} {form} {page}");
-                assert_eq!(preview.html, expected.html);
+                assert_eq!(preview.display, expected.display);
                 assert_eq!(preview.content_hash, expected.content_hash.as_str());
                 // The one cited reference is named by its key.
                 let expected_warnings = citation_warnings(&expected, &[Some("Example2026".into())]);
@@ -330,6 +330,12 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
             let expected = file
                 .preview(file.reserve_preview(), vec![selection("page", value)?], output)
                 .map_err(|e| e.to_string())?;
+            let mut expected_html = None;
+            file.copy(&expected.ticket, &expected.content_hash, |content| {
+                expected_html = content.html.map(str::to_owned);
+                Ok(())
+            })
+            .map_err(|e| e.to_string())?;
             let actual = file
                 .preview(
                     file.reserve_preview(),
@@ -340,12 +346,12 @@ fn labelled_pages_use_the_shared_parser_before_preview_and_canonical_copy() -> R
                 )
                 .map_err(|e| e.to_string())?;
             assert_eq!(actual.text, expected.text, "{output}: {typed}");
-            assert_eq!(actual.html, expected.html);
+            assert_eq!(actual.display, expected.display);
             assert_eq!(actual.content_hash, expected.content_hash);
             assert_eq!(actual.warnings, expected.warnings);
             file.copy(&actual.ticket, &actual.content_hash, |content| {
                 assert_eq!(content.text, expected.text);
-                assert_eq!(content.html, expected.html.as_deref());
+                assert_eq!(content.html, expected_html.as_deref());
                 Ok(())
             })
             .map_err(|e| e.to_string())?;
@@ -540,7 +546,7 @@ fn quoted_page_search_preserves_canonical_text_through_preview_and_copy() -> Res
                 )
                 .map_err(|e| e.to_string())?;
             assert_eq!(preview.text, expected.text, "{output}: {value}");
-            assert_eq!(preview.html, expected.html);
+            assert_eq!(preview.display, expected.display);
             assert_eq!(preview.content_hash, expected.content_hash.as_str());
             let mut writes = 0;
             file.copy(&preview.ticket, &preview.content_hash, |content| {
@@ -734,7 +740,6 @@ fn source_file_goldens_preview_and_copy_as_pinned_zotero_formats_them() -> Resul
                 .preview(file.reserve_preview(), serde_json::from_value(json!(items))?, &style)
                 .map_err(|_| name.clone())?;
             assert_eq!(preview.text, case["text"].as_str().ok_or("text")?, "{name}");
-            assert_eq!(preview.html.as_deref(), case["html"].as_str(), "{name}");
             let copied = file
                 .copy(&preview.ticket, &preview.content_hash, |content| {
                     assert_eq!(content.text, case["text"].as_str().unwrap_or_default(), "{name}");

@@ -1,0 +1,51 @@
+# 0051 References in and out
+
+Decided by the maintainer on 2026-11-13, after a design study of Zotero, JabRef,
+BibDesk, Paperpile, Bookends, citation.js and the doi.org, Crossref and OpenAlex
+services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is going).
+
+## Lasting concepts, each with one owner
+
+- **Identity across sources** (`ibis-core::contract`): every record says where
+  it came from (a library, a lookup, or supplied by the caller). An identifier
+  an open library already holds is never looked up.
+- **Identifiers** (`ibis-core::identifier`): DOI, ISBN, arXiv, PMID and PMCID,
+  read locally from pasted text. A URL is only a form an identifier arrives in.
+- **Lookup** (`ibis-engine::lookup`): the only network client, under decision 0008.
+- **Selection → format → destination**: the engine's output catalogue builds what
+  is shared, always through the share-safe filter, so notes, private links and
+  files never leave by accident; the front ends own the system's destinations.
+- **Writes** (`ibis-engine::write`): nothing until a slice needs it.
+- **Workflows**: command-line pipes and saved recipes later reuse the same path.
+
+## Order
+
+1. **Share a selection** first, fully offline: copy DOI links or BibTeX, or save a
+   `.bib` or CSL-JSON file. It brings a BibTeX writer built from CSL-JSON with
+   Ibis's own escaping.
+2. **Paste a DOI to cite** next, the first network feature, with an independent
+   review before it merges.
+3. **Add by identifier** last, through Zotero.
+
+## Writes
+
+Zotero first, only through Zotero 10's official local write API once Zotero 10 is
+stable, never the Connector endpoints, and only to the library the person chose.
+Writing to `.bib` files comes later, once Ibis can generate good citation keys.
+Every write shows a preview and waits for the person's click; Ibis refuses if the
+target changed, writes atomically, keeps a backup and offers Undo.
+
+## Attachments
+
+Sharing may include attached files only when the person ticks "Include
+attachments" for that share; the default is metadata only. Attachments are
+private files, so this option gets its own design and an independent review
+before it ships.
+
+## Agents and the command line
+
+MCP never gets lookup or write tools. `ibis lookup` exists only while the person
+has turned lookup on. Writes stay out of the command line until they are decided
+for it. Lookup and write are kept out of the engine methods the command line
+generates automatically. An agent with a shell can still change settings or run
+`ibis`, and PRIVACY.md says so when lookup ships.

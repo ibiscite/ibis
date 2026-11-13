@@ -51,11 +51,7 @@ export function useResultScroll({ input, active, selectAll, pointer, selectedSiz
     if (!area) return;
     const scrollers = [area, area.parentElement].filter((node): node is HTMLElement => node !== null);
     const reveal = (viewport = false) => {
-      // A refusal owns the middle viewport. Read the committed DOM so even a
-      // queued observer cannot undo its reveal before effects are refreshed,
-      // or scroll past the person's newer reading position. Explicit arrows
-      // still reveal the highlighted row through the effect above.
-      if (area.parentElement?.querySelector(":scope > .notices > .citation-problem")) return;
+      // Explicit arrows still reveal the highlighted row through the effect above.
       if (!viewport && (!followKeyboard.current || document.activeElement !== input.current)) return;
       const row = document.getElementById(`result-${active}`);
       if (!row) return;

@@ -1,10 +1,10 @@
-import { Icon } from "../../icons";
-import type { Copied, Density, LibraryStatus, UpdateProgress } from "../../api";
+import type { ReactNode } from "react";
+import type { Copied, LibraryStatus, UpdateProgress } from "../../api";
+import { LineNotice } from "../../ui/Frame";
 import { QuietNotice } from "../../ui/NoticeSlot";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { isolate, type MessageId, say } from "../../i18n";
-import "../../ui/CopyReceipt.css";
 
 /** An action whose failure the picker reports in its notices. */
 /** What failed, by operation: each says what didn't happen and what to do. */
@@ -39,60 +39,48 @@ export const OPERATION_FAILURES = {
 export type Operation = keyof typeof OPERATION_FAILURES;
 
 /** Settings problems, failed actions, search and copy errors, and what was
- * copied. Library failures belong to the footer's controls. */
-export function Notices({ library, failures, error, citationProblem, copyError, copied, confirmation, onDismissCopied, missing = [], projectNotice, editorNotice }: {
+ * copied, most important first, for the frame's notice line (ui/Frame). Library
+ * failures belong to the footer's controls; a refusal to format belongs to the
+ * shelf, which says it beside the citation with Details. */
+export function notices({ library, failures, error, copyError, copied, confirmation, onDismissCopied, missing = [], projectNotice, editorNotice }: {
   /** What became of the last project entry copy. */
   projectNotice?: string | null;
   /** The format an editor waiting on the endpoint asked for. */
   editorNotice?: string | null;
-  densityAnnouncement?: Density;
   library: LibraryStatus | null | undefined;
   failures: Partial<Record<Operation, boolean>>;
   error: string | null;
-  citationProblem?: string | null;
   missing?: string[];
   copyError: string | null;
   copied: Copied | null;
   confirmation?: Copied | null;
   onDismissCopied: () => void;
-}) {
-  return <>
-    <div className="notices">
-      {library?.settings_notice && <p role="alert">{library.settings_notice}</p>}
-      {(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
-        <p role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</p>
-      ))}
-      {error && <p role="alert">{error}</p>}
-      {citationProblem && <p role="alert" className="citation-problem" tabIndex={0}>{citationProblem}</p>}
-      {missing.length > 0 && <p role="status">{say("picker-missing-citations", { keys: missing.join(", ") })}</p>}
-      {editorNotice && <p role="status" className="editor-notice">{say("picker-editor-waiting", { format: isolate(editorNotice) })}</p>}
-      {projectNotice && <p role="status">{projectNotice}</p>}
-      {copyError && <p role="alert">{copyError}</p>}
-      {copied && (confirmation || copied.warnings.length > 0) && (
-        <div role={confirmation ? "status" : "group"} className="copy-notice">
-          {confirmation && <p className="copy-receipt" data-outcome="copied">
-            <Icon name="check" size="tile" className="copy-receipt-mark" />
-            <strong>{say("picker-copied")}</strong><code dir="auto" title={confirmation.text}>
-              <span className="copy-receipt-excerpt">{confirmation.summary?.text ?? confirmation.text}</span>
-              {Boolean(confirmation.summary?.more) && <span className="copy-receipt-more">+{confirmation.summary!.more} more</span>}
-            </code>
-          </p>}
-          {copied.warnings.length > 0 && (
-            <>
-              <Button className="dismiss" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>
-                {say("picker-dismiss")}
-              </Button>
-              <ul aria-label={say("picker-copy-warnings")}>
-                {copied.warnings.map((w, i) => (
-                  <li key={i}>{w}</li>
-                ))}
-              </ul>
-            </>
-          )}
-        </div>
-      )}
-    </div>
-  </>;
+}): ReactNode[] {
+  // What the person's last action caused comes first, so a standing problem
+  // never hides a new one; the standing ones follow.
+  return [
+    error && <LineNotice key="error" role="alert">{error}</LineNotice>,
+    copyError && <LineNotice key="copy-error" role="alert">{copyError}</LineNotice>,
+    copied && copied.warnings.length > 0 && <div key="warnings" className="ui-line-notice copy-notice" role="group">
+      <ul className="ui-line-words" tabIndex={0} aria-label={say("picker-copy-warnings")} title={copied.warnings.join("\n")}>
+        {copied.warnings.map((w, i) => <li key={i}>{w}</li>)}
+      </ul>
+      <Button size="small" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
+    </div>,
+    copied && confirmation && <div key="copied" className="ui-line-notice copy-notice" role="status">
+      <p className="ui-line-words" data-outcome="copied"><strong>{say("picker-copied")}</strong> <code dir="auto" title={confirmation.text}>
+        {confirmation.summary?.text ?? confirmation.text}
+        {Boolean(confirmation.summary?.more) && <span> +{confirmation.summary!.more} more</span>}
+      </code></p>
+    </div>,
+    ...(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
+      <LineNotice role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</LineNotice>
+    )),
+    missing.length > 0 && <LineNotice key="missing">{say("picker-missing-citations", { keys: missing.join(", ") })}</LineNotice>,
+    editorNotice && <LineNotice key="editor" className="editor-notice">{say("picker-editor-waiting", { format: isolate(editorNotice) })}</LineNotice>,
+    projectNotice && <LineNotice key="project">{projectNotice}</LineNotice>,
+    library?.settings_notice && <LineNotice key="settings" role="alert">{library.settings_notice}</LineNotice>,
+  ].filter(Boolean);
 }
 
 /** An update in the notice slot, so no row moves while it runs. */

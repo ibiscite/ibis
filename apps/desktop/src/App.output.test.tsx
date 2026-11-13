@@ -29,7 +29,8 @@ function opened(destination: () => PickerDestination, overrides: Parameters<type
     preview_file_citation: (request) => {
       previews.push(request);
       const number = previews.length;
-      return { ticket: `ticket-${number}`, content_hash: `hash-${number}`, text: isStyle(listedOutput(request.output) ?? "pandoc") ? `(Smith, 2020) ${request.output}` : `synthetic ${request.output}`, html: null, warnings: [] };
+      const text = isStyle(listedOutput(request.output) ?? "pandoc") ? `(Smith, 2020) ${request.output}` : `synthetic ${request.output}`;
+      return { ...receipt(text), ticket: `ticket-${number}`, content_hash: `hash-${number}` };
     },
     copy_file_citation: (args) => {
       copies.push({ ticket: args.ticket, contentHash: args.contentHash });
@@ -175,7 +176,7 @@ test("the question appears even when the global key preview fails, then waits fo
   fireEvent.click(await screen.findByRole("option", { name: "APA" }));
   await waitFor(() => expect(formatShown()).toBe("APA · Example Browser"));
   expect(copies).toEqual([]);
-  await act(async () => finish({ ticket: "style-ticket", content_hash: "style-hash", text: "Synthetic APA", html: null, warnings: [] }));
+  await act(async () => finish({ ticket: "style-ticket", content_hash: "style-hash", text: "Synthetic APA", display: receipt("Synthetic APA").display, warnings: [] }));
   await waitFor(() => expect(copies).toEqual([{ ticket: "style-ticket", contentHash: "style-hash" }]));
 });
 
@@ -343,7 +344,7 @@ test("the menu says why the next paste uses its format and where a pick goes", a
 test("an unreadable per-app file says defaults apply and offers the app's own paste answer", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true, can_choose_paste: true }));
   await screen.findByText("First");
-  expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy Only in the format menu");
+  expect((await screen.findByText(/App choices were damaged/)).textContent).toContain("Choose Paste or Copy Only again");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
   expect(await screen.findByRole("option", { name: "Copy Only" })).toBeTruthy();
@@ -368,14 +369,14 @@ test("a first-paste answer whose paste choice cannot be saved says the format wa
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   fireEvent.click(await screen.findByRole("option", { name: "Copy Only" }));
-  expect((await screen.findByText(/saved the format for this app, but not whether to paste into it/)).textContent).toContain("Choose Paste or Copy Only again");
+  expect((await screen.findByText(/saved the format but not Paste or Copy Only/)).textContent).toContain("Choose it again");
 });
 
 test("an unread destination says what applies and never points at paste choices it cannot offer", async () => {
   const saved: unknown[] = [];
   const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { output?: string }).output ?? null); return null; } });
   await screen.findByText("First");
-  expect((await screen.findByText(/could not tell which app this is for/)).textContent).toContain("Reopen Ibis to try again");
+  expect((await screen.findByText(/could not tell which app this is\./)).textContent).toContain("Your default applies");
   expect(screen.queryByText(/Choose Paste or Copy Only/)).toBeNull();
   await pick("Typst");
   await waitFor(() => expect(formatShown()).toBe("Typst · This paste"));
@@ -468,7 +469,7 @@ test("a new pick cancels an Enter that was waiting for another output's preview"
   const typst = new Promise((done) => { finish = done; });
   const { copies } = opened(() => ({ ...BROWSER, remembered: "cite" }), {
     preview_file_citation: ({ output }) => output === "typst" ? typst : {
-      ticket: `ticket-${output}`, content_hash: `hash-${output}`, text: `synthetic ${output}`, html: null, warnings: [],
+      ticket: `ticket-${output}`, content_hash: `hash-${output}`, text: `synthetic ${output}`, display: receipt(`synthetic ${output}`).display, warnings: [],
     },
   });
   await screen.findByText("First");
@@ -478,7 +479,7 @@ test("a new pick cancels an Enter that was waiting for another output's preview"
   fireEvent.keyDown(search, { key: "Enter" });
   await pick("Pandoc");
   await waitFor(() => expect(formatShown()).toBe("Pandoc · Example Browser"));
-  await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", html: null, warnings: [] }); });
+  await act(async () => { finish({ ticket: "old-typst", content_hash: "old-typst", text: "old Typst", display: receipt("old Typst").display, warnings: [] }); });
   expect(copies).toEqual([]);
   fireEvent.keyDown(search, { key: "Enter" });
   await waitFor(() => expect(copies).toEqual([{ ticket: "ticket-pandoc", contentHash: "hash-pandoc" }]));

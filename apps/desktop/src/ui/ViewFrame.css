@@ -5,7 +5,7 @@
    corner or shadow of its own: it is the window, as the picker is. */
 :root[data-view] main { visibility: hidden; }
 .ui-view {
-  position: fixed; inset: 0; z-index: var(--z-modal); display: flex; flex-direction: column; min-width: 0; min-height: 0;
+  position: fixed; inset: 0; z-index: var(--z-modal); display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--layer-view);
   color: var(--text); font-size: var(--type-body-size); line-height: var(--type-body-line);
 }
 .ui-view:focus { outline: none; }
@@ -17,19 +17,12 @@
   .ui-view { animation: ui-view-fade var(--dur-1) linear; }
 }
 @keyframes ui-view-fade { from { opacity: 0; } }
-.ui-view-head {
-  flex: none; display: grid; grid-template-columns: calc(var(--row-pad) + var(--tile)) minmax(0, 1fr);
-  align-items: center; column-gap: var(--row-gap); min-height: var(--header-h);
-  padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);
-}
-/* Use a full 32px square (44px for coarse pointers), centred on the tile slot.
-   The control-size glyph and the search field share the header's centre line. */
-.ui-view-head > .ui-view-back.ui-button[data-variant] {
-  --icon-button-size: var(--hit); justify-self: start;
-  margin-inline-start: calc(var(--row-pad) + (var(--tile) - var(--hit)) / 2);
-}
-.ui-view-title { min-width: 0; margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
-.ui-view-title, .ui-view-field { grid-column: 2; }
+/* The header is a band (ui/Band): Back centres in the icon column, where the bird
+   and row tiles sit, a full 32 px square (44 px for coarse pointers); the title or
+   search starts on the label column, and both share the header's centre line. */
+.ui-view-head { flex: none; min-height: var(--header-h); padding-block: var(--inset); border-block-end: var(--border-width) solid var(--separator); }
+.ui-view-head .ui-view-back.ui-button[data-variant] { --icon-button-size: var(--hit); }
+.ui-view-title { flex: 1; min-width: 0; margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
 /* A view's search is the picker's: frameless and large. */
 .ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
 .ui-view .ui-view-field:focus-visible { outline: none; box-shadow: none; }
@@ -37,12 +30,13 @@
   .ui-view .ui-view-field:focus-visible { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
 }
 .ui-view-body { flex: 1; display: flex; min-width: 0; min-height: 0; }
-/* The footer's band: status words on the title column, actions at the end, then Back. */
+/* The footer is a band: status words on the label column, the actions with the
+   primary last, then Back, ending on the inset. */
 .ui-view-foot {
-  flex: none; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); min-height: calc(var(--footer-h) + var(--border-width));
-  padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad) + var(--title-start)) var(--inset);
+  flex: none; min-height: calc(var(--footer-h) + var(--border-width));
   border-block-start: var(--border-width) solid var(--separator); font-size: var(--type-label-size); line-height: var(--type-label-line);
 }
+.ui-view-foot > .ui-band-trailing { flex: 0 1 auto; flex-wrap: wrap; justify-content: end; gap: var(--space-2) var(--space-3); }
 .ui-view-status { flex: 1; display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); min-width: 0; color: var(--text-secondary); overflow-wrap: anywhere; }
 .ui-view-back-hint.ui-button[data-variant] { color: var(--text-secondary); }
 .ui-view-back-hint.ui-button[data-variant] > .key-hint { flex-wrap: nowrap; white-space: nowrap; }

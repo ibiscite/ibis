@@ -9,7 +9,7 @@ import { createSessionController, type SessionPorts } from "./sessionController"
 function setup(overrides: Partial<SessionPorts> = {}) {
   const chosen = [testStates[1]!.results[0]!];
   const [arranged] = arrangeView({ ...initialSession(), presentation: 0 }, { queryKey: sessionQueryKey(initialSession()), format: "apa", snapshotRevision: "synthetic",
-    defaultChoice: choiceKey(chosen), chosen, shown: { text: "canonical citation", html: "", markup: [], warnings: [], fileTicket: "prepared", fileHash: "hash" },
+    defaultChoice: choiceKey(chosen), chosen, shown: { display: { nodes: [] }, text: "canonical citation", warnings: [], fileTicket: "prepared", fileHash: "hash" },
     searchPending: false, ready: true, saving: false, shouldAsk: false, remembersLast: true, output: { opening: 0, choice: 0, delivery: 0 } });
   // A format picked for this citation only: the copy that uses it consumes it.
   const controller = createSessionController({ ...arranged, destination: { ...arranged.destination, held: "apa" } });
