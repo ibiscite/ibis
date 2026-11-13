@@ -93,7 +93,7 @@ The bird appears only where Ibis itself is the subject, in the one treatment of 
 ## Key caps
 
 - One cap per shortcut, written as menus write it: ⌘K, ⇧⌘F, ↵ on macOS; Ctrl+K and Ctrl+Alt+Shift+K, modifiers in that order, on Windows and Linux (`ui/KeyCaps`). A pointer binding reads ⌘-click (Ctrl+click elsewhere).
-- Caps appear only in the footer, the notice slot and key lists. Menus and Settings write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8].
+- Caps appear only in the footer, the notice slot and key lists. Menus, Settings and a held row's number write shortcuts as plain text in native order (⇧⌘C), secondary like a menu's key equivalent [C8] (`kbd[data-plain]`).
 - A cap is `--fill-control` with `--r-small`, label type, never an outline or scarlet. Inside a quiet button it keeps its fill; on the primary it is the pressed fill. A trailing cap in a small button is concentric: `--key-gap` above, below and at the end. A one-symbol cap (↵) is square, and ↵ is lowered .1em so it sits optically centred.
 - "or" alternatives keep two caps. Decorative caps are hidden from screen readers; `aria-keyshortcuts` names the keys.
 

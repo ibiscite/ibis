@@ -80,7 +80,7 @@ Built in `ibis-core` so every front end shares them (#1204).
 | --- | --- |
 | ⇧⌘Y (Ctrl+Shift+Y elsewhere) | Opens Ibis from any app (the default; follows the active layout's letter) |
 | Click / double-click a row | Selects [C5] / pastes or copies what the shelf shows |
-| ⌘1–⌘9 (Ctrl elsewhere) | Does what a double-click on the row with that number does. The first nine rows wholly in view are numbered from the top, so scrolling renumbers them; holding ⌘ (the same one-second hold) shows each number in place of the row's leading icon, in the same box, so nothing moves and the year stays readable. Only while the result list is shown: not over the command list, a palette, a sheet or an empty state |
+| ⌘1–⌘9 (Ctrl elsewhere) | Does what a double-click on the row with that number does. The first nine rows wholly in view are numbered from the top, so scrolling renumbers them; holding ⌘ (the same one-second hold) writes each row's key where its type icon was, as plain secondary text like a menu's key equivalent (⌘1; Ctrl+1 elsewhere), ending where the tile column ends, like a numbered list's marker: no cap and no plate, nothing moves, and the year stays. A cited row's check gives way for the hold too (the shelf shows the citation) and returns when ⌘ is let go. Only while the result list is shown: not over the command list, a palette, a sheet or an empty state |
 | Enter, or the footer action | Pastes or copies what the shelf shows; success hides an unpinned window |
 | ⌘-click, the tile’s +, ⇧Enter | Adds to the citation, in order |
 | ⌘↓ in Search | Goes to the citation's last token |

@@ -141,8 +141,10 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           name in the tooltip. Keyboards use Shift+Enter. */}
       <span className="result-tile">
         <TypeIcon itemType={r.item_type} />
-        {/* While the command key is held, the row's number takes the tile's place (ui/HeldKeys); the year stays. */}
-        {pickKeys && <kbd className="result-pick" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}
+        {/* While the command key is held, the row's key takes the tile's place as plain
+            text, a numbered list's marker (ui/HeldKeys); the year stays. Its kbd tells
+            HeldKeys the row shows its own key. */}
+        {pickKeys && <kbd className="result-pick" data-plain dir="ltr" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>
