@@ -388,15 +388,10 @@ fn commit_shown(
     #[cfg(target_os = "windows")]
     let attempt = crate::paste::begin_copy(&app, &replaces);
     let file = open_file(&library)?;
-    let format = captured.as_ref().and_then(|(id, _, _)| {
-        let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
-        let chosen = ibis_engine::format::choose(&settings.settings, Some(id));
-        (settings.problem.is_none() && chosen.output == *recited.output()).then(|| (id.clone(), chosen))
-    });
-    let captured = captured.map(|(id, _, _)| id.normalized());
+    let captured_id = captured.as_ref().map(|(id, _, _)| id.normalized());
     let record = |copied: &Copied| {
         if !file.sample {
-            session.record(&epoch, captured.as_deref(), &copied.cited);
+            session.record(&epoch, captured_id.as_deref(), &copied.cited);
         }
     };
     // Serialize clipboard writes through recording; privacy invalidation has its own lock.
@@ -460,6 +455,12 @@ fn commit_shown(
         }
         return Ok(copied);
     }
+    let format = {
+        let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
+        let target = captured.as_ref().map(|(id, _, _)| id);
+        let chosen = ibis_engine::format::choose(&settings.settings, target);
+        (settings.problem.is_none() && chosen.output == *recited.output()).then(|| (target.cloned(), chosen))
+    };
     let copied = commit_copy(
         &file,
         recited,

@@ -106,7 +106,7 @@ pub(crate) struct Notice {
     /// Advanced each time the picker opens: a copy claimed before then never
     /// shows its notice over the search field.
     retirements: Retirements,
-    format: Mutex<Option<(u32, AppId, ibis_engine::format::FormatChoice)>>,
+    format: Mutex<Option<(u32, Option<AppId>, ibis_engine::format::FormatChoice)>>,
 }
 
 fn ignores_pointer<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
@@ -118,7 +118,12 @@ fn ignores_pointer<R: tauri::Runtime>(app: &AppHandle<R>) -> bool {
 }
 
 impl Notice {
-    pub(crate) fn remember_format(&self, token: Option<u32>, app: AppId, choice: ibis_engine::format::FormatChoice) {
+    pub(crate) fn remember_format(
+        &self,
+        token: Option<u32>,
+        app: Option<AppId>,
+        choice: ibis_engine::format::FormatChoice,
+    ) {
         let Some(token) = token else { return };
         let Ok(mut format) = self.format.lock() else { return };
         if format.as_ref().is_none_or(|(newer, _, _)| *newer < token) {
@@ -129,7 +134,7 @@ impl Notice {
         let mut format = self.format.lock().ok()?;
         if format
             .as_ref()
-            .is_some_and(|(pending, target, _)| Some(*pending) == token && Some(target) == app)
+            .is_some_and(|(pending, target, _)| Some(*pending) == token && target.as_ref() == app)
         {
             format.take().map(|(_, _, choice)| choice)
         } else {
@@ -278,7 +283,6 @@ pub(crate) async fn show_copied_notice(
     } else {
         None
     };
-    let pasted_into = target.filter(|_| receipt.is_some() && matches!(delivered, Delivered::Pasted { .. }));
     show(
         &app,
         NoticeMessage {
@@ -293,12 +297,12 @@ pub(crate) async fn show_copied_notice(
             appearance: Default::default(),
         },
         (receipt, epoch),
-        pasted_into,
+        target,
     );
     delivered
 }
 
-fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), pasted_into: Option<AppId>) {
+fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>, u64), target: Option<AppId>) {
     let notice = app.state::<Notice>();
     // Check after acquiring the publication lock. If B publishes while A
     // waits here, A cannot replace B's text, restart its timer or show itself.
@@ -308,18 +312,26 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
         return;
     }
     // Spent only here: a notice a newer one replaced keeps it for the next paste.
-    text.plugin_note = pasted_into
+    let pasted = matches!(text.delivered, Delivered::Pasted { .. });
+    text.plugin_note = target
         .as_ref()
+        .filter(|_| pasted)
         .is_some_and(|id| app.state::<crate::destination::AppMemory>().take_plugin_note(id));
-    if pasted_into.is_some()
-        && let Some(choice) = notice.take_format(owner.latest_token, pasted_into.as_ref())
+    if let Some(choice) = notice.take_format(owner.latest_token, target.as_ref())
         && choice.from == ibis_engine::format::FormatFrom::Suggestion
     {
-        let mut first = false;
-        let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
-            first = ibis_engine::format::accept_suggestion(settings, pasted_into.as_ref(), &choice);
-        });
-        if saved.is_ok() && first {
+        // A copy explains its format without claiming a paste or accepting it.
+        // Only a successful paste remembers the suggestion and spends its receipt.
+        let explain = if pasted {
+            let mut first = false;
+            let saved = app.state::<crate::preferences::SettingsFile>().update(|settings| {
+                first = ibis_engine::format::accept_suggestion(settings, target.as_ref(), &choice);
+            });
+            saved.is_ok() && first
+        } else {
+            true
+        };
+        if explain {
             text.suggested_format = choice.id;
         }
     }
@@ -341,6 +353,15 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
                     report(window.set_position(corner.position()), NativeIssue::Position);
                 }
                 report(window.emit_to(LABEL, "notice:show", &text), NativeIssue::Notice);
+                // An invisible GTK window may not have a GdkWindow yet. Its
+                // page-load callback applies this after show(), including if
+                // another copy replaces its text before the page finishes.
+                if !cfg!(target_os = "linux") || window.is_visible().unwrap_or(false) {
+                    report(
+                        window.set_ignore_cursor_events(text.suggested_format.is_none()),
+                        NativeIssue::Notice,
+                    );
+                }
                 present(app, showing);
                 shown_for
             }
@@ -349,12 +370,6 @@ fn show(app: &AppHandle, mut text: NoticeMessage, (receipt, epoch): (Option<u64>
             None => return,
         }
     };
-    if let Some(window) = app.get_webview_window(LABEL) {
-        report(
-            window.set_ignore_cursor_events(text.suggested_format.is_none()),
-            NativeIssue::Notice,
-        );
-    }
     dismiss_after(app, showing, timer);
     // The picker opened while this was being shown.
     if !notice.retirements.holds(epoch) {
@@ -738,13 +753,20 @@ mod macos {
 mod tests {
     #[test]
     fn an_older_delivery_cannot_consume_a_newer_copies_format() {
-        let notice = super::Notice::default();
-        let app = ibis_core::destination::AppId::named("com.microsoft.word", ibis_core::destination::System::Macos);
-        let choice = ibis_engine::format::choose(&ibis_engine::settings::Settings::default(), Some(&app));
-        notice.remember_format(Some(2), app.clone(), choice.clone());
-        assert!(notice.take_format(Some(1), Some(&app)).is_none());
-        assert_eq!(notice.take_format(Some(2), Some(&app)), Some(choice));
-        assert!(notice.take_format(Some(2), Some(&app)).is_none());
+        for app in [
+            None,
+            Some(ibis_core::destination::AppId::named(
+                "com.microsoft.word",
+                ibis_core::destination::System::Macos,
+            )),
+        ] {
+            let notice = super::Notice::default();
+            let choice = ibis_engine::format::choose(&ibis_engine::settings::Settings::default(), app.as_ref());
+            notice.remember_format(Some(2), app.clone(), choice.clone());
+            assert!(notice.take_format(Some(1), app.as_ref()).is_none());
+            assert_eq!(notice.take_format(Some(2), app.as_ref()), Some(choice));
+            assert!(notice.take_format(Some(2), app.as_ref()).is_none());
+        }
     }
     use super::*;
 

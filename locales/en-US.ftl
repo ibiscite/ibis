@@ -1259,6 +1259,7 @@ picker-use-usual = Use { $format } in { $app } again
 picker-stop-writing = Stop using { $name } in { $app }
 
 copied-notice-suggested = Pasted in { $format }
+copied-notice-suggestion = Suggested { $format }
 copied-notice-change = Change
 
 picker-find-open = Open PDF, or show item in Zotero

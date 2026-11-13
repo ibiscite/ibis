@@ -2,7 +2,7 @@
 export const PICKER_IDS = [
   "picker-format-suggestion",
   "picker-find-open", "shortcuts-action-find-open",
-  "copied-notice-suggested", "copied-notice-change",
+  "copied-notice-suggested", "copied-notice-suggestion", "copied-notice-change",
   "picker-use-usual", "picker-stop-writing",
   "palette-back",
   "palette-run",

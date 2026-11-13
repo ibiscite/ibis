@@ -58,3 +58,24 @@ test("a first suggested paste names the format and offers Change only for that n
   show({ payload: { delivered: { outcome: "pasted", app: "Word" }, text: "(García, 2021)" } });
   expect(document.querySelector(".copied-notice button")).toBeNull();
 });
+
+test("a Linux suggested copy keeps its reason and offers the suggestion in the same notice without taking focus", async () => {
+  vi.spyOn(navigator, "platform", "get").mockReturnValue("Linux x86_64");
+  document.body.innerHTML = '<input aria-label="Editor"><div id="notice"></div>';
+  const editor = document.querySelector("input")!;
+  editor.focus();
+  native.copiedNotice.mockResolvedValueOnce({ delivered: { outcome: "copied", reason: "unsupported-system" }, text: "(Example, 2026)", suggested_format: "apa" } as never);
+  vi.resetModules();
+  await import("./notice");
+  await vi.waitFor(() => expect(document.querySelector(".copied-notice code")?.textContent).toBe("(Example, 2026)"));
+  expect(document.querySelectorAll('[role="status"]')).toHaveLength(1);
+  expect(document.querySelector(".copied-notice strong")?.textContent).toBe("Copied. Ibis can’t paste on this system yet. Press Ctrl+V to paste.");
+  expect(document.querySelector(".copy-receipt-note")?.textContent).toBe("Suggested APA · Change");
+  expect(document.activeElement).toBe(editor);
+  document.querySelector<HTMLButtonElement>(".copied-notice button")!.click();
+  expect(native.changeSuggestedFormat).toHaveBeenCalledOnce();
+  const show = native.listen.mock.calls.find(([name]) => name === "notice:show")![1] as (event: { payload: unknown }) => void;
+  show({ payload: { delivered: { outcome: "copied", reason: "unsupported-system" }, text: "(Example, 2026)" } });
+  expect(document.querySelector(".copy-receipt-note")).toBeNull();
+  expect(document.querySelector(".copied-notice button")).toBeNull();
+});

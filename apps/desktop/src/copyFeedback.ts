@@ -123,16 +123,23 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
   code.dir = "auto";
   root.append(notice);
   return (message: Notice) => {
-    const suggested = message.delivered.outcome === "pasted" ? listedOutput(message.suggested_format) : null;
-    title.textContent = suggested ? say("copied-notice-suggested", { format: outputName(suggested) }) : noticeTitle(message, platform);
+    const suggested = listedOutput(message.suggested_format);
+    const pasted = message.delivered.outcome === "pasted";
+    title.textContent = suggested && pasted ? say("copied-notice-suggested", { format: outputName(suggested) }) : noticeTitle(message, platform);
+    const suggestion = suggested && !pasted ? document.createElement("span") : null;
+    if (suggestion && suggested) {
+      suggestion.className = "copy-receipt-note";
+      suggestion.textContent = say("copied-notice-suggestion", { format: outputName(suggested) });
+    }
     if (suggested && onChangeFormat) {
-      title.append(" · ");
+      const receipt = suggestion ?? title;
+      receipt.append(" · ");
       const change = document.createElement("button");
       change.type = "button";
       change.className = "copy-receipt-change";
       change.textContent = say("copied-notice-change");
       change.onclick = onChangeFormat;
-      title.append(change);
+      receipt.append(change);
     }
     if (message.milestone) {
       const milestone = document.createElement("span");
@@ -153,6 +160,7 @@ export function renderNotice(root: HTMLElement, platform: NoticePlatform, onChan
     code.title = message.text;
     notice.dataset.outcome = message.delivered.outcome;
     notice.replaceChildren(source, mark, title, code);
+    if (suggestion) notice.append(suggestion);
     if (message.plugin_note) {
       const note = document.createElement("span");
       note.className = "copy-receipt-note";
