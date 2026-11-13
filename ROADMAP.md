@@ -2,6 +2,8 @@
 
 Ibis is a writing companion for the references people already keep. One shortcut, in any app, finds anything in their sources (a reference, its PDF page, a highlight or a note), shows it to be sure, and cites or quotes it where they are writing. People writing in LaTeX, Markdown, Quarto and Typst decide close calls; first-time and expert users, every major operating system and many languages all count. Ibis stays about references and research material, never a general file or web search (maintainer, 2026-11-05).
 
+**Where Ibis is going** (maintainer, 2026-11-13): the most robust and capable open-source companion for everything in working with literature: adding, finding, remembering, citing and sharing references, and the workflows that join them, for academics, journalists and any researcher at every stage. It works with every source and writing app, stays fast and reliable, and is open and customisable: simple for a first-time user and deep for an expert, as an engine, a command line, an MCP server and an app. Writing is where it starts; [references in and out](#06-your-document) is the next step, and each step is built on lasting engine concepts so the next one is small. Until a decision allows writes, the sources rule below still holds.
+
 Every feature in the releases below ships before 1.0. Versions before 1.0 are working steps: each finished milestone becomes one release with a GitHub milestone of the same name, and Nightly carries daily testing. 1.0 adds no features: people test everything, then the maintainer moves to 1.0 by hand. Dates are not promised; scope is. The maintainer adds to or changes this plan at any time; agents bring the plan, docs and code into line the same day.
 
 ## How we build
