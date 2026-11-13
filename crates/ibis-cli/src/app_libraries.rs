@@ -125,6 +125,7 @@ fn read(app: &'static str, path: &Path) -> Result<Option<AppLibraries>, Failure>
 fn problem_text(problem: &SettingsError) -> String {
     match problem {
         SettingsError::Changed => "its settings changed while saving; try again".into(),
+        SettingsError::Busy => ibis_engine::settings_backup::settings_message(problem),
         SettingsError::Unreadable(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
             "this program is not allowed to read its settings file; allow it to, or run it outside the sandbox".into()
         }

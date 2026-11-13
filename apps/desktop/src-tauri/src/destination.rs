@@ -520,7 +520,7 @@ fn remember(
         settings::update(settings_path, |settings| {
             settings.remember_app_output(id, output.id().to_owned())
         })
-        .map_err(|_| AppChoiceError::not_saved("the choice for this app could not be saved"))?;
+        .map_err(|error| AppChoiceError::not_saved(crate::preferences::settings_message(&error)))?;
     }
     if let Some(paste) = paste {
         memory.set_bound_choice(id, paste, identity).map_err(|_| {

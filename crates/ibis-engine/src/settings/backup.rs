@@ -76,6 +76,8 @@ pub enum BackupProblem {
     Invalid,
     /// This computer's settings are damaged, from a newer Ibis or unreadable.
     SettingsUnusable,
+    /// Another Ibis process holds the settings writer lock.
+    Busy,
     /// The settings changed, or another backup was chosen, after the preview.
     Changed,
     NotSaved,

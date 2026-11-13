@@ -1336,7 +1336,7 @@ mod tests {
         let data: String = (0..10_000).map(|index| format!("@book{{synthetic{index}, title={{Synthetic signals {index}}}, author={{Taylor, Avery}}, year={{2026}}, publisher={{Imaginary Press}}}}\n")).collect();
         std::fs::write(&path, data).unwrap_or_else(|e| panic!("{e}"));
         let start = Instant::now();
-        let loaded = ibis_core::settings::load(&settings_path);
+        let loaded = ibis_engine::settings::load(&settings_path);
         assert!(loaded.problem.is_none());
         let settings = start.elapsed();
         let warmed = std::env::var_os("IBIS_MEASURE_WARM").is_some();

@@ -55,7 +55,7 @@ export const SETTINGS_IDS = [
   "backup-setting-library", "backup-setting-larger-text", "backup-setting-shortcut",
   "backup-value-default", "backup-value-on", "backup-value-off", "backup-value-zotero", "backup-value-zotero-many", "backup-value-zotero-group",
   "backup-problem-not-downloaded", "backup-problem-unreadable", "backup-problem-not-a-backup", "backup-problem-settings-file",
-  "backup-problem-newer", "backup-problem-invalid", "backup-problem-settings-unusable", "backup-problem-changed", "backup-problem-not-saved",
+  "backup-problem-newer", "backup-problem-invalid", "backup-problem-settings-unusable", "backup-problem-busy", "backup-problem-changed", "backup-problem-not-saved",
   "citations-key-formats", "citations-style-formats", "citations-filter-formats",
   "look-sample-title-2", "look-sample-title-3",
   "settings-read-only",

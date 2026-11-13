@@ -621,6 +621,7 @@ backup-problem-settings-file = That’s Ibis’s own settings file, not a backup
 backup-problem-newer = That backup is from a newer version of Ibis. Update Ibis, then try again.
 backup-problem-invalid = That backup is damaged. Nothing changed.
 backup-problem-settings-unusable = Ibis can’t use its settings file as it is. Nothing changed.
+backup-problem-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again. Nothing changed.
 backup-problem-changed = Settings changed after the backup was shown. Choose it again.
 backup-problem-not-saved = Ibis couldn’t save. Nothing changed.
 

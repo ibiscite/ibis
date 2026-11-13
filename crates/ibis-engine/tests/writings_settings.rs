@@ -99,18 +99,86 @@ fn reopen_and_backup_keep_definitions_on_their_computer() {
 }
 
 #[test]
-fn another_writer_refuses_immediately_and_retry_preserves_its_changes() {
+fn another_process_refuses_immediately_with_recovery_and_retry_preserves_its_changes() {
+    use std::io::{BufRead, Read, Write};
+    use std::process::{Child, Command, Stdio};
+    use std::time::Duration;
+    const CHILD: &str = "IBIS_SETTINGS_EXTERNAL_WRITER";
+    if let Some(path) = std::env::var_os(CHILD) {
+        let lock = std::fs::OpenOptions::new().read(true).write(true).open(path).unwrap();
+        lock.try_lock().unwrap();
+        println!("ibis-writer-ready");
+        std::io::stdout().flush().unwrap();
+        std::io::stdin().read_to_end(&mut Vec::new()).unwrap();
+        return;
+    }
+    struct Running(Child);
+    impl Drop for Running {
+        fn drop(&mut self) {
+            let _ = self.0.kill();
+            let _ = self.0.wait();
+        }
+    }
     let directory = tempfile::tempdir().unwrap();
     let path = directory.path().join("settings.json");
     settings::update(&path, |s| s.recent_citations = Some(false)).unwrap();
-    let locked = std::fs::OpenOptions::new()
-        .read(true)
-        .write(true)
-        .open(path.with_extension("json.lock"))
-        .unwrap();
-    locked.try_lock().unwrap();
+    let before = std::fs::read(&path).unwrap();
+    let mut child = Running(
+        Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "another_process_refuses_immediately_with_recovery_and_retry_preserves_its_changes",
+                "--nocapture",
+            ])
+            .env(CHILD, path.with_extension("json.lock"))
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .unwrap(),
+    );
+    let child_output = child.0.stdout.take().unwrap();
+    let (ready, waiting) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(child_output).lines().map_while(Result::ok) {
+            if line == "ibis-writer-ready" {
+                ready.send(()).unwrap();
+            }
+        }
+    });
+    waiting.recv_timeout(Duration::from_secs(5)).unwrap();
+    let (finished, result) = std::sync::mpsc::channel();
+    let saving = path.clone();
+    let save = std::thread::spawn(move || {
+        finished.send(settings::save(&saving, &Settings::default())).unwrap();
+    });
+    // The child still holds the lock: a blocking cross-process lock cannot pass.
+    let error = result.recv_timeout(Duration::from_secs(5)).unwrap().unwrap_err();
+    save.join().unwrap();
+    assert!(matches!(error, settings::SettingsError::Busy));
+    assert_eq!(
+        ibis_engine::settings_backup::settings_problem(&error),
+        "settings are being saved by another Ibis"
+    );
+    assert_eq!(
+        ibis_engine::settings_backup::settings_message(&error),
+        "settings are being saved by another Ibis; wait for it to finish, then try again"
+    );
+    assert_eq!(std::fs::read(&path).unwrap(), before);
+    let backup = settings::backup::parse(&settings::backup::export(&Settings::default(), "0.0.0").unwrap()).unwrap();
+    let plan = settings::backup::plan(&settings::load(&path).settings, &backup, |_| true);
+    let refused = ibis_engine::settings_backup::restore(&path, &plan).unwrap_err();
+    assert_eq!(
+        ibis_engine::settings_backup::problem(&refused),
+        settings::backup::BackupProblem::Busy
+    );
+    assert_eq!(
+        ibis_engine::settings_backup::message(&refused),
+        "settings are being saved by another Ibis; wait for it to finish, then try again. Nothing was changed."
+    );
     assert!(writings::change(&path, |s| writings::create(s, "Atlas".into(), output(), None)).is_err());
-    locked.unlock().unwrap();
+    drop(child.0.stdin.take());
+    assert!(child.0.wait().unwrap().success());
+    // Once the external writer finishes, the same caller can save normally.
     writings::change(&path, |s| writings::create(s, "Atlas".into(), output(), None)).unwrap();
     let saved = settings::load(&path).settings;
     assert_eq!(saved.recent_citations, Some(false));

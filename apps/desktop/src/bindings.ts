@@ -319,7 +319,7 @@ export type AppPaste = "paste" | "copy-only";
 export type Appearance = "system" | "light" | "dark";
 
 /** Why a backup or restore did not happen; the Settings window words it. */
-export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "changed";
+export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "settings-file" | "newer" | "invalid" | "not-saved" | "settings-unusable" | "busy" | "changed";
 
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";

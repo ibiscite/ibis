@@ -20,6 +20,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -431,6 +432,8 @@ impl Default for Settings {
 pub enum SettingsError {
     #[error("settings.json changed while saving; try again")]
     Changed,
+    #[error("settings are being saved by another Ibis; wait for it to finish, then try again")]
+    Busy,
     #[error("the settings file could not be read: {0}")]
     Unreadable(#[from] io::Error),
     #[error("the settings file is not valid: {0}")]
@@ -697,10 +700,16 @@ fn snapshot(path: &Path) -> Snapshot {
     read_regular_bytes(path).map_err(|error| error.kind())
 }
 
-/// All Ibis settings writers share a stable side-file lock across processes.
-/// A busy writer is reported immediately; no hidden retries or stale lock files.
+/// One process owns the writer section, including direct saves outside a queue.
+/// Only another process can make the stable side-file lock refuse immediately.
 /// The empty lock file stays in place: removing it would split the lock domain.
 fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
+    static WRITER: Mutex<()> = Mutex::new(());
+    #[cfg(test)]
+    if WRITER.try_lock().is_err() {
+        writer_attempted();
+    }
+    let local = WRITER.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     let target = match fs::symlink_metadata(path) {
         Ok(metadata) if metadata.file_type().is_symlink() => {
             let linked = fs::canonicalize(path)?;
@@ -728,18 +737,41 @@ fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     #[cfg(unix)]
     std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let file = options.open(lock)?;
-    file.try_lock().map_err(io::Error::from)?;
-    Ok(WriterLock(file))
+    let acquired = file.try_lock();
+    #[cfg(test)]
+    writer_attempted();
+    acquired.map_err(|error| match error {
+        fs::TryLockError::WouldBlock => SettingsError::Busy,
+        fs::TryLockError::Error(error) => SettingsError::Unreadable(error),
+    })?;
+    Ok(WriterLock { file, _local: local })
 }
 
-struct WriterLock(fs::File);
+struct WriterLock {
+    file: fs::File,
+    _local: MutexGuard<'static, ()>,
+}
+
+#[cfg(test)]
+thread_local! {
+    static WRITER_ATTEMPT: std::cell::RefCell<Option<std::sync::mpsc::Sender<()>>> = const { std::cell::RefCell::new(None) };
+}
+#[cfg(test)]
+fn writer_attempted() {
+    WRITER_ATTEMPT.with(|attempt| {
+        if let Some(attempt) = attempt.take() {
+            let _ = attempt.send(());
+        }
+    });
+}
+
 impl Drop for WriterLock {
     fn drop(&mut self) {
         // Closing this descriptor alone is insufficient: a concurrently
         // spawned child may share its open file description until exec.
         // End the transaction's lock explicitly before releasing the file.
         while self
-            .0
+            .file
             .unlock()
             .is_err_and(|error| error.kind() == io::ErrorKind::Interrupted)
         {}
@@ -1083,6 +1115,51 @@ mod tests {
     use super::*;
 
     #[test]
+    fn overlapping_in_process_saves_wait_and_the_last_save_survives_reopen() -> Result<(), Box<dyn std::error::Error>> {
+        use std::sync::mpsc;
+        use std::time::Duration;
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("settings.json");
+        let (started, holding) = mpsc::channel();
+        let (release, held) = mpsc::channel();
+        let first_path = path.clone();
+        let first = std::thread::spawn(move || {
+            update(&first_path, |settings| {
+                started.send(()).unwrap_or_else(|error| panic!("{error}"));
+                held.recv_timeout(Duration::from_secs(5))
+                    .unwrap_or_else(|error| panic!("{error}"));
+                settings.menu_bar = Some(false);
+            })
+        });
+        holding.recv_timeout(Duration::from_secs(5))?;
+        let (attempt, attempted) = mpsc::channel();
+        let last_path = path.clone();
+        let last_settings = Settings {
+            larger_text: Some(true),
+            ..Settings::default()
+        };
+        let expected = last_settings.clone();
+        let last = std::thread::spawn(move || {
+            WRITER_ATTEMPT.with(|slot| slot.replace(Some(attempt)));
+            save(&last_path, &last_settings)
+        });
+        // The second save has reached the contended writer while the first
+        // still holds it. No scheduling delay or sleep creates the overlap.
+        let overlapping = attempted.recv_timeout(Duration::from_secs(5));
+        let released = release.send(());
+        drop(release);
+        overlapping?;
+        released?;
+        first.join().map_err(|_| "first save panicked")??;
+        last.join().map_err(|_| "last save panicked")??;
+        let reopened = load(&path);
+        assert!(reopened.problem.is_none(), "{:?}", reopened.problem);
+        assert_eq!(reopened.settings, expected);
+        assert_eq!(load(&backup_path(&path)).settings.menu_bar, Some(false));
+        Ok(())
+    }
+
+    #[test]
     fn a_child_inheriting_a_lock_descriptor_does_not_hold_up_the_next_save() {
         use std::io::BufRead;
         use std::process::{Child, Command, Stdio};
@@ -1113,7 +1190,7 @@ mod tests {
                 ])
                 .env(CHILD, "1")
                 .stdin(Stdio::from(
-                    locked.0.try_clone().unwrap_or_else(|error| panic!("{error}")),
+                    locked.file.try_clone().unwrap_or_else(|error| panic!("{error}")),
                 ))
                 .stdout(Stdio::piped())
                 .stderr(Stdio::null())

@@ -234,6 +234,7 @@ fn config_report(loaded: Option<settings::Loaded>) -> Value {
 fn config_problem(problem: &settings::SettingsError) -> &'static str {
     match problem {
         settings::SettingsError::Changed => "config-changed",
+        settings::SettingsError::Busy => "config-busy",
         settings::SettingsError::Invalid(_) | settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
             "config-invalid"
         }

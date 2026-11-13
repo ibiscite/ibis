@@ -62,6 +62,7 @@ fn settings_timeout() -> BackupError {
 /// A fixed UI classification: no setting values, file contents or OS payloads.
 pub fn problem(error: &BackupError) -> BackupProblem {
     match error {
+        BackupError::Current(SettingsError::Busy) | BackupError::Settings(SettingsError::Busy) => BackupProblem::Busy,
         BackupError::MissingSettings | BackupError::Current(_) => BackupProblem::SettingsUnusable,
         BackupError::NotSaved(_) => BackupProblem::NotSaved,
         BackupError::NotDownloaded => BackupProblem::NotDownloaded,
@@ -92,6 +93,8 @@ pub fn code(error: &BackupError) -> ErrorCode {
 
 pub fn message(error: &BackupError) -> String {
     let sentence = match error {
+        BackupError::Current(SettingsError::Busy) | BackupError::Settings(SettingsError::Busy) =>
+            format!("{}.", settings_message(&SettingsError::Busy)),
         BackupError::MissingSettings => "there are no settings on this computer yet; open Ibis and choose some first.".into(),
         BackupError::Current(error) => format!("{}; {}.", settings_message(error),
             if settings_code(error) == ErrorCode::NewerFormat { "update Ibis before trying again" } else { "Open Ibis to repair them" }),
@@ -118,7 +121,7 @@ pub fn settings_code(problem: &SettingsError) -> ErrorCode {
         SettingsError::NewerVersion(_) => ErrorCode::NewerFormat,
         SettingsError::Backup(inner) => settings_code(inner),
         SettingsError::Invalid(_) | SettingsError::InvalidZoteroLibraryEntry { .. } => ErrorCode::BadInput,
-        SettingsError::Unreadable(_) | SettingsError::Changed => ErrorCode::SourceUnavailable,
+        SettingsError::Unreadable(_) | SettingsError::Changed | SettingsError::Busy => ErrorCode::SourceUnavailable,
     }
 }
 
@@ -127,6 +130,7 @@ pub fn settings_code(problem: &SettingsError) -> ErrorCode {
 pub fn settings_problem(problem: &settings::SettingsError) -> &'static str {
     match problem {
         settings::SettingsError::Changed => "settings.json changed while saving; try again",
+        settings::SettingsError::Busy => "settings are being saved by another Ibis",
         settings::SettingsError::Unreadable(_) => "settings.json could not be read",
         settings::SettingsError::Invalid(_) => "settings.json is not valid",
         settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
@@ -147,6 +151,7 @@ pub fn settings_problem(problem: &settings::SettingsError) -> &'static str {
 /// serde or operating-system details. Diagnostics keep the fixed description.
 pub fn settings_message(problem: &settings::SettingsError) -> String {
     match problem {
+        settings::SettingsError::Busy => problem.to_string(),
         settings::SettingsError::InvalidZoteroLibraryEntry { .. } => {
             problem.to_string().replacen("the settings file", "settings.json", 1)
         }

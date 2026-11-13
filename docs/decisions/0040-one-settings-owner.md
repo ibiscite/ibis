@@ -12,7 +12,7 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   - An outcome returns after that turn's outside-edit checks and reports finish,
     so the caller's next file edit cannot race the previous turn's final read.
   - A later choice therefore always lands after an earlier one, and nothing
-    else orders writes: no field tickets, writer mutexes or interface queues.
+    else orders choices: no field tickets or interface queues.
   - The app submits at IPC dispatch, from a synchronous command, so two windows
     and two quick clicks keep their order. It then waits for the outcome
     separately.
@@ -25,8 +25,12 @@ through one owner per settings file, `ibis_engine::settings::Owner`.
   settings shown in its preview, replaces them whole, and runs through the same
   owner.
 - **Other processes (the command line) are ordered by the file lock.** A busy
-  lock refuses at once, as before. Edits patch only the fields they mean to
-  change, so a command-line change made between two app edits is kept.
+  lock refuses at once: "settings are being saved by another Ibis; wait for it
+  to finish, then try again". Within one process, one writer guard serializes
+  the complete locked read/change/write section, including direct saves and
+  separate owners; they never refuse each other (maintainer, 2026-11-13).
+  The owner's queue still orders app choices. Edits patch only the fields they
+  mean to change, so a command-line change made between two app edits is kept.
 - **Outside edits are detected by content.** Watch the canonical settings
   directory and a symlink target's directory. Non-access events for either
   directory or its entries trigger a byte comparison, including replacement
