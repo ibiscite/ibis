@@ -23,7 +23,7 @@ mod sources;
 pub use sources::{PreparedFileReload, PreparedZoteroReload};
 
 mod formatting;
-pub use formatting::Cancellation;
+pub use formatting::{Cancellation, Formatting};
 mod prepared;
 mod receipt;
 pub use prepared::{CitationCommitError, PreparedCitation};
@@ -293,7 +293,6 @@ struct State {
     libraries: BTreeMap<LibraryId, LibraryInfo>,
 }
 struct Shared {
-    formatter: Mutex<Option<ibis_csl::Formatter>>,
     state: RwLock<Arc<State>>,
     /// Serializes publications without blocking readers during index building.
     publication: Mutex<()>,
@@ -304,7 +303,6 @@ struct Shared {
 impl Shared {
     fn new(state: Arc<State>) -> Self {
         Self {
-            formatter: Mutex::new(None),
             state: RwLock::new(state),
             publication: Mutex::new(()),
             subscribers: Mutex::new(BTreeMap::new()),
@@ -316,6 +314,7 @@ impl Shared {
 #[derive(Clone)]
 pub struct Engine {
     shared: Arc<Shared>,
+    formatting: Formatting,
     resources: Arc<sources::Owners>,
     watch_files: bool,
 }
@@ -330,6 +329,11 @@ impl Engine {
         self.watch_files = false;
         self
     }
+    /// Reuse a session's compiled style when replacing its library.
+    pub fn with_formatting(mut self, formatting: Formatting) -> Self {
+        self.formatting = formatting;
+        self
+    }
     pub fn from_snapshot(snapshot: Arc<Snapshot>) -> Self {
         let mut libraries = BTreeMap::<LibraryId, LibraryInfo>::new();
         for item in snapshot.objects() {
@@ -340,6 +344,7 @@ impl Engine {
                 .objects += 1;
         }
         Self {
+            formatting: Formatting::default(),
             shared: Arc::new(Shared::new(Arc::new(State {
                 accepted: Arc::new(()),
                 zotero_generation: 0,

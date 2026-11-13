@@ -347,6 +347,9 @@
       if (request.keep_order) engine.citation_sort.tokens = [];
       engines.set(key, engine);
     }
+    // Startup needs no references and publishes no citation. Its first real
+    // request uses this same compiled style and locale with its own items.
+    if (request.warm) return JSON.stringify({ status: "rendered", text: "", html: "", rtf: "", coverage: [], spans: [] });
     const outputs = { status: "rendered" };
     const indices = new Map();
     request.cites.forEach((cite, index) => indices.set(cite.id, [...indices.get(cite.id) ?? [], index]));

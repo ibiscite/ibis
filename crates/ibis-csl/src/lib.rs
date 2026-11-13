@@ -137,6 +137,14 @@ impl Formatter {
         self.service
             .submit(input::prepare(&snapshot, &request, self.service.limits())?)
     }
+    /// Best-effort startup work. Call off the UI thread; no library is read and
+    /// no citation is published. A foreground request retires late warm-ups.
+    pub fn warm(&self, style: &str, locale: Option<&str>) -> Result<(), FormatError> {
+        if let Some(task) = self.service.warm(input::warm(style, locale)?)? {
+            task.wait()?;
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]

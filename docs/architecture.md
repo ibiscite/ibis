@@ -98,6 +98,12 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
+The desktop warms its saved default style (APA for a key default), locale and
+runtime in the background after reading startup settings, independently of the
+library. Libraries share that formatter for the session. Warm-up publishes no
+citation, and a foreground request retires any warm-up still loading its style.
+The idle worker sleeps on a condition variable, including while Ibis is hidden.
+
 Inspector examples and bibliography work (including Copy and Save) own separate
 cancellation tokens. Closing or replacing their view stops formatting and its
 fallback passes; it leaves the citation receipt usable. MCP reads cancellation
@@ -180,12 +186,24 @@ These are implemented checks, not measurements of every released app:
 | `scripts/picker-budget.mjs` | Entry JS, static imports and CSS total at most 400 KiB gzipped; lazy imports and other windows are excluded. |
 | `ibis-engine/tests/library_memory.rs` | Heap accounting at 10,000 generated records: 48 MiB for BibTeX, 49 MiB for CSL-JSON. |
 | `ibis-engine/tests/refresh_budget.rs` | 100,000 generated records; per-query search p95 ≤ 20 ms, open/refresh < 3 s. Timing failures enforce only with `IBIS_ENFORCE_BUDGETS`; otherwise report. Ranking and correctness assertions still fail. |
+| `startup_format_breakdown` (CSL and desktop unit tests) | Invented references, cold formatter phase breakdown and 30 warm samples; desktop also separates settings, a 10k library read and output catalogue lookup. A warmed first preview and warm formatting p95 have a 100 ms limit, enforced only with `IBIS_ENFORCE_BUDGETS`; shared runners report. |
 
 Run the ignored engine cases explicitly in release mode, one test thread:
 
 ```sh
 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --test refresh_budget -- open_refresh_budget --ignored --nocapture --test-threads=1
+```
+
+Run the test-only startup harness in separate processes for cold and warmed
+desktop starts. It never reads personal settings or libraries, and adds no
+logging to the app. Debug results are labelled; use `--release` for release
+timings when available.
+
+```sh
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-csl --locked --lib startup_format_breakdown -- --ignored --nocapture --test-threads=1
+CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-desktop --locked startup_format_breakdown -- --ignored --nocapture --test-threads=1
+IBIS_MEASURE_WARM=1 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-desktop --locked startup_format_breakdown -- --ignored --nocapture --test-threads=1
 ```
 
 ### Native release measurements (#1369)
