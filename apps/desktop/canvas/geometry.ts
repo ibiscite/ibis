@@ -392,6 +392,53 @@ export function occlusion(root: ParentNode = document): string[] {
   return failures;
 }
 
+/** Words on screen, each with the part of it a person can see. */
+function wordBoxes(root: ParentNode): { node: Node; box: DOMRect }[] {
+  const found: { node: Node; box: DOMRect }[] = [];
+  const walker = document.createTreeWalker(root instanceof Document ? root.body : root as Node, NodeFilter.SHOW_TEXT);
+  for (let text = walker.nextNode(); text; text = walker.nextNode()) {
+    const parent = text.parentElement;
+    if (!text.textContent?.trim() || !parent || parent.closest(".visually-hidden")) continue;
+    const style = getComputedStyle(parent);
+    if (style.visibility === "hidden" || Number(style.opacity) === 0) continue;
+    const range = document.createRange();
+    range.selectNodeContents(text);
+    const clip = seen(parent);
+    if (!clip) continue;
+    for (const rect of range.getClientRects()) {
+      const left = Math.max(rect.left, clip.left), top = Math.max(rect.top, clip.top), right = Math.min(rect.right, clip.right), bottom = Math.min(rect.bottom, clip.bottom);
+      if (right - left >= 1 && bottom - top >= 1) found.push({ node: text, box: new DOMRect(left, top, right - left, bottom - top) });
+    }
+  }
+  return found;
+}
+
+const overlaps = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 1 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 1;
+
+/** [C24 held] A key shown while ⌘ (Ctrl) is held covers no words and no other
+ * control: it sits beside its control, or wholly inside the control it names,
+ * covering only that control's own words. Held badges take no pointer, so
+ * occlusion() cannot see them; this is their cover check. */
+export function heldKeys(root: ParentNode = document): string[] {
+  const failures: string[] = [];
+  const words = wordBoxes(root);
+  const shown = [...root.querySelectorAll(controls)].filter(live).map((node) => ({ node, box: seen(node) })).filter((part): part is { node: Element; box: DOMRect } => !!part.box);
+  for (const badge of root.querySelectorAll(".ui-held-key")) {
+    const box = badge.getBoundingClientRect();
+    const name = `"${badge.textContent}"`;
+    if (box.left < 0 || box.top < 0 || box.right > innerWidth || box.bottom > innerHeight) failures.push(`[C24 held] ${name} leaves the window`);
+    // The control the badge sits inside, if any: its own words may be covered.
+    const own = shown.find(({ box: control }) => box.left >= control.left - 1 && box.right <= control.right + 1 && box.top >= control.top - 1 && box.bottom <= control.bottom + 1)?.node;
+    for (const { node, box: control } of shown)
+      if (node !== own && !node.contains(own ?? null) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
+    for (const { node, box: text } of words)
+      if (!badge.contains(node) && !own?.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
+    for (const other of root.querySelectorAll(".ui-held-key"))
+      if (other !== badge && overlaps(box, other.getBoundingClientRect())) failures.push(`[C24 held] ${name} covers the key "${other.textContent}"`);
+  }
+  return [...new Set(failures)];
+}
+
 /** The states a control draws: React Aria's attributes, set as the canvas States board sets them. */
 export const paintStates = ["data-hovered", "data-pressed", "data-focus-visible", "data-active", "aria-expanded"] as const;
 
