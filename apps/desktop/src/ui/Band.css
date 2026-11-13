@@ -1,0 +1,11 @@
+/* [C3] A band (ui/Band.tsx): one row of the window on its shared columns, set once
+   here. The window inset, the row's padding, the icon column (--tile), the gap,
+   then the label column; trailing controls end on the inset. A glyph, the bird
+   or the back button centres in the icon column whatever its size, so no part
+   computes where a column starts. */
+.ui-band { display: flex; align-items: center; gap: var(--band-gap, 0px); min-width: 0; padding-inline: var(--inset); }
+/* A band that spaces its controls (--band-gap) still starts its label on the column. */
+.ui-band-icon { flex: none; display: flex; align-items: center; justify-content: center; inline-size: var(--tile); margin-inline: var(--row-pad) calc(var(--row-gap) - var(--band-gap, 0px)); }
+.ui-band-label { flex: 1 1 auto; min-width: 0; }
+.ui-band-trailing { flex: none; display: flex; align-items: center; gap: var(--space-2); min-width: 0; margin-inline-start: var(--space-2); }
+.ui-band-trailing:empty { display: none; }

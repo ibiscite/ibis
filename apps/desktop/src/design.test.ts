@@ -77,7 +77,7 @@ const rules: { says: string; applies?: (file: string) => boolean; breaks: (d: De
   { says: "the glyph stroke cannot be changed by a part", applies: (file) => app(file) && file !== "ui/Progress.css",
     breaks: ({ property }) => property === "stroke-width", planted: ".planted svg { stroke-width: 2; }" },
   { says: "only the shared overlay paints the raised layer, its shadow and its material", applies: (file) => outsideTokens(file) && file !== "ui/Overlay.css",
-    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur)\)/.test(value),
+    breaks: ({ property, value }) => /backdrop-filter$/.test(property) || /var\(--(surface-overlay|shadow-overlay|blur|layer-overlay[\w-]*)\)/.test(value),
     planted: ".planted { background: var(--surface-overlay); }" },
   { says: "the floating layer is see-through or blurred only while Reduce Transparency, Increase Contrast and forced colours are all off",
     breaks: ({ property, value, conditions }) => (property === "--surface-overlay" && /\/\s*\d|transparent|color-mix/.test(value)

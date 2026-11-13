@@ -264,7 +264,7 @@ test("a duplicate-key refusal stays visible before Details and copying stays blo
   const refusal = await screen.findByRole("alert");
   expect(refusal.textContent).toContain(message);
   expect(refusal.textContent).toContain("Give one of them a different key in Zotero or your .bib file.");
-  expect(refusal.closest(".notices")).toBeTruthy();
+  expect(refusal.closest(".shelf")).toBeTruthy();
   expect(screen.queryByRole("dialog")).toBeNull();
   fireEvent.keyDown(box, { key: "Enter" });
   expect(calls).not.toContain("copy_file_citation");
@@ -983,7 +983,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     note: null,
   });
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
-  expect(document.querySelector(".notices")?.textContent).toBe("");
+  expect(document.querySelector(".ui-notice-line")?.textContent).toBe("");
   expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("could not be opened");
 });
 

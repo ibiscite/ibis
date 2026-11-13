@@ -345,7 +345,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
           {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{keyText(previous.text)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
           {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready?.markup.length && !keys ? render(ready.markup) : keyText(text)}
-          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
+          </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
             : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
           {copied && <Beak closing />}
         </div>

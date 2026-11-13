@@ -4,7 +4,7 @@ The rules for each shared part, beside its code. The principles are in [design](
 
 Each component in `apps/desktop/src/ui/` wraps one React Aria component (decision 0021), owns one stylesheet that reads tokens only, and is the only way a screen draws that part. A screen needing a new control adds it to `ui/` with its line here first. Shared rules every window uses live in `ui/Foundation.css`.
 
-**States.** Hover (`@media (hover: hover)` only) never moves or resizes anything; a press gives a little (`--press-scale`) and springs back, as in [Motion](../../../../docs/design/foundations.md#motion). Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
+**States change paint, never size** [C24]. Hover (`@media (hover: hover)` only), press, keyboard focus, selection and an open menu never move or resize anything: a part reserves the room for every state it can take (a chip's ×, a ring drawn inside), and `canvas/geometry.ts` sets each state on every control and fails any box that moves. A press gives a little (`--press-scale`, a transform, not layout) and springs back, as in [Motion](../../../../docs/design/foundations.md#motion). Disabled uses `--text-disabled` and stays focusable in menus. Busy shows a spinner after 400 ms with `aria-busy`. Invalid fields show words and an icon, never a red ring.
 
 | | Pointer over it | Chosen or current | Keyboard focus |
 | --- | --- | --- | --- |
@@ -20,6 +20,9 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 
 | Component | Rule |
 | --- | --- |
+| Frame (`ui/Frame`) | [C24] The picker window: search band, one reserved notice line, content (the Inspector beside it), shelf and footer, in that order, each slot's height its own. Feedback renders into a slot that is already there (`LineNotice`, `ui/NoticeSlot`), never into a row of its own. |
+| Band (`ui/Band`) | [C3] One row on the window's columns: the inset, an icon column (`--tile`) whose glyph centres whatever its size, the label column and trailing controls ending on the inset. The search bar, a view's header and footer and the notice line are bands; a part never computes a column with `calc()`. |
+| Layer roles (`tokens.css`) | [C24] `--layer-base` (the window), `--layer-inset` (the shelf), `--layer-overlay` with its edge and material (menus, popovers, Peek, held keys, through `ui/Overlay`), `--layer-view` (palettes and sheets: the window's own material). A part names its role, never a colour. |
 | Button (`ui/Button`) | Primary (accent, one per view), secondary (`--fill-control`) and quiet (no fill at rest, shared hover). Rounded rectangle, `--r-control`; `--action-h` large, regular in Settings, small (`--control-small-h`) in the shelf and footer; trailing key caps. |
 | Icon | Lucide, one path, 16px for controls or 20px for tiles and toolbar, always a 1.5px rendered stroke. Centred on the label line; parts never resize it. |
 | IconButton | Square, `--r-control`; regular uses the control Icon, large uses the tile Icon. Rest transparent with secondary ink, toggled-on is the pressed fill with the same outline. Header ×, pin, sheet close, chip × and Settings search clear all use it. |
@@ -41,8 +44,8 @@ Each component in `apps/desktop/src/ui/` wraps one React Aria component (decisio
 | Shelf (`CitationToken`) and `Popover` | See [Shelf](../../../../docs/design/picker.md#shelf) and [Citation details](../../../../docs/design/inspector-and-reader.md#citation-details). A popover is the overlay material anchored to what it is about, with an arrow, growing from it; it is not modal and the picker's layers own Esc. |
 | Inspector (`ui/Inspector`, `CitationDetails`) | See [Inspector](../../../../docs/design/inspector-and-reader.md#inspector). |
 | Footer and status line (`LibraryStatus`, `SourceAction`) | See [Footer](../../../../docs/design/picker.md#footer). A status line is words, never a filled band. |
-| Notice slot (`ui/NoticeSlot`, `UndoNotice`) and receipt (`CopyReceipt`) | See [Notices](../../../../docs/design/delivery.md#notices). |
-| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring where the status dot sits, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. Without room the phase drops whole, never cut to a stub. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
+| Notice slot (`ui/NoticeSlot`, `UndoNotice`), `LineNotice` and receipt (`CopyReceipt`) | In the frame's notice line; see [Notices](../../../../docs/design/delivery.md#notices). |
+| Progress (`ui/Progress`) | A task such as an update is one line of the notice slot: a small ring in the icon column, then the title, phase and percent ("Updating Ibis", "Downloading · 3.1 of 7.4 MB", "42%"), so no row moves. Without room the phase drops whole, never cut to a stub. An unknown phase turns the ring; Reduce Motion shows it dashed and still. Opening a library keeps a thin bar. |
 | Choice cards (`ui/ChoiceList`) | See [First run and choice screens](../../../../docs/design/choice-screens.md). |
 | Picture choice (`ui/PictureChoice`) | Equal columns, one per choice, captions on one baseline; never wrap three as two plus one. `size="small"` ends a Settings row with thumbnails; `.ui-picture-preview` is the one live picture over a group of choices. |
 | Sidebar (`ui/SideNavigation`) | Single-selection list with `aria-current="page"`, the Mac's medium sidebar row, selected fill and paired text. `SideResults` draws search results as the same rows. |

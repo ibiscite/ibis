@@ -1,22 +1,13 @@
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { Notices, UpdateNotice } from "./Notices";
+import { notices, UpdateNotice } from "./Notices";
 
 afterEach(cleanup);
 const copied = { text: "[@example2026]", warnings: ["Missing year — 研究 العربية <literal>"] };
-const props = { library: null, failures: {}, error: null, copyError: null,
+type Props = Parameters<typeof notices>[0];
+const Notices = (given: Props) => <>{notices(given)}</>;
+const props: Props = { library: null, failures: {}, error: null, copyError: null,
   copied, confirmation: copied, onDismissCopied: vi.fn() };
-
-test("a long citation refusal is a complete keyboard-reachable notice before Details opens", () => {
-  const reason = "Reference 1: Choose another form or clear Page. ".repeat(30);
-  render(<Notices {...props} copied={null} citationProblem={reason} />);
-  const alert = screen.getByRole("alert");
-  expect(alert.textContent).toBe(reason);
-  expect(alert.tabIndex).toBe(0);
-  alert.focus();
-  expect(document.activeElement).toBe(alert);
-  expect(screen.queryByRole("dialog")).toBeNull();
-});
 
 test.each(["Enter", " "])("warning dismissal uses shared states and activates once with %s", (key) => {
   const dismiss = vi.fn();

@@ -1,13 +1,13 @@
-/* [C9] Every floating part (menus, pop-overs, the peek card, held keys,
-   the reader's controls) is one raised layer: --surface-overlay, its material
-   and its shadow, all from tokens.css, which already answers Reduce
+/* [C9] [C24] Every floating part (menus, pop-overs, the peek card, held keys,
+   the reader's controls) takes the overlay layer role: --layer-overlay, its edge
+   and its material, all from tokens.css, which already answers Reduce
    Transparency, Increase Contrast and forced colours. No part sets its own. */
 .ui-overlay {
-  background: var(--surface-overlay); color: var(--text); box-shadow: var(--shadow-overlay);
-  -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+  background: var(--layer-overlay); color: var(--text); box-shadow: var(--layer-overlay-edge);
+  -webkit-backdrop-filter: var(--layer-overlay-material); backdrop-filter: var(--layer-overlay-material);
 }
 /* A popover's arrow is part of the same layer. */
-.ui-overlay .ui-popover-arrow svg { fill: var(--surface-overlay); }
+.ui-overlay .ui-popover-arrow svg { fill: var(--layer-overlay); }
 @media (prefers-contrast: more), (forced-colors: active) {
   .ui-overlay { border: var(--border-width) solid CanvasText; }
 }
