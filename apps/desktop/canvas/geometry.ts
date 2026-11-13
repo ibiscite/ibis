@@ -226,6 +226,17 @@ export function geometry(root: ParentNode = document): string[] {
     }
     for (const shape of shapes) if (Math.abs(shape.glyph) > tolerance) failures.push(`[C12] ${name(shape.card)}: glyph ${shape.glyph.toFixed(1)} off its title's line`);
   }
+  // [C24] No empty band: the frame's heading line is drawn only with something in
+  // it, and nothing sits between it and the list's first row. A list with no heading
+  // line (the commands) keeps its own group headings.
+  const line = root.querySelector(".ui-notice-line"), bar = root.querySelector(".search-bar"), first = root.querySelector('#results [role="option"]');
+  if (line && visible(line) && !line.textContent?.trim()) failures.push("[C24 frame] the heading line is drawn empty");
+  const area = first?.closest(".results-area");
+  if (first && area && bar && line && visible(bar) && visible(line) && visible(first)) {
+    const above = line.getBoundingClientRect().bottom;
+    const gap = first.getBoundingClientRect().top + area.scrollTop + (area.parentElement?.scrollTop ?? 0) - above - parseFloat(getComputedStyle(area).marginTop);
+    if (Math.abs(gap) > tolerance) failures.push(`[C24 frame] ${gap.toFixed(1)}px between the heading line and the first row`);
+  }
   const focused = document.activeElement;
   if (focused instanceof HTMLElement && focused.matches(rings.containers)) {
     const style = getComputedStyle(focused);
@@ -286,7 +297,7 @@ type Edge = "start" | "end" | "top" | "height";
 /** Picker states compared with the idle picture ("results"), each a canvas
  * scenario: loading, failures, a refusal, notices, the shelf, details and the
  * floating parts. Hover, press, focus and selection are checked by paintOnly. */
-export const frameStates = ["loading", "error", "project-check-conflict", "undo-notice", "update", "stale", "peek", "shelf", "reference-details", "more", "format-menu", "library-menu"] as const;
+export const frameStates = ["unknown-app", "loading", "error", "project-check-conflict", "undo-notice", "update", "stale", "peek", "shelf", "reference-details", "more", "format-menu", "library-menu"] as const;
 
 /** Moves an anchor may make, each with its reason. Keep this short: a line here
  * is a design decision, not a fix. */

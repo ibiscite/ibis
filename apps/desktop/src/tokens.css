@@ -301,7 +301,7 @@
   --layer-inset: var(--fill-control);
   --layer-overlay: var(--surface-overlay); --layer-overlay-edge: var(--shadow-overlay); --layer-overlay-material: var(--blur);
   --layer-view: transparent;
-  /* [C24] The frame's one reserved notice line (ui/Frame). */
+  /* [C24] The list's heading line, where a notice stands in for the heading (ui/Frame). */
   --notice-line-h: calc(var(--control-small-h) + var(--space-2));
   --heading-offset: calc(var(--row-pad) + var(--border-width));
   --inspector-width: 18rem; --inspector-column: 15rem;

@@ -44,10 +44,22 @@ export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Re
  * narrow: words in their slots and nothing covered, at the narrowest window;
  * short: More in a window so short its list scrolls [C9];
  * layers: the floating surfaces only, in each system and Ibis appearance. */
-export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "layers"; theme?: string } = {}): Promise<string[]> {
+export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly string[], { pass = "frame", theme = "light" }: { pass?: "frame" | "narrow" | "short" | "layers" | "inventory"; theme?: string } = {}): Promise<string[]> {
   const failures: string[] = [];
   const show = async (scenario: string) => { mount(host, { scenario, theme }); await settle(); };
   const picker = scenarios.filter((scenario) => !["notice", "states", "tokens", "parts"].includes(scenario));
+
+  // Which notice each picker scenario shows, if any: for reviewing the canvas.
+  if (pass === "inventory") {
+    for (const scenario of picker) {
+      await show(scenario);
+      const shown = document.querySelector(".ui-notice-line > :is(.ui-line-notice, .notice-slot), .ui-notice-host > :is(.ui-line-notice, .notice-slot)");
+      const top = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().top) : "-"; };
+      const bottom = (selector: string) => { const node = document.querySelector(selector); return node && node.getBoundingClientRect().height ? Math.round(node.getBoundingClientRect().bottom) : "-"; };
+      failures.push(`${scenario}: search ends ${bottom(".search-bar")}, line ${top(".ui-notice-line")}–${bottom(".ui-notice-line")}, first row ${top('#results [role="option"]')}; ${shown?.textContent?.trim() || "no notice"}`);
+    }
+    return failures;
+  }
 
   if (pass === "short") {
     await show("more");

@@ -168,15 +168,15 @@ test("resizing while editing keeps the selected title readable without moving Pa
   expect(document.activeElement).toBe(page);
 });
 
-test("startup shortcut notices take the frame's notice line, outside the list", async () => {
+test("startup shortcut notices take the frame's notice place, outside the list", async () => {
   backend({ shortcut_status: () => ({ shortcut: "Alt+Y", registered: true, error: "Synthetic shortcut refusal" }) });
   render(<App />);
   const notice = await screen.findByText(/Your shortcut setting was not used/);
-  expect(notice.closest(".picker-content")).toBeNull();
-  expect(notice.closest(".ui-notice-line")).not.toBeNull();
+  expect(notice.closest(".results-area")).toBeNull();
+  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
 });
 
-test.each([false, true])("desktop shortcut guidance appears once and its notice takes the notice line (welcome=%s)", async (welcome) => {
+test.each([false, true])("desktop shortcut guidance appears once and its notice takes the frame's notice place (welcome=%s)", async (welcome) => {
   const guidance = "Use the desktop shortcut controls for Ibis.";
   backend({
     shortcut_status: () => ({ shortcut: "Alt+Y", registered: false, error: "Synthetic desktop shortcut refusal", desktop: { configurable: true, guidance } }),
@@ -188,6 +188,6 @@ test.each([false, true])("desktop shortcut guidance appears once and its notice 
   const notice = await screen.findByText(/Synthetic desktop shortcut refusal/);
   expect(screen.getAllByText(guidance, { exact: false })).toHaveLength(1);
   expect(notice.textContent?.includes(guidance)).toBe(!welcome);
-  expect(notice.closest(".ui-notice-line")).not.toBeNull();
+  expect(notice.closest(".ui-notice-line, .ui-notice-host")).not.toBeNull();
   expect(document.querySelector("main")?.firstElementChild).toBe(document.querySelector(".search-bar"));
 });

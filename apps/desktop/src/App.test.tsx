@@ -983,7 +983,7 @@ test("the library is shown, can be chosen and reloaded, and failures are explain
     note: null,
   });
   await waitFor(() => expect(screen.getByRole("status", { name: "Library status" }).textContent).toContain("not opened"));
-  expect(document.querySelector(".ui-notice-line")?.textContent).toBe("");
+  expect(document.querySelector(".ui-line-notice, .notice-slot")).toBeNull();
   expect(document.querySelector(".library-status-trigger")?.getAttribute("title")).toContain("could not be opened");
 });
 
