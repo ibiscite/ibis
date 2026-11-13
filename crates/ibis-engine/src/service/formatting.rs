@@ -176,29 +176,6 @@ impl Engine {
         // The request is wrong, not its items: refuse it whole, before formatting.
         ibis_csl::Formatter::check_output(&request.output, request.output_locale.as_deref())
             .map_err(formatter_error)?;
-        let annotations: Vec<_> = request
-            .items
-            .iter()
-            .map(|pick| super::prepared::annotation_error(snapshot, pick, None))
-            .collect();
-        if annotations.iter().any(Option::is_some) {
-            return Ok(CitationResult::new(
-                String::new(),
-                None,
-                None,
-                DisplayTree::default(),
-                annotations
-                    .into_iter()
-                    .enumerate()
-                    .map(|(item, error)| ItemOutcome::Refused {
-                        item,
-                        error: error.unwrap_or(CitationError::UnsupportedForm),
-                    })
-                    .collect(),
-                vec![],
-                vec![],
-            ));
-        }
         let formatter = self.formatting.formatter()?;
         let task = match formatter.submit(snapshot.clone(), request.clone()) {
             Ok(task) => task,

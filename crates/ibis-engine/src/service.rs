@@ -720,9 +720,6 @@ impl Engine {
         cancel: &Cancellation,
     ) -> Result<CitationResult, EngineError> {
         let snapshot = &context.snapshot;
-        if request.items.is_empty() || request.items.len() > ibis_core::syntax::MAX_CITATION_ITEMS {
-            return Err(error(ErrorCode::BadInput));
-        }
         crate::wire::serialized_size(request, crate::protocol::MAX_REQUEST_BYTES)
             .map_err(|_| error(ErrorCode::ResourceLimit))?;
         let resolved;

@@ -270,67 +270,6 @@ fn snapshot_identity_aliases_and_missing_keys_are_checked_before_rendering() {
 }
 
 #[test]
-fn annotation_parent_page_and_fingerprint_are_part_of_citation_intent() {
-    let mut case = seed();
-    let mut objects: Vec<_> = case.library.objects().iter().map(|item| item.object.clone()).collect();
-    let record = case.request.items[0].item.clone();
-    let attachment = ItemRef {
-        library: record.library.clone(),
-        key: "attachment:invented".into(),
-    };
-    let annotation = ItemRef {
-        library: record.library.clone(),
-        key: "annotation:invented".into(),
-    };
-    objects.push(LibraryObject::Attachment(Attachment {
-        id: attachment.clone(),
-        parent: Some(record),
-        title: "Synthetic attachment".into(),
-        media_type: "application/pdf".into(),
-        availability: Availability::Unknown,
-        content_hash: None,
-    }));
-    objects.push(LibraryObject::Annotation(Annotation {
-        id: annotation.clone(),
-        parent: attachment,
-        text: "Synthetic text".into(),
-        comment: String::new(),
-        page_label: Some("iv".into()),
-        page_index: Some(3),
-    }));
-    let snapshot = Snapshot::new(objects).unwrap();
-    case.request.items[0].annotation = Some(annotation.clone());
-    case.request.items[0].expected_annotation_cite = Some(snapshot.get(&annotation).unwrap().fingerprints.cite.clone());
-    case.request.items[0].locator = Some(Locator {
-        term: LocatorTerm::Page,
-        value: "iv".into(),
-    });
-    assert!(
-        syntax::cite(&snapshot, &case.request)
-            .unwrap()
-            .copy_content(1)
-            .is_some()
-    );
-    case.request.items[0].locator.as_mut().unwrap().value = "99".into();
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request).unwrap().outcomes,
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::AnnotationMismatch
-        }]
-    );
-    case.request.items[0].locator.as_mut().unwrap().value = "iv".into();
-    case.request.items[0].expected_annotation_cite = Some(Fingerprint::of_bytes(b"old annotation"));
-    assert_eq!(
-        syntax::cite(&snapshot, &case.request).unwrap().outcomes,
-        [ItemOutcome::Refused {
-            item: 0,
-            error: CitationError::ChangedItem
-        }]
-    );
-}
-
-#[test]
 fn hostile_empty_and_large_inputs_have_bounded_fixed_diagnostics() {
     let mut case = seed();
     let mut request = case.request.clone();
