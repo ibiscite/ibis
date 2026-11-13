@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/ibiscite/ibis/compare/v0.3.4...v0.3.5) (2026-11-13)
+
+
+### Bug Fixes
+
+* **windows:** the MSI declares the system folder for its PATH steps ([#1885](https://github.com/ibiscite/ibis/issues/1885)) ([14cf46d](https://github.com/ibiscite/ibis/commit/14cf46d9ff8617fc4be6a6eeaa59aa85ea81fa2d))
+
 ## [0.3.4](https://github.com/ibiscite/ibis/compare/v0.3.3...v0.3.4) (2026-11-12)
 
 
