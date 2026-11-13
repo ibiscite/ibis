@@ -94,7 +94,7 @@ test("parallel gates set Local gate on the checked SHA and immediately squash me
   assert.doesNotMatch(result.body, /Signed-off-by:|Assisted-by:/);
   const windows = Buffer.from(result.calls.match(/-EncodedCommand ([A-Za-z0-9+/=]+)/)[1], "base64").toString("utf16le");
   assert.match(windows, /PSVersionTable\.PSVersion\.Major -ne 5/);
-  assert.match(windows, /powershell.exe .* -File \$test.FullName/);
+  assert.match(windows, /powershell\.exe" .* -File \$test.FullName/);
   assert.match(result.body, /windows passed/);
 });
 

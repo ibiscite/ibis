@@ -67,7 +67,8 @@ mkdir -p "$logs"
 export CARGO_TARGET_DIR=${CARGO_TARGET_DIR:-$root/target}
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1
 export CARGO_BUILD_JOBS=${CARGO_BUILD_JOBS:-4}
-unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+# Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
+export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
 ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o ServerAliveCountMax=2)
 
 mac_gate() {
@@ -115,7 +116,8 @@ export NVM_DIR="$HOME/.nvm"
 nvm use 26
 export CARGO_TARGET_DIR="$HOME/Code/ibis/target"
 export CARGO_PROFILE_DEV_DEBUG=0 CARGO_INCREMENTAL=1 CARGO_BUILD_JOBS=4  # 8 cores but 7 GB RAM
-unset RUSTC_WRAPPER RUSTC_WORKSPACE_WRAPPER
+# Empty, not unset: an empty value also overrides a wrapper set in Cargo's config.
+export RUSTC_WRAPPER= RUSTC_WORKSPACE_WRAPPER=
 cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
 cargo test --workspace --locked
 pnpm -C apps/desktop install --frozen-lockfile --prefer-offline
@@ -179,7 +181,7 @@ try {
   git checkout -q --detach $sha
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   foreach ($test in Get-ChildItem scripts/*.tests.ps1) {
-    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test.FullName
+    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test.FullName
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   }
   node --test --test-concurrency=2 scripts/preview-packages.test.mjs scripts/windows-command-path.test.mjs
@@ -188,7 +190,7 @@ try {
 WINDOWS
   )
   ssh "${ssh_options[@]}" diyanko@diyanko-predator.elephant-halfmoon.ts.net \
-    "powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
+    "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -EncodedCommand $encoded"
 }
 
 unchanged
