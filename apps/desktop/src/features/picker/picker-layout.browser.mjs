@@ -1,7 +1,7 @@
 // Real built picker + invented IPC. Browser layout evidence, not native input/engine proof.
 // Serve `pnpm build` with `pnpm exec vite preview`; reuse an installed Playwright.
 import assert from "node:assert/strict";
-import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, refusalGeometry, refusalPresentation, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, noticeText, shelfControl, waitForLayout } from "./picker-layout-checks.mjs";
 const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE || "playwright");
 const base = new URL(process.argv[2] || "http://127.0.0.1:4173");
 assert.ok(["127.0.0.1", "localhost"].includes(base.hostname), "Use a loopback fixture server");
@@ -243,10 +243,8 @@ try {
     const wholeNotice = async (check, text) => {
       // Both the locator and geometry oracle must select the exact same notice.
       const notice = page.getByRole("alert").and(page.getByText(text, { exact: true })).first();
-      await notice.scrollIntoViewIfNeeded();
       await waitForCheck(check, isWholeNotice, text);
       assert.equal(await notice.isVisible(), true, `${caseLabel}: ${check} visible`);
-      assert.equal(await notice.evaluate((node) => /auto|scroll/.test(getComputedStyle(node.closest(".notices")).overflowY)), false, "notices use the middle scroll owner");
       await checkScan("whole notice keeps search/footer and one scroller");
     };
     if (startupNotice) await wholeNotice("startup-notice-whole", noticeText.startup);
@@ -536,18 +534,11 @@ try {
           assert.equal(await reachable(meaning), true, "every warning, reference-entry explanation and closest-match provenance is reachable");
         }
       } else {
-        const refusal = page.locator(".notices").getByRole("alert").and(page.getByText(noticeText.formatting, { exact: true }));
-        await refusal.waitFor();
-        const refusalState = await refusal.evaluate(refusalPresentation);
-        const refusalDiagnostic = await refusal.evaluate(refusalGeometry);
-        assert.deepEqual(refusalState, {
-          startsInView: true, wrapsInFull: true, keyboardReachable: true,
-        }, `${caseLabel}: a new refusal starts in view, wraps in full and is keyboard reachable before Details; geometry=${JSON.stringify(refusalDiagnostic)}`);
-        assert.equal(await search.evaluate((node) => document.activeElement === node), true, "a refusal never takes focus from Search");
-        assert.equal(await reachable(refusal), true, "the full refusal is readable before opening Details");
         const shelfReason = page.locator("main > .shelf .shelf-output p");
         await shelfReason.waitFor();
         assert.equal(await shelfReason.textContent(), noticeText.formatting, "the reason appears beside the failed citation before Details opens");
+        assert.equal(await shelfReason.getAttribute("role"), "alert", "the shelf announces the refusal once, before Details");
+        assert.equal(await search.evaluate((node) => document.activeElement === node), true, "a refusal never takes focus from Search");
         assert.equal(await reachable(shelfReason), true, "the refusal line stays visible in the fixed shelf");
         await shelfControl(page, "Details").click();
         dialog = page.getByRole("region", { name: /^Citation details for/ });
@@ -587,18 +578,18 @@ try {
       const owners = () => page.evaluate(() => [document.querySelector("main"), document.querySelector(".picker-content"), document.querySelector(".results-area")]
         .flatMap((node, index) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1 ? [index] : []));
       await page.evaluate(() => window.fixtureNotice(true));
-      await waitForCheck("pointer-notice-appeared", () => document.querySelector(".notices").childElementCount > 0);
+      await waitForCheck("pointer-notice-appeared", () => document.querySelector(".ui-notice-line .ui-line-notice") !== null);
       await waitForCheck("pointer-notice-appear-anchor", anchored, top);
-      assert.deepEqual(await owners(), [1], "notice uses only the middle scroller");
+      assert.deepEqual(await owners(), [2], "a notice takes its own line and leaves the results scroller as it was");
       await checkScan("pointer notice keeps search/footer whole and one scroller");
       // Progress has no clear event. Settings notices exercise the real appear /
       // clear path, including browsing to a newer place before they clear.
       if (pointerNotice === "settings") {
-        await page.locator(".picker-content").evaluate((node) => { node.scrollTop += 60; });
+        await page.locator(".results-area").evaluate((node) => { node.scrollTop += 60; });
         top -= 60;
         await waitForCheck("pointer-notice-browsed", anchored, top);
         await page.evaluate(() => window.fixtureNotice(false));
-        await waitForCheck("pointer-notice-cleared", () => document.querySelector(".notices").childElementCount === 0);
+        await waitForCheck("pointer-notice-cleared", () => document.querySelector(".ui-notice-line .ui-line-notice") === null);
         await waitForCheck("pointer-notice-clear-anchor", anchored, top);
         assert.deepEqual(await owners(), [2], "clearing restores only the results scroller");
         await checkScan("cleared notice keeps search/footer whole and one scroller");
@@ -626,7 +617,7 @@ try {
       await search.press("Shift+Enter");
       await waitForCheck("large-notice-two-selected", () => document.querySelectorAll(".citation-token").length === 2);
       assert.deepEqual(page.viewportSize(), { width: 720, height: 480 }, "large-notice fixture uses the reported frame");
-      assert.ok(await page.locator(".notices").evaluate((node) => node.getBoundingClientRect().height >= 300), "warnings consume at least 300px");
+      assert.equal(await page.locator(".ui-notice-line").evaluate((node) => node.scrollHeight <= node.clientHeight + 1), true, "warnings keep to the one notice line");
       assert.equal(await page.evaluate(isWholeShelf), true, "the shelf stays outside the overflowing notice region");
       await search.evaluate((node) => { node.focus({ preventScroll: true }); node.setSelectionRange(2, 5); });
       const selection = () => search.evaluate((node) => ({ focused: document.activeElement === node, range: [node.selectionStart, node.selectionEnd],
@@ -636,18 +627,17 @@ try {
         .filter((node) => /auto|scroll/.test(getComputedStyle(node).overflowY) && node.clientHeight > 0 && node.scrollHeight > node.clientHeight + 1)
         .map((node) => node.className));
       await checkScan("large notice with selection");
-      assert.deepEqual(await owners(), ["picker-content scroll-area"], "large notices and results share the middle scroller");
+      assert.deepEqual(await owners(), ["results-area scroll-area"], "a notice keeps to its line; the results keep their scroller");
       for (const height of [360, 480, 800, 480]) {
         await page.setViewportSize({ width, height });
         await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
         assert.deepEqual(await selection(), chosen, "layout changes preserve focus, query range and selected references");
         {
-          await checkScan("growing the viewport restores the bounded middle");
-          assert.deepEqual(await owners(), ["picker-content scroll-area"], "notice fallback survives viewport growth");
+          await checkScan("resizing keeps the notice line and one scroller");
         }
       }
-      for (const control of [page.getByRole("list", { name: "Copy warnings" }).locator("li").first(), page.getByRole("list", { name: "Copy warnings" }).locator("li").last(), page.getByRole("region", { name: "Preview" })]) {
-        assert.equal(await reachable(control), true, "notice ends and the fixed preview remain reachable");
+      for (const control of [page.getByRole("list", { name: "Copy warnings" }), page.getByRole("region", { name: "Preview" })]) {
+        assert.equal(await reachable(control), true, "the notice line and the fixed preview remain reachable");
         await checkScan("revealing a notice keeps all three bands whole");
       }
       const editor = await openEditor();
