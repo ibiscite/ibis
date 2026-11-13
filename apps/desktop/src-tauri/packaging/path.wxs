@@ -28,7 +28,8 @@
     <CustomAction Id="IbisCommitUserPath" Directory="SystemFolder" Execute="commit" Impersonate="yes" Return="check"
       ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -Command &quot;$m=[\[]Threading.Mutex[\]]::new($false,'Global\ibiscite.Ibis.CommandPath.'+[\[]Security.Principal.WindowsIdentity[\]]::GetCurrent().User.Value); $owned=$false; try{try{$owned=$m.WaitOne(60000)}catch [\[]Threading.AbandonedMutexException[\]]{$owned=$true}; if(-not $owned){throw 'Another Ibis installer is updating your PATH. Try again.'}; $p='HKCU:\Software\ibiscite\Ibis\CommandPathTransactions'; if(Test-Path -LiteralPath $p){Remove-ItemProperty -LiteralPath $p -Name '[ProductCode]' -ErrorAction SilentlyContinue; $k=Get-Item -LiteralPath $p; $e=$k.ValueCount -eq 0; $k.Close(); if($e){Remove-Item -LiteralPath $p}}}finally{if($owned){$m.ReleaseMutex()}; $m.Dispose()}&quot;" />
     <InstallExecuteSequence>
-      <Custom Action="IbisCommitUserPath" After="InstallInitialize">1</Custom>
+      <!-- After RemoveExistingProducts (Windows Installer error 2613 otherwise) and before any file is installed. -->
+      <Custom Action="IbisCommitUserPath" Before="InstallFiles">1</Custom>
       <Custom Action="IbisRollbackAddUserPath" After="InstallFiles">NOT REMOVE~="ALL"</Custom>
       <Custom Action="IbisAddUserPath" After="IbisRollbackAddUserPath">NOT REMOVE~="ALL"</Custom>
       <Custom Action="IbisRollbackRemoveUserPath" Before="IbisRemoveUserPath">REMOVE~="ALL"</Custom>
