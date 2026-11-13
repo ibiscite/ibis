@@ -62,6 +62,11 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       if (!prepared) destination.read(true, keepsOutput());
       prepared = false;
       readShortcut();
+      // Reopening also sees file edits whose watch event has not arrived.
+      // The settings owner reads after prior saves; focus never waits for it,
+      // and a reply from an older presentation cannot replace this one.
+      const visibility = session.getSnapshot().visibility;
+      preferences.loadPreferences(() => mounted && session.getSnapshot().visibility === visibility);
       // On X11, showing can precede native activation. WebKit restores the
       // previous control then, so finish Search focus once activation arrives.
       focusAfterActivation = !document.hasFocus();

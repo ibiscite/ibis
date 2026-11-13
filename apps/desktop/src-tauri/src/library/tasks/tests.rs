@@ -801,6 +801,78 @@ fn obsolete_unchanged_reload_keeps_the_newer_choices_save_warning() {
 }
 
 #[test]
+fn an_unrelated_live_settings_edit_keeps_the_shown_citation_copyable() -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::{Listener, Manager};
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("settings.json");
+    std::fs::write(&path, br#"{"output":"apa"}"#)?;
+    let library = candidate(
+        Source::File(directory.path().join("synthetic.bib")),
+        "@book{example,title={Synthetic reference},author={Example, Ada},year={2026}}",
+    );
+    let file = library.file.clone().ok_or("library")?;
+    let rows = file
+        .search(
+            &serde_json::from_value(serde_json::json!({"text":"example","interpret_locators":false}))?,
+            10,
+            None,
+            &ibis_engine::Cancellation::default(),
+        )
+        .map_err(|error| error.to_string())?;
+    let preview = file
+        .preview(
+            file.reserve_preview(),
+            vec![serde_json::from_value(
+                serde_json::json!({"id": rows.results[0].id, "cite": rows.results[0].cite}),
+            )?],
+            "apa",
+        )
+        .map_err(|error| error.to_string())?;
+    let app = tauri::test::mock_builder()
+        .manage(Mutex::new(library))
+        .manage(SettingsFile::new(path.clone()))
+        .build(tauri::test::mock_context(tauri::test::noop_assets()))?;
+    // A library notification makes the picker search/preview again. Even
+    // reserving that replacement retires the ticket Enter is about to copy.
+    let refreshed = file.clone();
+    let listener = app.listen("library:changed", move |_| {
+        refreshed.reserve_preview();
+    });
+    let edited = br#"{"shortcut":"Control+Alt+F12"}"#;
+    std::fs::write(&path, edited)?;
+    refresh_settings_notice(app.handle(), &app.state::<SettingsFile>());
+    let mut clipboard = String::new();
+    file.copy(&preview.ticket, &preview.content_hash, |content| {
+        clipboard = content.text.to_owned();
+        Ok(())
+    })
+    .map_err(|error| error.to_string())?;
+    assert_eq!(clipboard, "(Example, 2026)");
+    assert_eq!(std::fs::read(&path)?, edited);
+    app.unlisten(listener);
+
+    let (sent, notices) = std::sync::mpsc::channel();
+    app.listen("library:changed", move |event| {
+        let _ = sent.send(event.payload().to_owned());
+    });
+    std::fs::write(&path, b"{ still editing")?;
+    refresh_settings_notice(app.handle(), &app.state::<SettingsFile>());
+    let notice: serde_json::Value = serde_json::from_str(&notices.try_recv()?)?;
+    assert!(
+        notice["settings_notice"]
+            .as_str()
+            .is_some_and(|notice| notice.contains("not being saved"))
+    );
+    refresh_settings_notice(app.handle(), &app.state::<SettingsFile>());
+    assert!(notices.try_recv().is_err());
+    std::fs::write(&path, edited)?;
+    refresh_settings_notice(app.handle(), &app.state::<SettingsFile>());
+    let notice: serde_json::Value = serde_json::from_str(&notices.try_recv()?)?;
+    assert!(notice["settings_notice"].is_null());
+    Ok(())
+}
+
+#[test]
 fn settings_io_releases_the_library_and_discards_obsolete_feedback() {
     let library = Mutex::new(Library::default());
     let requests = LoadRequests::default();

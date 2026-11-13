@@ -33,8 +33,21 @@ pub(super) fn publish<R: tauri::Runtime>(app: &AppHandle<R>, status: LibraryStat
 
 pub(crate) fn refresh_settings_notice<R: tauri::Runtime>(app: &AppHandle<R>, settings_file: &SettingsFile) {
     if let Some(library) = app.try_state::<Mutex<Library>>() {
-        update_notices(&library, |_| true, |library| settings_file.refresh_notice(library));
-        if let Ok(library) = library.lock() {
+        let Ok(previous) = library.lock().map(|library| library.settings_notice.clone()) else {
+            return;
+        };
+        let mut feedback = Library::default();
+        // File I/O stays outside the lock used by native copy commands.
+        settings_file.refresh_notice(&mut feedback);
+        // A settings read is not a library reload. Repeating unchanged status
+        // makes the picker prepare a replacement citation, cancelling a copy
+        // already using the shown ticket. Keep a newer notice if one arrived
+        // while reading this one.
+        if let Ok(mut library) = library.lock()
+            && library.settings_notice == previous
+            && library.settings_notice != feedback.settings_notice
+        {
+            library.settings_notice = feedback.settings_notice;
             publish(app, status(&library));
         }
     }
