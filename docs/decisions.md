@@ -107,3 +107,9 @@ the anchor older links use.
 
 ## 0048 Nix install
 [0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.
+
+## 0050 The menu bar menu
+[0050](decisions/0050-menu-bar-menu.md): one native menu on every system, with one-click library switching, Copy Again for the frontmost app, a spoken state and text drops; no custom card.
+
+## 0051 References in and out
+[0051](decisions/0051-references-in-and-out.md): six lasting concepts with one owner each; share a selection first (offline), then paste a DOI to cite, then add through Zotero's write API; attachments only when ticked for a share.
