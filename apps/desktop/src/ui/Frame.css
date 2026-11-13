@@ -18,7 +18,8 @@ main.ui-frame > footer { grid-area: footer; }
 main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-area { margin-block-start: 0; }
 .ui-notice-line:has(> .ui-line-notice, > .notice-slot) > .ui-heading-slot { display: none; }
 /* The heading starts on the row inset, as section headings do. */
-.ui-heading-slot { flex: 1 1 auto; min-width: 0; margin-inline-start: calc(-1 * var(--title-start)); }
+.ui-notice-line { --title-pull: calc(-1 * var(--title-start)); }
+.ui-heading-slot { flex: 1 1 auto; min-width: 0; margin-inline-start: var(--title-pull); }
 .ui-heading-slot > .results-heading { padding-block: 0; }
 /* With no list, the line itself moves to the room above the empty state, over its
    padding at the content's top, so its notice is never drawn anew. */
@@ -38,7 +39,7 @@ ul.ui-line-words > li + li::before { content: " · "; }
 .ui-line-words code { font-family: var(--mono); color: var(--text); }
 /* The window's notice slot (ui/NoticeSlot: Undo, a remark, an update) starts on
    the icon column, so an update's ring sits where row tiles do. */
-.ui-notice-line > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: calc(-1 * var(--title-start)); }
+.ui-notice-line > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: var(--title-pull); }
 /* One notice shows; the rest wait their turn, out of sight and out of reach. */
 .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
 .ui-line-words:focus-visible { outline-offset: var(--ring-inside); }

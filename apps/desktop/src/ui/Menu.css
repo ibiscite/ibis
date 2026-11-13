@@ -4,12 +4,12 @@
    The surface is the shared overlay (Overlay.css). */
 .menu-popover {
   /* Labels start after the item padding, one icon/check column and the gap. */
-  --menu-label-start: calc(var(--space-2) + var(--icon) + var(--space-2));
+  --menu-gutter: calc(var(--icon) + var(--space-2)); --menu-label-start: calc(var(--space-2) + var(--menu-gutter));
 }
 
 .menu-popover {
-  box-sizing: border-box; width: max-content; min-width: min(14rem, calc(100vw - 2 * var(--inset))); max-width: calc(100vw - 2 * var(--inset));
-  max-height: calc(100vh - 2 * var(--inset));
+  box-sizing: border-box; width: max-content; min-width: min(14rem, var(--overlay-max-inline)); max-width: var(--overlay-max-inline);
+  max-height: var(--overlay-max-block);
   display: flex; flex-direction: column; padding-block: var(--space-1); overflow: hidden; overflow-wrap: anywhere;
   border-radius: var(--r-large);
   font: var(--type-body-size) / var(--type-body-line) var(--font);
