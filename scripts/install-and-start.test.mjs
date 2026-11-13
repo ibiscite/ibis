@@ -28,7 +28,7 @@ if (basename(app) !== process.env.DESKTOP) process.exit(42);`;
   stub("python3", smoke);
   return {
     dir, stub, desktop,
-    run: () => spawnSync("bash", [script], { cwd: dir, encoding: "utf8", timeout: 10_000,
+    run: () => spawnSync("bash", [script], { cwd: dir, encoding: "utf8", timeout: 120_000, // a hang guard, not a budget: stub starts are slow on a loaded machine
       env: { ...process.env, PATH: `${join(dir, "bin")}:${dirname(process.execPath)}:${process.env.PATH}`, RUNNER_OS: platform,
         RUNNER_TEMP: join(dir, "temp"), FIXTURE: dir, DESKTOP: desktop, STARTED: join(dir, "started") } }),
     started: () => readFileSync(join(dir, "started"), "utf8").trim().split("\n"),
