@@ -12,7 +12,7 @@ import "./Menu.css";
 import "./Overlay.css";
 
 /** Align to the rendered trailing edge even when the browser locale differs. */
-export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top end" | "bottom end" | "bottom start") {
+export function useMenuPlacement(open: boolean, trigger: RefObject<HTMLElement | null>, placement: "top start" | "top end" | "bottom end" | "bottom start") {
   const [rtl, setRtl] = useState(false);
   useLayoutEffect(() => {
     if (open && trigger.current) setRtl(getComputedStyle(trigger.current).direction === "rtl");
@@ -288,7 +288,10 @@ export function Menu({ label, id, trigger, triggerRef, triggerClassName, trigger
   const fromTrigger = useRef(false);
   const button = useRef<HTMLButtonElement | null>(null);
   const boundary = useMenuBoundary(isOpen, tabFocusRef, button);
-  const renderedPlacement = useMenuPlacement(isOpen, button, placement);
+  // The footer's leading status row opens above its leading edge; trailing
+  // footer actions keep their own placement. React Aria owns the gap and fit.
+  const leadingStatus = triggerClassName?.split(/\s+/).includes("library-status-trigger");
+  const renderedPlacement = useMenuPlacement(isOpen, button, leadingStatus ? "top start" : placement);
   const { list, listRef, opening } = useMenuLifecycle(isOpen);
   const wholeRows = useWholeRows(list);
   const [skipExit, setSkipExit] = useState(false);
