@@ -8,6 +8,11 @@
         <RegistryValue Root="HKCU" Key="Software\ibiscite\Ibis\Command" Name="MsiInstalled" Type="integer" Value="1" KeyPath="yes" />
       </Component>
     </DirectoryRef>
+    <!-- The custom actions run PowerShell from the system folder, so the
+         package declares that standard folder for the linker. -->
+    <DirectoryRef Id="TARGETDIR">
+      <Directory Id="SystemFolder" />
+    </DirectoryRef>
     <!-- The same ownership-aware helper as NSIS: the Environment table removes
          preexisting entries on uninstall even when it did not append one. -->
     <CustomAction Id="IbisAddUserPath" Directory="SystemFolder" Execute="deferred" Impersonate="yes" Return="check"
