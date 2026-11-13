@@ -163,6 +163,8 @@ windows_gate() {
     process.stdout.write(Buffer.from(script, "utf16le").toString("base64"));
   ' "$sha" "$branch" "$repo" <<'WINDOWS'
 $ErrorActionPreference = 'Stop'
+# Over ssh the laptop's PATH lacks Windows PowerShell; tests and scripts expect it there.
+$env:Path = "$env:SystemRoot\System32\WindowsPowerShell\v1.0;$env:Path"
 if ($PSVersionTable.PSVersion.Major -ne 5 -or $PSVersionTable.PSVersion.Minor -ne 1) { throw 'Windows PowerShell 5.1 is required' }
 $checkout = Join-Path $env:TEMP 'ibis-local-gate'
 $lock = [IO.File]::Open("$checkout.lock", 'OpenOrCreate', 'ReadWrite', 'None')
@@ -181,7 +183,7 @@ try {
   git checkout -q --detach $sha
   if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   foreach ($test in Get-ChildItem scripts/*.tests.ps1) {
-    & "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test.FullName
+    & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $test.FullName
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
   }
   node --test --test-concurrency=2 scripts/preview-packages.test.mjs scripts/windows-command-path.test.mjs
