@@ -16,14 +16,11 @@ describes this checkout. Plans live in [ROADMAP.md](../ROADMAP.md).
 | `apps/desktop/src-tauri` | Native windows, clipboard, paste, shortcuts, settings dialogs and updates. Depends on core, engine and its command macro crate. |
 | `apps/desktop/src` | React interface, shared controls in `ui/`, tokens in `tokens.css`. |
 
-The desktop links the engine in process. Its window-scoped commands have
-generated TypeScript bindings. The CLI exposes commands, JSON-RPC and MCP;
-see [the CLI reference](cli.md) for their contracts. The desktop also provides
-the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
-
-JSON contract version 1 is selected with `--contract 1`. Library results carry
-`source_health` from the same published state and only the libraries they read;
-later refresh failures cannot change it. RPC and MCP carry the same health.
+The desktop links the engine in process, with generated TypeScript bindings.
+Contracts for the CLI, JSON-RPC and MCP are in [the CLI reference](cli.md); the
+desktop also provides the [editor endpoint](parity.md#better-bibtex-cite-as-you-write).
+Library results carry `source_health` from the state they read; later refresh
+failures cannot change it.
 
 ## Data and identity
 
@@ -98,31 +95,23 @@ loads the requested style and locale. Formatting receives citable fields,
 without notes, annotations or private links. Zotero differential fixtures
 check output independently of the renderer.
 
-The desktop warms its saved default style (APA for a key default), locale and
-runtime in the background after reading startup settings, independently of the
-library. Libraries share that formatter for the session. Warm-up publishes no
-citation, and a foreground request retires any warm-up still loading its style.
-The idle worker sleeps on a condition variable, including while Ibis is hidden.
+The desktop warms its saved default style, locale and runtime in the background,
+independently of the library, and shares that formatter for the session. Warm-up
+publishes no citation; a foreground request retires it. The idle worker sleeps
+while Ibis is hidden.
 
-Inspector examples and bibliography work (including Copy and Save) own separate
-cancellation tokens. Closing or replacing their view stops formatting and its
-fallback passes; it leaves the citation receipt usable. MCP reads cancellation
-notifications while a bounded tool worker runs, tracks each request ID's owner,
-and sends no result after that owner is cancelled.
+Detail examples and bibliography work own separate cancellation tokens; closing
+or replacing their view stops formatting and leaves the receipt usable. MCP
+sends no result after its request is cancelled.
 
 A prepared citation pins its request and fingerprints. Copy re-cites it
 against current data and requires the shown content hash. Changed or removed
 items, ambiguous keys and changed Zotero generations refuse the copy.
 `copy_content(expected_items)` also requires every requested item to succeed.
 
-Complete citations carry [receipts](cli.md#receipts-and-strict-citations) of
-the records, options, reads and formatting versions used. `--strict` returns
-an error without text for any loss, refusal, source warning or failed refresh.
-
-Caller-supplied CSL-JSON records need their own `id`; invalid or duplicate
-records refuse the whole request. Numeric IDs survive transport parsing.
-No library is opened or remembered. `cite --records` and MCP records refuse
-`--keep-order`/`keep_order`; [record limits](cli.md#records-you-send) apply.
+Receipts, `--strict` and caller-supplied records are specified in the
+[CLI reference](cli.md#receipts-and-strict-citations); records open no library
+and never combine with `--keep-order`.
 
 The locator parser is shared by search, the picker's Page field and CLI.
 It recognises all 29 CSL locator terms, ranges and quoted literal labels.
@@ -186,10 +175,8 @@ the target, picker presentation and clipboard generation:
   keys. Elevated targets, password fields and uncertain checks copy instead.
 - **Linux:** copies and reports why; the person pastes.
 
-Paste refusals do not retry automatically. Permission recovery needs a fresh
-summon and Enter. The [compatibility guide](compatibility.md) describes
-platform coverage, shortcuts and installation; the [design](design.md)
-describes controls and interaction.
+Paste refusals do not retry; permission recovery needs a fresh summon and
+Enter. Platform coverage is in [compatibility](compatibility.md).
 
 ## Performance checks
 
@@ -210,9 +197,7 @@ CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-engine --locked --release --te
 ```
 
 Run the test-only startup harness in separate processes for cold and warmed
-desktop starts. It never reads personal settings or libraries, and adds no
-logging to the app. Debug results are labelled; use `--release` for release
-timings when available.
+desktop starts; it reads no personal settings or libraries.
 
 ```sh
 CARGO_TARGET_DIR="$PWD/target" cargo test -p ibis-csl --locked --lib startup_format_breakdown -- --ignored --nocapture --test-threads=1
@@ -231,6 +216,13 @@ and at least 30 samples per case. It reports p50/p95/p99 and checks:
 - every idle sample ≤ 0.2% of one CPU core and ≤ 1 wakeup/s;
 - whole-process-tree memory ≤ 200 MiB at 10k and < 400 MB at 100k.
 
-The input schema is enforced by the validator. Debug smoke timings do not
-satisfy it. Collection and release-machine qualification remain
+Debug smoke timings do not satisfy it. Collection is
 [roadmap work](../ROADMAP.md#10-stable).
+
+## Vocabulary
+
+A **deep module** hides much behaviour behind a small **interface**; a **seam**
+is where two modules meet and behaviour can be swapped. Apply the **deletion
+test**: if removing a module only moves its complexity to its callers, it earns
+its place. One adapter is a hypothetical seam; add the seam when a second
+exists.

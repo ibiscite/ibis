@@ -2,7 +2,7 @@
 
 Stable publication needs the maintainer's GitHub deployment approval.
 Nightlies publish automatically. Engineering and review authority is in
-[AGENTS.md](AGENTS.md#merging); future release work is in [ROADMAP.md](ROADMAP.md).
+[AGENTS.md](AGENTS.md#trust-and-authority); future release work is in [ROADMAP.md](ROADMAP.md).
 
 ## Releases
 

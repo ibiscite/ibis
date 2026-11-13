@@ -3,7 +3,7 @@ import { afterEach, expect, test, vi, onTestFinished } from "vitest";
 import { KeyCaps, KeyHint } from "./KeyCaps";
 import { PickerFooter } from "../features/picker/PickerFooter";
 import { PickerMenu } from "../features/picker/PickerMenu";
-import { KeysDialog } from "../features/picker/KeysDialog";
+import { KeysDialog } from "./KeysSheet";
 import { setPlatform } from "../nativeAppearance";
 
 const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");

@@ -25,7 +25,7 @@ are separate.
 
 ## Roles and review
 
-[AGENTS.md](../AGENTS.md#merging) defines independent review and merge rules.
+[AGENTS.md](../AGENTS.md#trust-and-authority) defines independent review and merge rules.
 The maintainer controls signing configuration and stable publication approval.
 Nightly publication is automatic. Signing changes do not waive those gates.
 

@@ -7,20 +7,15 @@ definition does not certify a passing run. Plans live in
 
 ## What a test must earn
 
-- Assert a distinct supported outcome or regression a person or client sees.
-  The test must fail without the change. Prefer an existing fixture or test
-  over a second assertion of the same outcome.
+- Assert a distinct supported outcome or regression a person or client sees;
+  it must fail without the change. Prefer an existing fixture over a second
+  assertion of the same outcome.
 - Protect citation fidelity, parser bounds, public contracts, failed saves,
   cancellation, stale replies, delivery ownership and privacy. Keep native
-  tests where the operating system determines the outcome.
-- Use invented data, deferred promises and fake clocks. Native waits need
-  deadlines. Keep private paths, clipboard text and personal libraries out of
-  shared evidence.
-- Remove tests for withdrawn behaviour and assertions of source text, CSS
-  declarations or incidental call order. Structured architecture/security
-  checks and native WebKit colour checks protect separate outcomes.
-- Review snapshot changes as code. A consolidation that grows tests needs a
-  reason in its pull request.
+  tests where the operating system decides the outcome.
+- Use invented data, deferred promises and fake clocks; native waits need
+  deadlines. Delete tests for withdrawn behaviour and for source text, CSS
+  declarations or call order. Review snapshot changes as code.
 
 ## Local commands
 
@@ -104,19 +99,11 @@ for the separate paste-permission check.
 
 ## Update consent keyboard safety
 
-Automatic offers wait for empty search, an idle interval of 1.5 seconds,
-no held input, no overlays or copy, and a visible focused picker. Interaction
-changes retire the idle ticket; native presentation checks it again.
-
-Later is the safe default. macOS and Windows put it before Install; Linux
-explicitly sets its default and initial focus. Only the exact Install action
-accepts; Escape/close cancel. Node monitor tests cover Enter, held keys,
-composition and stale replies. Rust tests cover busy input and obsolete
-tickets. Linux native CI runs
-`gtk_offer_return_declines_and_explicit_install_button_accepts` under Xvfb.
-The qualifier navigates to a verified Install button before sending Space;
-it does not change dialog defaults. Installed keyboard behaviour still needs
-platform evidence.
+An update offer waits for an idle, empty, focused picker; Later is the default
+and only the exact Install action accepts. Node monitor tests cover Enter, held
+keys, composition and stale replies; Rust tests cover busy input and obsolete
+tickets; Linux CI runs `gtk_offer_return_declines_and_explicit_install_button_accepts`
+under Xvfb. Installed keyboard behaviour still needs platform evidence.
 
 ## Native evidence and replay
 
@@ -127,10 +114,9 @@ The [closed schema](../scripts/native_evidence.schema.json) is checked on
 write and read. Bundles are limited to one manifest, 1 MiB and 4,000 events,
 in a new directory. Other logs are separate diagnostics.
 
-The manifest records build/harness/fixture hashes, observed environment,
-fixed action/result codes, relative times and harness completion order.
-Unobserved fields have reasons. It records harness order, not app-internal
-IPC scheduling, and attaches no screenshot, raw readback or desktop text.
+The manifest records build, harness and fixture hashes, the observed
+environment and fixed action/result codes; unobserved fields have reasons. It
+attaches no screenshot, raw readback or desktop text.
 
 Replay on the same isolated Linux desktop:
 
@@ -139,15 +125,10 @@ python3 scripts/smoke-native.py --app target/debug/ibis-desktop \
   --output screenshots/replay --replay screenshots/run/evidence-RUN_ID/manifest.json
 ```
 
-Replay validates build, fixtures and observed environment before acting.
-Changed, missing or extra actions and results are `replay-diverged`.
-Relative times are diagnostic, not replayed delays. The seed is recorded;
-current deterministic scenarios do not consume it.
-
-Use one GUI worker per isolated synthetic desktop. Preserve a failing bundle,
-separate product/harness/unavailable failures, replay and minimize it, then
-add the regression at the layer that owns the cause. Never export personal
-library data or `.local/`. Evidence does not certify unobserved capabilities.
+Replay validates build, fixtures and environment before acting; changed,
+missing or extra actions and results are `replay-diverged`. Use one GUI worker
+per synthetic desktop, keep a failing bundle, replay it, then add the regression
+at the layer that owns the cause.
 
 ## Where checks run
 
@@ -184,10 +165,7 @@ publication evidence: a red main keeps the preceding nightly. Run manual
 qualification before a stable release. [Preview](../.github/workflows/preview.yml)
 keeps full builds, signing and install/start checks before publishing.
 
-Only the read-only title workflow remains on outside PRs, to give contributors
-feedback. Trusted branches get the same check locally. Nix and syntax-tool
-workflows confirm after merge. Licences, bans, sources and identity privacy
-checks remain; DCO is not enforced. RustSec advisories block dependency changes,
-release publication and the weekly check; other failures warn. Ubuntu package
-sources retain security pockets; mirror/provisioning failures report infrastructure.
-Publication details are in [RELEASING.md](../RELEASING.md).
+Only the read-only title workflow runs on outside PRs. Nix and syntax-tool
+workflows confirm after merge. RustSec advisories block dependency changes,
+release publication and the weekly check; other failures warn. Publication
+details are in [RELEASING.md](../RELEASING.md).

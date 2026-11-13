@@ -77,8 +77,8 @@ side of the same window, one region at a time, and folds back with Esc:
 | --- | --- | --- |
 | Search | Types | The list, the shelf with what Enter pastes, the footer's one action |
 | Several references | ⇧↵, ⌘-click or a row's + | One shelf segment each, in order; the count names them |
-| Details | Clicks a segment, or ⌘I | The **Inspector** beside the list: title, Show as, Page, what will be pasted, the source actions |
-| Pages | **Show PDF** (⌘D) in the Inspector | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
+| Details | Clicks a segment, or ⌘I | The segment's token popover ([inspector-and-reader](design/inspector-and-reader.md), decision 0045) |
+| Pages | **Show PDF** (⌘D) | The window takes a reading shape once, taller and wider; the list folds away and the **Reader**'s thumbnails and pages take its place beside the column |
 | Choose a page | Clicks a thumbnail (⇧-click a range, ⌘-click another), or ⌘↵ on the page in view | The Page field and the shelf segment show it, "p. 417–419, 423" |
 | Deliver | Enter, as the footer says | Pasted or copied, then the window hides |
 
@@ -117,7 +117,7 @@ How each user-visible item planned before 1.0 in ROADMAP.md fits the pages above
 |---|---|
 | Output per app, self-finishing setup (0.3) | [First run](design/choice-screens.md) |
 | Paste into the app you came from (0.3) | Enter pastes; the footer says "Paste into Word"; a refusal copies and says why |
-| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, more label and control rows in the **Inspector**, the format pop-up and Settings › Citations |
+| Citation forms, 29 locator types, prefix and suffix, reorder, any style, presets (0.4) | The shelf, the token popover, the format pop-up and Settings › Citations |
 | `ibis://` links, Show in Zotero, Open PDF in Zotero (0.4) | A link opens the picker filled in; the Zotero actions sit in More and the row's menu |
 | Settings window (0.4, #776) | [Settings](design/settings.md) |
 | Browse, "Selected in Zotero", passages (0.5) | Collections and tags as search filters; a reference's highlights unfold under its row and fill in its page |
