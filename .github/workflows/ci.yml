@@ -3,17 +3,15 @@ name: CI
 on:
   push:
     branches: [main]
-    tags: ["v*"]
-  pull_request:
   schedule:
     - cron: "17 5 * * *"
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# Main verifies each pushed revision; pull requests cancel superseded runs.
+# Main confirms each merged revision; local machines gate the merge.
 concurrency:
   group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -25,60 +23,23 @@ env:
   RUSTFLAGS: -D warnings
 
 jobs:
-  changes:
-    name: Changed files
+  interface:
+    name: Build the web interface
     runs-on: ubuntu-24.04
     timeout-minutes: 10
-    permissions:
-      contents: read
-      pull-requests: read
-    outputs:
-      core: ${{ steps.classify.outputs.core }}
-      interface: ${{ steps.classify.outputs.interface }}
-      native: ${{ steps.classify.outputs.native }}
-      scripts: ${{ steps.classify.outputs.scripts }}
-      web: ${{ steps.classify.outputs.web }}
-      systems: ${{ steps.classify.outputs.systems }}
     steps:
-      # Interface-only and website-only changes keep web validation
-      # without native jobs and without building the interface for them.
-      # A Linux Desktop placeholder still reports success for "CI result".
-      # Script-only changes add their tests on Windows (and macOS on
-      # daily/manual runs) without building the app. Changes only inside
-      # apps/desktop skip the crates' tests. Unclear file lists build everything.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Decide which app checks must run
-        id: classify
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          EVENT: ${{ github.event_name }}
-          REPO: ${{ github.repository }}
-          PR: ${{ github.event.pull_request.number }}
-          EXPECTED: ${{ github.event.pull_request.changed_files }}
-          EXPECTED_REFS: ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.head_ref }}
-          ACTOR: ${{ github.triggering_actor }}
-          BASE_SHA: ${{ github.event.before }}
-          HEAD_SHA: ${{ github.sha }}
-        run: scripts/ci-changes.sh
-
-      # Desktop embeds the interface built here, so it starts as soon as the
-      # files are classified instead of after every Web interface check. That
-      # job checks the same commit, and "CI result" needs both.
       - name: Set up Node.js
-        if: steps.classify.outputs.native == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 26
           package-manager-cache: false
 
       - name: Set up pnpm
-        if: steps.classify.outputs.native == 'true'
         uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           package_json_file: apps/desktop/package.json
@@ -86,7 +47,6 @@ jobs:
           cache_dependency_path: apps/desktop/pnpm-lock.yaml
 
       - name: Build the web interface
-        if: steps.classify.outputs.native == 'true'
         working-directory: apps/desktop
         run: |
           pnpm install --frozen-lockfile
@@ -94,7 +54,6 @@ jobs:
           node ../../scripts/picker-budget.mjs dist
 
       - name: Share the web interface
-        if: steps.classify.outputs.native == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: desktop-web
@@ -102,17 +61,14 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # Linux is the fast core suite; daily/manual qualification adds all systems.
   test:
     name: Test (${{ matrix.os }})
-    needs: changes
-    if: needs.changes.outputs.core == 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
-        os: ${{ fromJSON(needs.changes.outputs.systems) }}
+        os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
         shell: bash
@@ -136,8 +92,6 @@ jobs:
       - name: Cache Rust build
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # Pull requests restore main's caches but never write their own,
-          # which would evict main's from the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Lint
@@ -160,21 +114,15 @@ jobs:
 
   web:
     name: Web interface
-    needs: changes
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
       options: --init
     timeout-minutes: 10
-    env:
-      WEB: ${{ needs.changes.outputs.web }}
     defaults:
       run:
         working-directory: apps/desktop
     steps:
-      # Checkout and install always run: the script tests below need the
-      # interface and some read Markdown (docs/design/), so they run even on
-      # a documentation-only change.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -207,7 +155,6 @@ jobs:
           path: /var/cache/apt/archives
           key: apt-ubuntu-24.04-web-${{ steps.apt.outputs.key }}
 
-      # Every script test, as scripts/check.mjs runs them locally.
       - name: Script tests
         working-directory: .
         env:
@@ -216,10 +163,11 @@ jobs:
           GIT_CONFIG_VALUE_0: ${{ github.workspace }}
         run: |
           bash scripts/ci-ubuntu-deps.sh web
-          node scripts/check.mjs --script-tests
+          node scripts/check-icons.mjs
+          node --test --test-concurrency=2 scripts/*.test.mjs
+          for test in scripts/test_*.py scripts/*.test.py; do python3 -B "$test"; done
 
       - name: Type check and test the interface
-        if: env.WEB == 'true'
         run: |
           pnpm typecheck
           pnpm lint
@@ -229,79 +177,59 @@ jobs:
 
   desktop:
     name: Desktop (${{ matrix.os }})
-    needs: changes
+    needs: interface
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
-    env:
-      CORE: ${{ needs.changes.outputs.core }}
-      NATIVE: ${{ needs.changes.outputs.native }}
-      SCRIPTS: ${{ needs.changes.outputs.scripts }}
     strategy:
       fail-fast: false
       matrix:
-        # Without native inputs only a Linux placeholder reports, so a docs or
-        # interface change never waits for macOS or Windows runners. Script
-        # changes add Windows, and macOS when touched or on daily/manual runs.
-        os: >-
-          ${{ (needs.changes.outputs.native == 'true' || (needs.changes.outputs.scripts == 'true' && contains(fromJSON(needs.changes.outputs.systems), 'macos-15')))
-          && fromJSON('["ubuntu-24.04", "macos-15", "windows-2025"]')
-          || needs.changes.outputs.scripts == 'true' && fromJSON('["ubuntu-24.04", "windows-2025"]')
-          || fromJSON('["ubuntu-24.04"]') }}
+        os: [ubuntu-24.04, macos-15, windows-2025]
     defaults:
       run:
         # bash stops at the first failing command on every OS; PowerShell on
         # Windows would continue and report only the last command's result.
         shell: bash
     steps:
-      - name: Note a change without native checks
-        if: env.NATIVE != 'true'
-        run: echo "::notice::No native inputs changed, so the app is not built here."
-
       - name: Checkout
-        if: env.NATIVE == 'true' || env.SCRIPTS == 'true'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Prepare Ubuntu package cache (Linux)
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         id: apt
         run: |
           sudo chown -R "$(id -u):$(id -g)" /var/cache/apt/archives
           bash scripts/ci-ubuntu-deps.sh cache-key desktop >> "$GITHUB_OUTPUT"
 
       - name: Cache Ubuntu package downloads (desktop)
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         uses: actions/cache@0400d5f644dc74513175e3cd8d07132dd4860809 # v4.2.4
         with:
           path: /var/cache/apt/archives
           key: apt-ubuntu-24.04-desktop-${{ steps.apt.outputs.key }}
 
       - name: Install system WebView libraries (Linux)
-        if: env.NATIVE == 'true' && (runner.os == 'Linux')
+        if: (runner.os == 'Linux')
         working-directory: .
         run: |
           bash scripts/ci-ubuntu-deps.sh desktop
           sudo chmod -R a+rX /var/cache/apt/archives
 
       - name: Check generated brand assets (Linux)
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
-        run: node scripts/check.mjs --brand-assets
+        if: runner.os == 'Linux'
+        run: python3 brand/build.py --check
 
       - name: Format
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: cargo fmt --all --check
 
       - name: Cache Rust build
-        if: env.NATIVE == 'true'
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          # Pull requests restore main's caches but never write their own,
-          # which would evict main's from the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - name: Download the web interface
-        if: env.NATIVE == 'true'
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: desktop-web
@@ -310,11 +238,9 @@ jobs:
       # Compile desktop test targets before unrelated suites so contract errors
       # report early on every native platform.
       - name: Lint all desktop targets
-        if: env.NATIVE == 'true'
         run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
 
       - name: Lint, test and build the app
-        if: env.NATIVE == 'true'
         id: native_build
         working-directory: .
         run: |
@@ -324,19 +250,24 @@ jobs:
 
       # The bindings, schemas, MCP tools and CLI options made from the Rust code.
       - name: Check generated files (Linux)
-        if: env.NATIVE == 'true' && runner.os == 'Linux'
+        if: runner.os == 'Linux'
         run: node scripts/gen.mjs --check
 
       - name: Paste into Notepad (Windows)
-        if: env.NATIVE == 'true' && runner.os == 'Windows'
+        if: runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
       - name: Test the scripts (macOS and Windows)
-        if: env.SCRIPTS == 'true' && (runner.os == 'Windows' || runner.os == 'macOS')
-        run: node scripts/check.mjs --platform-script-tests
+        if: (runner.os == 'Windows' || runner.os == 'macOS')
+        run: |
+          node scripts/check-icons.mjs
+          node --test --test-concurrency=2 scripts/*.test.mjs
+          python=python3
+          if [ "$RUNNER_OS" = Windows ]; then python=python; fi
+          for test in scripts/test_*.py scripts/*.test.py; do "$python" -B "$test"; done
 
       - name: Exercise the native picker (Linux)
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
+        if: ${{ !cancelled() && steps.native_build.outcome == 'success' && runner.os == 'Linux' }}
         run: |
           /usr/bin/python3 scripts/smoke-native.py --self-test
           /usr/bin/python3 scripts/check-offline.test.py
@@ -353,7 +284,7 @@ jobs:
 
       # Keep native smoke evidence even after a failure or timeout.
       - name: Keep screenshots and startup logs
-        if: always() && env.NATIVE == 'true'
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: picker-${{ github.sha }}-${{ runner.os }}
@@ -364,7 +295,6 @@ jobs:
   # System WebKit rendering is part of daily/manual qualification.
   webkit:
     name: WebKit colours (macOS)
-    needs: changes
     if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 15
@@ -419,7 +349,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # The privacy guard reads the pull request commit range.
+          fetch-depth: 0 # The privacy guard reads the pushed commit range.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -429,8 +359,8 @@ jobs:
 
       - name: Public commit identities
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: node scripts/check-agent-identity.mjs
 
       - name: Validate workflow expressions
@@ -450,9 +380,8 @@ jobs:
           EVENT: ${{ github.event_name }}
           REF: ${{ github.ref }}
           SCHEDULE: ${{ github.event.schedule }}
-          HEAD_REF: ${{ github.head_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
         run: bash scripts/ci-advisories.sh policy >> "$GITHUB_OUTPUT"
 
       - name: RustSec advisories
@@ -600,11 +529,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # The only required check, including heavy qualification on daily/manual runs.
+  # Publication still requires successful confirmation, including daily qualification.
   result:
     name: CI result
     if: always()
-    needs: [changes, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
+    needs: [interface, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -615,18 +544,11 @@ jobs:
           persist-credentials: false
           sparse-checkout: scripts
 
-      - name: Require every needed job to pass and main as the base
+      - name: Require every confirmation job to pass
         env:
-          RESULTS: ${{ needs.changes.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
-          WEB: ${{ needs.changes.outputs.web }}
-          NATIVE: ${{ needs.changes.outputs.native }}
-          CORE: ${{ needs.changes.outputs.core }}
-          INTERFACE: ${{ needs.changes.outputs.interface }}
-          TEST: ${{ needs.test.result }}
-          WEBKIT: ${{ needs.webkit.result }}
-          QUALIFICATION: ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
+          RESULTS: ${{ needs.interface.result }} ${{ needs.test.result }} ${{ needs.web.result }} ${{ needs.desktop.result }} ${{ needs.dependencies.result }}
+          QUALIFICATION: ${{ needs.webkit.result }} ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}
-          BASE: ${{ github.base_ref }}
         run: scripts/ci-result.sh
 
   nightly-report:
