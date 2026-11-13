@@ -1,6 +1,6 @@
 /* A view of the window (ui/ViewFrame.tsx): the picker's content swaps out and the view
    fills the window edge to edge, in the picker's own geometry: the search bar's
-   header (the back chevron on the tile column, the view's name, then its search
+   header (the back chevron on the tile column, the title or search
    starting on the title column), one body, and the footer's band. No card, border,
    corner or shadow of its own: it is the window, as the picker is. */
 :root[data-view] main { visibility: hidden; }
@@ -18,19 +18,18 @@
 }
 @keyframes ui-view-fade { from { opacity: 0; } }
 .ui-view-head {
-  flex: none; display: grid; grid-template-columns: calc(var(--row-pad) + var(--tile)) auto minmax(0, 1fr);
+  flex: none; display: grid; grid-template-columns: calc(var(--row-pad) + var(--tile)) minmax(0, 1fr);
   align-items: center; column-gap: var(--row-gap); min-height: var(--header-h);
   padding: var(--inset); border-block-end: var(--border-width) solid var(--separator);
 }
-/* The chevron centres on the tile column, where the bird sits; the name follows so
-   the field after it starts no earlier than the title column. */
+/* Use a full 32px square (44px for coarse pointers), centred on the tile slot.
+   The control-size glyph and the search field share the header's centre line. */
 .ui-view-head > .ui-view-back.ui-button[data-variant] {
   --icon-button-size: var(--hit); justify-self: start;
   margin-inline-start: calc(var(--row-pad) + (var(--tile) - var(--hit)) / 2);
 }
 .ui-view-title { min-width: 0; margin: 0; color: var(--text); font-size: var(--type-title-size); line-height: var(--type-title-line); font-weight: var(--strong); overflow-wrap: anywhere; }
-.ui-view-title:not([data-chip]) { grid-column: 2 / -1; }
-.ui-view-title[data-chip] { margin-inline-start: calc(-1 * var(--space-2)); padding: var(--space-1) var(--space-2); border-radius: var(--r-small); background: var(--fill-control); font-size: var(--type-label-size); line-height: var(--type-label-line); }
+.ui-view-title, .ui-view-field { grid-column: 2; }
 /* A view's search is the picker's: frameless and large. */
 .ui-view-field { flex: 1; min-width: 0; height: var(--field-h); padding: 0; border: 0; background: transparent; color: var(--text); font-size: var(--type-search-size); line-height: var(--type-search-line); letter-spacing: -.025em; }
 .ui-view .ui-view-field:focus-visible { outline: none; box-shadow: none; }

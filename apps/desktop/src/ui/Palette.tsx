@@ -40,7 +40,7 @@ export function filterPalette(sections: readonly PaletteSection[], query: string
  * optional preview shows what the highlighted row would do. */
 export function Palette({ id, title, subtitle, description, placeholder, sections, onAction, onClose, preview, actionLabel, empty, initial, invoker }: {
   id: string;
-  /** The palette's name, also the token before the field ("Format", "Actions"). */
+  /** The palette's accessible name ("Format", "Actions"). */
   title: string;
   /** Whose choice this is ("For Word", "Default format"), in the footer's status place. */
   subtitle?: string | null;
@@ -66,11 +66,12 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const [query, setQuery] = useState("");
   const shown = useMemo(() => filterPalette(sections, query), [sections, query]);
   const items = useMemo(() => shown.flatMap((section) => section.items), [shown]);
-  const [highlight, setHighlight] = useState<string | undefined>(initial);
-  const current = items.find((item) => item.id === highlight) ?? items[0];
+  const [highlight, setHighlight] = useState({ id: initial, keyboard: false });
+  const current = items.find((item) => item.id === highlight.id) ?? items[0];
   const listId = useId(), titleId = useId(), descriptionId = useId();
   const optionId = (item: PaletteItem) => `${id}-${item.id}`;
   const field = useRef<HTMLInputElement>(null), frame = useRef<HTMLDivElement>(null);
+  const pointer = useRef<{ x: number; y: number } | null>(null);
   const leave = () => { if (frame.current) leaveView(frame.current); };
   const mac = currentPlatform() === "macos";
   // Esc, a click outside or Back hands the keyboard back to whatever had it.
@@ -86,9 +87,13 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     onClose("dismiss");
   };
   useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
+  // Reveal after the new highlight and its preview have laid out. Each key
+  // owns one reveal, including at a list boundary; hover and later preview
+  // renders never scroll a different row beneath a resting pointer.
   useLayoutEffect(() => {
-    if (current) document.getElementById(optionId(current))?.scrollIntoView?.({ block: "nearest" });
-  });
+    if (highlight.keyboard && highlight.id !== undefined)
+      document.getElementById(`${id}-${highlight.id}`)?.scrollIntoView?.({ block: "nearest" });
+  }, [highlight, id]);
   const run = (item: PaletteItem | undefined) => {
     if (!item || item.disabled || acted.current) return;
     acted.current = true;
@@ -98,7 +103,8 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   const move = (step: number) => {
     if (!items.length) return;
     const at = current ? items.indexOf(current) : -1;
-    setHighlight(items[Math.min(Math.max(at + step, 0), items.length - 1)]!.id);
+    const next = items[Math.min(Math.max(at + step, 0), items.length - 1)]!;
+    setHighlight({ id: next.id, keyboard: true });
   };
   // Keys belong to the whole palette, so they work wherever in it the keyboard is.
   const keyDown = (event: ReactKeyboardEvent) => {
@@ -115,12 +121,23 @@ export function Palette({ id, title, subtitle, description, placeholder, section
   return <ViewFrame title={title} titleId={titleId} role="dialog" aria-modal="true" aria-describedby={description ? descriptionId : undefined}
     back={{ label: say("palette-back"), onBack: dismiss }} status={subtitle} frameRef={frame}
     onKeyDown={keyDown}
+    onPointerMove={(event) => {
+      if (event.pointerType === "touch") return;
+      const previous = pointer.current;
+      pointer.current = { x: event.clientX, y: event.clientY };
+      if (previous?.x === event.clientX && previous.y === event.clientY) return;
+      const row = event.target instanceof Element ? event.target.closest(".ui-palette-row") : null;
+      const item = row && items.find((item) => optionId(item) === row.id);
+      if (item && highlight.id !== item.id) setHighlight({ id: item.id, keyboard: false });
+    }}
+    // The first wheel gesture can start before a pointermove in this view.
+    onWheel={(event) => { pointer.current = { x: event.clientX, y: event.clientY }; }}
     // A press anywhere but the field leaves the keyboard in the field; clicks still act.
     onMouseDown={(event) => { if (event.target !== field.current) event.preventDefault(); }}
     search={<input ref={field} className="ui-view-field" type="text" role="combobox" aria-label={placeholder} placeholder={placeholder}
       aria-expanded="true" aria-controls={listId} aria-autocomplete="list" aria-activedescendant={current ? optionId(current) : undefined}
       autoComplete="off" spellCheck={false} value={query}
-      onChange={(event) => { setQuery(event.target.value); setHighlight(undefined); }} />}
+      onChange={(event) => { setQuery(event.target.value); setHighlight({ id: undefined, keyboard: false }); }} />}
     actions={current && !current.disabled ? <Button variant="action" size="small" className="ui-palette-action" excludeFromTabOrder onPress={() => run(current)}
       label={actionLabel(current)} keys="Enter" /> : undefined}>
     <div className="ui-palette" data-preview={preview ? "" : undefined}>
@@ -131,7 +148,6 @@ export function Palette({ id, title, subtitle, description, placeholder, section
             {section.items.map((item) => <li key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
               aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
               aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
-              onPointerMove={() => { if (highlight !== item.id) setHighlight(item.id); }}
               onClick={() => run(item)}>
               <span className="ui-palette-lead" aria-hidden="true">{item.back ? <Icon name="back" /> : item.checked ? <Icon name="check" /> : item.icon}</span>
               <span className="ui-palette-label">{item.label}</span>

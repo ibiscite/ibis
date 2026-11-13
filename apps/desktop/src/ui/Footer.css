@@ -1,16 +1,22 @@
 /* The picker's footer band (ui/Footer.css): the library status on the label column
    after its dot in the icon slot, the Enter hints, then More on the last column. */
-footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); min-height: var(--footer-h); }
+footer { display: flex; align-items: center; padding-block: 0; padding-inline: calc(var(--inset) + var(--row-pad)) var(--inset); font-size: var(--type-label-size); line-height: var(--type-label-line); min-height: var(--footer-h); }
 /* The divider is outside the 24 px actions and their two 8 px gaps.
    Coarse targets grow the band instead of clipping; the grid below owns its columns. */
 .library-bar { flex: 1; min-width: 0; align-items: center; gap: var(--space-2); padding-block: var(--inset); }
 /* One line that never pushes the keys aside: the age after the source and count
    is cut first, and the tooltip and More keep the whole detail. */
-/* [C3] The dot centres on the tiles' column and the words start on the titles'
-   column, as every row above does; the dot is centred on the text's x-height:
-   its bottom rests on the baseline, then rises to half an ex. */
-.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: flex; align-items: baseline; gap: calc((var(--tile) - var(--status-dot)) / 2 + var(--row-gap)); color: var(--text-secondary); }
-.library-status > .status-dot { margin-inline-start: calc((var(--tile) - var(--status-dot)) / 2); }
+/* [C3] The same tile and label columns as a row, inside the footer's small
+   control. The dot is centred in its slot; the words share the actions' line. */
+.library-status { flex: 1; min-width: min(var(--status-min), 100%); display: grid; grid-template-columns: var(--tile) minmax(0, 1fr); align-items: baseline; gap: var(--row-gap); color: var(--text-secondary); }
+.library-status > .status-dot { justify-self: center; }
+/* The leading selector's plate starts on the row inset. Its inner row keeps
+   the same columns at rest, on hover and while the menu is open. */
+.library-bar .ui-button.library-status-trigger[data-variant] {
+  max-width: calc(100% + var(--row-pad)); margin-inline-start: calc(-1 * var(--row-pad));
+  padding-inline-start: calc(var(--row-pad) - var(--border-width)); justify-content: start;
+}
+.ui-button.library-status-trigger[data-variant]:is([data-pressed], [aria-expanded="true"]) > * { scale: none; }
 .library-words, .library-name { display: flex; min-width: 0; overflow: hidden; white-space: pre; }
 /* A long name is shortened before the state words; the age goes first of all. */
 .library-source { min-width: 3ch; flex-shrink: 100000; overflow: hidden; text-overflow: ellipsis; }

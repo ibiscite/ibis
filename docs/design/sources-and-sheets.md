@@ -2,7 +2,7 @@
 
 Every sheet uses [`ui/Sheet`](../../apps/desktop/src/ui/README.md), built on the same `ViewFrame` as the palettes. Its content composes the [layout parts](../design.md#how-the-design-changes); the screen supplies no spacing or separate overlay frame.
 
-Back centres its chevron on the rows' icon column, with the title on their label column and the same gutter. Its target is at least 32 px (44 px with a coarse pointer): transparent at rest, neutral row hover, shared pressed feedback and the shared keyboard-only focus ring; selection colour belongs to rows. The footer's Back and Esc keep one baseline without wrapping. Back or Esc restores the parent's query, selection, scroll and focus; reveal the parent before returning focus, without scrolling it.
+Back is a 32 px square (44 px with a coarse pointer, scaled with text), with the shared control-size chevron centred on the search bird and the rows' tile column, vertically centred on the search field. It is transparent at rest, with neutral hover and a keyboard-only focus ring, and has an accessible label without a native tooltip. The search placeholder names a palette visually; its title only names the dialog for accessibility. A sheet without search keeps its title on the label column. The footer's Back and Esc keep one baseline without wrapping. Back or Esc restores the parent's query, selection, scroll and focus; reveal the parent before returning focus, without scrolling it.
 
 ## Source checks and passage reuse (planned)
 
