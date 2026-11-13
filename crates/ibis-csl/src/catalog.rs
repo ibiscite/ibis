@@ -2,8 +2,9 @@
 //! and only what a request names is unpacked, so the bundle costs disk, not
 //! memory. `scripts/csl-bundle.mjs` writes it; a test checks every file's hash.
 use crate::FormatError;
-use serde::Deserialize;
+use schemars::JsonSchema;
 use serde::de::IgnoredAny;
+use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::io::Read;
 use std::sync::{Arc, LazyLock, Mutex};
@@ -14,8 +15,8 @@ const MAGIC: &[u8] = b"IBISCSL1";
 /// still fails as `Runtime` instead of allocating what a corrupt header asks for.
 const MAX_FRAME_BYTES: usize = 16 * 1024 * 1024;
 
-/// Which upstream release a part of the bundle was built from.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize, Serialize, JsonSchema)]
+#[schemars(rename = "UpstreamRelease")]
 pub struct Release {
     pub repo: String,
     pub tag: String,
@@ -72,35 +73,45 @@ struct StyleRow {
     length: usize,
 }
 
-/// One entry in the style list.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(rename = "StyleInfo")]
 pub struct StyleEntry {
     pub id: String,
     pub title: String,
-    /// The style's own last-changed date, `YYYY-MM-DD`: its only version marker.
+    /// The style's own last-changed date: its only version marker.
     pub updated: String,
-    /// The independent style this one borrows its rules from.
-    pub parent: Option<String>,
-    pub default_locale: Option<String>,
-    pub format: Option<String>,
-    pub fields: Vec<String>,
+    /// One of the styles offered first.
     pub curated: bool,
+    /// The independent style whose rules this one uses.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
+    /// The language this style is written in unless a request names another.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_locale: Option<String>,
+    /// CSL's citation format, such as `author-date`, `numeric` or `note`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<String>,
 }
 
-/// One language styles can be written in.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(rename = "LocaleInfo")]
 pub struct LocaleEntry {
     pub tag: String,
     pub native: String,
     pub english: String,
 }
 
-/// A page of the style list, with what the whole bundle holds.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, JsonSchema)]
+#[schemars(rename = "StylesResult")]
 pub struct StylePage {
     pub styles: Vec<StyleEntry>,
+    /// How many styles match the request, beyond this page.
     pub total: usize,
+    /// Every language a style can be written in.
     pub locales: Vec<LocaleEntry>,
+    /// Styles change only with an Ibis release; these say which release.
     pub styles_release: Release,
     pub locales_release: Release,
 }
