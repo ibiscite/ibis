@@ -37,8 +37,8 @@ export const menuLabels = { label: ".menu-popover .menu-label", outside: ".toolb
 export const forms = {
   form: ".citation-details",
   // Page's type and text share the locator's fill. Measure that whole control,
-  // just as Show as measures its whole pop-up or segmented control.
-  controls: ".citation-field > .toolbar-menu-control .ui-popup-button, .citation-field > .ui-segmented, .citation-field > .citation-locator, .citation-field > input",
+  // just as Show as measures its whole pop-up.
+  controls: ".citation-field > .toolbar-menu-control .ui-popup-button, .citation-field > .citation-locator, .citation-field > input",
 } as const;
 
 /** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
@@ -495,6 +495,14 @@ export const surfaces = {
   selector: ".ui-overlay, .menu-popover, .ui-popover, .peek-card, .ui-view",
   roles: ["--surface", "--surface-overlay", "--layer-base", "--layer-inset", "--layer-overlay", "--layer-view"],
 } as const;
+
+/** [C24 layers] One surface floats at a time: a menu opened inside another surface
+ * (ui/Layer marks it) is the only second one. */
+export function oneSurface(root: ParentNode = document): string[] {
+  const shown = [...root.querySelectorAll(surfaces.selector)].filter((node) => node.getBoundingClientRect().width
+    && !node.matches("[data-layer-within]") && !node.parentElement?.closest(surfaces.selector));
+  return shown.length > 1 ? [`[C24 layers] ${shown.length} surfaces at once: ${shown.map(label).join(", ")}`] : [];
+}
 
 /** A colour as the page paints it, in sRGB bytes and alpha: a canvas resolves any syntax the engine accepts. */
 function paint(colour: string): [number, number, number, number] {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { LayerScope } from "./Layer";
 import { LAYER_ORDER, closeOverlays, goBack, focusLost, useKeyOwner, useLayer, useNearestLayer, type LayerClose, type LayerKind } from "./layers";
 
 afterEach(cleanup);
@@ -8,6 +9,11 @@ afterEach(cleanup);
 function Layer({ kind, open = true, close }: { kind: LayerKind; open?: boolean; close: LayerClose }) {
   useLayer(kind, open, close);
   return null;
+}
+function Scoped({ kind, children }: { kind: LayerKind; children?: React.ReactNode }) {
+  const [open, setOpen] = useState(true);
+  const layer = useLayer(kind, open, () => { setOpen(false); });
+  return open ? <LayerScope layer={layer}><output>{kind}</output>{children}</LayerScope> : null;
 }
 function Nearest() {
   return <output>{useNearestLayer() ?? "none"}</output>;
@@ -121,4 +127,25 @@ test("the nearest layer is readable for words such as the footer's Esc hint", ()
   expect(container.textContent).toBe("sheet");
   rerender(<><Nearest /></>);
   expect(container.textContent).toBe("none");
+});
+
+test("opening a surface closes every menu or popover it is not inside, and a view any other view; typing closes nothing", async () => {
+  const shown = () => [...document.querySelectorAll("output")].map((node) => node.textContent);
+  function Picker({ step }: { step: number }) {
+    return <>
+      <Scoped kind="popover">{step >= 1 && <Scoped kind="menu" />}</Scoped>
+      {step >= 2 && <Scoped kind="search" />}
+      {step >= 3 && <Scoped kind="sheet" />}
+      {step >= 4 && <Scoped kind="palette" />}
+    </>;
+  }
+  const { rerender } = render(<Picker step={0} />);
+  // A menu inside the popover keeps it; Search does not close them; the sheet
+  // closes both; the palette closes the sheet.
+  const expected = [["popover", "menu"], ["popover", "menu", "search"], ["search", "sheet"], ["search", "palette"]];
+  for (const [at, after] of expected.entries()) {
+    rerender(<Picker step={at + 1} />);
+    await act(async () => {});
+    expect(shown()).toEqual(after);
+  }
 });
