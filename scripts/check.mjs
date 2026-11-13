@@ -100,8 +100,7 @@ export function checkPlan(files, { all = false, scriptsOnly = false, brandOnly =
   const scriptSteps = [
     ...inventory.filter((name) => /^check-[a-z-]+\.mjs$/.test(name) && (!scriptsOnly || name !== "check-agent-identity.mjs"))
       .map((name) => step(`Repository guard: ${name}`, "node", [`scripts/${name}`])),
-    // Each suite owns bounded subprocesses; serialize suites to keep their deadlines useful.
-    ...(related.length ? [step("Script tests", "node", ["--test", "--test-concurrency=1", ...related.map((name) => `scripts/${name}`)])] : []),
+    ...(related.length ? [step("Script tests", "node", ["--test", ...related.map((name) => `scripts/${name}`)])] : []),
     ...inventory.filter((name) => /^test_.*\.py$|\.test\.py$/.test(name))
       .filter((name) => scriptsOnly || all || !files || names.some((path) => path === `scripts/${name}` || path.replace(/\.py$/, ".test.py") === `scripts/${name}`))
       .map((name) => step(`Python script tests: ${name}`, python, ["-B", `scripts/${name}`])),
