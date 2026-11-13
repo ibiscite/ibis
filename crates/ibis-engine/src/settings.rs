@@ -705,6 +705,12 @@ fn snapshot(path: &Path) -> Snapshot {
 /// The empty lock file stays in place: removing it would split the lock domain.
 fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
     static WRITER: Mutex<()> = Mutex::new(());
+    // A save started while this thread already holds the writer would wait on
+    // itself forever: refuse it at once instead, and fail loudly in tests.
+    if HOLDING.get() {
+        debug_assert!(false, "a settings writer was started while this thread holds one");
+        return Err(SettingsError::Busy);
+    }
     #[cfg(test)]
     if WRITER.try_lock().is_err() {
         writer_attempted();
@@ -744,7 +750,12 @@ fn writer_lock(path: &Path) -> Result<WriterLock, SettingsError> {
         fs::TryLockError::WouldBlock => SettingsError::Busy,
         fs::TryLockError::Error(error) => SettingsError::Unreadable(error),
     })?;
+    HOLDING.set(true);
     Ok(WriterLock { file, _local: local })
+}
+
+thread_local! {
+    static HOLDING: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
 }
 
 struct WriterLock {
@@ -767,6 +778,7 @@ fn writer_attempted() {
 
 impl Drop for WriterLock {
     fn drop(&mut self) {
+        HOLDING.set(false);
         // Closing this descriptor alone is insufficient: a concurrently
         // spawned child may share its open file description until exec.
         // End the transaction's lock explicitly before releasing the file.
@@ -1113,6 +1125,18 @@ fn read_bounded(reader: impl Read) -> io::Result<Vec<u8>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    #[cfg_attr(debug_assertions, should_panic(expected = "while this thread holds one"))]
+    fn a_save_inside_a_settings_change_refuses_instead_of_waiting_forever() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let path = directory.path().join("settings.json");
+        let inner = path.clone();
+        let nested = update(&path, move |_| {
+            assert!(matches!(save(&inner, &Settings::default()), Err(SettingsError::Busy)));
+        });
+        assert!(nested.is_ok());
+    }
 
     #[test]
     fn overlapping_in_process_saves_wait_and_the_last_save_survives_reopen() -> Result<(), Box<dyn std::error::Error>> {
