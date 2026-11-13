@@ -349,6 +349,7 @@ general-login-unreadable = { $name } could not check whether it starts when you 
 general-menu-bar-label = Show in menu bar
 general-menu-bar-description = If hidden, open Ibis from Applications to come back here.
 general-paste-title = Pasting
+general-behavior-title = Behavior
 general-paste-label = Paste into the app you came from
 general-paste-key =
     { $platform ->

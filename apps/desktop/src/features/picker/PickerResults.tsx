@@ -66,6 +66,7 @@ export function PickerResults({
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
       onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
       source={source.sourceInChoices ? sourceChoice : undefined}
+      fallback={source.sourceAvailable ? source.sourceAction : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}

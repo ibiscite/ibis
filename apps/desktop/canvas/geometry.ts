@@ -66,6 +66,11 @@ export const stubs = { line: ".library-bar .library-words, .update-text", words:
 const tolerance = 1;
 
 /** Every rule broken on the mounted screen, as "[tag] part: detail". Empty when all hold. */
+/** Record identities are the engine's, never people's words. Every fixture's
+ * record ID carries this sentinel and differs from its citation key, so an ID
+ * shown in place of a key, a title or a name is seen wherever it appears. */
+export const identities = { sentinel: "zz-record-id-", said: "[title], [aria-label], [aria-description], [placeholder]" } as const;
+
 export function geometry(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const rtl = getComputedStyle(document.documentElement).direction === "rtl";
@@ -251,6 +256,10 @@ export function geometry(root: ParentNode = document): string[] {
     const cut = [...line.querySelectorAll<HTMLElement>(stubs.words)].some((words) => visible(words) && words.getBoundingClientRect().top < bottom - tolerance && words.scrollWidth > words.clientWidth + tolerance);
     if (cut && line.clientWidth + tolerance < short) failures.push(`[C8] ${name(line)}: cut to ${line.clientWidth}px, under --status-short (${short.toFixed(0)}px)`);
   }
+  const body = root instanceof Document ? root.body : root instanceof HTMLElement ? root : null;
+  const said = [body?.innerText ?? "", ...[...root.querySelectorAll(identities.said)].flatMap((node) => ["title", "aria-label", "aria-description", "placeholder"].map((attribute) => node.getAttribute(attribute) ?? ""))];
+  const leak = said.find((text) => text.includes(identities.sentinel));
+  if (leak !== undefined) failures.push(`[ids] a record ID reached people's words: ${leak.slice(Math.max(0, leak.indexOf(identities.sentinel) - 40), leak.indexOf(identities.sentinel) + 30)}`);
   return failures;
 }
 

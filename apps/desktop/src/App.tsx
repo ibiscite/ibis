@@ -195,7 +195,8 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   });
   // The format chooser's preview reads the chosen references' keys and never asks
   // the engine: an engine preview would replace the ticket the shelf copies with.
-  const previewKeys = output.ask?.selection.map((item) => item.id.key).filter(Boolean).join("\u0000") ?? "";
+  // A reference's citation key, never its record ID (the engine's, e.g. Zotero's item key).
+  const previewKeys = output.ask ? shownChoice.map((item) => item.key).filter(Boolean).join("\u0000") : "";
   const formatPreview = useCallback<FormatPreview>((other) => previewOf(other, previewKeys ? previewKeys.split("\u0000") : []), [previewKeys]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   // The command list (">") stands in for the results: ⌘1–9 has no row then.

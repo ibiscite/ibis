@@ -33,7 +33,9 @@
 .ui-row { transition: background-color var(--dur-1) ease-out; }
 .ui-row[data-highlighted] { background: var(--highlight); }
 .ui-details { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
-.ui-details > .ui-button { align-self: start; margin-inline-start: var(--heading-offset); }
+/* The disclosure row's chevron points to its rows, then down while they show. */
+.ui-details-mark { display: inline-flex; flex: none; color: var(--text-secondary); rotate: 180deg; }
+.ui-details-toggle[aria-expanded="true"] .ui-details-mark { rotate: -90deg; }
 .ui-row-lead { display: flex; flex: 1 1 var(--status-min); align-items: center; gap: var(--row-gap); min-width: 0; }
 .ui-row-icon { display: inline-flex; flex: none; justify-content: center; width: var(--tile); color: var(--text-secondary); }
 .ui-row-text { display: flex; flex: 1; flex-direction: column; min-width: 0; overflow-wrap: anywhere; }

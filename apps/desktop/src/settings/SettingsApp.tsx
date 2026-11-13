@@ -584,7 +584,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         {page === "general" && (
           <>
             {shortcutSetting}
-            <Section id="startup"><Group>
+            <Section id="startup" title={text("general-behavior-title")}><Group>
                 <Row id="login" {...rowDetails("login", text)} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : rowDetails("login", text).description} {...feedback("login")}>
                   <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
                     onChange={(on) => { void changeLogin(on).catch(() => undefined); }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
