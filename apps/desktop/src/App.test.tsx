@@ -1,3 +1,4 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, expect, test, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
@@ -1809,7 +1810,7 @@ test("a saved citation style, density and text size come back at start", async (
   });
 });
 
-const savedOutput = (preferences: unknown) => (preferences as { output?: string }).output ?? null;
+const savedOutput = (preferences: unknown) => (preferences as { output?: string; key_output?: string }).key_output ?? (preferences as { output?: string }).output ?? null;
 
 // Every key output the engine lists; styles wait for the formatter and have their own tests.
 test.each(OUTPUTS.filter((output) => !output.style).map((output) => output.id))("choosing %s survives a restart without copying", async (choice) => {
@@ -1952,13 +1953,13 @@ test("a choice made while saved choices load is kept and saved, not replaced", a
   backend({
     // Reads what is on disk when it answers, as the settings file does.
     picker_preferences: async () => { await loaded; return { output: saved.at(-1)?.output ?? "apa", density: "compact", larger_text: false }; },
-    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string }); return null; },
+    picker_preferences_saved: ({ preferences }) => { saved.push(preferences as { output?: string; key_output?: string }); return null; },
   });
   render(<App />);
   await waitFor(() => formatButton());
   chooseFormat("cite");
   await act(async () => { finish(); await loaded; });
-  await waitFor(() => expect(saved).toEqual([{ output: "cite" }]));
+  await waitFor(() => expect(saved).toEqual([{ key_output: "cite" }]));
   expect(formatValue()).toBe("cite");
 });
 
@@ -2599,7 +2600,7 @@ test("the footer names the source and count, the age only when it matters, and t
 test("the keys sheet names what Enter does from the same answer as the footer", async () => {
   backend({
     search: () => [result("a", "First")],
-    picker_destination: () => ({ app: "Example Writer", app_id: "example.writer", app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: true, output_question: null, paste: null, paste_question: false, can_choose_paste: false }),
+    picker_destination: () => (fixtureDestination({ app: "Example Writer", app_id: "example.writer", app_identity: null, unreadable: false, can_paste: true, paste: null, paste_question: false, can_choose_paste: false, format: formatAnswer("pandoc", "yours") })),
   });
   render(<App />);
   const box = screen.getByLabelText("Search references");

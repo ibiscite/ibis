@@ -2,6 +2,7 @@ import type { PickerCommand, ShortcutRefusal } from "../bindings";
 import type { MessageId } from ".";
 
 export const SHORTCUT_ACTIONS = {
+  copyCitation: "shortcuts-action-copy-only",
   chooseSource: "shortcuts-action-choose-source", revealSource: "shortcuts-action-reveal-source", source: "shortcuts-action-source", open: "shortcuts-action-open", changeLast: "shortcuts-action-change-last", copy: "shortcuts-action-copy",
   add: "shortcuts-action-add", move: "shortcuts-action-move", pick: "shortcuts-action-pick", peek: "shortcuts-action-peek", escape: "shortcuts-action-escape",
   format: "shortcuts-action-format", more: "shortcuts-action-more", pin: "shortcuts-action-pin",
@@ -44,6 +45,8 @@ export function shortcutRefusalMessage(refusal: unknown): ShortcutProblem {
 }
 
 export const SETTINGS_IDS = [
+  "citations-unlisted",
+  "settings-changed", "citations-documents", "citations-keys", "citations-apps", "citations-forget", "citations-writings", "settings-open-file", "settings-file-description",
   "settings-shortcut-words", "settings-details", "settings-use-default", "settings-default-restored", "settings-undo-default",
   "command-install", "command-remove", "command-checking", "command-missing", "command-matching", "command-different", "command-foreign", "command-profile", "command-copy", "command-copied", "command-failed",
   "backup-words", "backup-title", "backup-label", "backup-description", "backup-button", "backup-saved",
@@ -52,7 +55,7 @@ export const SETTINGS_IDS = [
   "backup-setting-library", "backup-setting-larger-text", "backup-setting-shortcut",
   "backup-value-default", "backup-value-on", "backup-value-off", "backup-value-zotero", "backup-value-zotero-many", "backup-value-zotero-group",
   "backup-problem-not-downloaded", "backup-problem-unreadable", "backup-problem-not-a-backup", "backup-problem-settings-file",
-  "backup-problem-newer", "backup-problem-invalid", "backup-problem-settings-unusable", "backup-problem-changed", "backup-problem-not-saved",
+  "backup-problem-newer", "backup-problem-invalid", "backup-problem-settings-unusable", "backup-problem-busy", "backup-problem-changed", "backup-problem-not-saved",
   "citations-key-formats", "citations-style-formats", "citations-filter-formats",
   "look-sample-title-2", "look-sample-title-3",
   "settings-read-only",

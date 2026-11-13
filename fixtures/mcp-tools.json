@@ -306,6 +306,10 @@
     "name": "cite",
     "outputSchema": {
       "properties": {
+        "bibliography": {
+          "description": "The selected writing's .bib checks; filenames only.",
+          "type": "object"
+        },
         "destination": {
           "description": "What Ibis does for the app named by for_app, with pasting on and permitted.",
           "type": "object"

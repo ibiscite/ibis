@@ -129,8 +129,8 @@ exposed by the flake but are not built by this runner matrix.
 
 The workflow runs for packaging, Cargo lock/manifest and desktop dependency
 changes, weekly and on manual dispatch. It has read-only permissions and
-reports independently of the required **CI result**. Generated locks and the
-desktop build log are saved as artifacts.
+confirms builds after merge, independently of the local merge gate. Generated
+locks and the desktop build log are saved as artifacts.
 
 ## Agents: keep the pnpm hash with the lock
 

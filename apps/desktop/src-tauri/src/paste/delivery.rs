@@ -234,7 +234,7 @@ pub(super) fn deliver<D: Desk>(desk: &D, proof: Option<&D::Proof>, enabled: bool
 }
 
 pub(super) fn with_paste_settings(path: &std::path::Path, deliver: impl FnOnce(bool) -> Delivered) -> Delivered {
-    let loaded = ibis_core::settings::load(path);
+    let loaded = ibis_engine::settings::load(path);
     if loaded.problem.is_some() {
         return Delivered::copied(CopyReason::PasteUnavailable);
     }

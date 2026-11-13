@@ -43,12 +43,13 @@ export function Group({ label, children }: { label?: string; children: ReactNode
  * description, then its accessory (a control or buttons) at the end, which wraps
  * below when the row is narrow. `labelHidden` keeps the label for screen readers
  * only, for a row whose control names itself (a picture choice). */
-export function Row({ id, label, description, icon, children, problem, highlighted, pending, reset, labelHidden = false, item = false }: {
+export function Row({ id, label, description, icon, children, problem, highlighted, pending, reset, labelHidden = false, item = false, changed = Boolean(reset) }: {
   id?: string; label: ReactNode; description?: ReactNode; icon?: ReactNode; children?: ReactNode;
   problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
   reset?: { label: string; onReset: () => void; disabled?: boolean };
   /** In a labelled Group (a list). */
   item?: boolean;
+  changed?: boolean;
 }) {
   const { text } = useInterfaceMessages();
   const Element = item ? "li" : "div";
@@ -57,6 +58,7 @@ export function Row({ id, label, description, icon, children, problem, highlight
       {icon && !labelHidden && <span className="ui-row-icon" aria-hidden="true">{icon}</span>}
       <span className="ui-row-text">
         <span id={id} dir="auto">{label}</span>
+        {changed && <span className="ui-row-description">{text("settings-changed")}</span>}
         {description && <span id={id ? `${id}-description` : undefined} className="ui-row-description" dir="auto">{description}</span>}
       </span>
     </span>

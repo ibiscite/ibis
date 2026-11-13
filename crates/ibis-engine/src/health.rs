@@ -1,7 +1,8 @@
 //! Source health over the engine's published state; inspection is read-only.
 use super::{Engine, LibraryInfo};
 use crate::Cancellation;
-use ibis_core::{contract::*, settings};
+use crate::settings;
+use ibis_core::contract::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use std::{

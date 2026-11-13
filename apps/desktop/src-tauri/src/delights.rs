@@ -1,7 +1,7 @@
 //! One session owner claims feedback before the existing settings writer flushes it.
 use std::collections::BTreeSet;
 
-use ibis_core::settings::Delights;
+use ibis_engine::settings::Delights;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager};
 

@@ -811,10 +811,7 @@ fn destination_note(destination: &Destination) -> String {
         }
         Decision::Copy(_) => format!("Ibis copies for {name}"),
     };
-    match destination.output_question {
-        Some(_) => format!("note: {delivery}; the app asks once which output {name} needs."),
-        None => format!("note: {delivery}."),
-    }
+    format!("note: {delivery}.")
 }
 
 fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, flags: &str) -> String {

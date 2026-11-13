@@ -297,7 +297,7 @@ fn macos_shortcut(
 }
 
 /// Read fresh state on the main thread, including after a keyboard-layout change.
-pub(crate) fn show_shortcut(app: &AppHandle) {
+pub(crate) fn show_shortcut<R: Runtime>(app: &AppHandle<R>) {
     let handle = app.clone();
     report(
         app.run_on_main_thread(move || {

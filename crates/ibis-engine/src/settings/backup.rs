@@ -27,7 +27,7 @@ use serde_json::{Map, Value};
 use thiserror::Error;
 
 use super::{LibrarySetting, MAX_SETTINGS_BYTES, PrimaryRead, SCHEMA_VERSION, Settings, SettingsError, Shortcuts};
-use crate::destination::System;
+use ibis_core::destination::System;
 
 /// Version of the backup format this build reads and writes.
 pub const FORMAT: u64 = 1;
@@ -40,16 +40,17 @@ const MARKER: &str = "ibis_settings_backup";
 /// network use (decision 0008), and the Zotero profile, a name that means
 /// nothing elsewhere. Formats per app stay too, like the apps Ibis may paste
 /// into. A restore keeps this computer's values for them.
-pub const LOCAL: [&str; 9] = [
+pub const LOCAL: [&str; 10] = [
     "app_outputs",
+    "suggestion_reports",
+    "key_formats_used",
     "picker_windows",
     "delights",
-    "project_bibliography",
     "editor_endpoint",
     "update_checks",
     "zotero_profile",
-    "writing_projects",
-    "writing_project_apps",
+    "writings",
+    "writing_apps",
 ];
 
 /// A backup read and checked whole.
@@ -75,6 +76,8 @@ pub enum BackupProblem {
     Invalid,
     /// This computer's settings are damaged, from a newer Ibis or unreadable.
     SettingsUnusable,
+    /// Another Ibis process holds the settings writer lock.
+    Busy,
     /// The settings changed, or another backup was chosen, after the preview.
     Changed,
     NotSaved,
@@ -377,10 +380,11 @@ pub fn plan(current: &Settings, backup: &Backup, exists: impl FnOnce(&Path) -> b
     restored.schema_version = SCHEMA_VERSION;
     restored.picker_windows = current.picker_windows.clone();
     restored.delights = current.delights.clone();
-    restored.project_bibliography = current.project_bibliography.clone();
-    restored.writing_projects = current.writing_projects.clone();
-    restored.writing_project_apps = current.writing_project_apps.clone();
+    restored.writings = current.writings.clone();
+    restored.writing_apps = current.writing_apps.clone();
     restored.app_outputs = current.app_outputs.clone();
+    restored.suggestion_reports = current.suggestion_reports.clone();
+    restored.key_formats_used = current.key_formats_used;
     restored.editor_endpoint = current.editor_endpoint.clone();
     restored.update_checks = current.update_checks;
     restored.zotero_profile = current.zotero_profile.clone();
@@ -457,6 +461,7 @@ fn is_damaged(problem: Option<&SettingsError>) -> bool {
 /// left alone.
 pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
     let _writer = super::writer_lock(path)?;
+    let before = super::snapshot(path);
     let mut loaded = super::load(path);
     let missing = loaded.primary_read == PrimaryRead::Missing;
     let repair = needs_repair(&loaded);
@@ -472,7 +477,10 @@ pub fn restore(path: &Path, plan: &Plan) -> Result<Settings, BackupError> {
         return Err(BackupError::Changed);
     }
     if plan.restored != loaded.settings || repair {
-        super::write_settings(path, &plan.restored, damaged)?;
+        super::write_settings_checked(path, &plan.restored, damaged, Some(&before)).map_err(|error| match error {
+            SettingsError::Changed => BackupError::Changed,
+            other => BackupError::Settings(other),
+        })?;
     }
     Ok(plan.restored.clone())
 }

@@ -82,7 +82,7 @@ try {
           if (command === "picker_preferences") return preferences;
           if (command === "save_picker_preferences") { Object.assign(preferences, args.preferences); return 1; }
           if (command === "picker_preferences_saved") return { preferences };
-          if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, automatic: null, remembered: null, unreadable: false, can_paste: false, output_question: null, paste: null, paste_question: false, can_choose_paste: false };
+          if (command === "picker_destination") return { app: shelfDetails === "recents" ? "Invented Writer" : null, app_id: shelfDetails === "recents" ? "invented.writer" : null, app_identity: null, find_open: false, usual_format: "apa", format: { output: { kind: "key", syntax: "pandoc", command: null }, id: "pandoc", from: "yours", kind: "keys" }, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false };
           if (command === "shortcut_status") return { shortcut: "CommandOrControl+Shift+Y", registered: true, error: shortcutNotice ? "Synthetic shortcut refusal" : null };
           if (command === "library_status") return library;
           if (command === "search" && args.query.text === "refuse") throw Error("synthetic search refusal");

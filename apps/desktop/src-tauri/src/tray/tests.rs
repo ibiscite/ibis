@@ -44,7 +44,7 @@ fn no_library_offers_a_file_and_only_offers_zotero_when_detected() {
 #[test]
 fn a_loaded_zotero_library_shows_its_count_and_checked_choice() {
     let status = loaded("Zotero library", true);
-    let source = Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into());
+    let source = Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into());
     let mut choices = LibraryChoices::default();
     choices.observe(Some(&source), Some(&source));
     assert_eq!(
@@ -167,7 +167,7 @@ fn help_groups_shortcuts_news_feedback_reset_and_the_copyable_build() {
 #[test]
 fn switching_choices_moves_the_check_only_after_the_library_opens_and_retains_the_file() {
     let file = Source::File("thesis.bib".into());
-    let zotero = Source::Zotero(ibis_core::settings::ZoteroLibrary::User.into());
+    let zotero = Source::Zotero(ibis_engine::settings::ZoteroLibrary::User.into());
     let mut choices = LibraryChoices::default();
     choices.observe(Some(&file), Some(&file));
     choices.observe(Some(&zotero), Some(&file));

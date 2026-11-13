@@ -1,8 +1,9 @@
+import { fixtureDestination, formatAnswer } from "./testing/format";
 import { afterEach, expect, test } from "vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import type { PickerDestination, WritingProjectsView } from "./api";
+import type { PickerDestination, WritingsView } from "./api";
 import type { FilePreview } from "./bindings";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 
@@ -13,12 +14,10 @@ const pending = <T,>() => {
   const promise = new Promise<T>((done) => { resolve = done; });
   return { promise, resolve };
 };
-const writingDestination = (name: string, format: "cite" | "typst", context: [number, number]): PickerDestination => ({
-  app: "Example Editor", app_id: "example.editor", app_identity: null, automatic: null, remembered: "pandoc",
-  unreadable: false, can_paste: false, output_question: "editor", paste: null, paste_question: false, can_choose_paste: false,
-  writing_project: { id: name, name, output: format, bibliography: "refs.bib" },
-  writing_context: `opening-${context[0]}`, context_version: context,
-});
+const writingDestination = (name: string, format: "cite" | "typst", context: [number, number]): PickerDestination => (fixtureDestination({
+  app: "Example Editor", app_id: "example.editor", app_identity: null, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
+  writing: { id: name, name, output: format, bibliography: "refs.bib" },
+  writing_context: `opening-${context[0]}`, context_version: context, format: formatAnswer(format, "writing") }));
 
 test("Enter pressed during reopening waits for the newly captured project and copies its fresh preview once", async () => {
   const first = writingDestination("Project A", "cite", [1, 0]);
@@ -84,19 +83,17 @@ test("a bibliography read finishing for the same project refreshes a waiting Ent
   expect(copied).toEqual(["cite:[1,1] checked against refs.bib"]);
 });
 
-test("leaving a writing project restores the app's output and copies a fresh preview", async () => {
+test("leaving a writing restores the app's output and copies a fresh preview", async () => {
   const project = { id: "synthetic-project", name: "Field Guide", output: "cite", bibliography: null };
   let generation = 1;
   let selected: string | null = project.id;
-  const view = (): WritingProjectsView => ({ projects: [project], selected, context: `opening-${generation}`, session_only: false });
-  const destination = (): PickerDestination => ({ app: "Example Editor", app_id: "example.editor", app_identity: null,
-    automatic: null, remembered: "typst", unreadable: false, can_paste: false, output_question: "editor",
-    paste: null, paste_question: false, can_choose_paste: false, writing_project: selected ? project : null,
-    writing_context: `opening-${generation}`, context_version: [generation, 0] });
+  const view = (): WritingsView => ({ writings: [project], selected, context: `opening-${generation}`, session_only: false });
+  const destination = (): PickerDestination => (fixtureDestination({ app: "Example Editor", app_id: "example.editor", app_identity: null,     unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false, writing: selected ? project : null,
+    writing_context: `opening-${generation}`, context_version: [generation, 0], format: formatAnswer(selected ? project.output : "typst", selected ? "writing" : "app") }));
   const copied: string[] = [];
   backend({
-    search: () => [result("a", "Synthetic source")], picker_destination: destination, writing_projects: view,
-    edit_writing_project: async ({ context, action }) => {
+    search: () => [result("a", "Synthetic source")], picker_destination: destination, writings: view,
+    edit_writing: async ({ context, action }) => {
       expect(context).toBe(`opening-${generation}`);
       expect(action).toEqual({ kind: "select", id: null });
       selected = null;
@@ -112,40 +109,40 @@ test("leaving a writing project restores the app's output and copies a fresh pre
   const formatButton = () => within(screen.getByLabelText("Search references").closest("header")!).getByRole("button", { name: /^Citation format / });
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Field Guide"));
   fireEvent.click(formatButton());
-  fireEvent.click(await screen.findByRole("option", { name: "Writing Projects…" }));
-  const dialog = await screen.findByRole("dialog", { name: "Writing Projects" });
-  fireEvent.click(await within(dialog).findByRole("button", { name: "No Writing Project" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull());
+  fireEvent.click(await screen.findByRole("option", { name: "New writing…" }));
+  const dialog = await screen.findByRole("dialog", { name: "Writings" });
+  fireEvent.click(await within(dialog).findByRole("button", { name: "No Writing" }));
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
   await waitFor(() => expect(formatButton().getAttribute("aria-label")).toContain("Typst"));
   expect(formatButton().getAttribute("aria-label")).not.toContain("Field Guide");
   await act(async () => { fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" }); });
   await waitFor(() => expect(copied).toEqual(["typst:[2,0]"]));
 });
 
-async function openWritingProjects() {
+async function openWritings() {
   const format = within(screen.getByLabelText("Search references").closest("header")!).getByRole<HTMLButtonElement>("button", { name: /^Citation format / });
   await waitFor(() => expect(format.disabled).toBe(false));
   fireEvent.click(format);
-  fireEvent.click(await screen.findByRole("option", { name: "Writing Projects…" }));
-  return screen.findByRole("dialog", { name: "Writing Projects" });
+  fireEvent.click(await screen.findByRole("option", { name: "New writing…" }));
+  return screen.findByRole("dialog", { name: "Writings" });
 }
 
 test("Back and return keep a sheet's typed draft, selection, scroll and focus", async () => {
   backend({ search: () => [result("a", "Synthetic source")],
-    writing_projects: () => ({ projects: [], selected: null, active: null, context: "opening-1", session_only: false }) });
+    writings: () => ({ writings: [], selected: null, active: null, context: "opening-1", session_only: false }) });
   render(<App />);
   await screen.findByText("Synthetic source");
-  await openWritingProjects();
-  fireEvent.click(await screen.findByRole("button", { name: "New Writing Project…" }));
-  const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Project name" });
+  await openWritings();
+  fireEvent.click(await screen.findByRole("button", { name: "New Writing…" }));
+  const field = screen.getByRole<HTMLInputElement>("textbox", { name: "Writing name" });
   fireEvent.change(field, { target: { value: "Unfinished field guide" } });
   act(() => { field.focus(); field.setSelectionRange(3, 8); });
   const body = document.querySelector<HTMLElement>(".ui-sheet-body")!;
   body.scrollTop = 120;
   fireEvent.keyDown(field, { key: "ArrowLeft", altKey: true });
-  expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull();
-  await openWritingProjects();
-  const restored = await screen.findByRole<HTMLInputElement>("textbox", { name: "Project name" });
+  expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull();
+  await openWritings();
+  const restored = await screen.findByRole<HTMLInputElement>("textbox", { name: "Writing name" });
   expect(restored.value).toBe("Unfinished field guide");
   expect(document.activeElement).toBe(restored);
   expect([restored.selectionStart, restored.selectionEnd]).toEqual([3, 8]);
@@ -155,16 +152,16 @@ test("Back and return keep a sheet's typed draft, selection, scroll and focus", 
 test("a fresh Enter after selecting a project waits for its delayed destination and copies the new format once", async () => {
   const first = writingDestination("Project A", "cite", [1, 0]);
   const second = writingDestination("Project B", "typst", [2, 0]);
-  const projects = [first.writing_project!, second.writing_project!];
-  const save = pending<WritingProjectsView>(), destinationRead = pending<PickerDestination>();
+  const projects = [first.writing!, second.writing!];
+  const save = pending<WritingsView>(), destinationRead = pending<PickerDestination>();
   let saved = false, destinationReadStarted = false;
   const copied: string[] = [];
-  const view = (): WritingProjectsView => ({ projects, selected: saved ? "Project B" : "Project A", context: saved ? "opening-2" : "opening-1", session_only: false });
+  const view = (): WritingsView => ({ writings: projects, selected: saved ? "Project B" : "Project A", context: saved ? "opening-2" : "opening-1", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
     picker_destination: () => { if (!saved) return first; destinationReadStarted = true; return destinationRead.promise; },
-    writing_projects: view,
-    edit_writing_project: async ({ context, action }) => {
+    writings: view,
+    edit_writing: async ({ context, action }) => {
       expect(context).toBe("opening-1");
       expect(action).toEqual({ kind: "select", id: "Project B" });
       const next = await save.promise;
@@ -177,11 +174,11 @@ test("a fresh Enter after selecting a project waits for its delayed destination 
   });
   render(<App />);
   await screen.findByText("Synthetic source");
-  const dialog = await openWritingProjects();
+  const dialog = await openWritings();
   fireEvent.click(await within(dialog).findByRole("button", { name: "Use Project B" }));
-  expect(screen.getByRole("dialog", { name: "Writing Projects" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Writings" })).toBeTruthy();
   await act(async () => { save.resolve({ ...view(), selected: "Project B", context: "opening-2" }); });
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
   await waitFor(() => expect(destinationReadStarted).toBe(true));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   expect(copied).toEqual([]);
@@ -192,17 +189,17 @@ test("a fresh Enter after selecting a project waits for its delayed destination 
 test("a same-format project switch starts a new copy and an older copy cannot deliver its proof or replace the receipt", async () => {
   const first = writingDestination("Project A", "cite", [1, 0]);
   const second = writingDestination("Project B", "cite", [2, 0]);
-  const projects = [first.writing_project!, second.writing_project!];
+  const projects = [first.writing!, second.writing!];
   const oldCopy = pending<{ text: string; warnings: string[]; delivery: number }>();
   let selected = "Project A";
   const invoked: string[] = [], delivered: { text: unknown; delivery: unknown }[] = [];
   let hidden = 0;
-  const view = (): WritingProjectsView => ({ projects, selected, context: selected === "Project A" ? "opening-1" : "opening-2", session_only: false });
+  const view = (): WritingsView => ({ writings: projects, selected, context: selected === "Project A" ? "opening-1" : "opening-2", session_only: false });
   backend({
     search: () => [result("a", "Synthetic source")],
     picker_destination: () => selected === "Project A" ? first : second,
-    writing_projects: view,
-    edit_writing_project: async () => { selected = "Project B"; await emit("project:changed", [2, 0]); return view(); },
+    writings: view,
+    edit_writing: async () => { selected = "Project B"; await emit("project:changed", [2, 0]); return view(); },
     preview_file_citation: (request) => receipt(request.intent.context?.[0] === 2 ? "cite:Project B" : "cite:Project A"),
     copy_file_citation: (args) => {
       const text = prepared(args).preview.text;
@@ -217,9 +214,9 @@ test("a same-format project switch starts a new copy and an older copy cannot de
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Project A"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(invoked).toEqual(["cite:Project A"]));
-  const dialog = await openWritingProjects();
+  const dialog = await openWritings();
   fireEvent.click(await within(dialog).findByRole("button", { name: "Use Project B" }));
-  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writing Projects" })).toBeNull());
+  await waitFor(() => expect(screen.queryByRole("dialog", { name: "Writings" })).toBeNull());
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain("cite:Project B"));
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter" });
   await waitFor(() => expect(invoked).toEqual(["cite:Project A", "cite:Project B"]));

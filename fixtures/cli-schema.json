@@ -3523,13 +3523,17 @@
             ]
           },
           "Destination": {
-            "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+            "description": "What Ibis does for a named app: the format the engine chose for it from\nthe person's settings, and whether it pastes, with pasting on and\npermitted, as they are by default.",
             "properties": {
               "app": {
                 "$ref": "#/$defs/AppId"
               },
               "delivery": {
                 "$ref": "#/$defs/Decision"
+              },
+              "from": {
+                "$ref": "#/$defs/FormatFrom",
+                "description": "Which level chose `output`."
               },
               "name": {
                 "description": "The app's name, when Ibis knows it.",
@@ -3541,21 +3545,22 @@
               "output": {
                 "$ref": "#/$defs/OutputSpec"
               },
-              "output_question": {
+              "writing": {
                 "anyOf": [
                   {
-                    "$ref": "#/$defs/OutputQuestion"
+                    "$ref": "#/$defs/WritingName"
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "The app keeps `output` until a person answers this question in Ibis."
+                "description": "The writing that chose it, when one did."
               }
             },
             "required": [
               "app",
               "output",
+              "from",
               "delivery"
             ],
             "type": "object"
@@ -3797,6 +3802,31 @@
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           },
+          "FormatFrom": {
+            "description": "Which level chose a citation's format (decision 0042); the engine decides.",
+            "oneOf": [
+              {
+                "const": "writing",
+                "description": "The writing chosen for this app.",
+                "type": "string"
+              },
+              {
+                "const": "app",
+                "description": "The format this app was given when the person changed it there.",
+                "type": "string"
+              },
+              {
+                "const": "yours",
+                "description": "Your format for this kind of app.",
+                "type": "string"
+              },
+              {
+                "const": "suggestion",
+                "description": "Nothing was chosen; the format suits the kind of app. The first\npaste with it says so, once.",
+                "type": "string"
+              }
+            ]
+          },
           "FormattingProvenance": {
             "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
             "properties": {
@@ -4027,14 +4057,6 @@
               }
             ]
           },
-          "OutputQuestion": {
-            "description": "An app ID that cannot tell Ibis which output its document needs.",
-            "enum": [
-              "browser",
-              "editor"
-            ],
-            "type": "string"
-          },
           "OutputSpec": {
             "oneOf": [
               {
@@ -4223,6 +4245,23 @@
             },
             "required": [
               "text"
+            ],
+            "type": "object"
+          },
+          "WritingName": {
+            "additionalProperties": false,
+            "description": "The writing that chose a format.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
             ],
             "type": "object"
           }
@@ -5043,13 +5082,17 @@
             ]
           },
           "Destination": {
-            "description": "What Ibis does for a named app: the output it uses and whether it pastes,\nwith pasting on and permitted, as they are by default. A choice remembered\nin the app for one app is that person's and stays out of this answer.",
+            "description": "What Ibis does for a named app: the format the engine chose for it from\nthe person's settings, and whether it pastes, with pasting on and\npermitted, as they are by default.",
             "properties": {
               "app": {
                 "$ref": "#/$defs/AppId"
               },
               "delivery": {
                 "$ref": "#/$defs/Decision"
+              },
+              "from": {
+                "$ref": "#/$defs/FormatFrom",
+                "description": "Which level chose `output`."
               },
               "name": {
                 "description": "The app's name, when Ibis knows it.",
@@ -5061,21 +5104,22 @@
               "output": {
                 "$ref": "#/$defs/OutputSpec"
               },
-              "output_question": {
+              "writing": {
                 "anyOf": [
                   {
-                    "$ref": "#/$defs/OutputQuestion"
+                    "$ref": "#/$defs/WritingName"
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "The app keeps `output` until a person answers this question in Ibis."
+                "description": "The writing that chose it, when one did."
               }
             },
             "required": [
               "app",
               "output",
+              "from",
               "delivery"
             ],
             "type": "object"
@@ -5317,6 +5361,31 @@
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           },
+          "FormatFrom": {
+            "description": "Which level chose a citation's format (decision 0042); the engine decides.",
+            "oneOf": [
+              {
+                "const": "writing",
+                "description": "The writing chosen for this app.",
+                "type": "string"
+              },
+              {
+                "const": "app",
+                "description": "The format this app was given when the person changed it there.",
+                "type": "string"
+              },
+              {
+                "const": "yours",
+                "description": "Your format for this kind of app.",
+                "type": "string"
+              },
+              {
+                "const": "suggestion",
+                "description": "Nothing was chosen; the format suits the kind of app. The first\npaste with it says so, once.",
+                "type": "string"
+              }
+            ]
+          },
           "FormattingProvenance": {
             "description": "Hashes of the shipped processor and style/locale bundle used for CSL output.",
             "properties": {
@@ -5547,14 +5616,6 @@
               }
             ]
           },
-          "OutputQuestion": {
-            "description": "An app ID that cannot tell Ibis which output its document needs.",
-            "enum": [
-              "browser",
-              "editor"
-            ],
-            "type": "string"
-          },
           "OutputSpec": {
             "oneOf": [
               {
@@ -5743,6 +5804,23 @@
             },
             "required": [
               "text"
+            ],
+            "type": "object"
+          },
+          "WritingName": {
+            "additionalProperties": false,
+            "description": "The writing that chose a format.",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name"
             ],
             "type": "object"
           }

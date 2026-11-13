@@ -17,7 +17,7 @@ const PROBLEMS: Record<BackupProblem, MessageId> = {
   "not-downloaded": "backup-problem-not-downloaded", unreadable: "backup-problem-unreadable",
   "not-a-backup": "backup-problem-not-a-backup", "settings-file": "backup-problem-settings-file",
   newer: "backup-problem-newer", invalid: "backup-problem-invalid", "settings-unusable": "backup-problem-settings-unusable",
-  changed: "backup-problem-changed", "not-saved": "backup-problem-not-saved",
+  busy: "backup-problem-busy", changed: "backup-problem-changed", "not-saved": "backup-problem-not-saved",
 };
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 const SETTINGS: Record<string, MessageId> = {

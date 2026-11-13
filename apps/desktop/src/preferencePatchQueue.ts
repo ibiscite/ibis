@@ -197,7 +197,7 @@ export class PreferencePatchQueue {
         this.latest = {};
         this.failed = {};
       }
-      const pendingOutput = this.patch.output !== undefined;
+      const pendingOutput = this.patch.output !== undefined || this.patch.key_output !== undefined;
       if (value.preferences) {
         this.loaded = true;
         this.durable = value.preferences;

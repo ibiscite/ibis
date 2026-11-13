@@ -1,16 +1,14 @@
 //! The picker delegates acquisition, search, rendering and copy validation to the engine.
 use super::CommandError;
 use super::search::{Locator, SearchQuery, SearchReply, SearchResult};
-use ibis_core::{
-    contract::{
-        CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
-        KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
-    },
-    settings::{ZoteroLibraries, ZoteroLibrary},
+use ibis_core::contract::{
+    CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, Fingerprint, ItemOutcome, ItemRef,
+    KeySyntax, LibraryId, LibraryObject, LocatorTerm, Notice, OutputSpec, Snapshot, TextRun,
 };
 use ibis_engine::{
     Cancellation, Engine, Method, PreparedCitation,
     request::{SearchRequest, ZoteroLibrary as EngineZoteroLibrary},
+    settings::{ZoteroLibraries, ZoteroLibrary},
 };
 use serde::{Deserialize, Serialize};
 #[cfg(test)]
@@ -1213,6 +1211,9 @@ pub(crate) struct Recited {
 }
 
 impl Recited {
+    pub(crate) fn output(&self) -> &OutputSpec {
+        self.citation.request_output()
+    }
     pub(crate) fn ticket(&self) -> &str {
         &self.ticket
     }
@@ -1307,7 +1308,7 @@ mod tests {
         let data: String = (0..10_000).map(|index| format!("@book{{synthetic{index}, title={{Synthetic signals {index}}}, author={{Taylor, Avery}}, year={{2026}}, publisher={{Imaginary Press}}}}\n")).collect();
         std::fs::write(&path, data).unwrap_or_else(|e| panic!("{e}"));
         let start = Instant::now();
-        let loaded = ibis_core::settings::load(&settings_path);
+        let loaded = ibis_engine::settings::load(&settings_path);
         assert!(loaded.problem.is_none());
         let settings = start.elapsed();
         let warmed = std::env::var_os("IBIS_MEASURE_WARM").is_some();

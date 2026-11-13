@@ -28,6 +28,7 @@ import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
 import { DefaultFormat } from "./DefaultFormat";
+import { FormatSettings, useFormatSettings } from "./FormatSettings";
 import { Switch } from "../ui/Switch";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
@@ -70,6 +71,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   useScrollEdges(pageRef);
   const [preference, dispatchPreference] = useReducer(preferenceState, initialPreferences);
   const preferences = preference.value;
+  const formatSettings = useFormatSettings(api);
+  const keyFormatVisible = Boolean(formatSettings.view?.key_output_visible || preferences?.key_output);
   const [login, setLogin] = useState<LoginItem | null>(null);
   const [updates, setUpdates] = useState<boolean | null>(null);
   const latestLogin = useRef<LoginItem | null>(null);
@@ -280,8 +283,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         if (active && updateRequest === updateReads.current) readProblem("automatic", true);
       });
     };
-    const preferenceEvents = api.onPreferencesChanged((revision) => {
-      void queue.refresh(revision, () => active);
+    const preferenceEvents = api.onPreferencesChanged((revision, fields) => {
+      void queue.refresh(revision, () => active, fields);
     });
     readAll(false);
     void preferenceEvents.then(() => { if (active) void queue.load(() => active); }).catch(() => { if (active) dispatchPreference({ type: "read-failed" }); });
@@ -353,7 +356,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (!preferences) return Promise.reject(new Error("Settings unavailable"));
     if (!restoring) clearSettingUndo();
     edits.current += 1;
-    cause.current = next.output !== undefined ? "default-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
+    cause.current = next.output !== undefined ? "default-format" : next.key_output !== undefined ? "default-key-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
       : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
       : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "recent-citations";
     setProblemRow(null);
@@ -538,6 +541,8 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     }, () => { if (live.current && operation === versionCopy.current) setVersionCopyFailed(true); });
   };
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
+    && (row.id !== "default-key-format" || keyFormatVisible)
+    && (row.id !== "open-settings-file" || Boolean(api.openSettingsFile))
     && (row.id !== "paste-label" || permission?.pastes === true)
     && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))
     && (row.id !== "cli-command" || Boolean(api.cliStatus && api.setCliInstalled && api.copyCliProfile))
@@ -625,16 +630,19 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
           </>
         )}
         {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={(size) => { void chooseWindowSize(size).catch(() => undefined); }} />}
-        {page === "citations" && <Section id="citation-choices"><Group>
+        {page === "citations" && <><Section id="citation-choices"><Group>
           {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
             <DefaultFormat preferences={preferences} change={change} />
+          </Row>}
+          {preferences && keyFormatVisible && <Row id="default-key-format" {...rowDetails("default-key-format", text)} {...feedback("default-key-format")}>
+            <DefaultFormat preferences={preferences} kind="keys" change={change} />
           </Row>}
           {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
             <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
           </Row>}
           {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow resetSetting={settingUndo.reset} onEdit={clearSettingUndo} highlighted={highlighted === "editor-endpoint"}
-            api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint }} />}
-        </Group></Section>}
+            api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint, onEditorEndpoint: api.onEditorEndpoint }} />}
+        </Group></Section><FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>

@@ -116,11 +116,11 @@ test.each(["success", "failure"])("localized About keeps newer updates after an 
   await act(async () => { if (outcome === "success") old.resolve(false); else old.reject(); });
   expect(automatic).toHaveProperty("checked", true);
   expect(screen.getByText(pseudo.text("about-version", { name: "Ibis Nightly", version: "0.3.0" }))).toBeTruthy();
-  // One control per row: the switch alone; Check for Updates sits under the version, never a second Updates row.
+  // Use Default stays beside the switch; Check for Updates stays under the version.
   const check = screen.getByRole("button", { name: pseudo.text("about-check") });
   expect(check.closest(".ui-about-hero")).toBeTruthy();
   fireEvent.click(check);
-  fireEvent.click(automatic);
+  fireEvent.click(screen.getByRole("button", { name: pseudo.text("settings-use-default", { setting: pseudo.text("about-automatic") }) }));
   expect(api.setUpdateChecks).toHaveBeenCalledWith(false);
   await act(async () => state.closes[0]!());
   mounted.unmount();
@@ -1472,25 +1472,25 @@ test("the Ibis default-format menu saves one output by its name, restores refusa
   const { api, state } = fakeApi({ granted: true });
   const mounted = render(<SettingsApp api={api} initialPage="citations" />);
   const choose = async (name: string) => {
-    fireEvent.click(await screen.findByRole("button", { name: /^Default format / }));
+    fireEvent.click(await screen.findByRole("button", { name: /^In documents / }));
     expect(await screen.findByRole("menu")).toBeTruthy();
     fireEvent.click(screen.getByRole("menuitemradio", { name }));
     await act(async () => state.closes.at(-1)!());
   };
-  await choose("Typst");
-  expect(state.preferences).toMatchObject({ output: "typst" });
+  await choose("MLA");
+  expect(state.preferences).toMatchObject({ output: "modern-language-association" });
   await choose("APA");
   expect(state.preferences.output).toBe("apa");
   vi.spyOn(api, "setPickerPreferences").mockRejectedValueOnce(new Error("synthetic refusal"));
-  await choose("LaTeX \\cite");
+  await choose("MLA");
   await screen.findByRole("alert");
-  expect(screen.getByRole("button", { name: "Default format APA" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "In documents APA" })).toBeTruthy();
   expect(document.querySelector("select")).toBeNull();
   mounted.unmount();
   render(<SettingsApp api={api} initialPage={null} />);
   expect(screen.getByRole("heading", { level: 1 })).toHaveProperty("textContent", "General");
   fireEvent.click(screen.getByRole("option", { name: "Citations" }));
-  expect(await screen.findByRole("button", { name: "Default format APA" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "In documents APA" })).toBeTruthy();
 });
 
 
@@ -1534,7 +1534,7 @@ test("a failed update read retains the saved switch and explains the uncertainty
 
 
 test.each([
-  ["no remembered format.", "Default format, Citations", "Citations", "default-format"],
+  ["no remembered format.", "In documents, Citations", "Citations", "default-format"],
   ["Follow the system", "Appearance", "Appearance", "appearance"],
 ])("search includes the displayed description %s and reveals its row", async (query, name, page, id) => {
   const { api } = fakeApi({ granted: true });
@@ -1866,6 +1866,53 @@ test("setting defaults appear only for changed values, restore with Undo and sur
   render(<SettingsApp api={api} initialPage="look" />);
   expect(await screen.findByRole("radio", { name: "Comfortable" })).toHaveProperty("checked", true);
   expect(state.preferences.appearance).toBe("dark");
+});
+
+test.each([
+  ["output", "modern-language-association", "apa", "In documents", "MLA", "APA"],
+  ["key_output", "typst", "pandoc", "In Markdown, LaTeX and Typst", "Typst", "Pandoc"],
+] as const)("search reveals %s, restores its own kind's default and retires Undo on a live file edit", async (field, chosen, fallback, label, chosenName, fallbackName) => {
+  const { api, state } = fakeApi({}, { output: "modern-language-association", key_output: "typst" });
+  const mounted = render(<SettingsApp api={api} initialPage="general" />);
+  fireEvent.change(screen.getByRole("searchbox", { name: "Search Settings" }), { target: { value: label } });
+  fireEvent.click(await screen.findByRole("option", { name: `${label}, Citations` }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: `${label} ${chosenName}` })));
+  fireEvent.click(screen.getByRole("button", { name: `Use Default for ${label}` }));
+  fireEvent.click(await screen.findByRole("button", { name: `Undo Restore Default for ${label}` }));
+  await waitFor(() => expect(screen.getByRole("button", { name: `${label} ${chosenName}` })).toBeTruthy());
+  fireEvent.click(screen.getByRole("button", { name: `Use Default for ${label}` }));
+  await screen.findByRole("button", { name: `Undo Restore Default for ${label}` });
+  expect(state.preferences[field]).toBe(fallback);
+  expect(screen.getByRole("button", { name: `${label} ${fallbackName}` })).toBeTruthy();
+  state.preferences = { ...state.preferences, [field]: chosen };
+  await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
+  expect(screen.queryByRole("button", { name: `Undo Restore Default for ${label}` })).toBeNull();
+  expect(screen.getByRole("button", { name: `${label} ${chosenName}` })).toBeTruthy();
+  mounted.unmount();
+  render(<SettingsApp api={api} initialPage="citations" />);
+  expect(await screen.findByRole("button", { name: `${label} ${chosenName}` })).toBeTruthy();
+});
+
+test("search includes key formats used in the library and the live file action only when available", async () => {
+  const { api, state } = fakeApi({}, { output: "apa" });
+  api.formatSettings = vi.fn(async () => ({ apps: [], writings: [], key_output_visible: true }));
+  api.openSettingsFile = vi.fn(async () => null);
+  render(<SettingsApp api={api} initialPage="general" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "Markdown" } });
+  fireEvent.click(await screen.findByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" }));
+  await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "In Markdown, LaTeX and Typst Pandoc" })));
+  fireEvent.change(search, { target: { value: "Open Settings File" } });
+  fireEvent.click(await screen.findByRole("option", { name: "Open Settings File, Citations" }));
+  const open = screen.getByRole("button", { name: "Open Settings File" });
+  await waitFor(() => expect(document.activeElement).toBe(open));
+  expect(document.getElementById("open-settings-file")?.closest(".ui-row")?.hasAttribute("data-highlighted")).toBe(true);
+  fireEvent.click(open);
+  expect(api.openSettingsFile).toHaveBeenCalledOnce();
+  vi.mocked(api.formatSettings).mockResolvedValue({ apps: [], writings: [], key_output_visible: false });
+  await act(async () => { for (const changed of state.preferenceEvents) changed(++state.revision); });
+  fireEvent.change(search, { target: { value: "Markdown" } });
+  expect(screen.queryByRole("option", { name: "In Markdown, LaTeX and Typst, Citations" })).toBeNull();
 });
 
 test("a refused setting default keeps its saved choice and offers no Undo", async () => {

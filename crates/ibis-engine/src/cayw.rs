@@ -68,6 +68,9 @@ pub struct CaywPick {
     pub form: CitationForm,
     /// Also put the citation on the clipboard.
     pub clipboard: bool,
+    pub document: Option<std::path::PathBuf>,
+    pub bibliography: Option<std::path::PathBuf>,
+    pub csl: Option<String>,
 }
 
 impl CaywPick {
@@ -215,6 +218,9 @@ fn truthy(value: &str) -> Result<bool, Refusal> {
 }
 
 fn options(query: &str) -> Result<CaywRequest, Refusal> {
+    let mut document = None;
+    let mut bibliography = None;
+    let mut csl = None;
     let mut format = None;
     let mut command = None;
     let mut brackets = false;
@@ -228,6 +234,18 @@ fn options(query: &str) -> Result<CaywRequest, Refusal> {
             return Err(Refusal::Option);
         }
         match name.as_str() {
+            "document" | "bibliography" => {
+                let path = std::path::PathBuf::from(value);
+                if !path.is_absolute() {
+                    return Err(Refusal::Option);
+                }
+                if name == "document" {
+                    document = Some(path);
+                } else {
+                    bibliography = Some(path);
+                }
+            }
+            "csl" if !value.is_empty() => csl = Some(value),
             "format" => format = Some(value),
             "command" => command = Some(value),
             "brackets" => brackets = truthy(&value)?,
@@ -249,6 +267,9 @@ fn options(query: &str) -> Result<CaywRequest, Refusal> {
         output,
         form,
         clipboard,
+        document,
+        bibliography,
+        csl,
     }))
 }
 
@@ -342,6 +363,30 @@ mod tests {
         match pick.spec("apa") {
             OutputSpec::Key { syntax, command } => (Some(syntax), command, pick.form),
             _ => (None, None, pick.form),
+        }
+    }
+
+    #[test]
+    fn explicit_context_is_preserved_and_ambiguous_or_relative_paths_are_refused() {
+        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
+        let document = directory.path().join("chapter.qmd");
+        let bibliography = directory.path().join("refs.bib");
+        let encode = |path: &std::path::Path| {
+            path.to_string_lossy()
+                .bytes()
+                .map(|byte| format!("%{byte:02X}"))
+                .collect::<String>()
+        };
+        let picked = pick(&format!(
+            "?document={}&bibliography={}&csl=apa",
+            encode(&document),
+            encode(&bibliography)
+        ));
+        assert_eq!(picked.document, Some(document));
+        assert_eq!(picked.bibliography, Some(bibliography));
+        assert_eq!(picked.csl.as_deref(), Some("apa"));
+        for query in ["?document=chapter.md", "?document=%2Fa.md&document=%2Fb.md", "?csl="] {
+            assert_eq!(request(query), Err(Refusal::Option));
         }
     }
 

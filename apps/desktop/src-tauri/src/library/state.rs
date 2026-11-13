@@ -98,6 +98,20 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
     library.advance_source_generation();
 }
 
+/// Removing the saved source retires in-flight opens and prepared citations.
+pub(super) fn clear(library: &Mutex<Library>, requests: &LoadRequests) {
+    let Ok(mut library) = library.lock() else { return };
+    requests.0.fetch_add(1, Ordering::SeqCst);
+    if let Some(file) = &library.file {
+        file.invalidate();
+    }
+    *library = Library {
+        settings_notice: library.settings_notice.take(),
+        ..Library::default()
+    };
+    library.advance_source_generation();
+}
+
 /// Make a loaded library current, or record why it failed to open. Returns
 /// `None` when a newer request has been made since this one.
 pub(crate) fn install(
@@ -319,6 +333,29 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
+    fn removing_the_saved_source_leaves_no_library_and_a_late_open_cannot_restore_it() {
+        let library = Mutex::new(candidate(PathBuf::from("first.bib"), "@misc{first,title={First}}"));
+        let requests = LoadRequests::default();
+        let (request, _, _) = begin_open(&library, &requests, Source::File(PathBuf::from("second.bib")))
+            .unwrap_or_else(|| panic!("starts"));
+        clear(&library, &requests);
+        assert!(
+            install(
+                &library,
+                &requests,
+                request,
+                Ok(candidate(PathBuf::from("second.bib"), "@misc{second,title={Second}}"))
+            )
+            .is_none()
+        );
+        let library = library.lock().unwrap_or_else(|error| panic!("{error}"));
+        let shown = status(&library);
+        assert!(matches!(shown.state, super::super::LibraryState::None));
+        assert_eq!(shown.references, 0);
+        assert!(!shown.has_snapshot);
+    }
+
+    #[test]
     fn a_preview_refused_during_a_quiet_check_waits_and_refuses_again_after_it() {
         use crate::library::CommandError;
         use tauri::Manager;
@@ -367,7 +404,7 @@ mod tests {
         );
     }
 
-    use ibis_core::settings::ZoteroLibrary;
+    use ibis_engine::settings::ZoteroLibrary;
 
     use crate::library::error::ZOTERO_OFFLINE;
     use crate::library::load::{load_library, load_source};
