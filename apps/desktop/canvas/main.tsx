@@ -34,7 +34,7 @@ import "../src/ui/CopiedNotice.css";
 // Picker root rules must not leak into the separate Settings window.
 import pickerStyles from "../src/ui/Window.css?inline";
 
-export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
+export const scenarios = ["notice", "results", "first-run", "more", "format-menu", "writing-projects", "writing-projects-pending", "cited-since-opening", "project-check-conflict", "states", "parts", "empty", "file-drag", "error", "loading", "empty-search", "shelf", "reference-details", "show-as-menu", "reader", "commands", "page-in-search", "peek", "library-selector", "library-menu", "shortcuts", "pinned", "no-matches", "missing", "zotero-closed", "unreadable", "stale", "compact", "larger-text", "right-to-left", "long-titles", "update", "undo-notice", "citation-order", "citation-handles", "citation-details-larger", "tokens", "settings-general", "settings-look", "settings-citations", "settings-shortcuts", "settings-about"] as const;
 type Scenario = typeof scenarios[number];
 type Theme = "light" | "dark";
 
@@ -50,6 +50,11 @@ const rows: SearchResult[] = Array.from({ length: 14 }, (_, i) => ({
 const longTitle = "An invented reference whose title runs well past the end of the row so the second line and its ellipsis are visible";
 const longRows = rows.map((row) => ({ ...row, title: longTitle, authors: "Aster, Birch, Cedar, Dune, Elm and Fern", container: "The Invented Journal of Very Long Names" }));
 
+// The footer and both palettes share a populated selector fixture. Group names
+// and counts are invented; the menu shows its anchor and the rows above it.
+const zoteroLibrary: Partial<LibraryStatus> = { zotero: true, snapshot_zotero: true, name: "Zotero", snapshot_name: "Zotero",
+  references: 190, zotero_libraries: ["user", { group: 1 }] };
+
 /** What differs from the loaded picker. Each entry is real app state: the
  * picture is whatever the app draws for it. */
 const fixtures: Partial<Record<Scenario, {
@@ -57,6 +62,8 @@ const fixtures: Partial<Record<Scenario, {
   /** Clicked in order, each once the one before has drawn what it opens. */
   click?: string | string[]; keys?: KeyboardEventInit[];
 }>> = {
+  more: { library: zoteroLibrary },
+  "format-menu": { library: zoteroLibrary },
   "empty-search": { query: "" },
   commands: { query: ">" },
   "page-in-search": { query: "invented 417" },
@@ -67,7 +74,8 @@ const fixtures: Partial<Record<Scenario, {
   reader: { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', 'button.citation-reveal'] },
   "show-as-menu": { keys: [{ key: "Enter", shiftKey: true }], click: ['button[aria-label^="Edit "]', ".citation-field .ui-popup-button"] },
   "writing-projects-pending": { click: 'button[aria-label="Use Field Notes"]' },
-  "library-menu": { click: ".library-bar button" },
+  "library-selector": { library: zoteroLibrary },
+  "library-menu": { library: zoteroLibrary, click: ".library-status-trigger" },
   shortcuts: { keys: [{ key: "/", [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   pinned: { keys: [{ key: "P", code: "KeyP", shiftKey: true, [navigator.platform.startsWith("Mac") ? "metaKey" : "ctrlKey"]: true }] },
   "no-matches": { rows: [] },
@@ -169,7 +177,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     use_sample_library: () => { throw new Error("Use the results scenario for invented references"); },
     find_sources: () => ({ zotero: "absent", list: 1, files: [], cut_short: false }),
     find_zotero: () => "absent",
-    library_source: () => ({ kind: "file", name: "invented.bib", icon: null, status_icon: null }),
+    library_source: () => ({ kind: library.zotero ? "zotero" : "file", name: library.name, icon: null, status_icon: null }),
     open_settings: ({ page }) => openSettings(page),
     read_window_position_undo: () => scenario === "undo-notice" ? 1 : null,
     undo_window_position: () => scenario === "undo-notice",
@@ -177,7 +185,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
     shorthand_hint: () => false,
     update_available: () => false,
     check_zotero_sharing: () => scenario === "zotero-closed" ? "closed" : "absent",
-    zotero_groups: () => [],
+    zotero_groups: () => library.zotero ? [{ id: 1, name: "Field Notes" }, { id: 2, name: "Shared Drafts" }] : [],
     zotero_profiles: () => ({ names: [], chosen: null, running: false }),
     session_references: () => ({ revision: 0, rows: [], absent: 0, overflowed: false, undo: null }),
     session_bibliography: () => null,
