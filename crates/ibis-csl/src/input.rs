@@ -227,6 +227,28 @@ pub(crate) fn prepare(
     prepare_with_style(snapshot, request, limits, &*catalog::resolve(style)?)
 }
 
+/// Compile only trusted formatting material, without waiting for a library.
+pub(crate) fn warm(style: &str, locale: Option<&str>) -> Result<Prepared, FormatError> {
+    let style = catalog::resolve(style)?;
+    let locale = locale
+        .map(catalog::locale_tag)
+        .transpose()?
+        .map(str::to_owned)
+        .or_else(|| style.forced_locale.clone());
+    Ok(Prepared {
+        json: json!({"style":style.rules,"numeric":style.traits.numeric,"sentence_titles":style.sentence_titles,
+            "items":[],"cites":[],"keep_order":false,"locale":locale,"warm":true})
+        .to_string(),
+        xml: style.xml.clone(),
+        language: locale.unwrap_or_else(|| style.language.clone()),
+        outcomes: vec![],
+        losses: vec![],
+        notices: vec![],
+        warnings: vec![],
+        empty: false,
+    })
+}
+
 fn prepare_with_style(
     snapshot: &Snapshot,
     request: &CitationRequest,

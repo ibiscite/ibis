@@ -81,6 +81,7 @@ struct State {
     queue: VecDeque<Job>,
     outstanding: usize,
     active: Option<Active>,
+    foreground_seen: bool,
 }
 struct Active {
     cancelled: Arc<AtomicBool>,
@@ -143,8 +144,22 @@ impl Service {
     pub(crate) fn submit(&self, prepared: Prepared) -> Result<FormatTask, FormatError> {
         self.submit_with_clock(prepared, Instant::now)
     }
+    pub(crate) fn warm(&self, prepared: Prepared) -> Result<Option<FormatTask>, FormatError> {
+        let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
+        // Style loading can finish after the first preview. Never queue an obsolete
+        // warm-up behind it, replacing the style the person is already using.
+        if state.foreground_seen {
+            return Ok(None);
+        }
+        self.enqueue(&mut state, prepared, Instant::now()).map(Some)
+    }
     fn submit_with_clock(&self, prepared: Prepared, now: impl FnOnce() -> Instant) -> Result<FormatTask, FormatError> {
         let mut state = self.shared.state.lock().map_err(|_| FormatError::Runtime)?;
+        let task = self.enqueue(&mut state, prepared, now())?;
+        state.foreground_seen = true;
+        Ok(task)
+    }
+    fn enqueue(&self, state: &mut State, prepared: Prepared, now: Instant) -> Result<FormatTask, FormatError> {
         if self.shared.stopping.load(Ordering::Acquire) {
             return Err(FormatError::Runtime);
         }
@@ -159,7 +174,7 @@ impl Service {
         state.queue.push_back(Job {
             prepared,
             cancellation: cancellation.clone(),
-            deadline: now() + self.limits.timeout,
+            deadline: now + self.limits.timeout,
             reply,
         });
         state.outstanding += 1;
@@ -278,6 +293,23 @@ mod tests {
         let (release, held) = mpsc::channel();
         *service.shared.format_gate.lock().unwrap() = Some((entered, held));
         (running, release)
+    }
+    #[test]
+    fn a_late_startup_warmup_cannot_replace_the_first_previews_style() {
+        let mut service = queued_service(Limits {
+            queue: 1,
+            ..Limits::default()
+        });
+        let first = service.submit(prepared(1, false)).unwrap();
+        // A slow startup style load completes after the person's request. It
+        // must not consume capacity, even if the foreground job was cancelled.
+        first.cancel();
+        let _late = service
+            .warm(crate::input::warm("chicago-author-date", None).unwrap())
+            .unwrap();
+        let preview = service.submit(prepared(1, false)).unwrap();
+        service.start_worker().unwrap();
+        assert_eq!(preview.wait().unwrap().text, "(Invented0, 2026)");
     }
     #[test]
     fn cancelling_queued_request_frees_its_slot_and_worker_recovers() {
