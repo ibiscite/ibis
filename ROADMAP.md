@@ -99,7 +99,11 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
 - A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
-- **Opt-in online lookup** (maintainer, 2026-11-11): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **Opt-in online lookup** (maintainer, 2026-11-11; rules in [decision 0008](docs/decisions/0008-offline-by-default.md)): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
+- **References in and out** (maintainer, 2026-11-13): Ibis grows from citing to everyday reference handling, each step quick and on open standards.
+  - **In:** paste or drop a DOI (or another standard identifier) and cite it, link it, save it to a `.bib` file, or add it to Zotero.
+  - **Out:** select references and share them as DOI links, a `.bib` or CSL-JSON file, a zip, by email or through the system's share sheet.
+  - **Groundwork first:** identifiers read locally, the one lookup module from decision 0008, and a single selection → format → destination path that every share and save uses. Writing to a library is decided before any write ships.
 
 ### 0.7 Everywhere you work
 
