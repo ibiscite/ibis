@@ -11,7 +11,7 @@ export function projectCheckNotice({ refusal, problem, onRetry, onLocate, disabl
   const message = refusal ?? problem;
   if (!message) return null;
   return <LineNotice key="project-check" className="project-context-status" role={refusal ? "alert" : "status"} actions={<>
-    {onRetry && <Button label={say("project-check-retry")} isDisabled={disabled} onPress={onRetry} />}
-    {onLocate && <Button label={say("project-check-locate")} isDisabled={disabled} onPress={onLocate} />}
+    {onRetry && <Button size="small" label={say("project-check-retry")} isDisabled={disabled} onPress={onRetry} />}
+    {onLocate && <Button size="small" label={say("project-check-locate")} isDisabled={disabled} onPress={onLocate} />}
   </>}>{message}</LineNotice>;
 }

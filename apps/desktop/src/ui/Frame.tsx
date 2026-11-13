@@ -20,14 +20,14 @@ export function Frame({ search, notice, children, ...main }: {
   </main>;
 }
 
-/** A notice for the notice line: its words in one line, the whole sentence kept
- * for the pointer's tooltip and for screen readers, then its actions. */
+/** A notice for the notice line: its words in one line, then its actions. Words
+ * cut to fit unfold whole, over the list, while pointed at or reached with Tab. */
 export function LineNotice({ role = "status", children, actions, className }: {
   role?: "status" | "alert"; children: ReactNode; actions?: ReactNode; className?: string;
 }) {
   const words = typeof children === "string" ? children : undefined;
   return <div className={className ? `ui-line-notice ${className}` : "ui-line-notice"} data-role={role}>
-    <p className="ui-line-words" role={role} dir="auto" title={words}>{children}</p>
+    <p className="ui-line-words" role={role} dir="auto" title={words} tabIndex={0}>{children}</p>
     {actions}
   </div>;
 }

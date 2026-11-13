@@ -825,7 +825,7 @@ test.each([true, false])("reaching for a token by hand teaches the typed shortha
   const token = await findInCitation("a");
   act(() => token.focus());
   await waitFor(() => expect(asked).toBe(1));
-  const hint = "Type it with the search: a page “vale 417”, a chapter “vale ch 2”, text before “see vale”.";
+  const hint = "Type “vale 417” for page 417, or “see vale” to add “see”.";
   if (allowed) expect(await screen.findByText(hint)).toBeTruthy();
   else expect(screen.queryByText(hint)).toBeNull();
   // Once an opening: focusing again asks nothing more.
@@ -851,5 +851,5 @@ test.each(["hidden", "reopened", "failed"])("a %s shorthand hint reply cannot le
       finish(true);
     }
   });
-  expect(screen.queryByText(/^Type it with the search:/)).toBeNull();
+  expect(screen.queryByText(/^Type “vale 417” for page 417/)).toBeNull();
 });

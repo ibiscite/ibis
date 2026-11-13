@@ -14,7 +14,7 @@ test.each(["Enter", " "])("warning dismissal uses shared states and activates on
   render(<Notices {...props} onDismissCopied={dismiss} />);
   const button = screen.getByRole("button", { name: "Dismiss copy warnings" });
   expect(button.getAttribute("data-variant")).toBe("secondary");
-  expect(button.getAttribute("data-size")).toBe("default");
+  expect(button.getAttribute("data-size")).toBe("small");
   expect(screen.getByRole("status", { name: "" }).textContent).toContain(copied.text);
   expect(screen.getByLabelText("Copy warnings").textContent).toBe(copied.warnings[0]);
   button.focus();

@@ -242,6 +242,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
       notice={[
         // What passes (Undo, a remark, an update) first: it goes by itself.
         <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
+          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+          confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
         projectCheckNotice({ refusal: projectRefusal, problem: projectProblem,
           onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
           onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
@@ -250,9 +253,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
           {`${shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
             : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}${shortcut.desktop && !welcomeShown ? ` ${shortcut.desktop.guidance}` : ""}`}
         </LineNotice>,
-        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
-          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
-          confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
       ].filter(Boolean)}
       search={<PickerHeader
         hidden={welcomeShown} yours={preferences.format} preview={formatPreview}

@@ -13,7 +13,7 @@ main.ui-frame > footer { grid-area: footer; }
 /* The notice line: always one line high, empty or not. The first notice shows its
    words on the label column, cut with an ellipsis if they must be, and its actions
    at the end; any later one waits off screen, still announced. */
-.ui-notice-line { grid-area: notice; block-size: var(--notice-line-h); overflow: hidden; font: var(--type-body-size) / var(--type-body-line) var(--font); }
+.ui-notice-line { grid-area: notice; block-size: var(--notice-line-h); font: var(--type-body-size) / var(--type-body-line) var(--font); }
 .ui-line-notice { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
 .ui-line-words { flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); user-select: text; }
 .ui-line-notice > :not(.ui-line-words) { flex: none; }
@@ -26,4 +26,6 @@ ul.ui-line-words > li + li::before { content: " · "; }
 /* The window's notice slot (ui/NoticeSlot: Undo, a remark, an update) starts on
    the icon column, so an update's ring sits where row tiles do. */
 .ui-notice-line > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: calc(-1 * var(--title-start)); }
-.ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* One notice shows; the rest wait their turn, out of sight and out of reach. */
+.ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
+.ui-line-words:focus-visible { outline-offset: var(--ring-inside); }

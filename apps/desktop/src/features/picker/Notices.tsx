@@ -56,28 +56,30 @@ export function notices({ library, failures, error, copyError, copied, confirmat
   confirmation?: Copied | null;
   onDismissCopied: () => void;
 }): ReactNode[] {
+  // What the person's last action caused comes first, so a standing problem
+  // never hides a new one; the standing ones follow.
   return [
-    library?.settings_notice && <LineNotice key="settings" role="alert">{library.settings_notice}</LineNotice>,
+    error && <LineNotice key="error" role="alert">{error}</LineNotice>,
+    copyError && <LineNotice key="copy-error" role="alert">{copyError}</LineNotice>,
+    copied && copied.warnings.length > 0 && <div key="warnings" className="ui-line-notice copy-notice" role="group">
+      <ul className="ui-line-words" tabIndex={0} aria-label={say("picker-copy-warnings")} title={copied.warnings.join("\n")}>
+        {copied.warnings.map((w, i) => <li key={i}>{w}</li>)}
+      </ul>
+      <Button size="small" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
+    </div>,
+    copied && confirmation && <div key="copied" className="ui-line-notice copy-notice" role="status">
+      <p className="ui-line-words" data-outcome="copied"><strong>{say("picker-copied")}</strong> <code dir="auto" title={confirmation.text}>
+        {confirmation.summary?.text ?? confirmation.text}
+        {Boolean(confirmation.summary?.more) && <span> +{confirmation.summary!.more} more</span>}
+      </code></p>
+    </div>,
     ...(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
       <LineNotice role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</LineNotice>
     )),
-    error && <LineNotice key="error" role="alert">{error}</LineNotice>,
-    copyError && <LineNotice key="copy-error" role="alert">{copyError}</LineNotice>,
     missing.length > 0 && <LineNotice key="missing">{say("picker-missing-citations", { keys: missing.join(", ") })}</LineNotice>,
     editorNotice && <LineNotice key="editor" className="editor-notice">{say("picker-editor-waiting", { format: isolate(editorNotice) })}</LineNotice>,
     projectNotice && <LineNotice key="project">{projectNotice}</LineNotice>,
-    copied && copied.warnings.length > 0 && <div key="warnings" className="ui-line-notice copy-notice" role="group">
-      <ul className="ui-line-words" aria-label={say("picker-copy-warnings")} title={copied.warnings.join("\n")}>
-        {copied.warnings.map((w, i) => <li key={i}>{w}</li>)}
-      </ul>
-      <Button aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
-    </div>,
-    copied && confirmation && <div key="copied" className="ui-line-notice copy-notice" role="status">
-      <p className="ui-line-words copy-receipt" data-outcome="copied"><strong>{say("picker-copied")}</strong> <code dir="auto" title={confirmation.text}>
-        <span className="copy-receipt-excerpt">{confirmation.summary?.text ?? confirmation.text}</span>
-        {Boolean(confirmation.summary?.more) && <span className="copy-receipt-more"> +{confirmation.summary!.more} more</span>}
-      </code></p>
-    </div>,
+    library?.settings_notice && <LineNotice key="settings" role="alert">{library.settings_notice}</LineNotice>,
   ].filter(Boolean);
 }
 

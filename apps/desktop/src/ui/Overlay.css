@@ -6,6 +6,16 @@
   background: var(--layer-overlay); color: var(--text); box-shadow: var(--layer-overlay-edge);
   -webkit-backdrop-filter: var(--layer-overlay-material); backdrop-filter: var(--layer-overlay-material);
 }
+/* [C24] A notice cut to its one line unfolds whole while pointed at or focused,
+   over the list as an anchored overlay; its line keeps its height. */
+.ui-line-words:is(:hover, :focus-visible) {
+  align-self: start; margin-block-start: calc((var(--notice-line-h) - var(--type-body-line)) / 2 - var(--space-1));
+  padding: var(--space-1) var(--space-2); margin-inline: calc(-1 * var(--space-2)); border-radius: var(--r-control);
+  position: relative; z-index: var(--z-overlay);
+  white-space: normal; overflow: visible; background: var(--layer-overlay); box-shadow: var(--layer-overlay-edge);
+}
+ul.ui-line-words:is(:hover, :focus-visible) > li { display: list-item; }
+ul.ui-line-words:is(:hover, :focus-visible) > li + li::before { content: none; }
 /* A popover's arrow is part of the same layer. */
 .ui-overlay .ui-popover-arrow svg { fill: var(--layer-overlay); }
 @media (prefers-contrast: more), (forced-colors: active) {
