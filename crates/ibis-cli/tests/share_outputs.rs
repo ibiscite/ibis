@@ -110,3 +110,54 @@ fn doi_links_keep_successes_and_identify_records_without_a_doi() {
     assert_eq!(text, "https://doi.org/10.1000/Invented\n");
     assert!(errors.contains("atlas") && errors.contains("DOI"), "{errors}");
 }
+
+#[test]
+fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
+    let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
+    let source = dir.join("share-identifiers.json");
+    let exported = dir.join("share-identifiers.bib");
+    let record = json!({
+        "id":"one", "citation-key":"good", "type":"book", "title":"Invented identifiers",
+        "URL":"https://e.org/a~b--c_d#x?y=1&z=2", "DOI":"10.1000/a~b--c_d#x?y=1&z=2",
+        "ISBN":"978-0-1", "ISSN":"1234-5678", "PMID":"12345", "PMCID":"PMC12345"
+    });
+    let braced =
+        json!({"id":"two","citation-key":"braced","type":"book","title":"Invented braces","URL":"https://e.org/{x}"});
+    std::fs::write(&source, json!([record, braced]).to_string()).unwrap();
+    let (code, text, errors) = run(&source, &["cite", "good", "braced", "--format", "bibtex"]);
+    assert_eq!(code, 0, "{errors}");
+    for (csl, bib) in [
+        ("URL", "url"),
+        ("DOI", "doi"),
+        ("ISBN", "isbn"),
+        ("ISSN", "issn"),
+        ("PMID", "pmid"),
+        ("PMCID", "pmcid"),
+    ] {
+        assert!(
+            text.contains(&format!("  {bib} = {{{}}},", record[csl].as_str().unwrap())),
+            "{text}"
+        );
+    }
+    assert!(text.contains("  url = {https://e.org/%7Bx%7D},"), "{text}");
+    std::fs::write(&exported, text).unwrap();
+    let (code, text, errors) = run(&exported, &["cite", "good", "braced", "--format", "csl-json"]);
+    assert_eq!(code, 0, "{errors}");
+    let back: Value = serde_json::from_str(&text).unwrap();
+    for field in ["citation-key", "URL", "DOI", "ISBN", "ISSN", "PMID", "PMCID"] {
+        assert_eq!(back[0][field], record[field], "{field}");
+    }
+    assert_eq!(back[1]["URL"], "https://e.org/%7Bx%7D");
+    assert_eq!(back[1]["citation-key"], "braced");
+}
+
+#[test]
+fn exported_csl_json_replaces_zotero_user_urls_with_the_citation_key() {
+    let source = Path::new(env!("CARGO_TARGET_TMPDIR")).join("share-zotero-id.json");
+    std::fs::write(&source, json!([{"id":"http://zotero.org/users/12345/items/ABCD1234", "citation-key":"good", "type":"book", "title":"Invented atlas"}]).to_string()).unwrap();
+    let (code, text, errors) = run(&source, &["cite", "good", "--format", "csl-json"]);
+    assert_eq!(code, 0, "{errors}");
+    let records: Value = serde_json::from_str(&text).unwrap();
+    assert_eq!(records[0]["id"], "good");
+    assert!(!text.contains("12345") && !text.contains("ABCD1234"), "{text}");
+}

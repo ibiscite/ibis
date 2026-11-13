@@ -135,3 +135,90 @@ fn sharing_private_network_urls_never_exposes_a_link() {
         }
     }
 }
+
+#[test]
+fn csl_json_keeps_plain_source_tokens_but_never_url_shaped_ids() {
+    for (id, expected) in [
+        ("http://zotero.org/users/12345/items/ABCD1234", "good"),
+        ("https://example.invalid/item", "good"),
+        ("example.invalid/item", "good"),
+        ("urn:private:item", "good"),
+        ("item-7", "item-7"),
+    ] {
+        let case = case(
+            "csl-json",
+            json!({"id":id,"type":"book","title":"Invented atlas"}),
+            Some("good"),
+        );
+        let result = syntax::cite(&case.library, &case.request).unwrap();
+        let records: Value = serde_json::from_str(&result.text).unwrap();
+        assert_eq!(records[0]["id"], expected, "{id}");
+        assert_eq!(records[0]["citation-key"], "good");
+    }
+}
+
+#[test]
+fn record_sharing_removes_device_paths_after_value_delimiters() {
+    for value in [
+        "path=/Users/invented/secret.pdf",
+        "path:/Users/invented/secret.pdf",
+        "prefix=/home/invented/secret.pdf",
+        "path=~/secret.pdf",
+        r"path=C:\invented\secret.pdf",
+        r"path=\\invented\secret.pdf",
+        "path=file:///Users/invented/secret.pdf",
+    ] {
+        let case = case(
+            "csl-json",
+            json!({"type":"book","title":"Invented atlas","archive_location":value}),
+            Some("good"),
+        );
+        let records: Value = serde_json::from_str(&syntax::cite(&case.library, &case.request).unwrap().text).unwrap();
+        assert!(records[0].get("archive_location").is_none(), "{value}: {records}");
+        assert_eq!(records[0]["title"], "Invented atlas");
+    }
+}
+
+#[test]
+fn an_article_writes_its_issue_as_one_number_even_with_an_article_number() {
+    let case = case(
+        "bibtex",
+        json!({"type":"article-journal","title":"Invented atlas","issue":"2","number":"e1234"}),
+        Some("good"),
+    );
+    let text = syntax::cite(&case.library, &case.request).unwrap().text;
+    assert_eq!(
+        text.lines()
+            .filter(|line| line.trim_start().starts_with("number ="))
+            .collect::<Vec<_>>(),
+        ["  number = {2},"]
+    );
+}
+
+#[test]
+fn malformed_dates_are_omitted_instead_of_writing_empty_or_partial_dates() {
+    for parts in [json!([[2020.5]]), json!([[2020, 3.5]]), json!([[]])] {
+        let case = case(
+            "bibtex",
+            json!({"type":"book","title":"Invented atlas","issued":{"date-parts":parts}}),
+            Some("good"),
+        );
+        let text = syntax::cite(&case.library, &case.request).unwrap().text;
+        assert!(!text.contains("  date ="), "{text}");
+        assert!(text.contains("Invented atlas"));
+    }
+}
+
+#[test]
+fn verbatim_identifiers_still_cannot_break_fields_or_activate_tex() {
+    let case = case(
+        "bibtex",
+        json!({"type":"book","ISBN":"} @misc{ \\input{x}\nnext"}),
+        Some("good"),
+    );
+    let text = syntax::cite(&case.library, &case.request).unwrap().text;
+    assert!(!text.contains("} @misc{"), "{text}");
+    assert!(!text.contains("\\input"), "{text}");
+    assert!(!text.contains("\nnext"), "{text}");
+    assert!(text.contains("input"));
+}

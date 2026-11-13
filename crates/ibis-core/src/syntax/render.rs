@@ -568,7 +568,9 @@ pub(super) fn source_id(record: &Record) -> Option<&str> {
         .csl
         .get("id")
         .and_then(serde_json::Value::as_str)
-        .filter(|id| !crate::citable::points_to_device(id))
+        // Source URLs can identify a person's library even on public hosts.
+        // Preserve only plain tokens; every other id uses the citation key.
+        .filter(|id| !id.is_empty() && id.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_')))
 }
 
 /// Serialize one share-safe record at a time into a bounded writer. Repeated
@@ -578,8 +580,8 @@ fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
             let mut map = serializer.serialize_map(None)?;
-            // The key has its own field. Preserve a public source id so the
-            // export matches its source; a private id falls back to the key.
+            // Preserve a plain source token; URL-shaped or private source
+            // identities never leave through the export's id field.
             map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
             map.serialize_entry("citation-key", self.0.key)?;
             for (key, value) in crate::citable::share_fields(self.0.record.csl.to_map()) {

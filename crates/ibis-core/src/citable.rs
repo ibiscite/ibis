@@ -340,18 +340,29 @@ fn private_address(address: std::net::IpAddr) -> bool {
 /// Whether text from a note points at this device anywhere in it. Notes can hold
 /// anything, and such a line is not something the person wrote to be printed.
 pub(crate) fn points_to_device(value: &str) -> bool {
+    let path = |word: &str| {
+        let bytes = word.as_bytes();
+        (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2
+            || word.starts_with("\\\\")
+            || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"))
+            || word
+                .get(..6)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("file:/"))
+            || word
+                .get(..8)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zotero:/"))
+    };
     value.split_whitespace().any(|word| {
         let word = word.trim_matches(|c: char| "<>()[]{},;.\"'".contains(c));
-        let bytes = word.as_bytes();
-        let unix_path = (word.starts_with('/') || word.starts_with("~/")) && word.len() > 2;
-        let windows_path = word.starts_with("\\\\")
-            || (bytes.len() > 3 && bytes[0].is_ascii_alphabetic() && matches!(&bytes[1..3], b":\\" | b":/"));
-        let lower = word.to_ascii_lowercase();
-        unix_path
-            || windows_path
-            || lower.starts_with("file:/")
-            || lower.starts_with("zotero:/")
-            || (lower.contains("://") && !public_url(word))
+        path(word)
+            || word.char_indices().any(|(index, c)| {
+                let rest = &word[index + c.len_utf8()..];
+                // A scheme separator is not the beginning of a device path.
+                matches!(c, '=' | ':' | '\"' | '\'' | '(' | '[' | '{' | ',' | ';')
+                    && !(c == ':' && rest.starts_with("//"))
+                    && path(rest)
+            })
+            || (word.contains("://") && !public_url(word))
     })
 }
 

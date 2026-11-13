@@ -59,8 +59,15 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &Map<String, Value>
         ("version", "version"),
         ("event-title", "eventtitle"),
     ] {
+        // An article's issue already owns BibTeX's number field.
+        if csl == "number" && kind == "article" && fields.contains_key("issue") {
+            continue;
+        }
         if let Some(value) = fields.get(csl) {
             match value {
+                Value::String(text) if matches!(csl, "URL" | "DOI" | "ISBN" | "ISSN" | "PMID" | "PMCID") => {
+                    verbatim_field(out, bib, text)?;
+                }
                 Value::String(text)
                     if matches!(
                         csl,
@@ -152,11 +159,19 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &Map<String, Value>
         ("event-date", "eventdate"),
     ] {
         if let Some(date) = fields.get(csl) {
-            if let Some(parts) = date
-                .get("date-parts")
-                .and_then(Value::as_array)
-                .filter(|parts| !parts.is_empty())
-            {
+            if let Some(parts) = date.get("date-parts").and_then(Value::as_array).filter(|dates| {
+                // Validate before emitting the field: a malformed part must
+                // not turn into an empty date or a different partial date.
+                !dates.is_empty()
+                    && dates.len() <= 2
+                    && dates.iter().all(|date| {
+                        date.as_array()
+                            .is_some_and(|parts| parts.len() <= 3 && parts.iter().all(|part| part.as_i64().is_some()))
+                    })
+                    && dates
+                        .iter()
+                        .any(|date| date.as_array().is_some_and(|parts| !parts.is_empty()))
+            }) {
                 write!(out, "  {bib} = {{")?;
                 for (index, date) in parts.iter().take(2).enumerate() {
                     if index > 0 {
@@ -186,6 +201,21 @@ pub(super) fn write(out: &mut impl Write, key: &str, fields: &Map<String, Value>
 fn field(out: &mut impl Write, name: &str, text: &str) -> io::Result<()> {
     write!(out, "  {name} = {{")?;
     escape(out, text)?;
+    out.write_all(b"},\n")
+}
+
+/// These fields are read verbatim by biber, not as LaTeX prose. Preserve their
+/// punctuation; only field delimiters, backslashes and controls need quoting.
+fn verbatim_field(out: &mut impl Write, name: &str, text: &str) -> io::Result<()> {
+    write!(out, "  {name} = {{")?;
+    for c in text.chars() {
+        match c {
+            '{' if name == "url" => out.write_all(b"%7B")?,
+            '}' if name == "url" => out.write_all(b"%7D")?,
+            c if matches!(c, '{' | '}' | '\\') || c.is_control() => escape(out, c.encode_utf8(&mut [0; 4]))?,
+            c => out.write_all(c.encode_utf8(&mut [0; 4]).as_bytes())?,
+        }
+    }
     out.write_all(b"},\n")
 }
 
