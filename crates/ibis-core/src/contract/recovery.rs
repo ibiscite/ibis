@@ -115,6 +115,9 @@ impl EngineError {
     pub fn recovery_info(self) -> RecoveryInfo {
         use FocusTarget as F;
         use Recovery as R;
+        if let Some(error) = self.citation_error {
+            return error.problem().info;
+        }
         if let Some(cause) = self.strict_cause {
             let mut info = match cause {
                 super::StrictCause::Loss { .. } => {
@@ -147,6 +150,7 @@ impl EngineError {
                 ErrorReason::MissingFile => (R::LocateFile, F::LibraryPicker),
                 ErrorReason::AppMissing | ErrorReason::NotIbis => (R::UpgradeIbis, F::RecoveryAction),
                 ErrorReason::NoAnswer => (R::Retry, F::RecoveryAction),
+                ErrorReason::SettingsReadTimeout => (R::Retry, F::RecoveryAction),
                 ErrorReason::ZoteroSharingOff => (R::OpenZoteroSharingHelp, F::ZoteroSharingHelp),
                 ErrorReason::ZoteroProfileNeeded | ErrorReason::ZoteroNotFound => (R::ChooseLibrary, F::LibraryPicker),
                 ErrorReason::ZoteroNeedsOpening => (R::OpenZotero, F::RecoveryAction),
@@ -178,7 +182,9 @@ impl EngineError {
 impl From<EngineError> for Problem {
     fn from(error: EngineError) -> Self {
         Self {
-            code: error.reason.map_or_else(|| name(error.code), name),
+            code: error
+                .citation_error
+                .map_or_else(|| error.reason.map_or_else(|| name(error.code), name), name),
             info: error.recovery_info(),
         }
     }

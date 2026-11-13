@@ -355,7 +355,7 @@ impl Engine {
             &prepared.request,
             |_| ibis_core::citation::ItemSupport::ALL,
         )
-        .map_err(|_| error(ErrorCode::BadInput))?;
+        .map_err(EngineError::citation)?;
         for (item, (checked, rendered)) in checked.into_iter().zip(&fresh.result.outcomes).enumerate() {
             if let Err(error) = checked {
                 return Err(CitationCommitError::Refused { item, error });

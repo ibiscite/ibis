@@ -808,6 +808,16 @@
     "EngineError": {
       "type": "object",
       "properties": {
+        "citation_error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CitationError"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "code": {
           "$ref": "#/$defs/ErrorCode"
         },
@@ -958,6 +968,11 @@
           "description": "The Ibis app started but did not confirm the request in time.",
           "type": "string",
           "const": "no-answer"
+        },
+        {
+          "description": "The app's library settings did not finish loading in time.",
+          "type": "string",
+          "const": "settings-read-timeout"
         },
         {
           "description": "Zotero is running but does not let other applications read it.",

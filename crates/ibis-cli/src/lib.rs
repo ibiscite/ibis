@@ -880,7 +880,14 @@ impl From<EngineError> for Failure {
     fn from(error: EngineError) -> Self {
         Self {
             error,
-            message: error.reason.map(human::reason_sentence),
+            message: if error.citation_error.is_some() {
+                Some(ibis_engine::catalogue::error(
+                    &error,
+                    ibis_engine::catalogue::Audience::Cli,
+                ))
+            } else {
+                error.reason.map(human::reason_sentence)
+            },
             recovery: None,
         }
     }
@@ -1133,8 +1140,8 @@ fn open_libraries(
         || called.is_some_and(|called| matches!(called.as_str(), "search" | "show" | "cite"));
     let app = if asked || (defaults == Defaults::App && !named && reads_app) {
         Some(bounded(app_libraries::load).unwrap_or_else(|| {
-            Err(Failure::new(
-                ErrorCode::SourceUnavailable,
+            Err(Failure::explained(
+                EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::SettingsReadTimeout),
                 format!(
                     "the Ibis app's settings could not be read in time; try again, or {}.",
                     app_libraries::NAME_ONE
@@ -2078,7 +2085,10 @@ mod tests {
 
     #[test]
     fn a_startup_timeout_keeps_its_context_and_requires_a_new_session() {
-        let failure = Failure::new(ErrorCode::SourceUnavailable, "Opening the library timed out.");
+        let failure = Failure::from(EngineError::because(
+            ErrorCode::SourceUnavailable,
+            ErrorReason::SettingsReadTimeout,
+        ));
         let mut session = ibis_engine::mcp::Session::without_libraries(failure.refusal());
         let engine = Engine::new().unwrap_or_else(|error| panic!("{error:?}"));
         let reply = ibis_engine::mcp::handle(&engine, &mut session, &json!({
@@ -2088,11 +2098,12 @@ mod tests {
             }
         })).unwrap_or_default();
         let problem = &reply["result"]["structuredContent"]["error"];
-        assert_eq!(problem["code"], "source-unavailable");
+        assert_eq!(problem["code"], "settings-read-timeout");
         assert_eq!(problem["recovery"]["action"], "restart-session");
         let words = reply["result"]["content"][0]["text"].as_str().unwrap_or_default();
         assert!(words.contains("when this session started"), "{reply}");
         assert!(words.contains("start a new MCP session"), "{reply}");
+        assert!(words.contains("timed out"), "{reply}");
         assert!(!words.contains("Try again shortly"), "{reply}");
     }
 

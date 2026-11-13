@@ -64,6 +64,7 @@ impl SourceHealth {
                         reason: library.refresh_reason,
                         detail: None,
                         strict_cause: None,
+                        citation_error: None,
                     }
                     .recovery_info(),
                     last_successful_read_ms: library.updated_at_ms,

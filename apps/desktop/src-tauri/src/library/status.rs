@@ -286,6 +286,7 @@ fn refresh_error(
         reason,
         detail: None,
         strict_cause: None,
+        citation_error: None,
     };
     Some(match kind {
         LibraryKind::File => LoadError::file_refresh(error),

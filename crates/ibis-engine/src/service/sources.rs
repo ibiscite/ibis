@@ -115,6 +115,7 @@ fn zotero_error(failure: ZoteroError) -> EngineError {
         reason: failure.reason(),
         detail: failure.schema_table().map(|table| ErrorDetail { table }),
         strict_cause: None,
+        citation_error: None,
     }
 }
 
@@ -805,6 +806,7 @@ impl Engine {
                     reason: failure.reason(),
                     detail: None,
                     strict_cause: None,
+                    citation_error: None,
                 });
             }
         };

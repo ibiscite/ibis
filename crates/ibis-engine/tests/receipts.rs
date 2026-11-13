@@ -273,8 +273,26 @@ fn strict_refuses_losses_and_partial_citations_instead_of_returning_text() {
     );
     assert_eq!(mcp["structuredContent"]["error"]["recovery"]["action"], "choose-style");
     assert_eq!(mcp["structuredContent"]["error"]["focus"], "format-picker");
+    assert_eq!(mcp["structuredContent"]["error"]["strict_cause"]["kind"], "loss");
+    assert_eq!(
+        mcp["structuredContent"]["error"]["strict_cause"]["loss"]["field"],
+        "locator"
+    );
     assert!(mcp["structuredContent"].get("text").is_none());
     assert!(mcp["content"][0]["text"].as_str().unwrap().contains("Strict"));
+    let refused_item = tool(
+        &engine,
+        json!({"items":[{"ref":"one", "omit_author":true}],
+        "format":"pandoc", "form":"narrative", "strict":true}),
+    );
+    assert_eq!(
+        refused_item["structuredContent"]["error"]["strict_cause"]["kind"],
+        "refused"
+    );
+    assert_eq!(
+        refused_item["structuredContent"]["error"]["strict_cause"]["error"],
+        "unsupported-form"
+    );
     request["items"][0].as_object_mut().unwrap().remove("locator");
     request["items"][0]["expected_cite"] = json!(ibis_core::contract::Fingerprint::of_bytes(b"changed"));
     let refusal = rpc(&engine, &request);
@@ -304,6 +322,13 @@ fn failed_sources_remain_citable_with_evidence_but_strict_refuses_them() {
     let refusal = rpc(&engine, &request);
     assert_eq!(refusal["error"]["data"]["code"], "source-unavailable");
     assert_eq!(refusal["error"]["data"]["recovery"]["action"], "locate-file");
+    let mcp = tool(&engine, json!({"items":[{"ref":"one"}],"strict":true}));
+    assert_eq!(mcp["structuredContent"]["error"]["strict_cause"]["kind"], "source");
+    assert_eq!(
+        mcp["structuredContent"]["error"]["strict_cause"]["reason"],
+        "missing-file"
+    );
+    assert!(!mcp.to_string().contains(dir.path().to_str().unwrap()));
 }
 
 #[test]

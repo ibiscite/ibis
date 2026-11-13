@@ -497,6 +497,7 @@ impl FileLibrary {
                 reason: info.refresh_reason,
                 detail: None,
                 strict_cause: None,
+                citation_error: None,
             })
         });
         if let Some(failure) = failure {
@@ -591,6 +592,7 @@ impl FileLibrary {
                     reason: info.refresh_reason,
                     detail: None,
                     strict_cause: None,
+                    citation_error: None,
                 })
             })
         {

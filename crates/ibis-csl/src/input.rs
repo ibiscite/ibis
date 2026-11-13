@@ -304,7 +304,7 @@ fn prepare_with_style(
             pick.suppress_author,
         ),
     })
-    .map_err(|_| FormatError::InvalidRequest)?;
+    .map_err(FormatError::Citation)?;
     let mut items = Vec::new();
     let mut cites = Vec::new();
     let mut ids = BTreeMap::<ItemRef, String>::new();

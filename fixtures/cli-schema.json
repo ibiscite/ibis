@@ -242,6 +242,11 @@
                 "type": "string"
               },
               {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
                 "const": "zotero-sharing-off",
                 "description": "Zotero is running but does not let other applications read it.",
                 "type": "string"
@@ -1501,6 +1506,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -2987,6 +2997,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {
@@ -4906,6 +4921,11 @@
                 "type": "string"
               },
               {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
                 "const": "zotero-sharing-off",
                 "description": "Zotero is running but does not let other applications read it.",
                 "type": "string"
@@ -6795,6 +6815,11 @@
                 "type": "string"
               },
               {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
                 "const": "zotero-sharing-off",
                 "description": "Zotero is running but does not let other applications read it.",
                 "type": "string"
@@ -7916,6 +7941,11 @@
                 "type": "string"
               },
               {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
+                "type": "string"
+              },
+              {
                 "const": "zotero-sharing-off",
                 "description": "Zotero is running but does not let other applications read it.",
                 "type": "string"
@@ -8823,6 +8853,11 @@
               {
                 "const": "no-answer",
                 "description": "The Ibis app started but did not confirm the request in time.",
+                "type": "string"
+              },
+              {
+                "const": "settings-read-timeout",
+                "description": "The app's library settings did not finish loading in time.",
                 "type": "string"
               },
               {

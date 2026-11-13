@@ -30,6 +30,8 @@ pub fn provenance() -> ibis_core::contract::FormattingProvenance {
 /// Fixed diagnostics never include reference content or JavaScript exceptions.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
 pub enum FormatError {
+    #[error("citation request refused")]
+    Citation(ibis_core::contract::CitationError),
     #[error("invalid citation request")]
     InvalidRequest,
     #[error("unsupported citation style")]

@@ -123,7 +123,8 @@ fn output_schema(mut success: Value) -> Value {
 pub struct Refusal {
     code: ErrorCode,
     advice: Cow<'static, str>,
-    problem: ibis_core::contract::Problem,
+    problem: Box<ibis_core::contract::Problem>,
+    strict_cause: Option<ibis_core::contract::StrictCause>,
 }
 
 impl Refusal {
@@ -150,7 +151,8 @@ impl Refusal {
         Self {
             code,
             advice: crate::catalogue::problem(&problem, Audience::Agent).into(),
-            problem,
+            problem: Box::new(problem),
+            strict_cause: None,
         }
     }
 }
@@ -160,7 +162,8 @@ impl From<EngineError> for Refusal {
         Self {
             code: error.code,
             advice: crate::catalogue::error(&error, Audience::Agent).into(),
-            problem: error.into(),
+            problem: Box::new(error.into()),
+            strict_cause: error.strict_cause,
         }
     }
 }
@@ -191,7 +194,14 @@ pub(super) fn call(
     }
 }
 
-pub(super) fn tool_error(Refusal { code, advice, problem }: Refusal) -> Value {
+pub(super) fn tool_error(
+    Refusal {
+        code,
+        advice,
+        problem,
+        strict_cause,
+    }: Refusal,
+) -> Value {
     let name = serde_json::to_value(code).unwrap_or(Value::Null);
     let text = crate::catalogue::text(
         "mcp-tool-error",
@@ -199,6 +209,10 @@ pub(super) fn tool_error(Refusal { code, advice, problem }: Refusal) -> Value {
         &[("code", name.as_str().unwrap_or("internal")), ("reason", &advice)],
     )
     .unwrap_or_default();
+    let mut problem = json!(problem);
+    if let Some(cause) = strict_cause {
+        problem["strict_cause"] = json!(cause);
+    }
     json!({"content": [{"type": "text", "text": text}], "structuredContent": {"error":problem}, "isError": true})
 }
 
@@ -867,13 +881,14 @@ fn refusal(result: &CitationResult) -> Refusal {
     let mut refusal = Refusal {
         code,
         advice: reasons.join(" ").into(),
-        problem: EngineError::new(code).into(),
+        problem: Box::new(EngineError::new(code).into()),
+        strict_cause: None,
     };
     if let Some(error) = result.outcomes.iter().find_map(|outcome| match outcome {
         ItemOutcome::Refused { error, .. } => Some(*error),
         _ => None,
     }) {
-        refusal.problem = error.problem();
+        *refusal.problem = error.problem();
     }
     refusal
 }
