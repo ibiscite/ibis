@@ -12,9 +12,11 @@ const { readFileSync, readdirSync } = await vi.importActual<{
 }>("node:fs");
 const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
 const root = new FileURL("./", import.meta.url);
+// Paths read with "/" on every system, so the allowlists below match on Windows too.
+const sources = () => readdirSync(root, { recursive: true }).map((name) => name.replaceAll("\\", "/"));
 const read = (name: string) => readFileSync(new FileURL(name, root), "utf8");
 const sheets = [
-  ...readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
+  ...sources().filter((name) => name.endsWith(".css")).sort().map((name) => [name, read(name)] as const),
   ...["style.css", "demo.css"].map((name) => [`website/${name}`, readFileSync(new FileURL(`../../../website/${name}`, import.meta.url), "utf8")] as const),
 ];
 const tokens = read("tokens.css").replace(/\/\*[^]*?\*\//g, "");
@@ -142,7 +144,7 @@ const fromScript = /^--(native-accent|scroll-fade-|choice-columns|footer-fix|tri
 test("every token a stylesheet reads is defined, and every token is read", () => {
   const reads = all.flatMap((d) => [...d.value.matchAll(/var\((--[\w-]+)/g)].map((match) => [d.file, match[1]!] as const));
   expect([...new Set(reads.filter(([, name]) => !defined.has(name) && !fromScript.test(name)).map(([file, name]) => `${file}: ${name}`))]).toEqual([]);
-  const scripts = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx")).map(read).join("");
+  const scripts = sources().filter((name) => name.endsWith(".tsx")).map(read).join("");
   const used = new Set([...reads.map(([, name]) => name), ...[...scripts.matchAll(/var\((--[\w-]+)/g)].map((match) => match[1]!)]);
   const own = new Set(declarations("tokens.css", read("tokens.css")).filter((d) => d.property.startsWith("--")).map((d) => d.property));
   expect([...own].filter((token) => !token.startsWith("--website-") && !used.has(token))).toEqual([]);
@@ -323,7 +325,7 @@ test("Settings row labels are sentence case, except Apple's own name for a login
 });
 
 test("every icon is one shape, so translucent colours paint it once", () => {
-  const files = readdirSync(root, { recursive: true }).filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
+  const files = sources().filter((name) => name.endsWith(".tsx") && !name.includes(".test."));
   const split = files.flatMap((name) => [...read(name).matchAll(/<svg[^]*?<\/svg>/g)]
     .filter((match) => (match[0].match(/<(path|circle|rect|line)\b/g) ?? []).length > 1).map(() => name));
   expect(split).toEqual([]);
