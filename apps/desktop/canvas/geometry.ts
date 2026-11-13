@@ -9,9 +9,9 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".ui-palette-lead", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring", ".ui-view-back .ui-icon"],
-  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
-  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
+  marks: [".result-tile", ".ui-palette-lead", ".search-bar .search-mark", ".library-bar .status-dot", ".ui-notice-line .update-ring", ".ui-view-back .ui-icon"],
+  words: [".result-title", ".search-bar input", ".ui-view-field", ".library-bar .library-words", ".ui-notice-line .notice-band > span:first-child", ".ui-notice-line .update-text", ".ui-notice-line .ui-line-words", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
+  outside: ".choice-screen, .inspector, .menu-popover, [inert], .ui-notice-line > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
 } as const;
@@ -43,7 +43,7 @@ export const forms = {
 
 /** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
  * from the search bar's divider to the shelf. */
-export const panes = { pane: ".inspector", top: ".search-bar", bottom: ".shelf" } as const;
+export const panes = { pane: ".inspector:not([data-reading])", top: ".search-bar", bottom: ".shelf" } as const;
 
 /** Stacked parts never cover each other: each starts below the one before. */
 export const stacks = [".inspector-titles", ".inspector-column", ".citation-details", ".peek-card section"] as const;
@@ -352,7 +352,9 @@ function seen(node: Element): DOMRect | null {
 }
 
 /** Layers that cover live controls on purpose, each with its reason. */
-export const coverings: { selector: string; reason: string }[] = [];
+export const coverings: { selector: string; reason: string }[] = [
+  { selector: ".peek-card, .ui-popover", reason: "An overlay anchored to its row or token, opened on purpose, covers the rows beside it until any key, a click outside or Esc closes it." },
+];
 
 /** [C24 cover] The centre of every visible, enabled control hits that control:
  * nothing drawn over it takes the click it shows. */
@@ -470,7 +472,12 @@ export function layerRoles(root: ParentNode = document): string[] {
 /** [C24 words] Slots with a fixed number of lines. canvas/audit.ts sets every
  * catalogue message each can show in it, at the narrowest window. */
 export const slots = {
-  footerNotice: { selector: ".notice-slot .notice-band > span", lines: 1 },
+  /** What passes, Undo and remarks (ui/NoticeSlot), in the frame's notice line. */
+  noticeSlot: { selector: ".ui-notice-line .notice-band > span", lines: 1, scenario: "undo-notice", catalogue: true },
+  /** The frame's notice line (ui/Frame), its first notice's words. */
+  /** It also shows the engine's own sentences (a settings notice, a project
+   * refusal), which no table can list: only the catalogue's are measured. */
+  noticeLine: { selector: ".ui-notice-line > .ui-line-notice:first-of-type > .ui-line-words", lines: 1, scenario: "project-check-conflict", catalogue: false },
 } as const;
 
 /** Why words do not fit their slot: cut, or on more lines than it has. */

@@ -2,6 +2,7 @@
 // page, so the runners (gallery/webkit.swift, gallery/canvas.mjs) only choose a
 // window size and an appearance and print what this returns. Invented data only.
 import { englishMessages, type MessageId } from "../src/i18n";
+import { libraryOperations, OPERATION_FAILURES, type Operation } from "../src/features/picker/Notices";
 import { anchorBoxes, anchorMoves, frameStates, geometry, layerRoles, occlusion, overflow, paintOnly, settle, slots } from "./geometry";
 
 type Mount = (host: HTMLElement, options: { scenario: string; theme: string }) => () => void;
@@ -15,17 +16,26 @@ export const layerScreens = ["more", "format-menu", "library-menu", "show-as-men
 /** Each catalogue message a slot can show, with the longest invented values its
  * callers pass. A message added to a slot's caller is added here. */
 const tile = "Featherstonehaugh 2026";
-export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Record<string, string | number>; undo?: true }[]> = {
-  footerNotice: [
-    { id: "undo-removed", args: { reference: tile }, undo: true },
-    { id: "picker-window-reset", undo: true },
-    { id: "picker-undo-failed", undo: true },
+export const slotMessages: Record<keyof typeof slots, { id: MessageId; args?: Record<string, string | number>; actions?: true }[]> = {
+  noticeSlot: [
+    { id: "undo-removed", args: { reference: tile }, actions: true },
+    { id: "picker-window-reset", actions: true },
+    { id: "picker-undo-failed", actions: true },
     { id: "delight-tip", args: { keys: "⇧⌘P" } },
     { id: "delight-library100" }, { id: "delight-library1000" }, { id: "delight-library10000" },
     { id: "delight-empty" }, { id: "delight-loading" }, { id: "delight-no-library" },
     { id: "delight-zoom", args: { percent: 200 } },
     { id: "picker-shorthand-hint" },
     { id: "update-failed" },
+  ],
+  noticeLine: [
+    // Every failed action the line reports; library failures are the footer's.
+    ...(Object.keys(OPERATION_FAILURES) as Operation[]).filter((operation) => !libraryOperations.has(operation)).map((operation) => ({ id: OPERATION_FAILURES[operation] })),
+    { id: "picker-search-error" }, { id: "picker-copy-error" },
+    { id: "picker-missing-citations", args: { keys: "featherstonehaugh2026, aster2026" } },
+    { id: "picker-editor-waiting", args: { format: "Chicago (author-date)" } },
+    { id: "picker-shortcut-not-used", args: { reason: "Another app uses it." } },
+    { id: "picker-shortcut-unavailable", args: { shortcut: "⌥⇧⌘Y", reason: "Another app uses it." } },
   ],
 };
 
@@ -48,6 +58,9 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
     for (const scenario of layerScreens.filter((name) => scenarios.includes(name))) {
       await show(scenario);
       failures.push(...layerRoles().map((failure) => `${scenario}: ${failure}`));
+      // Again over the Mac's glass, whose translucent layers let the system's appearance through.
+      document.documentElement.dataset.nativeAppearance = "liquid-glass";
+      failures.push(...layerRoles().map((failure) => `${scenario} (glass): ${failure}`));
     }
     return failures;
   }
@@ -57,27 +70,27 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       await show(scenario);
       failures.push(...occlusion().map((failure) => `${scenario} (narrow): ${failure}`));
     }
-    await show("undo-notice");
     for (const [slot, messages] of Object.entries(slotMessages) as [keyof typeof slots, typeof slotMessages[keyof typeof slots]][]) {
+      await show(slots[slot].scenario);
       const words = document.querySelector<HTMLElement>(slots[slot].selector);
-      if (!words) { failures.push(`[C24 words] ${slot}: no slot drawn to measure`); continue; }
-      const band = words.parentElement!, undo = band.querySelector<HTMLElement>(".ui-button");
-      const original = words.textContent;
-      for (const { id, args, undo: offer } of messages) {
+      if (!words) { failures.push(`[C24 words] ${slot}: no slot drawn to measure in ${slots[slot].scenario}`); continue; }
+      const actions = [...words.parentElement!.children].filter((part): part is HTMLElement => part !== words && part instanceof HTMLElement);
+      for (const { id, args, actions: offer } of messages) {
         words.textContent = englishMessages.text(id, args);
-        // A remark has the whole line; an offer shares it with Undo.
-        if (undo) undo.hidden = !offer;
+        // A remark has the whole line; an offer shares it with its actions.
+        for (const action of actions) action.style.display = offer ? "" : "none";
         const problem = overflow(words, slots[slot].lines);
         if (problem) failures.push(`[C24 words] ${slot} "${id}": ${problem} at ${document.documentElement.clientWidth}px`);
       }
-      words.textContent = original;
-      if (undo) undo.hidden = false;
     }
     return failures;
   }
 
   // A message no slot declares is caught wherever a scenario shows it.
-  const declared = new Set(Object.values(slotMessages).flat().map(({ id, args }) => englishMessages.text(id, args)));
+  // Each declared message as a pattern: any value may fill its variables.
+  const plain = (text: string) => text.replace(/[\u2068\u2069]/g, "");
+  const declared = Object.values(slotMessages).flat().map(({ id, args }) => new RegExp(`^${plain(englishMessages.text(id, Object.fromEntries(Object.keys(args ?? {}).map((name) => [name, "\u0001"]))))
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\u0001/g, ".+")}$`));
   const idle: { boxes?: ReturnType<typeof anchorBoxes> } = {};
   const states = new Map<string, ReturnType<typeof anchorBoxes>>();
   for (const scenario of scenarios.filter((name) => name !== "notice")) {
@@ -88,8 +101,8 @@ export async function audit(host: HTMLElement, mount: Mount, scenarios: readonly
       ...paintOnly(),
       ...layerRoles(),
     ];
-    for (const [slot, { selector }] of Object.entries(slots)) for (const words of document.querySelectorAll(selector))
-      if (words.textContent && !declared.has(words.textContent)) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
+    for (const [slot, { selector }] of Object.entries(slots).filter(([, { catalogue }]) => catalogue)) for (const words of document.querySelectorAll(selector))
+      if (words.textContent && !declared.some((pattern) => pattern.test(plain(words.textContent!)))) found.push(`[C24 words] ${slot} shows a message it does not declare: "${words.textContent}"`);
     failures.push(...found.map((failure) => `${scenario}: ${failure}`));
     if (scenario === "results") idle.boxes = anchorBoxes();
     if ((frameStates as readonly string[]).includes(scenario)) states.set(scenario, anchorBoxes());
