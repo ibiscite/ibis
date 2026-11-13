@@ -45,6 +45,24 @@ fn sample() -> (Snapshot, CitationRequest) {
 }
 
 #[test]
+fn failed_startup_warmup_leaves_the_first_citation_available() {
+    let _guard = FORMAT_TESTS.lock().unwrap();
+    let formatter = Formatter::new().unwrap();
+    assert_eq!(
+        formatter.warm("invented-missing-style", None),
+        Err(FormatError::UnsupportedStyle)
+    );
+    assert_eq!(
+        formatter.warm("apa", Some("invented-missing-locale")),
+        Err(FormatError::InvalidLocale)
+    );
+    let (snapshot, request) = sample();
+    let preview = formatter.format(&snapshot, &request).unwrap();
+    assert_eq!(preview.text, "(Taylor, 2026)");
+    assert!(preview.copy_content(1).is_some());
+}
+
+#[test]
 fn shelf_spans_follow_processor_order_without_changing_citation_meaning() {
     let _guard = FORMAT_TESTS.lock().unwrap();
     let snapshot = library(&[

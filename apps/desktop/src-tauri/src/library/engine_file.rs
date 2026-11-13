@@ -19,11 +19,33 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::{
-    Arc, Mutex,
+    Arc, Mutex, OnceLock,
     atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 static TICKETS: AtomicU64 = AtomicU64::new(1);
+static FORMATTING: OnceLock<ibis_engine::Formatting> = OnceLock::new();
+
+/// One sleeping worker for the desktop session, independent of its libraries.
+/// Settings have already been read; catalogue I/O and compilation stay off the
+/// startup/UI thread. Failure leaves the normal lazy formatter available.
+pub(crate) fn warm_formatter(output: Option<String>) {
+    let formatting = FORMATTING.get_or_init(ibis_engine::Formatting::default).clone();
+    let _ = std::thread::Builder::new()
+        .name("ibis-format-startup".into())
+        .spawn(move || {
+            let output = crate::output::stored(output.as_deref());
+            let _ = formatting.warm(crate::output::default_style(output), None);
+        });
+}
+
+fn new_engine() -> Result<Engine, ibis_core::contract::EngineError> {
+    Engine::new().map(|engine| match FORMATTING.get() {
+        Some(formatting) => engine.with_formatting(formatting.clone()),
+        None => engine,
+    })
+}
+
 pub(crate) struct FileLibrary {
     pub(super) engine: Engine,
     /// Completed initial read identity; Reload carries its own immutable observation.
@@ -378,13 +400,13 @@ impl FileLibrary {
     }
 
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
-        Self::open_file(path, Engine::new().map_err(|_| super::LoadError::Stopped)?)
+        Self::open_file(path, new_engine().map_err(|_| super::LoadError::Stopped)?)
     }
 
     pub(super) fn open_samples(path: &Path) -> Result<Self, super::LoadError> {
         let mut file = Self::open_file(
             path,
-            Engine::new()
+            new_engine()
                 .map_err(|_| super::LoadError::Stopped)?
                 .without_file_watches(),
         )?;
@@ -427,7 +449,7 @@ impl FileLibrary {
         profile: Option<&str>,
         cancel: &Cancellation,
     ) -> Result<Self, super::LoadError> {
-        let engine = Engine::new().map_err(super::LoadError::Zotero)?;
+        let engine = new_engine().map_err(super::LoadError::Zotero)?;
         Self::open_zotero_with(engine, chosen, profile, cancel)
     }
 
@@ -1301,6 +1323,103 @@ fn citation_warnings(result: &CitationResult, labels: &[Option<String>]) -> Vec<
 mod tests {
     use super::*;
     use ibis_core::contract::{CitationWarning, CitationWarningCode, DisplayTree};
+
+    #[test]
+    #[ignore = "invented 10k library startup timing; run alone with --nocapture --test-threads=1"]
+    fn startup_format_breakdown() {
+        use std::time::Instant;
+        let directory = tempfile::tempdir().unwrap_or_else(|e| panic!("{e}"));
+        let settings_path = directory.path().join("settings.json");
+        std::fs::write(&settings_path, r#"{"output":"apa"}"#).unwrap_or_else(|e| panic!("{e}"));
+        let path = directory.path().join("synthetic.bib");
+        let data: String = (0..10_000).map(|index| format!("@book{{synthetic{index}, title={{Synthetic signals {index}}}, author={{Taylor, Avery}}, year={{2026}}, publisher={{Imaginary Press}}}}\n")).collect();
+        std::fs::write(&path, data).unwrap_or_else(|e| panic!("{e}"));
+        let start = Instant::now();
+        let loaded = ibis_core::settings::load(&settings_path);
+        assert!(loaded.problem.is_none());
+        let settings = start.elapsed();
+        let warmed = std::env::var_os("IBIS_MEASURE_WARM").is_some();
+        let formatting = ibis_engine::Formatting::default();
+        let (finished, warm_result) = std::sync::mpsc::channel();
+        if warmed {
+            let formatting = formatting.clone();
+            let output = loaded.settings.output.clone();
+            std::thread::spawn(move || {
+                let start = Instant::now();
+                let output = crate::output::stored(output.as_deref());
+                formatting
+                    .warm(crate::output::default_style(output), None)
+                    .unwrap_or_else(|e| panic!("{e:?}"));
+                finished.send(start.elapsed()).unwrap_or_else(|e| panic!("{e}"));
+            });
+        }
+        let start = Instant::now();
+        let engine = Engine::new()
+            .unwrap_or_else(|e| panic!("{e:?}"))
+            .without_file_watches()
+            .with_formatting(formatting);
+        let engine_create = start.elapsed();
+        let start = Instant::now();
+        let file = FileLibrary::open_file_with(&path, engine, || {}).unwrap_or_else(|e| panic!("{e}"));
+        let library = start.elapsed();
+        let snapshot = file.engine.snapshot().unwrap_or_else(|e| panic!("{e:?}"));
+        let record = &snapshot.objects()[0];
+        let selection = || {
+            vec![FileSelection {
+                id: record.object.id().clone(),
+                cite: record.fingerprints.cite.clone(),
+                locator: None,
+                locator_input: None,
+                form: None,
+                prefix: None,
+                suffix: None,
+            }]
+        };
+        let start = Instant::now();
+        let reservation = file.reserve_preview();
+        let picker_reservation = start.elapsed();
+        let start = Instant::now();
+        let output = crate::output::listed("apa").unwrap_or_else(|| panic!("APA is listed"));
+        let output_catalogue = start.elapsed();
+        let start = Instant::now();
+        let first = file
+            .preview_for(reservation, selection(), output.spec(), false, None)
+            .unwrap_or_else(|e| panic!("{e}"));
+        let preview = start.elapsed();
+        assert!(!first.text.is_empty());
+        let mut warm = Vec::new();
+        for _ in 0..30 {
+            let start = Instant::now();
+            let next = file
+                .preview(file.reserve_preview(), selection(), "apa")
+                .unwrap_or_else(|e| panic!("{e}"));
+            assert_eq!(next.text, first.text);
+            warm.push(start.elapsed());
+        }
+        warm.sort_unstable();
+        let background = warmed.then(|| {
+            warm_result
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .unwrap_or_else(|e| panic!("{e}"))
+        });
+        eprintln!(
+            "desktop startup-format profile={} warmed={warmed} records=10000 settings-read={settings:?} engine-create={engine_create:?} library-load={library:?} picker-reservation={picker_reservation:?} output-catalogue={output_catalogue:?} first-preview={preview:?} preview-request={:?} background-warmup={background:?} warm-p50={:?} warm-p95={:?}",
+            if cfg!(debug_assertions) {
+                "debug (optimized dependencies)"
+            } else {
+                "release"
+            },
+            output_catalogue + preview,
+            warm[15],
+            warm[28]
+        );
+        if warmed && std::env::var_os("IBIS_ENFORCE_BUDGETS").is_some() {
+            assert!(
+                output_catalogue + preview <= std::time::Duration::from_millis(100),
+                "first warmed preview exceeds 100 ms"
+            );
+        }
+    }
 
     #[test]
     fn a_key_two_references_share_still_says_which_one_a_warning_means() {
