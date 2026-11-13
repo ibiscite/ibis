@@ -37,7 +37,7 @@ export function PickerOverlays({ api, style, format, menus, bindings }: {
   </>;
 }
 
-/** What passes, in the footer's status area; the library status returns after it. */
+/** What passes (Undo, a remark, an update), first in the frame's notice line. */
 export function PickerNotices({ state, send, menus, updateProgress, remark, passive, onRemarkPassed }: {
   state: ReturnType<typeof usePickerSession>["state"];
   send: ReturnType<typeof usePickerSession>["send"];

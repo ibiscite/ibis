@@ -13,7 +13,8 @@ import { PickerHeader } from "./features/picker/PickerHeader";
 import type { FormatPreview } from "./features/picker/FormatMenu";
 import { previewOf } from "./format/outputs";
 import { PickerScroll } from "./features/picker/PickerScroll";
-import { Notices } from "./features/picker/Notices";
+import { notices } from "./features/picker/Notices";
+import { Frame, LineNotice } from "./ui/Frame";
 import { PickerPageToken } from "./features/picker/PickerPageToken";
 import { PickerResults } from "./features/picker/PickerResults";
 import { PickerCitationShelf } from "./features/picker/PickerCitationShelf";
@@ -42,7 +43,7 @@ import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
 import { useCitationRows } from "./features/picker/useCitationRows";
 import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
-import { ProjectCheckNotice } from "./features/picker/ProjectContextStatus";
+import { projectCheckNotice } from "./features/picker/ProjectContextStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -123,7 +124,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   // A file that can't be read is advice beside a key citation, never a gate.
   const projectProblem = checkedPreview && styleOf(format) === null && (project.status?.state === "failed" || project.status?.state === "damaged")
     ? projectDetail(project.status) : null;
-  const contextNotice = projectRefusal ?? projectProblem ? `${projectRefusal ?? projectProblem}:${destination.projectVersion()}` : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
@@ -184,7 +184,6 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const shorthand = useShorthandHint(api, state.presentation, inspector.panel?.kind === "reference");
   // A failure stays beside the fields that can correct it, in one place, also
   // when the panel takes the list's place.
-  const listProblem = inspector.panel ? null : citationProblem;
   const actions = usePickerActions({
     api, pickerSession, menus, libraryState, searchState, destination, shown,
     // The footer names what Enter copies now, or after the running search.
@@ -237,11 +236,25 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
 
   return (
     <PickerShown value={state.shown}>
-    <main
+    <Frame
       data-selection={showCitations && selected.size > 0 || undefined}
       onScrollCapture={pointer.resetHover}
-    >
-      <PickerHeader
+      notice={[
+        // What passes (Undo, a remark, an update) first: it goes by itself.
+        <PickerNotices key="passing" state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />,
+        ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
+          error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
+          confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
+        projectCheckNotice({ refusal: projectRefusal, problem: projectProblem,
+          onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
+          onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
+          disabled: !destination.ready || destination.saving || !ready || searchPending }),
+        shortcut?.error && <LineNotice key="shortcut">
+          {`${shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
+            : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}${shortcut.desktop && !welcomeShown ? ` ${shortcut.desktop.guidance}` : ""}`}
+        </LineNotice>,
+      ].filter(Boolean)}
+      search={<PickerHeader
         hidden={welcomeShown} yours={preferences.format} preview={formatPreview}
         onResetPosition={api.resetWindowPosition}
         inputRef={input} query={query}
@@ -260,24 +273,9 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         formatDisabled={!destination.canChooseFormat}
         showFormat={!libraryChoices && (library === null || Boolean(library?.has_snapshot))}
         styles onFormatChange={chooseFormat}
-      />
-      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility} citationProblem={listProblem} citationProblemIdentity={listProblem ? formatted?.request : undefined}
-        contextNotice={contextNotice} contextNoticeIdentity={projectRefusal ? formatted?.request : undefined}>
-        {shortcut?.error && <div className="notices">
-          <p role="status">
-            {shortcut.registered ? say("picker-shortcut-not-used", { reason: fullStop(shortcut.error) })
-              : say("picker-shortcut-unavailable", { shortcut: shortcut.shortcut, reason: fullStop(shortcut.error) })}
-            {shortcut.desktop && !welcomeShown && ` ${shortcut.desktop.guidance}`}
-          </p>
-        </div>}
-        <ProjectCheckNotice refusal={projectRefusal} problem={projectProblem}
-          onRetry={project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined}
-          onLocate={project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined}
-          disabled={!destination.ready || destination.saving || !ready || searchPending} />
-        <Notices projectNotice={destination.readProblem ?? project.notice} editorNotice={editor.label} library={library} failures={{ ...failures, recentHistory: recents.forgetFailed }}
-          error={error} copyError={inspector.panel ? null : copyError} copied={copied} missing={ready ? list?.missing : undefined}
-          citationProblem={listProblem} confirmation={state.copyNotice}
-          onDismissCopied={() => send({ type: "dismiss" })} />
+      />}
+    >
+      <PickerScroll onFileDrag={api.onFileDrag} presentation={state.visibility}>
         <PickerResults
           api={api} libraryState={libraryState} searchState={searchState} state={state} source={source} scope={scope}
           shortcut={shortcut} perform={perform} focusHome={focusHome} pointer={pointer} rows={{ ...rows, onChoose: (index, reference, action) => {
@@ -296,7 +294,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         copyProblem={projectRefusal}
         api={api} library={library} scope={scope} sourceState={source} menus={menus} actions={actions} run={keys.run} citationLine={citationLine}
         copyChosen={rows.copyChosen} recents={recents}
-        operations={operations} altHeld={altHeld} notices={<PickerNotices state={state} send={send} menus={menus} updateProgress={updateProgress} remark={zoomFeedback ?? emptyFeedback.feedback ?? shorthand.hint ?? delights.feedback} passive={!zoomFeedback && !emptyFeedback.feedback && !shorthand.hint && delights.passive} onRemarkPassed={() => { if (zoomFeedback) return; if (emptyFeedback.feedback) emptyFeedback.clear(); else if (shorthand.hint) shorthand.dismiss(); else delights.dismiss(); }} />} emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
+        operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
       <PickerOverlays api={{ ...api, editWriting: destination.editProject! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
@@ -309,7 +307,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
           ...rowWords.itemType(peekRecord.item_type) ? [{ label: say("peek-type"), value: rowWords.itemType(peekRecord.item_type)! }] : [],
           { label: say("peek-key"), value: peekRecord.key, mono: true },
         ]} />}
-    </main>
+    </Frame>
     </PickerShown>
   );
 }

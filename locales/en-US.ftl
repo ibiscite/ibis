@@ -724,30 +724,30 @@ citation-details-edit = Edit { $reference }
 citation-details-details = Citation details for { $reference }
 operation-failures-recent-history = Recent citations could not be forgotten. Try again.
 operation-failures-project = The .bib file to check against could not be changed. Try again.
-operation-failures-row-context = The reference menu could not open. Use Enter to copy or Shift+Enter to add.
+operation-failures-row-context = The row menu could not open. Enter copies, Shift+Enter adds.
 operation-failures-status = Ibis could not check your library. Choose the file again.
-operation-failures-shortcut = Ibis could not check the shortcut. Open Ibis from the menu bar or tray.
+operation-failures-shortcut = Could not check the shortcut. Open Ibis from the menu bar or tray.
 operation-failures-choose = The file chooser did not open. Try again.
-operation-failures-drop-refused = Ibis opens one { -library-formats } file at a time.
+operation-failures-drop-refused = Drop one { -library-formats } file at a time.
 operation-failures-zotero = Ibis could not start reading Zotero. Try again.
 operation-failures-samples = Ibis could not change the sample library. Try again.
 operation-failures-zotero-groups = Ibis could not list your Zotero groups. Check that Zotero is open, then try again.
 operation-failures-reload = Ibis could not reload your library. Choose the file again.
 operation-failures-hide = Ibis could not hide this window. Try again.
 operation-failures-pin = Ibis could not change the pin. Try again.
-operation-failures-preferences = Ibis could not read or save your picker choices. They apply until Ibis restarts.
+operation-failures-preferences = Your picker choices could not be saved. They apply until restart.
 operation-failures-window-size = Ibis could not save the window size. It will be kept until you quit.
 operation-failures-quit = Ibis could not quit. Try again.
 operation-failures-update-events = Update progress is unavailable.
 operation-failures-picker-events = Ibis could not focus the search box. Restart Ibis to try again.
 operation-failures-library-events = Your library may not update automatically. Use Reload, or restart Ibis.
-operation-failures-find-sources = Ibis could not look for libraries on this computer. Choose a file instead.
-operation-failures-open-found = That file could not be opened from the list. Pick it again from the new list.
+operation-failures-find-sources = Ibis could not look for libraries here. Choose a file instead.
+operation-failures-open-found = That file could not be opened. Pick it again from the new list.
 operation-failures-settings = Settings could not open. Try again.
-operation-failures-app-choices = Ibis needs your paste choice for this app because its saved app choices were damaged. Choose Paste or Copy Only in the format menu.
-operation-failures-app-read = Ibis could not tell which app this is for. Your default applies, and a format you pick is for this paste only. Reopen Ibis to try again.
+operation-failures-app-choices = App choices were damaged. Choose Paste or Copy Only again.
+operation-failures-app-read = Ibis could not tell which app this is. Your default applies.
 operation-failures-app-choice = Ibis could not save the choice for this app. Try again.
-operation-failures-app-delivery = Ibis saved the format for this app, but not whether to paste into it. Choose Paste or Copy Only again.
+operation-failures-app-delivery = Ibis saved the format but not Paste or Copy Only. Choose it again.
 setup-sources-title = Where do your references live?
 setup-sources-line =
     { $platform ->
@@ -864,7 +864,7 @@ picker-snapshot-changed = The library changed. Search again and reselect the ref
 picker-shared-key = More than one reference has the key { $key }, so it can’t be cited by key. Give one of them a different key in Zotero or your .bib file.
 picker-using-shorthand = Using { $value }
 picker-apply = Apply
-picker-shorthand-hint = Type it with the search: a page “vale 417”, a chapter “vale ch 2”, text before “see vale”.
+picker-shorthand-hint = Type “vale 417” for page 417, or “see vale” to add “see”.
 picker-search-as-typed = Search as typed
 picker-apply-locator = Apply locator to { $key }
 picker-copied = Copied
@@ -1046,7 +1046,7 @@ picker-project-entry =
         [repeated] The library file repeats this key, so Ibis can’t tell which entry to copy.
        *[dependency] This entry relies on a crossref, xdata or @string that can’t come with it. Export it from your reference manager, keeping its key.
     }
-picker-editor-waiting = Citing for your editor in { $format }. Enter sends what you see; Esc cancels.
+picker-editor-waiting = Citing for your editor in { $format }. Esc cancels.
 picker-find-source = Find { $name }…
 picker-find-source-unnamed = Find…
 picker-show-source-folder =
@@ -1235,7 +1235,7 @@ copied-notice-reason =
 update-title = Updating Ibis
 update-downloading = Downloading
 update-installing = Checking and installing
-update-failed = The update could not be installed. Use Check for Updates in Settings › About to try again later.
+update-failed = Update not installed. Use Check for Updates in Settings › About.
 library-entries-to-check =
     { $count ->
         [one] 1 entry to check

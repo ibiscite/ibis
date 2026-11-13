@@ -1,10 +1,9 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, test, vi } from "vitest";
 import { App } from "../../App";
-import { Notices } from "./Notices";
 import { say } from "../../i18n";
 import { backend, resetApp } from "../../testing/app";
-import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, refusalGeometry, refusalPresentation, waitForLayout } from "./picker-layout-checks.mjs";
+import { dismissMenu, hasMiddleViewport, isSeatedInspector, isWholeNotice, isWholeShelf, layoutGeometry, noticeText, waitForLayout } from "./picker-layout-checks.mjs";
 
 const { readFileSync } = await vi.importActual("node:fs");
 const { URL: FileURL } = await vi.importActual("node:url");
@@ -47,40 +46,6 @@ test("shared CSS reserves a readable middle viewport before allocating spare ban
   } finally { style.remove(); }
 });
 
-test("the refusal oracle distinguishes offscreen text, clipping and lost keyboard reach", () => {
-  vi.stubGlobal("innerWidth", 480); vi.stubGlobal("innerHeight", 360);
-  render(<div className="picker-content"><Notices library={null} failures={{}} startAtLogin={null} error={null} citationProblem={noticeText.formatting}
-    copyError={null} copied={null} onDismissCopied={() => {}} /></div>);
-  const refusal = screen.getByRole("alert"), middle = document.querySelector(".picker-content");
-  // jsdom has no layout. The probe supplies real boxes; this fixture proves
-  // that its individual diagnostics reject each failure without conflating them.
-  refusal.style.whiteSpace = "normal"; refusal.style.overflowY = "visible";
-  let top = 80, scrollWidth = 432, scrollHeight = 1176;
-  vi.spyOn(middle, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 80, 480, 96));
-  vi.spyOn(refusal, "getBoundingClientRect").mockImplementation(() => new DOMRect(24, top, 432, 1176));
-  Object.defineProperties(refusal, {
-    clientWidth: { get: () => 432 }, scrollWidth: { get: () => scrollWidth },
-    clientHeight: { get: () => 1176 }, scrollHeight: { get: () => scrollHeight },
-  });
-  const whole = { startsInView: true, wrapsInFull: true, keyboardReachable: true };
-  expect(refusalPresentation(refusal)).toEqual(whole);
-  top = -1824;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, startsInView: false });
-  middle.scrollTop = 1904;
-  expect(refusalGeometry(refusal)).toEqual({ rect: { top: -1824, bottom: -648, width: 432 }, bounds: { top: 80, bottom: 176 }, scrollTop: 1904,
-    viewport: { width: 480, height: 360 } });
-  top = 80; scrollWidth += 2;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  scrollWidth = 432; scrollHeight += 2;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  scrollHeight = 1176; refusal.style.whiteSpace = "nowrap";
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  refusal.style.whiteSpace = "normal"; refusal.style.overflowY = "hidden";
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, wrapsInFull: false });
-  refusal.style.overflowY = "visible"; refusal.tabIndex = -1;
-  expect(refusalPresentation(refusal)).toEqual({ ...whole, keyboardReachable: false });
-});
-
 test.each([false, true])("the probe waits for menu exit before the next action (filter=%s)", async (filtered) => {
   let finishExit;
   const detached = new Promise((resolve) => { finishExit = resolve; });
@@ -102,13 +67,13 @@ test.each([false, true])("the probe waits for menu exit before the next action (
   if (filtered) expect(menu.press).not.toHaveBeenCalled();
 });
 
-test.each([false, true])("a failed search notice stays reachable in a steady frame (Larger=%s)", async (larger) => {
-  const frame = larger ? 552 : 480, noticeHeight = larger ? 64 : 32;
-  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight;
+test.each([false, true])("a failed search notice takes the notice line in a steady frame (Larger=%s)", async (larger) => {
+  const noticeHeight = larger ? 36 : 32;
+  let clipTop = 0, clipBottom = 0, visibleHeight = noticeHeight - 8;
   // jsdom supplies an oracle regression; the browser probe checks real layout.
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function () {
-    if (this.matches('.notices [role="alert"]')) return new DOMRect(0, 53 - clipTop, 720, visibleHeight);
-    if (this.matches(".picker-content")) return new DOMRect(0, 53, 720, frame - 109 - clipBottom);
+    if (this.matches('.ui-notice-line [role="alert"]')) return new DOMRect(64, 57 - clipTop, 600, visibleHeight);
+    if (this.matches(".ui-notice-line")) return new DOMRect(0, 53, 720, noticeHeight - clipBottom);
     return new DOMRect();
   });
   const calls = backend({
@@ -122,9 +87,9 @@ test.each([false, true])("a failed search notice stays reachable in a steady fra
   expect(calls).not.toContain("fit_picker");
   expect(isWholeNotice(noticeText.failedSearch)).toBe(true);
   expect(isWholeNotice("Unrelated synthetic notice")).toBe(false);
-  clipBottom = frame - 109 - noticeHeight + 2;
+  clipBottom = 8;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
-  clipBottom = 0; clipTop = 2;
+  clipBottom = 0; clipTop = 6;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);
   clipTop = 0; visibleHeight = 0;
   expect(isWholeNotice(noticeText.failedSearch)).toBe(false);

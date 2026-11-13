@@ -35,7 +35,7 @@
 @container (max-width: 34rem) {
   .ui-palette { flex-direction: column; }
   .ui-palette[data-preview] .ui-palette-list { flex: 1 1 auto; min-width: 0; border-inline-end: 0; border-block-end: var(--border-width) solid var(--separator); }
-  .ui-palette-preview { flex: none; padding: var(--space-2) var(--inset) var(--space-2) calc(var(--inset) + var(--row-pad) + var(--title-start)); }
+  .ui-palette-preview { flex: none; padding: var(--space-2) var(--inset) var(--space-2) var(--label-start); }
   .ui-palette-preview :is(.ui-palette-preview-heading, .ui-palette-preview-note) { display: none; }
 }
 @media (forced-colors: active) {

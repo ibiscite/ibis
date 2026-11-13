@@ -1,0 +1,44 @@
+/* [C24] The picker window's frame (ui/Frame.tsx): slots in one order at every size,
+   search, the list's heading line, content with the Inspector beside it, shelf and
+   footer. Each slot's height is its own and never depends on what another holds,
+   so nothing that appears or passes moves the list, the shelf or the footer. */
+main.ui-frame {
+  height: 100dvh; container-type: inline-size; overflow: hidden; display: grid;
+  grid-template: "search search" auto "notice panel" auto "middle panel" minmax(0, 1fr) "shelf shelf" auto "footer footer" auto / minmax(0, 1fr) auto;
+}
+main.ui-frame > .search-bar { grid-area: search; }
+main.ui-frame > .shelf { grid-area: shelf; }
+main.ui-frame > footer { grid-area: footer; }
+
+/* The heading line: the list's heading, or a notice standing in for it at the same
+   height. With neither (an empty state, the commands) the line is not drawn, so
+   no empty band is ever reserved. The list then starts right under it. */
+.ui-notice-line { grid-area: notice; block-size: var(--notice-line-h); }
+.ui-notice-line:not(:has(> .ui-line-notice, > .notice-slot, > .ui-heading-slot:not(:empty))) { display: none; }
+main.ui-frame:has(> .ui-notice-line > .ui-heading-slot:not(:empty)) .results-area { margin-block-start: 0; }
+.ui-notice-line:has(> .ui-line-notice, > .notice-slot) > .ui-heading-slot { display: none; }
+/* The heading starts on the row inset, as section headings do. */
+.ui-heading-slot { flex: 1 1 auto; min-width: 0; margin-inline-start: calc(-1 * var(--title-start)); }
+.ui-heading-slot > .results-heading { padding-block: 0; }
+/* With no list, notices take the room above the empty state, over its padding. */
+.ui-notice-host { position: absolute; inset-block-start: 0; inset-inline: 0; z-index: var(--z-chrome); block-size: var(--notice-line-h); }
+.ui-notice-host:not(:has(> .ui-line-notice, > .notice-slot)) { display: none; }
+
+/* A notice shows its words on the label column, cut with an ellipsis if they must
+   be, and its actions at the end. */
+:is(.ui-notice-line, .ui-notice-host) { font: var(--type-body-size) / var(--type-body-line) var(--font); }
+.ui-line-notice { flex: 1 1 auto; display: flex; align-items: center; gap: var(--space-2); min-width: 0; }
+.ui-line-words { flex: 0 1 auto; min-width: 0; margin: 0; padding: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text-secondary); user-select: text; }
+.ui-line-notice > :not(.ui-line-words) { flex: none; }
+.ui-line-words[role="alert"] { color: var(--text); }
+/* A list in one line: its items run on, each after a separator. */
+ul.ui-line-words { list-style: none; }
+ul.ui-line-words > li { display: inline; }
+ul.ui-line-words > li + li::before { content: " · "; }
+.ui-line-words code { font-family: var(--mono); color: var(--text); }
+/* The window's notice slot (ui/NoticeSlot: Undo, a remark, an update) starts on
+   the icon column, so an update's ring sits where row tiles do. */
+:is(.ui-notice-line, .ui-notice-host) > .notice-slot { --notice-start: var(--title-start); flex: 1 1 auto; margin-inline-start: calc(-1 * var(--title-start)); }
+/* One notice shows; the rest wait their turn, out of sight and out of reach. */
+:is(.ui-notice-line, .ui-notice-host) > :is(.notice-slot, .ui-line-notice) ~ .ui-line-notice { display: none; }
+.ui-line-words:focus-visible { outline-offset: var(--ring-inside); }

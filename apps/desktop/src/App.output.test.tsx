@@ -143,7 +143,7 @@ test("the menu says why the next paste uses its format and where a pick goes", a
 test("an unreadable per-app file says defaults apply and offers the app's own paste answer", async () => {
   const { calls } = opened(() => ({ ...WORD, unreadable: true, can_choose_paste: true }));
   await screen.findByText("First");
-  expect((await screen.findByText(/saved app choices were damaged/)).textContent).toContain("Choose Paste or Copy Only in the format menu");
+  expect((await screen.findByText(/App choices were damaged/)).textContent).toContain("Choose Paste or Copy Only again");
   await waitFor(() => expect(formatButton().hasAttribute("disabled")).toBe(false));
   openFormats();
   expect(await screen.findByRole("option", { name: "Copy Only" })).toBeTruthy();
@@ -156,7 +156,7 @@ test("an unread destination says what applies and never points at paste choices 
   const saved: unknown[] = [];
   const { remembered } = opened(() => { throw new Error("synthetic read failure"); }, { picker_preferences_saved: ({ preferences }) => { saved.push((preferences as { key_output?: string }).key_output ?? (preferences as { output?: string }).output ?? null); return null; } });
   await screen.findByText("First");
-  expect((await screen.findByText(/could not tell which app this is for/)).textContent).toContain("Reopen Ibis to try again");
+  expect((await screen.findByText(/could not tell which app this is\./)).textContent).toContain("Your default applies");
   expect(screen.queryByText(/Choose Paste or Copy Only/)).toBeNull();
   await pick("Typst");
   await waitFor(() => expect(formatShown()).toBe("Typst · This paste"));
