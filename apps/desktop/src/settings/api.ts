@@ -7,6 +7,9 @@ import { commands, type PastePermission, type PreferenceChange, type ShortcutSta
 export type { PastePermission } from "../bindings";
 
 export const settingsApi = {
+  cliStatus: commands.cliStatus,
+  setCliInstalled: commands.setCliInstalled,
+  copyCliProfile: commands.copyCliProfile,
   delightView: commands.delightView,
   pickerPreferences: commands.pickerPreferences,
   savePickerPreferences: commands.savePickerPreferences,
@@ -45,5 +48,5 @@ export const settingsApi = {
   onCloseRequested: (handler: () => Promise<void>): Promise<UnlistenFn> => getCurrentWindow().onCloseRequested(handler),
 };
 
-type Optional = "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint";
+type Optional = "cliStatus" | "setCliInstalled" | "copyCliProfile" | "delightView" | "editorEndpoint" | "setEditorEndpoint" | "copyEditorEndpoint";
 export type SettingsApi = Omit<typeof settingsApi, Optional> & Partial<Pick<typeof settingsApi, Optional>>;

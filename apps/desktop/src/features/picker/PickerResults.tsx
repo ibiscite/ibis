@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import type { RefObject } from "react";
-import type { PickerApi } from "../../App";
 import { LibrarySetup, SampleLibraryExit } from "../../LibrarySetup";
 import { say } from "../../i18n";
 import { ResultList } from "./ResultList";
@@ -29,7 +29,7 @@ export function PickerResults({
   project: ProjectStatus | null;
   setQuery: (value: string) => void;
   peck?: boolean;
-  api: PickerApi;
+  api: typeof nativeApi;
   libraryState: ReturnType<typeof usePickerLibrary>;
   searchState: ReturnType<typeof useLibrarySearch>;
   state: ReturnType<typeof usePickerSession>["state"];
@@ -62,7 +62,7 @@ export function PickerResults({
     <EmptyState library={library} query={query} narrowed={narrowed} peck={peck}
       unfiltered={unfiltered} missing={Boolean(list?.missing.length)}
       onRemoveFilter={(plain) => { setQuery(plain); focusHome(); }}
-      source={api.openLibrarySource && source.sourceInChoices ? sourceChoice : undefined}
+      source={source.sourceInChoices ? sourceChoice : undefined}
       onChooseLibrary={() => void perform("choose", chooseLibrary)}
       onClearSearch={() => { setQuery(""); focusHome(); }}
       onSearchAll={searchAllLibraries}

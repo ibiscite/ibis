@@ -1,4 +1,4 @@
-import { DEFAULT_PICKER_SHORTCUT, shortcutBindings } from "../keys";
+import { bindingKeys, DEFAULT_PICKER_SHORTCUT, shortcutBindings } from "../keys";
 import { SHORTCUT_ACTIONS } from "../i18n/settings";
 import type { PickerPreferences } from "../bindings";
 import { defaultOutput } from "../format/outputs";
@@ -10,6 +10,7 @@ export type Page = typeof PAGES[number];
 export type SettingRow = { id: string; page: Page; label: MessageId; description?: MessageId; keywords?: MessageId; preference?: keyof PickerPreferences; default?: PickerPreferences[keyof PickerPreferences] };
 export const ROWS: readonly SettingRow[] = [
   { id: "open-shortcut", default: DEFAULT_PICKER_SHORTCUT, page: "general", label: "shortcuts-open", description: "shortcuts-description", keywords: "settings-shortcut-words" },
+  { id: "cli-command", page: "general", label: "command-install" },
   { id: "login", default: false, page: "general", label: "general-login-label", description: "general-login-description", keywords: "settings-startup-words" },
   { id: "menu-bar", preference: "menu_bar", default: true, page: "general", label: "general-menu-bar-label", description: "general-menu-bar-description" },
   { id: "small-surprises", preference: "small_surprises", default: true, page: "general", label: "general-small-surprises-label", description: "general-small-surprises-description", keywords: "settings-surprises-words" },
@@ -44,7 +45,7 @@ export function preferenceDefault(row: SettingRow, preferences: PickerPreference
 
 /** Fixed keyboard rows share their definitions with the rendered catalogue. */
 export function settingsRows(enterPastes: boolean): readonly SettingRow[] {
-  return [...ROWS, ...shortcutBindings(enterPastes).map((binding): SettingRow => ({
+  return [...ROWS, ...shortcutBindings(enterPastes).filter((binding) => bindingKeys(binding, currentPlatform() === "macos").length).map((binding): SettingRow => ({
     id: `key-${binding.action}`, page: "shortcuts", label: binding.label ?? SHORTCUT_ACTIONS[binding.action],
   }))];
 }

@@ -74,13 +74,44 @@ Keep verification records in DNS, not account credentials in this repository.
 These tools report search-engine discovery and search performance; they add no
 visitor script to Ibis. A Search Console import also grants Bing access to Google
 search data; independent DNS verification avoids that account link. Do not add
-Google Analytics, Tag Manager or Microsoft Clarity. Hosting request statistics
-remain in Cloudflare; Web Analytics/beacon injection stays off. No visitor
-cookies, cross-site identifiers or new app data flows are introduced.
+Google Analytics, Tag Manager or Microsoft Clarity. Use Cloudflare's hosting
+request statistics for interest; the website is intended to remain free of
+analytics scripts. See the configuration discrepancy below. No visitor
+cookies, cross-site identifiers or new app data flows are introduced by the
+website build.
 
 After publication, verify the sitemap and robots URLs return 200, the homepage
 has its canonical URL and microdata, and preview deployments remain excluded
 from indexing. Search engines decide when and whether to index the site.
+
+## Interest and downloads
+
+Once a month, use Cloudflare's domain **Analytics → Visitors** for the last
+30 days. Record the date range, visits, page views and leading referring sites
+in a private note; use the same view and filters each time. Exclude known
+maintainer IP addresses in the dashboard when possible, but do not save or
+publish addresses. Recheck exclusions when networks change. Visits and page
+views are approximate: bots, testing and shared networks remain, and missing
+referrers do not mean that a visit came from a particular source. Request
+counts include scanners and assets and are not visits. Cloudflare's free
+adaptive request datasets retain at least 31 days; other datasets can differ.
+
+The [weekly stable download snapshots](https://github.com/ibiscite/ibis/blob/stats/counts.csv)
+keep cumulative counts per asset. Compare consecutive snapshots of the same
+asset only while its `updated_at` is unchanged; a replacement resets its count,
+and downloads between the previous snapshot and replacement are unknown.
+Missing weeks are gaps, not zeroes. Group installer files by platform, keeping
+`latest.json`, checksums and update archives separate. These counts include
+testing, repeat downloads and some updates; they omit nightly and direct
+versioned-release downloads. They are neither installations nor active users.
+
+Cloudflare's separate Web Analytics site is configured for automatic Real
+User Measurements excluding the EU, but the checked production response has a
+self-only script policy and did not contain a beacon. Its dashboard has reported
+some measurements; their origin and coverage are unverified. Do not combine
+those numbers with edge visits or assume they cover all visitors. Check the
+live response and privacy disclosure before changing the Cloudflare setting
+or allowing its script.
 
 ## Design
 

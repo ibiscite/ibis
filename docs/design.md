@@ -18,7 +18,7 @@ has its own page; read only the one your change touches:
 | [Foundations](design/foundations.md) | Tokens, colour, materials, type, spacing, corners, icons, the bird, key caps, motion, accessibility, per platform | C1 C3 C4 C10 C13 C15 C17, D1 D3–D6 D8–D11 D15 |
 | [Components](../apps/desktop/src/ui/README.md) | Each shared part in `ui/`, its states, and menus | C9 C21, D7 |
 | [Picker](design/picker.md) | Search bar, results, search rules, shelf, footer, keys, window behaviour | C2 C5–C8 C11 |
-| [Inspector and Reader](design/inspector-and-reader.md) | The details panel and the planned PDF reader | C19 C20 |
+| [Inspector and Reader](design/inspector-and-reader.md) | Citation details, the side panel and the planned PDF reader | C19 C20 C23 |
 | [Copying, pasting and notices](design/delivery.md) | What Enter does, the format rule, writing projects, notices and their words | |
 | [First run and choice screens](design/choice-screens.md) | Welcome, no library, empty and failed libraries | C12 |
 | [Settings](design/settings.md) | The Settings window and its pages | C18, D17 |
@@ -30,7 +30,7 @@ has its own page; read only the one your change touches:
 2. **One design, macOS first.** Every system uses the macOS design; only correctness follows the system (see [Per platform](design/foundations.md#per-platform)).
 3. **Readable first.** Nothing smaller than 12 px; secondary text (helper lines, the footer, a row's byline) passes 4.5:1 on every surface, in light and dark, and with Increase Contrast.
 4. **Easy to hit.** Every target is at least 32 px, 44 px under `pointer: coarse`, whatever the drawn size.
-5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch.
+5. **Show less, reveal more.** Things appear when useful and fold one key away; no modes, no "advanced" switch. A search jump waits for its control to load and yields when the person moves elsewhere.
 6. **Say what happened.** Every action ends in a visible result: copied, pasted, or why not. A refused library file is a failed open with a way to choose another; only a successful read can say the library is empty. Colour is never the only signal. Nothing asks "are you sure?"; destructive actions apply at once with an 8 s Undo [D16].
 7. **Motion explains, never delays** (maintainer, 2026-11-10). Movement is only for things that appear or move in space: a menu unfolds from its button, palettes and sheets share the window view's entrance, a citation token settles in or slides when moved, a press gives a little. Selection and focus never move: they change at once, plain and simple, with nothing lingering on the row they left. Motion never makes anyone wait: whatever appears takes keys from its first frame, and whatever leaves goes at once. It is off-able: under Reduce Motion it becomes a short fade or the end state.
 8. **No glow, no edge rings.** Selection is a fill, never an outline. Exceptions: picture choices (see **Selection is a fill** in [components](../apps/desktop/src/ui/README.md)) and a dragged library file, which rings the whole content area.

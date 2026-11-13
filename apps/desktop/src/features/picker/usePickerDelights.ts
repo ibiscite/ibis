@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useCallback, useEffect, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { DelightView, LibraryStatus } from "../../bindings";
 import { type MessageId, useInterfaceMessages } from "../../i18n";
 import { keyLabel, keysFor } from "../../keys";
@@ -10,7 +10,7 @@ const STATUS: Record<NonNullable<DelightView["status"]>, MessageId> = {
   "paste-tip": "delight-tip", library100: "delight-library100", library1000: "delight-library1000", library10000: "delight-library10000",
 };
 
-export function usePickerDelights(api: PickerApi, presentation: number | null, library: LibraryStatus | null | undefined, settingsRevision?: boolean | null) {
+export function usePickerDelights(api: typeof nativeApi, presentation: number | null, library: LibraryStatus | null | undefined, settingsRevision?: boolean | null) {
   const { text } = useInterfaceMessages();
   const [view, setView] = useState<DelightView | null>(null);
   const dismiss = useCallback(() => setView(null), []);

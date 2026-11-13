@@ -3,6 +3,9 @@
 import { invoke as __TAURI_INVOKE } from "@tauri-apps/api/core";
 
 export const commands = {
+	cliStatus: () => __TAURI_INVOKE<CommandStatus>("cli_status"),
+	setCliInstalled: (installed: boolean) => __TAURI_INVOKE<CommandStatus>("set_cli_installed", { installed }),
+	copyCliProfile: () => __TAURI_INVOKE<null>("copy_cli_profile"),
 	/**
 	 * Choose a library with the system file dialog. The interface never passes
 	 * file paths; the result arrives as the `library:changed` event.
@@ -78,7 +81,7 @@ export const commands = {
 	recentReferences: (forget: boolean) => __TAURI_INVOKE<[SearchReply, boolean, boolean]>("recent_references", { forget }),
 	previewFileCitation: (items: FileSelection[], output: string, expectedRevision: string, intent: PreviewIntent) => __TAURI_INVOKE<FilePreview>("preview_file_citation", { items, output, expectedRevision, intent }),
 	/** Read-only examples owned by a prepared preview; never publishes a new ticket. */
-	citationDetails: (ticket: string, contentHash: string, item: number) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item }),
+	citationDetails: (ticket: string, contentHash: string, item: number, intent: PreviewIntent) => __TAURI_INVOKE<ReferenceDetails>("citation_details", { ticket, contentHash, item, intent }),
 	/**
 	 * Copy the shown citation. Citing it again can wait for the formatter, so
 	 * that runs on a worker with no lock held; the short commit that writes the
@@ -115,18 +118,18 @@ export const commands = {
 	 * The list as a formatted bibliography, for the person to look at before
 	 * copying it. `None` when nothing listed is in the open library.
 	 */
-	sessionBibliography: (style: string) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style }),
+	sessionBibliography: (style: string, intent: PreviewIntent) => __TAURI_INVOKE<SessionBibliography | null>("session_bibliography", { style, intent }),
 	/**
 	 * Copy what was shown. Prepared again from the list as it is now, and refused
 	 * unless that is exactly what the person saw.
 	 */
-	copySessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash }),
+	copySessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<null>("copy_session_bibliography", { style, contentHash, intent }),
 	/**
 	 * Save what was shown, as rich text, a web page or plain text. This is the one
 	 * way the list leaves memory, and only because the person asked. `None` when
 	 * the dialog was cancelled; otherwise the file's name.
 	 */
-	exportSessionBibliography: (style: string, contentHash: string) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash }),
+	exportSessionBibliography: (style: string, contentHash: string, intent: PreviewIntent) => __TAURI_INVOKE<string | null>("export_session_bibliography", { style, contentHash, intent }),
 	/** The preferences the picker starts with. */
 	pickerPreferences: () => __TAURI_INVOKE<PickerPreferences>("picker_preferences"),
 	/**
@@ -138,6 +141,11 @@ export const commands = {
 	savePickerPreferences: (preferences: PickerPreferencesPatch) => __TAURI_INVOKE<number>("save_picker_preferences", { preferences }),
 	/** One request per visible presentation/snapshot. Settings passes no presentation. */
 	delightView: (now: LocalMoment, presentation: number | null, revision: string | null, aboutClick: boolean | null) => __TAURI_INVOKE<DelightView>("delight_view", { now, presentation, revision, aboutClick }),
+	/**
+	 * Asked when a person reaches for a citation's details by hand; true while the
+	 * hint has been shown fewer than [`SHORTHAND_HINTS`] times.
+	 */
+	shorthandHint: () => __TAURI_INVOKE<boolean>("shorthand_hint"),
 	/** The saved preferences once a submitted change has run. */
 	pickerPreferencesSaved: (receipt: number) => __TAURI_INVOKE<PickerSave>("picker_preferences_saved", { receipt }),
 	/** The app the picker was opened from, its output and what Ibis remembers for it. */
@@ -199,9 +207,8 @@ export const commands = {
 	/** Whether update checks run on their own; `None` when this build has no updates. */
 	updateChecks: () => __TAURI_INVOKE<boolean | null>("update_checks"),
 	/**
-	 * Turn automatic checks on or off, as asked in More. The saved answer
-	 * arrives as the `update:automatic` event. Not async, so it runs on the main
-	 * thread and is queued in click order with the tray's clicks.
+	 * Turn automatic checks on or off from Settings. The saved answer arrives
+	 * as the `update:automatic` event; changes are queued in click order.
 	 */
 	setUpdateChecks: (enabled: boolean) => __TAURI_INVOKE<void>("set_update_checks", { enabled }),
 	/**
@@ -257,9 +264,7 @@ export const commands = {
 	 * previous frame on the same display; later geometry invalidates it.
 	 */
 	setWindowSize: (size: WindowSize, undo: number | null) => __TAURI_INVOKE<number>("set_window_size", { size, undo }),
-	/** The picker collects text from Search with Ibis once. */
 	takeSearchRequest: () => __TAURI_INVOKE<string | null>("take_search_request"),
-	/** A citation segment took its place: the trackpad's alignment tick. */
 	alignmentTick: () => __TAURI_INVOKE<void>("alignment_tick"),
 	/** Double-clicking the search bar's empty area returns Ibis to its place. */
 	resetWindowPosition: () => __TAURI_INVOKE<void>("reset_window_position"),
@@ -324,6 +329,17 @@ export type CommandError = {
 } | {
 	code: "failed";
 	message: string;
+};
+
+export type CommandState = "not-installed" | "matching" | "different" | "foreign";
+
+export type CommandStatus = {
+	installable: boolean;
+	profile_line: string | null;
+	removable: boolean;
+	state: CommandState;
+	used_path: string | null;
+	version: string | null;
 };
 
 export type Copied = {
@@ -575,13 +591,18 @@ export type LocatorInput = {
 	text: string;
 };
 
-/** The engine's interpretation, shown so the person can search as typed. */
+/**
+ * The engine's interpretation, shown so the person can search as typed: a
+ * signal read off the start (`see`) and a locator read off the end (`417`).
+ */
 export type LocatorQuery = {
-	locator: Locator;
+	locator?: Locator | null;
+	/** The signal exactly as typed, to become the reference's prefix. */
+	prefix?: string | null;
 	/** What remains to search for. */
 	search: string;
 	/** The text read as the locator, exactly as typed. */
-	typed: string;
+	typed?: string | null;
 };
 
 /**

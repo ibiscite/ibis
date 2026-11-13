@@ -13,7 +13,7 @@ export function useRowReveal(target: { id: string; ticket: number } | null, scro
       if (stopped) return;
       const label = document.getElementById(target.id);
       const row = label?.closest<HTMLElement>(".ui-row, tr, .ui-about-check") ?? label;
-      if (!row || !page.contains(row) || row.closest("[hidden], [inert]")) return;
+      if (!row || !page.contains(row) || row.closest("[hidden], [inert]") || row.getAttribute("aria-busy") === "true") return;
       const control = settingControl(row);
       // A disabled control is still loading or unavailable; it must not hand
       // search focus to its reset button instead.
@@ -25,7 +25,7 @@ export function useRowReveal(target: { id: string; ticket: number } | null, scro
       else { row.tabIndex = -1; row.focus({ preventScroll: true }); }
     };
     const observer = new MutationObserver(reveal);
-    observer.observe(page, { subtree: true, childList: true, attributes: true, attributeFilter: ["disabled", "hidden", "checked"] });
+    observer.observe(page, { subtree: true, childList: true, attributes: true, attributeFilter: ["disabled", "hidden", "checked", "aria-busy"] });
     const key = (event: KeyboardEvent) => { if (!event.repeat) stop(); };
     document.addEventListener("focusin", stop);
     document.addEventListener("pointerdown", stop);

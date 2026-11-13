@@ -14,6 +14,7 @@ export type NoticeMessage = NonNullable<Awaited<ReturnType<typeof commands.copie
 
 export const {
   delightView,
+  shorthandHint,
   chooseLibrary,
   useZotero,
   useSampleLibrary,
@@ -33,9 +34,6 @@ export const {
   editorRequest,
   sessionReferences,
   editSessionReferences,
-  sessionBibliography,
-  copySessionBibliography,
-  exportSessionBibliography,
   openLibrarySource,
   librarySource,
   hidePicker,
@@ -44,7 +42,6 @@ export const {
   setPinned,
   quit,
   shortcutStatus,
-  citationDetails,
   recentReferences,
   pickerPreferences,
   pickerDestination,
@@ -96,6 +93,33 @@ export const { savePickerPreferences, pickerPreferencesSaved } = commands;
 const searchPage = crypto.getRandomValues(new Uint32Array(1))[0] ?? 0;
 let searchRequest = 0;
 let previewRequest = 0;
+let formattingRequest = 0;
+
+/** Closing an auxiliary view stops its formatter work, keeping its receipt. */
+function formatting<T>(run: (intent: Parameters<typeof commands.citationDetails>[3]) => Promise<T>, signal?: AbortSignal) {
+  const intent = { page: searchPage, request: ++formattingRequest, cancel: false, keep_order: false, context: null };
+  const pending = run(intent);
+  const cancel = () => { void run({ ...intent, cancel: true }).catch(() => {}); };
+  signal?.addEventListener("abort", cancel, { once: true });
+  if (signal?.aborted) cancel();
+  return pending.finally(() => signal?.removeEventListener("abort", cancel));
+}
+
+export function citationDetails(ticket: string, contentHash: string, item: number, signal?: AbortSignal) {
+  return formatting((intent) => commands.citationDetails(ticket, contentHash, item, intent), signal);
+}
+
+export function sessionBibliography(style: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.sessionBibliography(style, intent), signal);
+}
+
+export function copySessionBibliography(style: string, contentHash: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.copySessionBibliography(style, contentHash, intent), signal);
+}
+
+export function exportSessionBibliography(style: string, contentHash: string, signal?: AbortSignal) {
+  return formatting((intent) => commands.exportSessionBibliography(style, contentHash, intent), signal);
+}
 
 export function previewFileCitation(
   items: Parameters<typeof commands.previewFileCitation>[0],

@@ -3,9 +3,10 @@
 import { useLayoutEffect, useRef, useSyncExternalStore } from "react";
 import { flushSync } from "react-dom";
 import { composing } from "../composition";
+import { isBackShortcut } from "../keys";
 
 /** What Esc closes, nearest first. */
-export const LAYER_ORDER = ["sheet", "menu", "panel", "chooser", "search", "window"] as const;
+export const LAYER_ORDER = ["menu", "sheet", "panel", "chooser", "search", "window"] as const;
 export type LayerKind = (typeof LAYER_ORDER)[number];
 
 /** A layer closes itself. Given the key that asked, it returns focus to what
@@ -39,8 +40,10 @@ export function focusLost(): boolean {
 /** Some systems flag only the composition's start, not each of its keys. A
  * field that left mid-composition never reports its end, so it no longer counts. */
 export function composingKey(event: KeyboardEvent): boolean {
-  return composing(event, composition instanceof Node && composition.isConnected);
+  return composing(event, compositionInProgress());
 }
+
+export const compositionInProgress = () => composition instanceof Node && composition.isConnected;
 
 /** A key has one effect: nothing else sees a key that a layer or command used. */
 export function consumeKey(event: KeyboardEvent) {
@@ -74,6 +77,10 @@ function keyDown(event: KeyboardEvent) {
 }
 const compositionStart = (event: Event) => { composition = event.target; };
 const compositionEnd = () => { composition = null; };
+// Views handle Back first. Any unused Back must still never leave the webview,
+// including Search's no-op and the release after a mouse press closed a view.
+const preventBrowserBackKey = (event: KeyboardEvent) => { if (isBackShortcut(event) && !composingKey(event)) event.preventDefault(); };
+const preventBrowserBackMouse = (event: MouseEvent) => { if (event.button === 3) event.preventDefault(); };
 
 function listen() {
   const needed = layers.length > 0 || owner !== null;
@@ -83,6 +90,10 @@ function listen() {
   change("keydown", keyDown, true);
   change("compositionstart", compositionStart, true);
   change("compositionend", compositionEnd, true);
+  change("keydown", preventBrowserBackKey);
+  change("mousedown", preventBrowserBackMouse);
+  change("mouseup", preventBrowserBackMouse);
+  change("auxclick", preventBrowserBackMouse);
 }
 
 function changed() {
@@ -101,19 +112,23 @@ function settle() {
 /** Keep a layer on the stack while `open`. `close` may change every render. */
 export function useLayer(kind: LayerKind, open: boolean, close: LayerClose) {
   const latest = useRef(close);
+  const registered = useRef<Layer | null>(null);
   useLayoutEffect(() => { latest.current = close; });
   useLayoutEffect(() => {
     if (!open) return;
     const layer: Layer = { kind, close: (event) => latest.current(event) };
+    registered.current = layer;
     layers.push(layer);
     changed();
     return () => {
+      registered.current = null;
       layers.splice(layers.indexOf(layer), 1);
       changed();
       settling = true;
       queueMicrotask(settle);
     };
   }, [kind, open]);
+  return () => registered.current !== null && nearest() === registered.current;
 }
 
 /** Make `keys` the window's key owner while mounted. */

@@ -5,29 +5,14 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
-  merge_group:
-  # Pushes to main reuse the queue's run, so this daily run on main is what
-  # notices time-dependent breakage (new advisories, runner images) and keeps
-  # main's caches from expiring.
   schedule:
     - cron: "17 5 * * *"
     - cron: "43 5 * * 1" # Weekly full advisory check and one issue on failure.
   workflow_dispatch:
 
-# On a pull request, a newer push cancels the run in progress. On main, a run
-# that has started always finishes, so its caches are saved and its evidence is
-# collected; GitHub keeps only the newest waiting push and replaces older ones
-# before they start, so a burst of merges never runs every commit. Each merge
-# queue entry has its own ref and group, and is never cancelled.
-#
-# Each change is checked twice at most: on its pull request and in the merge
-# queue. A queue entry that holds exactly the tree its pull request's passing
-# run checked, and changes no crate or script (whose macOS tests pull requests
-# leave to the queue), reuses that run; so does a push to main of the commit
-# the queue checked (scripts/ci-changes.sh). Main runs everything only when its
-# caches' inputs changed, so it saves new caches.
+# Main verifies each pushed revision; pull requests cancel superseded runs.
 concurrency:
-  group: ci-${{ github.event_name }}-${{ github.ref }}
+  group: ci-${{ github.event_name }}-${{ github.event_name == 'push' && github.sha || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
@@ -45,23 +30,21 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
-      # Reads which CI runs passed, to reuse a run that checked the same tree.
-      actions: read
       contents: read
       pull-requests: read
     outputs:
       core: ${{ steps.classify.outputs.core }}
       interface: ${{ steps.classify.outputs.interface }}
       native: ${{ steps.classify.outputs.native }}
-      proven: ${{ steps.classify.outputs.proven }}
       scripts: ${{ steps.classify.outputs.scripts }}
       web: ${{ steps.classify.outputs.web }}
+      systems: ${{ steps.classify.outputs.systems }}
     steps:
       # Interface-only and website-only changes keep web validation
       # without native jobs and without building the interface for them.
       # A Linux Desktop placeholder still reports success for "CI result".
-      # Script-only changes add their tests on Windows (and macOS outside
-      # pull requests) without building the app. Changes only inside
+      # Script-only changes add their tests on Windows (and macOS on
+      # daily/manual runs) without building the app. Changes only inside
       # apps/desktop skip the crates' tests. Unclear file lists build everything.
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -78,9 +61,9 @@ jobs:
           PR: ${{ github.event.pull_request.number }}
           EXPECTED: ${{ github.event.pull_request.changed_files }}
           EXPECTED_REFS: ${{ github.event.pull_request.head.sha }}:${{ github.event.pull_request.base.sha }}
-          HEAD_REF: ${{ github.head_ref || github.event.merge_group.head_ref }}
+          HEAD_REF: ${{ github.head_ref }}
           ACTOR: ${{ github.triggering_actor }}
-          BASE_SHA: ${{ github.event.merge_group.base_sha || github.event.before }}
+          BASE_SHA: ${{ github.event.before }}
           HEAD_SHA: ${{ github.sha }}
         run: scripts/ci-changes.sh
 
@@ -91,7 +74,7 @@ jobs:
         if: steps.classify.outputs.native == 'true'
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false
 
       - name: Set up pnpm
@@ -119,10 +102,7 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # The crates on every system, beside the app's own builds: Windows finds
-  # real bugs in the crates, so it runs on pull requests in parallel with the
-  # desktop jobs; macOS almost never finds one Linux misses, so pull requests
-  # leave it to the merge queue.
+  # Linux is the fast core suite; daily/manual qualification adds all systems.
   test:
     name: Test (${{ matrix.os }})
     needs: changes
@@ -132,10 +112,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: >-
-          ${{ github.event_name == 'pull_request'
-          && fromJSON('["ubuntu-24.04", "windows-2025"]')
-          || fromJSON('["ubuntu-24.04", "windows-2025", "macos-15"]') }}
+        os: ${{ fromJSON(needs.changes.outputs.systems) }}
     defaults:
       run:
         shell: bash
@@ -166,12 +143,6 @@ jobs:
       - name: Lint
         run: cargo clippy --all-targets --locked
 
-      - name: Check the declared minimum Rust version
-        if: runner.os == 'Linux'
-        run: |
-          rustup toolchain install 1.90.0 --profile minimal
-          cargo +1.90.0 check --locked --all-targets
-
       - name: Test
         run: cargo test --locked
 
@@ -187,16 +158,9 @@ jobs:
           IBIS_REQUIRE_PANDOC: "1"
         run: cargo test -p ibis --test fidelity --locked
 
-      - name: Enforce 100k search budget (release)
-        if: runner.os == 'Linux'
-        # Compilation and the ordinary test processes finish before measurement;
-        # this binary runs alone, with its first search retained in the samples.
-        run: cargo test -p ibis-engine --locked --release --test refresh_budget -- search_budget --ignored --nocapture --test-threads=1
-
   web:
     name: Web interface
     needs: changes
-    if: needs.changes.outputs.proven != 'true'
     runs-on: ubuntu-24.04
     container:
       image: mcr.microsoft.com/playwright/python:v1.62.0-noble@sha256:51d31fdfacb0cff99a1a724152e34ae408d2bd4e7da310ff157450f49261cc59
@@ -219,7 +183,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false
 
       - name: Set up pnpm
@@ -266,7 +230,6 @@ jobs:
   desktop:
     name: Desktop (${{ matrix.os }})
     needs: changes
-    if: needs.changes.outputs.proven != 'true'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     env:
@@ -278,9 +241,9 @@ jobs:
       matrix:
         # Without native inputs only a Linux placeholder reports, so a docs or
         # interface change never waits for macOS or Windows runners. Script
-        # changes add Windows, and macOS outside pull requests, for their tests.
+        # changes add Windows, and macOS when touched or on daily/manual runs.
         os: >-
-          ${{ (needs.changes.outputs.native == 'true' || (needs.changes.outputs.scripts == 'true' && github.event_name != 'pull_request'))
+          ${{ (needs.changes.outputs.native == 'true' || (needs.changes.outputs.scripts == 'true' && contains(fromJSON(needs.changes.outputs.systems), 'macos-15')))
           && fromJSON('["ubuntu-24.04", "macos-15", "windows-2025"]')
           || needs.changes.outputs.scripts == 'true' && fromJSON('["ubuntu-24.04", "windows-2025"]')
           || fromJSON('["ubuntu-24.04"]') }}
@@ -348,14 +311,14 @@ jobs:
       # report early on every native platform.
       - name: Lint all desktop targets
         if: env.NATIVE == 'true'
-        run: cargo clippy -p ibis-desktop --all-targets --locked
+        run: cargo clippy -p ibis-desktop -p ibis-desktop-macros --all-targets --locked
 
       - name: Lint, test and build the app
         if: env.NATIVE == 'true'
         id: native_build
         working-directory: .
         run: |
-          cargo test -p ibis-desktop --locked
+          cargo test -p ibis-desktop -p ibis-desktop-macros --locked
           # Embed the built interface; a plain debug build uses localhost:5173.
           cargo build -p ibis-desktop --locked --features tauri/custom-protocol
 
@@ -364,32 +327,12 @@ jobs:
         if: env.NATIVE == 'true' && runner.os == 'Linux'
         run: node scripts/gen.mjs --check
 
-      # The same journey into Notepad and a console. It runs before the Ctrl+V
-      # check below, which leaves its Notepad open; exit 2 means unavailable.
-      - name: Journey into Notepad (Windows)
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'Windows' }}
-        run: |
-          status=0
-          python -B scripts/smoke-native.py --journey --app target/debug/ibis-desktop.exe --output screenshots/journey-Windows || status=$?
-          if [ "$status" = 2 ]; then echo "::warning::The Windows journey was unavailable on this runner."; exit 0; fi
-          exit "$status"
-
       - name: Paste into Notepad (Windows)
         if: env.NATIVE == 'true' && runner.os == 'Windows'
         run: cargo test -p ibis-desktop --locked one_ctrl_v_pastes_the_clipboard_into_the_app_in_front -- --ignored --nocapture
 
-      # The whole journey into TextEdit and a terminal (scripts/smoke-native.py
-      # --journey). Exit 2 means this runner could not grant what it needs.
-      - name: Journey into TextEdit (macOS)
-        if: ${{ !cancelled() && env.NATIVE == 'true' && steps.native_build.outcome == 'success' && runner.os == 'macOS' }}
-        run: |
-          status=0
-          python3 scripts/smoke-native.py --journey --app target/debug/ibis-desktop --output screenshots/journey-macOS || status=$?
-          if [ "$status" = 2 ]; then echo "::warning::The macOS journey was unavailable on this runner."; exit 0; fi
-          exit "$status"
-
       - name: Test the scripts (macOS and Windows)
-        if: env.SCRIPTS == 'true' && (runner.os == 'Windows' || (runner.os == 'macOS' && github.event_name != 'pull_request'))
+        if: env.SCRIPTS == 'true' && (runner.os == 'Windows' || runner.os == 'macOS')
         run: node scripts/check.mjs --platform-script-tests
 
       - name: Exercise the native picker (Linux)
@@ -418,12 +361,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # jsdom and Chromium show neither WebKit's system colours nor its light-dark().
-  # Interface changes skip the macOS Desktop job, so this one runs by itself.
+  # System WebKit rendering is part of daily/manual qualification.
   webkit:
     name: WebKit colours (macOS)
     needs: changes
-    if: needs.changes.outputs.interface == 'true'
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
     runs-on: macos-15
     timeout-minutes: 15
     steps:
@@ -435,7 +377,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false
 
       - name: Set up pnpm
@@ -465,9 +407,6 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  # Every run needs this job, a reused one included: a queue entry's squash
-  # commit carries metadata (the pull request's text as its message) that no
-  # earlier run saw, and the identity guard reads it.
   dependencies:
     name: Dependency policy and commit identities
     runs-on: ubuntu-24.04
@@ -480,21 +419,19 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-          fetch-depth: 0 # The identity guard reads the pull request range or the queue candidate.
+          fetch-depth: 0 # The privacy guard reads the pull request commit range.
 
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           package-manager-cache: false
 
       - name: Public commit identities
         env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha || github.event.before }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-        run: |
-          node scripts/check-agent-identity.mjs
-          bash scripts/ci-commit-signoffs.sh
+        run: node scripts/check-agent-identity.mjs
 
       - name: Validate workflow expressions
         uses: docker://rhysd/actionlint@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 # 1.7.12
@@ -514,7 +451,7 @@ jobs:
           REF: ${{ github.ref }}
           SCHEDULE: ${{ github.event.schedule }}
           HEAD_REF: ${{ github.head_ref }}
-          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: bash scripts/ci-advisories.sh policy >> "$GITHUB_OUTPUT"
 
@@ -539,17 +476,135 @@ jobs:
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: bash scripts/ci-advisories.sh report
 
-  # One check that stands for every required job, for the ruleset to require
-  # instead of six names. A matrix job skipped because a job it needs failed
-  # never reports its per-system checks; this job always reports. Every
-  # unconditional job must succeed. Test and WebKit may be skipped only when
-  # their inputs did not change, and Web and Desktop only when a passing run
-  # already checked this exact tree; missing classifier output fails shut.
-  # It also refuses stacked pull requests: every pull request targets main.
+  release-checks:
+    name: Release checks (Linux)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    env:
+      RUSTFLAGS: -D warnings
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.sha }}
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Check release advisories
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25 # v2.1.1
+        with:
+          arguments: --all-features --locked
+          command: check advisories
+
+      - name: Release-mode, minimum Rust and budgets
+        run: bash scripts/ci-release-checks.sh
+
+  bibtex-fuzz:
+    name: Damaged BibTeX fuzzing (five minutes)
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    # Compilation and tool setup are outside the five-minute fuzzing budget.
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up nightly Rust
+        run: rustup toolchain install nightly --profile minimal
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          key: bibtex-fuzz
+
+      - name: Install cargo-fuzz
+        run: cargo +stable install cargo-fuzz --version 0.13.1 --locked
+
+      - name: Test the seed corpus
+        run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
+
+      - name: Build the fuzz target
+        run: cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
+
+      - name: Fuzz the real BibTeX loader for five minutes
+        timeout-minutes: 6
+        run: cargo +nightly fuzz run damaged_bibtex --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048
+
+      - name: Keep fuzz failures
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: bibtex-fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
+          path: fuzz/artifacts/damaged_bibtex/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  installed:
+    name: Installed journey (${{ matrix.os }})
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      attestations: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-24.04, package: 'Ibis-Linux.*' }
+          - { os: macos-15, package: Ibis-macOS-Apple-silicon.dmg }
+          - { os: windows-2025, package: Ibis-Windows-setup.exe }
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout qualification tools
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Download and verify the published nightly
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PACKAGE: ${{ matrix.package }}
+        run: |
+          sha=$(gh api "repos/$REPO/git/ref/tags/nightly" --jq .object.sha)
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          gh release download nightly --repo "$REPO" --pattern "$PACKAGE" --dir dist
+          for file in dist/*; do
+            gh attestation verify "$file" --repo "$REPO" --source-ref refs/heads/main --source-digest "$sha" --signer-workflow "$REPO/.github/workflows/preview.yml"
+          done
+          echo "Installed journey uses nightly $sha" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install, exercise and remove the packages
+        env:
+          IDENTIFIER: com.ibiscite.ibis.nightly
+          IBIS_INSTALLED_JOURNEY: '1'
+        run: bash scripts/install-and-start.sh
+
+      - name: Keep journey evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: installed-journey-${{ matrix.os }}-${{ github.run_id }}
+          path: screenshots/*
+          if-no-files-found: warn
+          retention-days: 14
+
+  # The only required check, including heavy qualification on daily/manual runs.
   result:
     name: CI result
     if: always()
-    needs: [changes, test, web, desktop, webkit, dependencies]
+    needs: [changes, test, web, desktop, webkit, dependencies, release-checks, bibtex-fuzz, installed]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -567,9 +622,33 @@ jobs:
           NATIVE: ${{ needs.changes.outputs.native }}
           CORE: ${{ needs.changes.outputs.core }}
           INTERFACE: ${{ needs.changes.outputs.interface }}
-          PROVEN: ${{ needs.changes.outputs.proven }}
           TEST: ${{ needs.test.result }}
           WEBKIT: ${{ needs.webkit.result }}
+          QUALIFICATION: ${{ needs.release-checks.result }} ${{ needs.bibtex-fuzz.result }} ${{ needs.installed.result }}
           EVENT: ${{ github.event_name }}
           BASE: ${{ github.base_ref }}
         run: scripts/ci-result.sh
+
+  nightly-report:
+    name: Report nightly qualification
+    needs: result
+    if: always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: scripts
+      - name: Update the qualification report
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          RESULT: ${{ needs.result.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: bash scripts/ci-nightly-report.sh

@@ -1,5 +1,5 @@
+import type * as nativeApi from "../../api";
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { LibraryStatus } from "../../api";
 import { isSnapshotChanged } from "../../api";
 import type { ItemRef, SourcePresentation } from "../../bindings";
@@ -8,7 +8,7 @@ import { useShown } from "./pickerShown";
 
 /** A source query/open owns its item, snapshot and picker presentation. Icons
  * are read once on that identity, only while shown; they never poll. */
-export function useSourceOpen(api: Pick<PickerApi, "openLibrarySource" | "librarySource">, library: LibraryStatus | null | undefined,
+export function useSourceOpen(api: Pick<typeof nativeApi, "openLibrarySource" | "librarySource">, library: LibraryStatus | null | undefined,
   visibility: number, shown: boolean, item: unknown | null, zoteroOnly: boolean, refresh: () => void, presentation: () => number | null = () => null) {
   const visible = useShown(shown);
   const identity = JSON.stringify(item);

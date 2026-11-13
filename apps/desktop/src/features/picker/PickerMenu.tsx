@@ -18,7 +18,9 @@ type Action = PaletteItem & { run: () => void };
  * third door). Grouped by what it acts on: the library, the citation, the
  * window, Ibis. Preferences live in Settings and the format chooser holds the
  * app's own choices. While Keep Window Open is on, the footer shows it. */
-export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, pinned, keepOrder, actions, source, project }: {
+export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, libraryDetail, lastOutcome, pinned, keepOrder, citation, actions, source, project }: {
+  /** Acts on the focused citation token, or the last one. */
+  citation?: { tokens: number; selected: number; focus: () => void; edit: () => void; move: (step: -1 | 1) => void; remove: () => void } | null;
   source?: SourceActionProps;
   isOpen: boolean; onOpenChange: (open: boolean) => void;
   buttonRef: RefObject<HTMLButtonElement | null>; searchRef: RefObject<HTMLElement | null>;
@@ -44,14 +46,14 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
   const mac = platform === "macos";
   const action = (id: string, label: string, run: (() => void) | null | undefined, more: Partial<Action> = {}): Action[] =>
     run ? [{ id, label, run, keywords: say(`palette-words-${id}` as never), ...more }] : [];
-  const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command) });
+  const keyed = (command: Parameters<typeof keysFor>[0]) => ({ keys: keysFor(command, mac) || undefined });
   const sections: (PaletteSection & { items: Action[] })[] = [
     // The footer's status already names the library under More; the group's name
     // says it again only for screen readers, with the last outcome first.
     { id: "library", label: say("palette-library"), name: [lastOutcome && say("picker-last-outcome", { outcome: lastOutcome }), libraryDetail?.filter(Boolean).join(". ")].filter(Boolean).join(". ") || undefined, items: [
-      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} />, keys: source.keys, detail: lastOutcome ?? undefined }) : [],
-      ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="find" />, ...keyed("revealSource") }),
-      ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library" />, ...keyed("chooseSource") }),
+      ...source ? action("source", source.label, source.open, { icon: <SourceIcon icon={source.icon} file={source.file} glyph={source.glyph} />, keys: source.keys, detail: lastOutcome ?? undefined }) : [],
+      ...action("reveal-source", say("picker-show-source-folder", { platform: mac ? "macos" : "other" }), source?.label === say("picker-show-source-folder", { platform: mac ? "macos" : "other" }) ? null : actions.revealSource, { icon: <Icon name="folder-search" />, ...keyed("revealSource") }),
+      ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library-big" />, ...keyed("chooseSource") }),
     ] },
     // The bibliography keys are checked against, named by its state.
     { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
@@ -63,6 +65,15 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("format", say("picker-change-format"), actions.format, { icon: <Icon name="swap" />, ...keyed("format") }),
       ...action("peek", say("palette-peek"), actions.peek, { icon: <Icon name="look" />, ...keyed("peek") }),
       ...action("change-last", say("picker-change-last-citation"), actions.changeLast, { icon: <Icon name="write" />, ...keyed("changeLast") }),
+      ...citation?.tokens ? [
+        ...action("citation-focus", say("key-go-to-citation"), citation.focus, keyed("citationFocus")),
+        ...action("citation-edit", say("key-edit-citation"), citation.edit),
+      ] : [],
+      ...citation && citation.selected > 1 ? [
+        ...action("citation-move-left", say("key-move-left"), () => citation.move(-1), { keys: "Shift+ArrowLeft" }),
+        ...action("citation-move-right", say("key-move-right"), () => citation.move(1), { keys: "Shift+ArrowRight" }),
+      ] : [],
+      ...citation && citation.selected > 0 ? action("citation-remove", say("key-remove-from-citation"), citation.remove, { keys: "Backspace" }) : [],
       ...keepOrder ? action("keep-order", say("picker-keep-my-order"), keepOrder.toggle, { checked: keepOrder.checked, icon: <Icon name="chevrons" /> }) : [],
       ...action("session-references", say("session-menu"), actions.sessionReferences, { icon: <Icon name="citations" /> }),
       ...action("forget-recent", say("picker-forget-recent"), actions.forgetRecent, { icon: <Icon name="retry" /> }),

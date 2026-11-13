@@ -159,7 +159,8 @@ test("welcome footer Escape offers Hide Ibis even while a sample query is retain
   await screen.findByRole("option", { name: new RegExp(title) });
   press(screen.getByRole("option", { name: /^Use Your Own Library/ }));
   const zotero = await screen.findByRole("option", { name: /^Use Zotero/ });
-  fireEvent.keyDown(zotero, { key: "Alt", altKey: true });
+  fireEvent.pointerOver(document.querySelector("footer")!);
+  fireEvent.keyDown(zotero, { key: "Shift", shiftKey: true });
   const footer = within(document.querySelector("footer")!);
   expect(footer.queryByRole("button", { name: "Clear Search" })).toBeNull();
   fireEvent.click(footer.getByRole("button", { name: "Hide Ibis" }));

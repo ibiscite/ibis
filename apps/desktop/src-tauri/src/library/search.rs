@@ -74,6 +74,13 @@ impl SearchRequests {
 #[derive(Default)]
 pub(crate) struct PreviewRequests(SearchRequests);
 
+/// These operations may end while their citation receipt remains usable.
+#[derive(Default)]
+pub(crate) struct FormattingRequests {
+    pub(crate) details: PreviewRequests,
+    pub(crate) bibliography: PreviewRequests,
+}
+
 #[derive(Deserialize, schemars::JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct PreviewIntent {
@@ -233,22 +240,29 @@ impl From<Locator> for ibis_core::contract::Locator {
     }
 }
 
-/// The engine's interpretation, shown so the person can search as typed.
+/// The engine's interpretation, shown so the person can search as typed: a
+/// signal read off the start (`see`) and a locator read off the end (`417`).
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct LocatorQuery {
     /// What remains to search for.
     pub(crate) search: String,
-    pub(crate) locator: Locator,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) locator: Option<Locator>,
     /// The text read as the locator, exactly as typed.
-    pub(crate) typed: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) typed: Option<String>,
+    /// The signal exactly as typed, to become the reference's prefix.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(crate) prefix: Option<String>,
 }
 
-impl From<ibis_core::locator::TrailingLocator> for LocatorQuery {
-    fn from(read: ibis_core::locator::TrailingLocator) -> Self {
+impl From<ibis_core::shorthand::Shorthand> for LocatorQuery {
+    fn from(read: ibis_core::shorthand::Shorthand) -> Self {
         Self {
             search: read.search,
-            locator: read.locator.into(),
-            typed: read.typed,
+            typed: read.locator.as_ref().map(|locator| locator.typed.clone()),
+            locator: read.locator.map(|locator| locator.locator.into()),
+            prefix: read.prefix,
         }
     }
 }

@@ -7,6 +7,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod bindings;
+mod cli_install;
 mod copy;
 mod delights;
 #[cfg(any(target_os = "linux", test))]
@@ -167,6 +168,7 @@ fn main() {
         .manage(SearchRequests::default())
         .manage(tray::SearchRequest::default())
         .manage(PreviewRequests::default())
+        .manage(library::FormattingRequests::default())
         .manage(setup::Offered::default())
         .manage(ChooserOpen::default())
         .manage(settings_backup::PendingRestore::default())

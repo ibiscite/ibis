@@ -40,6 +40,16 @@ impl Drop for Registration {
     }
 }
 impl Cancellation {
+    #[cfg(test)]
+    pub(crate) fn has_formatting_task(&self) -> bool {
+        !self
+            .0
+            .handlers
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .tasks
+            .is_empty()
+    }
     /// Native inspection can expire without cancelling its caller's request.
     pub(crate) fn child(&self) -> Self {
         Self(Arc::new(CancelState {
@@ -234,8 +244,15 @@ mod tests {
             .collect();
         let engine = Engine::from_snapshot(Arc::new(Snapshot::new(objects).unwrap()));
         let cancel = Cancellation::default();
+        let mut next_request = request.clone();
+        next_request.items.truncate(1);
         std::thread::scope(|scope| {
-            let working = scope.spawn(|| engine.cite(&request, &cancel));
+            let engine = &engine;
+            let request = &request;
+            let cancel = &cancel;
+            let next_request = &next_request;
+            let (completed, result) = std::sync::mpsc::channel();
+            let working = scope.spawn(move || completed.send(engine.cite(request, cancel)).unwrap());
             let deadline = Instant::now() + Duration::from_secs(5);
             let mut observed = false;
             while Instant::now() < deadline && !working.is_finished() {
@@ -246,18 +263,27 @@ mod tests {
                 std::thread::yield_now();
             }
             cancel.cancel();
-            assert_eq!(working.join().unwrap().unwrap_err().code, ErrorCode::Cancelled);
+            let (completed_next, result_next) = std::sync::mpsc::channel();
+            scope.spawn(move || {
+                completed_next
+                    .send(engine.cite(next_request, &Cancellation::default()))
+                    .unwrap()
+            });
+            assert_eq!(
+                result.recv_timeout(Duration::from_secs(2)).unwrap().unwrap_err().code,
+                ErrorCode::Cancelled
+            );
+            assert!(
+                result_next
+                    .recv_timeout(Duration::from_secs(2))
+                    .unwrap()
+                    .unwrap()
+                    .copy_content(1)
+                    .is_some()
+            );
             assert!(observed, "format request was registered for cancellation");
         });
         assert!(cancel.0.handlers.lock().unwrap().tasks.is_empty());
-        request.items.truncate(1);
-        assert!(
-            engine
-                .cite(&request, &Cancellation::default())
-                .unwrap()
-                .copy_content(1)
-                .is_some()
-        );
     }
     #[test]
     fn oversized_csl_is_a_resource_refusal_and_worker_recovers() {

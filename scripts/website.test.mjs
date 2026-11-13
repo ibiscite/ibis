@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, readdir, rm, writeFile, cp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { test } from "node:test";
+import { anchors, links } from "./doc-links.mjs";
 import { build } from "../website/build.mjs";
 
 const source = new URL("../website/", import.meta.url);
@@ -11,6 +13,9 @@ test("public build has four canonical routes, local assets, safe headers and no 
   try {
     await writeFile(join(dir, "stale.html"), "stale");
     await build(dir);
+    const keys = await import(pathToFileURL(join(dir, "keys.js")));
+    assert.equal(keys.keyLabel(keys.keysFor("revealSource", true), true), "⌥⌘O");
+    assert.equal(keys.keyLabel(keys.keysFor("revealSource", false), false), "Ctrl+Shift+O");
     const paths = ["/", "/get/", "/features/", "/cli/"];
     const sitemap = await readFile(join(dir, "sitemap.xml"), "utf8");
     assert.deepEqual([...sitemap.matchAll(/<loc>(.*?)<\/loc>/g)].map(m => m[1]), paths.map(p => `https://ibiscite.org${p}`));
@@ -55,7 +60,6 @@ test("public build has four canonical routes, local assets, safe headers and no 
     const guide = await readFile(join(dir, "setup"), "utf8");
     assert.equal(guide, original.replaceAll("](cli.md#", "](https://github.com/ibiscite/ibis/blob/main/docs/cli.md#"));
     assert.equal(await readFile(join(dir, "setup.md"), "utf8"), guide);
-    const { anchors, links } = await import("./doc-links.test.mjs");
     assert.deepEqual(links(guide), [], "the published guide has no relative links");
     assert.match(guide, /^Official address of this guide: https:\/\/ibiscite.org\/setup$/m);
     const llms = await readFile(join(dir, "llms.txt"), "utf8");
@@ -77,7 +81,7 @@ test("public build has four canonical routes, local assets, safe headers and no 
     }
     assert.match(await readFile(join(dir, "404.html"), "utf8"), /noindex/);
     assert.equal(await readFile(join(dir, "tokens.css"), "utf8"), await readFile(new URL("../apps/desktop/src/tokens.css", import.meta.url), "utf8"));
-    assert.deepEqual((await readdir(dir)).sort(), ["404.html", "LICENSE-lucide", "_headers", "arrow-up-right.svg", "assets", "cli", "demo-model.mjs", "demo.css", "demo.js", "features", "get", "icon-paths.js", "icon.css", "index.html", "keys.js", "llms.txt", "picker-tokens.css", "robots.txt", "setup", "setup.md", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
+    assert.deepEqual((await readdir(dir)).sort(), ["404.html", "LICENSE-lucide", "_headers", "arrow-up-right.svg", "assets", "cli", "demo-model.mjs", "demo.css", "demo.js", "features", "get", "icon-paths.js", "icon.css", "index.html", "keys.js", "llms.txt", "picker-tokens.css", "platform.js", "robots.txt", "setup", "setup.md", "site.js", "sitemap.xml", "style.css", "tokens.css"]);
   } finally { await rm(dir, { recursive: true, force: true }); }
 });
 

@@ -6,9 +6,8 @@ name: Preview builds
 # - Every push to main replaces the rolling "nightly" pre-release, so the
 #   newest merged state can always be downloaded from one place.
 # - Nightly/release builds also check 60 seconds of offline behaviour. Real
-#   Zotero runs here and on the daily schedule. Release checks (minimum Rust,
-#   release-mode tests and speed limits) run beside the builds: a failure
-#   stops a numbered release, never a nightly.
+#   Zotero runs here and on the daily schedule. Heavy qualification runs in daily/manual CI; numbered releases also run
+#   release checks. A red main push CI stops nightly publication.
 # - Once a day, and when run manually with "Only rerun the update test", the
 #   update-e2e job updates the nightly that the newest nightly replaced to the
 #   newest nightly, using the packages that nightly's run kept. Until #493 is
@@ -76,48 +75,6 @@ jobs:
         run: |
           echo "::error::\"Only rerun the update test\" runs only on main and cannot be combined with publishing. Run it on main with publishing unchecked."
           exit 1
-
-  bibtex-fuzz:
-    name: Damaged BibTeX fuzzing (five minutes)
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && !inputs.update_test)
-    runs-on: ubuntu-24.04
-    # Compilation and tool setup are outside the five-minute fuzzing budget.
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-
-      - name: Set up nightly Rust
-        run: rustup toolchain install nightly --profile minimal
-
-      - name: Cache Rust build
-        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-        with:
-          key: bibtex-fuzz
-
-      - name: Install cargo-fuzz
-        run: cargo +stable install cargo-fuzz --version 0.13.1 --locked
-
-      - name: Test the seed corpus
-        run: cargo +nightly test -p ibis-fuzz --locked seed_corpus
-
-      - name: Build the fuzz target
-        run: cargo +nightly fuzz build damaged_bibtex --features fuzzing --target-dir target/fuzz
-
-      - name: Fuzz the real BibTeX loader for five minutes
-        timeout-minutes: 6
-        run: cargo +nightly fuzz run damaged_bibtex --features fuzzing --target-dir target/fuzz -- -max_total_time=300 -timeout=5 -max_len=65536 -rss_limit_mb=2048
-
-      - name: Keep fuzz failures
-        if: always()
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: bibtex-fuzz-failures-${{ github.sha }}-${{ github.run_attempt }}
-          path: fuzz/artifacts/damaged_bibtex/
-          if-no-files-found: ignore
-          retention-days: 14
 
   zotero:
     name: Real Zotero
@@ -242,13 +199,21 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
 
       - name: Install web dependencies
         working-directory: apps/desktop
         run: pnpm install --frozen-lockfile
+
+      # The command line ships on its own too, for people, scripts and AI
+      # agents. It runs here where it can, so a binary that cannot start is
+      # never published (Intel macOS is cross-built on Apple silicon).
+      - name: Build the command line
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash scripts/build-cli.sh
 
       # On Windows retry a gateway failure fetching a pinned NSIS tool.
       # On macOS hdiutil can fail with "Resource busy" when creating the disk
@@ -261,7 +226,8 @@ jobs:
           CONFIG: ${{ steps.identity.outputs.config }}
         run: |
           if [ "$RUNNER_OS" = Windows ]; then exec bash ../../scripts/build-windows-packages.sh; fi
-          build() { pnpm tauri build --ci --target "$TARGET" ${CONFIG:+--config "$CONFIG"} -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
+          if [ "$RUNNER_OS" = Linux ]; then LINUX_BUNDLE=src-tauri/tauri.linux.bundle.conf.json; fi
+          build() { pnpm tauri build --ci --target "$TARGET" --config src-tauri/tauri.bundle.conf.json ${LINUX_BUNDLE:+--config "$LINUX_BUNDLE"} ${CONFIG:+--config "$CONFIG"} -- --locked 2>&1 | tee build.log; return "${PIPESTATUS[0]}"; }
           if ! build; then
             if [ "$RUNNER_OS" = macOS ] && grep -q 'hdiutil: create failed - Resource busy' build.log; then
               echo "::warning::hdiutil reported Resource busy; retrying the build once"
@@ -271,14 +237,6 @@ jobs:
               exit 1
             fi
           fi
-
-      # The command line ships on its own too, for people, scripts and AI
-      # agents. It runs here where it can, so a binary that cannot start is
-      # never published (Intel macOS is cross-built on Apple silicon).
-      - name: Build the command line
-        env:
-          TARGET: ${{ matrix.target }}
-        run: bash scripts/build-cli.sh
 
       - name: Capture the picker (Linux and macOS)
         if: runner.os != 'Windows' && matrix.target != 'x86_64-apple-darwin'
@@ -353,7 +311,7 @@ jobs:
 
   release-checks:
     name: Release checks (Linux)
-    if: github.event_name != 'schedule' && !inputs.update_test
+    if: startsWith(github.ref, 'refs/tags/v') && !inputs.update_test
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
@@ -377,16 +335,8 @@ jobs:
           arguments: --all-features --locked
           command: check advisories
 
-      - name: Test core and sources in release mode
-        run: cargo test -p ibis-core -p ibis-sources --release --locked
-
-      - name: Test the declared minimum Rust version
-        run: |
-          rustup toolchain install 1.90.0 --profile minimal
-          cargo +1.90.0 test --locked
-
-      - name: Report 100k open/refresh budgets (release)
-        run: node scripts/preview-budgets.mjs
+      - name: Release-mode, minimum Rust and budgets
+        run: bash scripts/ci-release-checks.sh
 
   # Before a numbered release is published, renders every CSL style with the
   # previous release's engine and bundle and with this one's; the release notes
@@ -406,7 +356,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
       - name: Render every style at the previous release and at this one
         env:
           OUT: ${{ runner.temp }}/style-changes
@@ -453,7 +403,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           cache: pnpm
           cache-dependency-path: apps/desktop/pnpm-lock.yaml
       - name: Build the web interface
@@ -671,7 +621,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.
@@ -788,6 +738,7 @@ jobs:
     permissions:
       contents: write
       attestations: read
+      actions: read # Confirm push CI before replacing nightly downloads.
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -803,7 +754,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
-          node-version: 22
+          node-version: 26
           # No shared dependency cache in a job that holds a signing key.
 
       # Only for the locked Tauri command line tool that signs updates.

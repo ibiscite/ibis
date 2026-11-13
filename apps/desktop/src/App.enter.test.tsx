@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
-import { closeCitationDetails, backend, prepared, receipt, resetApp, result } from "./testing/app";
+import { closeCitationDetails, backend, prepared, receipt, resetApp, result, inCitation } from "./testing/app";
 
 beforeEach(() => vi.useFakeTimers());
 afterEach(resetApp);
@@ -98,7 +98,7 @@ test("an empty search keeps the prepared citation, page and Enter available", as
   await act(async () => { closeCitationDetails(); });
   await act(async () => { fireEvent.change(searchBox(), { target: { value: "no matches" } }); });
   expect(screen.getByRole("group", { name: "Selected references" })).toBeTruthy();
-  expect(screen.getByRole("button", { name: "Remove a from the selection" })).toBeTruthy();
+  expect(inCitation("a")).toBeTruthy();
   await act(async () => { fireEvent.click(screen.getByRole("button", { name: /^Edit / })); });
   expect((screen.getByRole("textbox", { name: "Page" }) as HTMLInputElement).value).toBe("12");
   await act(async () => { closeCitationDetails(); });

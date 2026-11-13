@@ -53,11 +53,10 @@ test.each(["library menu", "source chooser"])("the %s blocks update readiness un
   } });
   await act(async () => { render(<App />); });
   await act(async () => {
-    if (layer === "library menu") fireEvent.click(screen.getByRole("button", { name: "Library" }));
-    else {
-      fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "o", code: "KeyO", ctrlKey: true, shiftKey: true });
-      fireEvent.keyUp(window, { key: "o", code: "KeyO" });
-    }
+    fireEvent.click(screen.getByRole("button", { name: layer === "library menu" ? "Library" : "More" }));
+  });
+  if (layer === "source chooser") await act(async () => {
+    fireEvent.click(screen.getByRole("option", { name: "Choose Library…" }));
   });
   reports.length = 0;
   await act(async () => { await vi.advanceTimersByTimeAsync(2000); });

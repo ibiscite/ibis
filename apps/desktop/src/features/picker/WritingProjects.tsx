@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import type { WritingProjectEdit, WritingProjectsView } from "../../api";
 import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { TextField } from "../../ui/TextField";
 import { Progress } from "../../ui/Progress";
 import { Buttons, ChoiceRow, Group, Note, Row, Section } from "../../ui/Layout";
-import { Sheet, SheetStatus } from "../../ui/Sheet";
+import { Sheet, SheetStatus, type SheetMemory } from "../../ui/Sheet";
 import { listedOutput, outputName, type OutputId } from "../../format/outputs";
 
 export type WritingProjectsApi = {
@@ -18,6 +18,7 @@ export type WritingProjectsApi = {
 
 type Form = { kind: "new"; name: string } | { kind: "rename"; id: string; name: string }
   | { kind: "remove"; id: string; name: string };
+export type WritingProjectDraft = { form: Form | null; place: RefObject<SheetMemory | null> };
 
 // Native project refusals are fixed sentences and never include file paths or source text.
 const failure = (error: unknown, fallback: string) => typeof error === "string" && error ? error : fallback;
@@ -25,10 +26,11 @@ const failure = (error: unknown, fallback: string) => typeof error === "string" 
 /** An explicit project switch for the captured app. Native code saves the
  * project, its format and its bibliography together; the sheet never guesses
  * from a document or displays a native path. */
-export function WritingProjectsDialog({ api, format, onClose }: { api: WritingProjectsApi; format: OutputId; onClose: () => void }) {
+export function WritingProjectsDialog({ api, format, onClose, draft }: { api: WritingProjectsApi; format: OutputId; onClose: () => void; draft?: RefObject<WritingProjectDraft> }) {
   const { writingProjects, editWritingProject, onProjectChanged } = api;
   const [view, setView] = useState<WritingProjectsView | null>(null);
-  const [form, setForm] = useState<Form | null>(null);
+  const [form, setForm] = useState<Form | null>(draft?.current.form ?? null);
+  const changeForm = (next: Form | null) => { if (draft) draft.current.form = next; setForm(next); };
   const [problem, setProblem] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [busyVisible, setBusyVisible] = useState(false);
@@ -80,7 +82,7 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
     void editWritingProject(view.context, change).then((next) => {
       if (!alive.current || mutation.current !== owner) return;
       setView(next);
-      setForm(null);
+      changeForm(null);
       if (leave) close();
     }, (error) => {
       if (!alive.current || mutation.current !== owner) return;
@@ -103,9 +105,9 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
     edit(form.kind === "new" ? { kind: "create", name: form.name.trim(), output: format }
       : { kind: "rename", id: form.id, name: form.name.trim() });
   };
-  const creating = !form && view ? [{ label: say("writing-project-create"), disabled: busy, onPress: () => { setProblem(null); setForm({ kind: "new", name: "" }); } }] : undefined;
+  const creating = !form && view ? [{ label: say("writing-project-create"), disabled: busy, onPress: () => { setProblem(null); changeForm({ kind: "new", name: "" }); } }] : undefined;
   return <Sheet title={say("writing-project-title")} closeLabel={say("writing-project-close")} description={say("writing-project-about")} busy={busy} onClose={close}
-    leadingActions={creating}>
+    leadingActions={creating} memory={draft?.current.place}>
         {view?.session_only && <p>{say("writing-project-session-only")}</p>}
         {!view && !problem && <p role="status">{say("writing-project-loading")}</p>}
         {view && <>
@@ -127,8 +129,8 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
               </Row>
             </Group>
             <Buttons>
-              <Button label={say("writing-project-rename")} isDisabled={busy} onPress={() => setForm({ kind: "rename", id: selected.id, name: selected.name })} />
-              <Button label={say("writing-project-remove")} isDisabled={busy} onPress={() => setForm({ kind: "remove", id: selected.id, name: selected.name })} />
+              <Button label={say("writing-project-rename")} isDisabled={busy} onPress={() => changeForm({ kind: "rename", id: selected.id, name: selected.name })} />
+              <Button label={say("writing-project-remove")} isDisabled={busy} onPress={() => changeForm({ kind: "remove", id: selected.id, name: selected.name })} />
             </Buttons>
           </Section>}
         </>}
@@ -136,14 +138,14 @@ export function WritingProjectsDialog({ api, format, onClose }: { api: WritingPr
           {form.kind === "remove" ? <>
             <p>{say("writing-project-remove-question", { name: isolate(form.name) })}</p>
             <Buttons>
-              <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
+              <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => changeForm(null)} />
               <Button label={say("writing-project-confirm-remove")} isDisabled={busy} onPress={() => edit({ kind: "remove", id: form.id })} />
             </Buttons>
           </> : <form className="ui-section" onSubmit={(event) => { event.preventDefault(); saveName(); }}>
-            <TextField label={say("writing-project-name")} value={form.name} maxLength={80} isDisabled={busy} autoFocus onChange={(name) => setForm({ ...form, name })} />
+            <TextField label={say("writing-project-name")} value={form.name} maxLength={80} isDisabled={busy} autoFocus onChange={(name) => changeForm({ ...form, name })} />
             {form.kind === "new" && <Note>{say("writing-project-starts-with", { format: outputName(format) })}</Note>}
             <Buttons>
-              <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => setForm(null)} />
+              <Button label={say("writing-project-cancel")} isDisabled={busy} onPress={() => changeForm(null)} />
               <Button variant="primary" label={form.kind === "new" ? say("writing-project-confirm-create") : say("writing-project-save-name")} isDisabled={busy || !form.name.trim()} onPress={saveName} />
             </Buttons>
           </form>}

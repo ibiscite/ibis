@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
+  <Fragment>
+    <!-- Referencing this component links the entire fragment, including the
+         actions and their sequence, using Tauri's supported componentRefs. -->
+    <DirectoryRef Id="INSTALLDIR">
+      <Component Id="IbisUserPath" Guid="*">
+        <RegistryValue Root="HKCU" Key="Software\ibiscite\Ibis\Command" Name="MsiInstalled" Type="integer" Value="1" KeyPath="yes" />
+      </Component>
+    </DirectoryRef>
+    <!-- The custom actions run PowerShell from the system folder, so the
+         package declares that standard folder for the linker. -->
+    <DirectoryRef Id="TARGETDIR">
+      <Directory Id="SystemFolder" />
+    </DirectoryRef>
+    <!-- The same ownership-aware helper as NSIS: the Environment table removes
+         preexisting entries on uninstall even when it did not append one. -->
+    <CustomAction Id="IbisAddUserPath" Directory="SystemFolder" Execute="deferred" Impersonate="yes" Return="check"
+      ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]packaging\path.ps1&quot; -Action Add -Directory &quot;[INSTALLDIR].&quot; -Transaction &quot;[ProductCode]&quot;" />
+    <CustomAction Id="IbisRemoveUserPath" Directory="SystemFolder" Execute="deferred" Impersonate="yes" Return="check"
+      ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]packaging\path.ps1&quot; -Action Remove -Directory &quot;[INSTALLDIR].&quot; -Transaction &quot;[ProductCode]&quot;" />
+    <CustomAction Id="IbisRollbackAddUserPath" Directory="SystemFolder" Execute="rollback" Impersonate="yes" Return="check"
+      ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]packaging\path.ps1&quot; -Action Rollback -Directory &quot;[INSTALLDIR].&quot; -Transaction &quot;[ProductCode]&quot;" />
+    <CustomAction Id="IbisRollbackRemoveUserPath" Directory="SystemFolder" Execute="rollback" Impersonate="yes" Return="check"
+      ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -ExecutionPolicy Bypass -File &quot;[INSTALLDIR]packaging\path.ps1&quot; -Action Rollback -Directory &quot;[INSTALLDIR].&quot; -Transaction &quot;[ProductCode]&quot;" />
+    <!-- Commit runs after uninstall removed the helper file, so only receipt
+         cleanup is inline. ProductCode is the MSI's own fixed transaction id. -->
+    <CustomAction Id="IbisCommitUserPath" Directory="SystemFolder" Execute="commit" Impersonate="yes" Return="check"
+      ExeCommand="&quot;[SystemFolder]WindowsPowerShell\v1.0\powershell.exe&quot; -NoProfile -NonInteractive -Command &quot;$m=[\[]Threading.Mutex[\]]::new($false,'Global\ibiscite.Ibis.CommandPath.'+[\[]Security.Principal.WindowsIdentity[\]]::GetCurrent().User.Value); $owned=$false; try{try{$owned=$m.WaitOne(60000)}catch [\[]Threading.AbandonedMutexException[\]]{$owned=$true}; if(-not $owned){throw 'Another Ibis installer is updating your PATH. Try again.'}; $p='HKCU:\Software\ibiscite\Ibis\CommandPathTransactions'; if(Test-Path -LiteralPath $p){Remove-ItemProperty -LiteralPath $p -Name '[ProductCode]' -ErrorAction SilentlyContinue; $k=Get-Item -LiteralPath $p; $e=$k.ValueCount -eq 0; $k.Close(); if($e){Remove-Item -LiteralPath $p}}}finally{if($owned){$m.ReleaseMutex()}; $m.Dispose()}&quot;" />
+    <InstallExecuteSequence>
+      <Custom Action="IbisCommitUserPath" After="InstallInitialize">1</Custom>
+      <Custom Action="IbisRollbackAddUserPath" After="InstallFiles">NOT REMOVE~="ALL"</Custom>
+      <Custom Action="IbisAddUserPath" After="IbisRollbackAddUserPath">NOT REMOVE~="ALL"</Custom>
+      <Custom Action="IbisRollbackRemoveUserPath" Before="IbisRemoveUserPath">REMOVE~="ALL"</Custom>
+      <Custom Action="IbisRemoveUserPath" Before="RemoveFiles">REMOVE~="ALL"</Custom>
+    </InstallExecuteSequence>
+  </Fragment>
+</Wix>

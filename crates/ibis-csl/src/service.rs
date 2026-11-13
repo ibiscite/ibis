@@ -19,14 +19,23 @@ impl CancellationToken {
         self.cancelled.store(true, Ordering::Release);
         if let Some(shared) = self.shared.upgrade() {
             let mut removed = None;
-            if let Ok(mut state) = shared.state.lock()
-                && let Some(index) = state
+            if let Ok(mut state) = shared.state.lock() {
+                if let Some(index) = state
                     .queue
                     .iter()
                     .position(|job| Arc::ptr_eq(&job.cancellation.cancelled, &self.cancelled))
-            {
-                removed = state.queue.remove(index);
-                state.outstanding -= 1;
+                {
+                    removed = state.queue.remove(index);
+                    state.outstanding -= 1;
+                }
+                if let Some(active) = &state.active
+                    && Arc::ptr_eq(&active.cancelled, &self.cancelled)
+                {
+                    // Release the caller without waiting for an uninterruptible
+                    // native function to return to QuickJS's interrupt handler.
+                    // The worker retains its capacity slot until it actually stops.
+                    let _ = active.reply.send(Err(FormatError::Cancelled));
+                }
             }
             shared.wake.notify_all();
             if let Some(job) = removed {
@@ -71,6 +80,11 @@ pub(crate) struct Job {
 struct State {
     queue: VecDeque<Job>,
     outstanding: usize,
+    active: Option<Active>,
+}
+struct Active {
+    cancelled: Arc<AtomicBool>,
+    reply: mpsc::Sender<Result<CitationResult, FormatError>>,
 }
 #[derive(Default)]
 struct Shared {
@@ -113,6 +127,9 @@ impl Service {
                     };
                     for job in state.queue.drain(..) {
                         let _ = job.reply.send(Err(error));
+                    }
+                    if let Some(active) = state.active.take() {
+                        let _ = active.reply.send(Err(error));
                     }
                     state.outstanding = 0;
                 })
@@ -199,6 +216,10 @@ fn worker(shared: &Shared, limits: &Limits) {
                     return;
                 }
                 if let Some(job) = state.queue.pop_front() {
+                    state.active = Some(Active {
+                        cancelled: job.cancellation.cancelled.clone(),
+                        reply: job.reply.clone(),
+                    });
                     break job;
                 }
                 state = match shared.wake.wait(state) {
@@ -229,6 +250,7 @@ fn worker(shared: &Shared, limits: &Limits) {
         }
         let Ok(mut state) = shared.state.lock() else { return };
         state.outstanding -= 1;
+        state.active = None;
         let _ = job.reply.send(result);
     }
 }
@@ -277,11 +299,18 @@ mod tests {
         let service = Service::new(Limits::default()).unwrap();
         service.submit(prepared(1, false)).unwrap().wait().unwrap();
         let (running, release) = hold_next_format(&service);
-        let task = service.submit(prepared(1, true)).unwrap();
+        let mut task = service.submit(prepared(1, true)).unwrap();
         running.recv_timeout(TEST_GATE_LIMIT).unwrap();
         task.cancel();
+        // Cancellation releases the caller even if the processor is still
+        // returning from a native function and has not reached its interrupt.
+        let cancelled = task
+            .receiver
+            .take()
+            .unwrap()
+            .recv_timeout(std::time::Duration::from_secs(1));
         release.send(()).unwrap();
-        assert_eq!(task.wait(), Err(FormatError::Cancelled));
+        assert_eq!(cancelled.unwrap(), Err(FormatError::Cancelled));
         assert!(
             service
                 .submit(prepared(1, false))

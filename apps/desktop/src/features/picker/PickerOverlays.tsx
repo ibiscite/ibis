@@ -1,23 +1,23 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import type * as nativeApi from "../../api";
 import type { UpdateProgress } from "../../api";
 import { useInterfaceMessages } from "../../i18n";
 import { say } from "../../i18n";
-import { isMac } from "../../platform";
+import { currentPlatform } from "../../platform";
 import { NoticeSlot, QuietNotice } from "../../ui/NoticeSlot";
 import { UndoNotice } from "../../ui/UndoNotice";
 import { KeysDialog } from "./KeysDialog";
 import { UpdateNotice } from "./Notices";
 import { tileName } from "./rows";
 import { SessionReferencesDialog } from "./SessionReferences";
-import { WritingProjectsDialog } from "./WritingProjects";
-import type { PickerApi } from "../../App";
+import { WritingProjectsDialog, type WritingProjectDraft } from "./WritingProjects";
 import { defaultOutput, defaultStyle, type OutputId } from "../../format/outputs";
 import type { usePickerSession } from "./usePickerSession";
 import type { usePickerMenus } from "./usePickerMenus";
 import type { KeyBinding } from "../../keys";
 
 export function PickerOverlays({ api, style, format, menus, bindings }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   /** The output's style; a key output has none, so its bibliography uses the default style. */
   style: OutputId | null;
   format?: OutputId;
@@ -25,14 +25,14 @@ export function PickerOverlays({ api, style, format, menus, bindings }: {
   bindings: readonly KeyBinding[];
 }) {
   const { sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography } = api;
+  const projectDraft = useRef<WritingProjectDraft>({ form: null, place: { current: null } });
   return <>
-    {menus.keysOpen && <KeysDialog bindings={bindings} isMac={isMac} onClose={menus.closeKeys} />}
-    {menus.projectsOpen && api.writingProjects && api.editWritingProject && <WritingProjectsDialog
+    {menus.keysOpen && <KeysDialog bindings={bindings} isMac={currentPlatform() === "macos"} onClose={menus.closeKeys} />}
+    {menus.projectsOpen && <WritingProjectsDialog
       api={{ writingProjects: api.writingProjects, editWritingProject: api.editWritingProject,
         chooseProject: api.chooseProject, stopProject: api.stopProject, onProjectChanged: api.onProjectChanged }}
-      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} />}
-    {menus.sessionOpen && sessionReferences && editSessionReferences && sessionBibliography && copySessionBibliography && exportSessionBibliography
-      && <SessionReferencesDialog style={style ?? defaultStyle} onClose={menus.closeSession}
+      format={format ?? style ?? defaultOutput} onClose={menus.closeProjects} draft={projectDraft} />}
+    {menus.sessionOpen && <SessionReferencesDialog style={style ?? defaultStyle} onClose={menus.closeSession}
         api={{ sessionReferences, editSessionReferences, sessionBibliography, copySessionBibliography, exportSessionBibliography }} />}
   </>;
 }

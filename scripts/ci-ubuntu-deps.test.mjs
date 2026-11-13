@@ -54,32 +54,29 @@ if [[ " $* " == *" $FAIL_APT "* ]]; then exit 42; fi`,
 
 const posix = { skip: process.platform === "win32" };
 
-// What CI reads: the archive stanza alone, the security pocket left out.
-const archiveOnly = ubuntuSources.slice(0, ubuntuSources.indexOf("\nTypes: deb\nURIs: http://security"));
-
-test("desktop CI keeps the runner's mirror choices without the security pocket and stops after a failed index refresh", posix, (t) => {
+test("desktop CI keeps the runner's mirrors and security pocket and stops after a failed index refresh", posix, (t) => {
   const run = fixture(t);
   const ready = run("desktop");
   assert.equal(ready.status, 0, ready.stderr);
-  assert.equal(ready.used, archiveOnly);
+  assert.equal(ready.used, ubuntuSources);
   assert.equal(ready.sources, ubuntuSources, "the runner's own file is untouched");
   assert.deepEqual(ready.calls.filter((line) => line.startsWith("timeout ")), ["timeout 15m", "timeout 15m"]);
   assert.match(ready.calls[1], /-o Dir::Etc::sourceparts=- -o APT::Update::Error-Mode=any update$/);
   assert.match(ready.calls[3], / install -y --no-install-recommends libwebkit2gtk-4\.1-dev\b/);
   const failed = run("desktop", { failure: "update" });
-  assert.equal(failed.status, 42, failed.stderr);
+  assert.equal(failed.status, 75, failed.stderr);
   assert.equal(failed.calls.length, 2, "no install after a failed update");
 });
 
-test("only security suites leave the sources, and a file with nothing else stops before apt", posix, (t) => {
+test("mixed security suites remain enabled and provisioning failures are infrastructure", posix, (t) => {
   const run = fixture(t);
-  const mixed = run("desktop", { contents: ubuntuSources.replace("Suites: noble noble-updates noble-backports", "Suites: noble noble-security noble-updates") });
-  assert.equal(mixed.status, 0, mixed.stderr);
-  assert.match(mixed.used, /^Suites: noble noble-updates$/m);
-  assert.doesNotMatch(mixed.used, /security/);
-  const onlySecurity = run("desktop", { contents: ubuntuSources.slice(ubuntuSources.indexOf("Types: deb\nURIs: http://security")) });
-  assert.equal(onlySecurity.status, 1, onlySecurity.stderr);
-  assert.deepEqual(onlySecurity.calls, []);
+  const mixed = ubuntuSources.replace("Suites: noble noble-updates noble-backports", "Suites: noble noble-security noble-updates");
+  const result = run("desktop", { contents: mixed });
+  assert.equal(result.status, 0);
+  assert.equal(result.used, mixed);
+  const failed = run("desktop", { failure: "install" });
+  assert.equal(failed.status, 75);
+  assert.match(failed.stderr, /Infrastructure.*provisioning/);
 });
 
 test("web CI installs PyYAML from the Azure Ubuntu archive with the same suites and signing key", posix, (t) => {
@@ -87,7 +84,7 @@ test("web CI installs PyYAML from the Azure Ubuntu archive with the same suites 
   const ready = run("web");
   assert.equal(ready.status, 0, ready.stderr);
   assert.equal(ready.sources, ubuntuSources);
-  assert.equal(ready.used, archiveOnly.replace("http://archive.ubuntu.com/ubuntu/", "http://azure.archive.ubuntu.com/ubuntu/"));
+  assert.equal(ready.used, ubuntuSources.replace("http://archive.ubuntu.com/ubuntu/", "http://azure.archive.ubuntu.com/ubuntu/"));
   assert.match(ready.calls[3], / install -y --no-install-recommends python3-yaml$/);
   assert.deepEqual(run("web", { yaml: true }).calls, []);
   const unknown = run("web", { contents: ubuntuSources.replace("archive.ubuntu.com", "example.invalid") });

@@ -49,7 +49,25 @@ fn platform(path: Option<PathBuf>) -> Option<SystemIcon> {
             .URLForApplicationWithBundleIdentifier(&NSString::from_str("org.zotero.zotero"))?
             .path()?,
     };
-    let data = workspace.iconForFile(&path).TIFFRepresentation()?;
+    rasterize(workspace.iconForFile(&path))
+}
+
+#[cfg(target_os = "macos")]
+fn rasterize(icon: tauri_nspanel::objc2::rc::Retained<objc2_app_kit::NSImage>) -> Option<SystemIcon> {
+    use block2::RcBlock;
+    use objc2_app_kit::NSImage;
+    use objc2_foundation::{NSRect, NSSize};
+    use tauri_nspanel::objc2::runtime::Bool;
+
+    // TIFFRepresentation exports *every* system representation (including
+    // 2048px variants), exceeding our 8 MiB bound on current macOS. Ask AppKit
+    // to draw just the small raster we use, before serializing or decoding it.
+    let draw = RcBlock::new(move |rect: NSRect| {
+        icon.drawInRect(rect);
+        Bool::YES
+    });
+    let raster = NSImage::imageWithSize_flipped_drawingHandler(NSSize::new(32.0, 32.0), false, &draw);
+    let data = raster.TIFFRepresentation()?;
     if data.len() > 8 * 1024 * 1024 {
         return None;
     }
@@ -77,7 +95,7 @@ fn normalize(raw: SystemIcon) -> Option<SystemIcon> {
 fn platform(path: Option<PathBuf>) -> Option<SystemIcon> {
     use gtk::{gio, prelude::*};
     // Zotero artwork comes from the installed Mac app only; other systems
-    // retain Ibis's books glyph. File icons still come from the system.
+    // retain Ibis's app-window glyph. File icons still come from the system.
     let icon = gio::File::for_path(path?)
         .query_info("standard::icon", gio::FileQueryInfoFlags::NONE, gio::Cancellable::NONE)
         .ok()?
@@ -112,7 +130,7 @@ fn platform_windows(path: Option<PathBuf>) -> Option<SystemIcon> {
         },
         core::HSTRING,
     };
-    // File icons only. Zotero keeps the shared books glyph on Windows.
+    // File icons only. Zotero keeps the shared app-window glyph on Windows.
     let (mime, size, input) = {
         let path = path?;
         let canonical = super::source_file(&path).ok()?;
@@ -156,6 +174,38 @@ mod tests {
         assert!(bounded("image/png", vec![0; MAX_ICON_BYTES + 1]).is_none());
         assert!(bounded("image/svg+xml", b"<svg/>".to_vec()).is_none());
         assert!(bounded("image/png", vec![137, 80, 78, 71]).is_some());
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn large_system_artwork_is_rasterized_before_the_transport_bound() {
+        use objc2_app_kit::NSImage;
+        use objc2_foundation::NSData;
+        use tauri_nspanel::objc2::AnyThread;
+
+        // Invented artwork, no installed app or library required. The old
+        // all-representations export refused this before normalization.
+        let artwork = image::DynamicImage::ImageRgba8(image::ImageBuffer::from_pixel(
+            2048,
+            2048,
+            image::Rgba([41, 79, 127, 255]),
+        ));
+        let mut tiff = std::io::Cursor::new(Vec::new());
+        artwork
+            .write_to(&mut tiff, image::ImageFormat::Tiff)
+            .unwrap_or_else(|e| panic!("{e}"));
+        assert!(tiff.get_ref().len() > 8 * 1024 * 1024);
+        let image = NSImage::initWithData(NSImage::alloc(), &NSData::with_bytes(tiff.get_ref()))
+            .unwrap_or_else(|| panic!("invented system artwork"));
+        let raw = rasterize(image).unwrap_or_else(|| panic!("bounded system raster"));
+        let icon = normalize(raw).unwrap_or_else(|| panic!("decodable icon"));
+        let png =
+            image::load_from_memory_with_format(&icon.bytes, image::ImageFormat::Png).unwrap_or_else(|e| panic!("{e}"));
+        assert_eq!((png.width(), png.height()), (32, 32));
+        let pixel = png.to_rgba8().get_pixel(16, 16).0;
+        assert_eq!(pixel[3], 255);
+        assert!(pixel[0] < pixel[1] && pixel[1] < pixel[2]);
+        assert!(icon.bytes.len() <= MAX_ICON_BYTES);
     }
 
     #[cfg(target_os = "macos")]

@@ -1,58 +1,211 @@
-//! The menu bar (macOS) or tray (Windows, Linux) item.
+//! The native menu bar (macOS) or tray (Windows, Linux) menu.
 
+use std::path::PathBuf;
 use std::sync::Mutex;
 #[cfg(target_os = "macos")]
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
-use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri::menu::{CheckMenuItem, IsMenuItem, Menu, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Manager, Runtime};
+use tauri_plugin_clipboard_manager::ClipboardExt;
+use tauri_plugin_dialog::DialogExt;
 
 use crate::diagnostics::{NativeIssue, report};
 use crate::feedback::{idea_url, open_in_browser, problem_url};
 use crate::library::{
-    LibraryState, LibraryStatus, choose_library_file, current_status, reload_library_file, use_zotero_library,
+    Library, LibraryState, LibraryStatus, LoadError, Source, choose_library_file, start_open, use_zotero_library,
 };
-use crate::login_item::{self, LoginItems, LoginMenuItem};
 use crate::picker::show_picker;
-use crate::updater::{self, AutomaticMenuItem, UpdateMenuItem};
+use crate::updater::{self, UpdateMenuItem};
 
-/// One line describing the library, for the menu bar or tray menu.
-pub(crate) fn library_line(status: &LibraryStatus) -> String {
-    let line = match (status.state, &status.error, &status.name) {
-        (LibraryState::Loading, _, Some(name)) => format!("Opening {name}…"),
-        (LibraryState::Reloading, _, Some(name)) => format!("Reading {name}…"),
-        // The last loaded references are still searched: say "not updated", not "could not be opened".
-        (_, Some(error), _) if status.stale && status.kept_references => {
-            let name = status.snapshot_name.as_deref().unwrap_or("Library");
-            let retained = format!("{name}: {} references, not updated", status.references);
-            if status.source_is_requested {
-                let reason = status
-                    .error_reason
-                    .map(|reason| reason.to_string())
-                    .unwrap_or_else(|| error.clone());
-                format!("{retained}: {reason}")
-            } else {
-                retained
+fn words(id: &str, args: &[(&str, &str)]) -> String {
+    ibis_engine::catalogue::text(id, None, args).unwrap_or_else(|| id.to_owned())
+}
+
+/// Each source is a native identity, never a filename used to reopen a file.
+/// Keep the last real file available when the person switches to Zotero.
+#[derive(Default)]
+struct LibraryChoices {
+    zotero_detected: bool,
+    file: Option<PathBuf>,
+    current: Option<Source>,
+    requested: Option<Source>,
+}
+
+impl LibraryChoices {
+    fn observe(&mut self, requested: Option<&Source>, current: Option<&Source>) {
+        self.zotero_detected |= [requested, current]
+            .into_iter()
+            .flatten()
+            .any(|s| matches!(s, Source::Zotero(_)));
+        if let Some(Source::File(path)) = current.filter(|s| matches!(s, Source::File(_))).or(requested) {
+            self.file = Some(path.clone());
+        }
+        self.current = current.cloned();
+        self.requested = requested.cloned();
+    }
+
+    fn checked(&self, row: Row) -> bool {
+        match row {
+            Row::Zotero => matches!(self.current, Some(Source::Zotero(_))),
+            Row::File => self
+                .file
+                .as_ref()
+                .is_some_and(|path| self.current == Some(Source::File(path.clone()))),
+            _ => false,
+        }
+    }
+
+    fn target(&self, row: Row) -> Option<Source> {
+        match row {
+            Row::File => self.file.clone().map(Source::File),
+            // A failed switch must retry the attempted source, not its retained snapshot.
+            Row::Retry => self.requested.clone().or_else(|| self.current.clone()),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Row {
+    Open,
+    Separator(u8),
+    Library,
+    Choose,
+    Zotero,
+    File,
+    Retry,
+    Settings,
+    Update,
+    Help,
+    Quit,
+    Shortcuts,
+    WhatsNew,
+    Problem,
+    Idea,
+    Reset,
+    Version,
+    Libraries,
+}
+
+impl Row {
+    fn label(self, status: &LibraryStatus, choices: &LibraryChoices, name: &str) -> String {
+        let id = match self {
+            Self::Open => "app-tray-open",
+            Self::Library => return library_line(status),
+            Self::Choose => "app-tray-choose",
+            Self::Zotero => "app-tray-zotero",
+            Self::File => {
+                return choices
+                    .file
+                    .as_ref()
+                    .and_then(|p| p.file_name())
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or_default();
             }
+            Self::Retry => "app-tray-retry",
+            Self::Settings => "app-tray-settings",
+            Self::Update => "app-tray-update",
+            Self::Help => "app-tray-help",
+            Self::Quit => return words("app-tray-quit", &[("name", name)]),
+            Self::Shortcuts => "app-tray-shortcuts",
+            Self::WhatsNew => "app-tray-whats-new",
+            Self::Problem => "app-tray-problem",
+            Self::Idea => "app-tray-idea",
+            Self::Reset => "app-tray-reset",
+            Self::Libraries => "app-tray-library-settings",
+            Self::Version => return name.to_owned(),
+            Self::Separator(_) => return "—".into(),
+        };
+        words(id, &[])
+    }
+
+    fn id(self) -> String {
+        format!("tray-{self:?}")
+    }
+}
+
+fn library_name(status: &LibraryStatus) -> String {
+    match status.name.as_deref() {
+        Some("Zotero library") => words("app-tray-zotero", &[]),
+        Some(name) => name.to_owned(),
+        None => words("app-tray-library", &[]),
+    }
+}
+
+/// A problem has one next action, chosen from codes rather than its wording.
+fn problem(status: &LibraryStatus) -> Option<(String, Row)> {
+    use ibis_core::contract::{ErrorCode, ErrorReason};
+    if matches!(status.state, LibraryState::Loading | LibraryState::Reloading) || status.error.is_none() {
+        return None;
+    }
+    let name = library_name(status);
+    let (id, fix) = match status.error_reason {
+        Some(LoadError::Zotero(error)) if error.code == ErrorCode::NewerFormat => {
+            ("app-tray-zotero-newer", Row::Update)
         }
-        (_, Some(error), _) => format!("Library could not be opened: {error}"),
-        (_, None, Some(name)) => {
-            let problems = match status.warnings {
-                0 => String::new(),
-                1 => ", 1 problem".to_string(),
-                n => format!(", {n} problems"),
-            };
-            format!("{name}: {} references{problems}", status.references)
+        Some(LoadError::File(error) | LoadError::FileRefresh(error)) if error.code == ErrorCode::SourceUnavailable => {
+            ("app-tray-file-missing", Row::Choose)
         }
-        (_, None, None) => "No library chosen".to_string(),
+        Some(LoadError::Zotero(error)) if error.reason == Some(ErrorReason::ZoteroSharingOff) => {
+            ("app-tray-zotero-sharing", Row::Libraries)
+        }
+        Some(LoadError::Zotero(error)) if error.reason == Some(ErrorReason::ZoteroProfileNeeded) => {
+            ("app-tray-zotero-profile", Row::Libraries)
+        }
+        Some(LoadError::Zotero(error)) if error.reason == Some(ErrorReason::ZoteroNotFound) => {
+            ("app-tray-zotero-missing", Row::Choose)
+        }
+        Some(LoadError::Zotero(error)) if error.reason == Some(ErrorReason::ZoteroNeedsOpening) => {
+            ("app-tray-zotero-closed", Row::Retry)
+        }
+        Some(LoadError::Zotero(error)) if error.reason == Some(ErrorReason::ZoteroNoSpace) => {
+            ("app-tray-zotero-no-space", Row::Retry)
+        }
+        Some(LoadError::Zotero(error)) if error.code == ErrorCode::NotFound => {
+            ("app-tray-zotero-group-missing", Row::Libraries)
+        }
+        Some(LoadError::Zotero(error)) if error.code == ErrorCode::ResourceLimit => {
+            ("app-tray-zotero-work-limit", Row::Retry)
+        }
+        Some(LoadError::FileRefresh(_)) => ("app-tray-not-updated", Row::Retry),
+        Some(LoadError::File(error)) if error.reason == Some(ErrorReason::UnknownFormat) => {
+            ("app-tray-file-format", Row::Choose)
+        }
+        Some(LoadError::File(error)) if error.reason == Some(ErrorReason::CsvTemplate) => {
+            ("app-tray-file-csv", Row::Choose)
+        }
+        Some(LoadError::File(error)) if error.code == ErrorCode::ResourceLimit => {
+            ("app-tray-file-too-large", Row::Choose)
+        }
+        Some(LoadError::File(error)) if error.code == ErrorCode::BadInput => ("app-tray-file-invalid", Row::Choose),
+        Some(LoadError::File(_) | LoadError::NotLocal) => ("app-tray-file-unreadable", Row::Choose),
+        _ if status.stale && status.source_is_requested => ("app-tray-not-updated", Row::Retry),
+        _ => ("app-tray-not-opened", Row::Retry),
     };
-    let line = if status.choice_not_saved {
-        format!("{line} (not saved for next time)")
-    } else {
-        line
+    Some((words(id, &[("name", &name)]), fix))
+}
+
+/// One short, localized line. Native menus cannot wrap long filenames.
+pub(crate) fn library_line(status: &LibraryStatus) -> String {
+    let name = library_name(status);
+    let line = match status.state {
+        LibraryState::Loading => words("app-tray-opening", &[("name", &name)]),
+        LibraryState::Reloading => words("app-tray-reading", &[("name", &name)]),
+        _ => match problem(status) {
+            Some((line, _)) => line,
+            None if status.name.is_none() => words("app-tray-no-library", &[]),
+            None => words(
+                if status.references == 1 {
+                    "app-tray-count-one"
+                } else {
+                    "app-tray-count"
+                },
+                &[("name", &name), ("count", &status.references.to_string())],
+            ),
+        },
     };
-    // Menus do not wrap; keep long errors readable.
     if line.chars().count() > 90 {
         format!("{}…", line.chars().take(89).collect::<String>())
     } else {
@@ -60,28 +213,132 @@ pub(crate) fn library_line(status: &LibraryStatus) -> String {
     }
 }
 
-/// The disabled line naming the running build, such as "Ibis Nightly 0.1.1-nightly.20261020031200".
+fn menu_rows(status: &LibraryStatus, choices: &LibraryChoices) -> Vec<Row> {
+    let fix = problem(status).map(|(_, fix)| fix);
+    let mut rows = vec![Row::Open, Row::Separator(0), Row::Library];
+    rows.extend(fix);
+    if choices.zotero_detected {
+        rows.push(Row::Zotero);
+    }
+    if choices.file.is_some() {
+        rows.push(Row::File);
+    }
+    if fix != Some(Row::Choose) {
+        rows.push(Row::Choose);
+    }
+    rows.extend([Row::Separator(1), Row::Settings]);
+    if fix != Some(Row::Update) {
+        rows.push(Row::Update);
+    }
+    rows.extend([Row::Help, Row::Separator(2), Row::Quit]);
+    rows
+}
+
+fn help_rows() -> Vec<Row> {
+    vec![
+        Row::Shortcuts,
+        Row::WhatsNew,
+        Row::Separator(3),
+        Row::Problem,
+        Row::Idea,
+        Row::Separator(4),
+        Row::Reset,
+        Row::Separator(5),
+        Row::Version,
+    ]
+}
+
 fn version_line(name: &str, version: &str) -> String {
     format!("{name} {version}")
 }
 
-/// "Open Ibis", which names the shortcut that opens it.
 pub(crate) struct OpenMenuItem(MenuItem<tauri::Wry>);
 
-fn open_label(shortcut: Option<&str>) -> String {
-    use ibis_engine::catalogue::text;
-    match shortcut {
-        Some(shortcut) => text("app-tray-open-shortcut", None, &[("shortcut", shortcut)]),
-        None => text("app-tray-open", None, &[]),
+/// Tauri accepts physical accelerator codes, whose Mac equivalents are US
+/// characters. Resolve the registered key through the current layout first.
+#[cfg(any(target_os = "macos", test))]
+fn macos_shortcut(
+    shortcut: tauri_plugin_global_shortcut::Shortcut,
+    character: Option<char>,
+) -> (String, Option<String>) {
+    use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
+    let raw = shortcut.to_string();
+    let key = character
+        .map(|key| key.to_string())
+        .unwrap_or_else(|| shortcut.key.to_string());
+    let mut parts = Vec::new();
+    for (modifier, name) in [
+        (Modifiers::CONTROL, "Control"),
+        (Modifiers::ALT, "Option"),
+        (Modifiers::SHIFT, "Shift"),
+        (Modifiers::SUPER, "Command"),
+    ] {
+        if shortcut.mods.contains(modifier) {
+            parts.push(name.to_owned());
+        }
     }
-    .unwrap_or_default()
+    parts.push(key);
+    let label = parts.join("+");
+    let equivalent = if character.is_some_and(|key| !key.is_ascii())
+        || character.is_none() && crate::picker::us_character(shortcut).is_some()
+    {
+        None // An unresolved printable key must not advertise its US character.
+    } else {
+        let prefix = raw.rsplit_once('+').map_or("", |(prefix, _)| prefix);
+        let key = character.map_or_else(|| shortcut.key.to_string(), |key| key.to_string());
+        let equivalent = if prefix.is_empty() {
+            key
+        } else {
+            format!("{prefix}+{key}")
+        };
+        equivalent.parse::<Shortcut>().ok().map(|_| equivalent)
+    };
+    (label, equivalent)
 }
 
-/// Name a changed shortcut in the menu at once.
-pub(crate) fn show_shortcut(app: &AppHandle, shortcut: Option<&str>) {
-    if let Some(item) = app.try_state::<OpenMenuItem>() {
-        report(item.0.set_text(open_label(shortcut)), NativeIssue::Shortcut);
-    }
+/// Read fresh state on the main thread, including after a keyboard-layout change.
+pub(crate) fn show_shortcut(app: &AppHandle) {
+    let handle = app.clone();
+    report(
+        app.run_on_main_thread(move || {
+            let Some(item) = handle.try_state::<OpenMenuItem>() else {
+                return;
+            };
+            let shortcut = handle
+                .state::<Mutex<crate::picker::ShortcutStatus>>()
+                .lock()
+                .ok()
+                .filter(|status| status.registered)
+                .map(|status| status.shortcut.clone());
+            let mut label = words("app-tray-open", &[]);
+            #[cfg(target_os = "macos")]
+            let accelerator = shortcut
+                .as_ref()
+                .and_then(|_| crate::picker::registered_shortcut(&handle))
+                .and_then(|key| {
+                    use tauri_plugin_global_shortcut::{Modifiers, Shortcut};
+                    let unshifted = Shortcut::new(Some(key.mods.difference(Modifiers::SHIFT)), key.key);
+                    let (shortcut, equivalent) =
+                        macos_shortcut(key, crate::picker::character(unshifted, crate::picker::typing()));
+                    if equivalent.is_none() {
+                        label = words("app-tray-open-shortcut", &[("shortcut", &shortcut)]);
+                    }
+                    equivalent
+                });
+            #[cfg(not(target_os = "macos"))]
+            let accelerator = {
+                if let Some(shortcut) = &shortcut
+                    && shortcut.parse::<tauri_plugin_global_shortcut::Shortcut>().is_err()
+                {
+                    label = words("app-tray-open-shortcut", &[("shortcut", shortcut)]);
+                }
+                shortcut
+            };
+            report(item.0.set_text(label.replace('&', "&&")), NativeIssue::Shortcut);
+            report(item.0.set_accelerator(accelerator), NativeIssue::Shortcut);
+        }),
+        NativeIssue::Shortcut,
+    );
 }
 
 #[cfg(target_os = "macos")]
@@ -90,8 +347,7 @@ static HIDDEN: AtomicBool = AtomicBool::new(false);
 static APPLIED: AtomicU64 = AtomicU64::new(0);
 
 /// Off, the shortcut still opens the picker and opening Ibis opens Settings.
-/// Saves can finish out of order, so `revision` decides; only the main thread
-/// reads or changes it. Other systems always keep their tray.
+/// Saves can finish out of order; only the main thread applies a revision.
 #[cfg(target_os = "macos")]
 pub(crate) fn show_in_menu_bar<R: Runtime>(app: &AppHandle<R>, shown: bool, revision: u64) {
     let handle = app.clone();
@@ -121,77 +377,16 @@ pub(crate) fn hidden() -> bool {
     HIDDEN.load(Ordering::SeqCst)
 }
 
-/// ⌥-click: the version line becomes one line of local counts.
-#[cfg(target_os = "macos")]
-fn show_stats(app: &AppHandle) {
-    let held = objc2_app_kit::NSEvent::modifierFlags_class().contains(objc2_app_kit::NSEventModifierFlags::Option);
-    let Some(item) = app.try_state::<VersionMenuItem>() else {
-        return;
-    };
-    let line = if held {
-        stats_line(&current_status(app), epoch_days(std::time::SystemTime::now()))
-    } else {
-        item.1.clone()
-    };
-    report(item.0.set_text(line), NativeIssue::TrayLibrary);
-}
-
-#[cfg(target_os = "macos")]
-fn epoch_days(time: std::time::SystemTime) -> u64 {
-    time.duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |since| since.as_secs() / 86_400)
-}
-
-/// "3 libraries · 12,408 references · opened today", from local counts only.
-#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
-fn stats_line(status: &LibraryStatus, today: u64) -> String {
-    let plural = |count: usize, noun: &str| format!("{} {noun}{}", grouped(count), if count == 1 { "" } else { "s" });
-    let mut line = format!(
-        "{} · {}",
-        plural(status.source_counts.len().max(1), "library").replace("librarys", "libraries"),
-        plural(status.references, "reference")
-    );
-    let opened = status
-        .updated_at
-        .map(|millis| today.saturating_sub(millis as u64 / 86_400_000));
-    match opened {
-        Some(0) => line.push_str(" · opened today"),
-        Some(1) => line.push_str(" · opened yesterday"),
-        Some(days) => line.push_str(&format!(" · opened {days} days ago")),
-        None => {}
-    }
-    line
-}
-
-fn grouped(count: usize) -> String {
-    let digits = count.to_string();
-    let lead = digits.len() % 3;
-    let mut text = digits[..lead].to_string();
-    for group in digits.as_bytes()[lead..].chunks(3) {
-        if !text.is_empty() {
-            text.push(',');
-        }
-        text.push_str(std::str::from_utf8(group).unwrap_or_default());
-    }
-    text
-}
-
-/// The version line and its usual text.
-#[cfg(target_os = "macos")]
-struct VersionMenuItem(MenuItem<tauri::Wry>, String);
-
 /// Text from Search with Ibis waiting for the picker: a launch may beat it.
 #[derive(Default)]
 pub(crate) struct SearchRequest(pub(crate) Mutex<Option<String>>);
 
-/// The picker collects text from Search with Ibis once.
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) fn take_search_request(request: tauri::State<'_, SearchRequest>) -> Option<String> {
     request.0.lock().ok().and_then(|mut waiting| waiting.take())
 }
 
-/// A citation segment took its place: the trackpad's alignment tick.
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) fn alignment_tick() {
@@ -199,135 +394,249 @@ pub(crate) fn alignment_tick() {
     crate::menu_bar::tick();
 }
 
-/// The disabled menu item that shows the library line.
-pub(crate) struct LibraryMenuItem(pub(crate) MenuItem<tauri::Wry>);
+struct NativeRow {
+    row: Row,
+    item: MenuItemKind<tauri::Wry>,
+    // Replacing a file/retry target creates a new native ID. A delayed event
+    // from the retired item cannot open a newer source.
+    target: Option<Source>,
+}
 
-/// The menu bar (macOS) or tray (Windows, Linux) item and its menu.
-pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Result<()> {
-    let line = MenuItem::with_id(app, "library", library_line(&current_status(app)), false, None::<&str>)?;
-    let open = MenuItem::with_id(app, "open", open_label(shortcut), true, None::<&str>)?;
-    let choose = MenuItem::with_id(app, "choose", "Choose Library File…", true, None::<&str>)?;
-    let zotero = MenuItem::with_id(app, "zotero", "Use Zotero Library", true, None::<&str>)?;
-    let reload = MenuItem::with_id(app, "reload", "Reload Library", true, None::<&str>)?;
-    let problem = MenuItem::with_id(app, "problem", "Report a Problem…", true, None::<&str>)?;
-    let idea = MenuItem::with_id(app, "idea", "Suggest an Idea…", true, None::<&str>)?;
-    let settings = MenuItem::with_id(app, "settings", "Settings…", true, Some("CmdOrCtrl+,"))?;
-    let reset_window = MenuItem::with_id(app, "reset_window", "Reset Window Position", true, None::<&str>)?;
-    // "Ibis" or "Ibis Nightly", so the two apps can be told apart.
-    let name = app.package_info().name.clone();
-    let quit = MenuItem::with_id(app, "quit", format!("Quit {name}"), true, None::<&str>)?;
-    let version = version_line(&name, &app.package_info().version.to_string());
-    let version_text = version.clone();
-    let version = MenuItem::with_id(app, "version", version, false, None::<&str>)?;
-    let (first, second, third) = (
-        PredefinedMenuItem::separator(app)?,
-        PredefinedMenuItem::separator(app)?,
-        PredefinedMenuItem::separator(app)?,
-    );
-    let mut items: Vec<&dyn IsMenuItem<tauri::Wry>> =
-        vec![&open, &first, &version, &line, &choose, &zotero, &reload, &second];
-    // Builds without an update key have no update items.
-    let update_items = if updater::available(app) {
-        Some((
-            MenuItem::with_id(app, "update_now", updater::update_menu_label(false), true, None::<&str>)?,
-            CheckMenuItem::with_id(
-                app,
-                updater::setting::AUTOMATIC_ON,
-                "Check for Updates Automatically",
-                true,
-                false,
-                None::<&str>,
-            )?,
-            CheckMenuItem::with_id(
-                app,
-                updater::setting::AUTOMATIC_OFF,
-                "Check for Updates Automatically",
-                true,
-                true,
-                None::<&str>,
-            )?,
-        ))
-    } else {
-        None
-    };
-    let automatic_position = items.len() + 1;
-    if let Some((now, automatic, _)) = &update_items {
-        items.extend([now as &dyn IsMenuItem<tauri::Wry>, automatic]);
-    }
-    // Only where the system offers login items; ticked as the system says.
-    let at_login = match app.try_state::<LoginItems>() {
-        Some(items) if items.available() => Some(CheckMenuItem::with_id(
-            app,
-            "login",
-            login_item::menu_label(),
-            true,
-            items.read().enabled,
-            None::<&str>,
-        )?),
-        _ => None,
-    };
-    if let Some(at_login) = &at_login {
-        items.push(at_login);
-    }
-    items.extend([
-        &settings as &dyn IsMenuItem<tauri::Wry>,
-        &reset_window,
-        &problem,
-        &idea,
-        &third,
-        &quit,
-    ]);
-    let menu = Menu::with_items(app, &items)?;
-    if let Some((now, off, on)) = update_items {
-        app.manage(UpdateMenuItem(now));
-        app.manage(AutomaticMenuItem::new(menu.clone(), [off, on], automatic_position));
-    }
-    #[cfg(target_os = "macos")]
-    app.manage(VersionMenuItem(version.clone(), version_text));
-    #[cfg(not(target_os = "macos"))]
-    let _ = version_text;
-    app.manage(LibraryMenuItem(line));
-    app.manage(OpenMenuItem(open.clone()));
-    if let Some(at_login) = at_login {
-        app.manage(LoginMenuItem(at_login));
-    }
-    let mut tray = TrayIconBuilder::with_id("ibis")
-        .tooltip(&name)
-        .menu(&menu)
-        .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id.as_ref() {
-            "open" => show_picker(app),
-            "settings" => crate::settings_window::open(app, None),
-            "reset_window" => crate::sizing::reset_position(app),
-            "choose" => choose_library_file(app),
-            "zotero" => use_zotero_library(app),
-            "reload" => reload_library_file(app),
-            "problem" => open_in_browser(app, problem_url(&app.package_info().version.to_string())),
-            "idea" => open_in_browser(app, idea_url()),
-            "update_now" => updater::setting::check_from_menu(app),
-            updater::setting::AUTOMATIC_ON | updater::setting::AUTOMATIC_OFF => {
-                updater::setting::toggle_automatic(app, event.id.as_ref());
+struct MenuContents {
+    choices: LibraryChoices,
+    rows: Vec<NativeRow>,
+}
+
+struct TrayMenu {
+    menu: Menu<tauri::Wry>,
+    contents: Mutex<MenuContents>,
+}
+
+fn library_target<'a>(
+    id: &tauri::menu::MenuId,
+    targets: impl IntoIterator<Item = (&'a tauri::menu::MenuId, &'a Source)>,
+) -> Option<Source> {
+    targets
+        .into_iter()
+        .find(|(target_id, _)| *target_id == id)
+        .map(|(_, source)| source.clone())
+}
+
+fn native_row(app: &AppHandle, row: Row, status: &LibraryStatus, choices: &LibraryChoices) -> tauri::Result<NativeRow> {
+    let name = &app.package_info().name;
+    let label = row.label(status, choices, name).replace('&', "&&");
+    let target = choices.target(row);
+    let item = match row {
+        Row::Separator(_) => PredefinedMenuItem::separator(app)?.kind(),
+        Row::Zotero | Row::File => {
+            if row == Row::File {
+                CheckMenuItem::new(app, label, true, choices.checked(row), None::<&str>)?.kind()
+            } else {
+                CheckMenuItem::with_id(app, row.id(), label, true, choices.checked(row), None::<&str>)?.kind()
             }
-            "login" => login_item::toggle_from_menu(app),
-            "quit" => app.exit(0),
-            _ => {}
-        })
-        // Someone may have changed it in the system's settings since.
-        .on_tray_icon_event(|tray, event| {
-            #[cfg(target_os = "macos")]
-            if let TrayIconEvent::Click {
-                button_state: tauri::tray::MouseButtonState::Down,
+        }
+        Row::Retry => MenuItem::new(app, label, true, None::<&str>)?.kind(),
+        Row::Help => {
+            let help = Submenu::with_id(app, row.id(), label, true)?;
+            for row in help_rows() {
+                help.append(&native_row(app, row, status, choices)?.item)?;
+            }
+            help.kind()
+        }
+        _ => {
+            let label = if row == Row::Version {
+                version_line(name, &app.package_info().version.to_string())
+            } else {
+                label
+            };
+            let accelerator = match row {
+                Row::Settings => Some("CmdOrCtrl+,"),
+                Row::Quit => Some("CmdOrCtrl+Q"),
+                _ => None,
+            };
+            MenuItem::with_id(app, row.id(), label, row != Row::Library, accelerator)?.kind()
+        }
+    };
+    Ok(NativeRow { row, item, target })
+}
+
+impl TrayMenu {
+    /// Preserve native objects; only move rows when the available actions change.
+    fn refresh(&self, app: &AppHandle) -> tauri::Result<()> {
+        let (status, requested, current) = {
+            let library = app.state::<Mutex<Library>>();
+            let Ok(library) = library.lock() else { return Ok(()) };
+            (
+                crate::library::snapshot_status(&library),
+                library.requested.clone(),
+                library.source.clone(),
+            )
+        };
+        let Ok(mut contents) = self.contents.lock() else {
+            return Ok(());
+        };
+        contents.choices.observe(requested.as_ref(), current.as_ref());
+        let wanted = menu_rows(&status, &contents.choices);
+        let mut index = 0;
+        while index < contents.rows.len() {
+            let row = &contents.rows[index];
+            if !wanted.contains(&row.row) || row.target != contents.choices.target(row.row) {
+                self.menu.remove(&row.item)?;
+                contents.rows.remove(index);
+            } else {
+                index += 1;
+            }
+        }
+        for (index, row) in wanted.into_iter().enumerate() {
+            match contents.rows.iter().position(|entry| entry.row == row) {
+                Some(old) if old != index => {
+                    let entry = &contents.rows[old];
+                    self.menu.remove(&entry.item)?;
+                    self.menu.insert(&entry.item, index)?;
+                    let entry = contents.rows.remove(old);
+                    contents.rows.insert(index, entry);
+                }
+                None => {
+                    let entry = native_row(app, row, &status, &contents.choices)?;
+                    self.menu.insert(&entry.item, index)?;
+                    contents.rows.insert(index, entry);
+                }
+                _ => {}
+            }
+        }
+        for entry in &contents.rows {
+            match &entry.item {
+                MenuItemKind::MenuItem(item) if entry.row == Row::Library => {
+                    item.set_text(library_line(&status).replace('&', "&&"))?
+                }
+                MenuItemKind::Check(item) => item.set_checked(contents.choices.checked(entry.row))?,
+                _ => {}
+            }
+        }
+        #[cfg(target_os = "macos")]
+        crate::menu_bar::show_reading(app, status.state == LibraryState::Reloading);
+        Ok(())
+    }
+
+    fn target(&self, id: &tauri::menu::MenuId) -> Option<Source> {
+        let contents = self.contents.lock().ok()?;
+        library_target(
+            id,
+            contents
+                .rows
+                .iter()
+                .filter_map(|entry| entry.target.as_ref().map(|source| (entry.item.id(), source))),
+        )
+    }
+}
+
+/// Called on the main thread, reading fresh state after queued library changes.
+pub(crate) fn refresh_library(app: &AppHandle) {
+    if let Some(menu) = app.try_state::<TrayMenu>() {
+        report(menu.refresh(app), NativeIssue::TrayLibrary);
+    }
+}
+
+fn menu_on_left_click(macos: bool) -> bool {
+    macos
+}
+
+fn handle_tray_event(macos: bool, event: &TrayIconEvent, open: impl FnOnce()) {
+    if !macos
+        && matches!(
+            event,
+            TrayIconEvent::Click {
+                button: MouseButton::Left,
+                button_state: MouseButtonState::Up,
                 ..
-            } = event
-            {
-                show_stats(tray.app_handle());
             }
-            if matches!(event, TrayIconEvent::Click { .. } | TrayIconEvent::Enter { .. }) {
-                // Registry, file and ServiceManagement reads block: keep them
-                // off the main thread that draws the menu.
-                let app = tray.app_handle().clone();
-                tauri::async_runtime::spawn_blocking(move || login_item::current(&app));
+        )
+    {
+        open();
+    }
+}
+
+fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
+    // A radio click has a fixed native target; never read its mutable check.
+    if let Some(source) = app.try_state::<TrayMenu>().and_then(|menu| menu.target(&event.id)) {
+        start_open(app, source, true);
+        crate::picker::reveal_picker(app);
+    } else if event.id == Row::Open.id() {
+        show_picker(app);
+    } else if event.id == Row::Choose.id() {
+        choose_library_file(app);
+    } else if event.id == Row::Zotero.id() {
+        use_zotero_library(app);
+    } else if event.id == Row::Settings.id() {
+        crate::settings_window::open(app, None);
+    } else if event.id == Row::Shortcuts.id() {
+        crate::settings_window::open(app, Some(crate::settings_window::Page::Shortcuts));
+    } else if event.id == Row::Libraries.id() {
+        crate::settings_window::open(app, Some(crate::settings_window::Page::Libraries));
+    } else if event.id == Row::WhatsNew.id() {
+        open_in_browser(app, "https://github.com/ibiscite/ibis/releases".into());
+    } else if event.id == Row::Problem.id() {
+        open_in_browser(app, problem_url(&app.package_info().version.to_string()));
+    } else if event.id == Row::Idea.id() {
+        open_in_browser(app, idea_url());
+    } else if event.id == Row::Reset.id() {
+        crate::sizing::reset_position(app);
+    } else if event.id == Row::Update.id() {
+        updater::setting::check_from_menu(app);
+    } else if event.id == Row::Version.id() {
+        if app
+            .clipboard()
+            .write_text(version_line(
+                &app.package_info().name,
+                &app.package_info().version.to_string(),
+            ))
+            .is_err()
+        {
+            app.dialog()
+                .message(words("app-tray-version-copy-failed", &[]))
+                .title(&app.package_info().name)
+                .show(|_| {});
+        }
+    } else if event.id == Row::Quit.id() {
+        app.exit(0);
+    }
+    refresh_library(app);
+}
+
+pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Result<()> {
+    let status = crate::library::current_status(app);
+    let choices = LibraryChoices::default();
+    let menu = Menu::new(app)?;
+    let mut rows = Vec::new();
+    for row in menu_rows(&status, &choices) {
+        let entry = native_row(app, row, &status, &choices)?;
+        if let MenuItemKind::MenuItem(item) = &entry.item {
+            match row {
+                Row::Open => {
+                    item.set_accelerator(shortcut)?;
+                    app.manage(OpenMenuItem(item.clone()));
+                }
+                Row::Update => {
+                    app.manage(UpdateMenuItem(item.clone()));
+                }
+                _ => {}
             }
+        }
+        menu.append(&entry.item)?;
+        rows.push(entry);
+    }
+    app.manage(TrayMenu {
+        menu: menu.clone(),
+        contents: Mutex::new(MenuContents { choices, rows }),
+    });
+    refresh_library(app);
+    let mut tray = TrayIconBuilder::with_id("ibis")
+        .tooltip(&app.package_info().name)
+        .menu(&menu)
+        .show_menu_on_left_click(menu_on_left_click(cfg!(target_os = "macos")))
+        .on_menu_event(menu_event)
+        .on_tray_icon_event(|tray, event| {
+            handle_tray_event(cfg!(target_os = "macos"), &event, || show_picker(tray.app_handle()))
         });
     #[cfg(target_os = "macos")]
     {
@@ -340,119 +649,25 @@ pub(crate) fn create_tray(app: &AppHandle, shortcut: Option<&str>) -> tauri::Res
     let _tray = tray.build(app)?;
     #[cfg(target_os = "macos")]
     crate::menu_bar::accept_drops(app, &_tray);
+    // Local profile discovery runs once, off the main thread; nothing polls.
+    let handle = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let detected = crate::library::zotero_detected();
+        let app = handle.clone();
+        report(
+            handle.run_on_main_thread(move || {
+                if let Some(menu) = app.try_state::<TrayMenu>()
+                    && let Ok(mut contents) = menu.contents.lock()
+                {
+                    contents.choices.zotero_detected |= detected;
+                }
+                refresh_library(&app);
+            }),
+            NativeIssue::TrayLibrary,
+        );
+    });
     Ok(())
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn the_version_line_names_the_build() {
-        assert_eq!(version_line("Ibis", "0.1.0"), "Ibis 0.1.0");
-        assert_eq!(
-            version_line("Ibis Nightly", "0.1.1-nightly.20261020031200"),
-            "Ibis Nightly 0.1.1-nightly.20261020031200"
-        );
-    }
-
-    #[test]
-    fn the_library_line_explains_failures_and_stays_short() {
-        let status = |name: Option<&str>, warnings, error: Option<&str>| LibraryStatus {
-            revision: "synthetic".into(),
-            source_generation: "1".into(),
-            source_is_requested: true,
-            state: LibraryState::Loaded,
-            zotero: false,
-            zotero_libraries: Vec::new(),
-            has_snapshot: name.is_some(),
-            name: name.map(String::from),
-            snapshot_name: name.map(String::from),
-            references: 12,
-            source_counts: Default::default(),
-            warnings,
-            reading: Vec::new(),
-            live_updates_off: false,
-            error: error.map(String::from),
-            problem: None,
-            error_reason: None,
-            kept_references: false,
-            choice_not_saved: false,
-            note: None,
-            settings_notice: None,
-            snapshot_zotero: false,
-            sample: false,
-            stale: false,
-            updated_at: None,
-            checked_at: None,
-        };
-        assert_eq!(library_line(&status(None, 0, None)), "No library chosen");
-        for (state, expected) in [
-            (LibraryState::Loading, "Opening refs.bib…"),
-            (LibraryState::Reloading, "Reading refs.bib…"),
-        ] {
-            assert_eq!(
-                library_line(&LibraryStatus {
-                    state,
-                    ..status(Some("refs.bib"), 0, None)
-                }),
-                expected
-            );
-        }
-        assert_eq!(
-            library_line(&status(Some("refs.bib"), 0, None)),
-            "refs.bib: 12 references"
-        );
-        assert_eq!(
-            library_line(&status(Some("refs.bib"), 2, None)),
-            "refs.bib: 12 references, 2 problems"
-        );
-        let unsaved = LibraryStatus {
-            note: Some("could not be saved".into()),
-            choice_not_saved: true,
-            ..status(Some("refs.bib"), 0, None)
-        };
-        assert_eq!(
-            library_line(&unsaved),
-            "refs.bib: 12 references (not saved for next time)"
-        );
-        let counted = LibraryStatus {
-            source_counts: [("a.bib".to_string(), 12_000), ("b.bib".to_string(), 408)].into(),
-            references: 12_408,
-            updated_at: Some(20_000.0 * 86_400_000.0),
-            ..status(Some("a.bib"), 0, None)
-        };
-        assert_eq!(
-            stats_line(&counted, 20_000),
-            "2 libraries · 12,408 references · opened today"
-        );
-        assert_eq!(
-            stats_line(&counted, 20_001),
-            "2 libraries · 12,408 references · opened yesterday"
-        );
-        let single = LibraryStatus {
-            updated_at: None,
-            references: 1,
-            source_counts: Default::default(),
-            ..counted
-        };
-        assert_eq!(stats_line(&single, 20_000), "1 library · 1 reference");
-        let kept = LibraryStatus {
-            state: LibraryState::Error,
-            name: Some("refs.bib".into()),
-            snapshot_name: Some("refs.bib".into()),
-            stale: true,
-            kept_references: true,
-            error_reason: Some(crate::library::LoadError::FILE_UNAVAILABLE),
-            ..status(Some("refs.bib"), 0, Some("presentation wording is not a status code"))
-        };
-        assert_eq!(
-            library_line(&kept),
-            "refs.bib: 12 references, not updated: the library file is unavailable; download any onlin…"
-        );
-        let long = "x".repeat(200);
-        let line = library_line(&status(Some("refs.bib"), 0, Some(&long)));
-        assert!(line.starts_with("Library could not be opened: x"));
-        assert_eq!(line.chars().count(), 90);
-    }
-}
+mod tests;

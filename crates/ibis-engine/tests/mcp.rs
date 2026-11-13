@@ -93,11 +93,13 @@ fn a_session_runs_over_newline_delimited_stdio() {
         + "not json\n";
     let mut output = Vec::new();
     mcp::serve(&engine, mcp::Session::default(), input.as_bytes(), &mut output).unwrap();
-    let replies: Vec<Value> = String::from_utf8(output)
+    let mut replies: Vec<Value> = String::from_utf8(output)
         .unwrap()
         .lines()
         .map(|line| serde_json::from_str(line).unwrap())
         .collect();
+    // Tool replies can follow later protocol replies; JSON-RPC pairs by ID.
+    replies.sort_by_key(|reply| reply["id"].as_u64().unwrap_or(u64::MAX));
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
     // An unknown requested revision is answered with the newest handshake revision.
@@ -276,6 +278,24 @@ fn cite_formats_by_key_or_by_id() {
     );
     let wrong = tool(&engine, "cite", json!({"items":both,"keep_order":"yes"}));
     assert_eq!(wrong["isError"], true);
+}
+
+#[test]
+fn search_reads_shorthand_as_cite_item_fields() {
+    let (_dir, engine) = engine();
+    let read = tool(
+        &engine,
+        "search",
+        json!({"query":"see researcher 417","shorthand":true}),
+    );
+    assert_eq!(
+        read["structuredContent"]["cited_with"],
+        json!({"prefix":"see","locator":"417"})
+    );
+    assert_eq!(read["structuredContent"]["searched_for"], "researcher");
+    assert!(!read["structuredContent"]["hits"].as_array().unwrap().is_empty());
+    let plain = tool(&engine, "search", json!({"query":"see researcher 417"}));
+    assert!(plain["structuredContent"].get("cited_with").is_none());
 }
 
 #[test]

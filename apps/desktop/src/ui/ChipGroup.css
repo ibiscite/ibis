@@ -1,9 +1,0 @@
-.chip-group { min-width: 0; max-width: 100%; }
-.chip-group-list { display: flex; flex-wrap: wrap; gap: max(var(--space-1), calc(var(--hit) - var(--control-small-h))) var(--space-1); }
-.chip-group-item { display: inline-flex; align-items: center; max-width: 100%; height: var(--control-small-h); padding-inline-start: var(--space-2); border: var(--border-width) solid var(--stroke-field); border-radius: var(--r-control); background: var(--fill-control); color: var(--text); font-size: var(--type-label-size); }
-.chip-group-item bdi { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.chip-group-remove.ui-button { flex: none; --ring-offset: var(--ring-inside); }
-.chip-group-item[data-focus-visible] { outline: var(--ring-width) solid var(--ring); outline-offset: var(--ring-offset); }
-@media (forced-colors: active), (prefers-contrast: more) {
-  .chip-group-item { border-color: ButtonText; }
-}

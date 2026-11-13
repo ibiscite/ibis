@@ -30,6 +30,10 @@ make the AppImage executable (`chmod +x Ibis-Linux.AppImage`) and open it.
 See [installation help and tested systems](docs/compatibility.md) for security
 warnings, WebView2, FUSE and Wayland shortcuts.
 
+[Install with Nix](docs/nix.md): `nix profile add github:ibiscite/ibis` installs
+the CLI on Linux and macOS (x86_64 and aarch64). Add `#ibis-desktop` for the
+Linux desktop app.
+
 ## First use
 
 1. Open Ibis with Command+Shift+Y on macOS or Ctrl+Shift+Y on Windows/X11.

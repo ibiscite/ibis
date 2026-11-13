@@ -46,16 +46,13 @@ versions/changelog and tags through the release app token, starting
 4. `stable-feed` replaces packages, then `latest.json` on the fixed `stable`
    tag. Older versions cannot replace a newer feed. That tag is not a source ref.
 
-A nightly verifies packages and signs with the nightly key, publishing only
-while its revision is main's current head. Release-mode/minimum-Rust/budget
-checks run alongside it; numbered publication needs them, nightly does not
-wait. A failure leaves the preceding nightly in place.
-
-Manual Preview on main with publication disabled retains artifacts for 14
-days. A daily installed-update qualification uses the previous nightly;
-missing identity evidence can fail that check without blocking new nightly
-publication. [Testing](docs/testing.md#installed-update-qualification)
-describes its assertions.
+A nightly verifies packages and requires passing push CI for its revision and
+current main before replacing downloads. A failure keeps the preceding nightly.
+Daily/manual CI runs the full matrix, installed nightly journeys, WebKit,
+release-mode/MSRV checks and bounded fuzzing; failures update one issue. Run
+`ci.yml` with `workflow_dispatch` on the release candidate before cutting a release.
+Manual Preview with publication disabled retains artifacts for 14 days. The
+daily installed-update check still uses the previous nightly; see [testing](docs/testing.md#installed-update-qualification).
 
 ## Update keys
 

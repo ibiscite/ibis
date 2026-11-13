@@ -3,6 +3,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import { useSourceOpen } from "../features/picker/useSourceOpen";
 import { SourceAction, SourceIcon, shortenedLabel } from "./SourceAction";
 import type { SourcePresentation } from "../bindings";
+import { iconPaths } from "../icon-paths";
 
 const nativeIcon = { mime: "image/png", bytes: [137, 80, 78, 71] };
 
@@ -21,17 +22,26 @@ test("a native source icon is decorative; decode failure retains the named, work
   expect(image.src).toBe("data:image/png;base64,iVBORw==");
   fireEvent.error(image);
   expect(button.querySelector("img")).toBeNull();
-  expect(button.querySelector("svg path")).not.toBeNull();
+  expect(button.querySelector("svg path")?.getAttribute("d")).toBe(iconPaths["app-window"]);
+  expect(button.querySelector("svg path")?.getAttribute("d")).not.toBe(iconPaths["library-big"]);
   fireEvent.click(button);
   expect(open).toHaveBeenCalledOnce();
 });
 
 test.each([null, { mime: "image/svg+xml", bytes: [60, 115, 118, 103] }, { mime: "image/png", bytes: [256] }])(
-  "missing or refused artwork shows the books fallback", (icon) => {
+  "missing or refused artwork shows the app-window fallback", (icon) => {
     const { container } = render(<SourceIcon icon={icon} />);
     expect(container.querySelector("img")).toBeNull();
-    expect(container.querySelector("svg path")).not.toBeNull();
+    expect(container.querySelector("svg path")?.getAttribute("d")).toBe(iconPaths["app-window"]);
   });
+
+test("file and reveal actions keep their operation glyph even when a system icon is available", () => {
+  const { container, rerender } = render(<SourceIcon icon={nativeIcon} file />);
+  expect(container.querySelector("img")).toBeNull();
+  expect(container.querySelector("svg path")?.getAttribute("d")).toBe(iconPaths.article);
+  rerender(<SourceIcon icon={nativeIcon} file glyph="folder-search" />);
+  expect(container.querySelector("svg path")?.getAttribute("d")).toBe(iconPaths["folder-search"]);
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void, reject!: (reason: unknown) => void;

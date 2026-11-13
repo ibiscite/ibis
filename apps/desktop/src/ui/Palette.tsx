@@ -1,5 +1,4 @@
 import { useId, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode, type RefObject } from "react";
-import { flushSync } from "react-dom";
 import { composing } from "../composition";
 import { Icon } from "../icons";
 import { ariaKeys, keyLabel } from "../keys";
@@ -7,7 +6,6 @@ import { currentPlatform } from "../platform";
 import { Button } from "./Button";
 import { ViewFrame, leaveView } from "./ViewFrame";
 import { say } from "../i18n";
-import { useLayer } from "./layers";
 import "./Palette.css";
 
 /** One row: a name, a quiet detail only when it tells rows apart, its keys, and
@@ -87,8 +85,6 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     if (back instanceof HTMLElement && back.isConnected && !back.closest("[hidden], [inert]")) back.focus({ preventScroll: true });
     onClose("dismiss");
   };
-  // A command clearing the way needs the palette gone before it acts.
-  useLayer("menu", true, () => { flushSync(dismiss); });
   useLayoutEffect(() => { opener.current = document.activeElement; field.current?.focus({ preventScroll: true }); }, []);
   useLayoutEffect(() => {
     if (current) document.getElementById(optionId(current))?.scrollIntoView?.({ block: "nearest" });

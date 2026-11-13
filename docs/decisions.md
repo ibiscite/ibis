@@ -93,8 +93,17 @@ the anchor older links use.
 ## 0044 One Lucide icon primitive
 [0044](decisions/0044-lucide-icon-primitive.md): Lucide 1.72.0 under ISC, two fixed pixel sizes with a 1.5px rendered stroke, and Lucide's drawing rules for missing glyphs.
 
+## 0045 The citation line is a token field
+[0045](decisions/0045-citation-line-token-field.md): each reference in the shelf's line is a token whose details open in a popover above it; the side panel keeps the Reader and warnings.
+
 ## 0046 Official names and listings
 [0046](decisions/0046-official-names-and-listings.md): useful MIT clients under `ibiscite`, official listings before 1.0, build provenance, and the name and logo owner and contact.
 
 ## 0027 Process until 1.0 (with 0011, 0015 and 0017)
 [0027](decisions/0027-process-until-1-0.md): agents' merge authority, auto-merge on green and the testing rhythm.
+
+## 0047 Opening references, where the picker appears, and going back
+[0047](decisions/0047-opening-references-placement-and-back.md): the search row at the upper quarter of the writing app's screen, one table for Esc, Backspace and Back, and what ⌘O and its alternate do for every library type, configurable under Libraries.
+
+## 0048 Nix install
+[0048](decisions/0048-nix-install.md): the CLI builds from source on Linux and macOS, the desktop on Linux; independent CI reports hash repairs for agents.

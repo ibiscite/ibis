@@ -38,6 +38,31 @@ pub(super) fn with_summary(
     result
 }
 
+/// The search's rows, or what it means that there are none.
+fn search_summary(hits: &[Value], holdings: Holdings, out: Out) -> Option<String> {
+    if hits.is_empty() {
+        return match holdings {
+            Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
+            Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
+            Holdings::References if out.width.is_some() => Some("No references matched. Try a shorter query.".into()),
+            Holdings::References => Some("No references found.".into()),
+        };
+    }
+    let rows = if let Some(width) = out.width {
+        terminal_search(hits, width, out)?
+    } else {
+        hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n")
+    };
+    // Closest matches are said to be so, never shown as full matches.
+    if hits
+        .iter()
+        .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
+    {
+        return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
+    }
+    Some(rows)
+}
+
 fn summary(
     method: Method,
     data: &Value,
@@ -49,29 +74,16 @@ fn summary(
         Method::Show => reference(data),
         Method::Search => {
             let hits = data.get("hits")?.as_array()?;
-            if hits.is_empty() {
-                return match holdings {
-                    Holdings::NoLibrary => Some("No library is open; add --file <library> or --zotero.".into()),
-                    Holdings::Empty => catalogue::text("cli-no-references", None, &[]),
-                    Holdings::References if out.width.is_some() => {
-                        Some("No references matched. Try a shorter query.".into())
-                    }
-                    Holdings::References => Some("No references found.".into()),
-                };
-            }
-            let rows = if let Some(width) = out.width {
-                terminal_search(hits, width, out)?
-            } else {
-                hits.iter().map(search_row).collect::<Option<Vec<_>>>()?.join("\n")
-            };
-            // Closest matches are said to be so, never shown as full matches.
-            if hits
-                .iter()
-                .any(|hit| hit.get("partial").and_then(Value::as_bool) == Some(true))
-            {
-                return Some(format!("No reference matches every word. Closest matches:\n{rows}"));
-            }
-            Some(rows)
+            // What was read around the words, said once before the rows, as the picker shows it.
+            let read = data.get("shorthand").map(|read| {
+                let prefix = read.get("prefix").and_then(Value::as_str);
+                let locator = read.pointer("/locator/typed").and_then(Value::as_str);
+                let words = read.get("search").and_then(Value::as_str).unwrap_or_default();
+                let cited = [prefix, locator].into_iter().flatten().collect::<Vec<_>>().join(" · ");
+                format!("Cited with: {}; searched for: {}\n", field(&cited), field(words))
+            });
+            let summary = search_summary(hits, holdings, out)?;
+            Some(format!("{}{summary}", read.unwrap_or_default()))
         }
         Method::Libraries => {
             let libraries = data.get("libraries")?.as_array()?;
@@ -1022,6 +1034,44 @@ mod terminal_tests {
             "citation_keys":[{"value":key}],
             "csl":{"title":title, "author":[{"family":"Valé"},{"family":"Fen"},{"family":"Ng"},{"family":"Park"}], "issued":{"date-parts":[[2024]]}}
         }}}})
+    }
+
+    #[test]
+    fn shorthand_keeps_its_reading_above_terminal_rows_and_empty_search_guidance() {
+        let out = Out {
+            width: Some(40),
+            color: false,
+        };
+        let mut data = json!({
+            "hits": [hit("vale2024", &"Lantern gardens ".repeat(10))],
+            "shorthand": {"prefix":"see", "locator":{"typed":"417"}, "search":"vale"}
+        });
+        let reading = "Cited with: see · 417; searched for: vale\n";
+        let text = summary(Method::Search, &data, Holdings::References, &BTreeMap::new(), out).unwrap_or_default();
+        let rows = text.strip_prefix(reading).unwrap_or_default();
+        assert!(rows.starts_with("vale2024  Valé… 2024  "), "{text}");
+        assert!(rows.ends_with('…'), "{text}");
+        assert!(out::width(rows) <= 40, "{text}");
+        let plain = summary(
+            Method::Search,
+            &data,
+            Holdings::References,
+            &BTreeMap::new(),
+            Out {
+                width: None,
+                color: false,
+            },
+        )
+        .unwrap_or_default();
+        assert!(
+            plain.starts_with(&format!("{reading}vale2024\tValé, Fen, Ng, et al.\t2024\t")),
+            "{plain}"
+        );
+        data["hits"] = json!([]);
+        assert_eq!(
+            summary(Method::Search, &data, Holdings::References, &BTreeMap::new(), out),
+            Some(format!("{reading}No references matched. Try a shorter query."))
+        );
     }
 
     #[test]

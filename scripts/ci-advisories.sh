@@ -5,9 +5,10 @@ case ${1:-} in
   policy)
     blocking=true
     case ${EVENT:-} in
-      pull_request | merge_group)
-        # PRs compare with their merge base; queue entries compare with current
-        # main. No rename detection: removing a manifest counts as a change too.
+      pull_request | push)
+        # PRs compare with their merge base; main pushes compare both commits.
+        # No rename detection: removing a manifest counts as a change too.
+        if [[ ${REF:-} == refs/tags/* ]]; then echo "blocking=true"; exit 0; fi
         range="${BASE_SHA:-}..${HEAD_SHA:-}"
         if [ "$EVENT" = pull_request ]; then range="${BASE_SHA:-}...${HEAD_SHA:-}"; fi
         if [[ ${BASE_SHA:-} =~ ^[0-9a-f]{40}$ && ${HEAD_SHA:-} =~ ^[0-9a-f]{40}$ ]] &&

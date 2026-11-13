@@ -1,8 +1,9 @@
+import type * as nativeApi from "../../api";
 import { KEY_TABLE, type KeyBinding } from "../../keys";
+import { flushSync } from "react-dom";
 import { say } from "../../i18n";
 import { useLayer, useNearestLayer } from "../../ui/layers";
 import type { SearchResult } from "../../api";
-import type { PickerApi } from "../../App";
 import { choiceKey, idKey, type CitationReference } from "./choice";
 import { outputName } from "../../format/outputs";
 import { enterLabel, enterPastes } from "./enterLabel";
@@ -15,13 +16,12 @@ import type { useDestination } from "./useDestination";
 import type { useCitationOutput } from "./useCitationOutput";
 import type { useShortcutStatus } from "./useShortcutStatus";
 import type { useOperations } from "./useOperations";
-import type { CitationInspectorState } from "./useCitationInspector";
 
 export function usePickerActions({
-  api, pickerSession, menus, libraryState, searchState, destination, shown, inspector, offered, canPaste, shortcut,
+  api, pickerSession, menus, libraryState, searchState, destination, shown, offered, canPaste, shortcut,
   perform, dismissChooser, toggle, writesStyle,
 }: {
-  api: PickerApi;
+  api: typeof nativeApi;
   pickerSession: ReturnType<typeof usePickerSession>;
   menus: ReturnType<typeof usePickerMenus>;
   libraryState: Pick<ReturnType<typeof usePickerLibrary>, "choosingLibrary" | "welcomeShown" | "showCitations">;
@@ -33,7 +33,6 @@ export function usePickerActions({
   canPaste: boolean;
   shortcut: ReturnType<typeof useShortcutStatus>["shortcut"];
   perform: ReturnType<typeof useOperations>["perform"];
-  inspector: CitationInspectorState;
   dismissChooser: () => void;
   toggle: (result?: SearchResult) => void;
   /** The output being written is a style, which may sort. */
@@ -48,13 +47,10 @@ export function usePickerActions({
   const { hidePicker } = api;
   // The bottom of the layer stack; overlays register themselves above these.
   // Esc retains the chosen references at every step.
-  useLayer("panel", inspector.panel !== null, () => {
-    cancelCopy();
-    inspector.close();
-  });
   useLayer("chooser", choosingLibrary, () => {
     cancelCopy();
-    dismissChooser();
+    flushSync(dismissChooser);
+    focusHome();
   });
   useLayer("search", Boolean(query) && !welcomeShown, () => {
     cancelCopy();
@@ -81,13 +77,16 @@ export function usePickerActions({
   // A refused or stale engine preview cannot be copied.
   const enterAction = offered.length === 0 || shown === "stale" || shown === "failed" ? null
     : state.changing !== null ? say("picker-change-citation", { format: outputName(format) })
-    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0));
+    : enterLabel(format, offered.length, destination.app, canPaste, stayOpen, Boolean(list && selected.size === 0))
+      // A style that would sort keeps the person's order: the footer says so, not the line.
+      + (state.keepOrder && writesStyle && offered.length > 1 ? ` · ${say("picker-your-order")}` : "");
   // Only a row that answers the current query can be added or given a locator.
   const highlighted = ready ? results[active] : undefined;
-  const usingLocator = ready && interpretLocators && showCitations ? interpretation?.locator : null;
+  // What the engine read around the search: a page off its end, a signal off its start.
+  const usingLocator = ready && interpretLocators && showCitations && interpretation && (interpretation.locator || interpretation.prefix) ? interpretation : null;
   const prepared = highlighted && selected.get(idKey(highlighted.id));
   const canApplyLocator = usingLocator && prepared && prepared.revision === highlighted.revision &&
-    choiceKey([prepared]) !== choiceKey([{ ...highlighted, locator: usingLocator, form: prepared.form, prefix: prepared.prefix, suffix: prepared.suffix }]);
+    choiceKey([prepared]) !== choiceKey([{ ...prepared, locator: usingLocator.locator ?? prepared.locator, prefix: usingLocator.prefix ?? prepared.prefix }]);
   const shiftEnterAction = highlighted && showCitations
     ? (selected.has(idKey(highlighted.id)) ? say("key-remove-from-citation") : say("key-add-to-citation")) : null;
   const escapeAction = nearest === "sheet" || nearest === "panel" || nearest === "chooser" ? say("key-close") : nearest === "menu" ? say("key-close-menu")

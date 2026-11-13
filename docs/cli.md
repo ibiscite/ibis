@@ -5,14 +5,50 @@
 
 ## Install
 
-Download the CLI archive from a [release](https://github.com/ibiscite/ibis/releases/latest)
-or [Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
+The desktop app includes the matching `ibis` built from the same commit.
+
+- **macOS and Linux deb/rpm:** Settings › General › **Install the ibis command**
+  links `~/.local/bin/ibis` to the command inside the app's bundle or package.
+  Keep the macOS app in its permanent location. Install creates the link even
+  when the app's PATH omits it. If that directory is missing from the app's
+  PATH, copy this line into your shell profile, then reopen your terminal:
+  `export PATH="$HOME/.local/bin:$PATH"`. Ibis never requests administrator
+  access or changes your profile. Linux packages install no command on PATH
+  as root. On macOS, Finder's PATH can differ from your terminal; Homebrew's
+  standard locations are also checked for conflicts.
+- **Windows:** the per-user NSIS installer adds the app folder to your user
+  PATH without elevation. MSI also adds a user PATH entry. Open a new terminal
+  after installation. Channel installs serialize their PATH updates and refuse
+  additions that exceed Windows's expanded PATH limit. Successful uninstall
+  removes the installer's entry; cancellation preserves it, and MSI rollback
+  preserves later PATH edits.
+- **Linux AppImage:** the same Settings action offers the command as an owned
+  copy in `~/.local/bin`, so it keeps working after the image unmounts. It shows
+  the same profile line when that directory is missing from PATH. Install again
+  after an app update to update this copy (remove the old command first).
+
+Settings shows the command's location, version and whether it matches this app.
+Another command (including Homebrew) is never overwritten or run to inspect
+its version; its location is shown with version unavailable. Unix PATH lookup
+skips files without executable access. **Remove Command**
+removes only an unchanged Ibis-owned installation and its receipt. Removing the
+app itself on macOS cannot run cleanup: remove the command in Settings first.
+The shared installation operation is available for `ibis agents setup` in
+issue #1867's next slice; that command is not part of this slice.
+
+Standalone downloads, Homebrew and winget remain available. Download the CLI
+archive from a [release](https://github.com/ibiscite/ibis/releases/latest) or
+[Nightly](https://github.com/ibiscite/ibis/releases/tag/nightly):
 `ibis-macOS-Apple-silicon.tar.gz`, `ibis-macOS-Intel.tar.gz`,
-`ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH.
-The desktop does not install it there. From a checkout:
+`ibis-Windows.zip` or `ibis-Linux.tar.gz`. Unpack it onto PATH. From a checkout:
 `cargo run -p ibis -- --help`.
 
-The macOS CLI is unsigned. If a trusted downloaded binary is quarantined,
+With Nix on Linux or macOS (x86_64 and aarch64),
+`nix profile add github:ibiscite/ibis` installs the CLI and shell completions.
+See [Nix installation](nix.md) for version pins and declarative configuration.
+
+The standalone macOS CLI is unsigned; the bundled command follows the app's
+signing. If a trusted standalone download is quarantined,
 `xattr -d com.apple.quarantine ibis` removes that attribute.
 Shell completions and an fzf recipe are in the
 [terminal kit](../crates/ibis-cli/README.md).
@@ -143,6 +179,7 @@ The options each command takes, as `ibis COMMAND --help` lists them.
 | `--keys` | Print only citation keys, one per line in rank order |
 | `WORDS` | Words from the author, title, year or citation key; quote several words |
 | `--limit N` | Return at most N results, from 1 to 1000 |
+| `--shorthand` | Read a signal before the words ("see") and a page after them ("417"), as the picker does |
 
 **`ibis show`**: Show one reference
 
@@ -319,9 +356,7 @@ may gain fields and codes: ignore unknown fields and review unknown codes.
 Other changes require a new version ([decision 0028](decisions/0028-engine-first.md)).
 Unknown request fields are `bad-input`.
 
-When a new contract version ships, Ibis will keep answering the older version
-for at least two minor releases. Contract changes are listed in the
-[release notes](https://github.com/ibiscite/ibis/releases).
+Older contract versions stay supported for at least two minor releases.
 
 `ibis schema METHOD` describes `data`. Branch on `error.code` and optional
 `reason`, not wording. Exit 1 has `ok: true` with findings; inspect outcomes
@@ -348,6 +383,9 @@ skipped or read with problems. Later refreshes cannot change a result's health.
 | 6 | `newer-format` |
 | 70 | `internal`, including output-write failure. A closed reader pipe is not an error. |
 | 130 | `cancelled` |
+
+[Release notes](https://github.com/ibiscite/ibis/releases) call out contract changes;
+`ibis schema` describes the version you have.
 
 Input JSON is at most 1 MiB; duplicate members are refused. Responses are
 bounded to 16 MiB. Ask for fewer results on `resource-limit`.
@@ -518,9 +556,9 @@ read-only tools over stdio:
 
 | Tool | Input and result |
 | --- | --- |
-| `search` | `query`, optional `limit` (1–25, default 10); short hits with checked `ref` values and `complete`. |
-| `show` | `ref`; bibliographic fields. |
-| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings and receipt. |
+| `search` | `query`, optional `limit` (1–25, default 10), `shorthand` for a signal and locator; short hits with checked `ref` values, `complete` and `source_health`; shorthand adds `cited_with` and `searched_for`. |
+| `show` | `ref`; bibliographic fields and `source_health`. |
+| `cite` | Items with `ref` and optional locator/affixes/author omission, or caller [records](#records-you-send); format or style, locale, form, order, optional `for_app` and `strict`; citation text, notices, losses, warnings, receipt and `source_health`. |
 | `styles` | Optional `query`, `limit` and `offset`; matching styles, total and locales. |
 
 Refs contain identity and a short content check; changed records are refused.

@@ -23,7 +23,9 @@ setup.
 
 ## Installation blocks
 
-Use only packages from the [official releases](https://github.com/ibiscite/ibis/releases).
+Use packages from the [official releases](https://github.com/ibiscite/ibis/releases)
+or [build with Nix](nix.md) (CLI on Linux/macOS, desktop on Linux, both x86_64
+and aarch64).
 Operating-system signing and updater signatures are separate; see
 [code signing](code-signing.md).
 

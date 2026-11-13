@@ -3,6 +3,7 @@ import { filterPalette } from "../ui/Palette";
 import { Details } from "../ui/Details";
 import { useSettingUndo } from "../ui/useSettingUndo";
 import { useRowReveal } from "../ui/useRowReveal";
+import { CliCommandRow } from "./CliCommand";
 import { StatusMark } from "../ui/StatusMark";
 import { type ReactNode, useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { PageIcon } from "../icons";
@@ -137,7 +138,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     setVersionCopied(false); setVersionCopyFailed(false); versionCopy.current += 1;
     return () => { versionCopy.current += 1; };
   }, [page]);
-  const { altHeld } = useAltHeld();
+  const { altHeld } = useAltHeld("option");
   const [about, setAbout] = useState<DelightView | null>(null);
   const [fact, setFact] = useState<DelightFact | null>(null);
   const [dip, setDip] = useState(0);
@@ -526,6 +527,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const availableRows = settingsRows(enterPastes).filter((row) => (row.id !== "menu-bar" || platform === "macos")
     && (row.id !== "paste-label" || permission?.pastes === true)
     && ((row.id !== "automatic" && row.id !== "check-updates") || updates !== null || readProblems.has("automatic"))
+    && (row.id !== "cli-command" || Boolean(api.cliStatus && api.setCliInstalled && api.copyCliProfile))
     && (row.id !== "editor-endpoint" || Boolean(api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint)));
   const matchedIds = new Set(query.trim() ? filterPalette([{ id: "settings", items: availableRows.map((row) => ({ id: row.id,
     label: text(row.label, { platform }), detail: row.description ? text(row.description, { platform }) : undefined,
@@ -614,6 +616,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
                 )}
               </>
             )}
+            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
             <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
           </>
         )}

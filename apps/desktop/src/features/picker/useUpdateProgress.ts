@@ -1,9 +1,8 @@
 import { useEffect, useState } from "react";
 import * as nativeApi from "../../api";
-import type { PickerApi } from "../../App";
 import type { useOperations } from "./useOperations";
 
-export function useUpdateProgress(api: PickerApi, setFailures: ReturnType<typeof useOperations>["setFailures"]) {
+export function useUpdateProgress(api: typeof nativeApi, setFailures: ReturnType<typeof useOperations>["setFailures"]) {
   const [updateProgress, setUpdateProgress] = useState<nativeApi.UpdateProgress | null>(null);
   useEffect(() => {
     let mounted = true;

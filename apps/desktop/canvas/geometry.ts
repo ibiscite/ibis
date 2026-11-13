@@ -9,9 +9,9 @@
  * screens centre their own group and the inspector is its own column, so
  * neither is held to the window's columns. */
 export const columns = {
-  marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring"],
-  words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation"],
-  outside: ".choice-screen, .inspector, .menu-popover, .ui-view, [inert]",
+  marks: [".result-tile", ".search-bar .search-mark", ".library-bar .status-dot", ".library-bar .update-ring", ".ui-view-back .ui-icon"],
+  words: [".result-title", ".search-bar input", ".library-bar .library-words", ".library-bar .notice-band > span:first-child", ".library-bar .update-text", ".shelf-citation", ".ui-view-title", ".ui-palette-label", ".ui-view-status"],
+  outside: ".choice-screen, .inspector, .menu-popover, [inert]",
   /** Hover plates on the window's leading edge: each starts on the window inset, as a row does. */
   plates: ["#results [role=\"option\"]", ".library-bar .library-status-trigger"],
 } as const;
@@ -26,7 +26,12 @@ export const anchored = { popover: '.toolbar-menu-popover[data-anchor="field"]',
 export const menuLabels = { label: ".menu-popover .menu-label", outside: ".toolbar-menu-popover" } as const;
 
 /** [C19] Rows of one form share both edges: every control's drawn fill. */
-export const forms = { form: ".citation-details", controls: ".citation-field .ui-popup-button, .citation-field input" } as const;
+export const forms = {
+  form: ".citation-details",
+  // Page's type and text share the locator's fill. Measure that whole control,
+  // just as Show as measures its whole pop-up or segmented control.
+  controls: ".citation-field > .toolbar-menu-control .ui-popup-button, .citation-field > .ui-segmented, .citation-field > .citation-locator, .citation-field > input",
+} as const;
 
 /** [C19] A pane divider runs the whole region it splits, as a Mac split view's:
  * from the search bar's divider to the shelf. */
@@ -77,6 +82,16 @@ export function geometry(root: ParentNode = document): string[] {
     }
   }
 
+  // The existing More, Format and shortcuts scenarios cover the shared Back
+  // anatomy in both palettes and sheets, including coarse-pointer canvases.
+  for (const back of root.querySelectorAll(".ui-view-back")) {
+    if (!visible(back)) continue;
+    const rect = back.getBoundingClientRect();
+    const minimum = matchMedia("(pointer: coarse)").matches ? 44 : 32;
+    if (rect.width + tolerance < minimum || rect.height + tolerance < minimum)
+      failures.push(`[Back] target ${rect.width.toFixed(1)} × ${rect.height.toFixed(1)}px, expected at least ${minimum}px`);
+  }
+
   // The columns come from the tokens, never from another part that could be wrong too.
   const main = root.querySelector("main");
   if (main) {
@@ -103,8 +118,8 @@ export function geometry(root: ParentNode = document): string[] {
     }
     for (const node of held(columns.words.join(", "))) {
       const rect = node.getBoundingClientRect(), style = getComputedStyle(node);
-      // A field's words start inside its padding and border.
-      const inset = node.matches("input") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
+      // Field and title-chip words start inside their padding and border.
+      const inset = node.matches("input, .ui-view-title") ? parseFloat(rtl ? style.paddingRight : style.paddingLeft) + parseFloat(rtl ? style.borderRightWidth : style.borderLeftWidth) : 0;
       const start = lead(rect) + inset;
       if (Math.abs(start - titleStart) > tolerance) failures.push(`[C3] ${name(node)}: starts ${start.toFixed(1)}, title column ${titleStart.toFixed(1)}`);
     }

@@ -101,7 +101,7 @@ export function LibrarySetup({ api, perform, autoFocus = false, empty, shortcut,
   const choices: Choice[] = [
     { id: "zotero", title: text("choice-use-zotero"), help: text("choice-zotero-help"), icon: <SourceIcon size="tile" icon={zoteroIcon?.read === librarySource ? zoteroIcon?.icon ?? null : null} />,
       tag: zoteroHere || empty?.zotero ? say("setup-found-on", { platform: currentPlatform() }) : undefined, suggested: welcome && zoteroHere },
-    { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="file" /> },
+    { id: "file", title: text("choice-library-file"), help: text("choice-library-file-help"), icon: <ChoiceIcon name="library-big" /> },
     ...(empty?.source ? [{ id: "source", title: empty.source.label, help: empty.source.help, icon: empty.source.icon ?? <ChoiceIcon name={empty.zotero ? "library" : "file"} />, keys: keysFor("source") }] : []),
     ...(!empty && findSources ? [{
       id: "find", title: onlyFile ? text("choice-use-file", { name: onlyFile.name })

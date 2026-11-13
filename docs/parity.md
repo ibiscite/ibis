@@ -12,7 +12,8 @@ the selected personal/group Zotero libraries or library file. Empty search can
 show app recents and recently added references. It can open a selected Zotero
 item through its Zotero URI.
 
-Search accepts trailing typed locators: `p. 34`, `pp. 45-48`, `ch. 3`, or
+The picker, CLI `search --shorthand` and MCP read a leading signal (`see`,
+`cf.`) and trailing locators: `p. 34`, `pp. 45-48`, `ch. 3`, or
 `note "the epigraph"`. All 29 CSL locator terms are recognised. Short labels
 need a separator (`p 15` or `p.15`); `p15` remains search text.
 

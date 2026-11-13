@@ -1,8 +1,8 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import axe from "axe-core";
 import { afterEach, expect, onTestFinished, test, vi } from "vitest";
-import type { PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
-import { DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
+import type { CommandStatus, PickerPreferences, PickerSave, ShortcutStatus, WindowSize } from "../bindings";
+import { bindingKeys, DEFAULT_PICKER_SHORTCUT, KEY_TABLE, keyLabel, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { pageOf, SettingsApp } from "./SettingsApp";
 import { RECHECK_MS, STALE_HINT_MS } from "./PasteGuide";
@@ -18,6 +18,31 @@ import { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "../i18n/settings";
 
 afterEach(() => { vi.useRealTimers(); localStorage.clear(); });
 
+test.each(["macos", "linux"])("General offers the per-user command and PATH guidance on %s", async (platform) => {
+  const previous = document.documentElement.dataset.system;
+  document.documentElement.dataset.system = platform;
+  try {
+    const { api } = fakeApi({ granted: true });
+    const profile = 'export PATH="$HOME/.local/bin:$PATH"';
+    const missing: CommandStatus = { state: "not-installed", version: null, used_path: null, profile_line: profile, removable: false, installable: true };
+    api.cliStatus = vi.fn(async () => missing);
+    api.setCliInstalled = vi.fn(async (): Promise<CommandStatus> => ({ ...missing, state: "matching", version: "1.2.3", used_path: "/invented/.local/bin/ibis", installable: false, removable: true }));
+    api.copyCliProfile = vi.fn(async () => null);
+    render(<SettingsApp api={api} initialPage="general" />);
+    fireEvent.click(await screen.findByRole("button", { name: "Install the ibis command" }));
+    expect(await screen.findByText("ibis 1.2.3 — matches this app")).toBeTruthy();
+    expect(screen.getByText("/invented/.local/bin/ibis")).toBeTruthy();
+    expect(api.setCliInstalled).toHaveBeenCalledWith(true);
+    expect(screen.getByText(profile)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    await screen.findByRole("button", { name: "Copied" });
+    expect(api.copyCliProfile).toHaveBeenCalledOnce();
+  } finally {
+    if (previous === undefined) delete document.documentElement.dataset.system;
+    else document.documentElement.dataset.system = previous;
+  }
+});
+
 test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name and key label on %s", async (platform) => {
   const previous = document.documentElement.dataset.system;
   document.documentElement.dataset.system = platform;
@@ -27,13 +52,21 @@ test.each(["macos", "windows", "linux"])("Shortcuts preserves every English name
     const label = shortcutLabel(DEFAULT_PICKER_SHORTCUT, platform === "macos");
     expect(await screen.findByRole("button", { name: `Open Ibis: ${label}` })).toHaveProperty("textContent", label);
     for (const binding of KEY_TABLE) {
-      const row = document.getElementById(`key-${binding.action}`)!.closest("tr")!;
+      const keys = bindingKeys(binding, platform === "macos");
+      const node = document.getElementById(`key-${binding.action}`);
+      if (!keys.length) {
+        expect(node).toBeNull();
+        expect(screen.queryByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeNull();
+        continue;
+      }
+      expect(node, binding.action).not.toBeNull();
+      const row = node!.closest("tr")!;
       expect(row.querySelector('th[scope="row"]')?.textContent).toBe(say(SHORTCUT_ACTIONS[binding.action]));
       expect(row.closest("tbody")?.querySelector('th[scope="rowgroup"]')?.textContent).toBe(say(SHORTCUT_REGIONS[binding.region]));
       const compact = (text: string | null | undefined) => text?.replace(/[\s+]/g, "");
-      expect(row.querySelectorAll("kbd")).toHaveLength(binding.keys.length);
+      expect(row.querySelectorAll("kbd")).toHaveLength(keys.length);
       expect(compact([...row.querySelectorAll("kbd")].map((cap) => cap.textContent).join(" or ")))
-        .toBe(compact(binding.keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
+        .toBe(compact(keys.map((keys) => keyLabel(keys, platform === "macos")).join(" or ")));
     }
   } finally {
     if (previous === undefined) delete document.documentElement.dataset.system;
@@ -898,9 +931,10 @@ test("Shortcuts records a change, restores the default, and lists every picker k
   expect(screen.queryByRole("button", { name: "Use Default for Open Ibis" })).toBeNull();
   expect(document.querySelector("details, summary")).toBeNull();
   const lists = [...document.querySelectorAll<HTMLElement>('tbody[id^="shortcuts-"]:not(#shortcuts-system)')];
-  for (const binding of KEY_TABLE) expect(screen.getByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeTruthy();
+  const bindings = KEY_TABLE.filter((binding) => bindingKeys(binding, currentPlatform() === "macos").length);
+  for (const binding of bindings) expect(screen.getByText(say(SHORTCUT_ACTIONS[binding.action]))).toBeTruthy();
   expect(lists.flatMap((list) => within(list).queryAllByRole("button"))).toEqual([]);
-  expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(KEY_TABLE.length);
+  expect(lists.flatMap((list) => [...list.querySelectorAll(".ui-settings-keys")])).toHaveLength(bindings.length);
   fireEvent.click(recorder);
   fireEvent.keyDown(recorder, { key: "k", code: "KeyK", altKey: true, shiftKey: true });
   await waitFor(() => expect(recorder.textContent).toBe(label("Alt+Shift+K")));
@@ -1156,7 +1190,7 @@ test("Settings shows only built pages, rows and choices, including in search", a
     expect(document.querySelector("details, summary")).toBeNull();
   }
   expect(screen.queryByRole("option", { name: /Libraries|Advanced/ })).toBeNull();
-  for (const query of ["welcome", "Install the ibis command", "Coming soon"]) {
+  for (const query of ["welcome", "Coming soon"]) {
     fireEvent.change(screen.getByRole("searchbox"), { target: { value: query } });
     expect(await screen.findByText(`No settings match ‘${query}’`)).toBeTruthy();
   }
@@ -1752,6 +1786,20 @@ test("settings search opens closed Details, scrolls only the page and focuses it
   await waitFor(() => expect(document.activeElement).toBe(control));
   expect(details.getAttribute("aria-expanded")).toBe("true");
   expect(screen.getByRole("main").scrollTop).toBe(600);
+});
+
+test("settings search finds the command installation and focuses its control", async () => {
+  const { api } = fakeApi();
+  api.cliStatus = vi.fn(async (): Promise<CommandStatus> => ({ state: "not-installed", version: null, used_path: null, profile_line: null, removable: false, installable: true }));
+  api.setCliInstalled = vi.fn();
+  api.copyCliProfile = vi.fn();
+  render(<SettingsApp api={api} initialPage="look" />);
+  const search = screen.getByRole("searchbox", { name: "Search Settings" });
+  fireEvent.change(search, { target: { value: "ibis command" } });
+  fireEvent.keyDown(search, { key: "Enter" });
+  const install = await screen.findByRole("button", { name: "Install the ibis command" });
+  await waitFor(() => expect(document.activeElement).toBe(install));
+  expect(install.closest(".ui-row")?.getAttribute("data-highlighted")).toBe("true");
 });
 
 test.each(["macos", "windows"])("settings search on %s uses only keys to find, choose, clear and leave", async (platform) => {

@@ -1,7 +1,7 @@
+import type * as nativeApi from "../../api";
 import { act, renderHook } from "@testing-library/react";
 import { useState } from "react";
 import { expect, test, vi } from "vitest";
-import type { PickerApi } from "../../App";
 import { useNativeRequests } from "./useNativeRequests";
 
 const scene = (texts: (string | null)[]) => {
@@ -11,7 +11,7 @@ const scene = (texts: (string | null)[]) => {
     takeSearchRequest: vi.fn(async () => texts.shift() ?? null),
     onSearchRequested: vi.fn(async (handler: () => void) => { requested = handler; return unlisten; }),
     alignmentTick: vi.fn(async () => null),
-  } as unknown as PickerApi;
+  } as unknown as typeof nativeApi;
   return { api, unlisten, request: () => requested() };
 };
 
@@ -35,7 +35,7 @@ test("text waiting from a launch and text sent later both become the query", asy
 
 test("a rerender while waiting keeps the answer", async () => {
   let answer = (_: string) => {};
-  const api = { ...scene([]).api, takeSearchRequest: () => new Promise((resolve) => { answer = resolve; }) } as unknown as PickerApi;
+  const api = { ...scene([]).api, takeSearchRequest: () => new Promise((resolve) => { answer = resolve; }) } as unknown as typeof nativeApi;
   const { result, rerender } = renderHook(() => {
     const [query, setQuery] = useState("");
     useNativeRequests(api, query, (text) => setQuery(text), { current: null }, 0);
@@ -52,7 +52,7 @@ test("an older reply cannot replace a newer one, or what was typed meanwhile", a
   const api = {
     takeSearchRequest: () => new Promise((resolve) => { answers.push(resolve); }),
     onSearchRequested: async (handler: () => void) => { requested = handler; return () => {}; },
-  } as unknown as PickerApi;
+  } as unknown as typeof nativeApi;
   const { result } = renderHook(() => {
     const [query, setQuery] = useState("");
     useNativeRequests(api, query, (text) => setQuery(text), { current: null }, 0);

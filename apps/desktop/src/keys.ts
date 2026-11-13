@@ -1,10 +1,11 @@
 import type { MessageId } from "./i18n";
 import type { SHORTCUT_ACTIONS, SHORTCUT_REGIONS } from "./i18n/settings";
+import { currentPlatform } from "./platform";
 
 export type KeyRegion = keyof typeof SHORTCUT_REGIONS;
 export type KeyAction = keyof typeof SHORTCUT_ACTIONS;
 /** One key binding the picker really handles, in accelerator syntax. */
-export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; displayLabel?: string;
+export type KeyBinding = { region: KeyRegion; action: KeyAction; keys: readonly string[]; otherKeys?: readonly string[]; displayLabel?: string;
   /** The action's words right now, when they differ from the table's (Enter that only copies). */
   label?: MessageId };
 /** The app's unset shortcut setting. */
@@ -20,8 +21,12 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "search", action: "move", keys: ["ArrowDown", "ArrowUp"] },
   // Quick Look's key: Space types a space in the search, so peeking is ⌘Y as in Finder by keyboard.
   { region: "search", action: "peek", keys: ["CmdOrCtrl+Y"] },
-  // A focused shelf segment: CitationShelf's segmentKeys.
+  // Search to the citation's last token: usePickerKeys' searchKey.
+  { region: "search", action: "citationFocus", keys: ["CmdOrCtrl+ArrowDown"] },
+  // A focused citation token: CitationShelf's segmentKeys.
   { region: "citation", action: "citationMove", keys: ["ArrowLeft", "ArrowRight"] },
+  { region: "citation", action: "citationReorder", keys: ["Shift+ArrowLeft", "Shift+ArrowRight"] },
+  { region: "citation", action: "citationOpen", keys: ["Space", "ArrowUp"] },
   { region: "citation", action: "citationRemove", keys: ["Backspace", "Delete"] },
   { region: "picker", action: "escape", keys: ["Escape"] },
   { region: "picker", action: "format", keys: ["CmdOrCtrl+Shift+F"] },
@@ -29,8 +34,9 @@ export const KEY_TABLE: readonly KeyBinding[] = [
   { region: "picker", action: "pin", keys: ["CmdOrCtrl+Shift+P"] },
   { region: "picker", action: "changeLast", keys: ["CmdOrCtrl+E"] },
   { region: "library", action: "source", keys: ["CmdOrCtrl+O"] },
-  { region: "library", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"] },
-  { region: "library", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"] },
+  { region: "library", action: "chooseSource", keys: ["CmdOrCtrl+Shift+O"], otherKeys: [] },
+  // Ctrl+Alt+letter is AltGr on many layouts; Shift opens the alternate elsewhere.
+  { region: "library", action: "revealSource", keys: ["Alt+CmdOrCtrl+O"], otherKeys: ["CmdOrCtrl+Shift+O"] },
   { region: "picker", action: "keys", keys: ["CmdOrCtrl+/", "?"] },
   // The notice slot's Undo offer: ui/editUndo.
   { region: "picker", action: "undo", keys: ["CmdOrCtrl+Z"] },
@@ -51,9 +57,12 @@ export function shortcutBindings(enterPastes: boolean): readonly KeyBinding[] {
 }
 
 /** The accelerator a table row lists first for an action. */
-export function keysFor(action: KeyAction): string {
-  return KEY_TABLE.find((binding) => binding.action === action)?.keys[0] ?? "";
+export function keysFor(action: KeyAction, mac = currentPlatform() === "macos"): string {
+  const binding = KEY_TABLE.find((binding) => binding.action === action);
+  return binding ? bindingKeys(binding, mac)[0] ?? "" : "";
 }
+
+export const bindingKeys = (binding: KeyBinding, mac: boolean): readonly string[] => mac ? binding.keys : binding.otherKeys ?? binding.keys;
 
 const NAMED: Record<string, [mac: string, other: string]> = {
   enter: ["↵", "Enter"], escape: ["Esc", "Esc"], arrowdown: ["↓", "↓"], arrowup: ["↑", "↑"], arrowleft: ["←", "←"], arrowright: ["→", "→"],
@@ -133,6 +142,13 @@ export function shortcutLabel(shortcut: string, mac: boolean): string {
 
 /** The parts of a key press a shortcut depends on. */
 export type KeyPress = Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">;
+
+/** The platform's Back key; Search consumes it without leaving the picker. */
+export function isBackShortcut(event: KeyPress): boolean {
+  return currentPlatform() === "macos"
+    ? event.key === "[" && event.metaKey && !event.ctrlKey && !event.altKey && !event.shiftKey
+    : event.key === "ArrowLeft" && event.altKey && !event.ctrlKey && !event.metaKey && !event.shiftKey;
+}
 
 /** The command modifier on its own: ⌘ on macOS, Ctrl elsewhere. Ctrl+K is
  * "delete to end of line" in macOS text fields, so there only ⌘ counts. */

@@ -22,6 +22,58 @@ use crate::diagnostics::{NativeIssue, checked, report};
 use crate::placement;
 use crate::preferences::SettingsFile;
 
+/// A live frame in logical pixels, distinct from the fractional disk position.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct Frame {
+    width: u32,
+    height: u32,
+    custom_size: bool,
+    x: i32,
+    y: i32,
+}
+
+fn remember(frame: Frame, room: (f64, f64)) -> PickerWindow {
+    PickerWindow {
+        width: frame.width,
+        height: frame.height,
+        custom_size: frame.custom_size,
+        position: Some((f64::from(frame.x) / room.0, f64::from(frame.y) / room.1)),
+    }
+}
+
+fn restore(saved: PickerWindow, room: (f64, f64)) -> Frame {
+    let (x, y) = saved
+        .position
+        .filter(|(x, y)| x.is_finite() && y.is_finite())
+        .map(|(x, y)| ((x * room.0).round() as i32, (y * room.1).round() as i32))
+        .unwrap_or_else(|| {
+            let (x, y) = placement::launcher_position(
+                placement::Area {
+                    x: 0.0,
+                    y: 0.0,
+                    width: room.0,
+                    height: room.1,
+                },
+                f64::from(saved.width),
+                f64::from(saved.height),
+                search_centre(false),
+            );
+            (x.floor() as i32, y.floor() as i32)
+        });
+    Frame {
+        width: saved.width,
+        height: saved.height,
+        custom_size: saved.custom_size,
+        x,
+        y,
+    }
+}
+
+// SearchBar's --header-h: 36 pt field + two 8 pt insets + 1 pt separator.
+fn search_centre(larger: bool) -> f64 {
+    (52.0 * if larger { LARGER_TEXT_SCALE } else { 1.0 } + 1.0) / 2.0
+}
+
 const DEFAULT: (u32, u32) = (720, 480);
 // Kept equal to --larger-text-scale; the regression checks the shared token.
 const LARGER_TEXT_SCALE: f64 = 1.15;
@@ -47,7 +99,7 @@ impl WindowSize {
         }
     }
 
-    fn of(saved: Option<PickerWindow>) -> Self {
+    fn of(saved: Option<Frame>) -> Self {
         let size = saved
             .filter(|frame| frame.custom_size)
             .map_or(DEFAULT, |frame| (frame.width, frame.height));
@@ -72,7 +124,7 @@ struct Shared {
 
 /// All dimensions are logical pixels on the target display. A work area smaller
 /// than the minimum wins: no edge may end up behind the dock or menu bar.
-fn plan(saved: Option<PickerWindow>, larger: bool, room: (f64, f64)) -> PickerWindow {
+fn plan(saved: Option<Frame>, larger: bool, room: (f64, f64)) -> Frame {
     let custom = saved.filter(|frame| frame.custom_size);
     let width = custom.map_or(DEFAULT.0, |frame| frame.width);
     let height = custom.map_or_else(
@@ -92,8 +144,9 @@ fn plan(saved: Option<PickerWindow>, larger: bool, room: (f64, f64)) -> PickerWi
         },
         f64::from(width),
         f64::from(height),
+        search_centre(larger),
     );
-    PickerWindow {
+    Frame {
         width,
         height,
         custom_size: custom.is_some(),
@@ -104,10 +157,10 @@ fn plan(saved: Option<PickerWindow>, larger: bool, room: (f64, f64)) -> PickerWi
 
 /// Medium is the default again, so larger text still applies to it. The window
 /// grows around its centre and keeps its top; `plan` fits it to the display.
-fn chosen(saved: Option<PickerWindow>, size: (u32, u32), larger: bool, room: (f64, f64)) -> PickerWindow {
+fn chosen(saved: Option<Frame>, size: (u32, u32), larger: bool, room: (f64, f64)) -> Frame {
     let current = plan(saved, larger, room);
     let centre = current.x + (i64::from(current.width) - i64::from(size.0)) as i32 / 2;
-    PickerWindow {
+    Frame {
         width: size.0,
         height: size.1,
         custom_size: size != DEFAULT,
@@ -130,8 +183,14 @@ impl Sizing {
         self.larger_text.store(larger, Ordering::SeqCst);
     }
 
-    fn remembered(&self, display: &str) -> Option<PickerWindow> {
-        self.shared.state.lock().ok()?.windows.get(display).copied()
+    fn remembered(&self, display: &str, room: (f64, f64)) -> Option<Frame> {
+        self.shared
+            .state
+            .lock()
+            .ok()?
+            .window(display)
+            .copied()
+            .map(|saved| restore(saved, room))
     }
 
     fn revision(&self) -> u64 {
@@ -266,21 +325,13 @@ pub(crate) fn start(app: &AppHandle) -> bool {
     state.started
 }
 
-/// Tauri exposes names and coordinates, not stable hardware display IDs.
-/// Use the name plus the origin to distinguish identically named displays;
-/// resolution/work-area changes at that origin retain and clamp the frame.
+/// Unknown identity is ephemeral: never persist a name/origin substitute.
 fn display_key(monitor: &Monitor) -> String {
-    let bounds = placement::display(monitor).bounds;
-    format!(
-        "{}@{},{}",
-        monitor.name().map_or("display", String::as_str),
-        bounds.x,
-        bounds.y
-    )
+    placement::display_key(monitor).unwrap_or_default()
 }
 
 #[cfg(not(target_os = "macos"))]
-fn position(monitor: &Monitor, frame: PickerWindow) -> Position {
+fn position(monitor: &Monitor, frame: Frame) -> Position {
     let usable = placement::display(monitor).usable;
     let scale = monitor.scale_factor();
     PhysicalPosition::new(
@@ -295,6 +346,7 @@ struct Metrics {
     inner: (f64, f64),
     outer: (f64, f64),
     area: placement::Area,
+    top: f64,
 }
 
 #[cfg(target_os = "linux")]
@@ -306,6 +358,7 @@ fn metrics(window: &WebviewWindow) -> Option<Metrics> {
     native.realize();
     let gdk = native.window()?;
     let extents = gdk.frame_extents();
+    let (located, _, client_y) = gdk.origin();
     // Match tao's client-size/set_size contract. GDK geometry can include GTK
     // client-side decoration; subtracting it would incorrectly erase chrome.
     let (width, height) = GtkWindowExt::size(&native);
@@ -314,6 +367,13 @@ fn metrics(window: &WebviewWindow) -> Option<Metrics> {
         scale,
         inner: (f64::from(width), f64::from(height)),
         outer: (f64::from(extents.width()), f64::from(extents.height())),
+        // Native Wayland may not expose a global origin. Still request a
+        // placement; the compositor owns it and must not prevent showing Ibis.
+        top: if located != 0 {
+            f64::from(client_y - extents.y())
+        } else {
+            0.0
+        },
         area: placement::Area {
             x: f64::from(extents.x()) * scale,
             y: f64::from(extents.y()) * scale,
@@ -332,9 +392,11 @@ fn metrics(window: &WebviewWindow) -> Option<Metrics> {
     let inner = checked(window.inner_size(), NativeIssue::Size)?.to_logical::<f64>(scale);
     let outer = checked(window.outer_size(), NativeIssue::Size)?;
     let at = checked(window.outer_position(), NativeIssue::Position)?;
+    let inner_at = checked(window.inner_position(), NativeIssue::Position)?;
     let unit = if cfg!(target_os = "macos") { scale } else { 1.0 };
     Some(Metrics {
         scale,
+        top: f64::from(inner_at.y - at.y) / scale,
         inner: (inner.width, inner.height),
         outer: (f64::from(outer.width) / scale, f64::from(outer.height) / scale),
         area: placement::Area {
@@ -351,21 +413,27 @@ pub(crate) fn window_area(window: &WebviewWindow) -> Option<placement::Area> {
 }
 
 fn display(monitor: &Monitor, metrics: &Metrics) -> Option<Display> {
-    let work = monitor.work_area().size.to_logical::<f64>(monitor.scale_factor());
     let usable = placement::display(monitor).usable;
+    let unit = if cfg!(target_os = "macos") {
+        1.0
+    } else {
+        monitor.scale_factor()
+    };
+    let work = (usable.width / unit, usable.height / unit);
     let room = checked(
-        content_room(metrics.inner, metrics.outer, (work.width, work.height)).ok_or(()),
+        content_room(metrics.inner, metrics.outer, work).ok_or(()),
         NativeIssue::Size,
     )?;
     Some(Display {
         key: display_key(monitor),
         scale: monitor.scale_factor(),
         origin: (usable.x, usable.y),
+        usable: work,
         room,
     })
 }
 
-fn live_frame(metrics: &Metrics, monitor: &Monitor) -> PickerWindow {
+fn live_frame(metrics: &Metrics, monitor: &Monitor) -> Frame {
     let at = metrics.area;
     let usable = placement::display(monitor).usable;
     let unit = if cfg!(target_os = "macos") {
@@ -373,7 +441,7 @@ fn live_frame(metrics: &Metrics, monitor: &Monitor) -> PickerWindow {
     } else {
         monitor.scale_factor()
     };
-    PickerWindow {
+    Frame {
         width: metrics.inner.0.round() as u32,
         height: metrics.inner.1.round() as u32,
         custom_size: false,
@@ -382,13 +450,41 @@ fn live_frame(metrics: &Metrics, monitor: &Monitor) -> PickerWindow {
     }
 }
 
-fn observed(metrics: &Metrics, monitor: &Monitor) -> Option<Sample> {
+/// Only a complete current inventory can prove that the old display vanished.
+/// Read it only on a display crossing, outside the sizing owner's lock.
+fn removed_display(
+    previous: Option<&str>,
+    current: &str,
+    connected: impl FnOnce() -> Option<Vec<String>>,
+) -> Option<String> {
+    let previous = previous.filter(|key| !key.is_empty() && *key != current)?;
+    let connected = connected()?;
+    (connected.iter().any(|key| key == current) && connected.iter().all(|key| !key.is_empty() && key != previous))
+        .then(|| previous.to_owned())
+}
+
+fn observed(app: &AppHandle, metrics: &Metrics, monitor: &Monitor) -> Option<Sample> {
     if metrics.scale != monitor.scale_factor() {
         return None;
     }
+    let display = display(monitor, metrics)?;
+    let previous = app
+        .state::<Sizing>()
+        .shared
+        .state
+        .lock()
+        .ok()
+        .and_then(|state| state.last.as_ref().map(|last| last.display.key.clone()));
+    let removed_display = removed_display(previous.as_deref(), &display.key, || {
+        checked(app.available_monitors(), NativeIssue::Monitor)?
+            .iter()
+            .map(placement::display_key)
+            .collect()
+    });
     Some(Sample {
-        display: display(monitor, metrics)?,
+        display,
         frame: live_frame(metrics, monitor),
+        removed_display,
     })
 }
 
@@ -403,10 +499,19 @@ fn appkit_top_left(current: (f64, f64), native: placement::Area, target: (f64, f
 /// Must complete before show/orderFront. Re-presenting an already open picker
 /// keeps its frame, including while preferences are being changed.
 pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool, reset: bool) -> bool {
-    if !reset && checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
+    #[cfg(not(target_os = "windows"))]
+    let _ = first_show;
+    let visible = checked(window.is_visible(), NativeIssue::Visibility) == Some(true);
+    if !reset && visible {
         return true;
     }
-    let Some((monitor, keep_position)) = placement::active_monitor(app, window, first_show || reset) else {
+    let current = (reset && visible)
+        .then(|| checked(window.current_monitor(), NativeIssue::Monitor).flatten())
+        .flatten();
+    let selected = current
+        .map(|monitor| (monitor, false))
+        .or_else(|| placement::active_monitor(app, window));
+    let Some((monitor, keep_position)) = selected else {
         return false;
     };
     #[cfg(target_os = "windows")]
@@ -414,11 +519,6 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
         report(display_events::settle_frame(window).ok_or(()), NativeIssue::Resize);
     }
     let sizing = app.state::<Sizing>();
-    let saved = if reset {
-        None
-    } else {
-        sizing.remembered(&display_key(&monitor))
-    };
     let larger = sizing.larger_text.load(Ordering::SeqCst);
     let Some(metrics) = metrics(window) else {
         return false;
@@ -427,11 +527,19 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
         return false;
     };
     let room = display.room;
+    let saved = sizing.remembered(&display.key, display.usable);
+    let positioned = !reset
+        && sizing.shared.state.lock().is_ok_and(|state| {
+            state
+                .windows
+                .get(&display.key)
+                .is_some_and(|saved| saved.position.is_some())
+        });
     let reset_key = display.key.clone();
     let previous = if reset {
         let before = checked(window.current_monitor(), NativeIssue::Monitor)
             .flatten()
-            .and_then(|current| observed(&metrics, &current));
+            .and_then(|current| observed(app, &metrics, &current));
         let Ok(mut state) = sizing.shared.state.lock() else {
             return false;
         };
@@ -448,8 +556,28 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
         None
     };
     let mut frame = plan(saved, larger, room);
+    if reset {
+        // Position reset never changes the size of the picker already open.
+        frame.width = (metrics.inner.0.round() as u32).min(room.0.floor().max(1.0) as u32);
+        frame.height = (metrics.inner.1.round() as u32).min(room.1.floor().max(1.0) as u32);
+    }
+    if !positioned {
+        let (x, y) = placement::launcher_position(
+            placement::Area {
+                x: 0.0,
+                y: 0.0,
+                width: display.usable.0,
+                height: display.usable.1,
+            },
+            f64::from(frame.width) + metrics.outer.0 - metrics.inner.0,
+            f64::from(frame.height) + metrics.outer.1 - metrics.inner.1,
+            metrics.top + search_centre(larger),
+        );
+        frame.x = x.floor() as i32;
+        frame.y = y.floor() as i32;
+    }
     // Explicitly positioned debug previews retain their place too.
-    if saved.is_none() && keep_position && !reset {
+    if !positioned && keep_position && !reset {
         let live = live_frame(&metrics, &monitor);
         frame.x = live
             .x
@@ -467,7 +595,11 @@ pub(crate) fn prepare(app: &AppHandle, window: &WebviewWindow, first_show: bool,
     let applied = apply_frame(app, window, &monitor, frame, room);
     if let Ok(mut state) = sizing.shared.state.lock() {
         if applied.is_some() {
-            state.prepared(Sample { display, frame });
+            state.prepared(Sample {
+                display,
+                frame,
+                removed_display: None,
+            });
             if let Some(previous) = previous {
                 state.reset(&reset_key, previous, Instant::now());
             }
@@ -491,7 +623,7 @@ fn apply_frame(
     app: &AppHandle,
     window: &WebviewWindow,
     monitor: &Monitor,
-    frame: PickerWindow,
+    frame: Frame,
     room: (f64, f64),
 ) -> Option<()> {
     use tauri_nspanel::{ManagerExt, NSPoint, NSSize, objc2::MainThreadMarker};
@@ -525,7 +657,7 @@ fn apply_frame(
     app: &AppHandle,
     window: &WebviewWindow,
     monitor: &Monitor,
-    frame: PickerWindow,
+    frame: Frame,
     room: (f64, f64),
 ) -> Option<()> {
     apply_constraints(app, window, room)?;
@@ -608,7 +740,7 @@ fn sample(app: &AppHandle, window: &WebviewWindow, settled: bool) {
     let Some(metrics) = metrics(window) else {
         return;
     };
-    let Some(sample) = observed(&metrics, &monitor) else {
+    let Some(sample) = observed(app, &metrics, &monitor) else {
         return;
     };
     let (constraints, undo_changed) = sizing.shared.state.lock().map_or((None, false), |mut state| {
@@ -703,15 +835,22 @@ fn emit_reset_undo(app: &AppHandle) {
 /// The display the picker opens on next; Settings is normally on it too.
 fn target(app: &AppHandle) -> Option<(WebviewWindow, Monitor)> {
     let window = app.get_webview_window("main")?;
-    let (monitor, _) = placement::active_monitor(app, &window, false)?;
+    let monitor = if checked(window.is_visible(), NativeIssue::Visibility) == Some(true) {
+        checked(window.current_monitor(), NativeIssue::Monitor).flatten()?
+    } else {
+        placement::active_monitor(app, &window)?.0
+    };
     Some((window, monitor))
 }
 
 #[tauri::command]
 #[ibis_desktop_macros::command]
 pub(crate) fn window_size(app: AppHandle) -> Option<WindowSize> {
-    let (_, monitor) = target(&app)?;
-    Some(WindowSize::of(app.state::<Sizing>().remembered(&display_key(&monitor))))
+    let (window, monitor) = target(&app)?;
+    let display = display(&monitor, &metrics(&window)?)?;
+    Some(WindowSize::of(
+        app.state::<Sizing>().remembered(&display.key, display.usable),
+    ))
 }
 
 /// Kept like a dragged size: the one writer saves it and reports the outcome.
@@ -731,6 +870,7 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
     let metrics = metrics(&window).ok_or(FAILED)?;
     let display = display(&monitor, &metrics).ok_or(FAILED)?;
     let key = display.key.clone();
+    let usable = display.usable;
     let sizing = app.state::<Sizing>();
     let larger = sizing.larger_text.load(Ordering::SeqCst);
     let frame = {
@@ -740,10 +880,10 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
         }
         let frame = if let Some(revision) = undo {
             let previous = state.size_undo_for(revision, &key).ok_or(FAILED)?;
-            plan(previous.saved, larger, display.room)
+            plan(previous.saved.map(|saved| restore(saved, usable)), larger, display.room)
         } else {
             chosen(
-                state.windows.get(&key).copied(),
+                state.window(&key).copied().map(|saved| restore(saved, usable)),
                 size.pixels().ok_or(FAILED)?,
                 larger,
                 display.room,
@@ -767,6 +907,7 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
         state.prepared(Sample {
             display,
             frame: planned,
+            removed_display: None,
         });
     }
     if state.stopping {
@@ -778,7 +919,7 @@ pub(crate) fn set_window_size(app: AppHandle, size: WindowSize, undo: Option<u64
         }
         state.revision
     } else {
-        state.choose(&key, frame, Instant::now())
+        state.choose(&key, frame, usable, Instant::now())
     };
     drop(state);
     sizing.shared.wake.notify_all();
@@ -848,22 +989,29 @@ fn restore_position(app: &AppHandle, revision: u64) -> Result<bool, String> {
         let monitors = checked(app.available_monitors(), NativeIssue::Monitor).ok_or(FAILED)?;
         let monitor = monitors
             .into_iter()
-            .find(|monitor| display_key(monitor) == undo.previous.display.key)
+            .find(|monitor| !undo.previous.display.key.is_empty() && display_key(monitor) == undo.previous.display.key)
             .or_else(|| checked(window.current_monitor(), NativeIssue::Monitor).flatten())
             .ok_or(FAILED)?;
         let metrics = metrics(&window).ok_or(FAILED)?;
         let display = display(&monitor, &metrics).ok_or(FAILED)?;
         let mut frame = plan(
-            Some(PickerWindow {
+            Some(Frame {
                 custom_size: true,
-                ..undo.previous.frame
+                ..restore(
+                    remember(undo.previous.frame, undo.previous.display.usable),
+                    display.usable,
+                )
             }),
             false,
             display.room,
         );
         frame.custom_size = undo.previous.frame.custom_size;
         apply_frame(app, &window, &monitor, frame, display.room).ok_or(FAILED)?;
-        Ok::<_, &str>(Sample { display, frame })
+        Ok::<_, &str>(Sample {
+            display,
+            frame,
+            removed_display: None,
+        })
     })();
     let mut state = sizing.shared.state.lock().map_err(|_| FAILED)?;
     state.applying = false;

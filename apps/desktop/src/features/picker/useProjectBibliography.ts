@@ -1,13 +1,13 @@
+import type * as nativeApi from "../../api";
 // The project bibliography as the picker shows it. Native code owns the file and
 // its generation; a row or action counts only for the generation it came from.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { PickerApi } from "../../App";
 import type { EntryCopy, ProjectStatus, SearchResult } from "../../api";
 import type { useOperations } from "./useOperations";
 import { type ProjectKeyState } from "../../bindings";
 import { isolate, say } from "../../i18n";
 
-export function useProjectBibliography(api: PickerApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
+export function useProjectBibliography(api: typeof nativeApi, report: ReturnType<typeof useOperations>["report"], perform: ReturnType<typeof useOperations>["perform"]) {
   const { projectStatus, onProjectChanged, onProjectNotSaved, chooseProject, stopProject, copyProjectEntry, retryProject } = api;
   const [status, setStatus] = useState<ProjectStatus | null>(null);
   const [version, setVersion] = useState(0);
