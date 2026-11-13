@@ -353,8 +353,9 @@ test("⌘1–9 (Ctrl elsewhere) does what a double-click on that numbered row do
   // Each shown row carries its number for the keys sheet and assistive technology.
   expect(screen.getAllByRole("option").map((row) => row.getAttribute("aria-keyshortcuts"))).toEqual(["Control+1", "Control+2", "Control+3"]);
   // Held, each number takes its row's leading tile; the year, citation context, stays.
-  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile > .result-pick")?.textContent, row.querySelector(".result-year")?.textContent]))
+  expect(screen.getAllByRole("option").map((row) => [row.querySelector(".result-tile")?.getAttribute("data-key"), row.querySelector(".result-year")?.textContent]))
     .toEqual([["Ctrl+1", "2020"], ["Ctrl+2", "2020"], ["Ctrl+3", "2020"]]);
+  screen.getAllByRole("option").forEach((row, i) => expect(row.textContent).not.toContain(`Ctrl+${i + 1}`));
   // No fourth row: the key is left alone.
   expect(fireEvent.keyDown(search, { key: "4", code: "Digit4", ctrlKey: true })).toBe(true);
   // The command list stands in for the results: no row has a number.

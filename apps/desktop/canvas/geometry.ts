@@ -422,6 +422,20 @@ const overlaps = (a: DOMRect, b: DOMRect) => Math.min(a.right, b.right) - Math.m
 export function heldKeys(root: ParentNode = document): string[] {
   const failures: string[] = [];
   const words = wordBoxes(root);
+  // Generated content has no text node or DOM box. Measure a temporary grid item
+  // with the same paint properties so the guard also sees each row's key.
+  const rowKeys = [...root.querySelectorAll<HTMLElement>(".result-tile[data-key]")].flatMap((tile) => {
+    const style = getComputedStyle(tile, "::before");
+    if (style.content === "none" || style.content === "normal") return [];
+    const marker = document.createElement("span");
+    marker.textContent = tile.dataset.key ?? "";
+    marker.setAttribute("aria-hidden", "true");
+    Object.assign(marker.style, { gridArea: "1 / 1", justifySelf: "end", whiteSpace: "nowrap", direction: "ltr", unicodeBidi: "isolate", font: style.font, fontVariantNumeric: style.fontVariantNumeric, lineHeight: style.lineHeight, marginInlineEnd: style.marginInlineEnd, visibility: "hidden" });
+    tile.append(marker);
+    const box = marker.getBoundingClientRect();
+    marker.remove();
+    return [{ node: tile, box }];
+  });
   const shown = [...root.querySelectorAll(controls)].filter(live).map((node) => ({ node, box: seen(node) })).filter((part): part is { node: Element; box: DOMRect } => !!part.box);
   for (const badge of root.querySelectorAll(".ui-held-key")) {
     const box = badge.getBoundingClientRect();
@@ -433,6 +447,8 @@ export function heldKeys(root: ParentNode = document): string[] {
       if (node !== own && !node.contains(own ?? null) && overlaps(box, control)) failures.push(`[C24 held] ${name} covers ${label(node)}`);
     for (const { node, box: text } of words)
       if (!badge.contains(node) && !own?.contains(node) && overlaps(box, text)) failures.push(`[C24 held] ${name} covers "${node.textContent!.trim().slice(0, 30)}"`);
+    for (const { node, box: key } of rowKeys)
+      if (!own?.contains(node) && overlaps(box, key)) failures.push(`[C24 held] ${name} covers the row key "${node.dataset.key}"`);
     for (const other of root.querySelectorAll(".ui-held-key"))
       if (other !== badge && overlaps(box, other.getBoundingClientRect())) failures.push(`[C24 held] ${name} covers the key "${other.textContent}"`);
   }

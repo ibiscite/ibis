@@ -12,6 +12,7 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 const scene = () => render(<>
   <button aria-keyshortcuts="Meta+Shift+P">Keep open</button>
   <button aria-keyshortcuts="Meta+K">More<kbd>⌘K</kbd></button>
+  <div role="option" aria-keyshortcuts="Meta+1"><span className="result-tile" data-key="⌘1" />Result</div>
   <HeldKeys />
 </>);
 const held = (container: HTMLElement) => container.querySelectorAll(".ui-held-key");

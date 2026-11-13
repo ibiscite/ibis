@@ -139,12 +139,10 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
           children are presentational (ARIA) and must not be focusable, so
           the control is for the pointer only: no Tab stop, no role, its
           name in the tooltip. Keyboards use Shift+Enter. */}
-      <span className="result-tile">
+      <span className="result-tile" data-key={pickKeys && keyLabel(pickKeys, isMac)}>
         <TypeIcon itemType={r.item_type} />
         {/* While the command key is held, the row's key takes the tile's place as plain
-            text, a numbered list's marker (ui/HeldKeys); the year stays. Its kbd tells
-            HeldKeys the row shows its own key. */}
-        {pickKeys && <kbd className="result-pick" data-plain dir="ltr" aria-hidden="true">{keyLabel(pickKeys, isMac)}</kbd>}
+            text, a numbered list's marker (ui/HeldKeys); the year stays. */}
         <PointerButton className="tile-button" hoverAllowed={hoverAllowed}
           title={added ? say("picker-remove-named", { name: tileName(r) }) : say("picker-add-named", { name: tileName(r) })}
           onPress={() => handlers.onTileClick(i, r)}>

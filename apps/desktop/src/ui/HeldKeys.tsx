@@ -79,7 +79,7 @@ function keyedControls(held: string): Shown[] {
   return [...document.querySelectorAll<HTMLElement>("[aria-keyshortcuts]")].flatMap((control) => {
     const box = control.getBoundingClientRect();
     const shortcut = control.getAttribute("aria-keyshortcuts")!.split(" ").find((keys) => keys.split("+").includes(held));
-    if (!shortcut || control.querySelector("kbd") || !box.width || !box.height) return [];
+    if (!shortcut || control.querySelector("kbd, .result-tile[data-key]") || !box.width || !box.height) return [];
     return [{ key: keyFromAria(shortcut), control: box }];
   });
 }
