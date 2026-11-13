@@ -52,50 +52,12 @@ records against pinned and newest upstream styles, locales and citeproc-js.
 Known exceptions are explicit. Preview compares a numbered release with its
 predecessor and attaches changed style IDs to the release notes.
 
-## Native journeys
+## Native journeys and installed updates
 
-`scripts/smoke-native.py` drives the real desktop app with invented data.
-Daily/manual CI runs installed nightly journeys; Preview checks package
-install/start and offline observation.
-Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
-
-- **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
-  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
-  and recovery. After Enter copies, it checks the reason, explicitly pastes
-  with Shift+Insert into its xterm editor and reads the citation back.
-  Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
-- **macOS journey:** `bash scripts/hands-on-macos.sh --journey` installs a
-  nightly in an isolated profile and invokes the harness. From TextEdit,
-  selected text becomes the search; Enter must replace it with the expected
-  citation exactly once, verified through Accessibility. A safe copy gets
-  one retry. A Terminal collector must receive no keys. Missing terminal
-  Accessibility permission or an already open TextEdit makes it unavailable.
-  Daily/manual CI runs this journey on the installed nightly.
-- **Windows journey:** `smoke-native.py --journey` uses Notepad and an inert
-  console collector. It types the search, checks selection replacement once
-  through `WM_GETTEXT`, and checks that the console gets no automatic input.
-  `journey.json` records the editor and console host. A locked/disconnected
-  desktop is unavailable. `scripts/windows-journey.ps1` supplies native control.
-
-The separate Windows paste primitive test bypasses the picker. Foreground
-denial can skip it. macOS/Windows notice text is checked only when native
-accessibility exposes it. These journeys do not establish every editor,
-keyboard layout, screen reader, cloud provider or Wayland compositor.
-
-## Installed update qualification
-
-`scripts/update-e2e.py` installs the previous nightly, reopens it once,
-identifies its owned native offer, activates Install once, verifies package
-replacement and a fresh process, and checks persisted library/shortcut
-choices. Ambiguous ownership, uncertain input or failed checks terminate the
-run without another activation. `--self-test` exercises the harness contract.
-
-Linux targets the verified X11 window and observes GTK focus through
-`update-gtk-probe.c`; macOS verifies sheet/button Accessibility identities;
-Windows verifies UI Automation ownership and invokes Install or sends one
-bounded TaskDialog action. Models cannot prove an installed update.
-See [signing](code-signing.md#qualification-before-claiming-permission-survival)
-for the separate paste-permission check.
+Real-app journeys and the installed-update qualification are specified in the
+headers of `scripts/smoke-native.py` and `scripts/update-e2e.py`; hosted runner
+coverage is in [compatibility](compatibility.md#platforms-tested-and-targeted),
+and paste permission survival in [signing](code-signing.md#qualification-before-claiming-permission-survival).
 
 ## Update consent keyboard safety
 

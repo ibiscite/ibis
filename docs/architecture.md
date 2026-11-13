@@ -44,10 +44,7 @@ refused for key output.
 
 ## Sources
 
-The [compatibility guide](compatibility.md#library-files) lists file formats
-and their limits. Files are bounded to 64 MiB of UTF-8 text. Parsers report
-skipped records without discarding valid neighbours. Duplicate identities
-make all records under that identity unavailable.
+File formats and limits are in [compatibility](compatibility.md#library-files). Files are bounded to 64 MiB; parsers report skipped records without discarding valid neighbours.
 
 Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
 
@@ -61,23 +58,9 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
-A choice names the personal library or specific groups. Missing groups fail
-instead of falling back. Several closed profiles require a named choice.
-Keys come from Zotero's key field, Extra or Better BibTeX; disagreements
-remain visible and block key output.
+Missing Zotero groups fail instead of falling back; several closed profiles require a named choice. Disagreeing citation keys stay visible and block key output.
 
-Long-lived file readers accept a change after two identical reads. Watchers
-recover parent-directory registrations after replacement. Network and unknown
-mounts use manual refresh and report `live-refresh-off`; opening the picker
-rechecks these and failed sources. There is no periodic filesystem retry.
-One-shot CLI reads install no watches.
-
-Known cloud placeholders are refused before reading, without requesting a
-download. Filesystem probes have a two-second wait and eight-call limit.
-Desktop loads have a two-minute deadline and at most four loads per source
-family in flight. Blocked OS calls can outlive the wait, but their late results cannot
-publish. A failed refresh keeps the previous snapshot and reports its health.
-New selections and publications retire stale candidates and their watchers.
+Readers accept a change after two identical reads; network and unknown mounts use manual refresh and report `live-refresh-off`. Cloud placeholders are refused before reading. Filesystem probes wait two seconds with eight calls; desktop loads have a two-minute deadline, four per source family. A failed refresh keeps the previous snapshot and reports its health; stale results cannot publish.
 
 ## Citations
 
@@ -113,25 +96,9 @@ Receipts, `--strict` and caller-supplied records are specified in the
 [CLI reference](cli.md#receipts-and-strict-citations); records open no library
 and never combine with `--keep-order`.
 
-The locator parser is shared by search, the picker's Page field and CLI.
-It recognises all 29 CSL locator terms, ranges and quoted literal labels.
-A typed label overrides the field's default type; an incomplete label is an
-error. Canonical locators stay distinct from raw editor text.
+One locator parser serves search, the Page field and the CLI (all 29 CSL terms, ranges, quoted labels; a typed label overrides the default type).
 
-A writing is an optional name, format and read-only `.bib` in `settings.json`
-([decision 0042](decisions/0042-formats-apps-and-writings.md)). The picker remembers
-one per app; unidentified targets use session-only selection. CLI/editor context
-selects one explicitly, including a unique match from supplied document front
-matter; no client guesses. Each citation uses the saved definition. Failed saves
-keep the old writing, format and bibliography together.
-
-Bibliography checks are advice unless a key is known to identify another work.
-For key outputs, `--strict` also requires a complete current read finding every
-emitted key unambiguously. Captured definitions and monotonic activation identities
-retire stale choosers, previews and delivery proofs, including A → B → A; final
-context checks guard clipboard commits. Receipts include an opaque definition
-hash and bibliography evidence, never paths. Writings grant no paste authority.
-See [writing commands](cli.md#writings).
+A writing is an optional name, format and read-only `.bib` in `settings.json` ([decision 0042](decisions/0042-formats-apps-and-writings.md)); the picker remembers one per app, and CLI/editor clients select one explicitly. Writings grant no paste authority and receipts never carry paths. Bibliography checks, `--strict` and stale-identity rules are in [writing commands](cli.md#writings).
 
 <a id="task-contexts-planned"></a>
 Cross-client task-context plans are in [the roadmap](../ROADMAP.md#consolidation-now-alongside-finishing-03).
