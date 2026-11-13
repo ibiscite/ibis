@@ -243,10 +243,10 @@ test("a reference the style cannot write is named, and the rest can still be cop
   expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(false);
 });
 
-test("a native refusal keeps its own words", async () => {
+test("a typed bibliography refusal keeps its catalogue words", async () => {
   backend({
     session_references: () => list(), session_bibliography: () => formatted("text"),
-    export_session_bibliography: () => { throw { code: "failed", message: "Save it as .rtf, .html or .txt." }; },
+    export_session_bibliography: () => { throw { code: "bibliography-format", message: { id: "app-bibliography-format", args: {} }, recovery: { action: "edit-input" }, focus: "request" }; },
   });
   const dialog = await open();
   await within(dialog).findByText("text");

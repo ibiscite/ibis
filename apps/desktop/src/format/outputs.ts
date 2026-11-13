@@ -62,6 +62,7 @@ export const styleOutputs = OUTPUTS.filter((output) => output.style);
 
 /** The engine result displayed by the picker. */
 export interface FormattedCitation {
+  effective_output?: string | null;
   markup: Markup[];
   text: string;
   html: string;

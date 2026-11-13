@@ -145,6 +145,14 @@ pub(crate) enum CommandError {
     Refused(ibis_core::contract::CitationError),
     Presented(ibis_core::contract::Problem),
     NotPrepared,
+    BibliographyUnavailable,
+    BibliographyNotSaved,
+    BibliographyNameTaken,
+    BibliographyFormat,
+    ClipboardUnavailable,
+    SettingsUnavailable,
+    RecentHistoryNotSaved,
+    ProjectConflict { keys: Vec<String> },
     SourceNotOpened,
     CitationTooLarge,
     SearchFailed,
@@ -209,6 +217,39 @@ impl CommandError {
                 RecoveryInfo::new("app-command-shared-citation-key", R::ChooseStyle, F::FormatPicker)
                     .argument("key", key),
             ),
+            Self::BibliographyUnavailable => (
+                "bibliography-unavailable",
+                RecoveryInfo::new("app-bibliography-unavailable", R::Retry, F::RecoveryAction),
+            ),
+            Self::BibliographyNotSaved => (
+                "bibliography-not-saved",
+                RecoveryInfo::new("app-bibliography-not-saved", R::Retry, F::RecoveryAction),
+            ),
+            Self::BibliographyNameTaken => (
+                "bibliography-name-taken",
+                RecoveryInfo::new("app-bibliography-name-taken", R::EditInput, F::Request),
+            ),
+            Self::BibliographyFormat => (
+                "bibliography-format",
+                RecoveryInfo::new("app-bibliography-format", R::EditInput, F::Request),
+            ),
+            Self::SettingsUnavailable => (
+                "settings-unreadable",
+                RecoveryInfo::new("app-settings-error-unreadable", R::Retry, F::RecoveryAction),
+            ),
+            Self::RecentHistoryNotSaved => (
+                "recent-history-not-saved",
+                RecoveryInfo::new("app-recent-history-not-saved", R::Retry, F::RecoveryAction),
+            ),
+            Self::ProjectConflict { keys } => (
+                "project-conflict",
+                RecoveryInfo::new("app-project-citation-conflict", R::ReviewLibrary, F::SourceFile)
+                    .argument("keys", keys.join(", ")),
+            ),
+            Self::ClipboardUnavailable => (
+                "clipboard-unavailable",
+                RecoveryInfo::new("app-clipboard-unavailable", R::Retry, F::RecoveryAction),
+            ),
             Self::NotPrepared => (
                 "not-prepared",
                 RecoveryInfo::new("app-command-not-prepared", R::Retry, F::RecoveryAction),
@@ -239,23 +280,6 @@ impl CommandError {
 impl From<CommandError> for ibis_core::contract::Problem {
     fn from(error: CommandError) -> Self {
         error.problem()
-    }
-}
-// Internal native failures never send an arbitrary string over IPC. Commands
-// have a catalogue diagnostic; engine failures must use their typed conversion.
-impl From<String> for CommandError {
-    fn from(_: String) -> Self {
-        Self::NotPrepared
-    }
-}
-impl From<&str> for CommandError {
-    fn from(_: &str) -> Self {
-        Self::NotPrepared
-    }
-}
-impl From<CommandError> for String {
-    fn from(error: CommandError) -> Self {
-        error.to_string()
     }
 }
 impl fmt::Display for CommandError {

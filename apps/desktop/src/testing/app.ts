@@ -153,7 +153,7 @@ let receiptNumber = 0;
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
 export function receipt(text: string, html: string | null = null, warnings: string[] = []): FilePreview {
   const number = ++receiptNumber;
-  return { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
+  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, spans: [{ item: 0, text }] };
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */
@@ -263,6 +263,7 @@ export function backend(overrides: Record<string, Handler> = {}): string[] {
       });
       if (cmd === "preview_file_citation") return Promise.resolve(value).then((preview) => {
         const result = preview as FilePreview;
+        result.effective_output ??= (args as PreviewRequest).output;
         receipts.set(result.ticket, { request: args as PreviewRequest, preview: result });
         return result;
       });

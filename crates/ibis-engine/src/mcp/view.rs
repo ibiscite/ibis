@@ -5,7 +5,7 @@
 use super::MAX_LIST;
 use crate::request::ItemSelector;
 use ibis_core::citable::{citable_fields, is_variable};
-use ibis_core::contract::{EngineError, ErrorCode, Fingerprint, ItemRef, Record, Snapshot};
+use ibis_core::contract::{EngineError, ErrorCode, ItemRef, Record, Snapshot};
 use ibis_core::model::{is_hidden, strip_markup};
 use ibis_core::summary::RecordSummary;
 use serde_json::{Map, Value};
@@ -95,9 +95,7 @@ pub(super) fn scrub(text: &str) -> String {
 
 /// An opaque selector for a record identity, without exposing its lookup key.
 pub fn reference(id: &ItemRef) -> String {
-    // A digest is a selector, never source text or the engine's lookup key.
-    let identity = serde_json::to_vec(id).unwrap_or_default();
-    format!("{ID_MARK}{}", Fingerprint::of_bytes(&identity).as_str())
+    id.opaque_reference()
 }
 
 /// A ref as search returns it: the record, then a short check of what it said then.
@@ -109,7 +107,9 @@ pub(super) fn checked(base: String, fingerprint: &str) -> String {
 pub(super) fn parse<'a>(
     reference: &'a str,
     snapshot: &Snapshot,
+    cancel: &crate::Cancellation,
 ) -> Result<(ItemSelector, Option<&'a str>), EngineError> {
+    cancel.check()?;
     let (base, check) = match reference.rsplit_once('#') {
         Some((base, check)) if check.len() == CHECK_LENGTH && check.bytes().all(|byte| byte.is_ascii_hexdigit()) => {
             (base, Some(check))
@@ -118,10 +118,7 @@ pub(super) fn parse<'a>(
     };
     let item = if base.starts_with(ID_MARK) {
         let id = snapshot
-            .objects()
-            .iter()
-            .map(|object| object.object.id())
-            .find(|id| self::reference(id) == base)
+            .resolve_opaque(base)
             .cloned()
             .ok_or_else(|| EngineError::new(ErrorCode::NotFound))?;
         ItemSelector::Id(id)
@@ -129,4 +126,20 @@ pub(super) fn parse<'a>(
         ItemSelector::Key(base.to_owned())
     };
     Ok((item, check))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cancelled_opaque_resolution_returns_cancellation_instead_of_not_found() {
+        let snapshot = Snapshot::new(vec![]).unwrap_or_else(|error| panic!("{error:?}"));
+        let cancel = crate::Cancellation::default();
+        cancel.cancel();
+        assert_eq!(
+            parse("id:absent", &snapshot, &cancel).err().map(|error| error.code),
+            Some(ErrorCode::Cancelled)
+        );
+    }
 }

@@ -247,6 +247,23 @@ pub struct ErrorDetail {
     pub table: ZoteroTable,
 }
 
+/// The fact that prevents a strict citation, retained for every client.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum StrictCause {
+    Loss {
+        loss: super::Loss,
+    },
+    Refused {
+        error: super::CitationError,
+    },
+    Source {
+        code: ErrorCode,
+        reason: Option<ErrorReason>,
+    },
+    SourceWarning,
+}
+
 /// Like every result, an error accepts fields it does not know (decision 0028).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(into = "PresentedError")]
@@ -256,6 +273,8 @@ pub struct EngineError {
     pub reason: Option<ErrorReason>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub detail: Option<ErrorDetail>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub strict_cause: Option<StrictCause>,
 }
 #[derive(Serialize, JsonSchema)]
 struct PresentedError {
@@ -264,6 +283,8 @@ struct PresentedError {
     reason: Option<ErrorReason>,
     #[serde(skip_serializing_if = "Option::is_none")]
     detail: Option<ErrorDetail>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    strict_cause: Option<StrictCause>,
     #[serde(flatten)]
     info: super::RecoveryInfo,
 }
@@ -273,6 +294,7 @@ impl From<EngineError> for PresentedError {
             code: error.code,
             reason: error.reason,
             detail: error.detail,
+            strict_cause: error.strict_cause,
             info: error.recovery_info(),
         }
     }
@@ -291,6 +313,7 @@ impl EngineError {
             code,
             reason: None,
             detail: None,
+            strict_cause: None,
         }
     }
     pub const fn because(code: ErrorCode, reason: ErrorReason) -> Self {
@@ -298,6 +321,7 @@ impl EngineError {
             code,
             reason: Some(reason),
             detail: None,
+            strict_cause: None,
         }
     }
 }

@@ -86,7 +86,7 @@ reason-csv-template = The first row of this CSV file does not match Ibis’s tem
     .app = Rename the columns in its first row; the CSV template in Ibis’s compatibility guide lists them.
 reason-library-cut-short = No reference has this key in what Ibis read, but the library is too large to read in full (Ibis stops at 200,000 entries), so the key may be in the part it did not read.
     .cli = Split the library into smaller files and give each with --file.
-    .agent = Tell the person the library was cut short, so the reference may be in the part Ibis could not read.
+    .agent = Ask the person to split the source library into smaller files so Ibis can read the missing references.
     .app = Split the library into smaller files.
 reason-unknown-format = This file is not in a format Ibis reads: { -library-formats }.
     .cli = Choose another file with --file.
@@ -1361,12 +1361,10 @@ problem-not-from-zotero = This reference was not read from Zotero.
 app-failure-cli-status = The command line setup could not be read.
 app-failure-set-cli-installed = The command line setup could not be changed.
 app-failure-copy-cli-profile = The shell setup could not be copied.
-app-failure-picker-destination = The destination could not be read.
 app-failure-hide-picker = The picker could not be closed.
 app-failure-copy-editor-endpoint = The editor address could not be copied.
 app-failure-set-window-size = The window size could not be saved.
 app-failure-undo-window-position = The window position could not be restored.
-app-failure-stop-project = The bibliography check could not be stopped.
 app-failure-copy-project-entry = The reference entry could not be copied.
 app-failure-finish-paste-guide = Paste setup could not be finished.
 app-failure-row-context = The reference details could not be read.
@@ -1444,3 +1442,14 @@ mcp-tool-error = error: { $code }. { $reason }
 cli-key-suggestions = Did you mean { $keys }?
 cli-key-not-found = no reference has the key '{ $key }'{ $choices }
     Try: { $command }{ $route }
+
+mcp-startup-failed = The library could not be opened when this session started. { $error } Resolve the problem, then start a new MCP session.
+
+app-bibliography-unavailable = The bibliography could not be prepared. Try again.
+app-bibliography-not-saved = The bibliography could not be saved. Try again.
+app-bibliography-name-taken = A file with that name is already there. Choose another name.
+app-bibliography-format = Save it as .rtf, .html or .txt.
+app-clipboard-unavailable = The clipboard could not be written. Try again.
+
+app-recent-history-not-saved = Recent citations could not be forgotten. Try again.
+app-project-citation-conflict = Citation keys { $keys } identify different works in the project bibliography. Check the bibliography before copying.

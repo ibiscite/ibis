@@ -417,6 +417,8 @@ export type EntryCopy = "copied" | "no-original" | "repeated" | "dependency" | "
 
 export type FilePreview = {
 	content_hash: string;
+	/** The effective output after an editor request overrides the picker. */
+	effective_output: string | null;
 	failure?: Problem | null;
 	html: string | null;
 	/**
@@ -876,6 +878,8 @@ export type Recovery = {
 	action: "choose-shortcut";
 } | {
 	action: "open-ibis";
+} | {
+	action: "restart-session";
 } | {
 	action: "none";
 	reason: NoRecoveryReason;

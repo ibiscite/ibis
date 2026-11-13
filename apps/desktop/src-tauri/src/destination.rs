@@ -348,7 +348,7 @@ pub(crate) fn picker_destination(
     memory: State<'_, AppMemory>,
     settings_file: State<'_, SettingsFile>,
     editor: State<'_, crate::editor_endpoint::Pending>,
-) -> Result<PickerDestination, String> {
+) -> Result<PickerDestination, crate::library::CommandError> {
     // The editor already said what it wants and takes the citation itself.
     let last = if editor.current().is_some() {
         None

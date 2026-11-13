@@ -839,6 +839,16 @@
         },
         "recovery": {
           "$ref": "#/$defs/Recovery"
+        },
+        "strict_cause": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StrictCause"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "required": [
@@ -2010,6 +2020,18 @@
           "properties": {
             "action": {
               "type": "string",
+              "const": "restart-session"
+            }
+          },
+          "required": [
+            "action"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
               "const": "none"
             },
             "reason": {
@@ -2105,6 +2127,81 @@
       "required": [
         "object",
         "fingerprints"
+      ]
+    },
+    "StrictCause": {
+      "description": "The fact that prevents a strict citation, retained for every client.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "loss"
+            },
+            "loss": {
+              "$ref": "#/$defs/Loss"
+            }
+          },
+          "required": [
+            "kind",
+            "loss"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "error": {
+              "$ref": "#/$defs/CitationError"
+            },
+            "kind": {
+              "type": "string",
+              "const": "refused"
+            }
+          },
+          "required": [
+            "kind",
+            "error"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "code": {
+              "$ref": "#/$defs/ErrorCode"
+            },
+            "kind": {
+              "type": "string",
+              "const": "source"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/ErrorReason"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "kind",
+            "code"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "kind": {
+              "type": "string",
+              "const": "source-warning"
+            }
+          },
+          "required": [
+            "kind"
+          ]
+        }
       ]
     },
     "Success": {

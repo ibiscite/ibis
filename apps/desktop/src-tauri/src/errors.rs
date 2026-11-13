@@ -19,12 +19,10 @@ pub(crate) enum NativeOperation {
     CliStatus,
     SetCliInstalled,
     CopyCliProfile,
-    PickerDestination,
     HidePicker,
     CopyEditorEndpoint,
     SetWindowSize,
     UndoWindowPosition,
-    StopProject,
     CopyProjectEntry,
     FinishPasteGuide,
     RowContext,
@@ -49,12 +47,10 @@ impl NativeOperation {
             Self::CliStatus
             | Self::SetCliInstalled
             | Self::CopyCliProfile
-            | Self::PickerDestination
             | Self::HidePicker
             | Self::CopyEditorEndpoint
             | Self::SetWindowSize
             | Self::UndoWindowPosition
-            | Self::StopProject
             | Self::CopyProjectEntry
             | Self::FinishPasteGuide
             | Self::ConfigureShortcuts

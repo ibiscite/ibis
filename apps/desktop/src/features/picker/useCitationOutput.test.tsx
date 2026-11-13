@@ -53,7 +53,7 @@ function reference(revision = "1", key = "synthetic"): CitationReference {
 }
 
 function preview(text: string): FilePreview {
-  return { text, spans: [{ item: 0, text }], html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
+  return { effective_output: null, text, spans: [{ item: 0, text }], html: null, warnings: [], ticket: "synthetic-ticket", content_hash: "synthetic-hash" };
 }
 
 function options(overrides: Partial<Options>): Options {

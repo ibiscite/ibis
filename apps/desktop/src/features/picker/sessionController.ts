@@ -1,7 +1,7 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
 import type { Delivered, Problem } from "../../bindings";
-import { say } from "../../i18n";
+import { problemText, say } from "../../i18n";
 import { parse } from "../../format/markup";
 import type { OutputId } from "../../format/outputs";
 import type { ProjectEdit } from "./destination";
@@ -113,7 +113,7 @@ export function createSessionController(initial = initialSession()) {
         try {
           const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
           dispatch({ type: "previewed", request, preview, value: { markup: preview.html ? parse(preview.html) : [preview.text], text: preview.text, html: preview.html ?? "",
-            warnings: preview.warnings, spans: preview.spans, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
+            effective_output: preview.effective_output, warnings: preview.warnings, spans: preview.spans, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {
           dispatch({ type: "preview-failed", request, failure: previewFailure(error) });
         } finally {
@@ -161,7 +161,7 @@ function previewFailure(error: unknown): PreviewFailure {
   const failure = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
   if (failure?.message && typeof failure.message.id === "string" && failure.recovery && failure.focus) {
     return { kind: "failed", failure: failure as Problem,
-      problem: say(failure.message.id as Parameters<typeof say>[0], failure.message.args) };
+      problem: problemText(failure, say("picker-preview-error")) };
   }
   return { kind: "failed" };
 }

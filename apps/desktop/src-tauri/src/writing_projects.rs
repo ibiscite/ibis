@@ -186,20 +186,22 @@ fn context_token_for(target: &Target, activation: u32) -> String {
     serde_json::to_string(&(target.context(), activation)).unwrap_or_default()
 }
 
-fn read_settings(path: &Path) -> Result<Settings, String> {
+fn read_settings(path: &Path) -> Result<Settings, CommandError> {
     let loaded = settings::load(path);
     // The existing settings recovery policy treats a validated backup as the
     // chosen settings, with its warning shown in Settings. With no valid copy,
     // never turn an unreadable selected project into a default-format paste.
-    if loaded.problem.is_some() && !loaded.from_backup {
-        return Err("Writing projects could not be read. Check Settings and try again.".to_owned());
+    if let Some(problem) = loaded.problem
+        && !loaded.from_backup
+    {
+        return Err(problem.into());
     }
     Ok(loaded.settings)
 }
 
 /// The saved settings, or no project at all: an unreadable file never lets
 /// an earlier project or the default output stand in for the saved one.
-fn saved_settings(app: &AppHandle, target: &Target) -> Result<Settings, String> {
+fn saved_settings(app: &AppHandle, target: &Target) -> Result<Settings, CommandError> {
     read_settings(&app.state::<SettingsFile>().path).inspect_err(|_| {
         crate::project::activate_context(app, format!("unavailable:settings:{}", target.owner()), None, None);
     })
@@ -262,15 +264,19 @@ impl ActiveProject {
     }
 }
 
-fn active_for(settings: &Settings, target: &Target, session: Option<&str>) -> Result<Option<ActiveProject>, String> {
+fn active_for(
+    settings: &Settings,
+    target: &Target,
+    session: Option<&str>,
+) -> Result<Option<ActiveProject>, CommandError> {
     let Some(id) = selected(settings, target, session) else {
         return Ok(None);
     };
-    let project = projects::find(settings, id).map_err(|error| error.to_string())?;
+    let project = projects::find(settings, id).map_err(ChangeError::from)?;
     Ok(Some(ActiveProject {
         id: project.id.clone(),
         name: project.name.clone(),
-        output: crate::output::of_project(&project.output)?,
+        output: crate::output::of_project(&project.output).map_err(|_| ChangeError::Unsupported)?,
         bibliography: project.bibliography.clone(),
         // The bibliography and output are compared on their own.
         context_key: format!("project:{}:{}", target.owner(), project.id),
@@ -283,7 +289,7 @@ fn activate(
     settings: &Settings,
     target: &Target,
     session: Option<&str>,
-) -> Result<Option<ActiveProject>, String> {
+) -> Result<Option<ActiveProject>, CommandError> {
     if target.editor {
         return Ok(None);
     }
@@ -365,7 +371,10 @@ pub(crate) struct DestinationContext {
     pub(crate) version: (u32, u32),
 }
 
-pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> Result<DestinationContext, String> {
+pub(crate) fn destination_context(
+    app: &AppHandle,
+    captured: Option<&AppId>,
+) -> Result<DestinationContext, CommandError> {
     let target = target(app, captured);
     if target.editor {
         let version = app.state::<crate::project::ProjectBibliography>().version();
@@ -376,15 +385,15 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
         });
     }
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     let settings = saved_settings(app, &target)?;
     let active = activate(app, &settings, &target, session.as_deref())?;
     let version = app.state::<crate::project::ProjectBibliography>().version();
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     Ok(DestinationContext {
         active,
@@ -393,7 +402,7 @@ pub(crate) fn destination_context(app: &AppHandle, captured: Option<&AppId>) -> 
     })
 }
 
-pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveProject>, String> {
+pub(crate) fn refresh(app: &AppHandle, captured: Option<&AppId>) -> Result<Option<ActiveProject>, CommandError> {
     destination_context(app, captured).map(|context| context.active)
 }
 
@@ -417,8 +426,7 @@ pub(crate) fn writing_projects(app: AppHandle) -> Result<WritingProjectsView, Co
     if target.editor {
         return Err(CommandError::from(ChangeError::Editor));
     }
-    let settings =
-        saved_settings(&app, &target).map_err(|_| CommandError::Presented((&ProjectError::Invalid).into()))?;
+    let settings = saved_settings(&app, &target)?;
     Ok(shown(&app, &settings, &target, session.as_deref()))
 }
 
@@ -447,7 +455,8 @@ pub(crate) fn edit_writing_project(
                 }
                 edit(settings, &target, session.as_deref(), &action)
             })
-        })?
+        })
+        .map_err(|_| CommandError::SettingsUnavailable)?
         .map_err(CommandError::from)?;
     // Only a save changes the session-only choice.
     if target.binding.is_none() {
@@ -495,31 +504,29 @@ fn owner_for(
     })
 }
 
-pub(crate) fn bibliography_owner(app: &AppHandle) -> Result<BibliographyOwner, String> {
+pub(crate) fn bibliography_owner(app: &AppHandle) -> Result<BibliographyOwner, CommandError> {
     let target = current_target(app);
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     if current_target(app) != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
-    let settings = read_settings(&app.state::<SettingsFile>().path).map_err(|_| {
-        "Saved project settings could not be read. Check Settings before editing the bibliography.".to_owned()
-    })?;
+    let settings = read_settings(&app.state::<SettingsFile>().path)?;
     let activation = app.state::<crate::project::ProjectBibliography>().version().0;
-    owner_for(&settings, &target, session.as_deref(), activation).map_err(|error| error.to_string())
+    owner_for(&settings, &target, session.as_deref(), activation).map_err(CommandError::from)
 }
 
 pub(crate) fn set_bibliography(
     app: &AppHandle,
     owner: &BibliographyOwner,
     path: Option<PathBuf>,
-) -> Result<(), String> {
+) -> Result<(), CommandError> {
     let target = current_target(app);
     if target != owner.target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     let runtime = app.state::<Runtime>();
-    let session = runtime.0.lock().map_err(|_| CHANGED.to_owned())?;
+    let session = runtime.0.lock().map_err(|_| CommandError::from(ChangeError::Stale))?;
     let (settings, ()) = app
         .state::<SettingsFile>()
         .exclusive(|settings_path| {
@@ -538,13 +545,14 @@ pub(crate) fn set_bibliography(
                 }
                 Ok::<_, ChangeError>(())
             })
-        })?
-        .map_err(|error| error.to_string())?;
+        })
+        .map_err(|_| CommandError::SettingsUnavailable)?
+        .map_err(CommandError::from)?;
     let current = current_target(app);
     let activation = activate(app, &settings, &current, session.as_deref());
     let _ = app.emit("writing-projects:changed", ());
     if current != target {
-        return Err(REOPEN.to_owned());
+        return Err(ChangeError::Destination.into());
     }
     activation.map(|_| ())
 }
@@ -911,7 +919,9 @@ mod tests {
         std::fs::write(&path, "not settings").unwrap_or_else(|error| panic!("{error}"));
         assert_eq!(
             read_settings(&path),
-            Err("Writing projects could not be read. Check Settings and try again.".to_owned())
+            Err(CommandError::Presented(
+                (&settings::SettingsError::Invalid(String::new())).into()
+            ))
         );
         std::fs::remove_file(&path).unwrap_or_else(|error| panic!("{error}"));
         std::fs::create_dir(&path).unwrap_or_else(|error| panic!("{error}"));

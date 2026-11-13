@@ -194,7 +194,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
     writesStyle: editor.label ? editor.style : isStyle(destination.format),
   });
   const formatPreview = useCallback<FormatPreview>((other) => previewOf(other,
-    other === destination.format && shown && typeof shown === "object" ? shown : null), [destination.format, shown]);
+    shown && typeof shown === "object" && other === shown.effective_output ? shown : null), [shown]);
   const commandKeys = useRef<((event: KeyboardEvent) => boolean) | null>(null);
   // The citation line's tokens, for ⌘↓ in Search and the citation's commands in More.
   const citationLine = useRef<CitationLineActions | null>(null);

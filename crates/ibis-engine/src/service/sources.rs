@@ -114,6 +114,7 @@ fn zotero_error(failure: ZoteroError) -> EngineError {
         code,
         reason: failure.reason(),
         detail: failure.schema_table().map(|table| ErrorDetail { table }),
+        strict_cause: None,
     }
 }
 
@@ -802,6 +803,7 @@ impl Engine {
                     code: ErrorCode::SourceUnavailable,
                     reason: failure.reason(),
                     detail: None,
+                    strict_cause: None,
                 });
             }
         };
@@ -1227,7 +1229,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), &newer);
@@ -1312,7 +1315,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
     }
@@ -1334,7 +1338,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::Cancelled,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1345,7 +1350,8 @@ mod tests {
             Err(EngineError {
                 code: ErrorCode::BadInput,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             })
         ));
         assert_eq!(engine.snapshot().unwrap().fingerprints(), original.fingerprints());
@@ -1394,7 +1400,8 @@ mod tests {
             Err(CitationCommitError::Engine(EngineError {
                 code: ErrorCode::SourceUnavailable,
                 reason: None,
-                detail: None
+                detail: None,
+                ..
             }))
         ));
         assert_eq!(engine.recite(&file, &cancel).unwrap().text, "[@Example2026]");

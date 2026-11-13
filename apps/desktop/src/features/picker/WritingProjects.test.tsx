@@ -76,11 +76,11 @@ test("removing a project requires an explicit choice", async () => {
 });
 
 test("a refused project name keeps the form and the native correction", async () => {
-  render(<WritingProjectsDialog api={api({ editWritingProject: async () => { throw "A project already has that name. Choose another name."; } })} format="autocite" onClose={vi.fn()} />);
+  render(<WritingProjectsDialog api={api({ editWritingProject: async () => { throw { code: "project-duplicate-name", message: { id: "app-project-error-duplicate-name", args: {} }, recovery: { action: "rename-project" }, focus: "project-name" }; } })} format="autocite" onClose={vi.fn()} />);
   fireEvent.click(await screen.findByRole("button", { name: "New Writing Project…" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Project name" }), { target: { value: "Thesis" } });
   fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
-  expect((await screen.findByRole("alert")).textContent).toBe("A project already has that name. Choose another name.");
+  expect((await screen.findByRole("alert")).textContent).toBe("A writing project already has that name. Choose another name.");
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Project name" }).value).toBe("Thesis");
   expect(screen.getByRole("button", { name: "Use Thesis" }).getAttribute("aria-pressed")).toBe("true");
 });

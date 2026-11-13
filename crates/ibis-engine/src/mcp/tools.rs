@@ -127,6 +127,24 @@ pub struct Refusal {
 }
 
 impl Refusal {
+    /// Opening is attempted only at startup; a failed session cannot retry it.
+    pub fn startup(error: EngineError) -> Self {
+        let mut refusal = Self::from(error);
+        let cause = if refusal.problem.info.recovery == ibis_core::contract::Recovery::Retry {
+            crate::catalogue::text(&refusal.problem.info.message.id, None, &[]).unwrap_or_default()
+        } else {
+            refusal.advice.to_string()
+        };
+        refusal.problem.info = ibis_core::contract::RecoveryInfo::new(
+            "mcp-startup-failed",
+            ibis_core::contract::Recovery::RestartSession,
+            ibis_core::contract::FocusTarget::Request,
+        )
+        .argument("error", cause);
+        refusal.advice = crate::catalogue::problem(&refusal.problem, Audience::Agent).into();
+        refusal
+    }
+
     fn bad(kind: ToolProblem, args: &[(&str, &str)]) -> Self {
         let (code, problem) = kind.problem(args);
         Self {
@@ -465,11 +483,11 @@ fn show_output() -> Value {
     shown
 }
 
-fn show(engine: &Engine, arguments: &Map<String, Value>, _cancel: &Cancellation) -> Result<Value, Refusal> {
+fn show(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) -> Result<Value, Refusal> {
     let Checked {
         value: shown,
         source_health,
-    } = selected(engine, arguments)?;
+    } = selected(engine, arguments, cancel)?;
     match &shown.object {
         LibraryObject::Record(record) => {
             let citable = view::citable(record);
@@ -486,14 +504,18 @@ fn show(engine: &Engine, arguments: &Map<String, Value>, _cancel: &Cancellation)
 }
 
 /// The record a `ref` names, as long as it still says what search saw.
-fn selected(engine: &Engine, arguments: &Map<String, Value>) -> Result<Checked<SnapshotObject>, Refusal> {
+fn selected(
+    engine: &Engine,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+) -> Result<Checked<SnapshotObject>, Refusal> {
     let reference = arguments
         .get("ref")
         .and_then(Value::as_str)
         .filter(|reference| !reference.is_empty())
         .ok_or_else(|| Refusal::bad(ToolProblem::Reference, &[]))?;
     let snapshot = engine.snapshot()?;
-    let (item, check) = view::parse(reference, &snapshot)?;
+    let (item, check) = view::parse(reference, &snapshot, cancel)?;
     let found = engine.show_checked(&ShowRequest { item })?;
     if check.is_some_and(|check| !found.value.fingerprints.cite.as_str().starts_with(check)) {
         return Err(Refusal::bad(ToolProblem::StaleReference, &[]));
@@ -605,7 +627,7 @@ fn cite(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancellation) 
         .iter()
         .enumerate()
         .map(|(index, item)| {
-            citation_item(engine, item).map_err(|refusal| Refusal {
+            citation_item(engine, item, cancel).map_err(|refusal| Refusal {
                 advice: crate::catalogue::text(
                     "mcp-item-error",
                     None,
@@ -761,10 +783,10 @@ fn cite_records(engine: &Engine, arguments: &Map<String, Value>, cancel: &Cancel
 
 /// One entry of `items`, checked against the library it will be cited from:
 /// a record that changes before formatting is refused, never guessed at.
-fn citation_item(engine: &Engine, item: &Value) -> Result<CitationItem, Refusal> {
+fn citation_item(engine: &Engine, item: &Value, cancel: &Cancellation) -> Result<CitationItem, Refusal> {
     let fields = item.as_object().ok_or_else(|| Refusal::bad(ToolProblem::Item, &[]))?;
     known(fields, &cite_input()["properties"]["items"]["items"], "an item")?;
-    let selected = selected(engine, fields)?.value;
+    let selected = selected(engine, fields, cancel)?.value;
     let text = |name: &str| -> Result<Vec<TextRun>, Refusal> {
         match fields.get(name) {
             None => Ok(vec![]),

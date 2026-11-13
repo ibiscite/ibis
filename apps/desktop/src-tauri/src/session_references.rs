@@ -16,7 +16,6 @@ use crate::library::engine_file::{FileLibrary, SessionBibliography};
 use crate::library::{CommandError, Library, SearchResult};
 use crate::picker::ChooserOpen;
 
-const FAILED: &str = "The references could not be read. Try again.";
 pub(crate) use ibis_engine::recents::SessionReferences;
 use ibis_engine::recents::{List, Undo};
 
@@ -139,7 +138,7 @@ pub(crate) async fn session_bibliography(
     let style = style_of(&style)?;
     tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
         .await
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Copy what was shown. Prepared again from the list as it is now, and refused
@@ -173,7 +172,7 @@ pub(crate) async fn copy_session_bibliography(
         })
     })
     .await
-    .map_err(|_| CommandError::from(FAILED))??;
+    .map_err(|_| CommandError::BibliographyUnavailable)??;
     let (send, written) = std::sync::mpsc::sync_channel(1);
     let main = app.clone();
     app.run_on_main_thread(move || {
@@ -184,11 +183,11 @@ pub(crate) async fn copy_session_bibliography(
         });
         let _ = send.send(result);
     })
-    .map_err(|_| CommandError::from(FAILED))?;
+    .map_err(|_| CommandError::BibliographyUnavailable)?;
     tauri::async_runtime::spawn_blocking(move || written.recv())
         .await
-        .map_err(|_| CommandError::from(FAILED))?
-        .map_err(|_| CommandError::from(FAILED))?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Keep edits out until the write finishes; a superseded list never reaches
@@ -241,7 +240,6 @@ pub(crate) async fn export_session_bibliography(
 ) -> Result<Option<String>, CommandError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
-    const NOT_SAVED: &str = "The bibliography could not be saved. Try again.";
     let style = style_of(&style)?;
     let file = open_file(&library).ok_or(CommandError::SnapshotChanged)?;
     file.begin_bibliography(&cancel)?;
@@ -252,7 +250,7 @@ pub(crate) async fn export_session_bibliography(
     let owner = app
         .state::<ChooserOpen>()
         .begin()
-        .ok_or_else(|| CommandError::from(NOT_SAVED))?;
+        .ok_or(CommandError::BibliographyNotSaved)?;
     #[cfg(target_os = "macos")]
     crate::panel::activate_for_dialog(&app);
     let generation = app.state::<crate::picker::PickerGeneration>().current();
@@ -275,17 +273,13 @@ pub(crate) async fn export_session_bibliography(
         }),
         crate::diagnostics::NativeIssue::Window,
     );
-    let Some(chosen) = chosen.map_err(|_| CommandError::from(NOT_SAVED))? else {
+    let Some(chosen) = chosen.map_err(|_| CommandError::BibliographyNotSaved)? else {
         return Ok(None);
     };
     cancel.check().map_err(CommandError::from)?;
-    let path = chosen.into_path().map_err(|_| CommandError::from(NOT_SAVED))?;
+    let path = chosen.into_path().map_err(|_| CommandError::BibliographyNotSaved)?;
     // The dialog asked about the name it returned, not one Ibis completes.
-    let (path, replace) = if path.extension().is_some() {
-        (path, true)
-    } else {
-        (path.with_extension("rtf"), false)
-    };
+    let (path, replace) = export_path(path);
     let shown = path
         .file_name()
         .map_or_else(String::new, |name| name.to_string_lossy().into_owned());
@@ -295,20 +289,30 @@ pub(crate) async fn export_session_bibliography(
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
         let text = file.commit_session_bibliography(&items, &style, &content_hash, &cancel, |content| {
-            export_text(extension, &content).ok_or_else(|| "Save it as .rtf, .html or .txt.".to_owned())
+            export_text(extension, &content).ok_or(CommandError::BibliographyFormat)
         })?;
         cancel.check().map_err(CommandError::from)?;
-        ibis_core::settings::backup::save(&path, &text, replace).map_err(|error| {
-            CommandError::from(if error.kind() == std::io::ErrorKind::AlreadyExists {
-                "A file with that name is already there. Choose another name."
-            } else {
-                NOT_SAVED
-            })
-        })
+        save_export(&path, &text, replace)
     })
     .await
-    .map_err(|_| CommandError::from(NOT_SAVED))??;
+    .map_err(|_| CommandError::BibliographyNotSaved)??;
     Ok(Some(shown))
+}
+
+fn export_path(path: std::path::PathBuf) -> (std::path::PathBuf, bool) {
+    if path.extension().is_some() {
+        (path, true)
+    } else {
+        (path.with_extension("rtf"), false)
+    }
+}
+
+/// Save only the name the dialog confirmed; a completed extension cannot overwrite.
+fn save_export(path: &std::path::Path, text: &str, replace: bool) -> Result<(), CommandError> {
+    ibis_core::settings::backup::save(path, text, replace).map_err(|error| match error.kind() {
+        std::io::ErrorKind::AlreadyExists => CommandError::BibliographyNameTaken,
+        _ => CommandError::BibliographyNotSaved,
+    })
 }
 
 /// Apply every saved privacy change, including delayed off notifications.
@@ -350,6 +354,27 @@ pub(crate) fn manage<R: tauri::Runtime>(app: &AppHandle<R>, settings_path: &std:
 mod tests {
     use super::*;
     use ibis_core::contract::ClipboardContent;
+
+    #[test]
+    fn an_extensionless_bibliography_collision_offers_another_name() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let chosen = dir.path().join("invented-bibliography");
+        std::fs::write(chosen.with_extension("rtf"), "existing")?;
+        let (path, replace) = export_path(chosen);
+        let error = match save_export(&path, "new bibliography", replace) {
+            Err(error) => error,
+            Ok(()) => panic!("an appended extension overwrote an unconfirmed file"),
+        };
+        assert_eq!(
+            error.to_string(),
+            "A file with that name is already there. Choose another name."
+        );
+        let problem = serde_json::to_value(error)?;
+        assert_eq!(problem["recovery"]["action"], "edit-input");
+        assert_eq!(problem["message"]["id"], "app-bibliography-name-taken");
+        assert_eq!(std::fs::read_to_string(path)?, "existing");
+        Ok(())
+    }
 
     #[test]
     fn resetting_a_list_during_formatting_preserves_the_empty_list_and_clipboard()
@@ -408,7 +433,7 @@ mod tests {
         })
         .map_err(|error| error.to_string())?;
         assert_eq!(clipboard, shown.text);
-        let failed = CommandError::from("The clipboard could not be written.");
+        let failed = CommandError::ClipboardUnavailable;
         assert_eq!(
             commit_list_copy(&session, revision, || Err::<(), _>(failed.clone())),
             Err(failed)

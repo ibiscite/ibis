@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import type { BackupProblem, System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
-import { type MessageId, useInterfaceMessages } from "../i18n";
+import type { System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
+import { type MessageId, problemText, useInterfaceMessages } from "../i18n";
 import { rowDetails } from "./rows";
 import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
@@ -13,12 +13,6 @@ export type BackupApi = {
   cancelSettingsRestore: (ticket: number) => Promise<null>;
 };
 
-const PROBLEMS: Record<BackupProblem, MessageId> = {
-  "not-downloaded": "backup-problem-not-downloaded", unreadable: "backup-problem-unreadable",
-  "not-a-backup": "backup-problem-not-a-backup", "settings-file": "backup-problem-settings-file",
-  newer: "backup-problem-newer", invalid: "backup-problem-invalid", "settings-unusable": "backup-problem-settings-unusable",
-  changed: "backup-problem-changed", "not-saved": "backup-problem-not-saved",
-};
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
 const SETTINGS: Record<string, MessageId> = {
   library: "backup-setting-library", output: "citations-default",
@@ -36,9 +30,6 @@ const VALUES: Record<string, Record<string, MessageId>> = {
 /** Something to write: a changed setting, or a damaged settings file to replace. */
 const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");
 
-function problemOf(error: unknown): MessageId {
-  return typeof error === "string" && Object.hasOwn(PROBLEMS, error) ? PROBLEMS[error as BackupProblem] : "backup-problem-not-saved";
-}
 
 /** Settings › General › Another computer: a backup file out, a checked restore in (#1561).
  * A restore shows every change first; only the latest preview can be applied, and Ibis
@@ -47,7 +38,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
   const { text } = useInterfaceMessages();
   const [busy, setBusy] = useState<"backup" | "restore" | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
-  const [problem, setProblem] = useState<{ row: "backup" | "restore"; id: MessageId } | null>(null);
+  const [problem, setProblem] = useState<{ row: "backup" | "restore"; message: string } | null>(null);
   const [preview, setPreview] = useState<RestorePreview | null>(null);
   const [restarting, setRestarting] = useState(false);
   const operation = useRef(0);
@@ -92,7 +83,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
     setBusy("backup"); setProblem(null); setSaved(null);
     void api.backUpSettings()
       .then((file) => { if (current === operation.current && file) setSaved(file); })
-      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "backup", id: problemOf(error) }); })
+      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "backup", message: problemText(error, text("backup-problem-not-saved"), text) }); })
       .finally(() => { if (current === operation.current) setBusy(null); });
   };
   const choose = () => {
@@ -106,7 +97,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
         shown.current = next?.ticket ?? null;
         setPreview(next);
       })
-      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "restore", id: problemOf(error) }); })
+      .catch((error: unknown) => { if (current === operation.current) setProblem({ row: "restore", message: problemText(error, text("backup-problem-not-saved"), text) }); })
       .finally(() => { if (current === operation.current) setBusy(null); });
   };
   const restore = () => {
@@ -120,7 +111,7 @@ export function BackupRows({ api }: { api: BackupApi }) {
       .catch((error: unknown) => {
         if (current !== operation.current) return;
         setPreview(null);
-        setProblem({ row: "restore", id: problemOf(error) });
+        setProblem({ row: "restore", message: problemText(error, text("backup-problem-not-saved"), text) });
         setBusy(null);
       });
   };
@@ -128,12 +119,12 @@ export function BackupRows({ api }: { api: BackupApi }) {
   return (
     <Section id="another-computer" title={text("backup-title")}><Group>
       <Row id="backup-settings" {...rowDetails("backup-settings", text)}
-        problem={problem?.row === "backup" ? text(problem.id) : undefined}>
+        problem={problem?.row === "backup" ? problem.message : undefined}>
         <Button aria-describedby="backup-settings-description" isDisabled={busy !== null || restarting} onPress={backUp}>{text("backup-button")}</Button>
         {saved && <Note role="status">{text("backup-saved", { file: saved })}</Note>}
       </Row>
       <Row id="restore-settings" {...rowDetails("restore-settings", text)}
-        problem={problem?.row === "restore" ? text(problem.id) : undefined}>
+        problem={problem?.row === "restore" ? problem.message : undefined}>
         <Button aria-describedby="restore-settings-description" isDisabled={busy !== null || restarting} onPress={choose}>{text("restore-button")}</Button>
       </Row>
       {preview && (

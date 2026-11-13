@@ -43,3 +43,11 @@ fn a_duplicate_project_name_requests_a_new_name_instead_of_retrying_the_same_sav
     assert_eq!(problem["recovery"]["action"], "rename-project");
     assert_eq!(problem["focus"], "project-name");
 }
+
+#[test]
+fn an_omitted_reference_requires_reviewing_the_source_library() {
+    let value = serde_json::to_value(EngineError::because(ErrorCode::NotFound, ErrorReason::LibraryCutShort))
+        .unwrap_or_default();
+    assert_eq!(value["recovery"]["action"], "review-library");
+    assert_eq!(value["focus"], "source-file");
+}

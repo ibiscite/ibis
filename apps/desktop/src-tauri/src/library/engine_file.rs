@@ -133,6 +133,8 @@ pub(crate) struct ReferenceDetails {
 }
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FilePreview {
+    /// The effective output after an editor request overrides the picker.
+    pub(crate) effective_output: Option<String>,
     pub(crate) ticket: String,
     pub(crate) content_hash: String,
     pub(crate) text: String,
@@ -338,7 +340,7 @@ impl FileLibrary {
         style: &str,
         hash: &str,
         cancel: &Cancellation,
-        use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, String>,
+        use_it: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<T, CommandError>,
     ) -> Result<T, CommandError> {
         let (citation, _) = self
             .prepare_session_bibliography(ids, style, cancel)?
@@ -352,16 +354,14 @@ impl FileLibrary {
             {
                 CommandError::Cancelled
             }
-            ibis_engine::CitationCommitError::Engine(_) => {
-                CommandError::from("The bibliography could not be copied. Try again.")
-            }
+            ibis_engine::CitationCommitError::Engine(error) => CommandError::from(error),
             _ => CommandError::SnapshotChanged,
         })?;
         let content = copied
             .copy_content(citation.items().len())
             .ok_or(CommandError::SnapshotChanged)?;
         cancel.check().map_err(CommandError::from)?;
-        use_it(content).map_err(CommandError::from)
+        use_it(content)
     }
 
     pub(crate) fn open(path: &Path) -> Result<Self, super::LoadError> {
@@ -474,6 +474,7 @@ impl FileLibrary {
                 code,
                 reason: info.refresh_reason,
                 detail: None,
+                strict_cause: None,
             })
         });
         if let Some(failure) = failure {
@@ -567,6 +568,7 @@ impl FileLibrary {
                     code,
                     reason: info.refresh_reason,
                     detail: None,
+                    strict_cause: None,
                 })
             })
         {
@@ -756,10 +758,7 @@ impl FileLibrary {
         request
     }
     fn preview_cancellation(&self, reservation: u64) -> Result<Cancellation, CommandError> {
-        let latest = self
-            .latest_preview
-            .lock()
-            .map_err(|_| CommandError::from("The preview is unavailable."))?;
+        let latest = self.latest_preview.lock().map_err(|_| CommandError::NotPrepared)?;
         if latest.0 != reservation {
             return Err(CommandError::Cancelled);
         }
@@ -932,15 +931,13 @@ impl FileLibrary {
         } else {
             citation
         };
-        let mut slot = self
-            .prepared
-            .lock()
-            .map_err(|_| CommandError::from("The preview is unavailable."))?;
+        let mut slot = self.prepared.lock().map_err(|_| CommandError::NotPrepared)?;
         self.preview_cancellation(reservation)?
             .check()
             .map_err(CommandError::from)?;
         let result = citation.result();
         let preview = FilePreview {
+            effective_output: ibis_engine::outputs::named(citation.request_output()).map(|output| output.id.to_owned()),
             ticket: reservation.to_string(),
             content_hash: result.content_hash.as_str().to_owned(),
             text: result.text.clone(),
@@ -1142,9 +1139,7 @@ impl FileLibrary {
         // A newer preview cancels this one's work, a copy's included.
         let cancel = self.preview_cancellation(ticket.parse().map_err(|_| CommandError::SnapshotChanged)?)?;
         let result = self.engine.recite(&citation, &cancel).map_err(|error| match error {
-            ibis_engine::CitationCommitError::Engine(_) => {
-                CommandError::from("The citation could not be copied. Try again.")
-            }
+            ibis_engine::CitationCommitError::Engine(error) => CommandError::from(error),
             _ => CommandError::SnapshotChanged,
         })?;
         Ok(Recited {
@@ -1197,11 +1192,9 @@ impl FileLibrary {
         &self,
         ticket: &str,
         hash: &str,
-        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), String>,
+        write: impl FnOnce(ibis_core::contract::ClipboardContent<'_>) -> Result<(), CommandError>,
     ) -> Result<crate::copy::Copied, CommandError> {
-        self.copy_recited(&self.recite(ticket, hash)?, |content| {
-            write(content).map_err(CommandError::from)
-        })
+        self.copy_recited(&self.recite(ticket, hash)?, write)
     }
 }
 

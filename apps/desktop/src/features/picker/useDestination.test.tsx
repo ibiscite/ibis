@@ -46,11 +46,11 @@ test("a project's format beats the app and a failed project save keeps both old 
 });
 
 test("a failed format save keeps the project's format and says why", async () => {
-  const message = "The writing project could not be saved. Try again.";
+  const message = "The writing project or destination changed. Open the project menu again.";
   const project = { id: "thesis", name: "Thesis", output: "cite", bibliography: "refs.bib" };
   const target: PickerDestination = { ...browser, writing_project: project, writing_context: "opening-a", context_version: [1, 0] };
   const { result } = renderHook(() => useDestination({ pickerDestination: async () => target,
-    editWritingProject: async () => { throw message; } }, options()));
+    editWritingProject: async () => { throw { code: "project-changed", message: { id: "app-project-error-changed", args: {} }, recovery: { action: "reopen-project-menu" }, focus: "project-menu" }; } }, options()));
   await act(async () => result.current.read());
   await act(async () => result.current.choose("typst"));
   await waitFor(() => expect(result.current.ready).toBe(true));
@@ -496,4 +496,13 @@ test("a new read withdraws Paste at once, and a failed read leaves Copy", async 
   pickerDestination.mockRejectedValueOnce(new Error("synthetic unavailable destination"));
   await act(async () => result.current.read(false));
   expect(result.current.canPaste).toBe(false);
+});
+
+test("a typed destination refusal explains the settings failure", async () => {
+  const { result } = renderHook(() => useDestination({ pickerDestination: async () => { throw {
+    code: "settings-unreadable", message: { id: "app-settings-error-unreadable", args: {} },
+    recovery: { action: "retry" }, focus: "recovery-action",
+  }; } }, options()));
+  await act(async () => result.current.read());
+  expect(result.current.readProblem).toBe("The settings file could not be read or saved.");
 });

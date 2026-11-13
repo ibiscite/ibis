@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { SessionBibliography, SessionEdit, SessionReferencesView } from "../../api";
 import { isCancelled } from "../../api";
 import { outputName, type OutputId } from "../../format/outputs";
-import { isolate, say } from "../../i18n";
+import { isolate, problemText, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { Group, Row, Section } from "../../ui/Layout";
 import { Sheet, SheetOutput } from "../../ui/Sheet";
@@ -13,11 +13,6 @@ import { abbreviatedAuthors, tileName } from "./rows";
 type Api = Pick<typeof nativeApi, "sessionReferences" | "editSessionReferences" | "sessionBibliography" | "copySessionBibliography" | "exportSessionBibliography">;
 
 const changed = (error: unknown) => typeof error === "object" && error !== null && (error as { code?: string }).code === "snapshot_changed";
-/** Native refusals name what to do; anything else gets this sheet's own sentence. */
-const said = (error: unknown, fallback: string) => {
-  const { code, message } = typeof error === "object" && error !== null ? error as { code?: unknown; message?: unknown } : {};
-  return code === "failed" && typeof message === "string" && message ? message : fallback;
-};
 
 /** The references copied this session, editable, and their bibliography. Native
     code owns the list; each answer counts only if it is still the newest asked. */
@@ -43,7 +38,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     setBibliography(null);
     sessionBibliography(style, controller.signal).then(
       (formatted) => { if (request === formatting.current) setBibliography(formatted); },
-      (error) => { if (request === formatting.current) setProblem(said(error, say("session-not-formatted"))); });
+      (error) => { if (request === formatting.current) setProblem(problemText(error, say("session-not-formatted"))); });
   }, [sessionBibliography, style]);
   const load = useCallback((read: () => Promise<SessionReferencesView>, problem: string | null = null) => {
     formatting.current += 1;
@@ -54,7 +49,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     const request = ++listing.current;
     setProblem(problem);
     read().then((next) => { if (request === listing.current) show(next); },
-      () => { if (request === listing.current) setProblem(say("session-not-read")); });
+      (error) => { if (request === listing.current) setProblem(problemText(error, say("session-not-read"))); });
   }, [show]);
   useEffect(() => {
     load(sessionReferences);
@@ -86,7 +81,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
     pendingDelivery.current = true;
     act(controller.signal).then((done) => { if (owns() && done) setStatus(done); }, (error) => {
       if (!owns() || isCancelled(error)) return;
-      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem(said(error, failure));
+      if (changed(error)) load(sessionReferences, say("session-changed")); else setProblem(problemText(error, failure));
     });
   };
   const hash = bibliography?.content_hash;

@@ -393,7 +393,7 @@ pub(crate) fn watch_openings(app: &AppHandle) {
     });
 }
 
-fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), String> {
+fn apply(app: &AppHandle, path: Option<PathBuf>) -> Result<(), crate::library::CommandError> {
     let owner = crate::writing_projects::bibliography_owner(app)?;
     crate::writing_projects::set_bibliography(app, &owner, path)
 }
@@ -462,7 +462,7 @@ pub(crate) fn choose_project(app: AppHandle) {
 /// Stop checking. The file itself is untouched.
 #[tauri::command]
 #[ibis_desktop_macros::command]
-pub(crate) fn stop_project(app: AppHandle) -> Result<(), String> {
+pub(crate) fn stop_project(app: AppHandle) -> Result<(), crate::library::CommandError> {
     apply(&app, None)
 }
 
@@ -498,22 +498,20 @@ pub(crate) async fn copy_project_entry(
     generation: u32,
     app: AppHandle,
     library: State<'_, Mutex<Library>>,
-) -> Result<EntryCopy, String> {
-    const FAILED: &str = "The entry could not be copied.";
+) -> Result<EntryCopy, crate::library::CommandError> {
     let file = library
         .lock()
-        .map_err(|_| FAILED)?
+        .map_err(|_| crate::errors::NativeOperation::CopyProjectEntry.failure())?
         .file
         .clone()
-        .ok_or("No library is open.")?;
+        .ok_or(crate::library::CommandError::SnapshotChanged)?;
     // An identity from before the library changed names nothing now.
     let Some(id) = id.0 else {
         return Ok(EntryCopy::Changed);
     };
     let result = tauri::async_runtime::spawn_blocking(move || file.original_entry(&id))
         .await
-        .map_err(|_| FAILED)?
-        .map_err(|_| FAILED)?;
+        .map_err(|_| crate::errors::NativeOperation::CopyProjectEntry.failure())??;
     let text = match result {
         EntryResult::Entry { text, .. } => text,
         EntryResult::Refused { reason } => return Ok(reason.into()),
@@ -523,7 +521,7 @@ pub(crate) async fn copy_project_entry(
     crate::writing_projects::refresh(&app, captured.as_ref().map(|(id, _, _)| id))?;
     app.state::<ProjectBibliography>()
         .commit_generation(generation, || {
-            crate::copy::write_plain(&app, &text)?;
+            crate::copy::write_plain(&app, &text).map_err(|_| crate::library::CommandError::ClipboardUnavailable)?;
             Ok(EntryCopy::Copied)
         })
         .unwrap_or(Ok(EntryCopy::Changed))

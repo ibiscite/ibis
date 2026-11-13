@@ -205,14 +205,18 @@ pub(crate) async fn recent_references(
 ) -> Result<(SearchReply, bool, bool), super::CommandError> {
     let captured = crate::paste::last_app(&app).map(|(id, _, _)| id.normalized());
     let captured = editor.app(captured);
-    let file = library.lock().map_err(|_| "The library is unavailable.")?.file.clone();
+    let file = library
+        .lock()
+        .map_err(|_| super::CommandError::SourceNotOpened)?
+        .file
+        .clone();
     let project = project.current();
     tauri::async_runtime::spawn_blocking(move || {
         let session = app.state::<crate::session_references::SessionReferences>();
         if forget {
             session
                 .forget()
-                .map_err(|_| "Recent citations could not be forgotten. Try again.")?;
+                .map_err(|_| super::CommandError::RecentHistoryNotSaved)?;
         }
         let (ids, has_history, forget_failed) = {
             let history = session.lock();

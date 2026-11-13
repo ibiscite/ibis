@@ -220,6 +220,10 @@ fn strict_refuses_item_source_warnings_even_without_library_warnings() {
         mcp["structuredContent"]["error"]["message"]["id"],
         "reason-strict-citation"
     );
+    assert_eq!(
+        mcp["structuredContent"]["error"]["recovery"]["action"],
+        "review-library"
+    );
     assert!(mcp["structuredContent"].get("text").is_none());
 }
 
@@ -255,6 +259,8 @@ fn strict_refuses_losses_and_partial_citations_instead_of_returning_text() {
     assert_eq!(call(&engine, &request).unwrap_err().code, ErrorCode::BadInput);
     let refused = rpc(&engine, &request);
     assert_eq!(refused["error"]["data"]["reason"], "strict-citation");
+    assert_eq!(refused["error"]["data"]["strict_cause"]["kind"], "loss");
+    assert_eq!(refused["error"]["data"]["strict_cause"]["loss"]["field"], "locator");
     assert!(refused.get("result").is_none());
     let mcp = tool(
         &engine,
@@ -265,11 +271,14 @@ fn strict_refuses_losses_and_partial_citations_instead_of_returning_text() {
         mcp["structuredContent"]["error"]["message"]["id"],
         "reason-strict-citation"
     );
+    assert_eq!(mcp["structuredContent"]["error"]["recovery"]["action"], "choose-style");
+    assert_eq!(mcp["structuredContent"]["error"]["focus"], "format-picker");
     assert!(mcp["structuredContent"].get("text").is_none());
     assert!(mcp["content"][0]["text"].as_str().unwrap().contains("Strict"));
     request["items"][0].as_object_mut().unwrap().remove("locator");
     request["items"][0]["expected_cite"] = json!(ibis_core::contract::Fingerprint::of_bytes(b"changed"));
-    assert_eq!(call(&engine, &request).unwrap_err().code, ErrorCode::BadInput);
+    let refusal = rpc(&engine, &request);
+    assert_eq!(refusal["error"]["data"]["recovery"]["action"], "select-references");
 }
 
 #[test]
@@ -292,7 +301,9 @@ fn failed_sources_remain_citable_with_evidence_but_strict_refuses_them() {
         "source-unavailable"
     );
     request["strict"] = json!(true);
-    assert_eq!(call(&engine, &request).unwrap_err().code, ErrorCode::SourceUnavailable);
+    let refusal = rpc(&engine, &request);
+    assert_eq!(refusal["error"]["data"]["code"], "source-unavailable");
+    assert_eq!(refusal["error"]["data"]["recovery"]["action"], "locate-file");
 }
 
 #[test]

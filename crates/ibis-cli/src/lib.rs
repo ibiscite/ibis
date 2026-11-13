@@ -873,7 +873,7 @@ impl Failure {
     }
     /// What an agent reads when its libraries did not open. Agents never see paths.
     fn refusal(&self) -> ibis_engine::mcp::Refusal {
-        self.error.into()
+        ibis_engine::mcp::Refusal::startup(self.error)
     }
 }
 impl From<EngineError> for Failure {
@@ -2077,6 +2077,26 @@ mod tests {
     }
 
     #[test]
+    fn a_startup_timeout_keeps_its_context_and_requires_a_new_session() {
+        let failure = Failure::new(ErrorCode::SourceUnavailable, "Opening the library timed out.");
+        let mut session = ibis_engine::mcp::Session::without_libraries(failure.refusal());
+        let engine = Engine::new().unwrap_or_else(|error| panic!("{error:?}"));
+        let reply = ibis_engine::mcp::handle(&engine, &mut session, &json!({
+            "jsonrpc":"2.0", "id":1, "method":"tools/call", "params":{
+                "name":"show", "arguments":{"ref":"invented"},
+                "_meta":{"io.modelcontextprotocol/protocolVersion":ibis_engine::mcp::PROTOCOL_VERSION, "io.modelcontextprotocol/clientCapabilities":{}}
+            }
+        })).unwrap_or_default();
+        let problem = &reply["result"]["structuredContent"]["error"];
+        assert_eq!(problem["code"], "source-unavailable");
+        assert_eq!(problem["recovery"]["action"], "restart-session");
+        let words = reply["result"]["content"][0]["text"].as_str().unwrap_or_default();
+        assert!(words.contains("when this session started"), "{reply}");
+        assert!(words.contains("start a new MCP session"), "{reply}");
+        assert!(!words.contains("Try again shortly"), "{reply}");
+    }
+
+    #[test]
     fn an_agent_never_reads_the_zotero_profile_names_a_person_does() {
         let error = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::ZoteroProfileNeeded);
         let failure = zotero_open_failure(error, &["Invented Home".into(), "Invented Work".into()]);
@@ -2087,7 +2107,7 @@ mod tests {
         assert!(refusal.contains("--zotero-profile"), "{refusal}");
         // Without profile names, the agent still receives the engine diagnostic.
         let plain = zotero_open_failure(EngineError::new(ErrorCode::SourceUnavailable), &[]);
-        assert!(format!("{:?}", plain.refusal()).contains("error-source-unavailable"));
+        assert!(format!("{:?}", plain.refusal()).contains("source-unavailable"));
     }
 
     #[test]

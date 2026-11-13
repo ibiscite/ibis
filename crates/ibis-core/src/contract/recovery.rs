@@ -41,6 +41,7 @@ pub enum Recovery {
     DownloadFile,
     ChooseShortcut,
     OpenIbis,
+    RestartSession,
     None { reason: NoRecoveryReason },
 }
 
@@ -114,6 +115,24 @@ impl EngineError {
     pub fn recovery_info(self) -> RecoveryInfo {
         use FocusTarget as F;
         use Recovery as R;
+        if let Some(cause) = self.strict_cause {
+            let mut info = match cause {
+                super::StrictCause::Loss { .. } => {
+                    RecoveryInfo::new("reason-strict-citation", R::ChooseStyle, F::FormatPicker)
+                }
+                super::StrictCause::Refused { error } => error.problem().info,
+                super::StrictCause::Source { code, reason } => EngineError {
+                    reason,
+                    ..EngineError::new(code)
+                }
+                .recovery_info(),
+                super::StrictCause::SourceWarning => {
+                    RecoveryInfo::new("reason-strict-citation", R::ReviewLibrary, F::SourceFile)
+                }
+            };
+            info.message.id = "reason-strict-citation".into();
+            return info;
+        }
         if let Some(reason) = self.reason {
             // No catch-all: a new reason cannot compile without a recovery decision.
             let (recovery, focus) = match reason {
@@ -133,7 +152,7 @@ impl EngineError {
                 ErrorReason::ZoteroNeedsOpening => (R::OpenZotero, F::RecoveryAction),
                 ErrorReason::ZoteroNoSpace => (R::FreeDiskSpace, F::RecoveryAction),
                 ErrorReason::CsvTemplate | ErrorReason::UnknownFormat => (R::ChooseLibrary, F::LibraryPicker),
-                ErrorReason::LibraryCutShort => (R::ReduceSelection, F::Search),
+                ErrorReason::LibraryCutShort => (R::ReviewLibrary, F::SourceFile),
                 ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => (R::EditInput, F::Request),
             };
             return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery, focus);

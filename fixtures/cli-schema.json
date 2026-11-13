@@ -771,6 +771,18 @@
               {
                 "properties": {
                   "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -2307,6 +2319,18 @@
               {
                 "properties": {
                   "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -3681,6 +3705,18 @@
                 "properties": {
                   "action": {
                     "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
                     "type": "string"
                   }
                 },
@@ -5594,6 +5630,18 @@
               {
                 "properties": {
                   "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -7471,6 +7519,18 @@
               {
                 "properties": {
                   "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -8405,6 +8465,18 @@
               {
                 "properties": {
                   "action": {
+                    "const": "restart-session",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
                     "const": "none",
                     "type": "string"
                   },
@@ -9161,6 +9233,18 @@
                 "properties": {
                   "action": {
                     "const": "open-ibis",
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "action"
+                ],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "action": {
+                    "const": "restart-session",
                     "type": "string"
                   }
                 },

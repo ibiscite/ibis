@@ -318,13 +318,15 @@ pub(crate) async fn picker_preferences(
     tauri::async_runtime::spawn_blocking(move || {
         // In turn, so it reads every change asked for before it, and publishes
         // what it read before any later change can.
-        settings_file.exclusive(|path| {
-            let preferences = read_preferences(path)?;
-            settings_file
-                .surprises
-                .store(preferences.small_surprises.unwrap_or(true), Ordering::SeqCst);
-            Ok(preferences)
-        })?
+        settings_file
+            .exclusive(|path| {
+                let preferences = read_preferences(path)?;
+                settings_file
+                    .surprises
+                    .store(preferences.small_surprises.unwrap_or(true), Ordering::SeqCst);
+                Ok(preferences)
+            })
+            .map_err(|_| CommandError::SettingsUnavailable)?
     })
     .await
     .map_err(|_| CommandError::NotPrepared)?
@@ -486,7 +488,8 @@ impl SettingsFile {
     ) -> Result<settings::Settings, CommandError> {
         let mut preferences = preferences.into();
         if let Some(id) = output {
-            preferences.output = Some(crate::output::listed(id).ok_or("not a listed output")?);
+            preferences.output =
+                Some(crate::output::listed(id).ok_or(ibis_core::contract::CitationError::UnsupportedOutput)?);
         }
         let receipt = self.submit_preferences(preferences, |_, _| ())?;
         self.take_receipt(receipt)?
