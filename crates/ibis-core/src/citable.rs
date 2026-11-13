@@ -88,6 +88,47 @@ pub fn citable_fields(fields: &mut Map<String, Value>) {
     }
 }
 
+/// Metadata safe to share as a record. Use the citation projection first so
+/// notes, source extensions and private URLs have the same meaning everywhere.
+/// Exported values also reject embedded device references and malformed shapes
+/// that could otherwise hide arbitrary source data inside a CSL variable.
+pub fn share_fields(mut fields: Map<String, Value>) -> Map<String, Value> {
+    citable_fields(&mut fields);
+    let scalar = |value: &Value| match value {
+        Value::String(text) => !points_to_device(text),
+        Value::Number(_) | Value::Bool(_) => true,
+        _ => false,
+    };
+    fields.retain(|name, value| {
+        if NAMES.contains(&name.as_str()) {
+            let Value::Array(names) = value else { return false };
+            names.retain_mut(|name| {
+                let Value::Object(parts) = name else { return false };
+                parts.retain(|_, value| scalar(value));
+                !parts.is_empty()
+            });
+            !names.is_empty()
+        } else if DATES.contains(&name.as_str()) {
+            let Value::Object(parts) = value else { return false };
+            parts.retain(|name, value| {
+                if name == "date-parts" {
+                    value.as_array().is_some_and(|dates| {
+                        dates
+                            .iter()
+                            .all(|date| date.as_array().is_some_and(|parts| parts.iter().all(Value::is_number)))
+                    })
+                } else {
+                    scalar(value)
+                }
+            });
+            !parts.is_empty()
+        } else {
+            matches!(value, Value::String(_) | Value::Number(_)) && scalar(value)
+        }
+    });
+    fields
+}
+
 const NAME_PARTS: [&str; 9] = [
     "family",
     "given",
@@ -223,6 +264,10 @@ pub fn public_url(url: &str) -> bool {
                 .iter()
                 .any(|public| scheme.eq_ignore_ascii_case(public))
                 && !rest.is_empty()
+                && (!["http", "https", "ftp"]
+                    .iter()
+                    .any(|web| scheme.eq_ignore_ascii_case(web))
+                    || rest.starts_with("//"))
         }
         // Zotero accepts a domain without a scheme. Require a domain-shaped
         // host so relative paths and file names stay private.
@@ -251,22 +296,50 @@ fn private_host(url: &str) -> bool {
     }
     let bracketed = authority.strip_prefix('[').and_then(|rest| rest.split_once(']'));
     let host = bracketed.map_or_else(|| authority.split(':').next().unwrap_or_default(), |(host, _)| host);
-    let host = host.to_ascii_lowercase();
+    let host = host.trim_end_matches('.').to_ascii_lowercase();
     let local_name = ["localhost", "local", "internal", "lan", "home"]
         .iter()
         .any(|name| host == *name || host.ends_with(&format!(".{name}")));
+    let address = host.parse::<std::net::IpAddr>();
+    let numeric_host = host.rsplit('.').next().is_some_and(|last| {
+        !last.is_empty()
+            && (last.bytes().all(|b| b.is_ascii_digit())
+                || last
+                    .strip_prefix("0x")
+                    .is_some_and(|hex| !hex.is_empty() && hex.bytes().all(|b| b.is_ascii_hexdigit())))
+    });
     local_name
-        || host.parse::<std::net::IpAddr>().is_ok_and(|address| match address {
-            std::net::IpAddr::V4(address) => {
-                address.is_loopback() || address.is_private() || address.is_link_local() || address.is_unspecified()
-            }
-            std::net::IpAddr::V6(address) => address.is_loopback() || address.is_unspecified(),
-        })
+        // Ambiguous encoded or IDNA spellings can resolve to local hosts.
+        // Public internationalized domains can use their ASCII punycode form.
+        || !host.is_ascii()
+        || host.contains('%')
+        || url.contains("://") && !host.contains(['.', ':'])
+        // Browsers accept legacy numeric IPv4 spellings that IpAddr rejects.
+        // Refuse those instead of treating them as public DNS names.
+        || numeric_host && address.is_err()
+        || address.is_ok_and(private_address)
+}
+
+fn private_address(address: std::net::IpAddr) -> bool {
+    match address {
+        std::net::IpAddr::V4(address) => {
+            address.is_loopback() || address.is_private() || address.is_link_local() || address.is_unspecified()
+        }
+        std::net::IpAddr::V6(address) => {
+            address.is_loopback()
+                || address.is_unspecified()
+                || address.is_unique_local()
+                || address.is_unicast_link_local()
+                || address
+                    .to_ipv4_mapped()
+                    .is_some_and(|address| private_address(address.into()))
+        }
+    }
 }
 
 /// Whether text from a note points at this device anywhere in it. Notes can hold
 /// anything, and such a line is not something the person wrote to be printed.
-fn points_to_device(value: &str) -> bool {
+pub(crate) fn points_to_device(value: &str) -> bool {
     value.split_whitespace().any(|word| {
         let word = word.trim_matches(|c: char| "<>()[]{},;.\"'".contains(c));
         let bytes = word.as_bytes();

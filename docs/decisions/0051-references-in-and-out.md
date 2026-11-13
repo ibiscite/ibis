@@ -27,6 +27,21 @@ services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is goi
    review before it merges.
 3. **Add by identifier** last, through Zotero.
 
+## Offline sharing
+
+The first engine slice adds `bibtex` and `doi-links` to the output catalogue,
+through the existing `cite --format`. All record exports, including CSL-JSON,
+use `citable::share_fields`: bibliographic note overrides survive as fields;
+notes, attachments, device paths and private links do not. BibTeX is generated
+from these fields with literal escaping, never reused from an imported file.
+Missing or unsafe citation keys refuse that record. DOI links need no citation
+key, preserve identifier spelling and URL-encode reserved characters; a missing
+or unusable DOI is a named per-record refusal. The CLI prints usable records
+with a findings exit status and names refusals on stderr. Repeated selections
+export each record once. MCP continues to exclude record-sharing formats.
+The shared public-URL check rejects ambiguous numeric, encoded and non-ASCII
+hosts; internationalized public domains can use their ASCII punycode form.
+
 ## Writes
 
 Zotero first, only through Zotero 10's official local write API once Zotero 10 is

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::citation::{self, ItemSupport};
 use crate::contract::*;
 
+mod bibtex;
 pub(crate) mod escape;
 pub(crate) mod read;
 mod render;
@@ -32,6 +33,8 @@ pub enum Escaping {
     Typst,
     BareKeys,
     Json,
+    Bibtex,
+    DoiLinks,
     /// Org mode has no escape character: text that Org would read as markup is
     /// not carried, with a typed loss.
     Org,
@@ -104,7 +107,7 @@ impl SyntaxCapabilities {
 use CitationForm::{Narrative, Normal, YearOnly};
 use FieldSupport::{Flattened, Native, SingleItem, Unsupported};
 
-pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
+pub const CAPABILITIES: [SyntaxCapabilities; 21] = [
     SyntaxCapabilities {
         id: "pandoc",
         name: "Pandoc",
@@ -458,6 +461,42 @@ pub const CAPABILITIES: [SyntaxCapabilities; 19] = [
         author_suppression: Unsupported,
         escaping: Escaping::Json,
     },
+    SyntaxCapabilities {
+        id: "bibtex",
+        name: "BibTeX",
+        example: None,
+        syntax: KeySyntax::Bibtex,
+        command: None,
+        narrative: None,
+        exports_records: true,
+        zotero_items: false,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Unsupported,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::Bibtex,
+    },
+    SyntaxCapabilities {
+        id: "doi-links",
+        name: "DOI links",
+        example: None,
+        syntax: KeySyntax::DoiLinks,
+        command: None,
+        narrative: None,
+        exports_records: true,
+        zotero_items: false,
+        forms: &[Normal],
+        single_item_forms: &[],
+        locator: Unsupported,
+        prefix: &[(Normal, Unsupported)],
+        suffix: Unsupported,
+        rich_text: Unsupported,
+        author_suppression: Unsupported,
+        escaping: Escaping::DoiLinks,
+    },
     // Zotero's RTF and ODF Scan read these into live Zotero citations. They
     // name Zotero items, so `syntax::scannable` writes them, not the key path.
     SyntaxCapabilities {
@@ -695,26 +734,35 @@ fn resolve<'a>(
     owners: &HashMap<&str, Option<&ItemRef>>,
 ) -> Result<(&'a Record, &'a str, CitationForm), CitationError> {
     let form = item.form.unwrap_or(default_form);
-    let key = record
-        .citation_key()
-        .map_err(|error| match error {
-            ModelError::ConflictingCitationKeys => CitationError::ConflictingKey,
-            _ => CitationError::InvalidKey,
-        })?
-        .ok_or(CitationError::MissingKey)?;
-    if owners.get(key) != Some(&Some(&record.id)) {
-        return Err(CitationError::AmbiguousKey);
-    }
-    if key.is_empty()
-        || key.len() > 64 * 1024
-        || key
-            .chars()
-            .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}'))
-        || caps.escaping == Escaping::Latex && key.contains(['%', '#', '\\', '~', '^', '$', '&'])
-        || !escape::key_fits(caps.escaping, key)
-    {
-        return Err(CitationError::InvalidKey);
-    }
+    let key = if caps.syntax == KeySyntax::DoiLinks {
+        // DOI links identify the work without needing a citation key.
+        render::doi_link(record).ok_or(CitationError::MissingDoi)?;
+        record.id.key.as_str()
+    } else {
+        let key = record
+            .citation_key()
+            .map_err(|error| match error {
+                ModelError::ConflictingCitationKeys => CitationError::ConflictingKey,
+                _ => CitationError::InvalidKey,
+            })?
+            .ok_or(CitationError::MissingKey)?;
+        if owners.get(key) != Some(&Some(&record.id)) {
+            return Err(CitationError::AmbiguousKey);
+        }
+        if key.is_empty()
+            || key.len() > 64 * 1024
+            || key
+                .chars()
+                .any(|c| c.is_whitespace() || c.is_control() || matches!(c, ',' | '{' | '}'))
+            || caps.exports_records && crate::citable::points_to_device(key)
+            || caps.syntax == KeySyntax::Bibtex && !bibtex::valid_key(key)
+            || caps.escaping == Escaping::Latex && key.contains(['%', '#', '\\', '~', '^', '$', '&'])
+            || !escape::key_fits(caps.escaping, key)
+        {
+            return Err(CitationError::InvalidKey);
+        }
+        key
+    };
     if item
         .prefix
         .iter()

@@ -115,6 +115,7 @@ refusal-changed-item = { $reference } changed while citing.
     .agent = Search again.
     .app = Search again.
 refusal-missing-key = { $reference } has no citation key.
+refusal-missing-doi = { $reference } has no usable DOI.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
     .app = Give it one in your library, or choose a style.

@@ -2872,6 +2872,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -3113,6 +3115,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
                   "invalid-key",
@@ -3902,6 +3905,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -4356,6 +4361,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -4633,6 +4640,7 @@
                   "missing-item",
                   "changed-item",
                   "missing-key",
+                  "missing-doi",
                   "ambiguous-key",
                   "conflicting-key",
                   "invalid-key",
@@ -5422,6 +5430,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -6896,6 +6906,8 @@
               "scannable-cite",
               "keys",
               "csl-json",
+              "bibtex",
+              "doi-links",
               "cayw-json"
             ],
             "type": "string"
@@ -6922,7 +6934,7 @@
                 ]
               },
               "exports_records": {
-                "description": "It writes each reference's whole record, notes included, not a\ncitation; agents are not offered it.",
+                "description": "It shares reference metadata rather than a citation; private fields\nnever leave, and agents are not offered it.",
                 "type": "boolean"
               },
               "forms": {

@@ -1521,7 +1521,7 @@ fn run_method<R: BufRead>(
                 engine.cite_keys_checked(
                     &KeyCitationRequest {
                         keys: keys.clone(),
-                        output,
+                        output: output.clone(),
                         form,
                         strict: args.get_flag("strict"),
                         output_locale: args.get_one::<String>("locale").cloned(),
@@ -1549,7 +1549,8 @@ fn run_method<R: BufRead>(
                 _ => failed_citation_key(engine, matches, &keys, error),
             })?;
             result.value.destination = destination;
-            let result = DispatchResult::citation(result.value, keys.len())?.with_health(&result.source_health)?;
+            let result =
+                DispatchResult::citation(result.value, keys.len(), &output)?.with_health(&result.source_health)?;
             let result = writing_projects::with_check(result, writing_project)?;
             return Ok(Execution::Result(result, Some(citing)));
         }
