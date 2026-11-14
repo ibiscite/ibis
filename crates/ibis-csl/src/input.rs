@@ -856,7 +856,7 @@ mod tests {
         );
         let request = serde_json::from_value(json!({"items":[{"item":id,"locator":{"term":"page","value":"42"}}],"form":"year-only","output":{"kind":"csl","style":"invented-no-year"}})).unwrap();
         let prepared = prepare_with_style(&snapshot, &request, &Limits::default(), &style).unwrap();
-        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form"}]);
+        let refused = json!([{"outcome":"refused","item":0,"error":"unsupported-form","message":{"id":"problem-unsupported-form","args":{}},"recovery":{"action":"choose-form"},"focus":"citation-form"}]);
         assert_eq!(serde_json::to_value(&prepared.outcomes).unwrap(), refused);
     }
 
