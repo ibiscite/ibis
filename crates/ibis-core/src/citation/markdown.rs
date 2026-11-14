@@ -1,6 +1,10 @@
 use crate::contract::{CitationResult, DisplayBlockKind, DisplayRun, Script};
 
-/// Derive formatted Markdown without changing the canonical result or receipt.
+/// Derive Pandoc Markdown (Pandoc 3+, `markdown-smart`) without changing the
+/// canonical result or receipt. Uses native bracketed spans, emphasis, strong,
+/// superscript/subscript, underline and small caps; no raw HTML is needed.
+/// Entry/block/indent boundaries become paragraphs; other layout stays inline.
+/// As in canonical HTML, ASCII whitespace collapses; NBSP remains nonbreaking.
 /// The caller supplies the original request's item count, as for `copy_content`.
 /// Missing, incomplete, hash-invalid or text-inconsistent presentation yields none.
 pub fn copy_markdown(result: &CitationResult, expected_items: usize) -> Option<String> {
@@ -37,73 +41,72 @@ pub fn copy_markdown(result: &CitationResult, expected_items: usize) -> Option<S
 }
 
 fn flush(runs: &mut Vec<&DisplayRun>, paragraphs: &mut Vec<String>) {
-    // Only collapsible whitespace can disappear between paragraphs, never NBSP.
-    if runs.iter().any(|r| r.text.chars().any(|c| !c.is_ascii_whitespace())) {
-        runs.retain(|r| !r.text.is_empty());
-        let mut out = String::new();
-        for (index, run) in runs.iter().enumerate() {
-            let previous = index.checked_sub(1).and_then(|i| runs.get(i));
-            let next = runs.get(index + 1);
-            let core = run.text.trim();
-            if core.is_empty() {
-                escape(&mut out, &run.text);
-                continue;
-            }
-            let leading = run.text.len() - run.text.trim_start().len();
-            escape(&mut out, &run.text[..leading]);
-            // Delimiter runs can merge across style changes, or fail to flank
-            // punctuation inside a word. Only those emphasis boundaries use tags.
-            let html_emphasis = [previous, next]
-                .into_iter()
-                .flatten()
-                .any(|neighbor| neighbor.italic || neighbor.bold)
-                || leading == 0
-                    && core.starts_with(|c: char| !c.is_alphanumeric())
-                    && previous.is_some_and(|p| p.text.ends_with(|c: char| !c.is_whitespace()))
-                || core.len() + leading == run.text.len()
-                    && core.ends_with(|c: char| !c.is_alphanumeric())
-                    && next.is_some_and(|n| n.text.starts_with(|c: char| !c.is_whitespace()));
-            // Fixed passive tags only; source text never supplies markup or attributes.
-            let wrappers = [
-                (run.script == Script::Superscript, "<sup>", "</sup>"),
-                (run.script == Script::Subscript, "<sub>", "</sub>"),
-                (run.underline, "<u>", "</u>"),
-                (run.small_caps, "<span style=\"font-variant:small-caps;\">", "</span>"),
-                (
-                    run.bold,
-                    if html_emphasis { "<b>" } else { "**" },
-                    if html_emphasis { "</b>" } else { "**" },
-                ),
-                (
-                    run.italic,
-                    if html_emphasis { "<i>" } else { "*" },
-                    if html_emphasis { "</i>" } else { "*" },
-                ),
-            ];
-            for (_, open, _) in wrappers.iter().filter(|w| w.0) {
-                out.push_str(open);
-            }
-            escape(&mut out, core);
-            for (_, _, close) in wrappers.iter().rev().filter(|w| w.0) {
-                out.push_str(close);
-            }
-            escape(&mut out, &run.text[leading + core.len()..]);
+    let mut out = String::new();
+    let mut pending_space = false;
+    for run in runs.drain(..) {
+        let text = run.text.split_ascii_whitespace().collect::<Vec<_>>().join(" ");
+        if text.is_empty() {
+            pending_space |= !run.text.is_empty();
+            continue;
         }
+        if !out.is_empty() && (pending_space || run.text.starts_with(|c: char| c.is_ascii_whitespace())) {
+            out.push(' ');
+        }
+        write_run(&mut out, run, &text);
+        pending_space = run.text.ends_with(|c: char| c.is_ascii_whitespace());
+    }
+    if !out.is_empty() {
         paragraphs.push(out);
     }
-    runs.clear();
 }
 
-fn escape(out: &mut String, text: &str) {
+fn write_run(out: &mut String, run: &DisplayRun, text: &str) {
+    let core = text.trim();
+    if core.is_empty() {
+        escape(out, text, false);
+        return;
+    }
+    let leading = text.len() - text.trim_start().len();
+    escape(out, &text[..leading], false);
+    let styled = run.italic || run.bold || run.script != Script::Normal || run.underline || run.small_caps;
+    // A span isolates every delimiter from neighboring runs and punctuation.
+    if styled {
+        out.push('[');
+    }
+    let wrappers = [
+        (run.script == Script::Superscript, "^"),
+        (run.script == Script::Subscript, "~"),
+        (run.bold, "**"),
+        (run.italic, "*"),
+    ];
+    for (_, delimiter) in wrappers.iter().filter(|w| w.0) {
+        out.push_str(delimiter);
+    }
+    escape(out, core, run.script != Script::Normal);
+    for (_, delimiter) in wrappers.iter().rev().filter(|w| w.0) {
+        out.push_str(delimiter);
+    }
+    if styled {
+        out.push_str("]{");
+        if run.underline {
+            out.push_str(".underline ");
+        }
+        if run.small_caps {
+            out.push_str(".smallcaps");
+        }
+        out.push('}');
+    }
+    escape(out, &text[leading + core.len()..], false);
+}
+
+fn escape(out: &mut String, text: &str, script: bool) {
     for ch in text.chars() {
         match ch {
             '&' => out.push_str("&amp;"),
             '<' => out.push_str("&lt;"),
             '>' => out.push_str("&gt;"),
-            '\n' => out.push_str("&#10;"),
-            '\r' => out.push_str("&#13;"),
-            '\t' => out.push_str("&#9;"),
-            ' ' if out.is_empty() => out.push_str("&#32;"),
+            // Entities keep spaces inside native superscript/subscript.
+            ' ' if script => out.push_str("&#32;"),
             ch => {
                 if ch.is_ascii_punctuation() {
                     out.push('\\');

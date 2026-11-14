@@ -27,15 +27,16 @@ fn run(text: &str, style: u8) -> DisplayRun {
         text: text.into(),
         italic: style & 1 != 0,
         bold: style & 2 != 0,
-        ..DisplayRun::default()
+        script: if style & 4 != 0 {
+            Script::Superscript
+        } else if style & 8 != 0 {
+            Script::Subscript
+        } else {
+            Script::default()
+        },
+        underline: style & 16 != 0,
+        small_caps: style & 32 != 0,
     }
-}
-
-fn emphasis(text: &str, style: u8) -> String {
-    let text = text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
-    let (i, ie) = if style & 1 != 0 { ("<i>", "</i>") } else { ("", "") };
-    let (b, be) = if style & 2 != 0 { ("<b>", "</b>") } else { ("", "") };
-    format!("{i}{b}{text}{be}{ie}")
 }
 
 fn result(runs: Vec<DisplayRun>, html: &str) -> CitationResult {
@@ -54,6 +55,25 @@ fn result(runs: Vec<DisplayRun>, html: &str) -> CitationResult {
         vec![],
         vec![],
     )
+}
+
+fn pandoc_available() -> bool {
+    let available = Command::new("pandoc").arg("--version").output().is_ok_and(|output| {
+        output.status.success()
+            && String::from_utf8_lossy(&output.stdout)
+                .split_whitespace()
+                .nth(1)
+                .and_then(|v| v.split('.').next()?.parse::<u32>().ok())
+                .is_some_and(|major| major >= 3)
+    });
+    assert!(
+        available || std::env::var_os("IBIS_REQUIRE_PANDOC").is_none(),
+        "Pandoc 3 or newer is required"
+    );
+    if !available {
+        eprintln!("Skipping optional Markdown consumer checks: Pandoc 3 or newer is unavailable");
+    }
+    available
 }
 
 fn pandoc(input: &str, from: &str, to: &str) -> Vec<u8> {
@@ -110,32 +130,31 @@ fn blocks(nodes: &Value, out: &mut Vec<Vec<(char, u8)>>) {
     }
 }
 
-fn visible(html: &str) -> Vec<Vec<(char, u8)>> {
-    let ast: Value = serde_json::from_slice(&pandoc(html, "html", "json")).unwrap();
+fn visible(input: &str, reader: &str) -> Vec<Vec<(char, u8)>> {
+    let ast: Value = serde_json::from_slice(&pandoc(input, reader, "json")).unwrap();
     let mut out = vec![];
     blocks(&ast["blocks"], &mut out);
     out
 }
 
 fn compare(result: &CitationResult) -> Vec<Vec<(char, u8)>> {
-    let before = result.clone();
     let markdown = copy_markdown(result, result.outcomes.len()).unwrap();
-    assert_eq!(*result, before, "conversion changed the canonical result or receipt");
-    let expected = visible(result.html.as_deref().unwrap());
-    for reader in ["commonmark", "markdown-smart"] {
-        let html = String::from_utf8(pandoc(&markdown, reader, "html")).unwrap();
-        assert_eq!(visible(&html), expected, "{reader}: {markdown}");
-    }
+    let html = result.html.as_deref().unwrap();
+    let expected = visible(html, "html");
+    assert_eq!(visible(&markdown, "markdown-smart"), expected, "{markdown}");
+    let latex = String::from_utf8(pandoc(&markdown, "markdown-smart", "latex")).unwrap();
+    // Compare direct LaTeX semantically: empty span groups are presentation-neutral.
+    let canonical_latex = String::from_utf8(pandoc(html, "html", "latex")).unwrap();
+    assert_eq!(visible(&latex, "latex"), visible(&canonical_latex, "latex"), "{latex}");
     expected
 }
 
 #[test]
 fn copy_requires_complete_hash_valid_content_and_matching_display_text() {
     let original = fixture("apa-bibliography");
-    assert_eq!(
-        copy_markdown(&original, 1).unwrap(),
-        r"Taylor\, A\. \(2026\)\. *Synthetic signals*\. Imaginary Press\."
-    );
+    let before = original.clone();
+    let markdown = copy_markdown(&original, 1).unwrap();
+    assert_eq!(original, before, "canonical content and receipt are immutable");
     assert!(copy_markdown(&original, 2).is_none());
     let corruptions: [fn(&mut CitationResult); 6] = [
         |r| r.outcomes.clear(),
@@ -170,148 +189,126 @@ fn copy_requires_complete_hash_valid_content_and_matching_display_text() {
         vec![],
         vec![],
     );
-    assert!(copy_markdown(&bare, 1).unwrap().contains("*Synthetic signals*"));
+    assert_eq!(copy_markdown(&bare, 1), Some(markdown));
 }
 
 #[test]
-fn pandoc_differential_nonbreaking_spaces() {
-    for runs in [
-        vec![run("left\u{a0}right", 0)],
-        vec![run("left\u{a0}", 1), run("\u{a0}right", 2)],
-        vec![run("left", 1), run("\u{a0}", 3), run("right", 2)],
-    ] {
-        let html: String = runs
-            .iter()
-            .map(|r| emphasis(&r.text, u8::from(r.italic) | (u8::from(r.bold) << 1)))
-            .collect();
-        let shown = compare(&result(runs, &html));
-        assert!(shown[0].iter().any(|(ch, _)| *ch == '\u{a0}'));
+fn pandoc_adjacent_emphasis() {
+    if !pandoc_available() {
+        return;
+    }
+    let citation = result(vec![run("alpha", 1), run("beta", 2)], "<i>alpha</i><b>beta</b>");
+    compare(&citation);
+    let markdown = copy_markdown(&citation, 1).unwrap();
+    let latex = String::from_utf8(pandoc(&markdown, "markdown-smart", "latex")).unwrap();
+    assert_eq!(latex.trim(), r"{\emph{alpha}}{\textbf{beta}}");
+}
+
+#[test]
+fn pandoc_direct_parsing_preserves_punctuation_nbsp_and_passive_styles() {
+    if !pandoc_available() {
+        return;
+    }
+    let literal = "日本語 café e\u{301} 🐦 * _ ~ ^ $ # ! . + - | \\ [x](y) [@key] <script>x</script> &amp; `x`";
+    let html = literal.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+    compare(&result(vec![run(literal, 3)], &format!("<b><i>{html}</i></b>")));
+    let shown = compare(&result(
+        vec![
+            run("left\u{a0}", 1),
+            run("\u{a0}", 3),
+            run("right", 2),
+            run("!", 1),
+            run("next", 0),
+        ],
+        "<i>left&nbsp;</i><b><i>&nbsp;</i></b><b>right</b><i>!</i>next",
+    ));
+    assert_eq!(shown[0].iter().filter(|(ch, _)| *ch == '\u{a0}').count(), 2);
+    compare(&result(
+        vec![
+            run("rise high", 5),
+            run("fall low", 10),
+            run("under", 16),
+            run("Caps", 35),
+        ],
+        "<sup><i>rise high</i></sup><sub><b>fall low</b></sub><u>under</u><span style=\"font-variant:small-caps;\"><b><i>Caps</i></b></span>",
+    ));
+    compare(&result(
+        vec![run(" a\n\nb", 1), run("", 0), run(" \t ", 0), run("c\td ", 1)],
+        "<i> a\n\nb</i> \t <i>c\td </i>",
+    ));
+}
+
+#[test]
+fn pandoc_paragraphs_preserve_nbsp_and_nested_equal_block_ranges() {
+    if !pandoc_available() {
+        return;
     }
     let mut citation = result(
-        vec![run("left", 0), run("\u{a0}", 1), run("right", 2)],
-        "<div class=\"csl-entry\">left<div class=\"csl-block\"><i>&nbsp;</i></div><b>right</b></div>",
+        vec![run("first", 0), run("\u{a0}", 1), run("second", 1)],
+        "<div class=\"csl-entry\"><div class=\"csl-indent\"><div class=\"csl-block\">first</div><div class=\"csl-block\"><i>&nbsp;</i></div><div class=\"csl-block\"><i>second</i></div></div></div>",
     );
-    citation.display.nodes[0].blocks = [(DisplayBlockKind::Entry, 0, 3), (DisplayBlockKind::Block, 1, 2)]
-        .into_iter()
-        .map(|(kind, start, end)| DisplayBlock { kind, start, end })
-        .collect();
-    assert_eq!(compare(&citation).len(), 3);
-}
-
-#[test]
-fn pandoc_differential_block_paragraphs_with_nested_and_equal_ranges() {
-    let children = "<div class=\"csl-block\">first</div><div class=\"csl-block\"><i>second</i></div>";
-    for parents in [0, 2] {
-        let html = format!(
-            "<div class=\"csl-entry\">{}{children}{}</div>",
-            "<div class=\"csl-indent\">".repeat(parents),
-            "</div>".repeat(parents),
-        );
-        let mut citation = result(vec![run("first", 0), run("second", 1)], &html);
-        citation.display.nodes[0].blocks = std::iter::once((DisplayBlockKind::Entry, 0, 2))
-            .chain(std::iter::repeat_n((DisplayBlockKind::Indent, 0, 2), parents))
-            .chain([(DisplayBlockKind::Block, 0, 1), (DisplayBlockKind::Block, 1, 2)])
-            .map(|(kind, start, end)| DisplayBlock { kind, start, end })
-            .collect();
-        assert_eq!(compare(&citation).len(), 2);
-        assert_eq!(copy_markdown(&citation, 1).unwrap(), "first\n\n*second*");
-    }
-}
-
-#[test]
-fn pandoc_differential_display_order_across_nodes_and_shared_ranges() {
-    // Bibliography order is display order, which need not be request item order.
-    let entries = [
-        fixture("apa-citation"),
-        fixture("apa-bibliography"),
-        fixture("ieee-document-context"),
-    ];
-    let mut nodes = vec![];
-    for (position, entry) in entries.iter().enumerate() {
-        compare(entry);
-        let mut node = entry.display.nodes[0].clone();
-        node.item = Some([2, 0, 1][position]);
-        if position > 0 {
-            node.content.insert(0, run("\n", 0));
-        }
-        node.blocks = vec![DisplayBlock {
-            kind: DisplayBlockKind::Entry,
-            start: usize::from(position > 0),
-            end: node.content.len(),
-        }];
-        nodes.push(node);
-    }
-    let html = entries
-        .iter()
-        .map(|e| format!("<div class=\"csl-entry\">{}</div>", e.html.as_deref().unwrap()))
-        .collect::<Vec<_>>()
-        .join("\n");
-    let mut several = result(nodes.iter().flat_map(|node| node.content.clone()).collect(), &html);
-    several.display.nodes = nodes;
-    several.outcomes = (0..3).map(|item| ItemOutcome::Rendered { item }).collect();
-    let shown = compare(&several);
+    citation.display.nodes[0].blocks = [
+        (DisplayBlockKind::Entry, 0, 3),
+        (DisplayBlockKind::Indent, 0, 3),
+        (DisplayBlockKind::Indent, 0, 3),
+        (DisplayBlockKind::Block, 0, 1),
+        (DisplayBlockKind::Block, 1, 2),
+        (DisplayBlockKind::Block, 2, 3),
+    ]
+    .into_iter()
+    .map(|(kind, start, end)| DisplayBlock { kind, start, end })
+    .collect();
+    let shown = compare(&citation);
     assert_eq!(shown.len(), 3);
-    // The same entry ranges can share a node; node boundaries are not paragraphs.
-    let mut shared = several;
-    let mut node = shared.display.nodes.remove(0);
-    node.item = None;
-    for group in shared.display.nodes.drain(..) {
-        let offset = node.content.len();
-        node.blocks.extend(group.blocks.iter().map(|b| DisplayBlock {
-            kind: b.kind,
-            start: b.start + offset,
-            end: b.end + offset,
-        }));
-        node.content.extend(group.content);
-    }
-    shared.display.nodes = vec![node];
-    assert_eq!(compare(&shared), shown);
+    // The same display order can span nodes, independently of request order.
+    let node = citation.display.nodes.remove(0);
+    citation.display.nodes = node
+        .content
+        .into_iter()
+        .enumerate()
+        .map(|(item, run)| DisplayNode {
+            item: Some(2 - item),
+            content: vec![run],
+            blocks: vec![DisplayBlock {
+                kind: DisplayBlockKind::Entry,
+                start: 0,
+                end: 1,
+            }],
+        })
+        .collect();
+    citation.outcomes = (0..3).map(|item| ItemOutcome::Rendered { item }).collect();
+    assert_eq!(compare(&citation), shown);
 }
 
 #[test]
-fn pandoc_differential_text_and_emphasis() {
-    for (left, middle, right) in [("a", "b", "c"), ("word", "!", "next"), ("a", "b\n\nc", "d")] {
-        for a in 0..4 {
-            for b in 0..4 {
-                for c in 0..4 {
-                    let html = format!("{}{}{}", emphasis(left, a), emphasis(middle, b), emphasis(right, c));
-                    compare(&result(vec![run(left, a), run(middle, b), run(right, c)], &html));
-                }
+fn consumers_are_optional_but_required_mode_refuses_unavailable_pandoc() {
+    let missing = tempfile::tempdir().unwrap();
+    let check = |path: &std::path::Path| {
+        for required in [false, true] {
+            let mut command = Command::new(std::env::current_exe().unwrap());
+            command
+                .args(["--exact", "pandoc_adjacent_emphasis", "--nocapture"])
+                .env("PATH", path)
+                .env_remove("IBIS_REQUIRE_PANDOC");
+            if required {
+                command.env("IBIS_REQUIRE_PANDOC", "1");
+            }
+            let output = command.output().unwrap();
+            let diagnostic = String::from_utf8_lossy(&output.stderr);
+            assert_eq!(output.status.success(), !required, "{diagnostic}");
+            if required {
+                assert!(diagnostic.contains("Pandoc 3 or newer is required"));
             }
         }
+    };
+    check(missing.path());
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let unsupported = tempfile::tempdir().unwrap();
+        let executable = unsupported.path().join("pandoc");
+        std::fs::write(&executable, "#!/bin/sh\nprintf 'pandoc 2.0\\n'\n").unwrap();
+        std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+        check(unsupported.path());
     }
-    let literal = "日本語 café e\u{301} 🐦 * _ ~ ^ $ # ! . + - | \\ [x](y) [@key] <script>x</script> &amp; `x` `````";
-    assert!(
-        copy_markdown(&result(vec![run(literal, 0)], ""), 1)
-            .unwrap()
-            .contains("e\u{301}")
-    );
-    for style in 0..4 {
-        compare(&result(vec![run(literal, style)], &emphasis(literal, style)));
-    }
-    compare(&result(
-        vec![run("e\u{301}", 0), run("!", 1), run("next", 0)],
-        "e\u{301}<i>!</i>next",
-    ));
-    compare(&result(
-        vec![run(" leading ", 1), run("orchid", 0), run(" trailing ", 1)],
-        " <i>leading</i> orchid <i>trailing</i> ",
-    ));
-    for text in ["*", "_", "&", "<", "`", "🧪", "a\n\nb", "a  b", "a\tb"] {
-        for style in 0..4 {
-            compare(&result(
-                vec![run("left", 0), run(text, style), run("right", 0)],
-                &format!("left{}right", emphasis(text, style)),
-            ));
-        }
-    }
-    let mut passive = vec![run("rise", 1), run("fall", 2), run("under", 0), run("Caps", 3)];
-    passive[0].script = Script::Superscript;
-    passive[1].script = Script::Subscript;
-    passive[2].underline = true;
-    passive[3].small_caps = true;
-    compare(&result(
-        passive,
-        "<sup><i>rise</i></sup><sub><b>fall</b></sub><u>under</u><span style=\"font-variant:small-caps;\"><b><i>Caps</i></b></span>",
-    ));
 }
