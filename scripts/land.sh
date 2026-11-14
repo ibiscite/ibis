@@ -144,7 +144,7 @@ trap 'code=$?; printf "IBIS_GATE_END %s %s\n" "$sha" "$code"' EXIT
 trap 'code=$?; printf "FAILED (%s): %s\n" "$code" "$BASH_COMMAND"' ERR
 cd "$HOME/Code/ibis"
 exec 9>.git/ibis-local-gate.lock
-flock -n 9 || { echo 'error: another Ubuntu gate owns the checkout/target'; exit 1; }
+flock -w 3600 9 || { echo 'error: another Ubuntu gate held the checkout for an hour'; exit 1; }
 status=$(git status --porcelain --untracked-files=all)
 [ -z "$status" ] || { echo 'error: Ubuntu checkout is dirty'; exit 1; }
 git fetch -q origin "refs/heads/$branch"
