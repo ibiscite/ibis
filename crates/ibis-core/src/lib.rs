@@ -7,6 +7,7 @@ pub mod command_install;
 pub mod contract;
 pub mod destination;
 pub mod identifier;
+pub mod library_match;
 pub mod locator;
 pub mod model;
 pub mod panic_guard;

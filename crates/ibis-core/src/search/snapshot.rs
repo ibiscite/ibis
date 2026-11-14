@@ -8,6 +8,7 @@ use super::{
 use crate::{
     contract::*,
     identifier,
+    library_match::{Candidate, EntryMatch},
     model::{Name, strip_markup},
     scan::{Stopped, Work},
 };
@@ -23,8 +24,9 @@ pub struct RecordHit<'a> {
     pub partial: bool,
 }
 
-/// Exact matches in paste order, with unmatched explicit citation keys.
+/// Per-entry exact outcomes, alongside the deduplicated search projection.
 pub struct PastedList<'a> {
+    pub entries: Vec<EntryMatch<'a>>,
     pub hits: Vec<RecordHit<'a>>,
     pub missing: Vec<String>,
 }
@@ -229,21 +231,47 @@ impl SnapshotIndex {
                 pasted::Entry::Identifier { value, .. } => identifiers.entry(value.clone()).or_default().push(n),
             }
         }
-        let mut matches = vec![Vec::new(); parsed.entries.len()];
-        let mut matched = vec![false; parsed.entries.len()];
-        // One snapshot pass, independent of the number of pasted entries.
-        for (n, record) in self.entries.iter().enumerate() {
+        let mut entries: Vec<_> = parsed
+            .entries
+            .iter()
+            .map(|entry| EntryMatch {
+                text: entry.text().to_owned(),
+                candidates: Vec::new(),
+            })
+            .collect();
+        let mut attachments: BTreeMap<&ItemRef, Vec<&Attachment>> = BTreeMap::new();
+        let mut records = self.entries.iter().peekable();
+        // One snapshot pass resolves entries and collects attachment metadata.
+        for (n, item) in self.snapshot.objects().iter().enumerate() {
             if n % super::STOP_CHECK_INTERVAL == 0 && stop() {
                 return None;
             }
+            if let LibraryObject::Attachment(attachment) = &item.object
+                && matches!(
+                    attachment.media_type.as_str(),
+                    "application/pdf" | "text/html" | "application/xhtml+xml"
+                )
+                && let Some(parent) = &attachment.parent
+            {
+                attachments.entry(parent).or_default().push(attachment);
+            }
+            let Some(record) = records.next_if(|record| record.position == n) else {
+                continue;
+            };
             if !in_scope(record, scope) {
                 continue;
             }
-            let mut first = None;
             let mut mark = |entry: usize, field| {
-                matched[entry] = true;
-                if first.is_none_or(|(previous, _)| entry < previous) {
-                    first = Some((entry, field));
+                let candidates = &mut entries[entry].candidates;
+                if candidates
+                    .last()
+                    .is_none_or(|candidate| candidate.item.object.id() != &record.record.id)
+                {
+                    candidates.push(Candidate {
+                        item,
+                        matched: field,
+                        attachments: Vec::new(),
+                    });
                 }
             };
             for key in &record.record.keys {
@@ -264,20 +292,16 @@ impl SnapshotIndex {
                     );
                 }
             }
-            // Retain each record only once, even if every pasted entry names it.
-            if let Some((entry, field)) = first {
-                matches[entry].push((n, field));
-            }
         }
         // Exact raw keys keep their interpretation even when followed by a
         // strict identifier. Only unmatched raw tokens may become identifiers;
         // a key that itself looks like a DOI still wins over the DOI record.
-        if raw && matched.iter().any(|matched| !matched) {
-            for (entry, matched) in parsed.entries.iter_mut().zip(&matched) {
+        if raw && entries.iter().any(|entry| entry.candidates.is_empty()) {
+            for (entry, outcome) in parsed.entries.iter_mut().zip(&entries) {
                 if stop() {
                     return None;
                 }
-                if !matched {
+                if outcome.candidates.is_empty() {
                     let pasted::Entry::Key {
                         value: std::borrow::Cow::Borrowed(text),
                         ..
@@ -294,14 +318,15 @@ impl SnapshotIndex {
             return self.resolve_list(parsed, scope, stop, false);
         }
         let mut hits = Vec::new();
+        let mut seen = BTreeSet::new();
         let mut missing = Vec::new();
         let mut missing_keys = BTreeSet::new();
         let mut missing_identifiers = BTreeSet::new();
-        for (position, (entry, found)) in parsed.entries.iter().zip(matches).enumerate() {
+        for (entry, outcome) in parsed.entries.iter().zip(&mut entries) {
             if stop() {
                 return None;
             }
-            if !matched[position] {
+            if outcome.candidates.is_empty() {
                 if !entry.explicit() {
                     return Some(None);
                 }
@@ -315,17 +340,24 @@ impl SnapshotIndex {
                     missing.push(entry.text().to_owned());
                 }
             }
-            for (n, field) in found {
-                hits.push(RecordHit {
-                    item: &self.snapshot.objects()[self.entries[n].position],
-                    score: 3000,
-                    matched: vec![field],
-                    typo: false,
-                    partial: false,
-                });
+            for candidate in &mut outcome.candidates {
+                if stop() {
+                    return None;
+                }
+                candidate.attachments = attachments.get(candidate.item.object.id()).cloned().unwrap_or_default();
+                // Search emits a record only at its first matching occurrence.
+                if seen.insert(candidate.item.object.id()) {
+                    hits.push(RecordHit {
+                        item: candidate.item,
+                        score: 3000,
+                        matched: vec![candidate.matched],
+                        typo: false,
+                        partial: false,
+                    });
+                }
             }
         }
-        Some(Some(PastedList { hits, missing }))
+        Some(Some(PastedList { entries, hits, missing }))
     }
     /// Scope and identifiers are applied before limits; cancelled searches return no partial list.
     pub fn search(
