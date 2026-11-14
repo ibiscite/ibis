@@ -102,7 +102,7 @@ fn doi_links_preserve_identifier_spelling_encode_url_delimiters_and_name_missing
         assert_eq!(result["text"], "");
         assert_eq!(
             result["outcomes"],
-            json!([{"outcome":"refused","item":0,"error":"missing-doi"}])
+            json!([{"outcome":"refused","item":0,"error":"missing-doi","message":{"id":"problem-missing-doi","args":{}},"recovery":{"action":"choose-form"},"focus":"citation-form"}])
         );
     }
 }

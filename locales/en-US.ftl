@@ -1391,6 +1391,7 @@ problem-formatter-unavailable = The citation could not be written just now.
 problem-annotation-mismatch = This annotation belongs to another reference.
 problem-not-citable = This item cannot be cited as a reference.
 problem-not-from-zotero = This reference was not read from Zotero.
+problem-missing-doi = A selected reference has no DOI. Share it as BibTeX instead.
 
 ## Native command failures.
 app-failure-cli-status = The command line setup could not be read.
