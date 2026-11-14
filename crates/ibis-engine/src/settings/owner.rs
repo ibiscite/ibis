@@ -354,8 +354,12 @@ impl Owner {
     /// Restores exactly the previewed settings, preserving this device's state.
     pub fn restore(&self, plan: &super::backup::Plan) -> Result<Settings, super::backup::BackupError> {
         self.in_turn(|path| {
+            let mut plan = plan.clone();
+            // A portable restore cannot choose lookup consent. The restore's
+            // locked current-settings comparison also checks this choice.
+            plan.restored.device.online_lookup = plan.current.device.online_lookup;
             path.map_err(super::backup::BackupError::from)
-                .and_then(|path| super::backup::restore(path, plan))
+                .and_then(|path| super::backup::restore(path, &plan))
         })
         .map_err(|error| match error {
             super::backup::BackupError::Settings(problem) => super::backup::BackupError::Current(problem),

@@ -408,6 +408,10 @@ pub struct Device {
     /// person has not been asked yet; nothing is checked until they say yes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub update_checks: Option<bool>,
+    /// Online lookup (decision 0008). `None` means unasked/off. This switch
+    /// never approves a lookup's first-use disclosure; read via [`Loaded::online_lookup`].
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub online_lookup: Option<bool>,
     /// Frames explicitly dragged by the person, indexed by display.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub picker_windows: BTreeMap<String, PickerWindow>,
@@ -550,6 +554,17 @@ impl From<&Settings> for Interface {
     }
 }
 impl Loaded {
+    /// The lookup choice from usable primary settings only. Only `Some(true)`
+    /// permits lookup; recovery and failed reads remain unasked/off.
+    /// Use this same projection in owner reads and outside-edit observations.
+    pub fn online_lookup(&self) -> Option<bool> {
+        if self.primary_read == PrimaryRead::Present && !self.from_backup && self.problem.is_none() {
+            self.settings.device.online_lookup
+        } else {
+            None
+        }
+    }
+
     /// Only a primary read may supply settings to citation and native effects.
     pub fn cites(&self) -> Result<&Settings, &SettingsError> {
         self.problem.as_ref().map_or(Ok(&self.settings), Err)
@@ -705,7 +720,7 @@ fn load_bytes(path: &Path, primary: io::Result<Vec<u8>>) -> Loaded {
                 .and_then(|text| parse(&text));
             let from_backup = backup.is_ok();
             let mut problem = Some(problem);
-            let settings = backup.unwrap_or_else(|error| {
+            let mut settings = backup.unwrap_or_else(|error| {
                 if primary_read == PrimaryRead::Missing {
                     let absent = matches!(&error, SettingsError::Unreadable(e) if e.kind() == io::ErrorKind::NotFound)
                         && fs::symlink_metadata(&backup_path).is_err_and(|e| e.kind() == io::ErrorKind::NotFound);
@@ -713,6 +728,9 @@ fn load_bytes(path: &Path, primary: io::Result<Vec<u8>>) -> Loaded {
                 }
                 Settings::default()
             });
+            // Recovery may later become a primary through explicit repair.
+            // Keep presentation choices, but never promote an old opt-in.
+            settings.device.online_lookup = None;
             Loaded {
                 settings,
                 problem,
