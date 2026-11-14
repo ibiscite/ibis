@@ -112,7 +112,7 @@ test("reopening replaces unfinished preview work but preserves a settled canonic
   unmount();
 });
 
-const conflictMessage = "This reference has conflicting citation keys.";
+const conflictMessage = "This reference has conflicting citation keys. Keep one in your library, or choose a style.";
 const conflictFailure = { code: "conflicting-key", message: { id: "problem-conflicting-key", args: {} }, recovery: { action: "choose-style" }, focus: "format-picker" };
 
 test("returning from B to A waits for a fresh ticket instead of reusing A's retired receipt", async () => {

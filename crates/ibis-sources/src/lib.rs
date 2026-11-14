@@ -11,7 +11,6 @@ mod urls;
 pub mod zotero;
 
 use std::collections::BTreeMap;
-use std::path::PathBuf;
 
 use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
 use schemars::JsonSchema;
@@ -20,8 +19,7 @@ use serde::{Deserialize, Serialize};
 pub use csl_json::{RequestRecords, request_records};
 pub use file::{
     MAX_LIBRARY_BYTES, SourceError, SourceSnapshot, SourceWatch, inspect_io, library_file_extensions, load_file,
-    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing,
-    reload_file_snapshot_reusing,
+    load_file_snapshot, names_a_library, original_entry, reload_file, reload_file_reusing, reload_file_snapshot,
 };
 
 // Real bibliographies reach 100,000 entries (#1251). Memory follows file size
@@ -235,7 +233,6 @@ pub struct LoadedLibrary {
     /// so a lookup can say why the key selects nothing. Warnings themselves
     /// carry no source text beyond duplicate keys; this never serializes.
     pub damaged_keys: BTreeMap<String, SourceWarning>,
-    attachment_paths: BTreeMap<ItemRef, PathBuf>,
 }
 impl std::fmt::Debug for LoadedLibrary {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -246,13 +243,6 @@ impl std::fmt::Debug for LoadedLibrary {
             .finish_non_exhaustive()
     }
 }
-impl LoadedLibrary {
-    /// Number of privately resolved attachment locations, without exporting them.
-    pub fn local_attachment_count(&self) -> usize {
-        self.attachment_paths.len()
-    }
-}
-
 #[derive(Default)]
 struct ParsedLibrary {
     records: Vec<Record>,

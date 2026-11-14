@@ -14,8 +14,8 @@ const pageMessage = "Reference 1: Page needs a page or range. Enter one after th
 
 afterEach(resetApp);
 
-const pageFailure = { code: "invalid-locator", message: { id: "app-command-page-missing", args: { number: "1", label: "Page" } }, recovery: { action: "edit-citation" }, focus: "locator" };
-const formFailure = { code: "unsupported-form", message: { id: "app-command-unsupported-form", args: { number: "1", form: "Name in the sentence" } }, recovery: { action: "choose-form" }, focus: "citation-form" };
+const pageFailure = { code: "page-missing", message: { id: "app-command-page-missing", args: { number: "1", label: "Page" } }, recovery: { action: "edit-locator" }, focus: "locator" };
+const formFailure = { code: "unsupported-form", message: { id: "problem-unsupported-form", args: { reference: "Reference 1", output: "Pandoc", form: "Name in the sentence" } }, recovery: { action: "choose-form" }, focus: "citation-form" };
 test("the surface guard ignores the reader HUD but catches a second registered surface", async () => {
   backend({ search: () => [result("a", "Invented work")] });
   const book = inventedSource();
@@ -74,7 +74,7 @@ test("closing slow inspector formatting lets citation B finish before the abando
 });
 
 test("explicit arrows still reveal another result while a built citation is refused", async () => {
-  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group.";
+  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.";
   backend({ search: () => [result("a", "First invented work"), result("b", "Second invented work")],
     preview_file_citation: () => { throw formFailure; },
   });
@@ -303,7 +303,7 @@ test.each(["pointer", " ", "ArrowDown"])("a token activated with %s opens its de
 });
 
 test("actionable refusals remain visible until corrected", async () => {
-  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group.";
+  const message = "Reference 1: Name in the sentence cannot be expressed in this output or group. Choose Name in brackets, cite it alone, or choose another output.";
   const calls = backend({ search: () => [result("a", "Synthetic work")],
     preview_file_citation: ({ items }) => {
       if (items[0]?.form === "narrative") throw formFailure;

@@ -511,7 +511,6 @@ fn remote_and_ambiguous_attachment_locations_never_become_local_paths() -> Resul
         r#"[{"id":"one","type":"book","file":"https://example.invalid/synthetic.pdf;\\\\synthetic.invalid\\share\\file.pdf;ambiguous:thing:else"}]"#,
     )?;
     let loaded = ibis_sources::load_file(&path)?;
-    assert_eq!(loaded.local_attachment_count(), 0);
     let states: Vec<_> = loaded
         .snapshot
         .objects()

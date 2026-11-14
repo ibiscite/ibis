@@ -637,11 +637,7 @@ fn refusal(error: CitationError, label: &str, output: &str, form: CitationForm, 
         ("options", flags),
         ("limit", &limit),
     ];
-    match error {
-        CitationError::UnsupportedForm if form != "normal" => cli("cli-form-refused", &args),
-        CitationError::UnsupportedForm if !flags.is_empty() => cli("cli-options-refused", &args),
-        error => catalogue::sentence("refusal", error, Audience::Cli, &args),
-    }
+    catalogue::citation(error, Audience::Cli, &args)
 }
 
 /// One of the command line's own sentences from the catalogue.

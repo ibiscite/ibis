@@ -125,6 +125,7 @@ pub(super) fn source_error(error: SourceError) -> EngineError {
         SourceError::Missing => return EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile),
         SourceError::UnknownFormat => return EngineError::because(ErrorCode::BadInput, ErrorReason::UnknownFormat),
         SourceError::CsvTemplate => return EngineError::because(ErrorCode::BadInput, ErrorReason::CsvTemplate),
+        SourceError::Cancelled => ErrorCode::Cancelled,
         SourceError::TooLarge => ErrorCode::ResourceLimit,
         SourceError::NotRegular | SourceError::Unreadable | SourceError::Incomplete | SourceError::InvalidData => {
             ErrorCode::BadInput
@@ -323,7 +324,8 @@ impl Engine {
             .lock()
             .map_err(|_| error(ErrorCode::Internal))?;
         let path = std::path::absolute(path).map_err(|_| error(ErrorCode::BadInput))?;
-        let (loaded, observation) = ibis_sources::load_file_snapshot(&path).map_err(source_error)?;
+        let (loaded, observation) =
+            ibis_sources::load_file_snapshot(&path, &|| cancel.is_cancelled()).map_err(source_error)?;
         let source = observation.source_path().to_path_buf();
         cancel.check()?;
         self.install_file(path, loaded, Some(observation), cancel)?;
@@ -367,7 +369,8 @@ impl Engine {
         };
         let read = (|| {
             let (loaded, observation) =
-                ibis_sources::reload_file_snapshot_reusing(&path, base.index.snapshot()).map_err(source_error)?;
+                ibis_sources::reload_file_snapshot(&path, Some(base.index.snapshot()), &|| cancel.is_cancelled())
+                    .map_err(source_error)?;
             cancel.check()?;
             let library = loaded.library.clone();
             let mut next = State::replacement(&base, vec![(info(&loaded), &loaded.snapshot)], |old| {
