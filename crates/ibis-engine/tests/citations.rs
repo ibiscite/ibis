@@ -567,3 +567,64 @@ fn citation_and_bibliography_delivery_allow_metadata_updates_and_refuse_changed_
         assert!(checked.check(&engine).is_err(), "bibliography={bibliography}");
     }
 }
+
+#[test]
+fn bibliography_copy_refuses_when_a_selected_absent_record_is_restored() {
+    let engine = engine();
+    let snapshot = engine.snapshot().unwrap();
+    let present = snapshot.objects()[0].object.clone();
+    let mut restored = present.clone();
+    let LibraryObject::Record(record) = &mut restored else {
+        panic!("record")
+    };
+    record.id.key = "restored-invented-record".into();
+    record.csl.insert("title".into(), json!("Restored invented reference"));
+    let library = record.id.library.clone();
+    let ids = vec![present.id().clone(), record.id.clone()];
+    let shown = engine
+        .citations()
+        .bibliography(
+            SessionId::PICKER,
+            ids.clone(),
+            "apa".into(),
+            Cancellation::default(),
+            false,
+        )
+        .unwrap()
+        .run()
+        .unwrap()
+        .unwrap();
+    assert!(!shown.text.contains("Restored invented reference"));
+    // The absent selection is harmless while it stays absent.
+    assert!(
+        engine
+            .citations()
+            .commit_bibliography(
+                SessionId::PICKER,
+                &ids,
+                "apa",
+                &shown.content_hash,
+                &Cancellation::default(),
+            )
+            .is_ok()
+    );
+    engine
+        .publish_library(
+            library,
+            ibis_engine::LibraryKind::Snapshot,
+            Arc::new(Snapshot::new(vec![present, restored]).unwrap()),
+        )
+        .unwrap();
+    let error = engine
+        .citations()
+        .commit_bibliography(
+            SessionId::PICKER,
+            &ids,
+            "apa",
+            &shown.content_hash,
+            &Cancellation::default(),
+        )
+        .err()
+        .unwrap();
+    assert_eq!(error.problem(), CitationError::ChangedItem.problem());
+}

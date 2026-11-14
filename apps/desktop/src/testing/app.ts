@@ -1,4 +1,4 @@
-import { citationDisplay } from "../test-fixtures";
+import { citationDisplay, citationPreview } from "../test-fixtures";
 // The lightweight mocked Rust side and shared steps for whole-picker tests.
 // For clipboard/document outcomes and reordered workers, use ./delivery instead.
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
@@ -154,7 +154,7 @@ let receiptNumber = 0;
 /** A synthetic engine result. Tests choose output; no renderer runs in the browser. */
 export function receipt(text: string, html: string | null = null, warnings: string[] = []): Preview {
   const number = ++receiptNumber;
-  return { effective_output: null, ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, text, html, warnings, display: citationDisplay([{ item: 0, text }]) };
+  return citationPreview([{ item: 0, text }], { ticket: `synthetic-ticket-${number}`, content_hash: `synthetic-hash-${number}`, html, warnings });
 }
 
 /** A synthetic result with each reference's own words as its own token, joined by "; ". */

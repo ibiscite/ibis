@@ -84,10 +84,9 @@ struct SessionState {
     running_bibliography: Mutex<Cancellation>,
 }
 struct BibliographyReceipt {
-    ids: Vec<ItemRef>,
+    selection: Box<[(ItemRef, Option<Fingerprint>)]>,
     style: String,
     citation: Arc<PreparedCitation>,
-    fingerprints: Vec<(ItemRef, Fingerprint)>,
 }
 struct Worker {
     engine: Engine,
@@ -384,15 +383,22 @@ impl Citations<'_> {
         let (citation, snapshot) = {
             let held = worker.bibliography.lock().map_err(|_| SessionError::SnapshotChanged)?;
             let held = held.as_ref().ok_or(SessionError::SnapshotChanged)?;
-            if held.ids != items || held.style != style || held.citation.result().content_hash.as_str() != hash {
+            if held.selection.len() != items.len()
+                || held.style != style
+                || held.citation.result().content_hash.as_str() != hash
+            {
                 return Err(SessionError::SnapshotChanged);
             }
             let snapshot = self.engine.snapshot()?;
-            if held.fingerprints.iter().any(|(id, expected)| {
-                snapshot
-                    .get(id)
-                    .is_none_or(|record| record.fingerprints.cite != *expected)
-            }) {
+            if held
+                .selection
+                .iter()
+                .zip(items)
+                .any(|((selected, expected), requested)| {
+                    selected != requested
+                        || snapshot.get(selected).map(|record| &record.fingerprints.cite) != expected.as_ref()
+                })
+            {
                 return Err(SessionError::SnapshotChanged);
             }
             (held.citation.clone(), snapshot.fingerprints().cite.clone())
@@ -502,6 +508,7 @@ impl Worker {
     /// cost the person all the others, so it is found and named instead.
     fn prepare_session_bibliography(
         &self,
+        snapshot: &Snapshot,
         ids: &[ItemRef],
         style: &str,
         cancel: &Cancellation,
@@ -516,8 +523,7 @@ impl Worker {
             strict: false,
             output_locale: None,
         })?;
-        let snapshot = self.engine.snapshot().map_err(SessionError::from)?;
-        let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(&snapshot, id)).collect();
+        let items: Vec<_> = ids.iter().filter_map(|id| self.session_item(snapshot, id)).collect();
         if items.is_empty() {
             return Ok(None);
         }
@@ -535,7 +541,7 @@ impl Worker {
                     Ok((_, true)) => kept.push(item),
                     Ok((single, false)) => left_out.extend(single.item_label(0)),
                     Err(SessionError::Cancelled) => return Err(SessionError::Cancelled),
-                    Err(_) => left_out.extend(session_key(&snapshot, &item.item)),
+                    Err(_) => left_out.extend(session_key(snapshot, &item.item)),
                 }
             }
             cancel.check().map_err(SessionError::from)?;
@@ -566,14 +572,19 @@ impl Worker {
         cancel: &Cancellation,
     ) -> Result<Option<SessionBibliography>, SessionError> {
         let snapshot = self.engine.snapshot()?;
-        let prepared = self.prepare_session_bibliography(ids, style, cancel)?;
+        let prepared = self.prepare_session_bibliography(&snapshot, ids, style, cancel)?;
         cancel.check().map_err(SessionError::from)?;
         if self.closed.load(Ordering::Acquire) {
             return Err(SessionError::Cancelled);
         }
-        let fingerprints = ids
+        let selection = ids
             .iter()
-            .filter_map(|id| Some((id.clone(), snapshot.get(id)?.fingerprints.cite.clone())))
+            .map(|id| {
+                (
+                    id.clone(),
+                    snapshot.get(id).map(|record| record.fingerprints.cite.clone()),
+                )
+            })
             .collect();
         let Some((citation, left_out)) = prepared else {
             return Ok(None);
@@ -594,10 +605,9 @@ impl Worker {
             return Err(SessionError::Cancelled);
         }
         *slot = Some(BibliographyReceipt {
-            ids: ids.to_vec(),
+            selection,
             style: style.into(),
             citation,
-            fingerprints,
         });
         Ok(Some(shown))
     }

@@ -40,3 +40,12 @@ export const testStates = [
 export function citationDisplay(spans: readonly { item: number | null; text: string; runs?: readonly (Partial<import("./bindings").DisplayRun> & { text: string })[] }[]): import("./bindings").DisplayTree {
   return { nodes: spans.map((span) => ({ item: span.item, content: (span.runs ?? [{ text: span.text }]).map((run) => ({ italic: false, bold: false, small_caps: false, underline: false, script: "normal", ...run })) })) };
 }
+
+/** One typed wire preview for Vitest and the real-browser layout probe. */
+export function citationPreview(segments: Parameters<typeof citationDisplay>[0], {
+  ticket = "synthetic-ticket", content_hash = ticket, effective_output = null,
+  html = null, warnings = [], problem, failure, project_refusal, notices,
+}: Partial<Omit<import("./bindings").Preview, "text" | "display">> = {}): import("./bindings").Preview {
+  return { ticket, content_hash, effective_output, text: segments.map((segment) => segment.text).join(""),
+    html, warnings, display: citationDisplay(segments), problem, failure, project_refusal, notices };
+}
