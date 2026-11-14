@@ -12,10 +12,6 @@ use std::{fs, path::Path};
 const MAPS: &str = "@article{Vale2026:Maps,title={Invented lunar maps},author={Vale, Ada and Moss, Eli},year={2026},doi={10.1234/invented.maps}}\n";
 const ATLAS: &str = "@book{Chen2025-Atlas,title={Invented tidal atlas},author={Chen, Lin and Reed, Uma},date={2025-02-03},doi={10.1234/invented.atlas}}\n";
 
-fn directory() -> tempfile::TempDir {
-    tempfile::tempdir_in(concat!(env!("CARGO_MANIFEST_DIR"), "/../../target")).unwrap()
-}
-
 fn dispatch(engine: &Engine, method: Method, params: Value) -> ibis_engine::DispatchResult {
     engine.dispatch(method, &params, &Cancellation::default()).unwrap()
 }
@@ -78,7 +74,7 @@ fn unchanged(path: &Path, bytes: &[u8], permissions: &fs::Permissions) {
 
 #[test]
 fn two_selected_downloads_expose_metadata_and_emit_the_exact_keys() {
-    let dir = directory();
+    let dir = tempfile::tempdir().unwrap();
     let nested = dir.path().join("extracted-project/references");
     fs::create_dir_all(&nested).unwrap();
     let paths = [dir.path().join("download.bib"), nested.join("refs.bib")];
@@ -147,7 +143,7 @@ fn two_selected_downloads_expose_metadata_and_emit_the_exact_keys() {
 
 #[test]
 fn a_key_shared_by_two_downloads_refuses_lookup_and_citation() {
-    let dir = directory();
+    let dir = tempfile::tempdir().unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
     for (name, text) in [
         ("first.bib", MAPS),
@@ -185,7 +181,7 @@ fn a_key_shared_by_two_downloads_refuses_lookup_and_citation() {
 
 #[test]
 fn a_project_binding_the_emitted_key_to_another_doi_blocks_copy_even_with_damage() {
-    let dir = directory();
+    let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("download.bib");
     let project = dir.path().join("manuscript.bib");
     fs::write(&source, MAPS).unwrap();
@@ -234,7 +230,7 @@ fn a_project_binding_the_emitted_key_to_another_doi_blocks_copy_even_with_damage
 
 #[test]
 fn incomplete_project_checks_advise_ordinary_citations_and_refuse_strict_ones() {
-    let dir = directory();
+    let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("download.bib");
     fs::write(&source, MAPS).unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
@@ -333,7 +329,7 @@ fn incomplete_project_checks_advise_ordinary_citations_and_refuse_strict_ones() 
 
 #[test]
 fn replacing_a_download_and_explicitly_reloading_preserves_the_earlier_snapshot() {
-    let dir = directory();
+    let dir = tempfile::tempdir().unwrap();
     let selected = dir.path().join("download.bib");
     fs::write(&selected, MAPS).unwrap();
     let engine = Engine::new().unwrap().without_file_watches();
