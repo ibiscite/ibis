@@ -1,18 +1,16 @@
 # 0008 Offline by default
 
-No telemetry, ever. Everything works offline. Update checks, style updates,
-metadata lookup and reference checks are each off until the person turns them
-on, say exactly what is sent, and are listed in [PRIVACY.md](../../PRIVACY.md).
+No telemetry. Core library and citation work is offline. Network features are
+opt-in, say exactly what is sent and are listed in [PRIVACY.md](../../PRIVACY.md).
 A new network use needs an entry here and the maintainer's yes. Requests to
 Zotero on `127.0.0.1` are local reads, not network use: Zotero's local API and,
 read-only, Better BibTeX's `user.groups` and `item.citationkey` on the same
-port, with no proxy and no redirect (maintainer, 2026-10-27).
+port, with no proxy and no redirect.
 Ibis may serve Better BibTeX-compatible Cite as You Write to editor plugins:
 `127.0.0.1` only, on its own port, refusing any request with a browser
-`Origin`, and off until switched on in Settings (maintainer, 2026-10-27).
+`Origin`, and off until switched on in Settings.
 
-2026-11-02, the editor endpoint as built (#42): port 23124, never Zotero's 23119.
-Following the architecture's rule for local endpoints, the address carries a
+The editor endpoint uses port 23124, separate from Zotero's 23119. Its address carries a
 random 128-bit token in its path, because `Origin` alone cannot keep a web page out:
 an `<img src>` sends none. Requests with `Origin`, `Referer`, `Cookie`, any `Sec-`
 header or a CORS preflight header are refused, as is any `Host` but `127.0.0.1` or
@@ -25,7 +23,7 @@ learn the token from an editor. The token is kept in `settings.json` (and its `.
 until the next save), never in exported backups, logs or the picker. It exposes only
 whether Ibis is ready and the citation the person chooses.
 
-2026-10-30 (maintainer-approved): A weekly GitHub workflow reads only the rolling
+A weekly GitHub workflow reads only the rolling
 `stable` release's public asset names, aggregate download counters and asset
 `updated_at` timestamps, appending rows of UTC date, asset name, `download_count`
 and `updated_at` to `counts.csv` on the orphan `stats` branch. The asset timestamp
@@ -36,23 +34,22 @@ counts of people or active installs; replacements reset counters and downloads
 between snapshots can be lost. No telemetry, identifiers, app changes or server:
 nothing leaves the app.
 
-"References used this session" (#356) holds record identities in memory, cleared by
-quitting or a reset, and leaves memory only through a file the person saves. It is a new
-data flow of references already read, with no network use (2026-11-02).
+"References cited since opening" holds record identities in memory, cleared by
+quitting or a reset. It leaves memory only through an explicit copy or saved file,
+with no network use.
 
-2026-11-13, opt-in online lookup (maintainer): Ibis stays offline by default, as
-promised, and the person may turn on online lookup for practical tasks: pasting
-or dropping a DOI, finding a reference that is not in the library, open search.
-The groundwork is built so each later feature uses it:
+Planned online lookup follows [0051](0051-references-in-and-out.md). One engine
+module enforces these rules for every lookup:
+
 - **One switch, off by default.** Setup asks once with nothing preselected;
-  Settings changes it at any time. The command line, JSON-RPC and MCP obey the
-  same setting, and an agent can never turn it on.
+  Settings changes it at any time. MCP exposes no lookup or write tools.
+  Shell access can change settings or run the CLI; privacy docs must say so.
 - **Ask before the first use** of each lookup, saying exactly what is sent and
   to which service.
 - **Send only what the person gave:** the DOI or the words they typed. Never
   library contents, file paths, document text or record identities. A dropped
   PDF's DOI is read locally; only the DOI leaves.
-- **Named services only** (maintainer, 2026-11-13): `doi.org`, which hands a
+- **Named services only**: `doi.org`, which hands a
   DOI to `api.crossref.org` or `data.crosscite.org` (DataCite, for arXiv and
   Zenodo); `api.openalex.org`, only to turn a PubMed ID into a DOI; and
   `openlibrary.org` for ISBNs. HTTPS with certificate checks. Redirects are

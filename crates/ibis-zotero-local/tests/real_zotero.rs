@@ -123,8 +123,7 @@ fn ibis_reads_what_a_real_zotero_sends() -> Result<(), Box<dyn Error>> {
     scan_until(&mut reader, 3);
     let items = reader.items();
     assert_eq!(items.len(), 3);
-    // Assert Zotero-native input, not a CSL export or a legacy Reference. The
-    // one mapper's separate differential suite verifies normalization.
+    // The mapper's differential suite separately verifies normalization.
     let article = items
         .iter()
         .find(|item| {

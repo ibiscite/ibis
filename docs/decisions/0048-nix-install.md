@@ -1,22 +1,17 @@
-# 0048 Nix install
+# 0048 Nix installation
 
-2026-11-11 (maintainer). Nix installation returns after its removal in #1206
-on 2026-10-26: source packages give Nix users a reproducible install while
-keeping maintenance in the repository and its agents.
+Nix provides reproducible source packages maintained in this repository.
 
 - `ibis`, the CLI, is the default on x86_64 and aarch64 Linux and macOS.
-  `buildRustPackage` reads `Cargo.lock`; registry dependencies need no Cargo
-  hash to maintain. Shell completions come from the built CLI.
-- `ibis-desktop` is available on both Linux architectures. Nix owns updates:
-  the upstream updater key/feed are removed, the launcher uses its store
-  wrapper, and the wrapper supplies the tray library.
-- Nixpkgs is pinned to the specified nixos-26.05 commit directly in the flake.
-  The obsolete lock is omitted; CI generates and preserves a matching lock.
-- A separate read-only workflow builds the CLI on Linux and macOS and the
-  desktop with package checks on Linux, on relevant main pushes, weekly
-  and by hand. It is independent of the [local merge gate](0049-local-gate.md).
-- Desktop dependencies keep their hash in `nix/pnpm-deps-hash`. A failed Nix
-  job prints the new hash and the exact `scripts/nix-pnpm-hash.mjs` command;
-  agents update it in the same pull request as the pnpm lock.
+  `buildRustPackage` reads `Cargo.lock`; completions come from the built CLI.
+- `ibis-desktop` supports both Linux architectures. Nix owns updates: packages
+  omit the upstream feed/key and the store wrapper supplies the tray library.
+- The flake pins nixpkgs directly to a nixos-26.05 commit. CI generates and
+  preserves the matching lock.
+- A read-only workflow builds the CLI on Linux/macOS and checks desktop
+  packages on Linux, on relevant main pushes, weekly and manually. It is
+  independent of [the local merge gate](0049-local-gate.md).
+- `nix/pnpm-deps-hash` tracks desktop dependencies. A failed job prints the new
+  hash and update command; lock and hash change together.
 
-Commands and maintenance steps: [Nix installation](../nix.md).
+Commands: [Nix installation](../nix.md).

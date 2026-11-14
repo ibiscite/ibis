@@ -194,8 +194,8 @@ test("reference and window Undo take the slot in turn and cannot consume each ot
   const search = screen.getByLabelText("Search references");
   await screen.findByText("Invented work");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
-  const segment = screen.getByRole("button", { name: "Edit Smith 2020" });
-  act(() => segment.focus()); fireEvent.keyDown(segment, { key: "Backspace" });
+  const token = screen.getByRole("button", { name: "Edit Smith 2020" });
+  act(() => token.focus()); fireEvent.keyDown(token, { key: "Backspace" });
   await act(async () => { await emit("picker:window-reset", { revision: 17, undo: 17 }); });
   // One slot: the newest offer shows, and the other waits with its action intact.
   const newest = screen.getByRole("button", { name: /^Undo / });
@@ -510,21 +510,21 @@ test("the details open beside a live list; Esc steps back one layer and returns 
   const search = screen.getByLabelText("Search references");
   await screen.findByText("Invented work");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
-  const segment = await screen.findByRole("button", { name: "Edit Smith 2020" });
-  act(() => segment.focus());
-  fireEvent.keyDown(segment, { key: "ArrowDown" });
+  const token = await screen.findByRole("button", { name: "Edit Smith 2020" });
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "ArrowDown" });
   const page = await screen.findByRole("textbox", { name: "Page" });
   expect(document.activeElement).toBe(page);
   expect(screen.getByRole("option")).toBeTruthy();
-  expect(segment.getAttribute("aria-expanded")).toBe("true");
-  expect(document.getElementById(segment.getAttribute("aria-controls")!)?.contains(page)).toBe(true);
+  expect(token.getAttribute("aria-expanded")).toBe("true");
+  expect(document.getElementById(token.getAttribute("aria-controls")!)?.contains(page)).toBe(true);
   expect(screen.getByRole("dialog", { name: "Citation details for Invented work" }).contains(page)).toBe(true);
   fireEvent.keyDown(page, { key: "Escape" });
   await waitFor(() => expect(screen.queryByRole("textbox", { name: "Page" })).toBeNull());
-  expect(document.activeElement).toBe(segment);
+  expect(document.activeElement).toBe(token);
   // React Aria saw the focus, so the keyboard ring draws.
-  expect(segment.hasAttribute("data-focus-visible")).toBe(true);
-  expect(segment.getAttribute("aria-expanded")).toBe("false");
+  expect(token.hasAttribute("data-focus-visible")).toBe(true);
+  expect(token.getAttribute("aria-expanded")).toBe("false");
 });
 
 test("Search and the list stay live beside the details, and Esc from Search closes them first", async () => {
@@ -559,14 +559,14 @@ test("a citation refusal shows once, in the details beside its fields, and retur
   expect((await screen.findByRole("alert")).closest(".shelf")).toBeTruthy();
 });
 
-test("Esc on a focused segment reaches the picker", async () => {
+test("Esc on a focused token reaches the picker", async () => {
   const calls = backend({ search: () => ({ revision: "1", results: [result("a", "Invented work")] }), hide_picker: () => true });
   render(<App />);
   await screen.findByText("Invented work");
   fireEvent.keyDown(screen.getByLabelText("Search references"), { key: "Enter", shiftKey: true });
-  const segment = await screen.findByRole("button", { name: "Edit Smith 2020" });
-  act(() => segment.focus());
-  fireEvent.keyDown(segment, { key: "Escape" });
+  const token = await screen.findByRole("button", { name: "Edit Smith 2020" });
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "Escape" });
   await waitFor(() => expect(calls).toContain("hide_picker"));
 });
 

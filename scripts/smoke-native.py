@@ -57,7 +57,7 @@ import unittest
 from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from native_test_settings import clean_settings, settings_exist
+from native_test_settings import SettingsDirectory
 from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_APA, collect_metadata, failure,
                              load_bundle, observe_native, recording, unavailable)
 
@@ -505,9 +505,10 @@ def answer_update_question(settings):
 
 
 def claim_settings(candidate):
-    if settings_exist(candidate):
-        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings")
-    return candidate
+    try:
+        return SettingsDirectory(candidate)
+    except FileExistsError:
+        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings") from None
 
 
 CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
@@ -1237,9 +1238,8 @@ class Linux:
     def click(self, name):
         named_target, matched_role, supported_action, returned_false = False, False, False, False
         # WebKitGTK can expose a click action on an enclosing named region.
-        # The footer and its menu used to share "Library"; activating the region
-        # could hit Find instead. Bind menu actions to their actual widget role,
-        # also avoiding a same-named menu left in the accessibility tree.
+        # Bind menu actions to their widget role, avoiding enclosing regions
+        # and same-named menus left in the accessibility tree.
         roles = (MENU_BUTTON_ROLES if name == FORMAT_APA or name in MENU_ACTIONS.values()
                  else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
                  else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
@@ -1589,7 +1589,7 @@ def _first_run_preferences_main(args):
                     app.kill()
                     app.wait(timeout=5)
         for cleanup in (stop, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -1603,7 +1603,7 @@ def _first_run_preferences_main(args):
     return exit_code
 
 
-# The native journey (#1676, ROADMAP Consolidation step 2): the real app,
+# The native journey: the real app,
 # invented references, a real text app, and the document read back. macOS
 # and Windows; Linux runs the same journey inside smoke_main, where Ibis
 # copies and the person pastes.
@@ -2226,8 +2226,7 @@ def _journey_main(args):
         owned_settings = claim_settings(settings)
         # Folders this run creates are removed with all Ibis wrote in them,
         # so the next run on the same account starts clean too.
-        created = [path for path in (settings.parent, *driver.data_folders(args.identifier)) if not path.exists()]
-        settings.parent.mkdir(parents=True, exist_ok=True)
+        created = [path for path in driver.data_folders(args.identifier) if not path.exists()]
         settings.write_bytes(JOURNEY_SETTINGS)
         native = observe_native(driver(folder))
         editor, terminal = native.name, native.terminal
@@ -2342,7 +2341,7 @@ def _journey_main(args):
             report["app_running"] = bool(app) and app.poll() is None
     finally:
         for cleanup in (app.stop if app else None, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         remove_created, temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -2359,7 +2358,7 @@ def _journey_main(args):
 
 
 def evidence_main(args, scenario, scenario_id):
-    """Always persist the closed manifest, independently of legacy diagnostics."""
+    """Always persist the evidence manifest, including failures."""
     try:
         replay = getattr(args, "replay_bundle", None)
         options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
@@ -2389,7 +2388,7 @@ def evidence_main(args, scenario, scenario_id):
         recorder.failure(error)
         exit_code = 1
     except Exception as error:
-        # Includes setup/cleanup failures outside the legacy scenario handlers.
+        # Includes failures during setup and cleanup.
         recorder.failure(error)
         if isinstance(error, BundleError):
             # BundleError messages are fixed evidence refusals, safe to show.
@@ -2601,8 +2600,7 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
-                # Linux captures no destination app. Decision 0042 now suggests
-                # APA for an unknown app, rather than the old Pandoc default.
+                # Linux captures no destination app, so it uses the document suggestion.
                 citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the
@@ -2795,7 +2793,7 @@ def smoke_main(args):
                 exit_code = 1
         if owned_settings:
             try:
-                clean_settings(owned_settings)
+                owned_settings.close()
             except OSError as error:
                 failure(error, "cleanup")
                 report.update(status="failed", reason="Disposable settings cleanup failed")
@@ -5324,17 +5322,6 @@ class ContractTests(unittest.TestCase):
             settings.write_text("{invalid synthetic settings", encoding="utf-8")
             answer_update_question(settings)
             self.assertEqual(settings.read_text(encoding="utf-8"), "{invalid synthetic settings")
-
-    def test_settings_cleanup_removes_only_files_claimed_in_a_fresh_account(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            candidate = Path(temporary) / "settings.json"
-            owned = claim_settings(candidate)
-            for suffix in (".json", ".json.bak", ".json.tmp"):
-                owned.with_suffix(suffix).write_text("synthetic", encoding="utf-8")
-            unrelated = owned.parent / "unrelated.txt"
-            unrelated.write_text("preserved", encoding="utf-8")
-            clean_settings(owned)
-            self.assertEqual(list(owned.parent.iterdir()), [unrelated])
 
     def test_tree_rejects_names_without_editable_search_and_list_roles(self):
         bad = {"nodes": [{"role": "label", "name": n} for n in ("Search references", "Search results", "Results")]}

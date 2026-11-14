@@ -10,7 +10,7 @@ const writer = "invented.writer";
 const destination = () => (fixtureDestination({ app: "Invented Writer", app_id: writer, unreadable: false, can_paste: false, format: formatAnswer("pandoc", "yours") }));
 const a = result("a", "Recent A"), b = result("b", "Recent B"), c = result("c", "New C");
 
-test("a failed Forget retry keeps the privacy warning visible until legacy history is deleted", async () => {
+test("a failed Forget retry keeps the privacy warning visible until WebView history is deleted", async () => {
   const key = "ibis-citation-history";
   const warning = "Recent citations could not be forgotten. Try again.";
   localStorage.setItem(key, "invented private citation history");

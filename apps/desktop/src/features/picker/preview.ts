@@ -1,5 +1,5 @@
 // What Enter would paste for the chosen references, as part of the picker
-// session (decision 0035): one numbered preview request at a time, and only the
+// session: one numbered preview request at a time, and only the
 // newest started one may answer.
 import type * as nativeApi from "../../api";
 import type { Preview, Problem } from "../../bindings";
@@ -10,7 +10,7 @@ export type Prepared = FormattedCitation & { fileTicket?: string; fileHash?: str
 type Selection = Parameters<typeof nativeApi.previewFileCitation>[0][number];
 
 /** One preview to ask for: the chosen references in one output on one snapshot. */
-export type PreviewAsk = { selection: Selection[]; output: OutputId; revision: string; keepOrder?: boolean; projectContext?: [number, number] | null };
+export type PreviewAsk = { selection: Selection[]; output: OutputId; revision: string; keepOrder?: boolean; writingContext?: [number, number] | null };
 
 export type PreviewInputs = {
   /** The output, library version, choice and project context. A preview is tagged with it. */

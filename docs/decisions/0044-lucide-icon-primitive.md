@@ -1,6 +1,6 @@
 # 0044 One Lucide icon primitive
 
-2026-11-11 (#1855, step 4). Use the approved Lucide 1.72.0 drawings from
+Use the approved Lucide 1.72.0 drawings from
 `lucide-static`, under ISC; retain the full licence, including Feather's MIT
 notices, in `brand/icons/LICENSE-lucide`. The mapping is in `brand/README.md`.
 

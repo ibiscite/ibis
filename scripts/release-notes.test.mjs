@@ -84,7 +84,7 @@ test("0.2 upgrade notes explain the new default and preserve explicitly stored s
 });
 
 test("0.3 notes say format choices from an earlier version start fresh", () => {
-  // The maintainer, 2026-11-07: before 1.0 settings may reset, and the notes say so.
+  // Release notes explain settings resets before 1.0.
   for (const tag of ["v0.3.0", "v0.3.1"]) {
     assert.match(releaseNotes(tag, generated), /\*\*Good to know:\*\* Format choices made in an earlier version start fresh; choose them again\./);
   }

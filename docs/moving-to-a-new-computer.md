@@ -18,7 +18,7 @@ setting so they can load when available. The backup does not contain library
 records or recent-citation history.
 
 Paste approvals, formats per app, window positions, small-surprise state,
-project bibliographies and writing projects, editor endpoint, update consent
+writings and their bibliographies, editor endpoint, update consent
 and Zotero profile stay on each computer. The replaced settings become
 `settings.json.bak`.
 

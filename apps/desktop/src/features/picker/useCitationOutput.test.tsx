@@ -66,19 +66,19 @@ function options(overrides: Partial<Options>): Options {
   };
 }
 
-test("switching projects with equal citation text needs a fresh preview and ignores the delayed old one", async () => {
+test("switching writings with equal citation text needs a fresh preview and ignores the delayed old one", async () => {
   const pending: ((value: Preview) => void)[] = [];
   const previewFileCitation = vi.fn<PreviewOperation>(() => new Promise((resolve) => pending.push(resolve)));
-  const initial = options({ previewFileCitation, projectContext: [1, 0] });
+  const initial = options({ previewFileCitation, writingContext: [1, 0] });
   const { result, rerender } = renderHook(useOutputInSession, { initialProps: initial });
   const firstSignal = previewFileCitation.mock.calls[0]?.[3];
-  rerender({ ...initial, projectContext: [2, 0] });
+  rerender({ ...initial, writingContext: [2, 0] });
   expect(firstSignal?.aborted).toBe(true);
   expect(result.current.shown).toBeNull();
-  await act(async () => pending[0]?.(preview("old project")));
+  await act(async () => pending[0]?.(preview("first writing")));
   expect(result.current.shown).toBeNull();
-  await act(async () => pending[1]?.(preview("new project")));
-  expect(result.current.shown).toMatchObject({ text: "new project" });
+  await act(async () => pending[1]?.(preview("second writing")));
+  expect(result.current.shown).toMatchObject({ text: "second writing" });
   expect(previewFileCitation.mock.calls[1]?.[4]).toEqual([2, 0]);
 });
 

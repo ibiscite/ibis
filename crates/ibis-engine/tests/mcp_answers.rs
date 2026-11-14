@@ -483,7 +483,7 @@ fn library_text_stays_data() {
         &engine,
         &mut mcp::Session::default(),
         &json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{
-            "protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}
+            "protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}
         }}),
     )
     .unwrap();

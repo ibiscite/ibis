@@ -18,9 +18,8 @@ const INJECTED: [&str; 5] = ["AppHandle", "State", "Window", "WebviewWindow", "W
 #[proc_macro_attribute]
 pub fn command(_: TokenStream, item: TokenStream) -> TokenStream {
     let mut function = parse_macro_input!(item as ItemFn);
-    // Native infrastructure used to throw free-form strings. Keep their
-    // implementation result local; the IPC boundary requires a catalogue
-    // diagnostic and a recovery. A new command needs an explicit operation.
+    // The IPC boundary requires a catalogue diagnostic and recovery; native
+    // implementation errors stay local. Each command names its operation.
     if let ReturnType::Type(_, ty) = &function.sig.output
         && let Some((ok, error)) = result_types(ty)
         && !last_segment(error).is_some_and(|name| name == "CommandError")

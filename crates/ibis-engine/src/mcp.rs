@@ -2,8 +2,8 @@
 //!
 //! Newline-delimited JSON-RPC 2.0 on stdio, as MCP's stdio transport defines.
 //! Requests that name revision [`PROTOCOL_VERSION`] in `_meta` are served
-//! statelessly; older clients that open with `initialize` get one of
-//! [`LEGACY_VERSIONS`], as the revision's dual-era rules allow. This file is the
+//! statelessly; clients that open with `initialize` use one of
+//! [`INITIALIZE_VERSIONS`]. This file is the
 //! protocol; `tools` holds the four read-only tools, which call the same engine
 //! methods as the command line, and `view` what they may show of a record: never
 //! notes or annotations, a record's `note` or `annote` fields, file locations,
@@ -28,7 +28,7 @@ pub use view::{MAX_TEXT, reference};
 /// The current MCP revision: no handshake, the version travels in each request's `_meta`.
 pub const PROTOCOL_VERSION: &str = "2026-07-28";
 /// Handshake revisions still answered after `initialize`, newest first.
-pub const LEGACY_VERSIONS: [&str; 2] = ["2025-11-25", "2025-06-18"];
+pub const INITIALIZE_VERSIONS: [&str; 2] = ["2025-11-25", "2025-06-18"];
 const VERSION_KEY: &str = "io.modelcontextprotocol/protocolVersion";
 const SERVER_INFO_KEY: &str = "io.modelcontextprotocol/serverInfo";
 /// The tool list only changes with the binary, so clients may keep it for an hour.
@@ -271,14 +271,14 @@ fn skip_line(reader: &mut impl BufRead) -> io::Result<()> {
     }
 }
 
-/// What one stdio process remembers: whether an older client opened it with
+/// What one stdio process remembers: whether a client opened it with
 /// `initialize`, and why its libraries could not be opened. Requests that name the
 /// 2026-07-28 revision never depend on the first.
 #[derive(Debug, Default, Clone)]
 pub struct Session {
+    initialized: bool,
     citations: Option<Arc<ConnectionCitations>>,
     submission: Option<Arc<crate::citations::SubmittedCitation>>,
-    legacy: bool,
     library_problem: Option<Refusal>,
     /// Where the app's settings are read for the format each app uses.
     formats: Formats,
@@ -429,7 +429,7 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
     let meta = params.get("_meta");
     let modern = match meta.and_then(|meta| meta.get(VERSION_KEY)) {
         // Older clients may ping before their handshake finishes.
-        None if method == "initialize" || method == "ping" || session.legacy => false,
+        None if method == "initialize" || method == "ping" || session.initialized => false,
         None => return Some(error(id, -32602, "Invalid params: name the protocol version in _meta")),
         Some(Value::String(version)) if version == PROTOCOL_VERSION => {
             if !meta
@@ -479,12 +479,12 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
                     "Invalid params: initialize needs protocolVersion, capabilities and clientInfo with name and version",
                 ));
             }
-            session.legacy = true;
+            session.initialized = true;
             json!({
-                "protocolVersion": LEGACY_VERSIONS
+                "protocolVersion": INITIALIZE_VERSIONS
                     .into_iter()
                     .find(|version| Some(*version) == requested)
-                    .unwrap_or(LEGACY_VERSIONS[0]),
+                    .unwrap_or(INITIALIZE_VERSIONS[0]),
                 "capabilities": {"tools": {}},
                 "serverInfo": server_info(),
                 "instructions": INSTRUCTIONS,
@@ -519,7 +519,7 @@ fn handle_message(engine: &Engine, session: &mut Session, message: &Value, cance
 }
 
 fn supported_versions() -> Vec<&'static str> {
-    std::iter::once(PROTOCOL_VERSION).chain(LEGACY_VERSIONS).collect()
+    std::iter::once(PROTOCOL_VERSION).chain(INITIALIZE_VERSIONS).collect()
 }
 
 fn server_info() -> Value {
