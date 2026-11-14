@@ -1,4 +1,4 @@
-//! Query only the disposable copy. No CSL/legacy model adapters live here.
+//! Query only the disposable database copy.
 use super::{
     ClosedError, ClosedItem, ClosedLibrary, ClosedSnapshot, ClosedWarning, Control, RawCreator, RawItem,
     SourceMetadata, StoredValue, ZoteroTable,

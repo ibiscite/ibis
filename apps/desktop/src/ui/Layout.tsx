@@ -6,7 +6,7 @@ import { Button } from "./Button";
 import { settingControl } from "./settingFocus";
 import "./Layout.css";
 
-/** The layout parts (maintainer, 2026-11-10). Screens compose these and never set
+/** The layout parts. Screens compose these and never set
  * their own margin, padding, gap or position, so left edges line up by
  * construction: a card's edge on the window inset, a heading, a description and a
  * row's words on the heading offset, and an icon row's words on the label column

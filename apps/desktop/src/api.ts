@@ -179,7 +179,6 @@ export function onPickerHidden(handler: () => void): Promise<UnlistenFn> {
   return listen("picker:hidden", handler);
 }
 
-/** Called when a library finishes opening, or fails to open. */
 /** A native-accepted drop supersedes the explicit source chooser. */
 export function onLibraryFileDropped(handler: () => void): Promise<UnlistenFn> {
   return listen("library:file-dropped", handler);
@@ -194,7 +193,7 @@ export function onLibraryChanged(handler: (status: LibraryStatus) => void): Prom
   return listen<LibraryStatus>("library:changed", (event) => handler(event.payload));
 }
 
-/** The project bibliography's choice or its read changed. */
+/** The bibliography's choice or its read changed. */
 export function onProjectChanged(handler: (version: [number, number] | null) => void): Promise<UnlistenFn> {
   return listen<[number, number]>("project:changed", ({ payload }) => handler(payload ?? null));
 }
@@ -204,7 +203,7 @@ export function onWritingsChanged(handler: () => void): Promise<UnlistenFn> {
   return listen("writings:changed", handler);
 }
 
-/** A chosen project bibliography could not be saved, so the old choice stands. */
+/** A chosen bibliography could not be saved, so the old choice stands. */
 export function onProjectNotSaved(handler: () => void): Promise<UnlistenFn> {
   return listen("project:not-saved", () => handler());
 }

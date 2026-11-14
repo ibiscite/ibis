@@ -186,7 +186,7 @@ test("screen stylesheets never restyle a part", () => {
     + "as a variant if this context needs one, and let the screen only place the part").toEqual([]);
 });
 
-/** [Layout] Where things sit is decided once (maintainer, 2026-11-10): the layout
+/** [Layout] Where things sit is decided once: the layout
  * tokens in tokens.css and the parts in ui/ that read them. Outside them nothing
  * sets a margin, padding, gap, inset or width, in a stylesheet or a style prop,
  * whatever the value; a screen composes parts (ui/Layout, ui/ViewFrame and the

@@ -9,7 +9,7 @@ import { IconButton } from "../../ui/IconButton";
 import { KeyHint } from "../../ui/KeyCaps";
 import { Palette, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
-import { projectDetail } from "./useProjectBibliography";
+import { bibliographyDetail } from "./useBibliography";
 
 type Action = PaletteItem & { run: () => void };
 
@@ -56,7 +56,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("choose-source", say("picker-choose-library-menu"), actions.chooseSource, { icon: <Icon name="library-big" />, ...keyed("chooseSource") }),
     ] },
     // The bibliography keys are checked against, named by its state.
-    { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
+    { id: "project", label: project?.status ? bibliographyDetail(project.status) : undefined, items: [
       ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), project.copyEntry, { icon: <Icon name="file" /> }) : [],
       ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), project.choose, { icon: <Icon name="book" /> }) : [],
       ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), project.stop, { icon: <Icon name="close" /> }) : [],

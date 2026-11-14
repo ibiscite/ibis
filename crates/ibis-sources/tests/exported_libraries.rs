@@ -205,7 +205,7 @@ fn ris_is_known_by_its_content_in_utf8_with_any_line_ending() {
             "{name}"
         );
     }
-    // UTF-16, with or without its byte-order mark, and a legacy encoding.
+    // UTF-16, with or without its byte-order mark, and Windows-1252.
     let utf16: Vec<u8> = text.encode_utf16().flat_map(u16::to_le_bytes).collect();
     for (name, bytes) in [
         ("utf16.ris", [&[0xff, 0xfe][..], &utf16].concat()),

@@ -1,9 +1,8 @@
 // Thin effect runner. It never decides which interaction owns a completion.
 import * as nativeApi from "../../api";
-import type { Delivered, Problem } from "../../bindings";
+import type { Delivered, Problem, WritingEdit } from "../../bindings";
 import { problemText, say } from "../../i18n";
 import type { OutputId } from "../../format/outputs";
-import type { ProjectEdit } from "./destination";
 import type { Operation } from "./Notices";
 import type { PreviewFailure } from "./preview";
 import { initialSession, reduceSession, type SessionEffect, type SessionEvent } from "./session";
@@ -120,7 +119,7 @@ export function createSessionController(initial = initialSession()) {
         const abort = previewing = new AbortController();
         const { request, ask } = effect;
         try {
-          const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.projectContext, ask.keepOrder);
+          const preview = await ports.previewFileCitation(ask.selection, ask.output, ask.revision, abort.signal, ask.writingContext, ask.keepOrder);
           dispatch({ type: "previewed", request, preview, value: { effective_output: preview.effective_output, display: preview.display, text: preview.text,
             warnings: preview.warnings, project_refusal: preview.project_refusal, notices: preview.notices, fileTicket: preview.ticket, fileHash: preview.content_hash } });
         } catch (error) {
@@ -150,7 +149,7 @@ export function createSessionController(initial = initialSession()) {
   return { dispatch, connect: (next: Partial<SessionPorts>) => { ports = { ...ports, ...next }; }, getSnapshot: () => state,
     /** Saving a writing or forgetting a format retires its old copy at once. */
     editDestination,
-    editProject: (context: string, action: ProjectEdit) => editDestination(() => ports.editWriting!(context, action)),
+    editWriting: (context: string, action: WritingEdit) => editDestination(() => ports.editWriting!(context, action)),
     /** Waits for destination saves, at most `ms`, before quitting. */
     afterSaves: async (ms: number) => {
       let timer: ReturnType<typeof setTimeout> | undefined;

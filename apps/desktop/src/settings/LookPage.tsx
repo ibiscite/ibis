@@ -13,7 +13,7 @@ type Feedback = (id: string) => Pick<Parameters<typeof Row>[0], "highlighted" | 
 /** Each size's window in CSS pixels (src-tauri sizing.rs); Custom has no set shape, so it shows the default. */
 const WINDOWS = { small: [640, 400], medium: [720, 480], large: [840, 600], custom: [720, 480] } as const;
 
-/** Appearance (maintainer's pick, 2026-11-10, option C): one live picture of the
+/** Appearance: one live picture of the
  * picker answers "what will this look like?" for every choice under it, and each
  * choice is its own plain control, so the page reads as one group. */
 export function LookPage({ preferences: p, change, feedback, windowSize, chooseWindowSize }: {

@@ -160,7 +160,7 @@ test.each(["chip", "preview", "elsewhere"])("an empty replacement returns only r
   const search = screen.getByLabelText("Search references");
   fireEvent.keyDown(search, { key: "Enter", shiftKey: true });
   await screen.findByRole("region", { name: "Preview" });
-  // The shelf is never a focus stop of its own while it has a segment: the segment is.
+  // The shelf is never a focus stop of its own while it has a token: the token is.
   const preview = await screen.findByRole("button", { name: /^Edit / });
   const announcement = screen.getByRole("status", { name: "Citation selection" });
   expect(announcement.textContent).toBe("1 reference selected for citation");

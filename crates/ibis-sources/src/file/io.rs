@@ -107,7 +107,7 @@ pub(super) fn path_needs_download(path: &Path) -> Result<bool, SourceError> {
     }
     #[cfg(target_os = "macos")]
     {
-        Ok(legacy_icloud_placeholder(path) || needs_download(&std::fs::metadata(path).map_err(file_io_error)?))
+        Ok(icloud_placeholder_name(path) || needs_download(&std::fs::metadata(path).map_err(file_io_error)?))
     }
     #[cfg(not(any(windows, target_os = "macos")))]
     {
@@ -117,7 +117,7 @@ pub(super) fn path_needs_download(path: &Path) -> Result<bool, SourceError> {
 }
 
 #[cfg(any(target_os = "macos", test))]
-pub(super) fn legacy_icloud_placeholder(path: &Path) -> bool {
+pub(super) fn icloud_placeholder_name(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name.starts_with('.') && name.ends_with(".icloud"))
@@ -227,8 +227,8 @@ mod tests {
             read_if_downloaded(false, || Err::<(), _>(SourceError::Unreadable)),
             Err(SourceError::Unreadable)
         );
-        assert!(legacy_icloud_placeholder(Path::new(".synthetic.bib.icloud")));
-        assert!(!legacy_icloud_placeholder(Path::new("synthetic.bib")));
+        assert!(icloud_placeholder_name(Path::new(".synthetic.bib.icloud")));
+        assert!(!icloud_placeholder_name(Path::new("synthetic.bib")));
     }
 
     #[test]

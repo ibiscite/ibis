@@ -47,7 +47,7 @@ function Beak({ closing = false }: { closing?: boolean }) {
     dangerouslySetInnerHTML={{ __html: beak.body }} />;
 }
 
-/** One line of exact engine output. All editing stays in the inspector above it;
+/** One line of exact engine output. Citation details open from each token;
  * a folded citation retains its full text and every reference's identity. */
 export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, deliverable = true, keepOrder = false, inspector, onSubmit, copyProblem, announce, selected, highlightedReference, highlightedReferences, onChangeReference, onRemove, referenceLibrary, style, keys, shown, previewReceipt, outputWarnings, outputNotices = [], problem, focusable, fallbackFocusRef, presentation, present = false, copied: copiedReceipt }: {
   inspector: CitationInspectorState;
@@ -130,7 +130,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     partialWarnings.length > 0 && say("picker-closest-matches")].filter(Boolean).join(" · ");
   const open = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => show({ kind, origin, presentation, receipt: copied, reference: reference && idKey(reference.id) });
   const inspecting = (reference: CitationReference) => panel?.kind === "reference" && panel.reference === idKey(reference.id);
-  // As with Mail's tokens, a segment selects what the details show; pressed again, it closes them.
+  // As with Mail's tokens, a token selects what the details show; pressed again, it closes them.
   const edit = (reference: CitationReference, origin: HTMLElement) => { if (inspecting(reference)) close(); else open("reference", origin, reference); };
   const toggle = (kind: InspectorPanel["kind"], origin: HTMLElement, reference?: CitationReference) => { if (panel?.kind === kind) close(); else open(kind, origin, reference); };
   const remove = (reference: CitationReference) => { close(); onRemove(reference); };
@@ -156,8 +156,8 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   // The same references in another order keep their tokens while the next preview is
   // made, each found by identity, so a moved token keeps its place and its focus.
   const retainedIds = retained.current?.ids ?? [];
-  const retainedSegments = Boolean(previous && retainedIds.length === currentIds.length && currentIds.every((id) => retainedIds.includes(id)));
-  const visible = ready ?? (retainedSegments ? previous : null);
+  const retainedTokens = Boolean(previous && retainedIds.length === currentIds.length && currentIds.every((id) => retainedIds.includes(id)));
+  const visible = ready ?? (retainedTokens ? previous : null);
   const text = visible?.text;
   // Dragging delivers what Enter would: only the current prepared citation,
   // never one held while the next is made, and never a refused one (0028).
@@ -187,8 +187,8 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
     if (!heldFocus.current || panel) return;
     heldFocus.current = false;
     const { reference, origin } = opened.current ?? {};
-    const segment = reference ? [...output.current?.querySelectorAll<HTMLElement>(".citation-token") ?? []].find((part) => part.dataset.reference === reference) : undefined;
-    const target = segment?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
+    const token = reference ? [...output.current?.querySelectorAll<HTMLElement>(".citation-token") ?? []].find((part) => part.dataset.reference === reference) : undefined;
+    const target = token?.querySelector("button") ?? (origin?.isConnected ? origin : output.current?.querySelector<HTMLElement>(".shelf-actions button")) ?? fallbackFocusRef?.current;
     target?.focus({ preventScroll: true });
   }, [panel, fallbackFocusRef]);
   // The details grow from their reference's token, or from the control that opened them.
@@ -196,12 +196,12 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
   useLayoutEffect(() => {
     anchor.current = (panel?.kind === "reference" && panel.reference ? tokenButton(panel.reference) : null) ?? (panel?.origin.isConnected ? panel.origin : output.current);
   });
-  const fromPrevious = !ready && retainedSegments;
+  const fromPrevious = !ready && retainedTokens;
   const referenceAt = (item: number) => fromPrevious ? references.find((reference) => idKey(reference.id) === retainedIds[item]) : references[item];
   const keyText = (value: string) => keys ? value.split(/([^\p{L}\p{N}\s]+)/u).map((part, index) => index % 2 ? <span className="shelf-punctuation" key={index}>{part}</span> : part) : value;
-  const segments = visible?.display.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), node })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
+  const tokens = visible?.display.nodes.map((node) => ({ item: node.item, text: node.content.map((run) => run.text).join(""), node })) ?? (shown === undefined || shown === null && !previous ? references.map((_, item) => ({ item, text: `${item ? "; " : ""}${labels[item]}` })) : undefined);
   // The line's order, which a style may have sorted: moves follow what the person sees.
-  const shownOrder = [...new Set(segments?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
+  const shownOrder = [...new Set(tokens?.flatMap((span) => span.item === null ? [] : [referenceAt(span.item)]).filter((r) => r !== undefined).map((r) => idKey(r.id)))];
   // With the order kept (always, for keys) the line is the person's order, which
   // a move changes at once, so quick moves compose before the next preview shows.
   const lineOrder = keepOrder || keys || shownOrder.length !== currentIds.length ? currentIds : shownOrder;
@@ -309,14 +309,14 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
       onKeyDown={(event) => segmentKeys(event, reference)} onPress={(event) => { if (event.key === "Enter") onSubmit?.(); else edit(reference, event.target as HTMLElement); }}>
       {index === undefined ? contents : <bdi id={`${citationId}-${index}`} dir="auto" className="preview-text">{contents}</bdi>}
     </CitationToken>;
-  const manySegments = references.length > 0 && (!single || spanned) && !copied && segments?.map((span, index) => {
+  const citationTokens = references.length > 0 && (!single || spanned) && !copied && tokens?.map((span, index) => {
     const reference = span.item === null ? undefined : referenceAt(span.item);
     const contents = "node" in span ? renderNode(span.node, keyText) : keyText(span.text);
     if (!reference || !onChangeReference || copied) return <span key={index} className="shelf-shared">{contents}</span>;
     return token(reference, labels[references.indexOf(reference)]!, span.text, contents, `${citationId}-${index}`, index);
   });
   const singleWords = text ?? labels[0] ?? "";
-  const singleSegment = single && !spanned && onChangeReference && !copied
+  const singleToken = single && !spanned && onChangeReference && !copied
     ? token(single, labels[0]!, singleWords, <bdi id={text !== undefined ? citationId : undefined} dir="auto" className={text !== undefined ? "preview-text" : "shelf-reference-name"}>{text !== undefined ? visible ? renderDisplay(visible.display, keyText) : keyText(text) : labels[0]}</bdi>, text !== undefined ? citationId : undefined)
     : null;
   return <>
@@ -331,7 +331,7 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
       onChange={onChangeReference} onSubmit={onSubmit} onRemove={remove} onClose={close} />}
     {hasShelf ? <div className="shelf" data-folded={compact || undefined} data-copied={copied ? "" : undefined} ref={preserveFocus}>
       <section ref={(node) => { output.current = node; }} aria-label={shown !== undefined || copied ? say("picker-preview") : say("picker-citation-details")}
-        tabIndex={focusable && shown !== undefined && !copied && !singleSegment && !manySegments ? 0 : undefined}
+        tabIndex={focusable && shown !== undefined && !copied && !singleToken && !citationTokens ? 0 : undefined}
         className="shelf-output" data-keys={keys || undefined} data-state={!copied && (shown === null || typeof shown === "string") ? shown ?? "pending" : undefined}>
         {/* The beak is the citation's proxy, as a Mac window's title icon is its
             document's: drag it into any app to drop exactly what Enter pastes. */}
@@ -351,11 +351,11 @@ export function CitationShelf({ actionsRef, onMoveReference, onKeepOrder, delive
             }
           }}><Beak /></span>
         <div className="shelf-citation" role={selected.size ? "group" : undefined} aria-label={selected.size ? say("picker-selected-references") : undefined}>
-          {previous && !retainedSegments ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleSegment}
-          {text !== undefined ? singleSegment ? null : manySegments ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{manySegments}</span> : <bdi id={citationId} dir="auto" className="preview-text">
+          {previous && !retainedTokens ? <bdi className="preview-text shelf-retained" dir="auto">{renderDisplay(previous.display, keyText)}</bdi> : shown !== "failed" && shown !== "stale" && singleToken}
+          {text !== undefined ? singleToken ? null : citationTokens ? <span className="shelf-fragments" dir={keys ? "ltr" : "auto"}>{citationTokens}</span> : <bdi id={citationId} dir="auto" className="preview-text">
             {ready && !keys ? renderDisplay(ready.display, keyText) : keyText(text)}
           </bdi> : shown === "failed" ? <><span className="shelf-state-icon" data-state="failed" aria-hidden="true">!</span><p role={panel ? undefined : "alert"} title={fullProblem}>{fullProblem}</p></> : shown === "stale" ? <><span className="shelf-state-icon" data-state="stale" aria-hidden="true">!</span><p role="status">{say("picker-shelf-stale")}</p></>
-            : shown === undefined && !previous && manySegments ? <span className="shelf-fragments">{manySegments}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
+            : shown === undefined && !previous && citationTokens ? <span className="shelf-fragments">{citationTokens}</span> : shown === null && !previous ? <p role="status">{say("picker-preview-pending")}</p> : null}
           {copied && <Beak closing />}
         </div>
         <div className="shelf-actions">

@@ -31,7 +31,7 @@ button, input, select { font: inherit; color: inherit; }
 /* Setup/recovery/hints always contribute their whole natural height. */
 .picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
 
-/* Remembered picker preferences (ADR 0020). */
+/* Remembered picker preferences. */
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }
 
 /* The viewport never adds a second scrollbar: short-window content scrolls

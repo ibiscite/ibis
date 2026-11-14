@@ -29,7 +29,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 - **Surfaces** [D4]: `--surface` (window), `--surface-grouped` (grouped content), `--surface-overlay` (every overlay), `--surface-field`. Settings cards are grouped content. No other surface colours.
 - **Window glass** [C13]: on macOS one glass sheet for the whole panel (Liquid Glass, popover vibrancy fallback) under a surface veil, so colour shows through but never readable shapes. Never glass on glass or CSS blur posing as the desktop. Elsewhere an opaque surface.
-- **Views, not cards** (maintainer, 2026-11-10): the palettes and sheets are views of the window (`ui/ViewFrame`), not layers over it. The picker's content swaps out; the view keeps the picker's header and footer geometry and its list grid, and has no card, border, corner, shadow or dimmed backdrop of its own. Back (the chevron where the bird sits, the footer's Back, Esc) returns.
+- **Views, not cards**: the palettes and sheets are views of the window (`ui/ViewFrame`), not layers over it. The picker's content swaps out; the view keeps the picker's header and footer geometry and its list grid, and has no card, border, corner, shadow or dimmed backdrop of its own. Back (the chevron where the bird sits, the footer's Back, Esc) returns.
 - **Readable overlays** [C9][C13]: everything that floats (menus, pop-overs, the peek card, held keys, the reader's controls) is one raised layer, `ui/Overlay` (`.ui-overlay`): `--surface-overlay`, a step off the window in either mode as a Mac menu is (never the window's own white or black), the panel's glass where it applied, and one shadow. No part paints its own.
 - **Elevation** [D11]: one overlay shadow, on that layer only; none on rows, chips or inside an overlay. In dark mode fills and hairlines separate layers first.
 - **Layers** [D15]: one z-order (`--z-*`); one overlay of each kind at a time; overlays keep `--inset` from the window edge and never leave it.
@@ -39,7 +39,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Type
 
-- The system UI font (SF Pro on macOS), never another platform's; `--mono` only for citation keys and key-format output. One exception, for reading (maintainer, 2026-11-13): a reference's **title** in the Inspector and the format preview uses Ibis's serif, the website's reading face, as iA Writer and Ulysses set reading text apart from chrome. Everything else stays in the system font.
+- The system UI font (SF Pro on macOS), never another platform's; `--mono` only for citation keys and key-format output. One exception, for reading: a reference's **title** in the Inspector and the format preview uses Ibis's serif, the website's reading face, as iA Writer and Ulysses set reading text apart from chrome. Everything else stays in the system font.
 - The Mac's text styles as `--type-*` roles: search (title 1, frameless like Spotlight), title (row titles), body (text and menus), meta (descriptions, footer, shelf), label (the smallest), display (Settings headings and the welcome).
 - Weights 400, 500, 600; no uppercase transforms; italics only for "why it matched"; `tabular-nums` on years, counts and pages.
 - Type and vertical sizes are rem; radii and hairlines stay px. Larger text multiplies the root by `--larger-text-scale` and grows the window by the same factor; system scaling multiplies with it, capped at 2.
@@ -56,7 +56,7 @@ The values every part reads, in [`tokens.css`](../../apps/desktop/src/tokens.css
 
 ## Corners
 
-- **Corners** [C15][D3]: three steps from `--radius`, and nothing else: `--r-small` (6: tiles, key caps, segments, small marks), `--r-control` (8: controls, rows, fields, menu items) and `--r-large` (12: menus, cards, the copy receipt), plus the window's `--r-win` (16, the Mac's own), capsules and the app icon. Nested shapes are concentric by choosing the step below: the window (16) inset 8 holds rows at 8; a menu (12) padded 4 holds items at 8; a control (8) holds a key cap or segment at 6.
+- **Corners** [C15][D3]: three steps from `--radius`, and nothing else: `--r-small` (6: tiles, key caps, citation tokens, small marks), `--r-control` (8: controls, rows, fields, menu items) and `--r-large` (12: menus, cards, the copy receipt), plus the window's `--r-win` (16, the Mac's own), capsules and the app icon. Nested shapes are concentric by choosing the step below: the window (16) inset 8 holds rows at 8; a menu (12) padded 4 holds items at 8; a control (8) holds a key cap or citation token at 6.
 - **Neighbours share a radius**: shapes side by side at one depth use one radius and one gap.
 - Overlays and Settings cards take `--r-large`.
 - **Capsules** (`--r-full`) only for switches, count and tag pills and progress tracks. Nothing hangs off a shape's edge: a control that belongs to a shape sits inside it.

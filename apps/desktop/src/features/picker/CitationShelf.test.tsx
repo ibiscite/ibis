@@ -32,7 +32,7 @@ const press = (node: HTMLElement, key: string) => {
   fireEvent.keyUp(node, { key, code: key === " " ? "Space" : key });
 };
 
-test("engine-owned segments retain punctuation, per-reference removal and arrow selection", () => {
+test("engine-owned tokens retain punctuation, per-reference removal and arrow selection", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta"), remove = vi.fn();
   const formatted = { ...output("(Beta, 2021; Alpha, 2021)"), display: displayTree([
     { item: null, text: "(" }, { item: 1, text: "Beta, 2021" }, { item: null, text: "; " },
@@ -49,15 +49,15 @@ test("engine-owned segments retain punctuation, per-reference removal and arrow 
   expect(remove).toHaveBeenCalledExactlyOnceWith(a);
 });
 
-test("a segment is the reference's own words: brackets and separators are shared, for one reference too", () => {
+test("a token is the reference's own words: brackets and separators are shared, for one reference too", () => {
   const a = record("a", "Alpha");
   render(shelf({ selected: chosen([a]), shown: { ...output("(Alpha, 2021, p. 4)"), display: displayTree([{ item: null, text: "(" }, { item: 0, text: "Alpha, 2021, p. 4" }, { item: null, text: ")" }]) } }));
-  const segment = screen.getByRole("button", { name: "Edit Alpha 2021" });
-  expect(segment.textContent).toBe("Alpha, 2021, p. 4");
+  const token = screen.getByRole("button", { name: "Edit Alpha 2021" });
+  expect(token.textContent).toBe("Alpha, 2021, p. 4");
   expect([...document.querySelectorAll(".shelf-shared")].map((node) => node.textContent)).toEqual(["(", ")"]);
 });
 
-test("formatted segments preserve engine emphasis and keep source strings inert", () => {
+test("formatted tokens preserve engine emphasis and keep source strings inert", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   const text = "Alpha species; Beta <script>literal</script>";
   render(shelf({ selected: chosen([a, b]), shown: { ...output(text), display: displayTree([
@@ -86,7 +86,7 @@ test("short names distinguish identical author/year labels without using the cit
   expect(referenceLabels([record("a"), record("b")])).toEqual(["García 2021 · a", "García 2021 · b"]);
 });
 
-test("formatted segments keep passive small caps and underline from the engine", () => {
+test("formatted tokens keep passive small caps and underline from the engine", () => {
   render(shelf({ selected: chosen([record("a"), record("b")]), shown: { ...output("Caps; Under"), display: displayTree([
     { item: 0, text: "Caps", runs: [{ text: "Caps", bold: false, italic: false, script: "normal", small_caps: true }] },
     { item: null, text: "; " }, { item: 1, text: "Under", runs: [{ text: "Under", bold: false, italic: false, script: "normal", underline: true }] },
@@ -109,22 +109,22 @@ test("colliding keys from different libraries have distinct visible and screen-r
   expect(change).toHaveBeenCalledWith(second, { locator: { label: "page", value: "42", input: "editor" } });
 });
 
-test.each(["click", "ArrowDown", " "])("a single reference is the whole citation segment; %s opens its details and focuses Page", (key) => {
+test.each(["click", "ArrowDown", " "])("a single reference is the whole citation token; %s opens its details and focuses Page", (key) => {
   render(shelf({ selected: chosen([record("a")]), shown: output() }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  expect(segment.textContent).toBe("(García, 2021)");
-  expect(document.getElementById(segment.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  expect(token.textContent).toBe("(García, 2021)");
+  expect(document.getElementById(token.getAttribute("aria-describedby")!)?.textContent).toBe("(García, 2021)");
   expect(document.querySelector(".shelf-chips")).toBeNull();
-  if (key === "click") { act(() => segment.focus()); fireEvent.click(segment); } else if (key === "ArrowDown") { act(() => segment.focus()); fireEvent.keyDown(segment, { key }); } else press(segment, key);
+  if (key === "click") { act(() => token.focus()); fireEvent.click(token); } else if (key === "ArrowDown") { act(() => token.focus()); fireEvent.keyDown(token, { key }); } else press(token, key);
   const inspector = details("Citation details for Invented title a");
   // The full title, said once: no second heading repeats it below.
   expect(within(inspector).getByRole("heading", { level: 2 }).textContent).toBe("Invented title a");
   expect(within(inspector).queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   expect(document.activeElement).toBe(within(inspector).getByRole("textbox", { name: "Page" }));
   // Pressed again, the token closes its details and takes focus back.
-  fireEvent.click(segment);
+  fireEvent.click(token);
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
-  expect(document.activeElement).toBe(segment);
+  expect(document.activeElement).toBe(token);
 });
 
 test("Enter on a token pastes, as it does everywhere, and never opens its details", () => {
@@ -148,7 +148,7 @@ test("Keep My Order is in the details only for a style with two or more referenc
   expect(within(details(/^Citation details for/)).queryByRole("switch")).toBeNull();
 });
 
-test("pressing the open segment closes its details; another segment moves them", () => {
+test("pressing the open token closes its details; another token moves them", () => {
   const a = record("a", "Alpha"), b = record("b", "Beta");
   render(shelf({ selected: chosen([a, b]), shown: { ...output("(Alpha, 2021; Beta, 2021)"), display: displayTree([{ item: 0, text: "Alpha, 2021" }, { item: null, text: "; " }, { item: 1, text: "Beta, 2021" }]) } }));
   const alpha = screen.getByRole("button", { name: "Edit Alpha 2021" }), beta = screen.getByRole("button", { name: "Edit Beta 2021" });
@@ -212,14 +212,14 @@ test("a later refresh of unchanged reference details gets its own 300 ms retenti
   } finally { cleanup(); vi.useRealTimers(); }
 });
 
-test("a formatting reply cannot retire a segment while it is being activated", () => {
+test("a formatting reply cannot retire a token while it is being activated", () => {
   const selected = chosen([record("a")]);
   const { rerender } = render(shelf({ selected, shown: null }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  fireEvent.mouseDown(segment, { button: 0 });
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  fireEvent.mouseDown(token, { button: 0 });
   rerender(shelf({ selected, shown: output() }));
-  fireEvent.mouseUp(segment, { button: 0 });
-  fireEvent.click(segment);
+  fireEvent.mouseUp(token, { button: 0 });
+  fireEvent.click(token);
   expect(document.activeElement).toBe(screen.getByRole("textbox", { name: "Page" }));
 });
 
@@ -240,9 +240,9 @@ test("Page retains typed input, canonical pages from search, and independent ref
 const removeOnce = (method: string) => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: output(), onRemove: remove }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
   if (method === "×") fireEvent.click(screen.getByRole("button", { name: "Remove García 2021" }));
-  else press(segment, method);
+  else press(token, method);
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
 };
@@ -273,20 +273,20 @@ test("with details open, notes read in them and nothing comes and goes in the sh
   expect(document.querySelector(".shelf-warnings")).toBeNull();
 });
 
-test("a key the segment does not use is handed on to the picker", () => {
+test("a key the token does not use is handed on to the picker", () => {
   const picker = vi.fn();
   render(<main onKeyDown={(event) => picker(event.key)}>{shelf({ selected: chosen([record("a")]), shown: output() })}</main>);
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  act(() => segment.focus());
-  fireEvent.keyDown(segment, { key: "Escape" });
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  act(() => token.focus());
+  fireEvent.keyDown(token, { key: "Escape" });
   expect(picker).toHaveBeenCalledExactlyOnceWith("Escape");
 });
 
 test("hiding the output keeps the token's one-click ×", () => {
   const reference = record("a"), remove = vi.fn();
   render(shelf({ selected: chosen([reference]), shown: undefined, onRemove: remove }));
-  const segment = screen.getByRole("button", { name: "Edit García 2021" });
-  const wrapper = segment.closest<HTMLElement>(".citation-token")!;
+  const token = screen.getByRole("button", { name: "Edit García 2021" });
+  const wrapper = token.closest<HTMLElement>(".citation-token")!;
   fireEvent.click(within(wrapper).getByRole("button", { name: "Remove García 2021" }));
   expect(remove).toHaveBeenCalledExactlyOnceWith(reference);
   expect(screen.queryByRole("dialog", { name: /^Citation details for/ })).toBeNull();
@@ -362,7 +362,7 @@ test("closing and reopening retires the old details, focuses Search, and keeps t
   expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Page" }).value).toBe("iv–vi");
 });
 
-test("removing a focused segment sends focus to Search before it disappears", () => {
+test("removing a focused token sends focus to Search before it disappears", () => {
   const search = createRef<HTMLInputElement>();
   function Picker() {
     const [selected, setSelected] = useState(chosen([record("a")]));

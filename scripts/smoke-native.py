@@ -1274,9 +1274,8 @@ class Linux:
     def click(self, name):
         named_target, matched_role, supported_action, returned_false = False, False, False, False
         # WebKitGTK can expose a click action on an enclosing named region.
-        # The footer and its menu used to share "Library"; activating the region
-        # could hit Find instead. Bind menu actions to their actual widget role,
-        # also avoiding a same-named menu left in the accessibility tree.
+        # Bind menu actions to their widget role, avoiding enclosing regions
+        # and same-named menus left in the accessibility tree.
         roles = (MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values()
                  else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
                  else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
@@ -1628,7 +1627,7 @@ def _first_run_preferences_main(args):
     return exit_code
 
 
-# The native journey (#1676, ROADMAP Consolidation step 2): the real app,
+# The native journey: the real app,
 # invented references, a real text app, and the document read back. macOS
 # and Windows; Linux runs the same journey inside smoke_main, where Ibis
 # copies and the person pastes.
@@ -2384,7 +2383,7 @@ def _journey_main(args):
 
 
 def evidence_main(args, scenario, scenario_id):
-    """Always persist the closed manifest, independently of legacy diagnostics."""
+    """Always persist the evidence manifest, including failures."""
     try:
         replay = getattr(args, "replay_bundle", None)
         options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
@@ -2414,7 +2413,7 @@ def evidence_main(args, scenario, scenario_id):
         recorder.failure(error)
         exit_code = 1
     except Exception as error:
-        # Includes setup/cleanup failures outside the legacy scenario handlers.
+        # Includes failures during setup and cleanup.
         recorder.failure(error)
         if isinstance(error, BundleError):
             # BundleError messages are fixed evidence refusals, safe to show.
@@ -2626,8 +2625,7 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
-                # Linux captures no destination app. Decision 0042 now suggests
-                # APA for an unknown app, rather than the old Pandoc default.
+                # Linux captures no destination app, so it uses the document suggestion.
                 citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the

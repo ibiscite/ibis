@@ -227,7 +227,7 @@ test("a choice that could not be saved says so", async () => {
   expect(await screen.findByText("The .bib file to check against could not be changed. Try again.")).toBeTruthy();
 });
 
-test("Enter while the project bibliography is still reading copies once the read ends, without a failure", async () => {
+test("Enter while the bibliography is still reading copies once the read ends, without a failure", async () => {
   let reading = true;
   const calls = backend({
     project_status: () => file({ state: reading ? "reading" : "ready", revision: reading ? 1 : 2 }),

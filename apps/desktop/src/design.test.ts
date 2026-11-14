@@ -1,4 +1,4 @@
-// The design system's one stylesheet check (decision 0035, #1678). Every stylesheet
+// The design system's stylesheet check. Every stylesheet
 // is parsed into the CSS object model, and each rule of the system
 // (docs/design.md, docs/design/foundations.md) is one entry in `rules`: run over
 // every declaration, and over a planted stylesheet it must catch, so a rule can
@@ -255,7 +255,6 @@ const over = (veil: readonly number[], under: number) => veil.slice(0, 3).map((c
 test("text keeps 7:1 over the veiled Mac material and 4.5:1 over Acrylic, on the brightest and darkest backdrops", () => {
   const text = pair("--text");
   const [light, dark] = tint(tokens, "--vibrancy-tint");
-  // A thin veil let a busy desktop show through the list (hands-on check, 2026-10-27).
   for (const veil of [light!, dark!]) expect(veil[3]).toBeGreaterThanOrEqual(.75);
   // CI's appearance probe (#232) saw the light material lift a black channel to 141.
   for (const under of [141, 255]) expect(contrast(flatten(text[0], 0, hexOf(over(light!, under))), hexOf(over(light!, under)))).toBeGreaterThanOrEqual(7);

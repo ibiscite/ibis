@@ -105,7 +105,6 @@ export function citationDetails(): HTMLElement | null {
 /** Picks how the citation shows, by what its choice reads: the engine's example
  * for that form (default backend: "(Smith, 2020)", "Smith (2020)", "(2020)"), or
  * the form's name before the engine answers. */
-/** Picks a form by its output in Show as: a segment, or with more than three, its pop-up's item. */
 export async function chooseForm(name: string) {
   const details = await waitFor(() => within(citationDetails()!));
   fireEvent.click(await waitFor(() => details.getByRole("button", { name: /^Show as / })));

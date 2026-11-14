@@ -31,7 +31,7 @@ fn tool(engine: &Engine, arguments: Value) -> Value {
         engine,
         &mut session,
         &json!({"jsonrpc":"2.0","id":1,"method":"initialize",
-        "params":{"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
+        "params":{"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"test","version":"1"}}}),
     );
     mcp::handle(
         engine,

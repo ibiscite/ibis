@@ -10,7 +10,7 @@ import { PointerButton } from "../../ui/Button";
 import { Option } from "../../ui/Option";
 import { idKey } from "./choice";
 import { abbreviatedAuthors, hiddenMatch, tileName } from "./rows";
-import { projectText } from "./useProjectBibliography";
+import { bibliographyText } from "./useBibliography";
 
 /** Words that tell similar result rows apart (#492): a CSL item type as a short word, or none. */
 export const rowWords = { itemType: (type: string): string | null => say("row-item-type", { type }) || null };
@@ -82,7 +82,7 @@ export function ResultList({ results, active, selected, density, hoverAllowed = 
     <ul id="results" role="listbox" aria-label={say("picker-results")} onMouseMove={onMouseMove}>
       {results.map((r, i) => <ResultGroup key={idKey(r.id)} record={r} previous={results[i - 1]}>
         <ResultRow record={r} index={i} active={i === active} added={selected.has(idKey(r.id))}
-          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={projectText(r, project)} handlers={handlers}
+          density={density} hoverAllowed={hoverAllowed} library={libraryOf(r.source ?? "")} project={bibliographyText(r, project)} handlers={handlers}
           pick={i >= numbered.first && i < numbered.first + numbered.count ? i - numbered.first + 1 : undefined} />
       </ResultGroup>)}
     </ul>
@@ -106,7 +106,7 @@ export const ResultRow = memo(function ResultRow({ record: r, index: i, active, 
   density: Density;
   hoverAllowed: boolean;
   library: string | null;
-  /** This row's key against the project bibliography, in words. */
+  /** This row's key against the bibliography, in words. */
   project?: string | null;
   /** Its number for ⌘1–9, while it is one of the first nine rows in view. */
   pick?: number;

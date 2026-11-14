@@ -111,7 +111,7 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
   const fixture = ["empty", "file-drag", "error", "loading"].includes(scenario);
   const fixed = fixtures[scenario];
   const shown = fixed?.rows ?? rows;
-  const projectContext = scenario.startsWith("project-");
+  const writingContext = scenario.startsWith("project-");
   // The picker opens over a known app that Ibis copies into, as it usually does;
   // "unknown-app" is the one whose app could not be read, over results and over an empty search.
   const knownApp = !scenario.startsWith("unknown-app");
@@ -183,9 +183,9 @@ function mockPicker(scenario: Scenario, settings: SettingsApi, openSettings: (pa
         { form: "year-only", example: "(2026)", reason: null },
       ] } satisfies ReferenceDetails;
     },
-    picker_destination: () => knownApp && !projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+    picker_destination: () => knownApp && !writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
-      writing: null, writing_context: null, context_version: [1, 0] } : projectContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
+      writing: null, writing_context: null, context_version: [1, 0] } : writingContext ? { app: "Invented Editor", app_id: "invented.editor", app_identity: null,
       find_open: false, usual_format: "apa", format: noFormatChosen, unreadable: false, can_paste: false, paste: null, paste_question: false, can_choose_paste: false,
       writing: project, writing_context: "invented-opening", context_version: [1, 0] } : null,
     writings: () => writings,

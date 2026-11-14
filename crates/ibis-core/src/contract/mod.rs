@@ -1,5 +1,4 @@
 //! Shared engine contract (ADR 0028). Front ends consume these same types.
-//! Existing readers and front ends migrate in their own rebuild issues.
 
 pub mod citation;
 mod csl;

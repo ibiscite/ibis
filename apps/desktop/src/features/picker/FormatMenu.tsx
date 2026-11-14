@@ -19,7 +19,7 @@ const recent: OutputId[] = [];
 export const forgetRecentFormats = () => { recent.length = 0; };
 const remember = (output: OutputId) => { recent.splice(0, recent.length, output, ...recent.filter((id) => id !== output).slice(0, 5)); };
 
-/** The format chooser (decision 0042, palette B): the chip names the format in
+/** The format chooser (decision 0042): the chip names the format in
  * use and, when it isn't your own, why ("APA · Word", "APA · Thesis"). It opens
  * the palette: the way back to your format first, your recent formats, the
  * app's own choices, then every format by typing, with a key citation or a

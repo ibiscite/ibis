@@ -446,7 +446,7 @@ fn prepare_with_style(
             let mut value = record.clone();
             // Private sort metadata never changes the canonical source date or
             // its rendering. The same year-letter parser owns source detection
-            // and this numeric sort projection; source custom fields were removed.
+            // and this numeric sort projection.
             let sorts = date_sorts(record);
             if !sorts.is_empty() {
                 value.insert("ibis-date-sort".into(), Value::Object(sorts));

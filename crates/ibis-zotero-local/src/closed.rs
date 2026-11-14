@@ -73,7 +73,6 @@ impl ClosedError {
 }
 
 /// Neutral bibliographic data accepted by the single Zotero mapper (#1195).
-/// Adapters do not normalize these fields or produce CSL/legacy references.
 #[derive(Clone, Default, PartialEq, Eq)]
 pub struct RawItem {
     pub key: String,

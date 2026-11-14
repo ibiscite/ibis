@@ -899,7 +899,7 @@ class Linux:
             except (OSError, ValueError, RuntimeError, subprocess.SubprocessError) as error:
                 probe.update(helper_failure("linux", error))
                 raise LinuxActivationFailure(probe, probe["stage"]) from None
-        # Old rfd offers put Install first; the safe-default offer puts Later
+        # The safe-default offer puts Later
         # first. Observe the actual GTK focus, not a presumed tab position.
         previous, tabs = None, 0
         while True:
@@ -919,7 +919,7 @@ class Linux:
             key("Tab", False)
             tabs += 1
         # Prove the in-process observer is still live, even if Install was
-        # already focused in the old layout. A stale property cannot consent.
+        # already focused. A stale property cannot consent.
         confirmed = self.install_control(scope, deadline)
         while confirmed is not None and confirmed[2] == control[2]:
             if time.monotonic() >= deadline:
@@ -1170,8 +1170,7 @@ class HelperProcessFailure(RuntimeError):
 
 
 def helper_failure(system, error):
-    # The old picker-helper/code None wrapper erased this distinction. Keep
-    # only fixed operation names and numeric status, never native stderr.
+    # Keep fixed operation names and numeric status, never native stderr.
     kind, code = "unavailable", None
     if isinstance(error, subprocess.TimeoutExpired):
         kind = "timeout"
