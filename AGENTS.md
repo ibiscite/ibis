@@ -7,13 +7,13 @@ checks in [docs/testing.md](docs/testing.md), lasting decisions in [docs/decisio
 Current work and owners: the tracking issue (label `tracking`).
 
 ```sh
-node scripts/check.mjs                     # checks for this branch's changes
-node scripts/check.mjs --all               # every check
+bash scripts/land.sh start NAME [ISSUE]    # worktree, signed first commit and draft claim
+bash scripts/land.sh                       # full local gate, then squash merge
+bash scripts/land.sh end NAME              # remove the merged session
 node scripts/gen.mjs                       # regenerate bindings, schemas and the CLI options
 cargo test -p ibis-desktop --locked        # the app's Rust side; plain cargo test skips it
 pnpm -C apps/desktop exec vitest run FILE --maxWorkers=1
 node scripts/pr-lint.mjs --title "fix: explain the change"
-bash scripts/land.sh                       # the merge gate
 ```
 
 ## Working
@@ -40,4 +40,4 @@ bash scripts/land.sh                       # the merge gate
 
 Pull request titles are Conventional Commits and become the release notes; link `Closes #N`. Sign off commits (`git commit -s`) with a public project or GitHub noreply identity and disclose AI help with an `Assisted-by:` or `Co-authored-by:` trailer.
 
-Land with `bash scripts/land.sh` from a clean branch ([decision 0049](docs/decisions/0049-local-gate.md)): the Mac, Ubuntu and, when packaging changes, Windows check the exact commit in parallel, then it merges. GitHub CI confirms main afterwards; if main turns red, restore it first with the smallest verified repair or a revert. After a merge, update Now, delete your branch, and remove your worktree and target directory when the session ends.
+Land with `bash scripts/land.sh` from a clean branch ([decision 0049](docs/decisions/0049-local-gate.md)): the Mac, Ubuntu and, when packaging changes, Windows check the exact commit in parallel, then it merges. GitHub CI confirms main afterwards; if main turns red, restore it first with the smallest verified repair or a revert. Start each piece with `land.sh start NAME` (its draft pull request is the claim; open drafts are Now) and finish with `land.sh end NAME` after it merges.
