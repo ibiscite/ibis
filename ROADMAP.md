@@ -77,22 +77,18 @@ A month of fast building left parallel paths, rules no one has used and code tha
 
 ### 0.5 Find the passage
 
+Presentation, passage actions, briefs and copied-key UX follow the [canonical 0.5 specification](docs/decisions/0055-find-the-passage.md), with [observable walkthroughs and remaining participant checks](docs/design/sources-and-sheets.md#05-walkthroughs-and-presentation).
+
 - Add last-cited recall through `ibid`/`ebd.` (from parity).
 
 - **Search** that forgives Chinese, Japanese and Korean names and romanised readings; collections, tags, saved searches and filters; "Selected in Zotero"; suggestions before typing.
-- **Passages** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)): Zotero highlights, notes and comments searchable from the picker, each with its reference and page ("PDF page 8 · cite p. 417"), the printed page taken from the PDF, the annotation or an offset the person confirms, never assumed. Notes and comments stay distinct from quotations.
+- **Passages** ([#54](https://github.com/ibiscite/ibis/issues/54), [#359](https://github.com/ibiscite/ibis/issues/359)): Zotero highlights, comments, attached and standalone notes, and image annotations in the picker.
 - **Quotes and briefs** ([#1385](https://github.com/ibiscite/ibis/issues/1385), [#1517](https://github.com/ibiscite/ibis/issues/1517)): a PDF dropped on the window finds its reference; Copy Quote with Reference as plain text or Markdown; chosen passages exported as one Markdown brief.
 - **A read-only PDF preview** ([#1252](https://github.com/ibiscite/ibis/issues/1252), [decision 0036](docs/decisions/0036-reader-trust-boundary.md)) for PDFs already in Zotero or a `.bib` `file` field, so checking a page never needs Zotero; Ibis never imports, edits or annotates them. EPUB and web snapshots follow.
 - **Files outside a reference manager:** a folder of PDFs or of Markdown notes can be searched, previewed and quoted.
 - **Agents and passages:** opt-in per library, off by default; private links never reach them.
-- **Rules to settle before building 0.5** (from the removed source-workflow research):
-  - **Presentation:** do passages appear as a References/Passages scope or unfolded under a reference, and does Enter open a passage? Decide with a comprehension walkthrough first.
-  - **Open buttons** name their target ("Open annotation in Zotero", "Open PDF at page", "Open reference"). A failed open offers the others and never silently opens something else.
-  - **Pages:** a Roman page label is never sent as a PDF index, and "Citation page unknown" is said plainly.
-  - **Briefs:** never overwrite a file, repeat the reference for each passage, treat the question as literal text, and stay readable without Ibis or Zotero.
-  - **Testing:** check with real Zotero users and bibliography-only users that they can tell a quote from a comment, and with someone who reads a brief without Ibis.
-- **Add a note instead of a citation** ([#55](https://github.com/ibiscite/ibis/issues/55)), like Zotero's Add Note.
-- **Changed-key warning** (maintainer, 2026-11-11: important; design the UX and edge cases first): warn when a key you cited before now belongs to a renamed or changed item. Warn only when the same item is provable (a plain `.bib` rename can't be tracked); remember a key only after its copy succeeded; offer a way to forget a remembered key.
+- **[Add a note instead of a citation](docs/decisions/0055-find-the-passage.md#choice-and-actions)** ([#55](https://github.com/ibiscite/ibis/issues/55)).
+- **[Changed-key warnings](docs/decisions/0055-find-the-passage.md#changed-copied-keys-wording-and-identity-before-implementation)** ([#1092](https://github.com/ibiscite/ibis/issues/1092); prioritised by the maintainer, 2026-11-11).
 - **Is this in my library?** for a pasted identifier or reference list; results say whether a reference has a PDF or a saved web page.
 
 ### 0.6 Your document
@@ -100,7 +96,6 @@ A month of fast building left parallel paths, rules no one has used and code tha
 - Export what a document cites to `.bib`, Hayagriva or CSL-JSON.
 - `ibis check` on a manuscript (`.md`, `.qmd`, `.tex`, `.typ`) as a build gate, with an optional lock file for co-authors.
 - `ibis format` turns a `.docx` or `.odt` written with keys into a finished copy with formatted citations and a bibliography; running it again changes the style, and the original is never edited.
-- A warning when a reference's citation key changed since it was last copied ([#1092](https://github.com/ibiscite/ibis/issues/1092)).
 - **Opt-in online lookup** (maintainer, 2026-11-11; rules in [decision 0008](docs/decisions/0008-offline-by-default.md)): DOI lookup and open search for references not in the library, through Crossref, OpenAlex and doi.org. Off until the person turns it on, either when setup asks once or later in Settings; nothing goes online otherwise.
 - **References in and out** (maintainer, 2026-11-13): Ibis grows from citing to everyday reference handling, each step quick and on open standards.
   - **In:** paste or drop a DOI (or another standard identifier) and cite it, link it, save it to a `.bib` file, or add it to Zotero.

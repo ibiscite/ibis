@@ -122,3 +122,6 @@ the anchor older links use.
 
 ## 0054 Owners and boundaries
 [0054](decisions/0054-owners-and-boundaries.md): three exclusive engine owners that accept intents and publish observations, one native delivery owner, and typed boundaries (checked artifacts, `Problem`, executable actions); ten stages, the gate first.
+
+## 0055 Find the passage
+[0055](decisions/0055-find-the-passage.md): References/Passages scope, explicit note and quote reuse, new-file Markdown briefs, copied-key warnings and passage consent; design assessments and acceptance scenarios, with human checks still outstanding.
