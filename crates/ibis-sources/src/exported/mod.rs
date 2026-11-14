@@ -3,8 +3,8 @@
 //! versioned hash of that data, so it lasts across refreshes and fresh exports.
 use std::collections::{BTreeMap, HashSet};
 
+use crate::candidates::Candidates;
 use ibis_core::contract::{CitationWarningCode, Fingerprint, ItemRef, LibraryId, Record, Snapshot};
-use ibis_core::source::IdentityClaims;
 use serde_json::{Value, json};
 
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
@@ -139,7 +139,7 @@ pub(crate) struct Records<'a> {
     library: &'a LibraryId,
     previous: Option<&'a Snapshot>,
     prefix: &'static str,
-    claims: IdentityClaims<String, Option<usize>>,
+    candidates: Candidates<(String, BTreeMap<String, Value>, bool)>,
     /// Records the file holds, read or not: the record limit counts these.
     started: usize,
     pub(crate) parsed: ParsedLibrary,
@@ -151,14 +151,36 @@ impl<'a> Records<'a> {
             library,
             previous,
             prefix,
-            claims: IdentityClaims::default(),
+            candidates: Candidates::default(),
             started: 0,
             parsed: ParsedLibrary::default(),
         }
     }
 
     pub(crate) fn finish(mut self) -> ParsedLibrary {
-        self.parsed.quarantine(&self.claims, self.previous);
+        for (key, mut csl, uncertain) in self
+            .candidates
+            .finish(&mut self.parsed.duplicate_keys, &mut self.parsed.warnings)
+        {
+            csl.insert("id".into(), Value::String(key.clone()));
+            let record = Record {
+                id: ItemRef {
+                    library: self.library.clone(),
+                    key,
+                },
+                added_at: None,
+                csl: csl.into(),
+                citation_keys: vec![],
+                aliases: vec![],
+                warnings: if uncertain {
+                    vec![CitationWarningCode::SourceField]
+                } else {
+                    vec![]
+                },
+                identifiers: vec![],
+            };
+            self.parsed.push_record(record, self.previous);
+        }
         self.parsed
     }
 
@@ -203,31 +225,12 @@ impl<'a> Records<'a> {
                 *warning = warning.clone().for_entry(title);
             }
         }
-        // Serialising the sorted map gives the same bytes for the same fields.
-        let fields = serde_json::to_vec(&csl).unwrap_or_default();
-        let digest = Fingerprint::of_bytes(&[self.prefix.as_bytes(), b":v1\0", &fields].concat());
-        let key = format!("{}:{}", self.prefix, &digest.as_str()[..32]);
-        self.claims.claim(key.clone(), Some(line));
-        if !self.claims.is_unique(&key) {
-            return;
-        }
-        csl.insert("id".into(), Value::String(key.clone()));
-        let record = Record {
-            id: ItemRef {
-                library: self.library.clone(),
-                key,
-            },
-            added_at: None,
-            csl: csl.into(),
-            citation_keys: vec![],
-            aliases: vec![],
-            warnings: if uncertain {
-                vec![CitationWarningCode::SourceField]
-            } else {
-                vec![]
-            },
-            identifiers: vec![],
-        };
-        self.parsed.push_record(record, self.previous);
+        self.candidates.push(csl, |csl| {
+            // Serialising the sorted map gives the same bytes for the same fields.
+            let fields = serde_json::to_vec(&csl).unwrap_or_default();
+            let digest = Fingerprint::of_bytes(&[self.prefix.as_bytes(), b":v1\0", &fields].concat());
+            let key = format!("{}:{}", self.prefix, &digest.as_str()[..32]);
+            (vec![(key.clone(), Some(line))], (key, csl, uncertain))
+        });
     }
 }

@@ -26,10 +26,10 @@ use std::cell::Cell;
 
 use biblatex::Bibliography;
 
+use crate::candidates::Candidates;
 use crate::{ParsedLibrary, SourceWarning, WarningCause, WarningCode};
 use ibis_core::contract::{LibraryId, Record, Snapshot};
 use ibis_core::panic_guard;
-use ibis_core::source::IdentityClaims;
 use lexer::{Block, RawEntry, header_key, parse_entry, parse_string, split_blocks};
 use resolve::Resolver;
 
@@ -246,20 +246,24 @@ pub(crate) fn load_with_budget(
     let mut macros = Vec::new();
     let mut entries: Vec<RawEntry<'_>> = Vec::new();
     let mut raw_texts: Vec<&str> = Vec::new();
-    let mut claims = IdentityClaims::default();
-    for block in &blocks {
-        if !matches!(block.kind.as_str(), "comment" | "preamble" | "string")
-            && let Some(key) = header_key(block.body)
-        {
-            claims.claim(format!("record:{key}"), Some(block.line));
-        }
-    }
+    let candidates = Candidates::collect(blocks, |block| {
+        let claims = (!matches!(block.kind.as_str(), "comment" | "preamble" | "string"))
+            .then(|| header_key(block.body))
+            .flatten()
+            .map(|key| (format!("record:{key}"), Some(block.line)))
+            .into_iter()
+            .collect();
+        (claims, block)
+    });
+    let mut duplicates = Vec::new();
+    let blocks = candidates.finish(&mut result.duplicate_keys, &mut duplicates);
     for block in &blocks {
         let warn = |code| SourceWarning::at(code, Some(block.line));
         let skip = |problem: Problem| warn(WarningCode::Syntax).because(problem.cause, problem.field);
         if !budget.charge(block.text.len().saturating_mul(4).saturating_add(2048)) {
             result.warnings.push(warn(WarningCode::WorkLimit));
             result.cut_short = true;
+            result.warnings.extend(duplicates);
             return result;
         }
         match block.kind.as_str() {
@@ -293,13 +297,6 @@ pub(crate) fn load_with_budget(
     }
 
     drop(blocks);
-    // Neither a citation nor inheritance can choose between repeated keys.
-    // Remove every contender before building the resolver's ownership map.
-    let (entries, raw_texts): (Vec<_>, Vec<_>) = entries
-        .into_iter()
-        .zip(raw_texts)
-        .filter(|(entry, _)| claims.is_unique(&format!("record:{}", entry.key)))
-        .unzip();
     let resolver = Resolver::new(macros, &entries, &budget);
     // `@xdata` entries only supply fields to other entries; they are not
     // references themselves and are never shown or exported.
@@ -347,7 +344,7 @@ pub(crate) fn load_with_budget(
             ),
         }
     }
-    result.quarantine(&claims, previous);
+    result.warnings.extend(duplicates);
     result
 }
 

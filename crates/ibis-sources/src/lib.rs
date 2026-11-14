@@ -1,6 +1,7 @@
 //! Read-only library sources producing the shared engine snapshot contract.
 mod attachments;
 mod bibtex;
+mod candidates;
 mod csl_json;
 mod exported;
 mod file;
@@ -13,7 +14,6 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use ibis_core::contract::{ItemRef, LibraryId, Record, Snapshot};
-use ibis_core::source::IdentityClaims;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -62,7 +62,8 @@ pub struct SourceWarning {
     pub code: WarningCode,
     pub line: Option<usize>,
     /// The repeated citation key or CSL `id`, for `duplicate-key` only. It is the person's
-    /// own data and is shown only in their library diagnostics.
+    /// own data and is shown only in their library diagnostics. Display text
+    /// is bounded to 256 characters plus a truncation marker.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
     /// The entry's citation key, or its title when no key is available. Like
@@ -91,12 +92,7 @@ impl SourceWarning {
     }
 
     pub fn for_entry(mut self, label: Option<&str>) -> Self {
-        self.entry = label
-            .filter(|label| !label.trim().is_empty())
-            .map(|label| match label.char_indices().nth(256) {
-                Some((end, _)) => format!("{}…", &label[..end]),
-                None => label.into(),
-            });
+        self.entry = label.filter(|label| !label.trim().is_empty()).map(diagnostic_label);
         self
     }
 
@@ -115,6 +111,13 @@ impl SourceWarning {
             })
             .map(str::to_ascii_lowercase);
         self
+    }
+}
+
+fn diagnostic_label(label: &str) -> String {
+    match label.char_indices().nth(256) {
+        Some((end, _)) => format!("{}…", &label[..end]),
+        None => label.into(),
     }
 }
 
@@ -226,6 +229,8 @@ pub struct LoadedLibrary {
     /// that is not found may be among them. A limit that only skipped one
     /// record or its attachments does not count.
     pub cut_short: bool,
+    /// Full repeated identities with their bounded diagnostics, for lookup.
+    pub duplicate_keys: BTreeMap<String, Vec<SourceWarning>>,
     /// Each skipped entry whose header names a citation key, with its warning,
     /// so a lookup can say why the key selects nothing. Warnings themselves
     /// carry no source text beyond duplicate keys; this never serializes.
@@ -256,30 +261,12 @@ struct ParsedLibrary {
     attachments: Vec<(ItemRef, String, Option<usize>)>,
     /// Records after a limit were left unread: `LoadedLibrary::cut_short`.
     cut_short: bool,
+    duplicate_keys: BTreeMap<String, Vec<SourceWarning>>,
     /// `LoadedLibrary::damaged_keys`.
     damaged_keys: BTreeMap<String, SourceWarning>,
 }
 
 impl ParsedLibrary {
-    fn quarantine(&mut self, claims: &IdentityClaims<String, Option<usize>>, previous: Option<&Snapshot>) {
-        self.records.retain(|record| claims.is_unique(&record.id.key));
-        self.reused.retain(|&position| {
-            previous
-                .and_then(|snapshot| snapshot.objects().get(position))
-                .is_some_and(|item| claims.is_unique(&item.object.id().key))
-        });
-        self.attachments.retain(|(item, ..)| claims.is_unique(&item.key));
-        let mut warnings: Vec<_> = claims
-            .duplicates()
-            .map(|(key, line)| SourceWarning {
-                key: Some(key.strip_prefix("record:").unwrap_or(key).to_owned()),
-                ..SourceWarning::at(WarningCode::DuplicateKey, *line)
-            })
-            .collect();
-        warnings.sort_by(|a, b| (&a.line, &a.key).cmp(&(&b.line, &b.key)));
-        self.warnings.extend(warnings);
-    }
-
     /// Warn that an entry was skipped, remembering the key its header names.
     fn skip(&mut self, key: Option<&str>, warning: SourceWarning) {
         // A header without its comma can run on; real keys are short.

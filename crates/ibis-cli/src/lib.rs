@@ -912,8 +912,8 @@ fn key_failure(engine: &Engine, matches: &ArgMatches, key: &str, error: EngineEr
     let warnings: Vec<_> = match error.reason {
         Some(ErrorReason::DuplicateKey) => libraries
             .iter()
-            .flat_map(|library| &library.warnings)
-            .filter(|warning| warning.key.as_deref() == Some(key))
+            .filter_map(|library| library.duplicate_keys.get(key))
+            .flatten()
             .cloned()
             .collect(),
         Some(ErrorReason::DamagedEntry) => libraries

@@ -486,12 +486,11 @@ impl ZoteroSource {
             .iter()
             .any(|warning| warning.code == WarningCode::CitationKeysUnavailable);
         let mut parsed = crate::ParsedLibrary::default();
-        let mut claims = ibis_core::source::IdentityClaims::default();
-        for item in items {
+        let candidates = crate::candidates::Candidates::collect(items, |item| (vec![(item.key.clone(), None)], item));
+        for item in candidates.finish(&mut parsed.duplicate_keys, &mut parsed.warnings) {
             if cancelled() {
                 return Err(LiveError::Cancelled.into());
             }
-            claims.claim(item.key.clone(), None);
             match zotero::map_item(library.clone(), &item) {
                 Ok(mut mapped) => {
                     if keys_unknown
@@ -562,7 +561,6 @@ impl ZoteroSource {
                 Err(_) => return Err(ZoteroError::InvalidData),
             }
         }
-        parsed.quarantine(&claims, None);
         warnings.extend(parsed.warnings);
         let snapshot = Snapshot::new(parsed.records.into_iter().map(LibraryObject::Record).collect())
             .map_err(|_| ZoteroError::InvalidData)?;
@@ -574,6 +572,7 @@ impl ZoteroSource {
             kind: LibraryKind::Zotero,
             snapshot,
             warnings,
+            duplicate_keys: parsed.duplicate_keys,
             cut_short: false,
             damaged_keys: Default::default(),
             attachment_paths: Default::default(),
