@@ -341,6 +341,37 @@ mod tests {
     }
 
     #[test]
+    fn a_missing_library_explains_recovery_and_retained_references() -> Result<(), Box<dyn std::error::Error>> {
+        use ibis_core::contract::{EngineError, ErrorCode, ErrorReason, Recovery};
+        let dir = tempfile::tempdir()?;
+        let path = dir.path().join("invented.bib");
+        let error = load_library(path.clone(), false)
+            .err()
+            .ok_or("missing file must fail")?;
+        let missing = EngineError::because(ErrorCode::SourceUnavailable, ErrorReason::MissingFile);
+        assert_eq!(error, LoadError::File(missing));
+        let mut library = candidate(path, "@article{invented, title={Invented reference}}");
+        for cause in [LoadError::File as fn(EngineError) -> LoadError, LoadError::FileRefresh] {
+            library.error = Some(cause(missing));
+            let shown = status(&library);
+            assert!(shown.stale && shown.has_snapshot && shown.kept_references);
+            assert_eq!(shown.references, 1);
+            assert_eq!(shown.problem, Some(LibraryProblem::Missing));
+            assert_eq!(
+                shown.failure.as_ref().map(|p| p.info.recovery()),
+                Some(Recovery::LocateFile)
+            );
+            assert_eq!(
+                shown.error.as_deref(),
+                Some(
+                    "the library file is unavailable; download any online-only file to this computer first; keeping the last loaded references"
+                )
+            );
+        }
+        Ok(())
+    }
+
+    #[test]
     fn a_watched_refresh_that_fails_says_why_and_keeps_the_references() {
         use ibis_core::contract::{ErrorCode, ErrorReason};
         assert_eq!(
