@@ -5,6 +5,7 @@ import type { Density, SearchResult } from "../bindings";
 import { PickerHeader } from "../features/picker/PickerHeader";
 import { ResultRow } from "../features/picker/ResultList";
 import { useInterfaceMessages } from "../i18n";
+import layerStyles from "../layers.css?raw";
 import pickerStyles from "../ui/Window.css?raw";
 import foundationStyles from "../ui/Foundation.css?raw";
 import buttonStyles from "../ui/Button.css?raw";
@@ -17,7 +18,7 @@ import bandStyles from "../ui/Band.css?raw";
 const ignore = () => undefined;
 // The real styles stay isolated from Settings, in the app's own order. Each host inherits the current
 // appearance or owns its explicitly requested scheme, never the system default.
-const styles = (foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + bandStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
+const styles = (layerStyles + foundationStyles + iconStyles + buttonStyles + iconButtonStyles + optionStyles + bandStyles + searchBarStyles + pickerStyles).replace(/@import[^;]+;/g, "")
   .replace(/:root(\[[^\]]+\])?/g, (_, attribute: string | undefined) => attribute ? `:host(${attribute})` : ":host");
 /** `frame` is the window's size in CSS pixels; the picture is that window scaled (the default size otherwise). */
 export function PickerPicture({ density = "comfortable", appearance, split = false, frame }: {

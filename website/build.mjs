@@ -39,7 +39,7 @@ export async function build(output = join(source, "dist"), input = source) {
       await writeFile(target, await content(shell.replace("{{body}}", body), page, input));
     }
     await writeFile(join(stage, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${pages.map(page => `  <url><loc>https://ibiscite.org${page.path}</loc></url>`).join("\n")}\n</urlset>\n`);
-    await copyFile(join(root, "apps/desktop/src/tokens.css"), join(stage, "tokens.css"));
+    for (const file of ["layers.css", "tokens.css"]) await copyFile(join(root, "apps/desktop/src", file), join(stage, file));
     await copyFile(join(root, "apps/desktop/src/ui/Icon.css"), join(stage, "icon.css"));
     await copyFile(join(root, "brand/icons/LICENSE-phosphor"), join(stage, "LICENSE-phosphor"));
     await writeFile(join(stage, "picker-tokens.css"), scopePickerTokens(await readFile(join(stage, "tokens.css"), "utf8")));

@@ -100,55 +100,6 @@ reason-rejected-record = A record sent with the request is not valid CSL-JSON, s
     .cli = Each record needs an id and a CSL type; fix or remove it.
     .agent = Each record needs an id and a CSL type such as book or article-journal; fix or remove the invalid one.
 
-## A reference a citation could not include. { $reference } names it.
-
-refusal-empty-selection = There is nothing to cite.
-refusal-too-many-items = One citation can hold at most { $limit } references.
-refusal-invalid-locator = The page or location for { $reference } is empty or has control characters.
-refusal-invalid-rich-text = The text before or after { $reference } has characters Ibis cannot write.
-refusal-output-too-large = The citation is too large to write.
-refusal-unsupported-form = { $output } cannot write { $reference } in this form or with these options.
-    .cli = Cite it on its own, or choose another output.
-    .agent = Try form normal, or another format or style.
-    .app = Choose Name in brackets, cite it alone, or choose another output.
-refusal-missing-item = { $reference } changed or was removed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-refusal-changed-item = { $reference } changed while citing.
-    .cli = Try again.
-    .agent = Search again.
-    .app = Search again.
-refusal-missing-key = { $reference } has no citation key.
-refusal-missing-doi = { $reference } has no usable DOI.
-    .cli = Cite it with --style instead.
-    .agent = A key syntax cannot name it; use a style.
-    .app = Give it one in your library, or choose a style.
-refusal-ambiguous-key = Several references share the citation key of { $reference }.
-    .cli = Give each one its own key in your library.
-    .agent = Use a style, or ask the person to give each its own key.
-    .app = Give each one its own key in your library.
-refusal-conflicting-key = { $reference } has more than one citation key in its library.
-    .cli = Keep one.
-    .agent = Use a style, or ask the person to keep one key.
-    .app = Keep one in your library, or choose a style.
-refusal-invalid-key = The citation key of { $reference } has characters { $output } cannot write.
-    .agent = Use a style, or ask the person to change the key.
-refusal-unsupported-output = There is no style { $output }.
-    .cli = List the styles with: ibis styles
-    .agent = The styles tool lists them.
-refusal-invalid-locale = That citation language is not available.
-    .cli = List them with: ibis styles --locales
-    .agent = The styles tool lists the locales.
-refusal-cancelled = The citation was cancelled.
-refusal-formatter-unavailable = The citation could not be written just now. Try again.
-refusal-annotation-mismatch = The annotation given for { $reference } belongs to another reference.
-refusal-not-citable = { $reference } is not a reference, such as a note, so it cannot be cited.
-refusal-not-from-zotero = { $reference } was not read from a Zotero library, so Zotero cannot find it.
-    .cli = Read your Zotero library with --zotero, or choose another output.
-    .agent = Use another format, or ask the person to cite it from their Zotero library.
-    .app = Cite it from your Zotero library, or choose another output.
-
 ## What a citation could not say in full.
 
 warning-source-field = A field of { $reference } could not be fully converted. Check it in your library.
@@ -222,8 +173,6 @@ cause-value = a value cannot be read as written
 
 ## The command line’s own sentences about a refusal.
 
-cli-form-refused = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
-cli-options-refused = Cannot cite { $reference } with { $options } in { $output }. Try without them.
 cli-together-refused = { $output } cannot write these references together as asked. Cite them one at a time to see which one fails.
 cli-loss-left-out = { $output } cannot show { $what }{ $target }, so it was left out.
 cli-loss-flattened = { $output } wrote { $what }{ $target } as plain text.
@@ -1223,8 +1172,7 @@ row-item-type =
 copied-notice-pasted-into = Pasted into { $app }
 copied-notice-pasted = Pasted
 # Every "copied, not pasted" sentence says why and ends with its fix, written
-# with ⌘V; other systems show Ctrl+V. The words are the Notices table in
-# docs/design/delivery.md, which a test reads.
+# with ⌘V; other systems show Ctrl+V.
 copied-notice-reason =
     { $reason ->
         [paste-off] Copied. Pasting is off in Settings. Press ⌘V to paste.
@@ -1375,24 +1323,74 @@ cli-ambiguous-suggestion = This key is ambiguous. Choose a result’s id from th
 cli-ambiguous-search-keys = note: { $count } hits have ambiguous citation keys and were omitted; search with --json and use the result’s id.
 problem-empty-selection = There is nothing to cite.
 problem-too-many-items = Choose fewer references for one citation.
+    .named = One citation can hold at most { $limit } references.
 problem-invalid-locator = Correct the page or location for this reference.
+    .named = The page or location for { $reference } is empty or has control characters.
 problem-invalid-rich-text = Correct the text before or after this reference.
+    .named = The text before or after { $reference } has characters Ibis cannot write.
 problem-output-too-large = The citation is too large to write.
 problem-unsupported-form = This output cannot write the chosen citation form.
+    .app-named = { $reference }: { $form } cannot be expressed in this output or group.
+    .cli-form = Cannot cite { $reference } in { $output } with --form { $form }. Try --form normal.
+    .cli-options = Cannot cite { $reference } with { $options } in { $output }. Try without them.
+    .named = { $output } cannot write { $reference } in this form or with these options.
+    .cli = Cite it on its own, or choose another output.
+    .agent = Try form normal, or another format or style.
+    .app = Choose Name in brackets, cite it alone, or choose another output.
+    .bibliography = Remove the references this style cannot write from this list.
 problem-missing-item = This reference was removed while citing.
+    .named = { $reference } changed or was removed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
 problem-changed-item = This reference changed while citing.
+    .named = { $reference } changed while citing.
+    .cli = Try again.
+    .agent = Search again.
+    .app = Search again.
 problem-missing-key = This reference has no citation key.
+    .named = { $reference } has no citation key.
+    .cli = Cite it with --style instead.
+    .agent = A key syntax cannot name it; use a style.
+    .app = Give it one in your library, or choose a style.
 problem-ambiguous-key = Several references share this citation key.
+    .named = Several references share the citation key of { $reference }.
+    .cli = Give each one its own key in your library.
+    .agent = Use a style, or ask the person to give each its own key.
+    .app = Give each one its own key in your library.
 problem-conflicting-key = This reference has conflicting citation keys.
+    .named = { $reference } has more than one citation key in its library.
+    .cli = Keep one.
+    .agent = Use a style, or ask the person to keep one key.
+    .app = Keep one in your library, or choose a style.
 problem-invalid-key = This output cannot write the reference’s citation key.
+    .named = The citation key of { $reference } has characters { $output } cannot write.
+    .agent = Use a style, or ask the person to change the key.
 problem-unsupported-output = This citation output is unavailable.
+    .named = There is no style { $output }.
+    .cli = List the styles with: ibis styles
+    .agent = The styles tool lists them.
 problem-invalid-locale = This citation language is unavailable.
+    .named = That citation language is not available.
+    .cli = List them with: ibis styles --locales
+    .agent = The styles tool lists the locales.
 problem-cancelled = The citation was cancelled.
 problem-formatter-unavailable = The citation could not be written just now.
+    .named = The citation could not be written just now. Try again.
 problem-annotation-mismatch = This annotation belongs to another reference.
+    .named = The annotation given for { $reference } belongs to another reference.
 problem-not-citable = This item cannot be cited as a reference.
+    .named = { $reference } is not a reference, such as a note, so it cannot be cited.
 problem-not-from-zotero = This reference was not read from Zotero.
-problem-missing-doi = A selected reference has no DOI. Share it as BibTeX instead.
+    .named = { $reference } was not read from a Zotero library, so Zotero cannot find it.
+    .cli = Read your Zotero library with --zotero, or choose another output.
+    .agent = Use another format, or ask the person to cite it from their Zotero library.
+    .app = Cite it from your Zotero library, or choose another output.
+problem-missing-doi = A selected reference has no usable DOI.
+    .named = { $reference } has no usable DOI.
+    .cli = Share it with --format bibtex instead.
+    .agent = Use format bibtex instead.
+    .app = Choose BibTeX in the citation format menu.
 
 ## Native command failures.
 app-failure-cli-status = The command line setup could not be read.
@@ -1435,9 +1433,9 @@ app-command-page-missing = Reference { $number }: { $label } needs a page or ran
 app-command-page-invalid = Reference { $number }: { $label } needs a valid page or range after its label. Correct it, or clear { $label }.
 app-command-locator-missing = Reference { $number }: { $label } needs a value. Enter one after the label, or clear the locator.
 app-command-locator-invalid = Reference { $number }: { $label } needs a valid value. Correct it, or clear the locator.
-app-command-unsupported-form = Reference { $number }: { $form } cannot be expressed in this output or group.
+app-reference-number = Reference { $number }
 app-command-locator-conflict = Reference { $number }: a typed locator and a captured locator cannot be combined.
-app-command-bibliography-unsupported = This style can’t write these references: { $references }.
+app-command-bibliography-unsupported = This style can’t write these references: { $references }. Remove them from this list to continue.
 
 ## MCP validation facts.
 mcp-error-arguments = arguments must be an object.

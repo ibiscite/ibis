@@ -83,6 +83,16 @@ fn write_generated() {
     let schema: serde_json::Value = serde_json::from_slice(&schema).unwrap_or_else(|e| panic!("{e}"));
     let schema = serde_json::to_string_pretty(&schema).unwrap_or_else(|e| panic!("{e}")) + "\n";
     std::fs::write(directory.join("cli-schema.json"), schema).unwrap_or_else(|e| panic!("{e}"));
+    // Export the runtime's code-to-exit mapping rather than parsing Rust in gen.mjs.
+    let errors: Vec<_> = ibis_core::contract::ErrorCode::ALL
+        .into_iter()
+        .map(|code| serde_json::json!({ "code": code, "exit": code.exit_code().value() }))
+        .collect();
+    std::fs::write(
+        directory.join("cli-errors.json"),
+        serde_json::to_string(&errors).unwrap_or_else(|e| panic!("{e}")),
+    )
+    .unwrap_or_else(|e| panic!("{e}"));
     // Building fills in what each option takes, as `--help` shows it.
     let mut root = super::command();
     root.build();

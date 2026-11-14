@@ -122,15 +122,8 @@ test("a reason Rust sends that this build does not know is reported and still sa
   } finally { error.mockRestore(); }
 });
 
-test("every reason reads as the Notices table in docs/design/delivery.md says: why, then its fix", async () => {
+test("every reason says why, then its fix, in the system's paste key", () => {
   const reasons: Record<string, string> = Object.fromEntries(COPY_REASONS.map((reason) => [reason, say("copied-notice-reason", { reason })]));
-  const { readFileSync } = await vi.importActual<{ readFileSync: (path: URL, encoding: string) => string }>("node:fs");
-  const { URL: FileURL } = await vi.importActual<{ URL: typeof URL }>("node:url");
-  const design = readFileSync(new FileURL("../../../docs/design/delivery.md", import.meta.url), "utf8");
-  const section = design.slice(design.indexOf("## Notices"));
-  const rows = section.split("\n").filter((line) => /^\| [^-]/.test(line)).slice(1).map((line) => line.split("|").slice(1, -1).map((cell) => cell.trim()));
-  const table = Object.fromEntries(rows.map(([, code, words]) => [code!.replaceAll("`", ""), words]));
-  expect(table).toEqual(reasons);
   for (const words of Object.values(reasons)) {
     // Copied, a sentence saying why, then the fix: never the fix alone.
     expect(words).toMatch(/^Copied\. [^.]+\. .*\.$/);

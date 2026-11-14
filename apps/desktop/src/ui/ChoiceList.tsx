@@ -73,7 +73,7 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
           </ListBoxItem>
         ))}
       </ListBox>
-      {footnote && <p className="choice-line choice-footnote">{footnote}</p>}
+      {footnote && <p className="choice-line">{footnote}</p>}
       </Stack>
       </Stack>
     </section>

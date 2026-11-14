@@ -45,4 +45,4 @@ cases through the engine, human `cite --style` arguments and framed
 strings, and the complete canonical result must agree across front ends.
 The app replays the five cases the picker can ask for (four styles in their
 normal form, IEEE as a reference list) from both files, through search rows,
-preview and copy (`engine_file/parity_tests.rs`).
+preview and copy (`ibis-engine/tests/citations.rs`).

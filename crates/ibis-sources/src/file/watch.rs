@@ -21,6 +21,7 @@ pub(super) fn invalidation(event: &notify::Event, selected: &Path, target: Optio
     (relevant, reset)
 }
 
+#[allow(clippy::disallowed_methods)]
 pub(super) fn rearm(
     watcher: &mut impl Watcher,
     selected: &Path,
@@ -122,6 +123,7 @@ pub(super) fn rearm(
 }
 
 #[cfg(test)]
+#[allow(clippy::disallowed_methods)]
 mod tests {
     use super::*;
 

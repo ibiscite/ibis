@@ -1,4 +1,4 @@
-@layer tokens, base, ui, parts, utilities;
+@import "./layers.css";
 @layer tokens {
 /* Ibis tokens, the same names and values as the canvas (docs/design/foundations.md, "Tokens").
    Three layers, each value declared once:
