@@ -7,7 +7,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use ibis_core::contract::{ItemRef, LibraryObject};
+use ibis_core::contract::{ItemRef, LibraryId, LibraryObject};
 use ibis_engine::request::ZoteroLibrary;
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
@@ -34,8 +34,15 @@ fn failed() -> CommandError {
 }
 
 #[derive(Deserialize, schemars::JsonSchema)]
-#[serde(transparent)]
-pub(crate) struct SourceItem(ItemRef);
+#[serde(untagged)]
+pub(crate) enum SourceItem {
+    Item(ItemRef),
+    #[serde(skip)]
+    #[schemars(skip)]
+    Library {
+        library: LibraryId,
+    },
+}
 
 /// Open the searched source or launch Zotero for a reported Zotero problem.
 #[tauri::command]
@@ -59,7 +66,7 @@ pub(crate) async fn open_library_source(
         let library = library.lock().map_err(|_| failed())?;
         target(
             &library,
-            item.as_ref().map(|item| &item.0),
+            item.as_ref(),
             &expected_revision,
             &expected_source_generation,
             zotero_only,
@@ -82,7 +89,7 @@ pub(crate) async fn open_library_source(
         let library = library.lock().map_err(|_| failed())?;
         self::target(
             &library,
-            item.as_ref().map(|item| &item.0),
+            item.as_ref(),
             &expected_revision,
             &expected_source_generation,
             zotero_only,
@@ -137,7 +144,7 @@ pub(crate) async fn library_source(
         let library = library.lock().map_err(|_| failed())?;
         let target = target(
             &library,
-            item.as_ref().map(|item| &item.0),
+            item.as_ref(),
             &expected_revision,
             &expected_source_generation,
             zotero_only,
@@ -175,7 +182,7 @@ pub(crate) async fn library_source(
 
 fn target(
     library: &Library,
-    item: Option<&ItemRef>,
+    item: Option<&SourceItem>,
     expected: &str,
     expected_source_generation: &str,
     zotero_only: bool,
@@ -211,21 +218,28 @@ fn target(
     };
     let file = library.file.as_ref().ok_or_else(failed)?;
     let snapshot = file.engine.snapshot().map_err(|_| CommandError::SnapshotChanged)?;
-    if snapshot.fingerprints().full.as_str() != expected
-        || !snapshot
-            .get(item)
-            .is_some_and(|object| matches!(object.object, LibraryObject::Record(_)))
-    {
+    if snapshot.fingerprints().full.as_str() != expected {
         return Err(CommandError::SnapshotChanged);
     }
+    let id = match item {
+        SourceItem::Item(item) => {
+            if !snapshot
+                .get(item)
+                .is_some_and(|object| matches!(object.object, LibraryObject::Record(_)))
+            {
+                return Err(CommandError::SnapshotChanged);
+            }
+            &item.library
+        }
+        SourceItem::Library { library } => library,
+    };
     let info = file.engine.libraries().map_err(|_| failed())?;
-    let source = info
-        .libraries
-        .iter()
-        .find(|info| info.id == item.library)
-        .ok_or_else(failed)?;
+    let source = info.libraries.iter().find(|info| &info.id == id).ok_or_else(failed)?;
     if let Some(zotero) = source.zotero {
-        return Ok(Target::ZoteroItem(zotero_uri(zotero, &item.key)?));
+        return match item {
+            SourceItem::Item(item) => Ok(Target::ZoteroItem(zotero_uri(zotero, &item.key)?)),
+            SourceItem::Library { .. } => Ok(Target::Zotero(zotero)),
+        };
     }
     match library.source.as_ref() {
         Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
@@ -391,18 +405,58 @@ mod tests {
 
     #[cfg(not(target_os = "windows"))]
     #[test]
-    fn tray_fix_problems_opens_the_selected_group() -> Result<(), Box<dyn std::error::Error>> {
+    fn tray_fix_problems_targets_the_warning_library_among_multiple_selections()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::library::{engine_file::FileLibrary, zotero_fixture};
+        use ibis_engine::{
+            Cancellation, Engine,
+            settings::{ZoteroLibraries, ZoteroLibrary},
+        };
+        let server = zotero_fixture::Server::new();
+        server.group_warning.store(true, std::sync::atomic::Ordering::Relaxed);
+        let chosen: ZoteroLibraries = serde_json::from_value(serde_json::json!(["user", {"group":7}]))?;
+        let engine = Engine::with_zotero_port(server.port).map_err(|_| "engine")?;
+        engine
+            .dispatch(
+                ibis_engine::Method::Libraries,
+                &serde_json::json!({"action":"open-zotero", "libraries":["personal", {"group":7}]}),
+                &Cancellation::default(),
+            )
+            .map_err(|_| "open Zotero")?;
+        let file = FileLibrary::from_engine(engine);
+        let library = Library {
+            source: Some(Source::Zotero(chosen)),
+            file: Some(std::sync::Arc::new(file)),
+            ..Library::default()
+        };
+        let status = crate::library::snapshot_status(&library);
+        assert_eq!(status.zotero_libraries, [ZoteroLibrary::User, ZoteroLibrary::Group(7)]);
+        assert_eq!(status.warnings, 1);
+        let affected = SourceItem::Library {
+            library: status.problem_library.ok_or("warning library")?,
+        };
+        let target = target(
+            &library,
+            Some(&affected),
+            &status.revision,
+            &status.source_generation,
+            false,
+        )?;
+        assert_eq!(
+            command(target, false)?.get_args().last(),
+            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
+        );
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn opening_zotero_after_a_failed_switch_keeps_the_requested_group() -> Result<(), Box<dyn std::error::Error>> {
         let mut library = Library {
             source: Some(Source::Zotero(ibis_engine::settings::ZoteroLibrary::Group(7).into())),
             ..Library::default()
         };
         let generation = library.source_generation.to_string();
-        let selected = target(&library, None, "", &generation, false)?;
-        let launch = command(selected, false)?;
-        assert_eq!(
-            launch.get_args().last(),
-            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
-        );
         library.requested = library.source.take();
         library.source = Some(Source::File("retained.bib".into()));
         let selected = target(&library, None, "", &generation, true)?;
@@ -455,20 +509,21 @@ mod tests {
             .and_then(|file| file.engine.snapshot().ok())
             .and_then(|snapshot| snapshot.objects().first().map(|object| object.object.id().clone()))
             .unwrap_or_else(|| panic!("invented record"));
+        let source = SourceItem::Item(item.clone());
         assert_eq!(
-            target(&library, Some(&item), &revision, &generation, false).ok(),
+            target(&library, Some(&source), &revision, &generation, false).ok(),
             Some(Target::File("retained.bib".into()))
         );
         assert!(matches!(
-            target(&library, Some(&item), "old", &generation, false),
+            target(&library, Some(&source), "old", &generation, false),
             Err(CommandError::SnapshotChanged)
         ));
         let mut forged = item.clone();
         forged.key = "not-a-record".into();
-        assert!(target(&library, Some(&forged), &revision, &generation, false).is_err());
+        assert!(target(&library, Some(&SourceItem::Item(forged)), &revision, &generation, false).is_err());
         library.source = Some(Source::Samples("samples.csljson".into()));
         assert_eq!(
-            target(&library, Some(&item), &revision, &generation, false).ok(),
+            target(&library, Some(&source), &revision, &generation, false).ok(),
             Some(Target::File("samples.csljson".into()))
         );
         assert_eq!(

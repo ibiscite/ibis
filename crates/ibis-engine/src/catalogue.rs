@@ -130,7 +130,6 @@ fn render(
         .unwrap_or_else(|| id.into());
     let attribute = match context {
         Some(ibis_core::contract::CitationSurface::Bibliography) => "bibliography",
-        Some(ibis_core::contract::CitationSurface::Picker) => "app",
         None => audience.attribute(),
     };
     match text(id, Some(attribute), args) {
@@ -182,7 +181,7 @@ mod tests {
     fn bibliography_advice_names_the_control_that_surface_can_use() {
         use ibis_core::contract::CitationSurface;
         let diagnostic = CitationError::UnsupportedForm.problem();
-        let picker = problem(&diagnostic.clone().on(CitationSurface::Picker), Audience::App);
+        let picker = problem(&diagnostic, Audience::App);
         let bibliography = problem(&diagnostic.on(CitationSurface::Bibliography), Audience::App);
         assert!(picker.contains("Name in brackets"), "{picker}");
         assert!(bibliography.contains("Remove the references"), "{bibliography}");

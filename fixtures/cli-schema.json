@@ -166,9 +166,8 @@
       "result": {
         "$defs": {
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -1467,9 +1466,8 @@
             "type": "string"
           },
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -3037,9 +3035,8 @@
             "type": "string"
           },
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -4864,9 +4861,8 @@
             "type": "object"
           },
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -6923,9 +6919,8 @@
             "type": "object"
           },
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -8402,9 +8397,8 @@
       "result": {
         "$defs": {
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"
@@ -9400,9 +9394,8 @@
       "result": {
         "$defs": {
           "CitationSurface": {
-            "description": "The controls a citation surface owns. Each new recovery needs a decision\nfor both surfaces; a sheet cannot inherit a focus into the picker behind it.",
+            "description": "Wording context only; operations choose their recovery before presentation.",
             "enum": [
-              "picker",
               "bibliography"
             ],
             "type": "string"

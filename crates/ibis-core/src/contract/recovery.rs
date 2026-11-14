@@ -115,84 +115,11 @@ impl Recovery {
     }
 }
 
-/// The controls a citation surface owns. Each new recovery needs a decision
-/// for both surfaces; a sheet cannot inherit a focus into the picker behind it.
+/// Wording context only; operations choose their recovery before presentation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum CitationSurface {
-    Picker,
     Bibliography,
-}
-
-impl CitationSurface {
-    fn recovery(self, recovery: Recovery) -> Recovery {
-        use Recovery as R;
-        match self {
-            Self::Picker => match recovery {
-                R::ChooseOutput
-                | R::ChooseStyle
-                | R::ChooseForm
-                | R::LocateFile
-                | R::ChooseLibrary
-                | R::OpenZoteroSharingHelp
-                | R::OpenZotero
-                | R::Retry
-                | R::ChooseProject
-                | R::RenameProject
-                | R::RemoveProject
-                | R::ReopenProjectMenu
-                | R::FinishEditorRequest
-                | R::ReviewSettings
-                | R::EditCitation
-                | R::EditLocator
-                | R::SearchReferences
-                | R::SelectReferences
-                | R::ReduceSelection
-                | R::ReviewLibrary
-                | R::None { .. } => recovery,
-                R::ChooseLocale => R::ChooseOutput,
-                R::EditInput => R::SearchReferences,
-                R::RemoveReferences => R::ReduceSelection,
-                R::FreeDiskSpace | R::UpgradeIbis | R::ChooseBackup | R::DownloadFile | R::ChooseShortcut => {
-                    R::ReviewSettings
-                }
-                R::OpenIbis | R::RestartSession | R::Close => R::Retry,
-            },
-            Self::Bibliography => match recovery {
-                R::ChooseForm
-                | R::EditCitation
-                | R::EditLocator
-                | R::EditInput
-                | R::SearchReferences
-                | R::SelectReferences
-                | R::ReduceSelection
-                | R::RemoveReferences => R::RemoveReferences,
-                R::Retry | R::None { .. } => recovery,
-                R::ChooseOutput
-                | R::ChooseStyle
-                | R::ChooseLocale
-                | R::LocateFile
-                | R::ChooseLibrary
-                | R::OpenZoteroSharingHelp
-                | R::OpenZotero
-                | R::ChooseProject
-                | R::RenameProject
-                | R::RemoveProject
-                | R::ReopenProjectMenu
-                | R::FinishEditorRequest
-                | R::ReviewSettings
-                | R::ReviewLibrary
-                | R::FreeDiskSpace
-                | R::UpgradeIbis
-                | R::ChooseBackup
-                | R::DownloadFile
-                | R::ChooseShortcut
-                | R::OpenIbis
-                | R::RestartSession
-                | R::Close => R::Close,
-            },
-        }
-    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -238,10 +165,7 @@ impl JsonSchema for RecoveryInfo {
 
 impl RecoveryInfo {
     pub fn recovery(&self) -> Recovery {
-        match self.message.context {
-            Some(surface) => surface.recovery(self.recovery),
-            None => self.recovery,
-        }
+        self.recovery
     }
     pub fn new(id: &str, recovery: Recovery) -> Self {
         Self {
@@ -334,6 +258,10 @@ impl EngineError {
 }
 
 impl Problem {
+    pub fn recover_with(mut self, recovery: Recovery) -> Self {
+        self.info.recovery = recovery;
+        self
+    }
     pub fn on(mut self, surface: CitationSurface) -> Self {
         self.info.message.context = Some(surface);
         self

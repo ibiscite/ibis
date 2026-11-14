@@ -13,7 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::library::commands::RecentIdentity;
 use crate::library::engine_file::{FileLibrary, SessionBibliography};
-use crate::library::{BibliographyError, CommandError, Library, SearchResult};
+use crate::library::{CommandError, Library, SearchResult};
 use crate::picker::ChooserOpen;
 
 pub(crate) use ibis_engine::recents::SessionReferences;
@@ -110,8 +110,11 @@ pub(crate) fn edit_session_references(
 fn style_of(id: &str) -> Result<String, CommandError> {
     match crate::output::listed(id).map(crate::output::OutputRef::spec) {
         Some(ibis_core::contract::OutputSpec::Csl { style }) => Ok(style.clone()),
-        _ => Err(CommandError::from(
-            ibis_core::contract::CitationError::UnsupportedOutput,
+        _ => Err(CommandError::Presented(
+            ibis_core::contract::CitationError::UnsupportedOutput
+                .problem()
+                .recover_with(ibis_core::contract::Recovery::Close)
+                .on(ibis_core::contract::CitationSurface::Bibliography),
         )),
     }
 }
@@ -126,7 +129,7 @@ pub(crate) async fn session_bibliography(
     requests: State<'_, crate::library::FormattingRequests>,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<Option<SessionBibliography>, BibliographyError> {
+) -> Result<Option<SessionBibliography>, CommandError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     // With no library open nothing listed can be written, which is no failure.
@@ -136,11 +139,9 @@ pub(crate) async fn session_bibliography(
     file.begin_bibliography(&cancel)?;
     let items = session.items();
     let style = style_of(&style)?;
-    Ok(
-        tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
-            .await
-            .map_err(|_| CommandError::BibliographyUnavailable)??,
-    )
+    tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
+        .await
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Copy what was shown. Prepared again from the list as it is now, and refused
@@ -155,7 +156,7 @@ pub(crate) async fn copy_session_bibliography(
     app: AppHandle,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<(), BibliographyError> {
+) -> Result<(), CommandError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     // Formatting can take a while: anything copied meanwhile is newer and stays.
@@ -186,10 +187,10 @@ pub(crate) async fn copy_session_bibliography(
         let _ = send.send(result);
     })
     .map_err(|_| CommandError::BibliographyUnavailable)?;
-    Ok(tauri::async_runtime::spawn_blocking(move || written.recv())
+    tauri::async_runtime::spawn_blocking(move || written.recv())
         .await
         .map_err(|_| CommandError::BibliographyUnavailable)?
-        .map_err(|_| CommandError::BibliographyUnavailable)??)
+        .map_err(|_| CommandError::BibliographyUnavailable)?
 }
 
 /// Keep edits out until the write finishes; a superseded list never reaches
@@ -212,7 +213,7 @@ fn words(id: &str) -> String {
 }
 
 /// The kinds of file a bibliography can be saved as, by its extension.
-fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<'_>) -> Option<String> {
+fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<'_>) -> Result<String, CommandError> {
     match extension.to_ascii_lowercase().as_str() {
         "rtf" => content.rtf.map(str::to_owned),
         "html" | "htm" => content.html.map(|html| {
@@ -223,7 +224,7 @@ fn export_text(extension: &str, content: &ibis_core::contract::ClipboardContent<
         }),
         "txt" => Some(format!("{}\n", content.text.trim_end())),
         _ => None,
-    }
+    }.ok_or(CommandError::BibliographyFormat)
 }
 
 /// Save what was shown, as rich text, a web page or plain text. This is the one
@@ -239,7 +240,7 @@ pub(crate) async fn export_session_bibliography(
     window: WebviewWindow,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<Option<String>, BibliographyError> {
+) -> Result<Option<String>, CommandError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     let style = style_of(&style)?;
@@ -291,7 +292,7 @@ pub(crate) async fn export_session_bibliography(
             .and_then(|extension| extension.to_str())
             .unwrap_or_default();
         let text = file.commit_session_bibliography(&items, &style, &content_hash, &cancel, |content| {
-            export_text(extension, &content).ok_or(CommandError::BibliographyFormat)
+            export_text(extension, &content)
         })?;
         cancel.check().map_err(CommandError::from)?;
         save_export(&path, &text, replace)
@@ -372,7 +373,7 @@ mod tests {
             "A file with that name is already there. Choose another name."
         );
         let problem = serde_json::to_value(error)?;
-        assert_eq!(problem["recovery"]["action"], "edit-input");
+        assert_eq!(problem["recovery"]["action"], "retry");
         assert_eq!(problem["message"]["id"], "app-bibliography-name-taken");
         assert_eq!(std::fs::read_to_string(path)?, "existing");
         Ok(())
@@ -451,10 +452,10 @@ mod tests {
             html: Some("<p>Taylor</p>"),
             rtf: Some("{\\rtf1 Taylor}"),
         };
-        assert_eq!(export_text("RTF", &content).as_deref(), Some("{\\rtf1 Taylor}"));
+        assert_eq!(export_text("RTF", &content).as_deref(), Ok("{\\rtf1 Taylor}"));
         assert_eq!(
             export_text("txt", &content).as_deref(),
-            Some("Taylor, A. (2026). Synthetic signals.\n")
+            Ok("Taylor, A. (2026). Synthetic signals.\n")
         );
         let page = export_text("html", &content).unwrap_or_default();
         assert!(page.contains("<p>Taylor</p>") && page.contains("charset=\"utf-8\""));
@@ -462,13 +463,19 @@ mod tests {
             page.contains("References cited since opening"),
             "never titled as a document's bibliography"
         );
-        assert_eq!(export_text("pdf", &content), None);
+        let error = export_text("pdf", &content)
+            .err()
+            .unwrap_or_else(|| panic!("unsupported format"));
+        let problem = serde_json::to_value(error).unwrap_or_default();
+        assert_eq!(problem["code"], "bibliography-format");
+        assert_eq!(problem["recovery"]["action"], "retry");
+        assert_eq!(problem["focus"], "recovery-action");
         let plain = ClipboardContent {
             html: None,
             rtf: None,
             ..content
         };
-        assert_eq!(export_text("rtf", &plain), None);
+        assert_eq!(export_text("rtf", &plain), Err(CommandError::BibliographyFormat));
     }
 }
 

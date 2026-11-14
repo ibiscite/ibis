@@ -65,9 +65,9 @@ export const commands = {
 	/** The library as it is now, for the interface when it starts. */
 	libraryStatus: () => __TAURI_INVOKE<LibraryStatus>("library_status"),
 	/** Open the searched source or launch Zotero for a reported Zotero problem. */
-	openLibrarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
+	openLibrarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, reveal: boolean, presentation: number | null) => __TAURI_INVOKE<null>("open_library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, reveal, presentation }),
 	/** Resolve the selected source and its system icon, never exposing its path. */
-	librarySource: (item: ItemRef | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
+	librarySource: (item: SourceItem | null, expectedRevision: string, expectedSourceGeneration: string, zoteroOnly: boolean, withStatusIcon: boolean) => __TAURI_INVOKE<SourcePresentation>("library_source", { item, expectedRevision, expectedSourceGeneration, zoteroOnly, withStatusIcon }),
 	/**
 	 * Search the open library. An empty query returns no results. Async so it
 	 * runs off the main thread. `page` identifies the interface page and
@@ -313,11 +313,8 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
 
-/**
- * The controls a citation surface owns. Each new recovery needs a decision
- * for both surfaces; a sheet cannot inherit a focus into the picker behind it.
- */
-export type CitationSurface = "picker" | "bibliography";
+/** Wording context only; operations choose their recovery before presentation. */
+export type CitationSurface = "bibliography";
 
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
@@ -1119,6 +1116,8 @@ export type ShortcutStatus = {
 	registered: boolean;
 	shortcut: string;
 };
+
+export type SourceItem = ItemRef;
 
 export type SourceKind = "zotero" | "file";
 

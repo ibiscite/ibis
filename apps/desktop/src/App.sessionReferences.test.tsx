@@ -204,18 +204,28 @@ test("a delayed copy cannot replace the failure from a newer list edit", async (
   expect(within(dialog).queryByText("Copied the bibliography.")).toBeNull();
 });
 
-test("a copy or a save that fails says so", async () => {
-  backend({
+test.each([
+  ["Copy Bibliography", "copy_session_bibliography", "The bibliography could not be copied. Try again.", "Copied the bibliography."],
+  ["Save…", "export_session_bibliography", "Save it as .rtf, .html or .txt.", "Saved invented.rtf."],
+])("Try Again repeats %s after delivery fails", async (action, command, failure, success) => {
+  let attempts = 0;
+  const calls = backend({
     session_references: () => list(), session_bibliography: () => formatted("text"),
-    copy_session_bibliography: () => { throw new Error("no sentence for a person"); },
-    export_session_bibliography: () => { throw "no sentence for a person"; },
+    [command]: () => {
+      if (++attempts === 1) throw command === "copy_session_bibliography" ? new Error("invented failure")
+        : { code: "bibliography-format", message: { id: "app-bibliography-format", args: {} }, recovery: { action: "retry" }, focus: "recovery-action" };
+      return "invented.rtf";
+    },
   });
   const dialog = await open();
   await within(dialog).findByText("text");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Copy Bibliography" }));
-  await within(dialog).findByText("The bibliography could not be copied. Try again.");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
-  await within(dialog).findByText("The bibliography could not be saved. Try again.");
+  fireEvent.click(within(dialog).getByRole("button", { name: action }));
+  await within(dialog).findByText(failure);
+  fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+  await waitFor(() => expect(plain(dialog.textContent)).toContain(success));
+  expect(attempts).toBe(2);
+  expect(calls.filter((name) => name === "session_references")).toHaveLength(1);
+  expect(calls.filter((name) => name === "session_bibliography")).toHaveLength(1);
 });
 
 test("a saved file is named, and a cancelled dialog says nothing", async () => {
@@ -241,17 +251,6 @@ test("a reference the style cannot write is named, and the rest can still be cop
   const dialog = await open();
   await waitFor(() => expect(plain(dialog.textContent)).toContain("Left out because this style can’t write them: taylor2026."));
   expect(within(dialog).getByRole<HTMLButtonElement>("button", { name: "Copy Bibliography" }).disabled).toBe(false);
-});
-
-test("a typed bibliography refusal keeps its catalogue words", async () => {
-  backend({
-    session_references: () => list(), session_bibliography: () => formatted("text"),
-    export_session_bibliography: () => { throw { code: "bibliography-format", message: { id: "app-bibliography-format", args: {} }, recovery: { action: "edit-input" }, focus: "request" }; },
-  });
-  const dialog = await open();
-  await within(dialog).findByText("text");
-  fireEvent.click(within(dialog).getByRole("button", { name: "Save…" }));
-  await within(dialog).findByText("Save it as .rtf, .html or .txt.");
 });
 
 test("a removed row leaves the keyboard in the sheet, so the next key cannot act behind it", async () => {
@@ -293,19 +292,17 @@ test("opening the source with its shortcut closes the sheet instead of acting be
   await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
 
-test("a read that fails says so, and closing and reopening reads the list again", async () => {
+test.each(["read", "format"])("Try Again reloads after a %s failure", async (operation) => {
   let fail = true, reads = 0;
   backend({
-    session_references: () => { reads += 1; if (fail) throw new Error("no"); return list(); },
-    session_bibliography: () => formatted("text"),
+    session_references: () => { reads += 1; if (fail && operation === "read") throw new Error("invented failure"); return list(); },
+    session_bibliography: () => { if (fail && operation === "format") throw new Error("invented failure"); return formatted("text"); },
   });
   const dialog = await open();
-  await within(dialog).findByText("The references could not be read. Try again.");
-  fireEvent.keyDown(dialog, { key: "Escape" });
-  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  await within(dialog).findByRole("alert");
   fail = false;
-  await chooseFromMore("Cited Since Opening…");
-  await within(await screen.findByRole("dialog")).findByText("text");
+  fireEvent.click(within(dialog).getByRole("button", { name: "Try Again" }));
+  await within(dialog).findByText("text");
   expect(reads).toBe(2);
 });
 

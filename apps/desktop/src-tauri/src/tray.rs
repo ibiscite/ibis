@@ -438,6 +438,7 @@ pub(crate) fn alignment_tick() {
 enum LibraryAction {
     Open(Source),
     FixProblems {
+        library: ibis_core::contract::LibraryId,
         revision: String,
         source_generation: String,
     },
@@ -446,6 +447,7 @@ enum LibraryAction {
 fn library_action(row: Row, status: &LibraryStatus, choices: &LibraryChoices) -> Option<LibraryAction> {
     if row == Row::FixProblems {
         Some(LibraryAction::FixProblems {
+            library: status.problem_library.clone()?,
             revision: status.revision.clone(),
             source_generation: status.source_generation.clone(),
         })
@@ -654,6 +656,7 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 crate::picker::reveal_picker(app);
             }
             LibraryAction::FixProblems {
+                library,
                 revision,
                 source_generation,
             } => {
@@ -663,7 +666,7 @@ fn menu_event(app: &AppHandle, event: tauri::menu::MenuEvent) {
                 let presentation = app.state::<crate::picker::PickerGeneration>().current();
                 tauri::async_runtime::spawn(async move {
                     let result = crate::library::open_source::open_library_source(
-                        None,
+                        Some(crate::library::open_source::SourceItem::Library { library }),
                         revision,
                         source_generation.clone(),
                         false,

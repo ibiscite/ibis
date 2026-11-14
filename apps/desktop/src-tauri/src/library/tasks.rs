@@ -800,6 +800,7 @@ pub(crate) fn current_status(app: &AppHandle) -> LibraryStatus {
             references: 0,
             source_counts: BTreeMap::new(),
             warnings: 0,
+            problem_library: None,
             reading: Vec::new(),
             live_updates_off: false,
             error: Some(super::error::words("app-library-state-unavailable", &[])),

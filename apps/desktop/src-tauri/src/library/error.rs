@@ -171,21 +171,6 @@ pub(crate) enum CommandError {
     RecentReferencesFailed,
 }
 
-/// Bibliography commands can only publish recoveries supported by their sheet.
-#[derive(Debug)]
-pub(crate) struct BibliographyError(CommandError);
-
-impl From<CommandError> for BibliographyError {
-    fn from(error: CommandError) -> Self {
-        Self(error)
-    }
-}
-impl From<BibliographyError> for CommandError {
-    fn from(error: BibliographyError) -> Self {
-        Self::Presented(error.0.problem().on(ibis_core::contract::CitationSurface::Bibliography))
-    }
-}
-
 impl schemars::JsonSchema for CommandError {
     fn schema_name() -> std::borrow::Cow<'static, str> {
         "CommandError".into()
@@ -212,10 +197,8 @@ impl CommandError {
     pub(crate) fn problem(&self) -> ibis_core::contract::Problem {
         use ibis_core::contract::{NoRecoveryReason, Problem, Recovery as R, RecoveryInfo};
         let (code, info) = match self {
-            Self::Engine(error) => {
-                return ibis_core::contract::Problem::from(*error).on(ibis_core::contract::CitationSurface::Picker);
-            }
-            Self::Refused(error) => return error.problem().on(ibis_core::contract::CitationSurface::Picker),
+            Self::Engine(error) => return ibis_core::contract::Problem::from(*error),
+            Self::Refused(error) => return error.problem(),
             Self::Presented(problem) => return problem.clone(),
             Self::LocatorField { error, index } => {
                 use ibis_core::locator::FieldError;
@@ -283,11 +266,11 @@ impl CommandError {
             ),
             Self::BibliographyNameTaken => (
                 "bibliography-name-taken",
-                RecoveryInfo::new("app-bibliography-name-taken", R::EditInput),
+                RecoveryInfo::new("app-bibliography-name-taken", R::Retry),
             ),
             Self::BibliographyFormat => (
                 "bibliography-format",
-                RecoveryInfo::new("app-bibliography-format", R::EditInput),
+                RecoveryInfo::new("app-bibliography-format", R::Retry),
             ),
             Self::SettingsUnavailable => (
                 "settings-unreadable",

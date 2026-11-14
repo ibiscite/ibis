@@ -288,7 +288,12 @@ impl FileLibrary {
             }
             let (citation, whole) = self.bibliography_of(kept, style, cancel)?;
             if !whole {
-                return Err(CitationError::UnsupportedForm.into());
+                return Err(CommandError::Presented(
+                    CitationError::UnsupportedForm
+                        .problem()
+                        .recover_with(ibis_core::contract::Recovery::RemoveReferences)
+                        .on(ibis_core::contract::CitationSurface::Bibliography),
+                ));
             }
             (citation, left_out)
         };
@@ -870,7 +875,6 @@ impl FileLibrary {
             }
             if let Some(item) = refused(CitationError::UnsupportedForm) {
                 let mut failure = CitationError::UnsupportedForm.problem();
-                failure = failure.on(ibis_core::contract::CitationSurface::Picker);
                 let form = request.items[item].form.unwrap_or(request.form);
                 let label = super::error::words(&ibis_engine::catalogue::id("form", form), &[]);
                 failure.info = failure
