@@ -91,7 +91,6 @@ impl LoadError {
     fn words_id(self) -> &'static str {
         match self {
             LoadError::File(error) | LoadError::FileRefresh(error) => match (self, error.code) {
-                _ if error.reason == Some(ErrorReason::MissingFile) => "reason-missing-file",
                 (_, ErrorCode::SourceUnavailable) => "app-library-file-unavailable",
                 _ if error.reason == Some(ErrorReason::CsvTemplate) => "reason-csv-template",
                 _ if error.reason == Some(ErrorReason::UnknownFormat) => "reason-unknown-format",
