@@ -112,6 +112,9 @@ ssh_options=(-o BatchMode=yes -o ConnectTimeout=10 -o ServerAliveInterval=10 -o 
 
 mac_gate() {
   set -Ee
+  # The gate picks its own tools: Homebrew first on macOS, so a shell whose PATH starts with the
+  # system's old python3 cannot change what the scripts run with.
+  [ -d /opt/homebrew/bin ] && export PATH="/opt/homebrew/bin:$PATH"
   trap 'printf "FAILED (%s): %s\n" "$?" "$BASH_COMMAND"' ERR
   cargo fmt --all --check
   cargo clippy --workspace --all-targets --locked -- -D warnings -D clippy::unused_result_ok
