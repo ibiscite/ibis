@@ -10,12 +10,43 @@ use crate::{ParsedLibrary, SourceError, WarningCause, WarningCode};
 
 type Fields = BTreeMap<String, Vec<String>>;
 
+const NAME_BYTES: usize = 256;
+const WORK: usize = 64 * 1024 * 1024;
+const ATTRIBUTES: usize = 128;
+
+// quick-xml stores start names before returning the event, even with end-name
+// checking disabled. Inspect the next markup before handing it to the reader.
+fn name_fits(text: &str, offset: usize) -> bool {
+    let Some(markup) = text.as_bytes().get(offset..).and_then(|s| s.strip_prefix(b"<")) else {
+        return true;
+    };
+    let markup = markup.strip_prefix(b"/").unwrap_or(markup);
+    if matches!(markup.first(), Some(b'!' | b'?')) {
+        return true;
+    }
+    markup
+        .iter()
+        .take_while(|b| !b.is_ascii_whitespace() && !matches!(b, b'/' | b'>'))
+        .take(NAME_BYTES + 1)
+        .count()
+        <= NAME_BYTES
+}
+
 pub(crate) fn looks_like_endnote(text: &str) -> bool {
     let mut reader = Reader::from_str(text);
     let mut depth = 0;
     let mut root = false;
+    let mut work = 0usize;
     loop {
-        match reader.read_event() {
+        let offset = reader.buffer_position() as usize;
+        if depth > 64 || !name_fits(text, offset) || work > WORK {
+            return false;
+        }
+        let event = reader.read_event();
+        work = work
+            .saturating_add(reader.buffer_position() as usize - offset)
+            .saturating_add(128);
+        match event {
             Ok(Event::Start(tag)) => {
                 if depth == 0 {
                     root = tag.name().as_ref() == "xml";
@@ -53,9 +84,21 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
     let mut value = String::new();
     let (mut root, mut recognized) = (false, false);
     let (mut line, mut record_line) = (1, 1);
+    let mut work = 0usize;
     loop {
         let offset = reader.buffer_position() as usize;
+        if !name_fits(text, offset) {
+            records.limit(line);
+            return Ok(records.finish());
+        }
         let event = reader.read_event().map_err(|_| SourceError::InvalidData)?;
+        work = work
+            .saturating_add(reader.buffer_position() as usize - offset)
+            .saturating_add(128);
+        if work > WORK {
+            records.limit(line);
+            return Ok(records.finish());
+        }
         let event_line = line;
         line += text[offset..reader.buffer_position() as usize]
             .bytes()
@@ -73,8 +116,16 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
                     root = true;
                 }
                 // Validate even unused attributes; no entity resolver or I/O exists here.
-                for attribute in tag.attributes() {
+                for (index, attribute) in tag.attributes().enumerate() {
+                    if index >= ATTRIBUTES {
+                        records.limit(event_line);
+                        return Ok(records.finish());
+                    }
                     let attribute = attribute.map_err(|_| SourceError::InvalidData)?;
+                    if attribute.key.as_ref().len() > NAME_BYTES {
+                        records.limit(event_line);
+                        return Ok(records.finish());
+                    }
                     if attribute.value.contains('<') {
                         return Err(SourceError::InvalidData);
                     }
@@ -104,6 +155,11 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
             }
             Event::End(tag) => {
                 if tag.name().as_ref() != "style" {
+                    work = work.saturating_add(value.len());
+                    if work > WORK {
+                        records.limit(event_line);
+                        return Ok(records.finish());
+                    }
                     if path == ["xml", "records", "record"] {
                         match csl(&fields) {
                             Ok((csl, uncertain)) => {
@@ -120,6 +176,11 @@ pub(crate) fn load(library: &LibraryId, text: &str, previous: Option<&Snapshot>)
                             }
                         }
                     } else if path.len() > 3 && path[..3] == ["xml", "records", "record"] && !value.trim().is_empty() {
+                        work = work.saturating_add(path[3..].iter().map(|part| part.len() + 1).sum::<usize>());
+                        if work > WORK {
+                            records.limit(event_line);
+                            return Ok(records.finish());
+                        }
                         fields.entry(path[3..].join("/")).or_default().push(value.trim().into());
                     }
                     value.clear();

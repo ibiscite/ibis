@@ -193,11 +193,15 @@ impl<'a> Records<'a> {
         self.warning_start = self.parsed.warnings.len();
         self.started += 1;
         if self.started > crate::MAX_LIBRARY_RECORDS {
-            self.warn(WarningCode::WorkLimit, line);
-            self.parsed.cut_short = true;
+            self.limit(line);
             return false;
         }
         true
+    }
+
+    pub(crate) fn limit(&mut self, line: usize) {
+        self.warn(WarningCode::WorkLimit, line);
+        self.parsed.cut_short = true;
     }
 
     pub(crate) fn warn(&mut self, code: WarningCode, line: usize) {

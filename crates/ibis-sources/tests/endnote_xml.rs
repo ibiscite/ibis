@@ -9,6 +9,83 @@ use serde_json::{Value, json};
 
 const XML: &str = include_str!("../../../fixtures/endnote-xml/library.xml");
 
+#[test]
+fn long_element_name_is_refused_with_bounded_memory() {
+    const CHILD: &str = "IBIS_ENDNOTE_LONG_NAME_CHILD";
+    if let Some(path) = std::env::var_os(CHILD) {
+        let loaded = load_file(Path::new(&path)).unwrap();
+        assert!(loaded.cut_short);
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+        return;
+    }
+    let directory = tempfile::tempdir().unwrap();
+    let path = directory.path().join("long.xml");
+    let name = "a".repeat(1_234_120);
+    std::fs::write(&path, format!("<xml><records><{name}></{name}></records></xml>")).unwrap();
+    let executable = std::env::current_exe().unwrap();
+    #[cfg(target_os = "linux")]
+    let mut command = {
+        let mut command = std::process::Command::new("sh");
+        command
+            .args(["-c", "ulimit -v 262144 || exit 1; exec \"$@\"", "sh"])
+            .arg(executable);
+        command
+    };
+    // Darwin does not implement RLIMIT_AS; still exercise the same child there.
+    #[cfg(not(target_os = "linux"))]
+    let mut command = std::process::Command::new(executable);
+    let mut child = command
+        .args([
+            "--exact",
+            "long_element_name_is_refused_with_bounded_memory",
+            "--nocapture",
+        ])
+        .env(CHILD, path)
+        .spawn()
+        .unwrap();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            assert!(status.success(), "child failed: {status}");
+            break;
+        }
+        if std::time::Instant::now() >= deadline {
+            child.kill().unwrap();
+            child.wait().unwrap();
+            panic!("long-name child timed out");
+        }
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+#[test]
+fn excessive_names_and_total_work_report_source_health() {
+    let long = "a".repeat(257);
+    let cases = [
+        format!("<xml><records><record {long}=\"x\"/></records></xml>"),
+        format!("<xml><records>{}</records></xml>", "<x/>".repeat(510_000)),
+        format!(
+            "<xml><records><record {}/></records></xml>",
+            (0..129).map(|i| format!("a{i}=\"x\" ")).collect::<String>()
+        ),
+    ];
+    for xml in cases {
+        let loaded = open(&xml, "limited.xml").unwrap();
+        assert!(loaded.cut_short);
+        assert!(
+            loaded
+                .warnings
+                .iter()
+                .any(|warning| warning.code == WarningCode::WorkLimit)
+        );
+    }
+}
+
 fn fields(library: &LoadedLibrary) -> Vec<Value> {
     let mut fields: Vec<_> = library
         .snapshot
