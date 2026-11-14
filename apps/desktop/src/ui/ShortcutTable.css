@@ -28,6 +28,10 @@
 .ui-shortcut-table tr:last-child > :first-child { border-end-start-radius: var(--r-large); }
 .ui-shortcut-table tr:last-child > :last-child { border-end-end-radius: var(--r-large); }
 .ui-shortcut-table tr:not(:first-child) > td[colspan] { height: auto; padding-block: var(--space-2); text-align: start; }
+/* The recorder's reset lives outside the shared key column, as in a Row.
+   Fixed keys share that column without carrying empty reset elements. */
+.ui-shortcut-table:has(.ui-row-reset) tr:not(:first-child) > td:not([colspan]) { position: relative; padding-inline-end: var(--row-end); }
+.ui-shortcut-table td > .ui-row-reset { position: absolute; inset-block: 0; inset-inline-end: var(--row-pad); }
 .keys-binding { display: inline-flex; align-items: center; gap: var(--space-1); white-space: nowrap; }
 .ui-settings-keys .keys-binding { align-items: baseline; gap: var(--space-2); }
 /* Keys and the "or" between them share one baseline and the label size in a key

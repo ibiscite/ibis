@@ -403,6 +403,14 @@ export function mount(host: HTMLElement, options: { scenario?: string; theme?: s
     else document.documentElement.style.removeProperty(name);
   }
   const settings = demoApi();
+  if (scenario === "settings-citations") {
+    settings.formatSettings = async () => ({
+      apps: [{ id: "invented.editor", app: "Invented Editor", format: "apa" }],
+      writings: writings.writings,
+      key_output_visible: true,
+    });
+    settings.openSettingsFile = async () => null;
+  }
   void settings.savePickerPreferences({ ...fixtures[scenario as Scenario]?.preferences, appearance: theme as Theme, paste: false }).then(settings.pickerPreferencesSaved);
   // The states and tokens pages use the Settings window's base styles.
   const settingsWindow = scenario.startsWith("settings-") || scenario === "states" || scenario === "tokens" || scenario === "parts";

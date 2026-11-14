@@ -430,10 +430,11 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       throw error;
     } finally { if (live.current) setUpdatesSaving(false); }
   };
-  const resetPreference = (id: string) => {
+  const resetPreference = (id: string): Parameters<typeof Row>[0]["reset"] => {
     const row = ROWS.find((row) => row.id === id);
-    const reset = row && preferences && preferenceDefault(row, preferences);
-    const defaultValue = row?.default;
+    if (row?.default === undefined) return undefined;
+    const reset = preferences && preferenceDefault(row, preferences);
+    const defaultValue = row.default;
     if (id === "login" && typeof defaultValue === "boolean" && login && login.enabled !== defaultValue && !login.problem) return { label: rowDetails(id, text).label, disabled: loginSaving,
       onReset: () => { void settingUndo.reset(rowDetails(id, text).label, () => changeLogin(defaultValue), () => changeLogin(login.enabled, true)); } };
     if (id === "automatic" && typeof defaultValue === "boolean" && updates !== null && updates !== defaultValue) return { label: rowDetails(id, text).label, disabled: updatesSaving,
@@ -455,7 +456,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
             }
           });
       } };
-    if (!row || !reset || preference.status === "unknown") return undefined;
+    if (!reset || preference.status === "unknown") return null;
     return { label: rowDetails(id, text).label, onReset: () => {
       void settingUndo.reset(rowDetails(id, text).label, async () => {
         await change(reset.patch);

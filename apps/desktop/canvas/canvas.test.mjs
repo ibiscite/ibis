@@ -20,6 +20,57 @@ beforeAll(async () => {
   stylesheet = String(css.source);
 }, 30_000);
 
+// jsdom cannot measure layout. Reuse an installed browser for this regression:
+// IBIS_PLAYWRIGHT_MODULE=/path/to/playwright/index.mjs pnpm exec vitest run canvas/canvas.test.mjs
+test.skipIf(!process.env.IBIS_PLAYWRIGHT_MODULE)("only resettable settings reserve space and their controls never shift when reset appears", async () => {
+  const { chromium } = await import(process.env.IBIS_PLAYWRIGHT_MODULE);
+  const browser = await chromium.launch({ headless: true });
+  try {
+    for (const width of [920, 800]) {
+      const page = await browser.newPage({ viewport: { width, height: 900 } });
+      await page.addInitScript(() => Object.defineProperty(navigator, "platform", { value: "MacIntel" }));
+      await page.route("**/*", (route) => route.fulfill({ contentType: "text/html", body: '<!doctype html><meta charset="utf-8"><div id="host" style="height:100vh"></div>' }));
+      await page.goto("http://canvas.invalid/");
+      await page.addStyleTag({ content: stylesheet });
+      await page.addScriptTag({ content: script });
+      await page.evaluate(() => window.IbisCanvas.mount(document.getElementById("host"), { scenario: "settings-general" }));
+      const login = page.locator('.ui-row').filter({ has: page.locator('#login') });
+      // Measure the drawn switch, rather than its visually hidden input.
+      const control = login.locator('.ui-switch');
+      await control.waitFor({ state: "visible" });
+      await page.waitForFunction(() => !document.querySelector('#login').closest('.ui-row').querySelector('.ui-switch').hasAttribute('data-disabled'));
+      const original = await control.boundingBox();
+      expect(original.width).toBeGreaterThan(0);
+      expect(await login.locator('.ui-row-reset').count()).toBe(1);
+      expect(await login.getByRole("button", { name: /^Use Default/ }).count()).toBe(0);
+      await control.click();
+      await login.getByRole("button", { name: /^Use Default/ }).waitFor();
+      expect((await control.boundingBox()).x).toBe(original.x);
+      await login.getByRole("button", { name: /^Use Default/ }).click();
+      await page.waitForFunction(() => !document.querySelector('#login').closest('.ui-row').querySelector('[data-setting-reset]'));
+      expect((await control.boundingBox()).x).toBe(original.x);
+      await page.getByRole("button", { name: "Details…" }).click();
+      const backup = page.getByRole("button", { name: "Back Up…" });
+      expect(await backup.locator('..').locator('.ui-row-reset').count()).toBe(0);
+      await page.evaluate(() => window.IbisCanvas.mount(document.getElementById("host"), { scenario: "settings-shortcuts" }));
+      const recorder = page.getByRole("button", { name: /^Open Ibis:/ });
+      await recorder.waitFor();
+      const right = await recorder.evaluate((node) => node.getBoundingClientRect().right);
+      const keys = await page.locator('#key-quit kbd').evaluate((node) => node.getBoundingClientRect().right);
+      expect(right).toBe(keys);
+      const box = await recorder.boundingBox();
+      await recorder.click();
+      // Both short bindings fit the button's minimum width.
+      await recorder.press("Alt+Shift+Y");
+      await page.getByRole("button", { name: "Use Default for Open Ibis" }).waitFor();
+      const changed = await recorder.boundingBox();
+      expect(changed.x).toBe(box.x);
+      expect(changed.x + changed.width).toBe(box.x + box.width);
+      await page.close();
+    }
+  } finally { await browser.close(); }
+}, 30_000);
+
 test("the built scenario list renders, switches and reopens without Tauri or network", async () => {
   const errors = [];
   const console = new VirtualConsole();

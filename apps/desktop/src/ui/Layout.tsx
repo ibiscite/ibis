@@ -45,7 +45,8 @@ export function Group({ label, children }: { label?: string; children: ReactNode
 export function Row({ id, label, description, children, problem, highlighted, pending, reset, labelHidden = false, item = false }: {
   id?: string; label: ReactNode; description?: ReactNode; children?: ReactNode;
   problem?: string; highlighted?: boolean; pending?: boolean; labelHidden?: boolean;
-  reset?: Reset; /** Given while the setting is away from its default. */
+  /** Undefined: never resettable; null: at default; a value: show Use Default. */
+  reset?: Reset | null;
   /** In a labelled Group (a list). */
   item?: boolean;
 }) {
@@ -58,16 +59,17 @@ export function Row({ id, label, description, children, problem, highlighted, pe
       </span>
     </span>
     {children}
-    {children !== undefined && <ResetSlot reset={reset} />}
+    <ResetSlot reset={reset} />
     {problem && <p className="ui-row-problem" role="alert">{problem}</p>}
   </Element>;
 }
 
 type Reset = { label: string; onReset: () => void; disabled?: boolean };
-/** [C24] Use Default, the only way back to a default, in a slot a row with a
- * control keeps either way, so the control never moves when it appears. */
-export function ResetSlot({ reset }: { reset?: Reset }) {
+/** [C24] Only resettable rows keep a slot, including at their default, so the
+ * control never moves when Use Default appears. */
+export function ResetSlot({ reset }: { reset?: Reset | null }) {
   const { text } = useInterfaceMessages();
+  if (reset === undefined) return null;
   return <span className="ui-row-reset">{reset && <IconButton icon="retry" data-setting-reset isDisabled={reset.disabled}
     aria-label={text("settings-use-default", { setting: reset.label })} title={text("shortcuts-use-default")} onPress={(event) => {
       const row = event.target.closest<HTMLElement>(".ui-row, tr");

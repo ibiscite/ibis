@@ -8,7 +8,9 @@
 - Each setting is one entry in one registry (key, page, group, label, description, control, default, search words); pages and search are drawn from it.
 - **Groups and rows** [D17]: `ui/Layout` sections of `Group` cards (`--r-large`, `--surface-grouped`) of `Row`s: a label, an optional description, one control at the end. Cards keep their natural height; rows grow with text; controls move below a label that does not fit. No page opens with more than eight rows; rarer rows go behind **Details…**, a disclosure row in its own card whose chevron turns down while its rows show. Every group but a page's first lone row has a title (General: **Behavior**, **Pasting**).
 - A setting that differs from its default shows **Use Default** (↺) with Undo in
-  the slot a row keeps at its end [C24]. Restoring a default never opts into background network use. Settings and `settings.json` show the
+  the slot a resettable row keeps at its end, even at its default [C24]. Rows
+  without a default reserve no slot. The Shortcuts recorder and fixed keys share
+  one key column, with the recorder's reset beside it. Restoring a default never opts into background network use. Settings and `settings.json` show the
   same saved choices. A valid file edit applies live, retires an older Undo
   and updates open controls; a problem stays visible and refuses saves until
   repaired.

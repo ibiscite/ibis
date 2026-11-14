@@ -83,7 +83,7 @@ export function EditorEndpointRow({ api, highlighted, resetSetting, onEdit }: {
   return <>
     <Row id="editor-endpoint" {...rowDetails("editor-endpoint", text)} highlighted={highlighted} problem={problem ? text(problem) : undefined}
       reset={status?.on ? { label: rowDetails("editor-endpoint", text).label,
-        onReset: () => { void reset(rowDetails("editor-endpoint", text).label, () => change(false), () => change(true, true)); } } : undefined}>
+        onReset: () => { void reset(rowDetails("editor-endpoint", text).label, () => change(false), () => change(true, true)); } } : null}>
       <Switch aria-labelledby="editor-endpoint" aria-describedby="editor-endpoint-description" isDisabled={!status && !failed}
         isSelected={status?.on ?? false} onChange={(on) => { void change(on).catch(() => undefined); }} />
     </Row>

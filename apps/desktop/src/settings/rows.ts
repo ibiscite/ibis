@@ -7,6 +7,7 @@ import type { InterfaceMessages, MessageId } from "../i18n";
 
 export const PAGES = ["general", "look", "citations", "shortcuts", "about"] as const;
 export type Page = typeof PAGES[number];
+/** A default marks a resettable setting; action and information rows omit it. */
 export type SettingRow = { id: string; page: Page; label: MessageId; description?: MessageId; keywords?: MessageId; preference?: keyof PickerPreferences; default?: PickerPreferences[keyof PickerPreferences] };
 export const ROWS: readonly SettingRow[] = [
   { id: "open-shortcut", default: DEFAULT_PICKER_SHORTCUT, page: "general", label: "shortcuts-open", description: "shortcuts-description", keywords: "settings-shortcut-words" },
