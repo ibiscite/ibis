@@ -8,6 +8,148 @@ fn ibis(args: &[&str]) -> std::process::Output {
 }
 
 #[test]
+fn downloaded_bibliography_selections_and_replacement_are_read_by_the_real_cli()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::fs;
+
+    let home = tempfile::tempdir()?;
+    let first = home.path().join("references.bib");
+    let second = home.path().join("supplement.bib");
+    let neighbor = home.path().join("unselected.bib");
+    let download = home.path().join("completed-download.bib");
+    let initial = b"@book{vale2024, title={Lantern Atlas}, author={Vale, Mira}, year={2024}}\n@book{old2020, title={Lantern Archive}, author={Old, Ada}, year={2020}}\n";
+    let updated = b"@book{vale2024, title={Lantern Atlas Revised}, author={Vale, Mira}, year={2025}}\n@book{new2026, title={Lantern Almanac}, author={New, Nia}, year={2026}}\n";
+    let supplement = b"@book{fen2023, title={Lantern Gardens}, author={Fen, Lee}, year={2023}}\n";
+    let unselected = b"@book{hidden2022, title={Lantern Secret}, author={Hidden, Sam}, year={2022}}\n";
+    fs::write(&first, initial)?;
+    fs::write(&second, supplement)?;
+    fs::write(&neighbor, unselected)?;
+    fs::write(&download, updated)?;
+
+    // The reader must work with files the user cannot write, and leave their modes alone.
+    for path in [&first, &second, &neighbor, &download] {
+        let mut permissions = fs::metadata(path)?.permissions();
+        permissions.set_readonly(true);
+        fs::set_permissions(path, permissions)?;
+    }
+    let first_path = first.to_str().ok_or("first path")?;
+    let second_path = second.to_str().ok_or("second path")?;
+    let run = |args: &[&str]| -> Result<std::process::Output, Box<dyn std::error::Error>> {
+        let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
+            .args(args)
+            .env("HOME", home.path())
+            .env("USERPROFILE", home.path())
+            .env("APPDATA", home.path().join("AppData"))
+            .env("XDG_CONFIG_HOME", home.path().join("config"))
+            .output()?;
+        assert!(
+            output.status.success(),
+            "{:?}: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(output.stderr.is_empty(), "{}", String::from_utf8_lossy(&output.stderr));
+        Ok(output)
+    };
+
+    for (expected, absent, bytes) in [
+        (
+            [
+                ("vale2024", "Lantern Atlas", "2024"),
+                ("old2020", "Lantern Archive", "2020"),
+                ("fen2023", "Lantern Gardens", "2023"),
+            ],
+            "new2026",
+            &initial[..],
+        ),
+        (
+            [
+                ("vale2024", "Lantern Atlas Revised", "2025"),
+                ("new2026", "Lantern Almanac", "2026"),
+                ("fen2023", "Lantern Gardens", "2023"),
+            ],
+            "old2020",
+            &updated[..],
+        ),
+    ] {
+        let modes: Vec<_> = [&first, &second, &neighbor]
+            .iter()
+            .map(|path| fs::metadata(path).map(|m| m.permissions()))
+            .collect::<Result<_, _>>()?;
+        let args = ["search", "lantern", "--file", first_path, "--file", second_path];
+        let plain = String::from_utf8(run(&args)?.stdout)?;
+        let mut json_args = args.to_vec();
+        json_args.push("--json");
+        let json: Value = serde_json::from_slice(&run(&json_args)?.stdout)?;
+        let hits = json["data"]["hits"].as_array().ok_or("search hits")?;
+        assert_eq!(hits.len(), expected.len(), "{json}");
+        assert_eq!(plain.lines().count(), expected.len(), "{plain}");
+        for (key, title, year) in expected {
+            assert!(
+                plain
+                    .lines()
+                    .any(|line| line.starts_with(&format!("{key}\t")) && line.contains(title) && line.contains(year)),
+                "{plain}"
+            );
+            assert!(
+                hits.iter().any(|hit| {
+                    let record = &hit["item"]["object"]["data"];
+                    record["csl"]["title"] == title
+                        && record["citation_keys"]
+                            .as_array()
+                            .is_some_and(|keys| keys.iter().any(|candidate| candidate["value"] == key))
+                        && record["csl"]["issued"].to_string().contains(year)
+                }),
+                "{json}"
+            );
+        }
+        for missing in [absent, "hidden2022"] {
+            assert!(!plain.contains(missing), "{plain}");
+            assert!(!json.to_string().contains(missing), "{json}");
+        }
+        let cite = [
+            "cite",
+            "vale2024",
+            "fen2023",
+            "--format",
+            "cite",
+            "--file",
+            first_path,
+            "--file",
+            second_path,
+        ];
+        assert_eq!(run(&cite)?.stdout, b"\\cite{vale2024,fen2023}\n");
+        let mut cite_json = cite.to_vec();
+        cite_json.push("--json");
+        let citation: Value = serde_json::from_slice(&run(&cite_json)?.stdout)?;
+        assert_eq!(citation["data"]["text"], "\\cite{vale2024,fen2023}");
+        for (index, (path, content)) in [
+            (&first, bytes),
+            (&second, &supplement[..]),
+            (&neighbor, &unselected[..]),
+        ]
+        .iter()
+        .enumerate()
+        {
+            assert_eq!(fs::read(path)?, *content);
+            assert_eq!(fs::metadata(path)?.permissions(), modes[index]);
+        }
+        if download.exists() {
+            // Windows cannot replace an existing read-only file by renaming over it.
+            #[cfg(windows)]
+            {
+                let mut permissions = fs::metadata(&first)?.permissions();
+                permissions.set_readonly(false);
+                fs::set_permissions(&first, permissions)?;
+                fs::remove_file(&first)?;
+            }
+            fs::rename(&download, &first)?;
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn piped_search_keeps_the_original_tsv_even_with_forced_color() -> Result<(), Box<dyn std::error::Error>> {
     for (name, value) in [("NO_COLOR", ""), ("TERM", "dumb"), ("CLICOLOR_FORCE", "1")] {
         let output = Command::new(env!("CARGO_BIN_EXE_ibis"))
