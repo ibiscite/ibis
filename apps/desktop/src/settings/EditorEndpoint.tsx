@@ -3,8 +3,8 @@ import type { EndpointProblem, EndpointStatus } from "../bindings";
 import { type MessageId, useInterfaceMessages } from "../i18n";
 import { Button } from "../ui/Button";
 import { Note, Row } from "../ui/Layout";
-import { Switch } from "../ui/Switch";
-import { rowDetails } from "./rows";
+import { Setting } from "./SettingRows";
+import { ROWS } from "./rows";
 import { useSettingUndo } from "../ui/useSettingUndo";
 
 export type EditorEndpointApi = {
@@ -81,12 +81,9 @@ export function EditorEndpointRow({ api, highlighted, resetSetting, onEdit }: {
   };
   const problem = status?.problem ? PROBLEMS[status.problem] : failed ? "citations-editor-not-saved" : undefined;
   return <>
-    <Row id="editor-endpoint" {...rowDetails("editor-endpoint", text)} highlighted={highlighted} problem={problem ? text(problem) : undefined}
-      reset={status?.on ? { label: rowDetails("editor-endpoint", text).label,
-        onReset: () => { void reset(rowDetails("editor-endpoint", text).label, () => change(false), () => change(true, true)); } } : undefined}>
-      <Switch aria-labelledby="editor-endpoint" aria-describedby="editor-endpoint-description" isDisabled={!status && !failed}
-        isSelected={status?.on ?? false} onChange={(on) => { void change(on).catch(() => undefined); }} />
-    </Row>
+    <Setting row={ROWS.find((row) => row.id === "editor-endpoint")!} reset={reset}
+      state={{ value: status?.on ?? null, disabled: !status && !failed, change: (on, restoring) => change(Boolean(on), restoring) }}
+      feedback={{ highlighted, problem: problem ? text(problem) : undefined }} />
     {status?.on && status.url && <Row id="editor-endpoint-address" label={text("citations-editor-address")} description={text("citations-editor-address-description")}>
       <Button aria-describedby="editor-endpoint-address-description" onPress={() => {
         setCopied(false);

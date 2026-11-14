@@ -8,6 +8,7 @@ import { ChoiceList, type Choice } from "../../ui/ChoiceList";
 import { IndeterminateProgress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
 import { IbisMark } from "../../ui/IbisMark";
+import { ResultsEmpty, useResultsLayout } from "../../ui/ResultsArea";
 import { zoteroWaits } from "./PickerLibraryStatus";
 import { useWhileShown } from "./useWhileShown";
 import "../../ui/EmptyState.css";
@@ -28,6 +29,7 @@ function shortName(name: string | null): string | null {
 
 function LibraryProgress({ library }: { library: LibraryStatus }) {
   const [visible, setVisible] = useState(false);
+  useResultsLayout("opening", visible);
   useEffect(() => {
     const timer = window.setTimeout(() => setVisible(true), LOADING_DELAY_MS);
     return () => window.clearTimeout(timer);
@@ -94,7 +96,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
   const missing = library.zotero && library.problem === "zotero_missing";
   useZoteroRecovery(library, zotero?.checkSharing, !switching);
   // The chosen row is gone, so the list that replaces it takes focus.
-  if (switching) return <div className="empty-state">{setup(true)}</div>;
+  if (switching) return <div className="empty-state" data-choices>{setup(true)}</div>;
   const name = shortName(library.name) ?? (library.zotero ? say("setup-zotero") : say("setup-the-library"));
   const reason = library.error ? fullStop(library.error, true) : undefined;
   const problem = library.problem ?? "other";
@@ -122,7 +124,7 @@ function Recovery({ library, onFind, onReload, setup, source, zotero }: {
     if (open.suggested) choices.unshift(open); else choices.push(open);
   }
   return (
-    <div className="empty-state">
+    <div className="empty-state" data-choices>
       {/* Announced once, as the footer's live region does for other states. */}
       <p className="visually-hidden" role="alert">{line ? `${title}. ${line}` : title}</p>
       <ChoiceList title={title} line={line} choices={choices}
@@ -170,11 +172,11 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
   if (library.state === "error" && !library.has_snapshot) {
     return <Recovery key={`${library.name}\u0000${library.problem}`} library={library} onFind={onChooseLibrary} onReload={onReload} setup={setup} source={source} zotero={zotero} />;
   }
-  if (!library.name) return <div className="empty-state">{library.state === "none" ? setup(false) : null}</div>;
+  if (!library.name) return <div className="empty-state" data-choices={library.state === "none" || undefined}>{library.state === "none" ? setup(false) : null}</div>;
   if (library.state === "loaded" && library.has_snapshot && library.references === 0) {
     const fullTitle = libraryMessages.emptyTitle(library.snapshot_name || null);
     const title = libraryMessages.emptyTitle(shortName(library.snapshot_name));
-    return <div className="empty-state">{setup(false, {
+    return <div className="empty-state" data-choices>{setup(false, {
       title: title === fullTitle ? title : <><span aria-hidden="true">{title}</span><span className="visually-hidden">{fullTitle}</span></>,
       zotero: library.zotero,
       source: source && { ...source, help: say("setup-add-references-help") },
@@ -190,7 +192,7 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
   const description = filtered ? say("picker-filter-obstacle-hint") : scoped ? say("picker-scope-obstacle-hint") : absent ? say("picker-not-in-libraries-hint")
     : query ? say("picker-no-matches-hint") : library.sample ? say("setup-sample-search-help") : say("picker-type-to-find-hint");
   return (
-    <div className="empty-state empty-template">
+    <ResultsEmpty>
       {peck && !query ? <IbisMark className="opened-mark" size="welcome" motion="peck" /> : <Icon name="find" size="tile" className="empty-icon" />}
       <p className="empty-title" dir="auto">{title}</p>
       <p className="empty-description">{description}</p>
@@ -201,6 +203,6 @@ export function EmptyState({ library, query, narrowed, unfiltered = null, missin
         {/* Nothing matched is never a dead end: the library is one key away. */}
         {!filtered && !scoped && fallback && <Button variant="quiet" label={fallback.label} keys={fallback.keys} onPress={fallback.open} />}
       </div> : null}
-    </div>
+    </ResultsEmpty>
   );
 }

@@ -29,7 +29,10 @@ button, input, select { font: inherit; color: inherit; }
   .picker-content > .results-area { flex: none; min-height: 0; overflow: visible; }
 }
 /* Setup/recovery/hints always contribute their whole natural height. */
-.picker-content > .results-area:not(:has([role="option"])) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
+.picker-content > .results-area:not([data-options]) { flex: 1 0 auto; min-height: min-content; overflow: visible; }
+
+/* Empty content centres safely while the middle viewport owns overflow. */
+main .picker-content .results-area[data-centered] { display: flex; flex-direction: column; flex: 1 0 auto; overflow: visible; min-height: min-content; }
 
 /* Remembered picker preferences. */
 :root[data-text-size="larger"] { font-size: calc(100% * var(--larger-text-scale)); }

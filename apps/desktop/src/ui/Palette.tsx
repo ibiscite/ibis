@@ -147,7 +147,7 @@ export function Palette({ id, title, subtitle, description, placeholder, section
       label={actionLabel(current)} keys="Enter" /> : undefined}>
     <div className="ui-palette" data-preview={preview ? "" : undefined}>
       <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
-        {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
+        {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section" data-heading={section.label ? "" : undefined}>
           {section.label && <Band className="ui-list-heading" aria-hidden="true"><span>{section.label}</span></Band>}
           <ul role="group" aria-label={section.name ?? section.label ?? title}>
             {section.items.map((item) => <Option key={item.id} id={optionId(item)} role="option" className="ui-palette-row"

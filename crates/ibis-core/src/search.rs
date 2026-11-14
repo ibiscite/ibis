@@ -9,7 +9,8 @@
 //! one typo at the start of a word (words of five or more Latin, Greek or
 //! Cyrillic letters, first letter right). `a:`, `t:`, `j:`, `k:`, `#` and `y:`
 //! limit a term to names, title, journal, key, tags or years. "et al." and
-//! "and" are ignored. Müller is also found as "mueller" and β as "beta". An
+//! "and" are ignored. Müller is also found as "mueller", β as "beta" and
+//! kana names by their deterministic romanised readings. An
 //! exact citation key always matches and ranks first, then an exact title.
 //! When nothing matches every term, the records matching most words are given
 //! instead, marked as partial.
@@ -25,6 +26,7 @@ use crate::identifier::{self, Identifier};
 use crate::model::{Name, is_cjk_char};
 
 mod pasted;
+mod readings;
 mod snapshot;
 pub use snapshot::{PastedList, RecordHit, SnapshotIndex};
 
@@ -271,6 +273,9 @@ fn name_text<'a>(names: impl Iterator<Item = &'a Name>) -> String {
         let display = normalize(&raw);
         push_words(&mut text, &display);
         push_apart(&mut aliases, &spelling_aliases(&raw));
+        if let Some(reading) = readings::alias(name) {
+            push_apart(&mut aliases, &reading);
+        }
         // "山田 太郎" is also written without the space.
         if display.contains(' ') && display.chars().any(is_cjk_char) {
             push_words(&mut text, &display.replace(' ', ""));

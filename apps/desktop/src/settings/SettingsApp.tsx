@@ -22,22 +22,20 @@ import { localMoment } from "../ui/localMoment";
 import { useAltHeld } from "../features/picker/useAltHeld";
 import type { DelightFact, DelightView } from "../bindings";
 import { ShortcutsPage } from "./ShortcutsPage";
-import { Group, Note, Row, Section } from "../ui/Layout";
+import { Note, Row } from "../ui/Layout";
 import { ShortcutSetting } from "../ui/ShortcutSetting";
 import { SideNavigation, SideResults } from "../ui/SideNavigation";
 import { SettingsSearch } from "../ui/SettingsSearch";
 import { useAppearance } from "../ui/appearance";
-import { DefaultFormat } from "./DefaultFormat";
+import { SettingRows, UnknownSettings } from "./SettingRows";
 import { FormatSettings, useFormatSettings } from "./FormatSettings";
-import { Switch } from "../ui/Switch";
 import { EditorEndpointRow } from "./EditorEndpoint";
 import { PasteGuide, usePastePermission } from "./PasteGuide";
 import { BackupRows } from "./BackupRows";
 import type { SettingsApi } from "./api";
 import "../ui/SettingsLayout.css";
 
-import { PAGES, ROWS, settingsRows, rowDetails, preferenceDefault, type Page } from "./rows";
-import { LookPage } from "./LookPage";
+import { PAGES, ROWS, settingsRows, rowDetails, type Page } from "./rows";
 import { initialPreferences, preferenceState } from "./preferenceState";
 const FACT_MESSAGES: Record<DelightFact, MessageId> = { touch: "delight-fact-touch", scarlet: "delight-fact-scarlet", mummies: "delight-fact-mummies", national: "delight-fact-national", flight: "delight-fact-flight" };
 const LOGIN_PROBLEMS = {
@@ -356,9 +354,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
     if (!preferences) return Promise.reject(new Error("Settings unavailable"));
     if (!restoring) clearSettingUndo();
     edits.current += 1;
-    cause.current = next.output !== undefined ? "default-format" : next.key_output !== undefined ? "default-key-format" : next.appearance !== undefined ? "appearance" : next.accent !== undefined ? "accent"
-      : next.density !== undefined ? "rows" : next.larger_text !== undefined ? "text-size"
-      : next.paste !== undefined ? "paste-label" : next.menu_bar !== undefined ? "menu-bar" : next.small_surprises !== undefined ? "small-surprises" : "recent-citations";
+    cause.current = ROWS.find((row) => row.preference && Object.hasOwn(next, row.preference))?.id ?? null;
     setProblemRow(null);
     dispatchPreference({ type: "change", value: { ...preferences, ...next } });
     return queue.change(next);
@@ -430,39 +426,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
       throw error;
     } finally { if (live.current) setUpdatesSaving(false); }
   };
-  const resetPreference = (id: string) => {
-    const row = ROWS.find((row) => row.id === id);
-    const reset = row && preferences && preferenceDefault(row, preferences);
-    const defaultValue = row?.default;
-    if (id === "login" && typeof defaultValue === "boolean" && login && login.enabled !== defaultValue && !login.problem) return { label: rowDetails(id, text).label, disabled: loginSaving,
-      onReset: () => { void settingUndo.reset(rowDetails(id, text).label, () => changeLogin(defaultValue), () => changeLogin(login.enabled, true)); } };
-    if (id === "automatic" && typeof defaultValue === "boolean" && updates !== null && updates !== defaultValue) return { label: rowDetails(id, text).label, disabled: updatesSaving,
-      onReset: () => { void settingUndo.reset(rowDetails(id, text).label, () => changeUpdates(defaultValue), () => changeUpdates(updates, true)); } };
-    if (id === "window-size" && defaultValue === "medium" && windowSize && windowSize !== defaultValue) return { label: rowDetails(id, text).label,
-      onReset: () => {
-        let ticket: number | null = null;
-        void settingUndo.reset(rowDetails(id, text).label,
-          async () => { ticket = await chooseWindowSize(defaultValue, null, true); windowUndoRevision.current = ticket; },
-          async () => {
-            if (ticket === null) throw new Error("Window Undo unavailable");
-            try { await chooseWindowSize(windowSize, ticket, true, true); }
-            catch (error) {
-              if (error instanceof WindowSizeSaveError) {
-                ticket = error.retryTicket; windowUndoRevision.current = ticket;
-                if (ticket === null) clearSettingUndo();
-              }
-              throw error;
-            }
-          });
-      } };
-    if (!row || !reset || preference.status === "unknown") return undefined;
-    return { label: rowDetails(id, text).label, onReset: () => {
-      void settingUndo.reset(rowDetails(id, text).label, async () => {
-        await change(reset.patch);
-      }, async () => { await change(reset.previous, true); });
-    } };
-  };
-  const feedback = (id: string) => ({ reset: resetPreference(id), highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
+  const feedback = (id: string) => ({ highlighted: highlighted === id, problem: readProblems.has(id) ? text("settings-read-failed")
     : preference.status === "refused" && preference.problem.row === id ? preference.problem.message
     : problemRow?.id === id ? text(problemRow.message) : undefined });
   const checkSaid = checkResult === "newest" ? "about-check-newest" : checkResult === "not_run" ? "about-check-busy" : null;
@@ -553,10 +517,39 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
   const matches = PAGES.flatMap((page) => availableRows.filter((row) => row.page === page && matchedIds.has(row.id)));
   const name = login?.name ?? "Ibis";
   const undoTicket = shortcutUndoTicket.current;
-  const shortcutSetting = <ShortcutSetting key={page} id={page === "general" ? "general-shortcut" : "open-ibis"}
+  const shortcutSetting = <ShortcutSetting key={page}
     details={rowDetails("open-shortcut", text)} rowId={page === "general" ? "general-open-shortcut" : "open-shortcut"} status={shortcut} problem={shortcutProblem}
     table={page === "shortcuts"} saving={shortcutSaving} highlighted={highlighted === "open-shortcut"} echo={page === "shortcuts"}
     onRecord={changeShortcut} onConfigure={configureShortcut} />;
+
+  let windowTicket: number | null = null;
+  const owners: Parameters<typeof SettingRows>[0]["owners"] = {
+    "open-shortcut": { content: shortcutSetting },
+    "editor-endpoint": { content: api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow resetSetting={settingUndo.reset} onEdit={clearSettingUndo} highlighted={highlighted === "editor-endpoint"}
+      api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint, onEditorEndpoint: api.onEditorEndpoint }} /> },
+    login: { value: login?.enabled ?? null, disabled: loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable",
+      description: login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : undefined,
+      change: (on, restoring) => changeLogin(Boolean(on), restoring) },
+    automatic: { value: updates, disabled: updatesSaving || updates === null,
+      description: updates === null && !readProblems.has("automatic") ? text("about-unavailable") : undefined,
+      change: (on, restoring) => changeUpdates(Boolean(on), restoring) },
+    "window-size": { value: windowSize, disabled: windowSize === null,
+      change: (size) => chooseWindowSize(size as WindowSize),
+      restore: {
+        apply: async () => { windowTicket = await chooseWindowSize(ROWS.find((row) => row.id === "window-size")!.default as WindowSize, null, true); windowUndoRevision.current = windowTicket; },
+        undo: async () => {
+          if (windowTicket === null) throw new Error("Window Undo unavailable");
+          try { await chooseWindowSize(windowSize!, windowTicket, true, true); }
+          catch (error) {
+            if (error instanceof WindowSizeSaveError) { windowTicket = error.retryTicket; windowUndoRevision.current = windowTicket; if (windowTicket === null) clearSettingUndo(); }
+            throw error;
+          }
+        },
+      } },
+  };
+  const renderRows = (page: Page, after?: Record<string, ReactNode>) => <SettingRows
+    rows={availableRows.filter((row) => row.page === page && (row.control || row.native))}
+    preferences={preferences} change={change} owners={owners} feedback={feedback} reset={settingUndo.reset} size={windowSize} after={after} />;
 
   return (
     <div className="settings">
@@ -588,61 +581,17 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
         <h1 id="settings-page-title" className={page === "about" ? "visually-hidden" : "ui-settings-page-title"}>{text(`settings-${page}`)}</h1>
         {preference.status === "unknown" && preference.message && <Note problem role="alert">{text(preference.message)}</Note>}
         {detour && returnFailed && <Note problem role="alert">{text("general-paste-return-failed")}</Note>}
-        {page === "general" && (
-          <>
-            {shortcutSetting}
-            <Section id="startup" title={text("general-behavior-title")}><Group>
-                <Row id="login" {...rowDetails("login", text)} description={login?.problem ? text(LOGIN_PROBLEMS[login.problem], { platform, name }) : rowDetails("login", text).description} {...feedback("login")}>
-                  <Switch aria-labelledby="login" aria-describedby="login-description" isSelected={login?.enabled ?? false}
-                    onChange={(on) => { void changeLogin(on).catch(() => undefined); }} isDisabled={loginSaving || !login || login.problem === "unsupported" || login.problem === "unreadable"} />
-                </Row>
-                {platform === "macos" && <Row id="menu-bar" {...rowDetails("menu-bar", text)} {...feedback("menu-bar")}>
-                  <Switch aria-labelledby="menu-bar" aria-describedby="menu-bar-description" isSelected={preferences?.menu_bar ?? true}
-                    onChange={(on) => change({ menu_bar: on })} isDisabled={!preferences} />
-                </Row>}
-                <Row id="small-surprises" {...rowDetails("small-surprises", text)} {...feedback("small-surprises")}>
-                  <Switch aria-labelledby="small-surprises" aria-describedby="small-surprises-description" isSelected={preferences?.small_surprises ?? true} isDisabled={!preferences} onChange={(on) => change({ small_surprises: on })} />
-                </Row>
-            </Group></Section>
-            {preferences && (
-              <>
-                {/* Only systems where Ibis pastes ask for a permission first. */}
-                {permission?.pastes && (
-                <Section id="paste" title={text("general-paste-title")}><Group>
-                  <Row id="paste-label" {...rowDetails("paste-label", text)} {...feedback("paste-label")}>
-                    <Switch aria-labelledby="paste-label" aria-describedby="paste-label-description" isSelected={preferences.paste}
-                      onChange={(on) => change({ paste: on })} />
-                  </Row>
-                  {preferences.paste && permission?.needed && permission.granted && !guided && (
-                    <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}>
-                      <StatusMark kind="ok" />
-                    </Row>
-                  )}
-                  {preferences.paste && permission?.needed && (!permission.granted || guided) && (
-                    <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />
-                  )}
-                </Group></Section>
-                )}
-              </>
-            )}
-            {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
-            <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
-          </>
-        )}
-        {page === "look" && preferences && <LookPage preferences={preferences} change={change} feedback={feedback} windowSize={windowSize} chooseWindowSize={(size) => { void chooseWindowSize(size).catch(() => undefined); }} />}
-        {page === "citations" && <><Section id="citation-choices"><Group>
-          {preferences && <Row id="default-format" {...rowDetails("default-format", text)} {...feedback("default-format")}>
-            <DefaultFormat preferences={preferences} change={change} />
-          </Row>}
-          {preferences && keyFormatVisible && <Row id="default-key-format" {...rowDetails("default-key-format", text)} {...feedback("default-key-format")}>
-            <DefaultFormat preferences={preferences} kind="keys" change={change} />
-          </Row>}
-          {preferences && <Row id="recent-citations" {...rowDetails("recent-citations", text)} {...feedback("recent-citations")}>
-            <Switch aria-labelledby="recent-citations" aria-describedby="recent-citations-description" isSelected={preferences.recent_citations ?? true} onChange={(on) => change({ recent_citations: on })} />
-          </Row>}
-          {api.editorEndpoint && api.setEditorEndpoint && api.copyEditorEndpoint && <EditorEndpointRow resetSetting={settingUndo.reset} onEdit={clearSettingUndo} highlighted={highlighted === "editor-endpoint"}
-            api={{ editorEndpoint: api.editorEndpoint, setEditorEndpoint: api.setEditorEndpoint, copyEditorEndpoint: api.copyEditorEndpoint, onEditorEndpoint: api.onEditorEndpoint }} />}
-        </Group></Section><FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
+        {page === "general" && <>
+          {renderRows("general", { "paste-label": <>
+            {preferences?.paste && permission?.needed && permission.granted && !guided && <Row id="paste-allowed" label={text("general-paste-allowed", { list: permission.list })} description={text("general-paste-allowed-note")}><StatusMark kind="ok" /></Row>}
+            {preferences?.paste && permission?.needed && (!permission.granted || guided) && <PasteGuide name={name} permission={permission} onOpen={() => { setGuided(true); void api.openPastePermission().then(() => readProblem("paste-label", false)).catch(() => readProblem("paste-label", true)); }} onDrag={api.dragPasteApp} />}
+          </> })}
+          {api.cliStatus && api.setCliInstalled && api.copyCliProfile && <CliCommandRow api={{ cliStatus: api.cliStatus, setCliInstalled: api.setCliInstalled, copyCliProfile: api.copyCliProfile }} highlighted={highlighted === "cli-command"} />}
+          <Details label={text("settings-details")} reveal={revealTarget}><BackupRows api={api} /></Details>
+          <UnknownSettings preferences={preferences} saved={formatSettings.view?.unknown} />
+        </>}
+        {page === "look" && preferences && renderRows("look")}
+        {page === "citations" && <>{renderRows("citations")}<FormatSettings settings={formatSettings} highlighted={highlighted} /></>}
         {page === "shortcuts" && <ShortcutsPage opening={shortcutSetting} enterPastes={enterPastes} reveal={revealTarget} highlighted={highlighted} />}
         {page === "about" && (
           <>
@@ -665,12 +614,7 @@ export function SettingsApp({ api, initialPage }: { api: SettingsApi; initialPag
               <p className="ui-about-mission">{text("about-mission")}</p>
               <AboutLine said={fact !== null} highlighted={highlighted === "about-name"}>{text(fact ? FACT_MESSAGES[fact] : about?.anniversary ? "delight-anniversary" : "delight-name")}</AboutLine>
             </div>
-            <Section id="about-updates" title={text("about-updates")}><Group>
-              <Row id="automatic" {...rowDetails("automatic", text)} description={updates === null && !readProblems.has("automatic") ? text("about-unavailable") : rowDetails("automatic", text).description} {...feedback("automatic")}>
-                {(updates !== null || readProblems.has("automatic")) && <Switch aria-labelledby="automatic" aria-describedby="automatic-description" isSelected={updates ?? false}
-                    isDisabled={updatesSaving || updates === null} onChange={(on) => { void changeUpdates(on).catch(() => undefined); }} />}
-              </Row>
-            </Group></Section>
+            {renderRows("about")}
             <div className="ui-about-links" role="group" aria-label={text("about-links")}>
               {(["website", "source", "problem", "licences"] as const).map((link) => <Button key={link} variant="quiet" size="small" onPress={() => { void api.openAboutLink(link); }}>{text(`about-${link}`)}</Button>)}
             </div>

@@ -13,7 +13,7 @@ install/start and offline observation.
 Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
 
 - **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
-  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  shortcut/focus, search, citation clipboard text, hide/reopen, settings, reload
   and recovery. After Enter copies, it checks the reason, explicitly pastes
   with Shift+Insert into its xterm editor and reads the citation back.
   Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
@@ -58,7 +58,7 @@ from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from native_test_settings import SettingsDirectory
-from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_PANDOC, collect_metadata, failure,
+from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_APA, collect_metadata, failure,
                              load_bundle, observe_native, recording, unavailable)
 
 
@@ -1240,7 +1240,7 @@ class Linux:
         # WebKitGTK can expose a click action on an enclosing named region.
         # Bind menu actions to their widget role, avoiding enclosing regions
         # and same-named menus left in the accessibility tree.
-        roles = (MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values()
+        roles = (MENU_BUTTON_ROLES if name == FORMAT_APA or name in MENU_ACTIONS.values()
                  else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
                  else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
         def children(parent, *, owned=False):
@@ -1534,17 +1534,17 @@ def _first_run_preferences_main(args):
             current = snapshot()
             controls = [node.get("name") for node in current["nodes"]
                         if node.get("role", "").lower().replace(" ", "") in MENU_BUTTON_ROLES]
-            return current["visible"] and current["foreground"] and controls.count(FORMAT_PANDOC) == controls.count("Copy as Pandoc") == 1
+            return current["visible"] and current["foreground"] and controls.count(FORMAT_APA) == controls.count("Copy as APA") == 1
 
         wait_for(distinct_format_and_copy, "citation format and copy have distinct accessible names")
         passed("citation format and copy have distinct accessible names")
-        native.click(FORMAT_PANDOC)
+        native.click(FORMAT_APA)
         wait_for(lambda: bool(named(snapshot(), "Typst")), "citation format lists Typst")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
-        # "LaTeX \cite" names only that menu item; "Pandoc" is also the header's visible text.
+        # "LaTeX \cite" names only that menu item; "APA" is also the header's visible text.
         wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "citation format filter leaves only Typst")
         native.key("Down")
         native.key("Return")
@@ -3486,7 +3486,7 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == FORMAT_PANDOC:
+            elif name == FORMAT_APA:
                 self.assertEqual(native.query, "smoke000000", "Format selection keeps the highlighted result")
                 self.assertGreaterEqual(clock[0], native.query_ready_at)
                 native.format_filter = ""
@@ -3520,14 +3520,14 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += [FORMAT_PANDOC, "3 references"]
+                names += [FORMAT_APA, "3 references"]
                 if native.format_filter is not None:
                     names += ["Typst"]
                 if native.query:
-                    names += ["Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results",
+                    names += ["Copy as APA", "1 result" if clock[0] >= native.query_ready_at else "3 results",
                               f"Ibis smoke reference {native.query.removeprefix('smoke')}"]
                 if failure == "duplicate-format-name":
-                    names += [FORMAT_PANDOC]
+                    names += [FORMAT_APA]
             result_focus = failure == "active-result-reopen" and native.reopened
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
@@ -3605,7 +3605,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in (FORMAT_PANDOC, "Typst")], [(FORMAT_PANDOC, 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in (FORMAT_APA, "Typst")], [(FORMAT_APA, 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Citation format", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])

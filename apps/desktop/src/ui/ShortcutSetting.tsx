@@ -4,13 +4,13 @@ import { SHORTCUT_ACTIONS, type ShortcutProblem } from "../i18n/settings";
 import { DEFAULT_PICKER_SHORTCUT, shortcutLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Button } from "./Button";
-import { Group, Note, ResetSlot, Row, Section } from "./Layout";
+import { Note, ResetSlot, Row } from "./Layout";
 import { ShortcutRecorder } from "./ShortcutRecorder";
 import { ShortcutEcho, useKeyPulse } from "./Delights";
 
 /** Both Settings pages edit the same owner. This component only presents it. */
-export function ShortcutSetting({ id, rowId, details, status, problem, saving, highlighted, onRecord, onConfigure, echo = false, table = false }: {
-  id: string; rowId: string; status: ShortcutStatus | null; problem: ShortcutProblem | null;
+export function ShortcutSetting({ rowId, details, status, problem, saving, highlighted, onRecord, onConfigure, echo = false, table = false }: {
+  rowId: string; status: ShortcutStatus | null; problem: ShortcutProblem | null;
   saving: boolean; highlighted: boolean;
   details: { label: string; description?: string };
   onRecord: (shortcut: string | null) => void; onConfigure: () => void;
@@ -38,12 +38,9 @@ export function ShortcutSetting({ id, rowId, details, status, problem, saving, h
       {problem && <p className="ui-row-problem" role="alert">{text(problem.id, problem.args)}</p>}
     </td></tr>}
   </>;
-  return <Section id={id}><Group>
-    <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} reset={reset}
+  return <ShortcutEcho keys={echo && status ? [status.shortcut] : []}><Row id={rowId} label={details.label} highlighted={highlighted} reset={reset}
       description={status?.desktop?.guidance ?? (status ? details.description : undefined)}
       problem={problem ? text(problem.id, problem.args) : undefined}>
       {controls}
-    </Row></ShortcutEcho>
-
-  </Group></Section>;
+    </Row></ShortcutEcho>;
 }
