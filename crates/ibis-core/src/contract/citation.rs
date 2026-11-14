@@ -174,11 +174,13 @@ pub enum KeySyntax {
     ScannableCite,
     Keys,
     CslJson,
+    Bibtex,
+    DoiLinks,
     CaywJson,
 }
 
 impl KeySyntax {
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 18] = [
         Self::Pandoc,
         Self::Biblatex,
         Self::Natbib,
@@ -194,6 +196,8 @@ impl KeySyntax {
         Self::ScannableCite,
         Self::Keys,
         Self::CslJson,
+        Self::Bibtex,
+        Self::DoiLinks,
         Self::CaywJson,
     ];
 }
@@ -252,6 +256,7 @@ pub enum CitationError {
     MissingItem,
     ChangedItem,
     MissingKey,
+    MissingDoi,
     AmbiguousKey,
     ConflictingKey,
     InvalidKey,
@@ -270,7 +275,7 @@ pub enum CitationError {
 }
 
 impl CitationError {
-    pub const ALL: [Self; 19] = [
+    pub const ALL: [Self; 20] = [
         Self::EmptySelection,
         Self::TooManyItems,
         Self::InvalidLocator,
@@ -280,6 +285,7 @@ impl CitationError {
         Self::MissingItem,
         Self::ChangedItem,
         Self::MissingKey,
+        Self::MissingDoi,
         Self::AmbiguousKey,
         Self::ConflictingKey,
         Self::InvalidKey,

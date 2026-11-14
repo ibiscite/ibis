@@ -59,6 +59,11 @@ fn format_takes_every_listed_id_and_writes_its_output() -> Result {
             assert!(text.contains("\"not-from-zotero\""), "{text}");
             continue;
         }
+        if output.id == "doi-links" {
+            assert_eq!(code, 1, "{errors}");
+            assert!(text.contains("\"missing-doi\""), "{text}");
+            continue;
+        }
         assert_eq!(code, 0, "{}: {errors}", output.id);
         let envelope: Value = serde_json::from_str(&text)?;
         if let Some(example) = &output.example {

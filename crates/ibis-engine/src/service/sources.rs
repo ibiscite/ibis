@@ -1480,7 +1480,7 @@ mod tests {
             )
             .unwrap();
         assert_eq!(
-            DispatchResult::citation(cited.value, 1)
+            DispatchResult::citation(cited.value, 1, &OutputSpec::Preset { name: "pandoc".into() })
                 .unwrap()
                 .with_health(&cited.source_health)
                 .unwrap()

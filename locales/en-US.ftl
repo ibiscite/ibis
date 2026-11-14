@@ -120,6 +120,7 @@ refusal-changed-item = { $reference } changed while citing.
     .agent = Search again.
     .app = Search again.
 refusal-missing-key = { $reference } has no citation key.
+refusal-missing-doi = { $reference } has no usable DOI.
     .cli = Cite it with --style instead.
     .agent = A key syntax cannot name it; use a style.
     .app = Give it one in your library, or choose a style.
@@ -1390,6 +1391,7 @@ problem-formatter-unavailable = The citation could not be written just now.
 problem-annotation-mismatch = This annotation belongs to another reference.
 problem-not-citable = This item cannot be cited as a reference.
 problem-not-from-zotero = This reference was not read from Zotero.
+problem-missing-doi = A selected reference has no DOI. Share it as BibTeX instead.
 
 ## Native command failures.
 app-failure-cli-status = The command line setup could not be read.

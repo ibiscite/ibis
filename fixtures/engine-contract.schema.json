@@ -143,6 +143,7 @@
             "missing-item",
             "changed-item",
             "missing-key",
+            "missing-doi",
             "ambiguous-key",
             "conflicting-key",
             "invalid-key",
@@ -1379,6 +1380,8 @@
         "scannable-cite",
         "keys",
         "csl-json",
+        "bibtex",
+        "doi-links",
         "cayw-json"
       ]
     },
