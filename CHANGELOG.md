@@ -1,5 +1,51 @@
 # Changelog
 
+## [0.3.7](https://github.com/ibiscite/ibis/compare/v0.3.6...v0.3.7) (2026-11-14)
+
+
+### Features
+
+* errors as data, each with a code and one recovery ([#1905](https://github.com/ibiscite/ibis/issues/1905)) ([47d8885](https://github.com/ibiscite/ibis/commit/47d88851dc3603bfbbd8b37b93abac129d9e0f8a))
+* menu bar switches libraries, speaks its state and takes drops ([#1907](https://github.com/ibiscite/ibis/issues/1907)) ([5d0e83f](https://github.com/ibiscite/ibis/commit/5d0e83f9e5fa43b17005c1b9b306a054bfe526cf))
+* one answer for a citation's format, and live settings.json ([#1849](https://github.com/ibiscite/ibis/issues/1849)) ([dc57691](https://github.com/ibiscite/ibis/commit/dc576919a95290c526bd91a251320ef9224df30d))
+* **search:** find all-kana author names by romanised reading ([e66d640](https://github.com/ibiscite/ibis/commit/e66d640a0a17800696bed2c8052d0e88520bedcd))
+* **settings:** every row comes from one declaration of its setting ([e66d640](https://github.com/ibiscite/ibis/commit/e66d640a0a17800696bed2c8052d0e88520bedcd))
+* share as BibTeX or DOI links, keeping notes and private links out ([#1908](https://github.com/ibiscite/ibis/issues/1908)) ([cc1125a](https://github.com/ibiscite/ibis/commit/cc1125ad792e1a7861eca1b6fb8063640d00eaed))
+* **ui:** one frame of fixed slots, bands and layer roles ([#1896](https://github.com/ibiscite/ibis/issues/1896)) ([bf8d862](https://github.com/ibiscite/ibis/commit/bf8d862cd0db9504958ad5227a72449dfec6c56c))
+* **ui:** one window grid and Phosphor icons ([5407db4](https://github.com/ibiscite/ibis/commit/5407db453a00eaa994426fa14b4e7441a59b0b76))
+
+
+### Bug Fixes
+
+* a missing library says why again; Linux tests wait for focus ([#1916](https://github.com/ibiscite/ibis/issues/1916)) ([d2b7862](https://github.com/ibiscite/ibis/commit/d2b7862743c0bde0f1a1ad354afd609aa70ba828))
+* **ci:** the Linux first-run check reads the saved key format ([#1919](https://github.com/ibiscite/ibis/issues/1919)) ([f2c6bce](https://github.com/ibiscite/ibis/commit/f2c6bce9e726edbb82a24c1d4b6334af2b8519d4))
+* each refusal offers a recovery its surface can perform ([eb7ac08](https://github.com/ibiscite/ibis/commit/eb7ac08753921d54d500ab9685dba4ae35223f0d))
+* ids are claimed before validation; Zotero membership is typed ([5407db4](https://github.com/ibiscite/ibis/commit/5407db453a00eaa994426fa14b4e7441a59b0b76))
+* main's CI checks the suggested format, journeys and layout ([#1917](https://github.com/ibiscite/ibis/issues/1917)) ([6dfaa8f](https://github.com/ibiscite/ibis/commit/6dfaa8f86232149625c81393125c6ba16410fe91))
+* one Back control on the grid, no scroll jumps, library row ([#1890](https://github.com/ibiscite/ibis/issues/1890)) ([b4f5d7e](https://github.com/ibiscite/ibis/commit/b4f5d7ea8503ff9d1badd89fae362b684cde3e24))
+* **reader:** a chosen PDF page holds when printed labels repeat ([e66d640](https://github.com/ibiscite/ibis/commit/e66d640a0a17800696bed2c8052d0e88520bedcd))
+* settings edits are never swallowed; Forget and writings refresh ([#1909](https://github.com/ibiscite/ibis/issues/1909)) ([bcac2b0](https://github.com/ibiscite/ibis/commit/bcac2b05bda5669a3292c4bceefa00a389e0748a))
+* **ui:** one layer owner; opening a surface closes the others ([#1902](https://github.com/ibiscite/ibis/issues/1902)) ([33b712e](https://github.com/ibiscite/ibis/commit/33b712e8c4aee20cd174132ae68362e942f75735))
+* **windows:** map the clipboard error so Windows builds again ([#1910](https://github.com/ibiscite/ibis/issues/1910)) ([790ade7](https://github.com/ibiscite/ibis/commit/790ade7225bf98aede771af8e2ea2fabaa495e36))
+* **windows:** private Zotero copies and locks are owned by the user ([5407db4](https://github.com/ibiscite/ibis/commit/5407db453a00eaa994426fa14b4e7441a59b0b76))
+* **windows:** the blocked-attachment capacity test runs on Unix only ([#1914](https://github.com/ibiscite/ibis/issues/1914)) ([57f403f](https://github.com/ibiscite/ibis/commit/57f403f7933b18ebb6ec38c84282714798504966))
+
+
+### Performance
+
+* warm the formatter at startup so the first citation doesn't wait ([#1892](https://github.com/ibiscite/ibis/issues/1892)) ([3a5379d](https://github.com/ibiscite/ibis/commit/3a5379d5ce67806ad16258d5a20319a32b21b07d))
+
+
+### Documentation
+
+* decide owners and boundaries, in ten stages (0054) ([9004cd9](https://github.com/ibiscite/ibis/commit/9004cd9bceb9c17fda65485ac631267bd0a911b4))
+* delete superseded rules and repeated text; AGENTS.md to 43 lines ([#1904](https://github.com/ibiscite/ibis/issues/1904)) ([aaa4a2b](https://github.com/ibiscite/ibis/commit/aaa4a2b40b8156f755eadecda57e6ed5539682d6))
+* design docs point at their sources; the CLI error table is generated ([9004cd9](https://github.com/ibiscite/ibis/commit/9004cd9bceb9c17fda65485ac631267bd0a911b4))
+* fix at the owner; land root causes as a series ([e66d640](https://github.com/ibiscite/ibis/commit/e66d640a0a17800696bed2c8052d0e88520bedcd))
+* reference titles read in Ibis's serif in the app ([#1893](https://github.com/ibiscite/ibis/issues/1893)) ([62918e8](https://github.com/ibiscite/ibis/commit/62918e8bd355d0c69f3a2baafbeb8c8535eeca14))
+* references in and out, lookup services and writes ([#1895](https://github.com/ibiscite/ibis/issues/1895)) ([4b81683](https://github.com/ibiscite/ibis/commit/4b81683a7b89940ece1e1d5ff19e82222bd5e0ec))
+* where Ibis is going, menu bar menu, opt-in online lookup ([#1894](https://github.com/ibiscite/ibis/issues/1894)) ([8702ef9](https://github.com/ibiscite/ibis/commit/8702ef91c0a60def7998f0ea85040683f383f57a))
+
 ## [0.3.6](https://github.com/ibiscite/ibis/compare/v0.3.5...v0.3.6) (2026-11-13)
 
 
