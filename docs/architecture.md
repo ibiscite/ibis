@@ -64,6 +64,13 @@ Zotero reads use the same pinned Zotero-to-CSL mapping in both modes:
   source warning after required table, column and lookup shapes validate;
   incompatible layouts are refused.
 
+On Windows, disposable copies and sidecars receive TokenUser ownership at
+creation and never replace existing files. The persistent private-root lock
+is never unlinked: an exclusive lease precedes validation and any repair of
+legacy elevated ownership. Repair requires WRITE_OWNER and WRITE_DAC on that
+same handle; otherwise a distinct lock-permissions error keeps the existing
+"Open Zotero, then reload" recovery.
+
 A choice names the personal library or specific groups. Missing groups fail
 instead of falling back. Several closed profiles require a named choice.
 Keys come from Zotero's key field, Extra or Better BibTeX; disagreements

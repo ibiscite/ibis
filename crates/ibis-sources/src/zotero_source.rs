@@ -79,6 +79,7 @@ impl ZoteroError {
                 | closed::ClosedError::UnsafeSource
                 | closed::ClosedError::Unreadable
                 | closed::ClosedError::PrivateStorage
+                | closed::ClosedError::LockPermissions
                 | closed::ClosedError::Damaged
                 | closed::ClosedError::TooOld
                 | closed::ClosedError::NeedsRecovery,
@@ -924,6 +925,7 @@ mod tests {
             closed::ClosedError::UnsafeSource,
             closed::ClosedError::Unreadable,
             closed::ClosedError::PrivateStorage,
+            closed::ClosedError::LockPermissions,
             closed::ClosedError::Damaged,
             closed::ClosedError::TooOld,
             closed::ClosedError::NeedsRecovery,

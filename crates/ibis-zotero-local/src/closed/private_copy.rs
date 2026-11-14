@@ -56,10 +56,6 @@ impl Store {
             Err(_) => return Err(ClosedError::PrivateStorage),
         }
         let lock = platform::private_lock(&root.join(".lock"), control)?;
-        if !lock.metadata().is_ok_and(|m| m.is_file()) {
-            return Err(ClosedError::PrivateStorage);
-        }
-        let lock = FileLease::acquire(lock).map_err(|_| ClosedError::StorageInUse)?;
         platform::exclude_backups(&root, control)?;
         // Only marked candidates in our verified root are ours. Prefix
         // lookalikes, foreign files and symlinks are never traversed/deleted.

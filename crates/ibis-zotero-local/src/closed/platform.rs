@@ -1,5 +1,5 @@
 //! Native boundaries used only by the closed reader. No source lock is acquired.
-use super::{ClosedError, Control};
+use super::{ClosedError, Control, FileLease};
 use std::fs::{File, Metadata};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -265,7 +265,7 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
     control.check()?;
     #[cfg(windows)]
     {
-        windows::private_file(path, true, control)
+        windows::private_file(path, control)
     }
     #[cfg(not(windows))]
     {
@@ -280,11 +280,12 @@ pub(super) fn private_file(path: &Path, control: &Control) -> Result<File, Close
     }
 }
 
-pub(super) fn private_lock(path: &Path, control: &Control) -> Result<File, ClosedError> {
+/// Acquire the reusable lock, retaining the same file and lease through validation.
+pub(super) fn private_lock(path: &Path, control: &Control) -> Result<FileLease, ClosedError> {
     control.check()?;
     #[cfg(windows)]
     {
-        windows::private_file(path, false, control)
+        windows::private_lock(path, control)
     }
     #[cfg(not(windows))]
     {
@@ -297,7 +298,11 @@ pub(super) fn private_lock(path: &Path, control: &Control) -> Result<File, Close
                 .mode(0o600)
                 .custom_flags(nix::libc::O_NOFOLLOW | nix::libc::O_NONBLOCK);
         }
-        options.open(path).map_err(|_| ClosedError::PrivateStorage)
+        let file = options.open(path).map_err(|_| ClosedError::PrivateStorage)?;
+        if !file.metadata().is_ok_and(|m| m.is_file()) {
+            return Err(ClosedError::PrivateStorage);
+        }
+        FileLease::acquire(file).map_err(|_| ClosedError::StorageInUse)
     }
 }
 
