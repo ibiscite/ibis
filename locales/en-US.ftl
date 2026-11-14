@@ -1200,6 +1200,7 @@ copied-notice-reason =
        *[paste-unavailable] Copied. Ibis couldn’t confirm where the text would go. Press ⌘V to paste.
     }
 update-title = Updating Ibis
+update-newer-installed = A newer Ibis is installed. Quit and reopen to use it.
 update-downloading = Downloading
 update-installing = Checking and installing
 update-failed = Update not installed. Use Check for Updates in Settings › About.
