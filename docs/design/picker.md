@@ -74,9 +74,9 @@ Built in `ibis-core` so every front end shares them (#1204).
 
 ## Keys
 
-`KEY_TABLE` and `DEFAULT_PICKER_SHORTCUT` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) are the source of truth for shortcut actions, platform bindings and the default summon shortcut.
+`KEY_TABLE` and `DEFAULT_PICKER_SHORTCUT` in [`apps/desktop/src/keys.ts`](../../apps/desktop/src/keys.ts) define shortcut actions, platform bindings and the default shortcut to open Ibis.
 
-- The summon shortcut follows the active layout’s letter.
+- The shortcut to open Ibis follows the active layout’s letter.
 - Double-clicking a row or the footer action pastes or copies what the shelf shows; success hides an unpinned window. The tile’s + adds to the citation, in order.
 - Numbered-result shortcuts act on the first nine rows wholly in view, renumbered on scroll. Holding the command key for one second writes each row’s key where its type icon was, as plain secondary text ending at the tile column: no cap and no plate, nothing moves, and the year stays. A cited row’s check gives way for the hold too (the shelf shows the citation) and returns when the command key is let go. They work only while the result list is shown, not over a command list, palette, sheet or empty state.
 - Escape steps back one layer from any control: sheet, menu, inspector, library chooser, then clears search (the shelf stays), then hides. A held key takes one step.
