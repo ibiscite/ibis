@@ -100,25 +100,43 @@ pub fn scan_tex<'a>(text: &'a str, limits: Limits, stop: &dyn Fn() -> bool) -> R
                         _ => {}
                     }
                 }
-            } else if command == "begin" {
+            } else if matches!(command, "begin" | "end") {
                 tex.spaces()?;
                 if tex.peek() != Some('{') {
                     return Err(tex.incomplete(start));
                 }
                 let name = tex.group(true)?;
                 let environment = &text[name];
-                if matches!(
-                    environment,
-                    "verbatim" | "verbatim*" | "Verbatim" | "Verbatim*" | "lstlisting" | "minted" | "comment"
-                ) {
+                if command == "end" && environment == "document" {
+                    break;
+                }
+                if command == "begin"
+                    && matches!(
+                        environment,
+                        "verbatim" | "verbatim*" | "Verbatim" | "Verbatim*" | "lstlisting" | "minted" | "comment"
+                    )
+                {
                     let end = format!("\\end{{{environment}}}");
-                    let skip = tex.work.find_str(&text[tex.at..], &end);
-                    tex.work.check()?;
-                    let Some(skip) = skip else {
-                        return Err(tex.incomplete(start));
-                    };
-                    tex.at += skip;
-                    tex.advance(end.len())?;
+                    loop {
+                        let skip = tex.work.find_str(&text[tex.at..], &end);
+                        tex.work.check()?;
+                        let Some(skip) = skip else {
+                            return Err(tex.incomplete(start));
+                        };
+                        tex.at += skip;
+                        let line_start = text[..tex.at].ends_with(['\n', '\r']);
+                        tex.advance(end.len())?;
+                        if environment != "comment" {
+                            break;
+                        }
+                        // The comment package compares whole lines; TeX trims
+                        // trailing spaces before passing a line to the package.
+                        let after = tex.work.find(&text[tex.at..], |c| !matches!(c, ' ' | '\t'));
+                        tex.work.check()?;
+                        if line_start && after.is_none_or(|i| text[tex.at + i..].starts_with(['\n', '\r'])) {
+                            break;
+                        }
+                    }
                 }
             } else if evaluated(command) {
                 return Err(tex.unsupported(start));
@@ -198,6 +216,18 @@ fn evaluated(command: &str) -> bool {
         || ["input", "include", "includeonly", "subfile"].contains(&command)
         || ["import", "subimport", "InputIfFileExists", "endinput"].contains(&command)
         || ["catcode", "csname", "expandafter"].contains(&command)
+        || [
+            "detokenize",
+            "string",
+            "meaning",
+            "noexpand",
+            "unexpanded",
+            "scantokens",
+            "lowercase",
+            "uppercase",
+            "toks",
+        ]
+        .contains(&command)
         || ["lstinline", "mintinline"].contains(&command)
 }
 

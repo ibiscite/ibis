@@ -34,13 +34,89 @@ fn shared_reader_commands_and_notes_have_one_key_grammar() {
         "parencite",
         "textcite",
     ] {
-        let text = format!(r"\{command}*[see {{[nested]}} \cite{{not-a-key}}][p. 4]{{a:b_1, a:b_1}}");
+        let text = format!(r"\{command}*[see {{[nested]}}][p. 4]{{a:b_1, a:b_1}}");
         assert_eq!(keys(&text), ["a:b_1", "a:b_1"]);
     }
     for command in ["autocites", "parencites", "textcites"] {
         let text = format!(r"\{command}[see]{{first}}[p. 2]{{second,first}}");
         assert_eq!(keys(&text), ["first", "second", "first"]);
     }
+}
+
+#[test]
+fn citations_nested_in_notes_cannot_be_silently_dropped() {
+    for citation in [
+        r"\cite[see {\cite{nested}}]{outer}",
+        r"\citep[see \textcite{nested}][p. 4]{outer}",
+        r"\autocites{first}[see {\cite{nested}}]{outer}",
+    ] {
+        let text = format!(r"\cite{{earlier}} {citation} \cite{{later}}");
+        assert!(
+            matches!(
+                scan_tex(&text, Limits::default(), &|| false),
+                Err(ScanError::Unsupported { .. })
+            ),
+            "nested citation requires interpretation: {citation}"
+        );
+    }
+}
+
+#[test]
+fn comment_environment_requires_its_complete_terminator_line() {
+    for newline in ["\n", "\r\n"] {
+        let text = [
+            r"\cite{earlier}",
+            r"\begin{comment}",
+            r"embedded \end{comment} \cite{hidden}",
+            r"\end{comment} trailing \cite{also-hidden}",
+            r" \end{comment}",
+            r"\cite{still-hidden}",
+            r"\end{comment}   ",
+            r"\cite{later}",
+        ]
+        .join(newline);
+        assert_eq!(keys(&text), ["earlier", "later"]);
+    }
+    let unclosed = "\\begin{comment}\nembedded \\end{comment} \\cite{hidden}";
+    assert!(matches!(
+        scan_tex(unclosed, Limits::default(), &|| false),
+        Err(ScanError::Incomplete { .. })
+    ));
+}
+
+#[test]
+fn token_interpretation_cannot_expose_quoted_citations() {
+    for quoted in [
+        r"\detokenize{\cite{hidden}}",
+        r"\string\cite{hidden}",
+        r"\meaning\cite{hidden}",
+        r"\noexpand\cite{hidden}",
+        r"\unexpanded{\cite{hidden}}",
+        r"\scantokens{\cite{hidden}}",
+        r"\lowercase{\cite{HIDDEN}}",
+        r"\uppercase{\cite{hidden}}",
+        r"\toks0={\cite{hidden}}",
+        r"\cite[\detokenize{\cite{hidden}}]{outer}",
+    ] {
+        let text = format!(r"\cite{{earlier}} {quoted} \cite{{later}}");
+        assert!(
+            matches!(
+                scan_tex(&text, Limits::default(), &|| false),
+                Err(ScanError::Unsupported { .. })
+            ),
+            "quoted citation requires interpretation: {quoted}"
+        );
+    }
+}
+
+#[test]
+fn end_document_discards_even_unsupported_or_incomplete_tails() {
+    for tail in [r"\cite{discarded}", r"\input{discarded}", r"\cite{", r"\begin{comment}"] {
+        let text = format!(r"\begin{{document}}\cite{{earlier,earlier}}\end{{document}}{tail}");
+        assert_eq!(keys(&text), ["earlier", "earlier"]);
+    }
+    assert_eq!(keys(r"\end{document}\cite{discarded}"), Vec::<&str>::new());
+    assert_eq!(keys(r"\end{other}\cite{kept}"), ["kept"]);
 }
 
 #[test]
@@ -125,6 +201,7 @@ fn cancellation_and_bounds_discard_all_occurrences() {
         text.clone(),
         format!(r"\cite[{long}]{{later}}"),
         format!(r"\begin{{verbatim}}{long}\end{{verbatim}}"),
+        format!("\\begin{{comment}}\n{long}\n\\end{{comment}}"),
         format!("% {long}"),
     ] {
         let polls = std::cell::Cell::new(0);
