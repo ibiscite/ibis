@@ -126,6 +126,16 @@ impl Engine {
         let mut request = request.clone();
         request.output = writing.format.clone();
         let prepared = self.prepare_consulting(&request, by_key, cancel)?;
+        self.writing_prepared(writing, &request, &prepared, cancel)
+    }
+
+    pub(crate) fn writing_prepared(
+        &self,
+        writing: &crate::settings::writings::Writing,
+        request: &CitationRequest,
+        prepared: &super::PreparedCitation,
+        cancel: &Cancellation,
+    ) -> Result<WritingCitation, EngineError> {
         let source_health = prepared.source_health().clone();
         let mut assessment = None;
         let mut evidence = CitationProjectCheck {
@@ -165,7 +175,7 @@ impl Engine {
         {
             return Err(EngineError::because(ErrorCode::BadInput, ErrorReason::StrictCitation));
         }
-        let mut citation = prepared.into_result();
+        let mut citation = prepared.result().clone();
         if let Some(receipt) = &mut citation.receipt {
             receipt.project = Some(evidence);
         }

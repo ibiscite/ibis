@@ -219,7 +219,7 @@ fn obsolete_zotero_reloads_cannot_change_retained_search_results_or_health() -> 
             &ibis_engine::Cancellation::default(),
         )
         .map_err(|_| "open")?;
-    let file = Arc::new(super::super::engine_file::FileLibrary::from_engine(engine));
+    let file = Arc::new(super::super::engine_library::FileLibrary::from_engine(engine));
     let warning = "the library opened but could not be saved for next time: synthetic";
     let library = Mutex::new(Library {
         source: Some(source.clone()),
@@ -298,7 +298,7 @@ fn picker_open_file_refresh_reads_bytes_and_keeps_failed_or_stale_candidates_pri
     engine
         .open_file_observed(&path, &ibis_engine::Cancellation::default())
         .map_err(|_| "initial read")?;
-    let file = Arc::new(super::super::engine_file::FileLibrary::from_engine(engine));
+    let file = Arc::new(super::super::engine_library::FileLibrary::from_engine(engine));
     let library = Mutex::new(Library {
         source: Some(source.clone()),
         file: Some(file.clone()),
@@ -583,7 +583,7 @@ fn the_chooser_accepts_each_library_file_format_the_engine_reads() {
         // A dropped `.txt` is too likely to be notes to replace the library.
         assert_eq!(accepts_library_file(&path), extension != "txt", "drop and .{extension}");
         std::fs::write(&path, contents).unwrap_or_else(|e| panic!("{e}"));
-        let file = super::super::engine_file::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
+        let file = super::super::engine_library::FileLibrary::open(&path).unwrap_or_else(|e| panic!("{e}"));
         let reply = file
             .search(
                 &super::super::search::SearchQuery {
@@ -819,15 +819,14 @@ fn an_unrelated_live_settings_edit_keeps_the_shown_citation_copyable() -> Result
             &ibis_engine::Cancellation::default(),
         )
         .map_err(|error| error.to_string())?;
-    let preview = file
-        .preview(
-            file.reserve_preview(),
-            vec![serde_json::from_value(
-                serde_json::json!({"id": rows.results[0].id, "cite": rows.results[0].cite}),
-            )?],
-            "apa",
-        )
-        .map_err(|error| error.to_string())?;
+    let preview = crate::test_citations::preview(
+        &file.engine,
+        false,
+        vec![serde_json::from_value(
+            serde_json::json!({"id":rows.results[0].id,"cite":rows.results[0].cite}),
+        )?],
+        "apa",
+    )?;
     let app = tauri::test::mock_builder()
         .manage(Mutex::new(library))
         .manage(SettingsFile::new(path.clone()))
@@ -836,13 +835,16 @@ fn an_unrelated_live_settings_edit_keeps_the_shown_citation_copyable() -> Result
     // reserving that replacement retires the ticket Enter is about to copy.
     let refreshed = file.clone();
     let listener = app.listen("library:changed", move |_| {
-        refreshed.reserve_preview();
+        refreshed
+            .engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     });
     let edited = br#"{"shortcut":"Control+Alt+F12"}"#;
     std::fs::write(&path, edited)?;
     refresh_settings_notice(app.handle(), &app.state::<SettingsFile>());
     let mut clipboard = String::new();
-    file.copy(&preview.ticket, &preview.content_hash, |content| {
+    crate::test_citations::copy(&file.engine, &preview.ticket, &preview.content_hash, |content| {
         clipboard = content.text.to_owned();
         Ok(())
     })
@@ -952,7 +954,7 @@ fn queued_reload_notification_cannot_clear_a_later_failed_read() -> Result<(), B
     engine
         .open_file_observed(&path, &ibis_engine::Cancellation::default())
         .map_err(|_| "initial read")?;
-    let file = std::sync::Arc::new(super::super::engine_file::FileLibrary::from_engine(engine));
+    let file = std::sync::Arc::new(super::super::engine_library::FileLibrary::from_engine(engine));
     let library = Mutex::new(Library {
         source: Some(Source::File(path.clone())),
         file: Some(file.clone()),
@@ -1009,7 +1011,7 @@ fn cancelled_reload_cannot_publish_over_a_newer_accepted_snapshot() -> Result<()
     let library = Mutex::new(Library {
         source: Some(Source::File(path.clone())),
         file: Some(std::sync::Arc::new(
-            super::super::engine_file::FileLibrary::from_engine(engine),
+            super::super::engine_library::FileLibrary::from_engine(engine),
         )),
         ..Library::default()
     });

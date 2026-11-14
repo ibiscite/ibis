@@ -117,7 +117,7 @@ pub struct StylePage {
 }
 
 /// A style ready for the processor: its own identity, and the rules to run.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Resolved {
     /// The id asked for, after renames.
     pub id: String,

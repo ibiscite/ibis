@@ -17,7 +17,7 @@ export const layerScreens = ["more", "format-menu", "library-menu", "show-as-men
 
 /** Screens checked again while ⌘ (Ctrl elsewhere) is held, as a person holds it:
  * every held key and the row numbers drawn over a list with a citation. */
-export const heldScreens = ["shelf", "compact", "right-to-left"];
+export const heldScreens = ["shelf", "compact", "right-to-left", "pinned"];
 
 /** Holds the command key alone for longer than the hold (ui/HeldKeys), returns what
  * the check finds, and lets go. The same keydown a person's key sends. */

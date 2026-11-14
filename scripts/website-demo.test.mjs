@@ -8,7 +8,7 @@ import { sharedKeys } from "../website/shared.mjs";
 
 // Like the page-control tests, run the real script against a small synthetic DOM.
 const keys = await sharedKeys();
-const iconScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/icon-paths.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
+const iconScript = stripTypeScriptTypes(await readFile(new URL("../apps/desktop/src/icon-art.ts", import.meta.url), "utf8")).replaceAll(/^export /gm, "");
 const demoScript = (await readFile(new URL("../website/demo.js", import.meta.url), "utf8")).replaceAll(/^import .*;\n/gm, "").replace("export function setupDemo", "function setupDemo");
 const template = await readFile(new URL("../website/pages/home.html", import.meta.url), "utf8");
 const labels = Object.fromEntries([...template.match(/<figure class="picker"[\s\S]*?>/)[0].matchAll(/data-([\w-]+)="([^"]*)"/g)]
@@ -87,7 +87,7 @@ test("copy confirms once in the shelf and paste keeps the copied value through l
   const check = () => {
     assert.equal(panel.querySelectorAll(".picker-status").length, 1);
     for (const root of [figure, panel]) assert.equal(root.querySelectorAll(".copied-notice").length, 0);
-    assert.equal(panel.querySelector(".picker-library").textContent, "Sample references · 3");
+    assert.equal(panel.querySelector(".picker-library").textContent, "Sample references");
   };
   check(); assert.equal(capsule.textContent, "");
   copy.handlers.click(); check();

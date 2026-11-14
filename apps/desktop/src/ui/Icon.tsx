@@ -1,11 +1,13 @@
-import { iconPaths, iconStroke, iconViewBox } from "../icon-paths";
+import { art } from "../icon-art";
 import "./Icon.css";
 
-export type IconName = keyof typeof iconPaths;
-export type IconSize = keyof typeof iconStroke;
+export type IconName = keyof typeof art.body;
+export type IconSize = "control" | "tile";
 
-/** Lucide's 24 unit drawing, with a 1.5 px stroke at either supported size. */
+/** One glyph, named by what it means, from the vendored Phosphor Regular set
+ * (brand/icons): drawn exactly as upstream drew it, at 16 px in controls and
+ * menus and 20 px in a list's lead column. */
 export function Icon({ name, size = "control", className = "" }: { name: IconName; size?: IconSize; className?: string }) {
-  return <svg className={`ui-icon ${className}`} data-size={size} aria-hidden="true" focusable="false" viewBox={iconViewBox} fill="none"
-    stroke="currentColor" strokeWidth={iconStroke[size]} strokeLinecap="round" strokeLinejoin="round"><path d={iconPaths[name]} pathLength="1" /></svg>;
+  return <svg className={`ui-icon ${className}`} data-size={size} aria-hidden="true" focusable="false" viewBox={art.viewBox}
+    fill="currentColor" dangerouslySetInnerHTML={{ __html: art.body[name] }} />;
 }

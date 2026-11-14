@@ -187,8 +187,9 @@ pub(super) fn call(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
-    let answered = answer(engine, problem, formats, tool, arguments, cancel).and_then(|(text, data)| {
+    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|(text, data)| {
         // The answer goes twice, as text and as structured content: the bound is on what is sent.
         let result = json!({
             "content": [{"type": "text", "text": text}],
@@ -235,6 +236,7 @@ fn answer(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Result<(String, Value), Refusal> {
     cancel.check()?;
     let arguments = arguments
@@ -249,7 +251,11 @@ fn answer(
             return Err(Refusal::bad(ToolProblem::NoLibrary, &[]));
         }
     }
-    let data = (tool.answer)(engine, formats, arguments, cancel)?;
+    let data = if tool.name == "cite" {
+        cite_submitted(engine, formats, arguments, cancel, submission)?
+    } else {
+        (tool.answer)(engine, formats, arguments, cancel)?
+    };
     cancel.check()?;
     Ok((data.to_string(), data))
 }
@@ -621,6 +627,15 @@ fn cite(
     arguments: &Map<String, Value>,
     cancel: &Cancellation,
 ) -> Result<Value, Refusal> {
+    cite_submitted(engine, formats, arguments, cancel, None)
+}
+fn cite_submitted(
+    engine: &Engine,
+    formats: &Formats,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
+) -> Result<Value, Refusal> {
     if arguments.contains_key("records") {
         return cite_records(engine, arguments, cancel);
     }
@@ -717,12 +732,16 @@ fn cite(
         strict: strict(arguments)?,
         output_locale: locale,
     };
+    let prepared = if let Some(submission) = submission {
+        submission.prepare(&request, by_key)?
+    } else {
+        std::sync::Arc::new(engine.prepare_consulting(&request, by_key, cancel)?)
+    };
     let (result, source_health, bibliography) = if let Some(writing) = writing {
-        let result = engine.writing_citation(&writing, &request, by_key, cancel)?;
+        let result = engine.writing_prepared(&writing, &request, &prepared, cancel)?;
         (result.citation, result.source_health, result.bibliography)
     } else {
-        let checked = engine.prepare_consulting(&request, by_key, cancel)?.into_checked();
-        (checked.value, checked.source_health, None)
+        (prepared.result().clone(), prepared.source_health().clone(), None)
     };
     let mut answer = written(&result, count)?;
     answer["provenance"] = json!(PROVENANCE);
