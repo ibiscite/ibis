@@ -29,7 +29,7 @@ function fixture(t) {
       log) printf 'Signed-off-by: Synthetic <synthetic@example.org>\\nAssisted-by: Codex\\n';;
       show-ref) [ "$BRANCH_EXISTS" = 1 ];;
       worktree) if [ "$2" = add ]; then mkdir -p "$5"; else rm -rf "$3"; fi;;
-      diff) printf '%s\\n' "$FILES";;
+      diff) case " $* " in *" -z "*) printf '%s\\0' "$FILES";; *) printf '%s\\n' "$FILES";; esac;;
       push) exit "$PUSH_STATUS";;
     esac`,
     cargo: `if [ "$1" = clippy ]; then
@@ -139,12 +139,18 @@ test("the review table covers release, CI, native, window, portal and network bo
   const run = fixture(t);
   for (const path of ["scripts/sign-update-packages.sh", "scripts/publish-nightly.sh", ".github/workflows/ci.yml",
     "apps/desktop/src-tauri/src/paste/macos.rs", "apps/desktop/src-tauri/capabilities/default.json",
-    "apps/desktop/src-tauri/src/picker/portal.rs", "apps/desktop/src-tauri/src/editor_endpoint.rs"]) {
+    "apps/desktop/src-tauri/src/picker/portal.rs", "apps/desktop/src-tauri/src/editor_endpoint.rs",
+    "scripts/ci-main.mjs", "scripts/ci-result.sh", ".github/workflows/\u00e9 \"quoted\".yml"]) {
     const result = run({ FILES: path, REVIEW: "" });
     assert.notEqual(result.status, 0, path);
     assert.ok(result.stdout.includes(path), result.stdout + result.stderr);
     assert.doesNotMatch(result.calls, /git \[mac\] push|cargo \[|ssh \[|gh \[mac\] pr merge/);
   }
+});
+
+test("a review record in a CRLF comment is accepted", posix, (t) => {
+  const result = fixture(t)({ FILES: "scripts/land.sh", REVIEW: `Thanks.\r\nReviewed-by-session: independent ${sha}\r\n` });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
 });
 
 test("docs-only changes need no review; a removed review blocks the final merge", posix, (t) => {

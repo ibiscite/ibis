@@ -89,11 +89,12 @@ find_pr() {
 find_pr
 require_review() {
   local path sensitive= comments line
-  files=$(git diff --name-only --no-renames "origin/main...$sha")
-  while IFS= read -r path; do
+  files=$(git diff -z --name-only --no-renames "origin/main...$sha" | tr '\0' '\n')
+  # NUL-separated, so no filename is quoted out of a glob.
+  while IFS= read -r -d '' path; do
     # Independent-review path table (AGENTS.md). Globs include new files and deletions.
     case "$path" in
-      .github/*|scripts/land.sh) ;; # CI permissions and the merge boundary
+      .github/*|scripts/land.sh|scripts/ci-main.mjs|scripts/ci-result.sh) ;; # CI permissions, what authorizes publication, and the merge boundary
       apps/desktop/src-tauri/src/updater*|scripts/update-feed.mjs) ;;
       scripts/*sign*.sh|scripts/publish-*|scripts/publication-guard.mjs|scripts/keep-previous-nightly.sh) ;;
       apps/desktop/src-tauri/tauri*.json|apps/desktop/src-tauri/capabilities/*|apps/desktop/src-tauri/permissions/*) ;; # Window permissions
@@ -102,10 +103,11 @@ require_review() {
       *) continue;;
     esac
     sensitive+=$'\n'"  $path"
-  done <<< "$files"
+  done < <(git diff -z --name-only --no-renames "origin/main...$sha")
   [ -n "$sensitive" ] || return 0
   if [ -n "$number" ]; then
     comments=$(gh api --paginate "repos/$repo/issues/$number/comments" --jq '.[] | select(.user.login == "diyanko") | .body') || comments=
+    comments=${comments//$'\r'/}
     while IFS= read -r line; do
       if [[ "$line" =~ ^Reviewed-by-session:\ ([a-zA-Z0-9][a-zA-Z0-9._-]*)\ $sha$ ]] && [ "${BASH_REMATCH[1]}" != "$branch" ]; then return 0; fi
     done <<< "$comments"
