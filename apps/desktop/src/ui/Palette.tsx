@@ -3,7 +3,9 @@ import { composing } from "../composition";
 import { Icon } from "../icons";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
+import { Band } from "./Band";
 import { Button } from "./Button";
+import { Option } from "./Option";
 import { flushSync } from "react-dom";
 import { useLayer } from "./layers";
 import { ViewFrame } from "./ViewFrame";
@@ -146,17 +148,16 @@ export function Palette({ id, title, subtitle, description, placeholder, section
     <div className="ui-palette" data-preview={preview ? "" : undefined}>
       <ul id={listId} role="listbox" aria-label={title} className="ui-palette-list scroll-area">
         {shown.map((section) => <li key={section.id} role="presentation" className="ui-palette-section">
-          {section.label && <div className="ui-palette-heading" aria-hidden="true">{section.label}</div>}
+          {section.label && <Band className="ui-list-heading" aria-hidden="true"><span>{section.label}</span></Band>}
           <ul role="group" aria-label={section.name ?? section.label ?? title}>
-            {section.items.map((item) => <li key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
+            {section.items.map((item) => <Option key={item.id} id={optionId(item)} role="option" className="ui-palette-row"
               aria-selected={item === current} aria-current={item.checked || undefined} aria-disabled={item.disabled || undefined}
               aria-keyshortcuts={item.keys ? ariaKeys(item.keys, mac) : undefined} data-active={item === current || undefined}
-              onClick={() => run(item)}>
-              <span className="ui-palette-lead" aria-hidden="true">{item.back ? <Icon name="back" /> : item.checked ? <Icon name="check" /> : item.icon}</span>
+              onClick={() => run(item)} icon={item.back ? <Icon name="back" /> : item.checked ? <Icon name="check" /> : item.icon}>
               <span className="ui-palette-label">{item.label}</span>
               {item.detail && <span className="ui-palette-detail">{item.detail}</span>}
               {item.keys && <span className="ui-palette-keys" aria-hidden="true">{keyLabel(item.keys, mac)}</span>}
-            </li>)}
+            </Option>)}
           </ul>
         </li>)}
         {!items.length && <li role="presentation" className="ui-palette-empty">{empty}</li>}

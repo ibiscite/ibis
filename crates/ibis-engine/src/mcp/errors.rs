@@ -1,5 +1,5 @@
 //! Supported tool validation outcomes: words and arguments stay in the catalogue.
-use ibis_core::contract::{ErrorCode, FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
+use ibis_core::contract::{ErrorCode, Problem, Recovery as R, RecoveryInfo};
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "kebab-case")]
@@ -39,19 +39,19 @@ pub(super) enum ToolProblem {
 }
 impl ToolProblem {
     pub(super) fn problem(self, args: &[(&str, &str)]) -> (ErrorCode, Problem) {
-        let (code, recovery, focus) = match self {
-            Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary, F::LibraryPicker),
-            Self::StaleReference => (ErrorCode::NotFound, R::SelectReferences, F::Search),
-            Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput, F::Search),
-            Self::TooManyItems => (ErrorCode::BadInput, R::ReduceSelection, F::Results),
+        let (code, recovery) = match self {
+            Self::NoLibrary => (ErrorCode::SourceUnavailable, R::ChooseLibrary),
+            Self::StaleReference => (ErrorCode::NotFound, R::SearchReferences),
+            Self::Query | Self::StyleQuery => (ErrorCode::BadInput, R::EditInput),
+            Self::TooManyItems => (ErrorCode::BadInput, R::ReduceSelection),
             Self::CitationFormat
             | Self::Format
             | Self::Style
             | Self::OutputChoice
             | Self::KeyLocale
-            | Self::EmptyOutput => (ErrorCode::BadInput, R::ChooseStyle, F::FormatPicker),
-            Self::Locale => (ErrorCode::BadInput, R::ChooseLocale, F::Language),
-            Self::Locator => (ErrorCode::BadInput, R::EditCitation, F::Locator),
+            | Self::EmptyOutput => (ErrorCode::BadInput, R::ChooseStyle),
+            Self::Locale => (ErrorCode::BadInput, R::ChooseLocale),
+            Self::Locator => (ErrorCode::BadInput, R::EditLocator),
             Self::Arguments
             | Self::UnknownArgument
             | Self::Limit
@@ -70,13 +70,13 @@ impl ToolProblem {
             | Self::Text
             | Self::OmitAuthor
             | Self::NumberRange
-            | Self::NumberMinimum => (ErrorCode::BadInput, R::EditInput, F::Request),
+            | Self::NumberMinimum => (ErrorCode::BadInput, R::EditInput),
         };
         let name = serde_json::to_value(self)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default();
-        let mut info = RecoveryInfo::new(&format!("mcp-error-{name}"), recovery, focus);
+        let mut info = RecoveryInfo::new(&format!("mcp-error-{name}"), recovery);
         for (name, value) in args {
             info = info.argument(name, *value);
         }

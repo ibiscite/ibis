@@ -4,7 +4,7 @@ import { emit } from "@tauri-apps/api/event";
 import { App } from "./App";
 import { backend, prepared, receipt, resetApp, result } from "./testing/app";
 import type { Density } from "./api";
-import type { FilePreview } from "./bindings";
+import type { Preview } from "./bindings";
 import samples from "../src-tauri/resources/samples.csljson?raw";
 
 afterEach(resetApp);
@@ -72,7 +72,7 @@ test.each([true, false])("first citation: choose samples, search, Enter and rece
   fireEvent.change(input, { target: { value: "lantern" } });
   const row = await screen.findByRole("option", { name: new RegExp(`Sample · ${title}`) });
   expect(within(row).getByText("Sample")).toBeTruthy();
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Sample references · 3 references");
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("Sample references");
   await waitFor(() => expect(document.querySelector(".shelf")?.textContent).toContain(text));
   fireEvent.keyDown(input, { key: "Enter" });
   if (formatted) {
@@ -184,13 +184,13 @@ test("a real source replaces samples even when selected sample references were o
   fireEvent.keyDown(input, { key: "Enter" });
   await waitFor(() => expect(copied).toHaveBeenCalledOnce());
   expect(preview.mock.lastCall?.[0].items.map((item) => item.id.library)).toEqual(["real"]);
-  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("invented.bib · 1 reference");
+  expect(screen.getByRole("status", { name: "Library status" }).textContent).toBe("invented.bib");
 });
 
 test("leaving samples cancels an Enter waiting for its citation preview", async () => {
   const { copied, preview } = setup();
   await chooseSamples();
-  let finish!: (preview: FilePreview) => void;
+  let finish!: (preview: Preview) => void;
   preview.mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
   const input = screen.getByRole("combobox");
   fireEvent.change(input, { target: { value: "lantern" } });

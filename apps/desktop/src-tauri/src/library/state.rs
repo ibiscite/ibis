@@ -5,7 +5,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
-use super::engine_file::FileLibrary;
+use super::engine_library::FileLibrary;
 use super::error::LoadError;
 use super::load::{LibraryReload, Loaded};
 use super::source::Source;
@@ -89,7 +89,9 @@ pub(super) fn leave_samples(library: &Mutex<Library>, requests: &LoadRequests) {
     }
     requests.0.fetch_add(1, Ordering::SeqCst);
     if let Some(file) = &library.file {
-        file.invalidate();
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     }
     *library = Library {
         settings_notice: library.settings_notice.take(),
@@ -103,7 +105,9 @@ pub(super) fn clear(library: &Mutex<Library>, requests: &LoadRequests) {
     let Ok(mut library) = library.lock() else { return };
     requests.0.fetch_add(1, Ordering::SeqCst);
     if let Some(file) = &library.file {
-        file.invalidate();
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     }
     *library = Library {
         settings_notice: library.settings_notice.take(),
@@ -298,7 +302,9 @@ pub(super) fn record_open(
     let reload = library.source.as_ref() == Some(&source);
     library.observe_revision(SystemTime::now());
     if let Some(file) = &library.file {
-        file.invalidate();
+        file.engine
+            .citations()
+            .invalidate(ibis_engine::citations::SessionId::PICKER);
     }
     library.requested = Some(source);
     library.opening = true;
@@ -319,7 +325,8 @@ pub(crate) fn candidate(source: impl Into<Source>, bib: &str) -> Library {
         checked_at: Some(SystemTime::now()),
         source: Some(source.into()),
         file: Some(Arc::new(
-            FileLibrary::open(&path).unwrap_or_else(|e| panic!("synthetic library: {e}")),
+            FileLibrary::open(&path, &ibis_engine::Cancellation::default())
+                .unwrap_or_else(|e| panic!("synthetic library: {e}")),
         )),
         ..Library::default()
     };
@@ -364,7 +371,6 @@ mod tests {
                 PathBuf::from("synthetic.bib"),
                 "@misc{synthetic,title={Synthetic}}",
             )))
-            .manage(super::super::PreviewRequests::default())
             .manage(crate::project::ProjectBibliography::default())
             .manage(crate::editor_endpoint::Pending::default())
             .build(tauri::test::mock_context(tauri::test::noop_assets()))
@@ -382,7 +388,6 @@ mod tests {
                     cancel: false,
                     context: Some(app.state::<crate::project::ProjectBibliography>().version()),
                 },
-                app.state(),
                 app.state(),
                 app.state(),
                 app.state(),
@@ -421,7 +426,6 @@ mod tests {
             std::fs::write(&path, format!("@book{{{key},title={{Synthetic stars}}}}")).unwrap();
             let app = tauri::test::mock_builder()
                 .manage(Mutex::new(Library::default()))
-                .manage(super::super::PreviewRequests::default())
                 .manage(crate::project::ProjectBibliography::default())
                 .manage(crate::editor_endpoint::Pending::default())
                 .build(tauri::test::mock_context(tauri::test::noop_assets()))
@@ -469,18 +473,16 @@ mod tests {
                 app.state(),
                 app.state(),
                 app.state(),
-                app.state(),
             ))
             .unwrap();
             let expected = format!("[@{key}]");
             assert_eq!(preview.text, expected);
             let mut written = String::new();
-            active
-                .copy(&preview.ticket, &preview.content_hash, |content| {
-                    written = content.text.to_owned();
-                    Ok(())
-                })
-                .unwrap();
+            crate::test_citations::copy(&active.engine, &preview.ticket, &preview.content_hash, |content| {
+                written = content.text.to_owned();
+                Ok(())
+            })
+            .unwrap();
             assert_eq!(written, expected);
         }
     }

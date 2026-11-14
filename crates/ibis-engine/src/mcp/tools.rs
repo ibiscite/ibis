@@ -142,17 +142,14 @@ impl Refusal {
     /// Opening is attempted only at startup; a failed session cannot retry it.
     pub fn startup(error: EngineError) -> Self {
         let mut refusal = Self::from(error);
-        let cause = if refusal.problem.info.recovery == ibis_core::contract::Recovery::Retry {
+        let cause = if refusal.problem.info.recovery() == ibis_core::contract::Recovery::Retry {
             crate::catalogue::text(&refusal.problem.info.message.id, None, &[]).unwrap_or_default()
         } else {
             refusal.advice.to_string()
         };
-        refusal.problem.info = ibis_core::contract::RecoveryInfo::new(
-            "mcp-startup-failed",
-            ibis_core::contract::Recovery::RestartSession,
-            ibis_core::contract::FocusTarget::Request,
-        )
-        .argument("error", cause);
+        refusal.problem.info =
+            ibis_core::contract::RecoveryInfo::new("mcp-startup-failed", ibis_core::contract::Recovery::RestartSession)
+                .argument("error", cause);
         refusal.advice = crate::catalogue::problem(&refusal.problem, Audience::Agent).into();
         refusal
     }
@@ -187,8 +184,9 @@ pub(super) fn call(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Value {
-    let answered = answer(engine, problem, formats, tool, arguments, cancel).and_then(|(text, data)| {
+    let answered = answer(engine, problem, formats, tool, arguments, cancel, submission).and_then(|(text, data)| {
         // The answer goes twice, as text and as structured content: the bound is on what is sent.
         let result = json!({
             "content": [{"type": "text", "text": text}],
@@ -235,6 +233,7 @@ fn answer(
     tool: &Tool,
     arguments: &Value,
     cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
 ) -> Result<(String, Value), Refusal> {
     cancel.check()?;
     let arguments = arguments
@@ -249,7 +248,11 @@ fn answer(
             return Err(Refusal::bad(ToolProblem::NoLibrary, &[]));
         }
     }
-    let data = (tool.answer)(engine, formats, arguments, cancel)?;
+    let data = if tool.name == "cite" {
+        cite_submitted(engine, formats, arguments, cancel, submission)?
+    } else {
+        (tool.answer)(engine, formats, arguments, cancel)?
+    };
     cancel.check()?;
     Ok((data.to_string(), data))
 }
@@ -621,6 +624,15 @@ fn cite(
     arguments: &Map<String, Value>,
     cancel: &Cancellation,
 ) -> Result<Value, Refusal> {
+    cite_submitted(engine, formats, arguments, cancel, None)
+}
+fn cite_submitted(
+    engine: &Engine,
+    formats: &Formats,
+    arguments: &Map<String, Value>,
+    cancel: &Cancellation,
+    submission: Option<&crate::citations::SubmittedCitation>,
+) -> Result<Value, Refusal> {
     if arguments.contains_key("records") {
         return cite_records(engine, arguments, cancel);
     }
@@ -648,13 +660,12 @@ fn cite(
             let settings = match formats {
                 Formats::File(path) => {
                     let loaded = crate::settings::load(path);
-                    if let Some(problem) = loaded.problem {
-                        return Err(Refusal::from_problem(
-                            crate::settings_backup::settings_code(&problem),
-                            (&problem).into(),
-                        ));
-                    }
-                    loaded.settings
+                    loaded
+                        .cites()
+                        .map_err(|problem| {
+                            Refusal::from_problem(crate::settings_backup::settings_code(problem), problem.into())
+                        })?
+                        .clone()
                 }
                 Formats::Unavailable(problem) => return Err(problem.clone()),
                 Formats::Defaults => crate::settings::Settings::default(),
@@ -717,12 +728,16 @@ fn cite(
         strict: strict(arguments)?,
         output_locale: locale,
     };
+    let prepared = if let Some(submission) = submission {
+        submission.prepare(&request, by_key)?
+    } else {
+        std::sync::Arc::new(engine.prepare_consulting(&request, by_key, cancel)?)
+    };
     let (result, source_health, bibliography) = if let Some(writing) = writing {
-        let result = engine.writing_citation(&writing, &request, by_key, cancel)?;
+        let result = engine.writing_prepared(&writing, &request, &prepared, cancel)?;
         (result.citation, result.source_health, result.bibliography)
     } else {
-        let checked = engine.prepare_consulting(&request, by_key, cancel)?.into_checked();
-        (checked.value, checked.source_health, None)
+        (prepared.result().clone(), prepared.source_health().clone(), None)
     };
     let mut answer = written(&result, count)?;
     answer["provenance"] = json!(PROVENANCE);
@@ -905,7 +920,7 @@ fn refusal(result: &CitationResult) -> Refusal {
                     ("output", output.as_str()),
                     ("limit", &limit),
                 ];
-                Some(crate::catalogue::sentence("refusal", *error, Audience::Agent, &args))
+                Some(crate::catalogue::citation(*error, Audience::Agent, &args))
             }
             ItemOutcome::Rendered { .. } | ItemOutcome::Unknown => None,
         })

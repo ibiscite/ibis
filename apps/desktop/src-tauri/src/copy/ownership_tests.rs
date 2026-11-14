@@ -1,8 +1,9 @@
 use super::*;
-use crate::library::engine_file::{FileLibrary, FileSelection};
+use crate::library::engine_library::FileLibrary;
 use crate::picker::PickerGeneration;
 use crate::project::ProjectBibliography;
 use crate::session_references::SessionReferences;
+use ibis_core::contract::DraftItem;
 use serde_json::json;
 
 #[test]
@@ -13,7 +14,7 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         &path,
         "@book{taylor,title={Synthetic signals},author={Taylor, Alex},year={2026}}",
     )?;
-    let file = FileLibrary::open(&path).map_err(|_| "open invented library")?;
+    let file = FileLibrary::open(&path, &ibis_engine::Cancellation::default()).map_err(|_| "open invented library")?;
     let query = serde_json::from_value(json!({"text":"signals","interpret_locators":false}))?;
     let rows = serde_json::to_value(file.search(&query, 10, None, &ibis_engine::Cancellation::default())?)?;
     let selection = json!({
@@ -34,13 +35,11 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         let visits = PickerGeneration::default();
         let project = ProjectBibliography::default();
         let session = SessionReferences::default();
-        let reservation = file.reserve_preview();
-        let selection: FileSelection = serde_json::from_value(selection.clone())?;
-        let preview = file
-            .preview(reservation, vec![selection], "pandoc")
+        let selection: DraftItem = serde_json::from_value(selection.clone())?;
+        let preview = crate::test_citations::preview(&file.engine, file.sample, vec![selection], "pandoc")
             .map_err(|error| error.to_string())?;
         project
-            .bind_preview(reservation, &preview.ticket, project.version())
+            .bind_preview(&file.engine, &preview, project.version())
             .map_err(|error| error.to_string())?;
         let mut mark = ClipboardMark {
             ours: 1,
@@ -63,7 +62,13 @@ fn delayed_citations_write_only_for_their_original_picker_and_clipboard() -> Res
         }
         let mut clipboard = newer.to_owned();
         let recited = file
-            .recite(&preview.ticket, &preview.content_hash)
+            .engine
+            .citations()
+            .commit(
+                ibis_engine::citations::SessionId::PICKER,
+                &preview.ticket,
+                &preview.content_hash,
+            )
             .map_err(|error| error.to_string())?;
         let copied = commit_copy(
             &file,

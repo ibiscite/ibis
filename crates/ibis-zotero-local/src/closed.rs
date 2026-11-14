@@ -40,6 +40,8 @@ pub enum ClosedError {
     Unreadable,
     #[error("private Zotero storage could not be secured")]
     PrivateStorage,
+    #[error("the private Zotero lock file's permissions are wrong")]
+    LockPermissions,
     #[error("private Zotero storage is already in use")]
     StorageInUse,
     #[error("there is not enough free space for a private Zotero copy")]

@@ -64,8 +64,8 @@ pub fn choose(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
 pub fn usual(settings: &Settings, app: Option<&AppId>) -> FormatChoice {
     let (kind, suggestion, _) = kind(app);
     let yours = match kind {
-        FormatKind::Documents => settings.output.as_deref(),
-        FormatKind::Keys => settings.key_output.as_deref(),
+        FormatKind::Documents => settings.portable.output.as_deref(),
+        FormatKind::Keys => settings.portable.key_output.as_deref(),
     };
     if let Some(entry) = listed(yours, kind) {
         return choice(entry, FormatFrom::Yours, kind);
@@ -121,9 +121,10 @@ fn kind_of(output: &OutputSpec) -> FormatKind {
 
 fn writing_for<'s>(settings: &'s Settings, app: &AppId) -> Option<&'s crate::settings::writings::Writing> {
     let id = settings
+        .device
         .writing_apps
         .get(&format!("{}:{}", system(app), app.normalized()))?;
-    settings.writings.iter().find(|writing| &writing.name == id)
+    settings.device.writings.iter().find(|writing| &writing.name == id)
 }
 
 fn system(app: &AppId) -> &'static str {
@@ -150,9 +151,9 @@ pub fn accept_suggestion(settings: &mut Settings, app: Option<&AppId>, captured:
     if let Some(app) = app {
         settings.remember_app_output(app, id.clone());
     }
-    if settings.suggestion_reports.contains(&captured.kind) {
+    if settings.device.suggestion_reports.contains(&captured.kind) {
         return false;
     }
-    settings.suggestion_reports.push(captured.kind);
+    settings.device.suggestion_reports.push(captured.kind);
     true
 }
