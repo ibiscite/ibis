@@ -1,6 +1,6 @@
 //! Fixed diagnostics for native infrastructure; engine failures retain their own types.
 use crate::library::CommandError;
-use ibis_core::contract::{FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
+use ibis_core::contract::{Problem, Recovery as R, RecoveryInfo};
 
 impl From<&ibis_engine::settings::SettingsError> for CommandError {
     fn from(error: &ibis_engine::settings::SettingsError) -> Self {
@@ -39,12 +39,10 @@ impl NativeOperation {
     pub(crate) fn failure(self) -> CommandError {
         // Exhaustive even for native operations: never expose an OS error or
         // choose a recovery by parsing its English wording.
-        let (recovery, focus) = match self {
-            Self::UseZoteroLibraries | Self::FindSources | Self::OpenFoundLibrary => {
-                (R::ChooseLibrary, F::LibraryPicker)
-            }
-            Self::FindZotero => (R::Retry, F::LibraryPicker),
-            Self::RowContext => (R::Retry, F::Search),
+        let recovery = match self {
+            Self::UseZoteroLibraries | Self::FindSources | Self::OpenFoundLibrary => R::ChooseLibrary,
+            Self::FindZotero => R::ChooseLibrary,
+            Self::RowContext => R::SearchReferences,
             Self::OpenSettingsFile
             | Self::CliStatus
             | Self::SetCliInstalled
@@ -57,14 +55,14 @@ impl NativeOperation {
             | Self::FinishPasteGuide
             | Self::ConfigureShortcuts
             | Self::UseSampleLibrary
-            | Self::DragPasteApp => (R::Retry, F::RecoveryAction),
+            | Self::DragPasteApp => R::Retry,
         };
         let code = serde_json::to_value(self)
             .ok()
             .and_then(|value| value.as_str().map(str::to_owned))
             .unwrap_or_default();
         CommandError::Presented(Problem {
-            info: RecoveryInfo::new(&format!("app-failure-{code}"), recovery, focus),
+            info: RecoveryInfo::new(&format!("app-failure-{code}"), recovery),
             code,
         })
     }
@@ -87,7 +85,7 @@ impl From<ibis_engine::settings::backup::BackupProblem> for CommandError {
         };
         Self::Presented(Problem {
             code: code.into(),
-            info: RecoveryInfo::new(&format!("backup-problem-{code}"), recovery, F::RecoveryAction),
+            info: RecoveryInfo::new(&format!("backup-problem-{code}"), recovery),
         })
     }
 }
@@ -110,7 +108,7 @@ impl From<crate::shortcut_setting::ShortcutRefusal> for CommandError {
         } else {
             format!("shortcuts-refusal-{code}")
         };
-        let mut info = RecoveryInfo::new(&id, recovery, F::RecoveryAction);
+        let mut info = RecoveryInfo::new(&id, recovery);
         if let S::PickerShortcut(command) = error {
             let id = ibis_engine::catalogue::id("shortcuts-command", command);
             info = info.argument(
@@ -134,7 +132,7 @@ impl From<crate::destination::AppChoiceError> for CommandError {
         };
         Self::Presented(Problem {
             code: code.into(),
-            info: RecoveryInfo::new(id, R::Retry, F::RecoveryAction),
+            info: RecoveryInfo::new(id, R::Retry),
         })
     }
 }

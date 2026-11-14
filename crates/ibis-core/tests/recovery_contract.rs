@@ -41,3 +41,15 @@ fn an_omitted_reference_requires_reviewing_the_source_library() {
     assert_eq!(value["recovery"]["action"], "review-library");
     assert_eq!(value["focus"], "source-file");
 }
+
+#[test]
+fn a_bibliography_refusal_keeps_its_diagnostic_and_recovers_inside_the_sheet() {
+    let refusal = CitationError::UnsupportedForm.problem();
+    let bibliography = refusal.clone().on(CitationSurface::Bibliography);
+    assert_eq!(bibliography.code, refusal.code);
+    assert_eq!(bibliography.info.message.id, refusal.info.message.id);
+    let presented = serde_json::to_value(bibliography).unwrap_or_default();
+    assert_eq!(presented["recovery"]["action"], "remove-references");
+    assert_eq!(presented["focus"], "session-references");
+    assert_eq!(presented["message"]["context"], "bibliography");
+}

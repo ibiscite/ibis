@@ -13,7 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 
 use crate::library::commands::RecentIdentity;
 use crate::library::engine_file::{FileLibrary, SessionBibliography};
-use crate::library::{CommandError, Library, SearchResult};
+use crate::library::{BibliographyError, CommandError, Library, SearchResult};
 use crate::picker::ChooserOpen;
 
 pub(crate) use ibis_engine::recents::SessionReferences;
@@ -126,7 +126,7 @@ pub(crate) async fn session_bibliography(
     requests: State<'_, crate::library::FormattingRequests>,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<Option<SessionBibliography>, CommandError> {
+) -> Result<Option<SessionBibliography>, BibliographyError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     // With no library open nothing listed can be written, which is no failure.
@@ -136,9 +136,11 @@ pub(crate) async fn session_bibliography(
     file.begin_bibliography(&cancel)?;
     let items = session.items();
     let style = style_of(&style)?;
-    tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
-        .await
-        .map_err(|_| CommandError::BibliographyUnavailable)?
+    Ok(
+        tauri::async_runtime::spawn_blocking(move || file.session_bibliography(&items, &style, &cancel))
+            .await
+            .map_err(|_| CommandError::BibliographyUnavailable)??,
+    )
 }
 
 /// Copy what was shown. Prepared again from the list as it is now, and refused
@@ -153,7 +155,7 @@ pub(crate) async fn copy_session_bibliography(
     app: AppHandle,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<(), CommandError> {
+) -> Result<(), BibliographyError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     // Formatting can take a while: anything copied meanwhile is newer and stays.
@@ -184,10 +186,10 @@ pub(crate) async fn copy_session_bibliography(
         let _ = send.send(result);
     })
     .map_err(|_| CommandError::BibliographyUnavailable)?;
-    tauri::async_runtime::spawn_blocking(move || written.recv())
+    Ok(tauri::async_runtime::spawn_blocking(move || written.recv())
         .await
         .map_err(|_| CommandError::BibliographyUnavailable)?
-        .map_err(|_| CommandError::BibliographyUnavailable)?
+        .map_err(|_| CommandError::BibliographyUnavailable)??)
 }
 
 /// Keep edits out until the write finishes; a superseded list never reaches
@@ -237,7 +239,7 @@ pub(crate) async fn export_session_bibliography(
     window: WebviewWindow,
     session: State<'_, SessionReferences>,
     library: State<'_, Mutex<Library>>,
-) -> Result<Option<String>, CommandError> {
+) -> Result<Option<String>, BibliographyError> {
     let cancel = requests.bibliography.start(intent).ok_or(CommandError::Cancelled)?;
     cancel.check().map_err(CommandError::from)?;
     let style = style_of(&style)?;

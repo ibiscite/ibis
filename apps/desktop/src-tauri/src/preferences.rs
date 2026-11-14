@@ -756,7 +756,6 @@ fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Resu
             info: ibis_core::contract::RecoveryInfo::new(
                 "app-settings-error-read-only",
                 ibis_core::contract::Recovery::ReviewSettings,
-                ibis_core::contract::FocusTarget::Settings,
             ),
         }));
     }
@@ -805,10 +804,10 @@ fn save_preferences_at(path: &Path, preferences: PickerPreferencesPatch) -> Resu
 }
 
 fn format_problem(code: &str, message: &str) -> CommandError {
-    use ibis_core::contract::{FocusTarget, Problem, Recovery, RecoveryInfo};
+    use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
     CommandError::Presented(Problem {
         code: code.into(),
-        info: RecoveryInfo::new(message, Recovery::ChooseStyle, FocusTarget::FormatPicker),
+        info: RecoveryInfo::new(message, Recovery::ChooseStyle),
     })
 }
 

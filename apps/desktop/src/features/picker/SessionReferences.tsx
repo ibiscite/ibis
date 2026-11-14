@@ -92,6 +92,7 @@ export function SessionReferencesDialog({ api, style, onClose }: { api: Api; sty
   const name = outputName(style);
   return <Sheet title={say("session-title")} closeLabel={say("session-close")} description={say("session-about")} onClose={onClose}
     leadingActions={[
+      ...problem ? [{ label: say("setup-try-again"), onPress: () => load(sessionReferences) }] : [],
       ...undoLabel ? [{ label: undoLabel, onPress: () => edit({ kind: "undo" }) }] : [],
       ...view && view.rows.length + view.absent > 0 ? [{ label: say("session-reset"), onPress: () => edit({ kind: "reset" }) }] : [],
     ]}

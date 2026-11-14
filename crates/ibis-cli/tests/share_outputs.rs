@@ -112,6 +112,24 @@ fn doi_links_keep_successes_and_identify_records_without_a_doi() {
 }
 
 #[test]
+fn missing_doi_json_offers_output_selection() {
+    let path = Path::new(env!("CARGO_TARGET_TMPDIR")).join("recovery-doi.json");
+    std::fs::write(
+        &path,
+        r#"[{"id":"one","citation-key":"atlas","type":"book","title":"Invented atlas"}]"#,
+    )
+    .unwrap();
+    let (_, text, _) = run(&path, &["cite", "--format", "doi-links", "atlas", "--json"]);
+    let reply: Value = serde_json::from_str(&text).unwrap();
+    let refusal = &reply["data"]["outcomes"][0];
+    assert_eq!(refusal["error"], "missing-doi");
+    assert_eq!(refusal["recovery"]["action"], "choose-output");
+    assert_eq!(refusal["focus"], "format-picker");
+    let (_, _, advice) = run(&path, &["cite", "--format", "doi-links", "atlas"]);
+    assert!(advice.contains("--format bibtex"), "{advice}");
+}
+
+#[test]
 fn identifier_fields_are_verbatim_for_latex_and_reopen_identically() {
     let dir = Path::new(env!("CARGO_TARGET_TMPDIR"));
     let source = dir.join("share-identifiers.json");

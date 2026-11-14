@@ -113,26 +113,6 @@ impl ReferenceForm {
             .map_or(CitationForm::Normal, |(_, form)| *form)
     }
 }
-/// Invalid field input retains its recovery and field focus until rendering.
-fn field_failure(error: ibis_core::locator::FieldError, index: usize) -> CommandError {
-    use ibis_core::locator::FieldError;
-    let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = error;
-    let mut problem = CitationError::InvalidLocator.problem();
-    problem.info.message.id = match (term == LocatorTerm::Page, matches!(error, FieldError::MissingValue(_))) {
-        (true, true) => "app-command-page-missing",
-        (true, false) => "app-command-page-invalid",
-        (false, true) => "app-command-locator-missing",
-        (false, false) => "app-command-locator-invalid",
-    }
-    .into();
-    let id = ibis_engine::catalogue::id("locator", term);
-    let label = ibis_engine::catalogue::text(&id, None, &[]).unwrap_or_default();
-    problem.info = problem
-        .info
-        .argument("number", (index + 1).to_string())
-        .argument("label", label);
-    CommandError::Presented(problem)
-}
 #[derive(Serialize, schemars::JsonSchema)]
 pub(crate) struct FormOption {
     pub(crate) form: ReferenceForm,
@@ -304,10 +284,7 @@ impl FileLibrary {
             }
             cancel.check().map_err(CommandError::from)?;
             if kept.is_empty() {
-                let mut problem = CitationError::UnsupportedForm.problem();
-                problem.info.message.id = "app-command-bibliography-unsupported".into();
-                problem.info = problem.info.argument("references", left_out.join(", "));
-                return Err(CommandError::Presented(problem));
+                return Err(CommandError::BibliographyUnsupported { references: left_out });
             }
             let (citation, whole) = self.bibliography_of(kept, style, cancel)?;
             if !whole {
@@ -836,15 +813,12 @@ impl FileLibrary {
             .map(|(index, item)| {
                 let locator = match (item.locator, item.locator_input) {
                     (Some(_), Some(_)) => {
-                        let mut problem = CitationError::InvalidLocator.problem();
-                        problem.info.message.id = "app-command-locator-conflict".into();
-                        problem.info = problem.info.argument("number", (index + 1).to_string());
-                        return Err(CommandError::Presented(problem));
+                        return Err(CommandError::LocatorConflict { index });
                     }
                     (locator, None) => locator.map(Into::into),
                     (None, Some(input)) => Some(
                         ibis_core::locator::read_field(input.label, &input.text)
-                            .map_err(|error| field_failure(error, index))?,
+                            .map_err(|error| CommandError::LocatorField { error, index })?,
                     ),
                 };
                 Ok(CitationItem {
@@ -896,14 +870,23 @@ impl FileLibrary {
             }
             if let Some(item) = refused(CitationError::UnsupportedForm) {
                 let mut failure = CitationError::UnsupportedForm.problem();
-                failure.info.message.id = "app-command-unsupported-form".into();
+                failure = failure.on(ibis_core::contract::CitationSurface::Picker);
                 let form = request.items[item].form.unwrap_or(request.form);
-                let label = ibis_engine::catalogue::text(&ibis_engine::catalogue::id("form", form), None, &[])
-                    .unwrap_or_default();
+                let label = super::error::words(&ibis_engine::catalogue::id("form", form), &[]);
                 failure.info = failure
                     .info
-                    .argument("number", (item + 1).to_string())
-                    .argument("form", label);
+                    .argument("form", label)
+                    .argument(
+                        "reference",
+                        super::error::words("app-reference-number", &[("number", &(item + 1).to_string())]),
+                    )
+                    .argument(
+                        "output",
+                        ibis_engine::outputs::named(&request.output).map_or_else(
+                            || super::error::words("mcp-output-name", &[]),
+                            |output| output.name.clone(),
+                        ),
+                    );
                 let problem = ibis_engine::catalogue::problem(&failure, ibis_engine::catalogue::Audience::App);
                 let mut preview = self.publish_preview(reservation, citation, original_output)?;
                 preview.problem = Some(problem);

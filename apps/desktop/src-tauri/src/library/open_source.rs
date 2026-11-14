@@ -23,7 +23,7 @@ use crate::picker::{PickerGeneration, Takeover, yield_to_window};
 
 #[derive(Debug, PartialEq, Eq)]
 enum Target {
-    Zotero,
+    Zotero(ZoteroLibrary),
     ZoteroItem(String),
     File(PathBuf),
 }
@@ -183,7 +183,19 @@ fn target(
     // Opening the app itself is independent of a library snapshot. In
     // particular it still works on first run or after a failed status read.
     if zotero_only {
-        return Ok(Target::Zotero);
+        let chosen = [library.requested.as_ref(), library.source.as_ref()]
+            .into_iter()
+            .flatten()
+            .find_map(|source| match source {
+                Source::Zotero(chosen) => Some(chosen),
+                Source::File(_) | Source::Samples(_) => None,
+            });
+        return Ok(Target::Zotero(
+            chosen
+                .map(selected_zotero)
+                .transpose()?
+                .unwrap_or(ZoteroLibrary::Personal),
+        ));
     }
     if library.source_generation.to_string() != expected_source_generation
         || library.file.as_ref().map(|file| file.revision()).unwrap_or_default() != expected
@@ -193,7 +205,7 @@ fn target(
     let Some(item) = item else {
         return match library.source.as_ref().or(library.requested.as_ref()) {
             Some(Source::File(path) | Source::Samples(path)) => Ok(Target::File(path.clone())),
-            Some(Source::Zotero(_)) => Ok(Target::Zotero),
+            Some(Source::Zotero(chosen)) => Ok(Target::Zotero(selected_zotero(chosen)?)),
             None => Err(failed()),
         };
     };
@@ -221,18 +233,29 @@ fn target(
     }
 }
 
+fn selected_zotero(chosen: &ibis_engine::settings::ZoteroLibraries) -> Result<ZoteroLibrary, CommandError> {
+    match chosen.libraries().first() {
+        Some(ibis_engine::settings::ZoteroLibrary::User) => Ok(ZoteroLibrary::Personal),
+        Some(ibis_engine::settings::ZoteroLibrary::Group(id)) if *id > 0 => Ok(ZoteroLibrary::Group(*id)),
+        _ => Err(failed()),
+    }
+}
+
+fn zotero_library_uri(library: ZoteroLibrary) -> Result<String, CommandError> {
+    match library {
+        ZoteroLibrary::Personal => Ok("zotero://select/library".into()),
+        ZoteroLibrary::Group(id) if id > 0 => Ok(format!("zotero://select/groups/{id}")),
+        _ => Err(failed()),
+    }
+}
+
 fn zotero_uri(library: ZoteroLibrary, key: &str) -> Result<String, CommandError> {
     // Native Zotero keys are eight ASCII letters/digits, distinct from
     // citation keys. Refuse separators, query parameters and URI injection.
     if key.len() != 8 || !key.bytes().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit()) {
         return Err(failed());
     }
-    let library = match library {
-        ZoteroLibrary::Personal => "library".into(),
-        ZoteroLibrary::Group(id) if id > 0 => format!("groups/{id}"),
-        _ => return Err(failed()),
-    };
-    Ok(format!("zotero://select/{library}/items/{key}"))
+    Ok(format!("{}/items/{key}", zotero_library_uri(library)?))
 }
 
 fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
@@ -261,9 +284,9 @@ fn source_file(path: &Path) -> Result<PathBuf, CommandError> {
 #[cfg(not(target_os = "windows"))]
 fn command(target: Target, reveal: bool) -> Result<Command, CommandError> {
     #[cfg(target_os = "macos")]
-    let zotero = matches!(&target, Target::Zotero | Target::ZoteroItem(_));
+    let zotero = matches!(&target, Target::Zotero(_) | Target::ZoteroItem(_));
     let argument = match target {
-        Target::Zotero => "zotero://select/library".into(),
+        Target::Zotero(library) => zotero_library_uri(library)?.into(),
         Target::ZoteroItem(uri) => uri.into(),
         Target::File(path) => source_file(&path)?.into_os_string(),
     };
@@ -311,6 +334,10 @@ fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
     // Launcher's boolean reports an absent handler; no URL-handler shell or
     // command-line parser can hide a failed open or reinterpret the path.
     let fault = |_| failed();
+    let open_uri = |uri: String| {
+        let uri = Uri::CreateUri(&HSTRING::from(uri)).map_err(fault)?;
+        Launcher::LaunchUriAsync(&uri).map_err(fault)?.join().map_err(fault)
+    };
     let opened = match target {
         Target::File(path) => {
             let canonical = source_file(&path)?;
@@ -337,14 +364,8 @@ fn launch(target: Target, reveal: bool) -> Result<(), CommandError> {
                 Launcher::LaunchFileAsync(&file).map_err(fault)?.join().map_err(fault)?
             }
         }
-        target => {
-            let uri = match target {
-                Target::ZoteroItem(uri) => uri,
-                _ => "zotero://select/library".into(),
-            };
-            let uri = Uri::CreateUri(&HSTRING::from(uri)).map_err(fault)?;
-            Launcher::LaunchUriAsync(&uri).map_err(fault)?.join().map_err(fault)?
-        }
+        Target::Zotero(library) => open_uri(zotero_library_uri(library)?)?,
+        Target::ZoteroItem(uri) => open_uri(uri)?,
     };
     if opened { Ok(()) } else { Err(failed()) }
 }
@@ -367,6 +388,30 @@ fn run(command: &mut Command) -> Result<(), CommandError> {
 mod tests {
     use super::super::state::candidate;
     use super::*;
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn tray_fix_problems_opens_the_selected_group() -> Result<(), Box<dyn std::error::Error>> {
+        let mut library = Library {
+            source: Some(Source::Zotero(ibis_engine::settings::ZoteroLibrary::Group(7).into())),
+            ..Library::default()
+        };
+        let generation = library.source_generation.to_string();
+        let selected = target(&library, None, "", &generation, false)?;
+        let launch = command(selected, false)?;
+        assert_eq!(
+            launch.get_args().last(),
+            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
+        );
+        library.requested = library.source.take();
+        library.source = Some(Source::File("retained.bib".into()));
+        let selected = target(&library, None, "", &generation, true)?;
+        assert_eq!(
+            command(selected, false)?.get_args().last(),
+            Some(std::ffi::OsStr::new("zotero://select/groups/7"))
+        );
+        Ok(())
+    }
 
     #[test]
     fn links_use_native_item_keys_and_exact_library_identity() {
@@ -428,7 +473,7 @@ mod tests {
         );
         assert_eq!(
             target(&Library::default(), None, "", "", true).ok(),
-            Some(Target::Zotero)
+            Some(Target::Zotero(ZoteroLibrary::Personal))
         );
     }
 
@@ -523,7 +568,7 @@ mod tests {
                     path.canonicalize()?.as_os_str()
                 ]
             );
-            let zotero = command(Target::Zotero, true).map_err(|e| e.to_string())?;
+            let zotero = command(Target::Zotero(ZoteroLibrary::Personal), true).map_err(|e| e.to_string())?;
             assert!(!zotero.get_args().any(|arg| arg == "-R"));
             assert!(zotero.get_args().any(|arg| arg == "org.zotero.zotero"));
         }

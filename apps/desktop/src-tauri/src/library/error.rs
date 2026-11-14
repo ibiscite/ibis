@@ -25,27 +25,25 @@ pub(crate) enum LoadError {
 
 impl LoadError {
     pub(crate) fn problem(self) -> ibis_core::contract::Problem {
-        use ibis_core::contract::{FocusTarget as F, Problem, Recovery as R, RecoveryInfo};
+        use ibis_core::contract::{Problem, Recovery as R, RecoveryInfo};
         match self {
             Self::File(error) | Self::FileRefresh(error) => {
                 let mut problem: Problem = error.into();
                 if error.reason.is_none() && matches!(error.code, ErrorCode::BadInput | ErrorCode::ResourceLimit) {
-                    problem.info.recovery = R::ChooseLibrary;
-                    problem.info.focus = F::LibraryPicker;
+                    problem.info = RecoveryInfo::new(&problem.info.message.id, R::ChooseLibrary);
                 }
                 problem
             }
             Self::Zotero(error) => {
                 let mut problem: Problem = error.into();
                 if error.reason.is_none() && error.code == ErrorCode::NotFound {
-                    problem.info.recovery = R::ChooseLibrary;
-                    problem.info.focus = F::LibraryPicker;
+                    problem.info = RecoveryInfo::new(&problem.info.message.id, R::ChooseLibrary);
                 }
                 problem
             }
             Self::NotLocal => Problem {
                 code: "not-local".into(),
-                info: RecoveryInfo::new("app-library-not-local", R::ChooseLibrary, F::LibraryPicker),
+                info: RecoveryInfo::new("app-library-not-local", R::ChooseLibrary),
             },
             Self::Stopped => CommandError::Cancelled.problem(),
         }
@@ -137,14 +135,26 @@ pub(crate) fn words(id: &str, args: &[(&str, &str)]) -> String {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(into = "ibis_core::contract::Problem")]
 pub(crate) enum CommandError {
+    LocatorField {
+        error: ibis_core::locator::FieldError,
+        index: usize,
+    },
+    LocatorConflict {
+        index: usize,
+    },
     SnapshotChanged,
     LibraryLoading,
     Cancelled,
-    SharedCitationKey { key: String },
+    SharedCitationKey {
+        key: String,
+    },
     Engine(EngineError),
     Refused(ibis_core::contract::CitationError),
     Presented(ibis_core::contract::Problem),
     NotPrepared,
+    BibliographyUnsupported {
+        references: Vec<String>,
+    },
     BibliographyUnavailable,
     BibliographyNotSaved,
     BibliographyNameTaken,
@@ -152,11 +162,28 @@ pub(crate) enum CommandError {
     ClipboardUnavailable,
     SettingsUnavailable,
     RecentHistoryNotSaved,
-    ProjectConflict { keys: Vec<String> },
+    ProjectConflict {
+        keys: Vec<String>,
+    },
     SourceNotOpened,
     CitationTooLarge,
     SearchFailed,
     RecentReferencesFailed,
+}
+
+/// Bibliography commands can only publish recoveries supported by their sheet.
+#[derive(Debug)]
+pub(crate) struct BibliographyError(CommandError);
+
+impl From<CommandError> for BibliographyError {
+    fn from(error: CommandError) -> Self {
+        Self(error)
+    }
+}
+impl From<BibliographyError> for CommandError {
+    fn from(error: BibliographyError) -> Self {
+        Self::Presented(error.0.problem().on(ibis_core::contract::CitationSurface::Bibliography))
+    }
 }
 
 impl schemars::JsonSchema for CommandError {
@@ -183,14 +210,41 @@ impl From<ibis_core::contract::CitationError> for CommandError {
 }
 impl CommandError {
     pub(crate) fn problem(&self) -> ibis_core::contract::Problem {
-        use ibis_core::contract::{FocusTarget as F, NoRecoveryReason, Problem, Recovery as R, RecoveryInfo};
+        use ibis_core::contract::{NoRecoveryReason, Problem, Recovery as R, RecoveryInfo};
         let (code, info) = match self {
-            Self::Engine(error) => return (*error).into(),
-            Self::Refused(error) => return error.problem(),
+            Self::Engine(error) => {
+                return ibis_core::contract::Problem::from(*error).on(ibis_core::contract::CitationSurface::Picker);
+            }
+            Self::Refused(error) => return error.problem().on(ibis_core::contract::CitationSurface::Picker),
             Self::Presented(problem) => return problem.clone(),
+            Self::LocatorField { error, index } => {
+                use ibis_core::locator::FieldError;
+                let (FieldError::MissingValue(term) | FieldError::InvalidValue(term)) = *error;
+                let code = match (
+                    term == ibis_core::contract::LocatorTerm::Page,
+                    matches!(error, FieldError::MissingValue(_)),
+                ) {
+                    (true, true) => "page-missing",
+                    (true, false) => "page-invalid",
+                    (false, true) => "locator-missing",
+                    (false, false) => "locator-invalid",
+                };
+                let label = words(&ibis_engine::catalogue::id("locator", term), &[]);
+                (
+                    code,
+                    RecoveryInfo::new(&format!("app-command-{code}"), R::EditLocator)
+                        .argument("number", (index + 1).to_string())
+                        .argument("label", label),
+                )
+            }
+            Self::LocatorConflict { index } => (
+                "locator-conflict",
+                RecoveryInfo::new("app-command-locator-conflict", R::EditLocator)
+                    .argument("number", (index + 1).to_string()),
+            ),
             Self::SnapshotChanged => (
                 "snapshot_changed",
-                RecoveryInfo::new("app-command-snapshot-changed", R::SelectReferences, F::Results),
+                RecoveryInfo::new("app-command-snapshot-changed", R::SelectReferences),
             ),
             Self::LibraryLoading => (
                 "library_loading",
@@ -199,7 +253,6 @@ impl CommandError {
                     R::None {
                         reason: NoRecoveryReason::InProgress,
                     },
-                    F::Search,
                 ),
             ),
             Self::Cancelled => (
@@ -209,66 +262,65 @@ impl CommandError {
                     R::None {
                         reason: NoRecoveryReason::Cancelled,
                     },
-                    F::Search,
                 ),
             ),
             Self::SharedCitationKey { key } => (
                 "shared_citation_key",
-                RecoveryInfo::new("app-command-shared-citation-key", R::ChooseStyle, F::FormatPicker)
-                    .argument("key", key),
+                RecoveryInfo::new("app-command-shared-citation-key", R::ChooseStyle).argument("key", key),
+            ),
+            Self::BibliographyUnsupported { references } => (
+                "bibliography-unsupported",
+                RecoveryInfo::new("app-command-bibliography-unsupported", R::RemoveReferences)
+                    .argument("references", references.join(", ")),
             ),
             Self::BibliographyUnavailable => (
                 "bibliography-unavailable",
-                RecoveryInfo::new("app-bibliography-unavailable", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-bibliography-unavailable", R::Retry),
             ),
             Self::BibliographyNotSaved => (
                 "bibliography-not-saved",
-                RecoveryInfo::new("app-bibliography-not-saved", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-bibliography-not-saved", R::Retry),
             ),
             Self::BibliographyNameTaken => (
                 "bibliography-name-taken",
-                RecoveryInfo::new("app-bibliography-name-taken", R::EditInput, F::Request),
+                RecoveryInfo::new("app-bibliography-name-taken", R::EditInput),
             ),
             Self::BibliographyFormat => (
                 "bibliography-format",
-                RecoveryInfo::new("app-bibliography-format", R::EditInput, F::Request),
+                RecoveryInfo::new("app-bibliography-format", R::EditInput),
             ),
             Self::SettingsUnavailable => (
                 "settings-unreadable",
-                RecoveryInfo::new("app-settings-error-unreadable", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-settings-error-unreadable", R::Retry),
             ),
             Self::RecentHistoryNotSaved => (
                 "recent-history-not-saved",
-                RecoveryInfo::new("app-recent-history-not-saved", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-recent-history-not-saved", R::Retry),
             ),
             Self::ProjectConflict { keys } => (
                 "project-conflict",
-                RecoveryInfo::new("app-project-citation-conflict", R::ReviewLibrary, F::SourceFile)
-                    .argument("keys", keys.join(", ")),
+                RecoveryInfo::new("app-project-citation-conflict", R::ReviewLibrary).argument("keys", keys.join(", ")),
             ),
             Self::ClipboardUnavailable => (
                 "clipboard-unavailable",
-                RecoveryInfo::new("app-clipboard-unavailable", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-clipboard-unavailable", R::Retry),
             ),
-            Self::NotPrepared => (
-                "not-prepared",
-                RecoveryInfo::new("app-command-not-prepared", R::Retry, F::RecoveryAction),
-            ),
+            Self::NotPrepared => ("not-prepared", RecoveryInfo::new("app-command-not-prepared", R::Retry)),
             Self::SourceNotOpened => (
                 "source-not-opened",
-                RecoveryInfo::new("app-command-source-not-opened", R::Retry, F::RecoveryAction),
+                RecoveryInfo::new("app-command-source-not-opened", R::Retry),
             ),
             Self::CitationTooLarge => (
                 "citation-too-large",
-                RecoveryInfo::new("app-command-citation-too-large", R::ReduceSelection, F::Results),
+                RecoveryInfo::new("app-command-citation-too-large", R::ReduceSelection),
             ),
             Self::SearchFailed => (
                 "search-failed",
-                RecoveryInfo::new("app-failure-search", R::Retry, F::Search),
+                RecoveryInfo::new("app-failure-search", R::SearchReferences),
             ),
             Self::RecentReferencesFailed => (
                 "recent-references-failed",
-                RecoveryInfo::new("app-failure-recent-references", R::Retry, F::Search),
+                RecoveryInfo::new("app-failure-recent-references", R::SearchReferences),
             ),
         };
         Problem {
@@ -431,7 +483,6 @@ mod tests {
             "app-command-locator-invalid",
             "app-command-page-missing",
             "app-command-page-invalid",
-            "app-command-unsupported-form",
             "app-command-output-not-saved",
             "app-command-delivery-not-saved",
             "app-command-locator-conflict",

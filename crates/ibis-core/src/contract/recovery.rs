@@ -4,18 +4,21 @@ use std::collections::BTreeMap;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{CitationError, EngineError, ErrorCode, ErrorReason};
+use super::{EngineError, ErrorCode, ErrorReason};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct Message {
     pub id: String,
     pub args: BTreeMap<String, String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub context: Option<CitationSurface>,
 }
 
 /// Exactly one next action; absence must have an explicit, machine-readable reason.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "action", rename_all = "kebab-case")]
 pub enum Recovery {
+    ChooseOutput,
     ChooseStyle,
     ChooseForm,
     LocateFile,
@@ -30,9 +33,13 @@ pub enum Recovery {
     FinishEditorRequest,
     ReviewSettings,
     EditCitation,
+    EditLocator,
     EditInput,
+    SearchReferences,
     SelectReferences,
     ReduceSelection,
+    RemoveReferences,
+    Close,
     ChooseLocale,
     ReviewLibrary,
     FreeDiskSpace,
@@ -64,6 +71,7 @@ pub enum FocusTarget {
     Locator,
     Citation,
     CitationForm,
+    SessionReferences,
     Language,
     RecoveryAction,
     ProjectName,
@@ -72,22 +80,177 @@ pub enum FocusTarget {
     Request,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+/// Focus is derived from the action, never independently chosen by a caller.
+impl Recovery {
+    pub fn focus(&self) -> FocusTarget {
+        use FocusTarget as F;
+        match self {
+            Self::ChooseOutput | Self::ChooseStyle => F::FormatPicker,
+            Self::ChooseForm => F::CitationForm,
+            Self::LocateFile | Self::ChooseLibrary => F::LibraryPicker,
+            Self::OpenZoteroSharingHelp => F::ZoteroSharingHelp,
+            Self::ChooseProject | Self::RemoveProject | Self::ReopenProjectMenu => F::ProjectMenu,
+            Self::RenameProject => F::ProjectName,
+            Self::FinishEditorRequest => F::Citation,
+            Self::ReviewSettings => F::Settings,
+            Self::EditCitation => F::Citation,
+            Self::EditLocator => F::Locator,
+            Self::EditInput | Self::RestartSession => F::Request,
+            Self::SearchReferences => F::Search,
+            Self::SelectReferences | Self::ReduceSelection => F::Results,
+            Self::RemoveReferences => F::SessionReferences,
+            Self::ChooseLocale => F::Language,
+            Self::ReviewLibrary => F::SourceFile,
+            Self::None { .. } => F::RecoveryAction,
+            Self::OpenZotero
+            | Self::Retry
+            | Self::FreeDiskSpace
+            | Self::UpgradeIbis
+            | Self::ChooseBackup
+            | Self::DownloadFile
+            | Self::ChooseShortcut
+            | Self::OpenIbis
+            | Self::Close => F::RecoveryAction,
+        }
+    }
+}
+
+/// The controls a citation surface owns. Each new recovery needs a decision
+/// for both surfaces; a sheet cannot inherit a focus into the picker behind it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "kebab-case")]
+pub enum CitationSurface {
+    Picker,
+    Bibliography,
+}
+
+impl CitationSurface {
+    fn recovery(self, recovery: Recovery) -> Recovery {
+        use Recovery as R;
+        match self {
+            Self::Picker => match recovery {
+                R::ChooseOutput
+                | R::ChooseStyle
+                | R::ChooseForm
+                | R::LocateFile
+                | R::ChooseLibrary
+                | R::OpenZoteroSharingHelp
+                | R::OpenZotero
+                | R::Retry
+                | R::ChooseProject
+                | R::RenameProject
+                | R::RemoveProject
+                | R::ReopenProjectMenu
+                | R::FinishEditorRequest
+                | R::ReviewSettings
+                | R::EditCitation
+                | R::EditLocator
+                | R::SearchReferences
+                | R::SelectReferences
+                | R::ReduceSelection
+                | R::ReviewLibrary
+                | R::None { .. } => recovery,
+                R::ChooseLocale => R::ChooseOutput,
+                R::EditInput => R::SearchReferences,
+                R::RemoveReferences => R::ReduceSelection,
+                R::FreeDiskSpace | R::UpgradeIbis | R::ChooseBackup | R::DownloadFile | R::ChooseShortcut => {
+                    R::ReviewSettings
+                }
+                R::OpenIbis | R::RestartSession | R::Close => R::Retry,
+            },
+            Self::Bibliography => match recovery {
+                R::ChooseForm
+                | R::EditCitation
+                | R::EditLocator
+                | R::EditInput
+                | R::SearchReferences
+                | R::SelectReferences
+                | R::ReduceSelection
+                | R::RemoveReferences => R::RemoveReferences,
+                R::Retry | R::None { .. } => recovery,
+                R::ChooseOutput
+                | R::ChooseStyle
+                | R::ChooseLocale
+                | R::LocateFile
+                | R::ChooseLibrary
+                | R::OpenZoteroSharingHelp
+                | R::OpenZotero
+                | R::ChooseProject
+                | R::RenameProject
+                | R::RemoveProject
+                | R::ReopenProjectMenu
+                | R::FinishEditorRequest
+                | R::ReviewSettings
+                | R::ReviewLibrary
+                | R::FreeDiskSpace
+                | R::UpgradeIbis
+                | R::ChooseBackup
+                | R::DownloadFile
+                | R::ChooseShortcut
+                | R::OpenIbis
+                | R::RestartSession
+                | R::Close => R::Close,
+            },
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(from = "PresentedRecovery", into = "PresentedRecovery")]
 pub struct RecoveryInfo {
     pub message: Message,
-    pub recovery: Recovery,
-    pub focus: FocusTarget,
+    recovery: Recovery,
+}
+
+#[derive(Serialize, Deserialize, JsonSchema)]
+struct PresentedRecovery {
+    message: Message,
+    recovery: Recovery,
+    focus: FocusTarget,
+}
+
+impl From<RecoveryInfo> for PresentedRecovery {
+    fn from(info: RecoveryInfo) -> Self {
+        let recovery = info.recovery();
+        Self {
+            focus: recovery.focus(),
+            message: info.message,
+            recovery,
+        }
+    }
+}
+impl From<PresentedRecovery> for RecoveryInfo {
+    fn from(info: PresentedRecovery) -> Self {
+        Self {
+            message: info.message,
+            recovery: info.recovery,
+        }
+    }
+}
+impl JsonSchema for RecoveryInfo {
+    fn schema_name() -> std::borrow::Cow<'static, str> {
+        "RecoveryInfo".into()
+    }
+    fn json_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+        PresentedRecovery::json_schema(generator)
+    }
 }
 
 impl RecoveryInfo {
-    pub fn new(id: &str, recovery: Recovery, focus: FocusTarget) -> Self {
+    pub fn recovery(&self) -> Recovery {
+        match self.message.context {
+            Some(surface) => surface.recovery(self.recovery),
+            None => self.recovery,
+        }
+    }
+    pub fn new(id: &str, recovery: Recovery) -> Self {
         Self {
             message: Message {
                 id: id.into(),
                 args: BTreeMap::new(),
+                context: None,
             },
             recovery,
-            focus,
         }
     }
     pub fn argument(mut self, name: &str, value: impl Into<String>) -> Self {
@@ -113,69 +276,67 @@ fn name(code: impl Serialize) -> String {
 
 impl EngineError {
     pub fn recovery_info(self) -> RecoveryInfo {
-        use FocusTarget as F;
         use Recovery as R;
         if let Some(error) = self.citation_error {
             return error.problem().info;
         }
         if let Some(cause) = self.strict_cause {
             let mut info = match cause {
-                super::StrictCause::Loss { .. } => {
-                    RecoveryInfo::new("reason-strict-citation", R::ChooseStyle, F::FormatPicker)
-                }
+                super::StrictCause::Loss { .. } => RecoveryInfo::new("reason-strict-citation", R::ChooseStyle),
                 super::StrictCause::Refused { error } => error.problem().info,
                 super::StrictCause::Source { code, reason } => EngineError {
                     reason,
                     ..EngineError::new(code)
                 }
                 .recovery_info(),
-                super::StrictCause::SourceWarning => {
-                    RecoveryInfo::new("reason-strict-citation", R::ReviewLibrary, F::SourceFile)
-                }
+                super::StrictCause::SourceWarning => RecoveryInfo::new("reason-strict-citation", R::ReviewLibrary),
             };
             info.message.id = "reason-strict-citation".into();
             return info;
         }
         if let Some(reason) = self.reason {
             // No catch-all: a new reason cannot compile without a recovery decision.
-            let (recovery, focus) = match reason {
-                ErrorReason::StrictCitation => (R::ReviewLibrary, F::LibraryPicker),
-                ErrorReason::UnknownStyle | ErrorReason::UnknownOutput | ErrorReason::MissingKey => {
-                    (R::ChooseStyle, F::FormatPicker)
-                }
-                ErrorReason::UnknownLocale => (R::ChooseLocale, F::Language),
-                ErrorReason::DuplicateKey => (R::ReviewLibrary, F::SourceFile),
-                ErrorReason::AmbiguousKey => (R::SelectReferences, F::Search),
-                ErrorReason::DamagedEntry => (R::ReviewLibrary, F::SourceFile),
-                ErrorReason::MissingFile => (R::LocateFile, F::LibraryPicker),
-                ErrorReason::AppMissing | ErrorReason::NotIbis => (R::UpgradeIbis, F::RecoveryAction),
-                ErrorReason::NoAnswer => (R::Retry, F::RecoveryAction),
-                ErrorReason::SettingsReadTimeout => (R::Retry, F::RecoveryAction),
-                ErrorReason::ZoteroSharingOff => (R::OpenZoteroSharingHelp, F::ZoteroSharingHelp),
-                ErrorReason::ZoteroProfileNeeded | ErrorReason::ZoteroNotFound => (R::ChooseLibrary, F::LibraryPicker),
-                ErrorReason::ZoteroNeedsOpening => (R::OpenZotero, F::RecoveryAction),
-                ErrorReason::ZoteroNoSpace => (R::FreeDiskSpace, F::RecoveryAction),
-                ErrorReason::CsvTemplate | ErrorReason::UnknownFormat => (R::ChooseLibrary, F::LibraryPicker),
-                ErrorReason::LibraryCutShort => (R::ReviewLibrary, F::SourceFile),
-                ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => (R::EditInput, F::Request),
+            let recovery = match reason {
+                ErrorReason::StrictCitation => R::ReviewLibrary,
+                ErrorReason::UnknownStyle | ErrorReason::MissingKey => R::ChooseStyle,
+                ErrorReason::UnknownOutput => R::ChooseOutput,
+                ErrorReason::UnknownLocale => R::ChooseLocale,
+                ErrorReason::DuplicateKey => R::ReviewLibrary,
+                ErrorReason::AmbiguousKey => R::SearchReferences,
+                ErrorReason::DamagedEntry => R::ReviewLibrary,
+                ErrorReason::MissingFile => R::LocateFile,
+                ErrorReason::AppMissing | ErrorReason::NotIbis => R::UpgradeIbis,
+                ErrorReason::NoAnswer => R::Retry,
+                ErrorReason::SettingsReadTimeout => R::Retry,
+                ErrorReason::ZoteroSharingOff => R::OpenZoteroSharingHelp,
+                ErrorReason::ZoteroProfileNeeded | ErrorReason::ZoteroNotFound => R::ChooseLibrary,
+                ErrorReason::ZoteroNeedsOpening => R::OpenZotero,
+                ErrorReason::ZoteroNoSpace => R::FreeDiskSpace,
+                ErrorReason::CsvTemplate | ErrorReason::UnknownFormat => R::ChooseLibrary,
+                ErrorReason::LibraryCutShort => R::ReviewLibrary,
+                ErrorReason::DuplicateRecord | ErrorReason::RejectedRecord => R::EditInput,
             };
-            return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery, focus);
+            return RecoveryInfo::new(&format!("reason-{}", name(reason)), recovery);
         }
-        let (recovery, focus) = match self.code {
-            ErrorCode::Usage | ErrorCode::BadInput => (R::EditInput, F::Request),
-            ErrorCode::NotFound => (R::SelectReferences, F::Search),
-            ErrorCode::SourceUnavailable => (R::Retry, F::RecoveryAction),
-            ErrorCode::ResourceLimit => (R::ReduceSelection, F::Search),
-            ErrorCode::NewerFormat => (R::UpgradeIbis, F::RecoveryAction),
-            ErrorCode::Internal => (R::Retry, F::RecoveryAction),
-            ErrorCode::Cancelled => (
-                R::None {
-                    reason: NoRecoveryReason::Cancelled,
-                },
-                F::Search,
-            ),
+        let recovery = match self.code {
+            ErrorCode::Usage | ErrorCode::BadInput => R::EditInput,
+            ErrorCode::NotFound => R::SearchReferences,
+            ErrorCode::SourceUnavailable => R::Retry,
+            ErrorCode::ResourceLimit => R::ReduceSelection,
+            ErrorCode::NewerFormat => R::UpgradeIbis,
+            ErrorCode::Internal => R::Retry,
+            ErrorCode::Cancelled => R::None {
+                reason: NoRecoveryReason::Cancelled,
+            },
         };
-        RecoveryInfo::new(&format!("error-{}", name(self.code)), recovery, focus)
+        RecoveryInfo::new(&format!("error-{}", name(self.code)), recovery)
+    }
+}
+
+impl Problem {
+    pub fn on(mut self, surface: CitationSurface) -> Self {
+        self.info.message.context = Some(surface);
+        self
     }
 }
 
@@ -190,45 +351,56 @@ impl From<EngineError> for Problem {
     }
 }
 
-impl CitationError {
-    pub fn problem(self) -> Problem {
-        use FocusTarget as F;
-        use Recovery as R;
-        let (recovery, focus) = match self {
-            Self::EmptySelection | Self::MissingItem | Self::ChangedItem | Self::AnnotationMismatch => {
-                (R::SelectReferences, F::Results)
+// One definition owns each wire code, message id and recovery. Audience and
+// named-reference wording are attributes of that same catalogue message.
+macro_rules! citation_diagnostics {
+    ($($variant:ident => $code:literal, $recovery:expr;)*) => {
+        /// Fixed diagnostics never contain source data, paths or request text.
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+        pub enum CitationError {
+            $(#[serde(rename = $code)] $variant,)*
+            /// A code from a newer engine is never treated as success.
+            #[serde(other)]
+            #[schemars(skip)]
+            Unknown,
+        }
+        impl CitationError {
+            pub const ALL: [Self; [$(stringify!($variant)),*].len()] = [$(Self::$variant,)*];
+            pub fn message_id(self) -> &'static str {
+                match self {
+                    $(Self::$variant => concat!("problem-", $code),)*
+                    Self::Unknown => "error-internal",
+                }
             }
-            Self::TooManyItems | Self::OutputTooLarge => (R::ReduceSelection, F::Results),
-            Self::InvalidLocator => (R::EditCitation, F::Locator),
-            Self::InvalidRichText => (R::EditCitation, F::Citation),
-            Self::UnsupportedForm => (R::ChooseForm, F::CitationForm),
-            Self::MissingKey
-            | Self::ConflictingKey
-            | Self::InvalidKey
-            | Self::UnsupportedOutput
-            | Self::NotFromZotero => (R::ChooseStyle, F::FormatPicker),
-            Self::AmbiguousKey => (R::ChooseStyle, F::FormatPicker),
-            Self::InvalidLocale => (R::ChooseLocale, F::Language),
-            Self::Cancelled => (
-                R::None {
-                    reason: NoRecoveryReason::Cancelled,
-                },
-                F::Search,
-            ),
-            Self::FormatterUnavailable | Self::Unknown => (R::Retry, F::RecoveryAction),
-            Self::NotCitable => (R::SelectReferences, F::Results),
-            // DOI links need a DOI on every reference; another form (BibTeX) has no such need.
-            Self::MissingDoi => (R::ChooseForm, F::CitationForm),
-        };
-        let code = name(self);
-        let id = if self == Self::Unknown {
-            "error-internal".into()
-        } else {
-            format!("problem-{code}")
-        };
-        Problem {
-            code,
-            info: RecoveryInfo::new(&id, recovery, focus),
+            pub fn problem(self) -> Problem {
+                let (code, recovery) = match self {
+                    $(Self::$variant => ($code, $recovery),)*
+                    Self::Unknown => ("unknown", Recovery::Retry),
+                };
+                Problem { code: code.into(), info: RecoveryInfo::new(self.message_id(), recovery) }
+            }
         }
     }
+}
+citation_diagnostics! {
+    EmptySelection => "empty-selection", Recovery::SelectReferences;
+    TooManyItems => "too-many-items", Recovery::ReduceSelection;
+    InvalidLocator => "invalid-locator", Recovery::EditLocator;
+    InvalidRichText => "invalid-rich-text", Recovery::EditCitation;
+    OutputTooLarge => "output-too-large", Recovery::ReduceSelection;
+    UnsupportedForm => "unsupported-form", Recovery::ChooseForm;
+    MissingItem => "missing-item", Recovery::SelectReferences;
+    ChangedItem => "changed-item", Recovery::SelectReferences;
+    MissingKey => "missing-key", Recovery::ChooseStyle;
+    MissingDoi => "missing-doi", Recovery::ChooseOutput;
+    AmbiguousKey => "ambiguous-key", Recovery::ChooseStyle;
+    ConflictingKey => "conflicting-key", Recovery::ChooseStyle;
+    InvalidKey => "invalid-key", Recovery::ChooseOutput;
+    UnsupportedOutput => "unsupported-output", Recovery::ChooseOutput;
+    InvalidLocale => "invalid-locale", Recovery::ChooseLocale;
+    Cancelled => "cancelled", Recovery::None { reason: NoRecoveryReason::Cancelled };
+    FormatterUnavailable => "formatter-unavailable", Recovery::Retry;
+    AnnotationMismatch => "annotation-mismatch", Recovery::SelectReferences;
+    NotCitable => "not-citable", Recovery::SelectReferences;
+    NotFromZotero => "not-from-zotero", Recovery::ChooseOutput;
 }

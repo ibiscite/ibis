@@ -43,7 +43,7 @@ const RUST = /^(error|reason|refusal|problem|warning|source-warning|loss|notice|
 type Variables = Readonly<Record<string, string | number>>;
 export type InterfaceMessages = Readonly<{
   locale: typeof INTERFACE_LOCALE;
-  text: (id: MessageId, variables?: Variables) => string;
+  text: (id: MessageId, variables?: Variables, audience?: "app" | "bibliography") => string;
 }>;
 
 /** Visible expansion for build/test use; variables stay untouched. */
@@ -77,13 +77,18 @@ export function createInterfaceMessages(source: string, pseudo = false): Interfa
     transform: pseudo ? pseudolocalize : undefined,
   });
   if (bundle.addResource(new FluentResource(source)).length) throw invalid();
-  const text = (id: MessageId, variables?: Variables): string => {
+  const text = (id: MessageId, variables?: Variables, audience?: "app" | "bibliography"): string => {
     const message = bundle.getMessage(id);
     const errors: Error[] = [];
     if (!message?.value) throw new Error("Invalid interface message");
-    const value = bundle.formatPattern(message.value, variables, errors);
+    const named = variables?.reference ? (variables.form ? message.attributes["app-named"] : undefined) ?? message.attributes.named : undefined;
+    const value = bundle.formatPattern(named ?? message.value, variables, errors);
     if (errors.length) throw new Error("Invalid interface message");
-    return value;
+    const advice = audience ? message.attributes[audience] : undefined;
+    if (!advice) return value;
+    const fix = bundle.formatPattern(advice, variables, errors);
+    if (errors.length) throw new Error("Invalid interface message");
+    return `${value} ${fix}`;
   };
   // Only the variables the interface passes; a message naming another fails here.
   const synthetic = Object.fromEntries(
@@ -125,6 +130,6 @@ export function useInterfaceMessages(): InterfaceMessages {
 export function problemText(error: unknown, fallback: string, text = say): string {
   const problem = typeof error === "object" && error !== null ? error as Partial<Problem> : null;
   if (!problem?.message || typeof problem.message.id !== "string" || !problem.recovery || !problem.focus) return fallback;
-  try { return text(problem.message.id as MessageId, problem.message.args); }
+  try { return text(problem.message.id as MessageId, problem.message.args, problem.message.context === "bibliography" ? "bibliography" : "app"); }
   catch { return fallback; }
 }

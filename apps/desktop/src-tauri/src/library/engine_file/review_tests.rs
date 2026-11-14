@@ -807,3 +807,51 @@ fn oversized_reference_text_is_refused_before_formatting_without_echoing_it() ->
     }
     Ok(())
 }
+
+#[test]
+fn missing_doi_picker_offers_output_selection() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("invented.bib");
+    std::fs::write(&path, "@book{atlas,title={Invented atlas}}")?;
+    let file = FileLibrary::open(&path).map_err(|error| error.to_string())?;
+    let snapshot = file.engine.snapshot().map_err(|_| "snapshot")?;
+    let object = &snapshot.objects()[0];
+    let selection = serde_json::from_value(json!([{"id":object.object.id(), "cite":object.fingerprints.cite}]))?;
+    let error = file
+        .preview(file.reserve_preview(), selection, "doi-links")
+        .err()
+        .ok_or("missing DOI was accepted")?;
+    let presented = serde_json::to_value(&error)?;
+    assert_eq!(presented["code"], "missing-doi");
+    assert_eq!(presented["recovery"]["action"], "choose-output");
+    assert_eq!(presented["focus"], "format-picker");
+    assert!(error.to_string().contains("BibTeX"));
+    Ok(())
+}
+
+#[test]
+fn all_refused_bibliography_offers_removing_references() -> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    let path = directory.path().join("invented.bib");
+    std::fs::write(
+        &path,
+        "@book{others2026,title={Invented signals},author={Taylor, Avery and others},year={2026}}",
+    )?;
+    let file = FileLibrary::open(&path).map_err(|error| error.to_string())?;
+    let snapshot = file.engine.snapshot().map_err(|_| "snapshot")?;
+    let ids: Vec<_> = snapshot
+        .objects()
+        .iter()
+        .map(|object| object.object.id().clone())
+        .collect();
+    let error = file
+        .session_bibliography(&ids, "apa", &Cancellation::default())
+        .err()
+        .ok_or("refused list was accepted")?;
+    let presented = serde_json::to_value(&error)?;
+    assert_eq!(presented["recovery"]["action"], "remove-references");
+    assert_eq!(presented["focus"], "session-references");
+    assert!(error.to_string().contains("others2026"));
+    assert!(error.to_string().contains("Remove"));
+    Ok(())
+}

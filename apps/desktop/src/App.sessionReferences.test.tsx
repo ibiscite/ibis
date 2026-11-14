@@ -308,3 +308,21 @@ test("a read that fails says so, and closing and reopening reads the list again"
   await within(await screen.findByRole("dialog")).findByText("text");
   expect(reads).toBe(2);
 });
+
+test("an all-refused bibliography offers the sheet’s Remove controls and removal retries it", async () => {
+  let current = list({ rows: [taylor] });
+  const calls = backend({ session_references: () => current,
+    session_bibliography: () => {
+      if (current.rows.length === 0) return null;
+      throw { code: "bibliography-unsupported", message: { id: "app-command-bibliography-unsupported", args: { references: "taylor2026" } },
+        recovery: { action: "remove-references" }, focus: "session-references" };
+    },
+    edit_session_references: () => { current = list({ rows: [] }); return current; },
+  });
+  const dialog = await open();
+  expect((await within(dialog).findByRole("alert")).textContent).toContain("Remove them from this list to continue.");
+  expect(within(dialog).getByRole("button", { name: "Copy Bibliography" }).hasAttribute("disabled")).toBe(true);
+  fireEvent.click(within(dialog).getByRole("button", { name: /^Remove / }));
+  await waitFor(() => expect(within(dialog).queryByRole("alert")).toBeNull());
+  expect(calls.filter((command) => command === "session_bibliography")).toHaveLength(2);
+});

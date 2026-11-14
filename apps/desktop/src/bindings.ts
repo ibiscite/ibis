@@ -313,6 +313,12 @@ export type BackupProblem = "not-downloaded" | "unreadable" | "not-a-backup" | "
 /** How a check ended. Whoever asked says so in its own place. */
 export type CheckResult = "failed" | "newest" | "offered" | "not_run";
 
+/**
+ * The controls a citation surface owns. Each new recovery needs a decision
+ * for both surfaces; a sheet cannot inherit a focus into the picker behind it.
+ */
+export type CitationSurface = "picker" | "bibliography";
+
 /** The desktop and MCP receive this same shape, without pre-rendered English. */
 export type CommandError = {
 	code: string;
@@ -492,7 +498,7 @@ export type FileSelection = {
 	suffix?: string | null;
 };
 
-export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
+export type FocusTarget = "format-picker" | "library-picker" | "source-file" | "zotero-sharing-help" | "search" | "results" | "locator" | "citation" | "citation-form" | "session-references" | "language" | "recovery-action" | "project-name" | "project-menu" | "settings" | "request";
 
 export type FormOption = {
 	example: string | null;
@@ -677,6 +683,7 @@ export type MatchField = "citekey" | "title" | "author" | "year" | "doi" | "keyw
 
 export type Message = {
 	args: { [key: string]: string };
+	context?: CitationSurface | null;
 	id: string;
 };
 
@@ -908,6 +915,8 @@ export type RecordId = { readonly __RecordId: unique symbol };
 
 /** Exactly one next action; absence must have an explicit, machine-readable reason. */
 export type Recovery = {
+	action: "choose-output";
+} | {
 	action: "choose-style";
 } | {
 	action: "choose-form";
@@ -936,11 +945,19 @@ export type Recovery = {
 } | {
 	action: "edit-citation";
 } | {
+	action: "edit-locator";
+} | {
 	action: "edit-input";
+} | {
+	action: "search-references";
 } | {
 	action: "select-references";
 } | {
 	action: "reduce-selection";
+} | {
+	action: "remove-references";
+} | {
+	action: "close";
 } | {
 	action: "choose-locale";
 } | {

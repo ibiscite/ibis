@@ -318,25 +318,25 @@ fn scalar(value: &str) -> Result<String, WritingError> {
     Ok(value.to_owned())
 }
 
-use ibis_core::contract::{FocusTarget, Problem, Recovery, RecoveryInfo};
+use ibis_core::contract::{Problem, Recovery, RecoveryInfo};
 
 impl From<&crate::settings::writings::WritingError> for Problem {
     fn from(error: &crate::settings::writings::WritingError) -> Self {
         use crate::settings::writings::WritingError as P;
-        let (code, recovery, focus) = match error {
-            P::InvalidName => ("invalid-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::DuplicateName => ("duplicate-name", Recovery::RenameProject, FocusTarget::ProjectName),
-            P::NotFound => ("not-found", Recovery::ChooseProject, FocusTarget::ProjectMenu),
-            P::TooMany => ("too-many", Recovery::RemoveProject, FocusTarget::ProjectMenu),
-            P::Invalid => ("invalid", Recovery::ReviewSettings, FocusTarget::Settings),
-            P::ContextUnavailable => ("context-unavailable", Recovery::Retry, FocusTarget::Request),
-            P::InvalidContext => ("invalid-context", Recovery::EditInput, FocusTarget::Request),
-            P::AmbiguousContext => ("ambiguous-context", Recovery::ChooseProject, FocusTarget::ProjectMenu),
+        let (code, recovery) = match error {
+            P::InvalidName => ("invalid-name", Recovery::RenameProject),
+            P::DuplicateName => ("duplicate-name", Recovery::RenameProject),
+            P::NotFound => ("not-found", Recovery::ChooseProject),
+            P::TooMany => ("too-many", Recovery::RemoveProject),
+            P::Invalid => ("invalid", Recovery::ReviewSettings),
+            P::ContextUnavailable => ("context-unavailable", Recovery::Retry),
+            P::InvalidContext => ("invalid-context", Recovery::EditInput),
+            P::AmbiguousContext => ("ambiguous-context", Recovery::ChooseProject),
             P::Settings(error) => return error.into(),
         };
         Self {
             code: format!("project-{code}"),
-            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery, focus),
+            info: RecoveryInfo::new(&format!("app-project-error-{code}"), recovery),
         }
     }
 }

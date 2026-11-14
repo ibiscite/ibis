@@ -108,7 +108,7 @@ pub(crate) enum LibraryProblem {
 impl From<LoadError> for LibraryProblem {
     fn from(error: LoadError) -> Self {
         use ibis_core::contract::Recovery;
-        match error.problem().info.recovery {
+        match error.problem().info.recovery() {
             Recovery::LocateFile => Self::Missing,
             Recovery::OpenZoteroSharingHelp => Self::ZoteroAccessOff,
             Recovery::OpenZotero => Self::ZoteroClosed,
@@ -322,7 +322,7 @@ mod tests {
                 ..Library::default()
             };
             let shown = status(&library);
-            assert_eq!(shown.failure.as_ref().map(|p| &p.info.recovery), Some(&Recovery::Retry));
+            assert_eq!(shown.failure.as_ref().map(|p| p.info.recovery()), Some(Recovery::Retry));
             assert_eq!(shown.problem, Some(LibraryProblem::Other));
             assert_eq!(
                 LibraryProblem::from(cause(EngineError::because(

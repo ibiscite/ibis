@@ -28,7 +28,7 @@ mod tasks;
 #[path = "../../../../../crates/ibis-engine/tests/support/zotero.rs"]
 mod zotero_fixture;
 
-pub(crate) use error::{CommandError, LoadError};
+pub(crate) use error::{BibliographyError, CommandError, LoadError};
 pub(crate) use search::{
     FormattingRequests, PreviewIntent, PreviewRequests, ProjectMark, SearchRequests, SearchResult,
 };
