@@ -4,7 +4,7 @@
 //        node scripts/check.mjs test -p ibis-engine TEST_FILTER
 //        node scripts/check.mjs vitest FILE
 import { spawnSync } from "node:child_process";
-import { readdirSync } from "node:fs";
+import { readdirSync, realpathSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 export function check(suite = "all", args = [], { platform = process.platform, spawn = spawnSync } = {}) {
@@ -73,7 +73,8 @@ export function check(suite = "all", args = [], { platform = process.platform, s
   return 0;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Compare real paths: a symlinked invocation (macOS /tmp, /var) must still run the checks.
+if (process.argv[1] && realpathSync(process.argv[1]) === realpathSync(fileURLToPath(import.meta.url))) {
   const [suite, ...args] = process.argv.slice(2);
   process.exitCode = check(suite, args);
 }
