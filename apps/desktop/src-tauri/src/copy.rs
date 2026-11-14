@@ -469,7 +469,8 @@ fn commit_shown(
                 || {
                     #[cfg(target_os = "windows")]
                     let delivery = {
-                        let (token, sequence) = clipboard::write(&app, content).map_err(|_| CommandError::ClipboardUnavailable)?;
+                        let (token, sequence) =
+                            clipboard::write(&app, content).map_err(|_| CommandError::ClipboardUnavailable)?;
                         crate::paste::remember_copy(&app, attempt, sequence, token)
                     };
                     #[cfg(not(target_os = "windows"))]
