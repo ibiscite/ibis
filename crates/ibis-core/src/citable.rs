@@ -2,7 +2,7 @@
 //! notes, annotations or private links.
 //!
 //! Every formatted citation, and every record shown to an AI agent, goes
-//! through [`citable_fields`] first. The CSL `note` field holds Zotero's Extra
+//! through [`CitableFields`] first. The CSL `note` field holds Zotero's Extra
 //! field or a file's `note`; `annote` holds annotations. Neither reaches a
 //! formatter or an agent. Field overrides written in a note the way citeproc-js
 //! reads them (`original-title: …` lines, or `{:title: …}`) are bibliographic
@@ -10,123 +10,118 @@
 //! filling only fields the record lacks, as Zotero's citations do.
 use serde_json::{Map, Value, json};
 
-/// Removes `note` and `annote`, applies the note's field overrides, and drops
-/// a `URL` that is not a public web address.
-pub fn citable_fields(fields: &mut Map<String, Value>) {
-    fields.remove("annote");
-    let private_url = |fields: &mut Map<String, Value>| {
-        if fields
-            .get("URL")
-            .is_some_and(|url| !url.as_str().is_some_and(public_url))
-        {
-            fields.remove("URL");
-        }
-    };
-    private_url(fields);
-    if let Some(Value::String(note)) = fields.remove("note") {
-        apply_overrides(fields, &note);
-        private_url(fields);
-    }
-    if let Some(Value::String(doi)) = fields.get_mut("DOI") {
-        // CSL styles supply their own resolver prefix. Strip only recognized
-        // wrappers, retaining the identifier's spelling, punctuation and case.
-        let value = doi.trim();
-        let prefixes = [
-            "https://doi.org/",
-            "http://doi.org/",
-            "https://dx.doi.org/",
-            "http://dx.doi.org/",
-            "doi.org/",
-            "dx.doi.org/",
-            "doi:",
-        ];
-        let bare = prefixes.iter().find_map(|prefix| {
-            value
-                .get(..prefix.len())
-                .filter(|head| head.eq_ignore_ascii_case(prefix))
-                .map(|_| value[prefix.len()..].trim())
-        });
-        if let Some(bare) = bare {
-            *doi = bare.to_owned();
-        }
-    }
-    // Zotero's names for the short titles, which citeproc copies in when the
-    // CSL ones are missing.
-    for (alias, canonical) in [
-        ("shortTitle", "title-short"),
-        ("journalAbbreviation", "container-title-short"),
-    ] {
-        if let Some(value) = fields.remove(alias)
-            && !fields.get(canonical).is_some_and(truthy)
-        {
-            fields.insert(canonical.into(), value);
-        }
-    }
-    // Custom keys a source kept, and custom parts of names and dates, are
-    // not bibliographic data.
-    fields.retain(|name, _| is_variable(name));
-    for (name, value) in fields.iter_mut() {
-        let parts: &[&str] = if NAMES.contains(&name.as_str()) {
-            &NAME_PARTS
-        } else if DATES.contains(&name.as_str()) {
-            &DATE_PARTS
-        } else {
-            continue;
-        };
-        let objects: Vec<&mut Value> = match value {
-            Value::Array(names) => names.iter_mut().collect(),
-            date => vec![date],
-        };
-        for object in objects {
-            if let Value::Object(object) = object {
-                object.retain(|part, _| parts.contains(&part.as_str()));
-                if DATES.contains(&name.as_str()) {
-                    normalize_raw_date(object);
-                }
-            }
-        }
+/// Bibliographic metadata allowed to leave a record. Construction applies the
+/// privacy filter once; callers can read or serialize it, never mutate it.
+#[derive(Debug, serde::Serialize)]
+#[serde(transparent)]
+pub struct CitableFields(Map<String, Value>);
+
+impl std::ops::Deref for CitableFields {
+    type Target = Map<String, Value>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-/// Metadata safe to share as a record. Use the citation projection first so
-/// notes, source extensions and private URLs have the same meaning everywhere.
-/// Exported values also reject embedded device references and malformed shapes
-/// that could otherwise hide arbitrary source data inside a CSL variable.
-pub fn share_fields(mut fields: Map<String, Value>) -> Map<String, Value> {
-    citable_fields(&mut fields);
-    let scalar = |value: &Value| match value {
-        Value::String(text) => !points_to_device(text),
-        Value::Number(_) | Value::Bool(_) => true,
-        _ => false,
-    };
-    fields.retain(|name, value| {
-        if NAMES.contains(&name.as_str()) {
-            let Value::Array(names) = value else { return false };
-            names.retain_mut(|name| {
-                let Value::Object(parts) = name else { return false };
-                parts.retain(|_, value| scalar(value));
-                !parts.is_empty()
-            });
-            !names.is_empty()
-        } else if DATES.contains(&name.as_str()) {
-            let Value::Object(parts) = value else { return false };
-            parts.retain(|name, value| {
-                if name == "date-parts" {
-                    value.as_array().is_some_and(|dates| {
-                        dates
-                            .iter()
-                            .all(|date| date.as_array().is_some_and(|parts| parts.iter().all(Value::is_number)))
-                    })
-                } else {
-                    scalar(value)
-                }
-            });
-            !parts.is_empty()
-        } else {
-            matches!(value, Value::String(_) | Value::Number(_)) && scalar(value)
+impl CitableFields {
+    /// Apply note overrides, remove private fields and links, and reject embedded
+    /// device references or malformed shapes hiding data inside a CSL variable.
+    pub fn new(mut fields: Map<String, Value>) -> Self {
+        fields.remove("annote");
+        let private_url = |fields: &mut Map<String, Value>| {
+            if fields
+                .get("URL")
+                .is_some_and(|url| !url.as_str().is_some_and(public_url))
+            {
+                fields.remove("URL");
+            }
+        };
+        private_url(&mut fields);
+        if let Some(Value::String(note)) = fields.remove("note") {
+            apply_overrides(&mut fields, &note);
+            private_url(&mut fields);
         }
-    });
-    fields
+        if let Some(Value::String(doi)) = fields.get_mut("DOI") {
+            // CSL styles supply their own resolver prefix. Strip only recognized
+            // wrappers, retaining the identifier's spelling, punctuation and case.
+            let value = doi.trim();
+            let prefixes = [
+                "https://doi.org/",
+                "http://doi.org/",
+                "https://dx.doi.org/",
+                "http://dx.doi.org/",
+                "doi.org/",
+                "dx.doi.org/",
+                "doi:",
+            ];
+            let bare = prefixes.iter().find_map(|prefix| {
+                value
+                    .get(..prefix.len())
+                    .filter(|head| head.eq_ignore_ascii_case(prefix))
+                    .map(|_| value[prefix.len()..].trim())
+            });
+            if let Some(bare) = bare {
+                *doi = bare.to_owned();
+            }
+        }
+        // Zotero's names for the short titles, which citeproc copies in when the
+        // CSL ones are missing.
+        for (alias, canonical) in [
+            ("shortTitle", "title-short"),
+            ("journalAbbreviation", "container-title-short"),
+        ] {
+            if let Some(value) = fields.remove(alias)
+                && !fields.get(canonical).is_some_and(truthy)
+            {
+                fields.insert(canonical.into(), value);
+            }
+        }
+        let scalar = |value: &Value| match value {
+            Value::String(text) => !points_to_device(text),
+            Value::Number(_) | Value::Bool(_) => true,
+            _ => false,
+        };
+        fields.retain(|name, value| {
+            if !is_variable(name) {
+                false
+            } else if NAMES.contains(&name.as_str()) {
+                let Value::Array(names) = value else { return false };
+                names.retain_mut(|name| {
+                    let Value::Object(parts) = name else { return false };
+                    parts.retain(|name, value| NAME_PARTS.contains(&name.as_str()) && scalar(value));
+                    !parts.is_empty()
+                });
+                !names.is_empty()
+            } else if DATES.contains(&name.as_str()) {
+                let Value::Object(parts) = value else { return false };
+                parts.retain(|part, _| DATE_PARTS.contains(&part.as_str()));
+                normalize_raw_date(parts);
+                parts.retain(|name, value| {
+                    if name == "date-parts" {
+                        value.as_array_mut().is_some_and(|dates| {
+                            dates.iter_mut().all(|date| {
+                                date.as_array_mut().is_some_and(|parts| {
+                                    parts.iter_mut().all(|part| {
+                                        if let Some(number) = part.as_str().and_then(|part| part.parse::<i64>().ok()) {
+                                            *part = json!(number);
+                                        }
+                                        part.is_number()
+                                    })
+                                })
+                            })
+                        })
+                    } else {
+                        scalar(value)
+                    }
+                });
+                !parts.is_empty()
+            } else {
+                matches!(value, Value::String(_) | Value::Number(_)) && scalar(value)
+            }
+        });
+        Self(fields)
+    }
 }
 
 const NAME_PARTS: [&str; 9] = [
@@ -243,7 +238,7 @@ fn normalize_raw_date(date: &mut Map<String, Value>) {
 
 /// A CSL variable a note may set and an agent may see. Fields a source keeps
 /// beyond these (custom keys, processor state) are not bibliographic data.
-pub fn is_variable(name: &str) -> bool {
+fn is_variable(name: &str) -> bool {
     name == "type" || TEXT.contains(&name) || NAMES.contains(&name) || DATES.contains(&name)
 }
 
@@ -353,13 +348,21 @@ pub(crate) fn points_to_device(value: &str) -> bool {
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case("zotero:/"))
     };
     value.split_whitespace().any(|word| {
-        let word = word.trim_matches(|c: char| "<>()[]{},;.\"'".contains(c));
+        let word = word.trim_matches(|c: char| "<>()[]{},.\"'".contains(c));
         path(word)
             || word.char_indices().any(|(index, c)| {
                 let rest = &word[index + c.len_utf8()..];
+                // An escaped closing tag is printable text, not a device path.
+                let closing_tag = c == ';'
+                    && word[..index].ends_with("&lt")
+                    && rest.strip_prefix('/').is_some_and(|tag| {
+                        let end = tag.bytes().take_while(u8::is_ascii_alphabetic).count();
+                        end > 0 && tag[end..].starts_with("&gt;")
+                    });
                 // A scheme separator is not the beginning of a device path.
                 matches!(c, '=' | ':' | '\"' | '\'' | '(' | '[' | '{' | ',' | ';')
                     && !(c == ':' && rest.starts_with("//"))
+                    && !closing_tag
                     && path(rest)
             })
             || (word.contains("://") && !public_url(word))
@@ -642,11 +645,8 @@ mod tests {
     }
 
     fn citable(fields: Value) -> Value {
-        let Value::Object(mut fields) = fields else {
-            unreachable!()
-        };
-        citable_fields(&mut fields);
-        Value::Object(fields)
+        let Value::Object(fields) = fields else { unreachable!() };
+        Value::Object(CitableFields::new(fields).0)
     }
 
     #[test]

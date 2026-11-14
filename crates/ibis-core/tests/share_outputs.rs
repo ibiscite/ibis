@@ -36,7 +36,7 @@ fn every_record_export_removes_private_metadata_and_keeps_public_fields() {
                 "note":"PRIVATE memo", "annote":"PRIVATE annotation", "file":"/home/PRIVATE/work.pdf",
                 "attachments":[{"path":"/home/PRIVATE/work.pdf"}], "URL":"https://localhost/PRIVATE",
                 "author":[{"family":"Doe", "x-private":"PRIVATE"}],
-                "issued":{"date-parts":[[2026]],"x-private":"PRIVATE"},
+                "issued":{"date-parts":[["2026"]],"x-private":"PRIVATE"},
             "original-date":{"date-parts":[[{"note":"PRIVATE"}]]},
             "publisher":{"note":"PRIVATE"},
                 "abstract":"See file:///home/PRIVATE/work.pdf"
@@ -50,6 +50,7 @@ fn every_record_export_removes_private_metadata_and_keeps_public_fields() {
         if format != "doi-links" {
             assert!(result.text.contains("Invented atlas"));
             assert!(result.text.contains("Doe"));
+            assert!(result.text.contains("2026"));
         }
     }
 }
@@ -84,13 +85,20 @@ fn bibtex_quotes_hostile_field_text_and_refuses_missing_or_unsafe_keys() {
 
 #[test]
 fn doi_links_preserve_identifier_spelling_encode_url_delimiters_and_name_missing_dois() {
-    let case = case(
+    let mut case = case(
         "doi-links",
         json!({"type":"book","DOI":"HTTPS://DOI.ORG/10.1000/Invented%2Fpart?#"}),
         None,
     );
     let result = syntax::cite(&case.library, &case.request).unwrap();
     assert_eq!(result.text, "https://doi.org/10.1000/Invented%252Fpart%3F%23");
+    case.request.items.push(case.request.items[0].clone());
+    let repeated = syntax::cite(&case.library, &case.request).unwrap();
+    assert_eq!(repeated.text, result.text);
+    assert_eq!(
+        repeated.outcomes,
+        [ItemOutcome::Rendered { item: 0 }, ItemOutcome::Rendered { item: 1 }]
+    );
     for doi in [
         Value::Null,
         json!(""),
@@ -182,15 +190,18 @@ fn record_sharing_removes_device_paths_after_value_delimiters() {
         r"path=C:\invented\secret.pdf",
         r"path=\\invented\secret.pdf",
         "path=file:///Users/invented/secret.pdf",
+        "path;/Users/invented/secret.pdf",
+        "&lt;/i&gt;/Users/invented/secret.pdf",
+        "&lt;/home/invented/secret.pdf&gt;",
     ] {
         let case = case(
             "csl-json",
-            json!({"type":"book","title":"Invented atlas","archive_location":value}),
+            json!({"type":"book","title":"Invented &lt;i&gt;atlas&lt;/i&gt;","archive_location":value}),
             Some("good"),
         );
         let records: Value = serde_json::from_str(&syntax::cite(&case.library, &case.request).unwrap().text).unwrap();
         assert!(records[0].get("archive_location").is_none(), "{value}: {records}");
-        assert_eq!(records[0]["title"], "Invented atlas");
+        assert_eq!(records[0]["title"], "Invented &lt;i&gt;atlas&lt;/i&gt;");
     }
 }
 

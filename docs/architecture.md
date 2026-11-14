@@ -94,8 +94,10 @@ Key syntax capabilities live in `ibis_core::syntax::CAPABILITIES`. The engine's
 `outputs` list supplies IDs, names and supported forms to CLI, MCP, menus and
 settings. Formatted output uses citeproc-js on one worker with a bounded
 queue, cancellation, time and memory limits. The compressed style bundle
-loads the requested style and locale. Formatting receives citable fields,
-without notes, annotations or private links. Zotero differential fixtures
+loads the requested style and locale. Formatting, MCP reference views and record
+writers require immutable `CitableFields`, constructed only by the privacy
+filter: no notes, annotations, private links or device paths in values. Source
+identities and citation keys stay separate from metadata. Zotero differential fixtures
 check output independently of the renderer.
 
 The desktop warms its saved default style (APA for a key default), locale and

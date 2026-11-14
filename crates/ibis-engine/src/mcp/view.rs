@@ -4,8 +4,8 @@
 //! pass back: its citation key when that selects it alone, or else an id.
 use super::MAX_LIST;
 use crate::request::ItemSelector;
-use ibis_core::citable::{citable_fields, is_variable};
-use ibis_core::contract::{ItemRef, LibraryId, Record};
+use ibis_core::citable::CitableFields;
+use ibis_core::contract::{ItemRef, LibraryId};
 use ibis_core::model::{is_hidden, strip_markup};
 use ibis_core::summary::RecordSummary;
 use serde_json::{Map, Value};
@@ -16,18 +16,11 @@ pub const MAX_TEXT: usize = 1_000;
 const ID_MARK: &str = "id:";
 const CHECK_LENGTH: usize = 8;
 
-/// A record's fields as formatting sees them.
-pub(super) fn citable(record: &Record) -> Map<String, Value> {
-    let mut csl = record.csl.to_map();
-    citable_fields(&mut csl);
-    csl
-}
-
 /// Fields [`summary`] already gives; `show` leaves them out of the rest.
 const SUMMARIZED: [&str; 5] = ["type", "title", "author", "container-title", "DOI"];
 
 /// What an agent needs to recognise and cite a record. Fields the record lacks are left out.
-pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String, Value> {
+pub(super) fn summary(csl: &CitableFields, reference: String) -> Map<String, Value> {
     let summary = RecordSummary::of(|name| csl.get(name));
     let text = |text: Option<&String>| text.map(|text| Value::String(clean(text)));
     let authors: Vec<Value> = summary
@@ -55,10 +48,10 @@ pub(super) fn summary(csl: &Map<String, Value>, reference: String) -> Map<String
 }
 
 /// The citable fields [`summary`] does not already give.
-pub(super) fn details(csl: &Map<String, Value>) -> Value {
+pub(super) fn details(csl: &CitableFields) -> Value {
     Value::Object(
         csl.iter()
-            .filter(|(name, _)| is_variable(name) && !SUMMARIZED.contains(&name.as_str()))
+            .filter(|(name, _)| !SUMMARIZED.contains(&name.as_str()))
             .map(|(name, value)| (name.clone(), shorten(value)))
             .collect(),
     )

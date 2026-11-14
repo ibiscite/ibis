@@ -64,7 +64,7 @@ pub struct SyntaxCapabilities {
     /// this command has none: a citation whose every reference is narrative
     /// is written with it.
     pub narrative: Option<&'static str>,
-    /// It writes each reference's whole record, not a citation of it.
+    /// It shares each reference's bibliographic metadata.
     pub exports_records: bool,
     /// It names Zotero items rather than citation keys, so it writes only
     /// references the engine read from Zotero (`syntax::scannable`).
@@ -541,6 +541,7 @@ struct Pick<'a> {
     key: &'a str,
     form: CitationForm,
     suppress: bool,
+    doi_link: Option<String>,
 }
 
 /// The immutable snapshot is the complete resolution boundary. Engine callers
@@ -587,13 +588,25 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
     let mut losses = Vec::new();
     let mut warnings = Vec::new();
     let mut key_bytes = 0_usize;
+    let mut link_bytes = 0_usize;
+    let mut linked = std::collections::HashSet::new();
     // CSL-JSON keeps each record's source `id`, and two records from different
     // libraries can share one; an export naming both would be unreadable.
     let mut exported = HashMap::<&str, &ItemRef>::new();
     for (index, item) in request.items.iter().enumerate() {
         match checked[index].and_then(|record| resolve(record, item, request.form, caps, &owners)) {
             Err(error) => outcomes.push(ItemOutcome::Refused { item: index, error }),
-            Ok((record, key, form)) => {
+            Ok((record, key, form, mut doi_link)) => {
+                if let Some(link) = &doi_link {
+                    if linked.insert(&record.id) {
+                        link_bytes += link.len() + usize::from(link_bytes != 0);
+                    } else {
+                        doi_link = None;
+                    }
+                }
+                if link_bytes > MAX_OUTPUT_BYTES {
+                    return Err(CitationError::OutputTooLarge);
+                }
                 warnings.extend(record.warnings.iter().map(|code| CitationWarning {
                     item: index,
                     code: *code,
@@ -689,6 +702,7 @@ pub fn cite(snapshot: &Snapshot, request: &CitationRequest) -> Result<CitationRe
                     key,
                     form,
                     suppress: item.suppress_author && supports(caps.author_suppression) || form == YearOnly,
+                    doi_link,
                 });
                 outcomes.push(ItemOutcome::Rendered { item: index });
             }
@@ -732,11 +746,15 @@ fn resolve<'a>(
     default_form: CitationForm,
     caps: &SyntaxCapabilities,
     owners: &HashMap<&str, Option<&ItemRef>>,
-) -> Result<(&'a Record, &'a str, CitationForm), CitationError> {
+) -> Result<(&'a Record, &'a str, CitationForm, Option<String>), CitationError> {
     let form = item.form.unwrap_or(default_form);
+    let mut doi_link = None;
     let key = if caps.syntax == KeySyntax::DoiLinks {
         // DOI links identify the work without needing a citation key.
-        render::doi_link(record).ok_or(CitationError::MissingDoi)?;
+        doi_link = Some(
+            render::doi_link(&crate::citable::CitableFields::new(record.csl.to_map()))
+                .ok_or(CitationError::MissingDoi)?,
+        );
         record.id.key.as_str()
     } else {
         let key = record
@@ -770,5 +788,5 @@ fn resolve<'a>(
     {
         return Err(CitationError::InvalidRichText);
     }
-    Ok((record, key, form))
+    Ok((record, key, form, doi_link))
 }

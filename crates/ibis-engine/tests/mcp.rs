@@ -486,6 +486,8 @@ fn note_overrides_print_but_note_text_and_app_links_never_reach_agents() {
             "publisher": "Invented Press",
             "note": "Invented private memo\ntitle: Invented override title\ntodo: invented private task",
             "annote": "Invented private annotation",
+            "archive_location": "path=/home/invented/private.pdf",
+            "abstract": {"memo": "Invented private data"},
             "URL": "zotero://open-pdf/library/items/INVENTED",
             "x-todo": "Invented private task"
         }])

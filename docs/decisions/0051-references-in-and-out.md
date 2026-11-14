@@ -31,7 +31,7 @@ services. It is the first step of the wider aim in ROADMAP.md (Where Ibis is goi
 
 The first engine slice adds `bibtex` and `doi-links` to the output catalogue,
 through the existing `cite --format`. All record exports, including CSL-JSON,
-use `citable::share_fields`: bibliographic note overrides survive as fields;
+require `citable::CitableFields`: bibliographic note overrides survive as fields;
 notes, attachments, device paths and private links do not. BibTeX is generated
 from these fields with literal escaping, never reused from an imported file.
 Missing or unsafe citation keys refuse that record. DOI links need no citation

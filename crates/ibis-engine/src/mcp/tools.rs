@@ -9,6 +9,7 @@ use crate::health::{Checked, SourceFinding, SourceHealth};
 use crate::outputs;
 use crate::request::{ItemSelector, RecordsRequest, SearchRequest, ShowRequest, StylesRequest};
 use crate::{Cancellation, Engine};
+use ibis_core::citable::CitableFields;
 use ibis_core::contract::{
     CitationError, CitationForm, CitationItem, CitationRequest, CitationResult, EngineError, ErrorCode, ItemOutcome,
     LibraryObject, OutputSpec, Script, Snapshot, SnapshotObject, TextRun,
@@ -363,7 +364,7 @@ fn search(
     let mut hits = Vec::new();
     let mut size = 0;
     for ((hit, record), reference) in records.iter().zip(refs) {
-        let mut data = view::summary(&view::citable(record), reference);
+        let mut data = view::summary(&CitableFields::new(record.csl.to_map()), reference);
         data.insert("partial".into(), json!(hit.partial));
         data.insert("typo".into(), json!(hit.typo));
         // Each hit is sent twice: as JSON, and escaped inside the answer's text.
@@ -460,7 +461,7 @@ fn show(
     } = selected(engine, arguments)?;
     match &shown.object {
         LibraryObject::Record(record) => {
-            let citable = view::citable(record);
+            let citable = CitableFields::new(record.csl.to_map());
             let snapshot = engine.snapshot()?;
             let reference = references(&snapshot, std::iter::once(&shown)).remove(0);
             let mut data = view::summary(&citable, reference);

@@ -1,4 +1,5 @@
 use crate::{FormatError, Limits, catalog};
+use ibis_core::citable::CitableFields;
 use ibis_core::citation::{self, ItemSupport};
 use ibis_core::contract::*;
 use serde::Serialize;
@@ -338,16 +339,9 @@ fn prepare_with_style(
             Entry::Vacant(entry) => {
                 let bytes = bounded_json(&record.csl, remaining)?;
                 remaining = remaining.saturating_sub(bytes.len());
-                let mut value: serde_json::Map<String, Value> =
+                let value: serde_json::Map<String, Value> =
                     serde_json::from_slice(&bytes).map_err(|_| FormatError::InvalidRequest)?;
-                // Notes, annotations and private links never reach the
-                // processor; every check below sees what it will print.
-                ibis_core::citable::citable_fields(&mut value);
-                normalize_strings(value.values_mut())?;
-                if value.keys().any(|key| crate::output::unsupported_controls(key)) || record_controls(value.values()) {
-                    return Err(FormatError::InvalidRequest);
-                }
-                entry.insert(value)
+                entry.insert(processor_fields(&CitableFields::new(value))?)
             }
         };
         if style.sentence_titles
@@ -618,17 +612,25 @@ fn year(issued: Option<&Value>) -> Option<String> {
         .or_else(|| (!date.is_empty()).then_some(date))
 }
 
+/// Only the filtered projection enters the processor's mutable envelope.
+fn processor_fields(fields: &CitableFields) -> Result<serde_json::Map<String, Value>, FormatError> {
+    let mut fields = fields
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<serde_json::Map<_, _>>();
+    normalize_strings(fields.values_mut())?;
+    if record_controls(fields.values()) {
+        return Err(FormatError::InvalidRequest);
+    }
+    Ok(fields)
+}
+
 fn record_controls<'a>(values: impl Iterator<Item = &'a Value>) -> bool {
     let mut pending: Vec<_> = values.collect();
     while let Some(value) = pending.pop() {
         match value {
             Value::String(text) if crate::output::unsupported_controls(text) => return true,
-            Value::Object(map) => {
-                if map.keys().any(|key| crate::output::unsupported_controls(key)) {
-                    return true;
-                }
-                pending.extend(map.values());
-            }
+            Value::Object(map) => pending.extend(map.values()),
             Value::Array(values) => pending.extend(values),
             _ => {}
         }
@@ -795,6 +797,31 @@ fn placeholder(index: usize, kind: &str, runs: &[TextRun]) -> String {
 mod tests {
     use super::*;
     use CitationForm::{AuthorOnly, Full, Narrative, Normal, YearOnly};
+
+    #[test]
+    fn processor_fields_exclude_private_data_before_normalizing_printed_text() {
+        let fields = ibis_core::citable::CitableFields::new(
+            serde_json::from_value(json!({
+                "id": "http://zotero.org/users/12345/items/INVENTED",
+                "note": "Private <\u{202e}memo>\ntitle: Invented title\npublisher: Invented Press",
+                "annote": "Private annotation", "file": "/home/invented/private.pdf",
+                "archive_location": "path=/home/invented/private.pdf",
+                "abstract": {"memo": "Private"}, "URL": "https://localhost/private",
+                "author": [{"family": "Doe", "given": "path=C:/private", "file": "Private"}],
+                "issued": {"date-parts": [[2026]], "file": "Private"},
+                "container-title": "Invented\ncontainer"
+            }))
+            .unwrap(),
+        );
+        assert_eq!(
+            serde_json::to_value(processor_fields(&fields).unwrap()).unwrap(),
+            json!({
+                "title": "Invented title", "publisher": "Invented Press",
+                "author": [{"family": "Doe"}], "issued": {"date-parts": [[2026]]},
+                "container-title": "Invented container"
+            })
+        );
+    }
 
     fn synthetic_style(id: &str, xml: &str) -> catalog::Resolved {
         catalog::Resolved {

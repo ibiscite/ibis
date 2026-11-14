@@ -2,15 +2,16 @@
 //! only this writer supplies entry syntax and TeX commands.
 use std::io::{self, Write};
 
-use serde_json::{Map, Value};
+use crate::citable::CitableFields;
+use serde_json::Value;
 
 pub(super) fn valid_key(key: &str) -> bool {
     !key.is_empty() && key.chars().all(|c| c.is_alphanumeric() || "-_.:+/".contains(c))
 }
 
-/// `key` was checked by the catalogue resolver; `fields` passed `share_fields`.
+/// `key` was checked by the catalogue resolver.
 /// Stream to the caller's bounded destination, including while escaping.
-pub(super) fn write(out: &mut impl Write, key: &str, fields: &Map<String, Value>) -> io::Result<()> {
+pub(super) fn write(out: &mut impl Write, key: &str, fields: &CitableFields) -> io::Result<()> {
     let kind = match fields.get("type").and_then(Value::as_str).unwrap_or_default() {
         "article-journal" | "article-magazine" | "article-newspaper" => "article",
         "book" => "book",

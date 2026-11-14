@@ -2,7 +2,8 @@
 use std::collections::HashSet;
 use std::io::Write;
 
-use serde::{Serialize, Serializer, ser::SerializeMap};
+use crate::citable::CitableFields;
+use serde::{Serialize, Serializer};
 
 use super::escape::*;
 use super::*;
@@ -576,18 +577,25 @@ pub(super) fn source_id(record: &Record) -> Option<&str> {
 /// Serialize one share-safe record at a time into a bounded writer. Repeated
 /// records are deduplicated and each filtered map is dropped immediately.
 fn csl_json(picks: &[Pick<'_>]) -> Result<String, CitationError> {
+    #[derive(Serialize)]
+    struct RecordExport<'a> {
+        id: &'a str,
+        #[serde(rename = "citation-key")]
+        key: &'a str,
+        #[serde(flatten)]
+        fields: &'a CitableFields,
+    }
     struct Export<'a>(&'a Pick<'a>);
     impl Serialize for Export<'_> {
         fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-            let mut map = serializer.serialize_map(None)?;
             // Preserve a plain source token; URL-shaped or private source
             // identities never leave through the export's id field.
-            map.serialize_entry("id", source_id(self.0.record).unwrap_or(self.0.key))?;
-            map.serialize_entry("citation-key", self.0.key)?;
-            for (key, value) in crate::citable::share_fields(self.0.record.csl.to_map()) {
-                map.serialize_entry(&key, &value)?;
+            RecordExport {
+                id: source_id(self.0.record).unwrap_or(self.0.key),
+                key: self.0.key,
+                fields: &CitableFields::new(self.0.record.csl.to_map()),
             }
-            map.end()
+            .serialize(serializer)
         }
     }
     let mut output = Bounded(Vec::new());
@@ -634,10 +642,10 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
                 .map_err(|_| CitationError::OutputTooLarge)?;
         }
         if syntax == KeySyntax::Bibtex {
-            let fields = crate::citable::share_fields(pick.record.csl.to_map());
+            let fields = CitableFields::new(pick.record.csl.to_map());
             super::bibtex::write(&mut output, pick.key, &fields).map_err(|_| CitationError::OutputTooLarge)?;
         } else {
-            let link = doi_link(pick.record).ok_or(CitationError::MissingDoi)?;
+            let link = pick.doi_link.as_deref().ok_or(CitationError::MissingDoi)?;
             output
                 .write_all(link.as_bytes())
                 .map_err(|_| CitationError::OutputTooLarge)?;
@@ -649,8 +657,7 @@ fn share(syntax: KeySyntax, picks: &[Pick<'_>]) -> Result<String, CitationError>
 /// A DOI is an identifier, not an arbitrary URL. Keep its spelling and percent
 /// bytes, encoding reserved URL characters rather than letting them change the
 /// resolver's path, query or fragment. Missing/invalid values refuse the item.
-pub(super) fn doi_link(record: &Record) -> Option<String> {
-    let fields = crate::citable::share_fields(record.csl.to_map());
+pub(super) fn doi_link(fields: &CitableFields) -> Option<String> {
     let doi = fields.get("DOI")?.as_str()?.trim();
     let (prefix, suffix) = doi.split_once('/')?;
     let registrant = prefix.strip_prefix("10.")?;
