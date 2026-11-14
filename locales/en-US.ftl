@@ -268,7 +268,7 @@ app-library-retained-not-updated = the retained library { $name } could not be u
 app-library-not-refreshed = The library could not be refreshed; keeping the last loaded references.
 app-library-retained-not-refreshed = The retained library could not be refreshed; keeping the last loaded references.
 app-library-state-unavailable = library state is unavailable
-app-command-snapshot-changed = library snapshot changed
+app-command-snapshot-changed = The library changed. Search again.
 app-command-library-loading = library is loading
 app-command-cancelled = cancelled
 app-command-shared-citation-key = the citation key `{ $key }` belongs to more than one reference
@@ -490,6 +490,8 @@ citations-editor-not-saved = The endpoint could not be changed. Try again.
 settings-shortcut-restored = Default shortcut restored
 
 
+settings-newer-title = From a newer Ibis
+settings-newer-description = This setting is read-only in this version of Ibis.
 settings-read-only = The settings file is read-only; the saved value is shown.
 
 citations-key-formats = Citation keys
@@ -785,7 +787,7 @@ session-not-copied = The bibliography could not be copied. Try again.
 session-not-saved = The bibliography could not be saved. Try again.
 writing-title = Writings
 writing-loading = Loading writings…
-writing-saving = Saving project…
+writing-saving = Saving writing…
 writing-menu = New writing…
 writing-about = A writing keeps its citation format and optional bibliography together. Your choice is remembered for this app; changes apply wherever you use this writing. Ibis does not identify the document.
 writing-session-only = Ibis can’t identify the app, so this writing applies only until Ibis quits.
@@ -811,7 +813,7 @@ writing-confirm-remove = Remove Writing
 writing-cancel = Cancel
 writing-unsupported = This app version cannot use this writing’s format.
 writing-not-read = The writings could not be read. Close this sheet, then try again.
-writing-not-saved = The project could not be saved. Your previous choice still applies. Try again.
+writing-not-saved = The writing could not be saved. Your previous choice still applies. Try again.
 writing-bibliography-not-saved = The bibliography choice could not be saved. Try again.
 writing-pick = Your pick changes this writing’s format.
 project-check-retry = Retry
@@ -1487,15 +1489,15 @@ app-bibliography-format = Save it as .rtf, .html or .txt.
 app-clipboard-unavailable = The clipboard could not be written. Try again.
 
 app-recent-history-not-saved = Recent citations could not be forgotten. Try again.
-app-project-citation-conflict = Citation keys { $keys } identify different works in the project bibliography. Check the bibliography before copying.
+app-project-citation-conflict = Citation keys { $keys } identify different works in the bibliography. Check the bibliography before copying.
 
 app-settings-error-changed = Settings changed while saving. Try again.
 app-settings-error-busy = Settings are being saved by another Ibis. Wait for it to finish, then try again.
 app-settings-error-document-format = Choose a style for documents.
 app-settings-error-key-format = Choose a key format for Markdown and LaTeX.
-app-project-error-context-unavailable = The document context could not be read. Try again.
-app-project-error-invalid-context = The document context must name one bibliography and CSL style as plain values.
-app-project-error-ambiguous-context = More than one writing matches this context. Choose a writing by name.
+app-project-error-context-unavailable = The document’s bibliography and citation style could not be read. Try again.
+app-project-error-invalid-context = Name one bibliography and CSL style as plain values in the document.
+app-project-error-ambiguous-context = More than one writing matches this bibliography and citation style. Choose a writing by name.
 mcp-error-citation-format = This format exports records or Zotero markers. Choose a citation format.
 
 app-failure-open-settings-file = The settings file could not be opened. Try again.

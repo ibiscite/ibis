@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import type { Copied, LibraryStatus, UpdateProgress } from "../../api";
-import { LineNotice } from "../../ui/Frame";
+import { FrameNotice, LineNotice } from "../../ui/Frame";
 import { QuietNotice } from "../../ui/NoticeSlot";
 import { Progress } from "../../ui/Progress";
 import { Button } from "../../ui/Button";
@@ -61,18 +61,18 @@ export function notices({ library, failures, error, copyError, copied, confirmat
   return [
     error && <LineNotice key="error" role="alert">{error}</LineNotice>,
     copyError && <LineNotice key="copy-error" role="alert">{copyError}</LineNotice>,
-    copied && copied.warnings.length > 0 && <div key="warnings" className="ui-line-notice copy-notice" role="group">
+    copied && copied.warnings.length > 0 && <FrameNotice key="warnings" className="copy-notice" role="group">
       <ul className="ui-line-words" tabIndex={0} aria-label={say("picker-copy-warnings")} title={copied.warnings.join("\n")}>
         {copied.warnings.map((w, i) => <li key={i}>{w}</li>)}
       </ul>
       <Button size="small" aria-label={say("picker-dismiss-warnings")} onPress={onDismissCopied}>{say("picker-dismiss")}</Button>
-    </div>,
-    copied && confirmation && <div key="copied" className="ui-line-notice copy-notice" role="status">
+    </FrameNotice>,
+    copied && confirmation && <FrameNotice key="copied" className="copy-notice" role="status">
       <p className="ui-line-words" data-outcome="copied"><strong>{say("picker-copied")}</strong> <code dir="auto" title={confirmation.text}>
         {confirmation.summary?.text ?? confirmation.text}
         {Boolean(confirmation.summary?.more) && <span> +{confirmation.summary!.more} more</span>}
       </code></p>
-    </div>,
+    </FrameNotice>,
     ...(Object.keys(failures) as Operation[]).filter((operation) => failures[operation] && !libraryOperations.has(operation)).map((operation) => (
       <LineNotice role="alert" key={operation}>{say(OPERATION_FAILURES[operation])}</LineNotice>
     )),

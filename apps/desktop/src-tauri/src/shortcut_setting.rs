@@ -486,7 +486,6 @@ mod tests {
                 "{}",
                 case.name
             );
-            // Previously saved conflicts take the same path after upgrading.
             let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("fixture failed: {error}"));
             let file = SettingsFile::new(directory.path().join("settings.json"));
             assert_eq!(save_shortcut(&file, Some(case.shortcut)), Ok(()));

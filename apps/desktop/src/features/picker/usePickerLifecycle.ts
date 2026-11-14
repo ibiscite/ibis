@@ -109,7 +109,7 @@ export function usePickerLifecycle({ api, pickerSession, menus, destination, pre
       .catch(() => undefined);
     const unlistenProject = onProjectChanged?.((version) => {
       if (!mounted) return;
-      destination.projectChanged(version);
+      destination.writingChanged(version);
     }).catch(() => subscriptionFailure("project"));
     const unlistenWritings = onWritingsChanged?.(() => {
       if (mounted) destination.read(false);

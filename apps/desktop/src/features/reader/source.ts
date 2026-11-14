@@ -1,10 +1,8 @@
 import { createContext, useContext } from "react";
 import type { CitationReference } from "../picker/choice";
 
-/** What the reader needs from a document, whatever draws it (decision 0038).
- * The PDF.js adapter of decision 0036 implements this behind the bytes command;
- * until #1252 closes only the invented source below does, so Show PDF never
- * appears in the running app. */
+/** Reader pages and rendering. Only the canvas and tests supply a source;
+ * the planned PDF adapter follows decision 0036. */
 export type PageSource = {
   /** Stable for one opening of one file: a content hash for a PDF. */
   id: string;

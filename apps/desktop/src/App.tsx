@@ -43,8 +43,8 @@ import { usePickerLifecycle } from "./features/picker/usePickerLifecycle";
 import { useResultScroll } from "./features/picker/useResultScroll";
 import { useShownRows } from "./features/picker/useShownRows";
 import { useCitationRows } from "./features/picker/useCitationRows";
-import { projectDetail, useProjectBibliography } from "./features/picker/useProjectBibliography";
-import { projectCheckNotice } from "./features/picker/ProjectContextStatus";
+import { bibliographyDetail, useBibliography } from "./features/picker/useBibliography";
+import { bibliographyCheckNotice } from "./features/picker/BibliographyStatus";
 import { useEditorRequest } from "./features/picker/useEditorRequest";
 import { usePickerSource } from "./features/picker/usePickerSource";
 import { usePickerActions } from "./features/picker/usePickerActions";
@@ -93,10 +93,10 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const quitAfterSaving = () => quitPreferences(session.afterSaves(2_000));
   const libraryState = usePickerLibrary(api, operations, cancelCopy);
   const { library, settledLibrary, libraryVersion, refreshSnapshot, choosingLibrary, welcomeShown, libraryChoices, showCitations } = libraryState;
-  const project = useProjectBibliography(api, report, perform);
+  const project = useBibliography(api, report, perform);
   const editor = useEditorRequest(api);
   // A waiting editor's format replaces the picker's, so the same choice is asked again.
-  // A changed project bibliography asks the same questions of a new answer.
+  // A changed bibliography asks the same questions of a new answer.
   const checkVersion = libraryVersion + editor.version + project.version;
   const delights = usePickerDelights(api, state.presentation, library, preferences.smallSurprises);
   useEffect(() => { if (choosingLibrary) delights.dismiss(); }, [choosingLibrary, delights.dismiss]);
@@ -117,14 +117,14 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
   const chosen = selected.size > 0 || ready ? shownChoice : [];
   const output = useCitationOutput({
     session, state, chosen: shownChoice, library: settledLibrary, libraryVersion: checkVersion, format, style: styleOf(format),
-    previewFileCitation: api.previewFileCitation, projectContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
+    previewFileCitation: api.previewFileCitation, writingContext: destination.contextVersion, contextReady: destination.ready && !project.reading,
   });
   const { formatted, shown, previewProblem, displayedOutput } = output;
   const checkedPreview = shown && typeof shown === "object" ? shown : null;
   const projectRefusal = checkedPreview?.project_refusal ?? null;
   // A file that can't be read is advice beside a key citation, never a gate.
   const projectProblem = checkedPreview && styleOf(format) === null && (project.status?.state === "failed" || project.status?.state === "damaged")
-    ? projectDetail(project.status) : null;
+    ? bibliographyDetail(project.status) : null;
   const citationProblem = displayedOutput === "failed" ? previewProblem ?? say("picker-preview-error") : null;
   const menus = usePickerMenus(api, operations, libraryState, cancelCopy);
   const { input, formatButtonRef, currentPin, setFormatOpen, focusHome } = menus;
@@ -261,7 +261,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         ...notices({ projectNotice: destination.readProblem ?? project.notice, editorNotice: editor.label, library, failures: { ...failures, recentHistory: recents.forgetFailed },
           error, copyError: inspector.panel ? null : copyError, copied, missing: ready ? list?.missing : undefined,
           confirmation: state.copyNotice, onDismissCopied: () => send({ type: "dismiss" }) }),
-        projectCheckNotice({ refusal: projectRefusal, problem: projectProblem,
+        bibliographyCheckNotice({ refusal: projectRefusal, problem: projectProblem,
           onRetry: project.retry ? () => { cancelCopy(); project.retry?.(); } : undefined,
           onLocate: project.choose ? () => { cancelCopy(); project.choose?.(); } : undefined,
           disabled: !destination.ready || destination.saving || !ready || searchPending }),
@@ -313,7 +313,7 @@ export function App({ preview }: { preview?: PickerPreview } = {}) {
         operations={operations} altHeld={altHeld}  emptyAction={emptyFeedback.shaking} lastOutcome={state.lastOutcome}
         project={project} highlighted={ready && styleOf(format) === null ? results[active] : undefined}
         command={commands.footer} peek={peekRecord ? () => setPeeked(idKey(peekRecord.id)) : null} />
-      <PickerOverlays api={{ ...api, editWriting: destination.editProject! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
+      <PickerOverlays api={{ ...api, editWriting: destination.editWriting! }} format={format} style={styleOf(format)} menus={menus} bindings={actions.bindings} />
       <HeldKeys />
       {peekRecord && <PeekCard triggerRef={peekAnchor} open={peekOpen} onClose={() => setPeeked(null)}
         label={say("peek-label", { title: peekRecord.title || peekRecord.key })} title={peekRecord.title || peekRecord.key} byline={peekRecord.authors}

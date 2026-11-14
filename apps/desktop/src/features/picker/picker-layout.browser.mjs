@@ -454,8 +454,8 @@ try {
     if (shelfDetails === "single" || shelfDetails === "rtl") {
       await search.press("Shift+Enter");
       const band = await page.locator("main > .shelf").boundingBox();
-      const segment = shelfControl(page, /^Edit /).first();
-      await segment.hover();
+      const token = shelfControl(page, /^Edit /).first();
+      await token.hover();
       const remove = shelfControl(page, "Remove synthetic0 from the selection");
       await remove.waitFor({ state: "visible" });
       await page.waitForTimeout(300); // The chip grows to make room for it.
@@ -473,7 +473,7 @@ try {
       assert.equal(await page.locator('[role="option"][data-citation-selected]').count(), 1, "Undo restores the removed reference");
       const dialog = await openEditor();
       const fullCitation = dialog.getByRole("region", { name: "Full citation", exact: true });
-      assert.equal(await fullCitation.textContent(), await segment.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
+      assert.equal(await fullCitation.textContent(), await token.locator(".preview-text").textContent(), "the single-reference menu keeps the entire citation available without hover");
       assert.equal(await fullCitation.getAttribute("tabindex"), "0", "Tab reaches the complete citation without hover");
       assert.equal(await reachable(fullCitation), true, "the complete long/RTL citation is reachable in the panel");
       await dialog.getByRole("textbox", { name: "Page", exact: true }).fill("iv–vi");
@@ -486,9 +486,9 @@ try {
       const reopened = await openEditor();
       assert.equal(await reopened.getByRole("textbox", { name: "Page", exact: true }).inputValue(), "iv–vi", "close/reopen keeps the page");
       await closeEditor(reopened);
-      await segment.focus();
+      await token.focus();
       assert.equal(await remove.isVisible(), false, "keyboard focus never shows the hover badge");
-      await segment.press("Backspace");
+      await token.press("Backspace");
       await page.getByRole("button", { name: /^Undo/ }).waitFor();
       await checkScan("long/RTL text and removal keep the shelf whole");
       assert.deepEqual(resizes, [], "no native size requests from the shelf");
@@ -501,12 +501,12 @@ try {
       if (shelfDetails === "expanded") {
         for (let i = 0; i < 9; i++) { if (i) await search.press("ArrowDown"); await search.press("Shift+Enter"); }
         beforeShelf = await page.locator("main > .shelf").boundingBox();
-        const segments = page.locator("main > .shelf .citation-token-button");
-        await segments.nth(8).waitFor({ state: "attached" });
-        assert.equal(await segments.count(), 9, "the citation has one engine-owned segment per reference");
-        await segments.first().focus(); await segments.first().press("ArrowRight");
-        assert.equal(await segments.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
-        await segments.nth(1).press("Space");
+        const tokens = page.locator("main > .shelf .citation-token-button");
+        await tokens.nth(8).waitFor({ state: "attached" });
+        assert.equal(await tokens.count(), 9, "the citation has one engine-owned token per reference");
+        await tokens.first().focus(); await tokens.first().press("ArrowRight");
+        assert.equal(await tokens.nth(1).evaluate((node) => document.activeElement === node), true, "arrow selection follows citation order");
+        await tokens.nth(1).press("Space");
         await page.getByRole("textbox", { name: "Page", exact: true }).waitFor();
         await closeEditor(page.getByRole("region", { name: /^Citation details for/ }));
         const count = shelfControl(page, "9 references");

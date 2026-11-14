@@ -20,7 +20,7 @@ export function Details({ label, reveal, children }: { label: string; reveal?: {
         <Stack as="span" className="ui-row-text">{label}</Stack>
         <span className="ui-details-mark" aria-hidden="true"><Icon name="back" /></span>
       </AriaButton>
-    </div></Group>
-    <div ref={content} id={id} hidden={!open}>{children}</div>
+    </div>
+    <div ref={content} id={id} hidden={!open}>{children}</div></Group>
   </Stack>;
 }

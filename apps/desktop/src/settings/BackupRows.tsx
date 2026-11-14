@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import type { System as BackupSystem, RestoreChange, Note as RestoreNote, RestorePreview } from "../bindings";
 import { type MessageId, problemText, useInterfaceMessages } from "../i18n";
-import { rowDetails } from "./rows";
+import { currentPlatform } from "../platform";
+import { ROWS, rowDetails } from "./rows";
 import { Button } from "../ui/Button";
 import { Buttons, Group, Note, Row, Section } from "../ui/Layout";
 import { listedOutput, outputName } from "../format/outputs";
@@ -14,19 +15,7 @@ export type BackupApi = {
 };
 
 const SYSTEMS: Record<BackupSystem, string> = { macos: "macOS", windows: "Windows", linux: "Linux" };
-const SETTINGS: Record<string, MessageId> = {
-  library: "backup-setting-library", output: "citations-default",
-  density: "general-rows", larger_text: "backup-setting-larger-text",
-  paste: "general-paste-label", menu_bar: "general-menu-bar-label", recent_citations: "citations-recent",
-  small_surprises: "general-small-surprises-label", appearance: "look-appearance", accent: "look-accent",
-};
 const NOTES: Record<RestoreNote, MessageId> = { "library-not-found": "backup-note-library", "shortcut-kept": "backup-note-shortcut", "repairs-settings": "backup-note-repairs" };
-const VALUES: Record<string, Record<string, MessageId>> = {
-  density: { compact: "general-density-compact", comfortable: "general-density-comfortable" },
-  appearance: { system: "look-system", light: "look-light", dark: "look-dark" },
-  accent: { ibis: "look-accent-ibis" },
-};
-
 /** Something to write: a changed setting, or a damaged settings file to replace. */
 const restorable = (preview: RestorePreview) => preview.changes.length > 0 || preview.notes.includes("repairs-settings");
 
@@ -52,16 +41,17 @@ export function BackupRows({ api }: { api: BackupApi }) {
   const label = (setting: string) => {
     const system = setting.startsWith("shortcut.") ? setting.slice("shortcut.".length) : null;
     if (system !== null) return text("backup-setting-shortcut", { system: SYSTEMS[system as BackupSystem] ?? system });
-    const id = SETTINGS[setting];
+    const id = setting === "library" ? "backup-setting-library" : ROWS.find((row) => row.preference === setting)?.label;
     return id ? text(id) : setting;
   };
   const value = (setting: string, written: string | null) => {
     if (written === null) return text("backup-value-default");
     if (written === "on" || written === "off") return text(written === "on" ? "backup-value-on" : "backup-value-off");
-    const output = setting === "output" ? listedOutput(written) : null;
+    const output = setting === "output" || setting === "key_output" ? listedOutput(written) : null;
     if (output) return outputName(output);
-    const known = VALUES[setting]?.[written];
-    if (known) return text(known);
+    const row = ROWS.find((row) => row.preference === setting);
+    const known = row && "options" in row ? row.options.find((option) => option.value === written)?.label : undefined;
+    if (known) return text(known, { platform: currentPlatform() });
     if (setting === "library") {
       if (written === "zotero") return text("backup-value-zotero");
       const [kind, count] = written.split(":");

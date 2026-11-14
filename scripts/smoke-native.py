@@ -13,7 +13,7 @@ install/start and offline observation.
 Hosted runner coverage is listed in [compatibility](compatibility.md#platforms-tested-and-targeted).
 
 - **Linux/X11:** Xvfb/Openbox, one display and the default layout. Checks
-  shortcut/focus, search, Pandoc clipboard text, hide/reopen, settings, reload
+  shortcut/focus, search, citation clipboard text, hide/reopen, settings, reload
   and recovery. After Enter copies, it checks the reason, explicitly pastes
   with Shift+Insert into its xterm editor and reads the citation back.
   Require passing `smoke.json`; 100k launch/memory figures are diagnostics.
@@ -57,8 +57,8 @@ import unittest
 from unittest.mock import Mock, call, patch
 # Contract subprocesses also load this file with runpy, outside Python's script path.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from native_test_settings import clean_settings, settings_exist
-from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_PANDOC, collect_metadata, failure,
+from native_test_settings import SettingsDirectory
+from native_evidence import (ACTIVE, BundleError, Evidence, FORMAT_APA, collect_metadata, failure,
                              load_bundle, observe_native, recording, unavailable)
 
 
@@ -505,9 +505,10 @@ def answer_update_question(settings):
 
 
 def claim_settings(candidate):
-    if settings_exist(candidate):
-        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings")
-    return candidate
+    try:
+        return SettingsDirectory(candidate)
+    except FileExistsError:
+        raise Unavailable("Use a disposable desktop account without existing Ibis settings", "disposable-settings") from None
 
 
 CLIPBOARD_SENTINEL = "Ibis native smoke clipboard sentinel"
@@ -1237,10 +1238,9 @@ class Linux:
     def click(self, name):
         named_target, matched_role, supported_action, returned_false = False, False, False, False
         # WebKitGTK can expose a click action on an enclosing named region.
-        # The footer and its menu used to share "Library"; activating the region
-        # could hit Find instead. Bind menu actions to their actual widget role,
-        # also avoiding a same-named menu left in the accessibility tree.
-        roles = (MENU_BUTTON_ROLES if name == FORMAT_PANDOC or name in MENU_ACTIONS.values()
+        # Bind menu actions to their widget role, avoiding enclosing regions
+        # and same-named menus left in the accessibility tree.
+        roles = (MENU_BUTTON_ROLES if name == FORMAT_APA or name in MENU_ACTIONS.values()
                  else PALETTE_ITEM_ROLES if MENU_ACTIONS.get(name) == "More"
                  else MENU_ITEM_ROLES if name in MENU_ACTIONS else None)
         def children(parent, *, owned=False):
@@ -1432,7 +1432,7 @@ def saved_typst(settings):
         raise AssertionError("Native preference JSON is malformed") from None
     assert (isinstance(value, dict) and type(value.get("schema_version")) is int
             and value["schema_version"] == 2), "Native preferences must use settings format 2"
-    return value.get("output") == "typst"
+    return value.get("key_output") == "typst"
 
 
 def quit_normally(native, app):
@@ -1534,17 +1534,17 @@ def _first_run_preferences_main(args):
             current = snapshot()
             controls = [node.get("name") for node in current["nodes"]
                         if node.get("role", "").lower().replace(" ", "") in MENU_BUTTON_ROLES]
-            return current["visible"] and current["foreground"] and controls.count(FORMAT_PANDOC) == controls.count("Copy as Pandoc") == 1
+            return current["visible"] and current["foreground"] and controls.count(FORMAT_APA) == controls.count("Copy as APA") == 1
 
         wait_for(distinct_format_and_copy, "citation format and copy have distinct accessible names")
         passed("citation format and copy have distinct accessible names")
-        native.click(FORMAT_PANDOC)
+        native.click(FORMAT_APA)
         wait_for(lambda: bool(named(snapshot(), "Typst")), "citation format lists Typst")
         # Pick with the filter: accessibility exposes the menu's radio items
         # without a pattern the exact-name click helper accepts.
         # Not every platform reports focus on the filter; the filtered list proves where typing went.
         native.text("Typst")
-        # "LaTeX \cite" names only that menu item; "Pandoc" is also the header's visible text.
+        # "LaTeX \cite" names only that menu item; "APA" is also the header's visible text.
         wait_for(lambda: not named(snapshot(), "LaTeX \\cite"), "citation format filter leaves only Typst")
         native.key("Down")
         native.key("Return")
@@ -1589,7 +1589,7 @@ def _first_run_preferences_main(args):
                     app.kill()
                     app.wait(timeout=5)
         for cleanup in (stop, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -1603,7 +1603,7 @@ def _first_run_preferences_main(args):
     return exit_code
 
 
-# The native journey (#1676, ROADMAP Consolidation step 2): the real app,
+# The native journey: the real app,
 # invented references, a real text app, and the document read back. macOS
 # and Windows; Linux runs the same journey inside smoke_main, where Ibis
 # copies and the person pastes.
@@ -2226,8 +2226,7 @@ def _journey_main(args):
         owned_settings = claim_settings(settings)
         # Folders this run creates are removed with all Ibis wrote in them,
         # so the next run on the same account starts clean too.
-        created = [path for path in (settings.parent, *driver.data_folders(args.identifier)) if not path.exists()]
-        settings.parent.mkdir(parents=True, exist_ok=True)
+        created = [path for path in driver.data_folders(args.identifier) if not path.exists()]
         settings.write_bytes(JOURNEY_SETTINGS)
         native = observe_native(driver(folder))
         editor, terminal = native.name, native.terminal
@@ -2342,7 +2341,7 @@ def _journey_main(args):
             report["app_running"] = bool(app) and app.poll() is None
     finally:
         for cleanup in (app.stop if app else None, log.close if log else None, native.close if native else None,
-                        (lambda: clean_settings(owned_settings)) if owned_settings else None,
+                        owned_settings.close if owned_settings else None,
                         remove_created, temporary.cleanup if temporary else None):
             try:
                 if cleanup:
@@ -2359,7 +2358,7 @@ def _journey_main(args):
 
 
 def evidence_main(args, scenario, scenario_id):
-    """Always persist the closed manifest, independently of legacy diagnostics."""
+    """Always persist the evidence manifest, including failures."""
     try:
         replay = getattr(args, "replay_bundle", None)
         options = {"identifier": args.identifier, "shortcut": args.shortcut or "ctrl+shift+y",
@@ -2389,7 +2388,7 @@ def evidence_main(args, scenario, scenario_id):
         recorder.failure(error)
         exit_code = 1
     except Exception as error:
-        # Includes setup/cleanup failures outside the legacy scenario handlers.
+        # Includes failures during setup and cleanup.
         recorder.failure(error)
         if isinstance(error, BundleError):
             # BundleError messages are fixed evidence refusals, safe to show.
@@ -2601,8 +2600,7 @@ def smoke_main(args):
             wait_for_query(snapshot, "smoke000001", "Ibis smoke reference 000001", report, settled=True)
 
             def copy():
-                # Linux captures no destination app. Decision 0042 now suggests
-                # APA for an unknown app, rather than the old Pandoc default.
+                # Linux captures no destination app, so it uses the document suggestion.
                 citation = "(Example, 2026)"
                 # Installed release builds never report the non-activating panel as the
                 # key window although Return still reaches it (#454), so the
@@ -2795,7 +2793,7 @@ def smoke_main(args):
                 exit_code = 1
         if owned_settings:
             try:
-                clean_settings(owned_settings)
+                owned_settings.close()
             except OSError as error:
                 failure(error, "cleanup")
                 report.update(status="failed", reason="Disposable settings cleanup failed")
@@ -3461,19 +3459,19 @@ class ContractTests(unittest.TestCase):
         def choose(name):
             if name == "Typst":
                 settings = Path(launches[0]["XDG_CONFIG_HOME"]) / "com.ibiscite.ibis/settings.json"
-                value = '{"schema_version":2,"output":"typst"}'
+                value = '{"schema_version":2,"key_output":"typst"}'
                 if failure == "wrong-format":
-                    value = '{"schema_version":2,"output":"pandoc"}'
+                    value = '{"schema_version":2,"key_output":"pandoc"}'
                 elif failure == "duplicate":
-                    value = '{"schema_version":2,"output":"pandoc","output":"typst"}'
+                    value = '{"schema_version":2,"key_output":"pandoc","key_output":"typst"}'
                 elif failure == "malformed":
                     value = '{invalid'
                 elif failure == "wrong-schema":
-                    value = '{"schema_version":true,"output":"typst"}'
+                    value = '{"schema_version":true,"key_output":"typst"}'
                 elif failure == "non-json":
-                    value = '{"schema_version":2,"output":"typst","invalid":NaN}'
+                    value = '{"schema_version":2,"key_output":"typst","invalid":NaN}'
                 elif failure == "oversized":
-                    value = json.dumps({"schema_version": 2, "output": "typst", "padding": "x" * 65536})
+                    value = json.dumps({"schema_version": 2, "key_output": "typst", "padding": "x" * 65536})
                 settings.write_text(value, encoding="utf-8")
 
         def click(name):
@@ -3488,7 +3486,7 @@ class ContractTests(unittest.TestCase):
                     raise RuntimeError("Synthetic uncertain activation")
             elif name == "More":
                 native.more_open = True
-            elif name == FORMAT_PANDOC:
+            elif name == FORMAT_APA:
                 self.assertEqual(native.query, "smoke000000", "Format selection keeps the highlighted result")
                 self.assertGreaterEqual(clock[0], native.query_ready_at)
                 native.format_filter = ""
@@ -3522,14 +3520,14 @@ class ContractTests(unittest.TestCase):
             if len(launches) == 1:
                 names += ["Where do your references live?"]
             else:
-                names += [FORMAT_PANDOC, "3 references"]
+                names += [FORMAT_APA, "3 references"]
                 if native.format_filter is not None:
                     names += ["Typst"]
                 if native.query:
-                    names += ["Copy as Pandoc", "1 result" if clock[0] >= native.query_ready_at else "3 results",
+                    names += ["Copy as APA", "1 result" if clock[0] >= native.query_ready_at else "3 results",
                               f"Ibis smoke reference {native.query.removeprefix('smoke')}"]
                 if failure == "duplicate-format-name":
-                    names += [FORMAT_PANDOC]
+                    names += [FORMAT_APA]
             result_focus = failure == "active-result-reopen" and native.reopened
             menu_open = native.format_filter is not None
             return {"visible": native.visible, "foreground": native.visible, "nodes": [
@@ -3607,7 +3605,7 @@ class ContractTests(unittest.TestCase):
         self.assertNotIn("IBIS_LIBRARY", launches[0])
         self.assertIn("IBIS_LIBRARY", launches[1])
         self.assertEqual(launches[0]["XDG_CONFIG_HOME"], launches[1]["XDG_CONFIG_HOME"])
-        self.assertEqual([action for action in actions if action[0] in (FORMAT_PANDOC, "Typst")], [(FORMAT_PANDOC, 2), ("Typst", 2)])
+        self.assertEqual([action for action in actions if action[0] in (FORMAT_APA, "Typst")], [(FORMAT_APA, 2), ("Typst", 2)])
         pick = actions.index(("Typst", 2))
         self.assertEqual(actions[pick - 2:pick], [("Down", 2), ("Return in Citation format", 2)], "Typst was not picked from the filter")
         self.assertEqual([action for action in actions if action[0] == "Quit Ibis"], [("Quit Ibis", 1), ("Quit Ibis", 2)])
@@ -5324,17 +5322,6 @@ class ContractTests(unittest.TestCase):
             settings.write_text("{invalid synthetic settings", encoding="utf-8")
             answer_update_question(settings)
             self.assertEqual(settings.read_text(encoding="utf-8"), "{invalid synthetic settings")
-
-    def test_settings_cleanup_removes_only_files_claimed_in_a_fresh_account(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            candidate = Path(temporary) / "settings.json"
-            owned = claim_settings(candidate)
-            for suffix in (".json", ".json.bak", ".json.tmp"):
-                owned.with_suffix(suffix).write_text("synthetic", encoding="utf-8")
-            unrelated = owned.parent / "unrelated.txt"
-            unrelated.write_text("preserved", encoding="utf-8")
-            clean_settings(owned)
-            self.assertEqual(list(owned.parent.iterdir()), [unrelated])
 
     def test_tree_rejects_names_without_editable_search_and_list_roles(self):
         bad = {"nodes": [{"role": "label", "name": n} for n in ("Search references", "Search results", "Results")]}

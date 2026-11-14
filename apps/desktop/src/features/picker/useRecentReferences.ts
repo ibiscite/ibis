@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type * as nativeApi from "../../api";
 
-function clearLegacy() {
+function eraseWebviewHistory() {
   try { localStorage.removeItem("ibis-citation-history"); return false; } catch { return true; }
 }
 
@@ -13,9 +13,9 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
   const epoch = useRef(0);
   const clearing = useRef<Promise<void> | null>(null);
   const [{ hasHistory, forgetFailed, revision }, setState] = useState({ hasHistory: false, forgetFailed: false, revision: 0 });
-  const [legacyFailed, setLegacyFailed] = useState(clearLegacy);
+  const [erasureFailed, setErasureFailed] = useState(eraseWebviewHistory);
   const retire = useCallback(() => {
-    setLegacyFailed(clearLegacy());
+    setErasureFailed(eraseWebviewHistory());
     epoch.current++;
     forgetting.current?.();
     setState((old) => ({ ...old, hasHistory: false, revision: old.revision + 1 }));
@@ -45,5 +45,5 @@ export function useRecentReferences(recentReferences: typeof nativeApi.recentRef
     });
     return () => { void stop.then((unlisten) => unlisten()).catch(() => undefined); };
   }, [onPreferencesChanged, retire]);
-  return { load: recentReferences ? load : undefined, forget: forgetFailed || legacyFailed || hasHistory ? forget : null, forgetFailed: forgetFailed || legacyFailed };
+  return { load: recentReferences ? load : undefined, forget: forgetFailed || erasureFailed || hasHistory ? forget : null, forgetFailed: forgetFailed || erasureFailed };
 }

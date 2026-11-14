@@ -65,11 +65,11 @@ fn initialized(engine: &Engine) -> mcp::Session {
         &request(
             0,
             "initialize",
-            json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
+            json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":"t","version":"1"}}),
         ),
     )
     .unwrap();
-    assert_eq!(opened["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(opened["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     session
 }
 
@@ -103,7 +103,7 @@ fn a_session_runs_over_newline_delimited_stdio() {
     // The notification gets no answer; everything else gets exactly one.
     assert_eq!(replies.len(), 5);
     // An unknown requested revision is answered with the newest handshake revision.
-    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(replies[0]["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     assert!(replies[0]["result"].get("resultType").is_none());
     assert_eq!(replies[0]["result"]["serverInfo"]["name"], "ibis");
     let names: Vec<&str> = replies[1]["result"]["tools"]
@@ -616,7 +616,11 @@ fn a_2026_client_works_without_a_handshake() {
     assert_eq!(result["resultType"], "complete");
     assert_eq!(
         result["supportedVersions"],
-        json!([mcp::PROTOCOL_VERSION, mcp::LEGACY_VERSIONS[0], mcp::LEGACY_VERSIONS[1]])
+        json!([
+            mcp::PROTOCOL_VERSION,
+            mcp::INITIALIZE_VERSIONS[0],
+            mcp::INITIALIZE_VERSIONS[1]
+        ])
     );
     assert_eq!(result["capabilities"], json!({"tools": {}}));
     assert_eq!(result["_meta"]["io.modelcontextprotocol/serverInfo"]["name"], "ibis");
@@ -628,9 +632,9 @@ fn a_2026_client_works_without_a_handshake() {
     assert!(list["result"]["ttlMs"].as_u64().is_some());
     assert_eq!(list["result"]["cacheScope"], "public");
     // The same tools in the same order as for older clients, so caches agree.
-    let legacy = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
-    assert_eq!(list["result"]["tools"], legacy["result"]["tools"]);
-    assert!(legacy["result"].get("ttlMs").is_none());
+    let handshake = mcp::handle(&engine, &mut initialized(&engine), &request(3, "tools/list", json!({}))).unwrap();
+    assert_eq!(list["result"]["tools"], handshake["result"]["tools"]);
+    assert!(handshake["result"].get("ttlMs").is_none());
 
     let call = handle(
         &engine,
@@ -700,7 +704,7 @@ fn a_request_without_the_fields_its_revision_requires_is_refused() {
 #[test]
 fn older_clients_negotiate_a_revision_they_asked_for() {
     let (_dir, engine) = engine();
-    for version in mcp::LEGACY_VERSIONS {
+    for version in mcp::INITIALIZE_VERSIONS {
         let reply = handle(
             &engine,
             &request(
@@ -725,7 +729,7 @@ fn older_clients_negotiate_a_revision_they_asked_for() {
         ),
     )
     .unwrap();
-    assert_eq!(reply["result"]["protocolVersion"], mcp::LEGACY_VERSIONS[0]);
+    assert_eq!(reply["result"]["protocolVersion"], mcp::INITIALIZE_VERSIONS[0]);
     assert_eq!(
         mcp::handle(&engine, &mut session, &request(3, "ping", json!({}))).unwrap()["result"],
         json!({})
@@ -740,10 +744,10 @@ fn only_a_complete_handshake_opens_the_process_to_older_requests() {
     for params in [
         json!({}),
         json!({"protocolVersion":20250618,"capabilities":{},"clientInfo":client}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"clientInfo":client}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{}}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
-        json!({"protocolVersion":mcp::LEGACY_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"clientInfo":client}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{}}),
+        json!({"protocolVersion":mcp::INITIALIZE_VERSIONS[0],"capabilities":{},"clientInfo":{"name":5,"version":[]}}),
     ] {
         let mut session = mcp::Session::default();
         let reply = mcp::handle(&engine, &mut session, &request(1, "initialize", params.clone())).unwrap();

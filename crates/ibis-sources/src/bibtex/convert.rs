@@ -747,7 +747,7 @@ fn lenient_date(text: &str) -> Option<(PartialDate, bool)> {
 
 // ---------- Language ----------
 
-/// BCP 47 tag from `langid`, its legacy `hyphenation` alias, or `language`.
+/// BCP 47 tag from `langid`, its `hyphenation` alias, or `language`.
 /// Unknown names are reported and become `und`, never implicit English.
 fn language_tag(entry: &Entry, problems: &mut Vec<Problem>) -> Option<String> {
     let (field, raw) = ["langid", "hyphenation", "language"].into_iter().find_map(|field| {

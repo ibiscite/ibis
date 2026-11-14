@@ -1,7 +1,7 @@
 //! Front ends reach the engine through its contract (decision 0028). The crate
 //! graph is read from `cargo metadata`, as Cargo itself reads the manifests, so
 //! a renamed, target-specific or inherited dependency cannot hide. A new crate
-//! or a new edge fails here, so the gap that #1260 closes can only get smaller.
+//! or a new edge must declare its place in the graph.
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -14,8 +14,7 @@ use serde_json::{Value, json};
 /// the workspace crates it ships with. `[dev-dependencies]` and
 /// `[build-dependencies]` are not part of what ships, so they are not read.
 ///
-/// The front ends' `ibis-core` is the direct call that #1260 removes: delete a
-/// name when its use goes; never add one. A new need belongs in an engine method.
+/// Shared capabilities belong in engine methods; clients use core contract types.
 const LAYERS: [(&str, &[&str]); 9] = [
     ("crates/ibis-core", &[]),
     ("crates/ibis-zotero-local", &["ibis-core"]),

@@ -15,7 +15,7 @@ function fixture(t, platform) {
   for (const folder of ["bin", "dist", "temp", "installed"]) mkdirSync(join(dir, folder));
   const stub = (name, source) => writeFileSync(join(dir, "bin", name), `#!/usr/bin/env node\n${source}`, { mode: 0o755 });
   const desktop = platform === "macOS" ? "custom-desktop" : "ibis-desktop.exe";
-  // Force the old find/head lookup to see the command before the desktop app.
+  // List the command before the desktop app to prove selection uses identity.
   stub("find", String.raw`const { execFileSync } = require("node:child_process");
 const files = execFileSync("/usr/bin/find", process.argv.slice(2), { encoding: "utf8" }).trim().split("\n");
 console.log(files.sort((a, b) => Number(b.endsWith("/ibis") || b.endsWith("/ibis.exe")) - Number(a.endsWith("/ibis") || a.endsWith("/ibis.exe"))).join("\n"));`);

@@ -1,6 +1,6 @@
 import { createContext, useContext, useSyncExternalStore } from "react";
 
-/** Whether the picker window is on screen, from its session (decision 0035).
+/** Whether the picker window is on screen, from its session.
  * Outside the picker, such as in Settings or a test of one part, it counts as shown. */
 export const PickerShown = createContext(true);
 

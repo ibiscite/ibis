@@ -340,7 +340,7 @@ fn focus_after_show(window: &tauri::WebviewWindow, owner: u64) {
             &pending.state::<ChooserOpen>(),
             || native.get_visible() && native.is_mapped(),
             // This is the same GTK activation request as tao's Focus handler,
-            // including Wayland's previously supplied one-use startup token.
+            // including Wayland's one-use startup token.
             || native.present_with_time(0),
         );
     });
@@ -988,8 +988,7 @@ mod tests {
 
     #[test]
     fn revealing_a_visible_picker_keeps_its_presentation() {
-        // A new presentation would start a new picker session, so the open
-        // library chooser could no longer close itself after its selection.
+        // Revealing keeps the current library chooser's presentation identity.
         assert!(!reveal_shows(Some(true)));
         assert!(reveal_shows(Some(false)));
         // Unknown visibility shows: a dialog must never open without its picker.

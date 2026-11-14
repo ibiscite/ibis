@@ -22,8 +22,8 @@ type Form = { kind: "new"; name: string } | { kind: "rename"; id: string; name: 
 export type WritingDraft = { form: Form | null; place: RefObject<SheetMemory | null> };
 
 
-/** An explicit project switch for the captured app. Native code saves the
- * project, its format and its bibliography together; the sheet never guesses
+/** An explicit writing switch for the captured app. Native code saves the
+ * writing, its format and its bibliography together; the sheet never guesses
  * from a document or displays a native path. */
 export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsApi; format: OutputId; onClose: () => void; draft?: RefObject<WritingDraft> }) {
   const { writings, editWriting, onProjectChanged, onWritingsChanged } = api;
@@ -116,11 +116,11 @@ export function WritingsDialog({ api, format, onClose, draft }: { api: WritingsA
           {view.writings.length === 0 && <p>{say("writing-empty")}</p>}
           <Group label={say("writing-title")}>
             <ChoiceRow label={say("writing-none")} selected={view.selected === null} disabled={busy} onPress={() => edit({ kind: "select", id: null }, true)} />
-            {view.writings.map((project) => {
-              const choice = listedOutput(project.output);
-              return <ChoiceRow key={project.id} label={project.name} accessibleLabel={say("writing-use", { name: project.name })}
-                description={choice ? outputName(choice) : say("writing-unsupported")} selected={project.id === view.selected}
-                disabled={busy || choice === null} onPress={() => edit({ kind: "select", id: project.id }, true)} />;
+            {view.writings.map((writing) => {
+              const choice = listedOutput(writing.output);
+              return <ChoiceRow key={writing.id} label={writing.name} accessibleLabel={say("writing-use", { name: writing.name })}
+                description={choice ? outputName(choice) : say("writing-unsupported")} selected={writing.id === view.selected}
+                disabled={busy || choice === null} onPress={() => edit({ kind: "select", id: writing.id }, true)} />;
             })}
           </Group>
           {selected && <Section label={say("writing-selected")} title={selected.name} level={3}>

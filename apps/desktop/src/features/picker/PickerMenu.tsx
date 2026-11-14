@@ -10,7 +10,7 @@ import { KeyHint } from "../../ui/KeyCaps";
 import { Palette, type PaletteItem, type PaletteSection } from "../../ui/Palette";
 import { SourceIcon, type SourceActionProps } from "../../ui/SourceAction";
 import { COMMAND_ICONS } from "./commands";
-import { projectDetail } from "./useProjectBibliography";
+import { bibliographyDetail } from "./useBibliography";
 
 type Action = PaletteItem & { run: () => void; icon: ReactNode };
 
@@ -59,7 +59,7 @@ export function PickerMenu({ isOpen, onOpenChange, buttonRef, searchRef, library
       ...action("choose-source", say("picker-choose-library-menu"), COMMAND_ICONS.chooseSource, actions.chooseSource, keyed("chooseSource")),
     ] },
     // The bibliography keys are checked against, named by its state.
-    { id: "project", label: project?.status ? projectDetail(project.status) : undefined, items: [
+    { id: "project", label: project?.status ? bibliographyDetail(project.status) : undefined, items: [
       ...project?.choose && project.copyEntry && project.status ? action("project-entry", say("picker-copy-project-entry", { name: isolate(project.status.name) }), "file", project.copyEntry) : [],
       ...project?.choose ? action("project-choose", project.status ? say("picker-choose-other-project") : say("picker-choose-project"), "check-file", project.choose) : [],
       ...project?.status && project.stop ? action("project-stop", say("picker-stop-project", { name: isolate(project.status.name) }), "close", project.stop) : [],

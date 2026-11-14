@@ -107,10 +107,10 @@ test("an activation event retires old intent before its read and a late older ev
   await act(async () => result.current.read());
   const old = Object.freeze(result.current.copyToken());
   changed = true;
-  act(() => result.current.projectChanged([3, 0]));
+  act(() => result.current.writingChanged([3, 0]));
   expect(result.current.isCurrentCopy(old)).toBe(false);
   const fresh = Object.freeze(result.current.copyToken());
-  act(() => result.current.projectChanged([2, 0]));
+  act(() => result.current.writingChanged([2, 0]));
   expect(result.current.isCurrentCopy(fresh)).toBe(true);
   await act(async () => next.resolve({ ...initial, context_version: [3, 0] }));
   expect(result.current.isCurrentCopy(fresh)).toBe(true);
@@ -130,10 +130,10 @@ test("a bibliography read started before selecting another project cannot settle
   }, options()));
   await act(async () => result.current.read());
   const retired = Object.freeze(result.current.copyToken());
-  act(() => result.current.projectChanged([1, 1]));
+  act(() => result.current.writingChanged([1, 1]));
   await waitFor(() => expect(reads).toBe(2));
   let editing!: Promise<WritingsView>;
-  act(() => { editing = result.current.editProject!("opening-a", { kind: "select", id: secondProject.id }); });
+  act(() => { editing = result.current.editWriting!("opening-a", { kind: "select", id: secondProject.id }); });
   await waitFor(() => expect(editWriting).toHaveBeenCalledWith("opening-a", { kind: "select", id: secondProject.id }));
   await act(async () => { oldRead.resolve({ ...first, context_version: [1, 1] }); });
   // The earlier file read is not the owner of the project mutation now in progress.
@@ -145,7 +145,7 @@ test("a bibliography read started before selecting another project cannot settle
   });
   await waitFor(() => expect(reads).toBe(3));
   const fresh = Object.freeze(result.current.copyToken());
-  act(() => result.current.projectChanged([2, 0]));
+  act(() => result.current.writingChanged([2, 0]));
   expect.soft(result.current.isCurrentCopy(fresh)).toBe(true);
   await act(async () => { newRead.resolve(second); });
   expect(result.current).toMatchObject({ ready: true, format: "typst" });

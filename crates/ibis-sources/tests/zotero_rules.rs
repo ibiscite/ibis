@@ -323,8 +323,6 @@ fn malformed_values_of_unknown_fields_are_reported() {
     }
 }
 
-// The rebuilt mapper takes typed neutral values, rather than arbitrary CSL.
-// These cases guard that input boundary; they do not claim legacy partial salvage.
 #[test]
 fn compound_text_fields_are_refused_at_the_neutral_input_boundary() {
     for field in ["title", "publicationTitle", "DOI", "url", "abstractNote", "language"] {

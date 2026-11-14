@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 # Install CI's Ubuntu packages for the desktop runner or web container.
 set -euo pipefail
-# A slow mirror still finishes; a hung one stops. Five minutes cut off slow but
-# moving downloads on 2026-11-10, failing every desktop job that day.
+# Bound hung mirrors while allowing slow downloads to finish.
 apt=(timeout 15m apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
 
 profile=${1:-}

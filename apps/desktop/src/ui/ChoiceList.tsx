@@ -3,6 +3,7 @@ import { ListBox, ListBoxItem } from "react-aria-components";
 import { ariaKeys, keyLabel } from "../keys";
 import { currentPlatform } from "../platform";
 import { Stack } from "./Stack";
+import { useResultsLayout } from "./ResultsArea";
 import "./ChoiceList.css";
 import "./Option.css";
 
@@ -36,6 +37,8 @@ export function ChoiceList({ title, line, choices, onChoose, footnote, autoFocus
   focusId?: string;
 }) {
   const heading = useId();
+  useResultsLayout("choices");
+  useResultsLayout("options", choices.length > 0);
   const mac = currentPlatform() === "macos";
   const list = useRef<HTMLDivElement>(null);
   useEffect(() => {

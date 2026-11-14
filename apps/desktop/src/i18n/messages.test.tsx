@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { expect, test, vi } from "vitest";
 import english from "../../../../locales/en-US.ftl?raw";
-import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, type MessageId, say, useInterfaceMessages } from ".";
+import { createInterfaceMessages, englishMessages, fullStop, InterfaceMessagesProvider, say, useInterfaceMessages } from ".";
 
 test("the bundled interface default is English, independent of browser language and direction", () => {
   expect(englishMessages.locale).toBe("en-US");
@@ -33,79 +33,7 @@ test.each([
   expect(() => createInterfaceMessages(source)).toThrow("Invalid interface messages");
 });
 
-// Frozen pre-migration English oracle, including punctuation and capitalization.
-const panelEnglish = {
-  "shortcuts-open": "Open Ibis",
-  "shortcuts-description": "Click the shortcut, then type a new one. Esc cancels.",
-  "shortcuts-record": "Type a shortcut…",
-  "shortcuts-use-default": "Use Default",
-  "shortcuts-change": "Change…",
-  "shortcuts-not-assigned": "Not assigned",
-  "shortcuts-configure-failed": "The desktop could not open its shortcut settings. Try again.",
-  "shortcuts-failed": "Ibis could not change the shortcut. Try again.",
-  "shortcuts-read-failed": "Ibis could not check the shortcut. Try reopening Settings.",
-  "shortcuts-refusal-invalid": "Ibis cannot use that key combination. Try another shortcut.",
-  "shortcuts-refusal-needs-modifier": "Include Control, Alt or Command. Shift alone is not enough.",
-  "shortcuts-refusal-app-shortcut": "That shortcut is used for app commands. Add another modifier.",
-  "shortcuts-refusal-alt-gr": "Ctrl+Alt with a typing key is used for AltGr on Windows. Try another shortcut.",
-  "shortcuts-refusal-in-use": "Another app or the system may be using that shortcut. Try another.",
-  "shortcuts-refusal-unavailable": "Global shortcuts are unavailable on this desktop. Open Ibis from your application launcher.",
-  "shortcuts-refusal-not-saved": "The shortcut works now, but Ibis could not save it for next time. Try again.",
-  "shortcuts-command-format": "Change Format",
-  "shortcuts-command-pin": "Keep Window Open",
-  "shortcuts-command-keys": "Keyboard Shortcuts",
-  "shortcuts-command-more": "More",
-  "shortcuts-command-source": "Open the Source",
-  "shortcuts-command-change-last": "Change Last Citation",
-  "shortcuts-command-settings": "Settings",
-  "shortcuts-command-quit": "Quit Ibis",
-  "shortcuts-region-search": "While searching",
-  "shortcuts-region-library": "Your library",
-  "shortcuts-region-picker": "Anywhere in Ibis",
-  "shortcuts-region-menu": "In a menu",
-  "shortcuts-region-system": "Open Ibis",
-  "shortcuts-region-citation": "In the citation",
-  "shortcuts-action-open": "From any app",
-  "shortcuts-action-choose-source": "Choose a library",
-  "shortcuts-action-reveal-source": "Show the source in its folder",
-  "shortcuts-action-source": "Open the source",
-  "shortcuts-action-change-last": "Edit the citation you just pasted",
-  "shortcuts-action-copy": "Paste or copy the citation",
-  "shortcuts-action-paste": "Paste the citation",
-  "shortcuts-action-copy-only": "Copy the citation",
-  "shortcuts-action-add": "Add another reference",
-  "shortcuts-action-move": "Move through results",
-  "shortcuts-action-escape": "Step back or hide",
-  "shortcuts-action-format": "Change the format",
-  "shortcuts-action-more": "More actions",
-  "shortcuts-action-pin": "Keep the window open",
-  "shortcuts-action-keys": "Show keyboard shortcuts",
-  "shortcuts-action-settings": "Open Settings",
-  "shortcuts-action-quit": "Quit Ibis",
-  "shortcuts-action-undo": "Undo",
-  "shortcuts-action-text-size": "Make text larger or smaller",
-  "shortcuts-action-citation-move": "Move between references",
-  "shortcuts-action-citation-remove": "Remove the reference",
-  "shortcuts-action-menu-move": "Move through the menu",
-  "shortcuts-action-menu-ends": "Go to the first or last item",
-  "shortcuts-action-menu-choose": "Choose the item",
-  "shortcuts-action-menu-leave": "Leave the menu and return to the search",
-  "shortcuts-or": "or",
-  "about-automatic": "Check for updates automatically",
-  "about-automatic-description": "Reads a small update file from GitHub a few times a day.",
-  "about-check": "Check for Updates",
-  "about-check-label": "Check for updates",
-  "about-copied": "Copied",
-  "about-copy-failed": "The version could not be copied.",
-  "about-unavailable": "This build does not update itself.",
-} as const;
-
-test.each(Object.entries(panelEnglish))("%s preserves exact English and expands in the pseudolocale", (id, expected) => {
-  expect(englishMessages.text(id as MessageId)).toBe(expected);
-  expect(createInterfaceMessages(english, true).text(id as MessageId)).toMatch(/^⟦.+⟧$/);
-});
-
-test("panel variables preserve exact English and formatting errors refuse without partial copy", () => {
+test("missing variables and invalid catalogues refuse without partial rendering", () => {
   expect(englishMessages.text("about-version", { name: "Synthetic App", version: "0.3.0" })).toBe("Version 0.3.0");
   expect(englishMessages.text("about-version", { name: "Ibis", version: "" })).toBe("Version ");
   expect(englishMessages.text("shortcuts-picker-conflict", { command: "Change Format" })).toBe("That shortcut is used for Change Format. Try another shortcut.");

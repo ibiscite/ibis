@@ -3,36 +3,44 @@ import { Input, Label, TextField } from "react-aria-components";
 import { isolate, say } from "../../i18n";
 import { Button } from "../../ui/Button";
 import { PageStrip } from "../../ui/PageStrip";
-import { confirmOffset, formatPages, parsePages } from "./pages";
+import { choosePages, citableLabel, confirmOffset, pageCandidates, parsePages } from "./pages";
 import type { PageSource } from "./source";
 import "../../ui/Reader.css";
 import "../../ui/Overlay.css";
 
 /** A reference's pages beside its details (decision 0038): thumbnails, the
- * pages, and one toolbar line. The Page value is the one truth: the thumbnails
- * show it, and choosing a page writes it. Scrolling never changes it. */
+ * pages, and one toolbar line. Printed text and an explicit physical choice
+ * share one selection model. Scrolling changes only the page in view. */
 export function Reader({ source, title, page, onPageChange }: {
   source: PageSource; title: string; page: string;
   onPageChange: (value: string) => void;
 }) {
   // Printed numbers the person confirmed this opening, for pages without one.
-  // The parent keys a Reader by its document, so a new document starts afresh.
-  const [labels, setLabels] = useState(source.labels);
-  const parsed = useMemo(() => parsePages(page, labels).selected, [page, labels]);
-  // A chosen page with no printed number waits here until its number is confirmed.
-  const [unnumbered, setUnnumbered] = useState<number | null>(null);
-  const selected = useMemo(() => unnumbered === null ? parsed : new Set([...parsed, unnumbered]), [parsed, unnumbered]);
-  const [current, setCurrent] = useState(() => Math.min(...parsed, labels.length - 1));
+  // The inspector owns the citation item; its Reader key owns the document.
+  const [labels, setLabels] = useState(() => source.labels.map(citableLabel));
+  const [selection, setSelection] = useState(() => parsePages(page, labels));
+  const [current, setCurrent] = useState(() => selection.selected.size ? Math.min(...selection.selected) : 0);
   const [anchor, setAnchor] = useState<number | null>(null);
   const [printed, setPrinted] = useState("");
   const pages = useRef<HTMLDivElement>(null);
+  // A controlled echo preserves physical identity; only edited text is parsed.
+  if (page !== selection.text) {
+    setSelection(parsePages(page, labels)); setAnchor(null); setPrinted("");
+  }
+  const { selected } = selection;
+  const unnumbered = [...selected].find((index) => labels[index] === null) ?? null;
+  const thumbnails = useMemo(() => {
+    const candidates = pageCandidates(labels);
+    return labels.map((printed, index) => printed && candidates(printed).length > 1
+      ? say("reader-indicator", { printed: isolate(printed), index: String(index + 1), count: String(labels.length) }) : printed);
+  }, [labels]);
 
   const show = (index: number) => pages.current?.querySelector(`[data-page="${index}"]`)?.scrollIntoView?.({ block: "start" });
   const choose = (next: Set<number>, changed: number | null) => {
-    const missing = [...next].find((index) => labels[index] === null) ?? null;
-    setUnnumbered(missing);
+    const choice = choosePages(labels, next);
+    setSelection(choice);
     if (changed !== null) { setAnchor(changed); show(changed); }
-    onPageChange(formatPages(labels, next));
+    onPageChange(choice.text);
   };
   const cite = (extend: boolean) => {
     if (extend && anchor !== null) {
@@ -61,7 +69,7 @@ export function Reader({ source, title, page, onPageChange }: {
     return () => { observer.disconnect(); for (const stop of drawn.values()) stop(); };
   }, []);
   // biome-ignore lint/correctness/useExhaustiveDependencies: opens at the first cited page, once.
-  useEffect(() => { if (parsed.size) show(Math.min(...parsed)); }, []);
+  useEffect(() => { if (selected.size) show(Math.min(...selected)); }, []);
 
   const keys = (event: KeyboardEvent) => {
     const command = event.metaKey || event.ctrlKey;
@@ -75,8 +83,9 @@ export function Reader({ source, title, page, onPageChange }: {
     event.preventDefault();
     const next = confirmOffset(labels, unnumbered, printed);
     if (next[unnumbered] === null) return;
-    setLabels(next); setUnnumbered(null); setPrinted("");
-    onPageChange(formatPages(next, new Set([...parsed, unnumbered])));
+    const choice = choosePages(next, selected);
+    setLabels(next); setSelection(choice); setPrinted("");
+    onPageChange(choice.text);
   }}>
     <TextField className="reader-ask-field" value={printed} onChange={setPrinted} autoFocus>
       <Label>{say("reader-ask", { index: String(unnumbered + 1) })}</Label>
@@ -88,7 +97,7 @@ export function Reader({ source, title, page, onPageChange }: {
   // the page you are on in a small floating bar over them, with the one action
   // that acts on it. No toolbar row takes height from the page.
   return <section className="reader" aria-label={say("reader-region", { title })} onKeyDown={keys}>
-    <div className="reader-strip"><PageStrip label={say("reader-thumbnails")} labels={labels} selected={selected} current={current} unlabelled={(index: number) => say("reader-pdf-page", { index: String(index + 1) })} onChange={choose} draw={source.draw} /></div>
+    <div className="reader-strip"><PageStrip label={say("reader-thumbnails")} labels={thumbnails} selected={selected} current={current} unlabelled={(index: number) => say("reader-pdf-page", { index: String(index + 1) })} onChange={choose} draw={source.draw} /></div>
     <div className="reader-view">
       <div ref={pages} className="reader-pages scroll-area" tabIndex={0} aria-label={say("reader-pages")}>
         {labels.map((printed, index) => <div key={index} className="reader-sheet" data-page={index} role="group" aria-label={printed ? say("reader-indicator", { printed: isolate(printed), index: String(index + 1), count: String(labels.length) }) : say("reader-unknown", { index: String(index + 1), count: String(labels.length) })}>
