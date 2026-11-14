@@ -3804,6 +3804,7 @@ class ContractTests(unittest.TestCase):
             self.addCleanup(native.close)
         self.assertEqual(events, ["openbox", "ready?", "ready?", "ready?", "xterm"])
 
+    @unittest.skipIf(sys.platform == "win32", "needs a POSIX pseudo-terminal")
     def test_editor_records_opening_keys_without_waiting_for_a_newline(self):
         import pty
         import termios
