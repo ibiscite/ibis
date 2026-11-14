@@ -18,9 +18,8 @@ export function useFormatSettings(api: SettingsApi) {
   const request = useRef(0);
   const openRequest = useRef(0);
   const refresh = useRef<(() => Promise<void>) | null>(null);
-  useEffect(() => () => { openRequest.current += 1; }, []);
   useEffect(() => {
-    if (!api.formatSettings) return;
+    if (!api.formatSettings) return () => { openRequest.current += 1; };
     setBusy(false);
     let alive = true;
     const read = () => {
@@ -34,7 +33,7 @@ export function useFormatSettings(api: SettingsApi) {
     const events = api.onSettingsChanged(read);
     void events.then(read, read);
     window.addEventListener("focus", read);
-    return () => { alive = false; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop(), () => {}); };
+    return () => { alive = false; openRequest.current += 1; refresh.current = null; request.current += 1; window.removeEventListener("focus", read); void events.then((stop) => stop(), () => {}); };
   }, [api]);
   const forget = (id: string) => {
     if (!api.forgetAppFormat || !api.formatSettings || busy) return;

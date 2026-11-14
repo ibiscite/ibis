@@ -484,9 +484,10 @@ fn commit_shown(
     let format = {
         let settings = ibis_engine::settings::load(&app.state::<crate::preferences::SettingsFile>().path);
         let target = captured.as_ref().map(|(id, _, _)| id);
-        let chosen = ibis_engine::format::choose(&settings.settings, target);
-        (settings.problem.is_none() && chosen.output == *recited.citation().request_output())
-            .then(|| (target.cloned(), chosen))
+        settings.cites().ok().and_then(|saved| {
+            let chosen = ibis_engine::format::choose(saved, target);
+            (chosen.output == *recited.citation().request_output()).then(|| (target.cloned(), chosen))
+        })
     };
     let copied = commit_copy(
         &file,

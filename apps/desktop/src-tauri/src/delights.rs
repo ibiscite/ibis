@@ -213,7 +213,7 @@ impl SettingsFile {
             || self.delights.lock().is_ok_and(|owner| owner.revision > owner.flushed),
             |settings| {
                 if let Ok(owner) = self.delights.lock() {
-                    settings.delights = owner.record.clone();
+                    settings.device.delights = owner.record.clone();
                     revision = owner.revision;
                 }
             },

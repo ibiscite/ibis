@@ -764,7 +764,8 @@ mod tests {
         assert!(slot.finish(ticket.generation, read(&ticket)));
         let current = slot.current().unwrap_or_else(|| panic!("a read"));
 
-        let file = FileLibrary::open(&library).unwrap_or_else(|_| panic!("a library"));
+        let file =
+            FileLibrary::open(&library, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
         let query = serde_json::from_value(serde_json::json!({"text":"2026","interpret_locators":false}))
             .unwrap_or_else(|error| panic!("{error}"));
         let reply = file
@@ -828,7 +829,8 @@ mod tests {
         slot.finish(ticket.generation, read(&ticket));
         let current = slot.current();
 
-        let file = FileLibrary::open(&library).unwrap_or_else(|_| panic!("a library"));
+        let file =
+            FileLibrary::open(&library, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
         let query = serde_json::from_value(serde_json::json!({"text":"gone","interpret_locators":false}))
             .unwrap_or_else(|error| panic!("{error}"));
         let reply = file
@@ -871,7 +873,8 @@ mod tests {
         fn new(library: &str, project: &std::path::Path) -> Self {
             use crate::library::engine_library::FileLibrary;
             let (library_dir, path) = written("refs.bib", library);
-            let file = FileLibrary::open(&path).unwrap_or_else(|_| panic!("a library"));
+            let file =
+                FileLibrary::open(&path, &ibis_engine::Cancellation::default()).unwrap_or_else(|_| panic!("a library"));
             let mut open = Library::default();
             open.file = Some(std::sync::Arc::new(file));
             let app = tauri::test::mock_builder()

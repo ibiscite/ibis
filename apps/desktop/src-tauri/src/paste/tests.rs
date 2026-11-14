@@ -1475,8 +1475,7 @@ fn unreadable_app_choices_copy_without_guessing_that_copy_only_was_off() {
                 system: System::Macos,
                 id: desk.app_id.into(),
             },
-            None,
-            Some(AppPaste::Paste),
+            AppPaste::Paste,
         )
         .unwrap_or_else(|e| panic!("{e}"));
     assert_eq!(deliver(&desk, Some(&proof), true), copied("paste-unavailable"));

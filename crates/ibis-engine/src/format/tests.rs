@@ -7,8 +7,11 @@ fn forgetting_a_captured_app_restores_your_format_despite_identifier_case() {
         id: "com.microsoft.Word".into(),
     };
     let mut settings = Settings {
-        output: Some("modern-language-association".into()),
-        ..Settings::default()
+        portable: crate::settings::Portable {
+            output: Some("modern-language-association".into()),
+            ..Default::default()
+        },
+        ..Default::default()
     };
     settings.remember_app_output(&word, "apa".into());
     assert_eq!(choose(&settings, Some(&word)).from, FormatFrom::App);
@@ -56,8 +59,11 @@ fn with_nothing_chosen_each_kind_of_app_gets_its_suggestion() {
 #[test]
 fn your_format_applies_only_to_apps_of_its_own_kind() {
     let settings = Settings {
-        output: Some("chicago-author-date".into()),
-        ..Settings::default()
+        portable: crate::settings::Portable {
+            output: Some("chicago-author-date".into()),
+            ..Default::default()
+        },
+        ..Default::default()
     };
     let word = app(Macos, "com.microsoft.word");
     let obsidian = app(Macos, "md.obsidian");
@@ -71,8 +77,12 @@ fn your_format_applies_only_to_apps_of_its_own_kind() {
         ("pandoc".into(), FormatFrom::Suggestion)
     );
     let settings = Settings {
-        key_output: Some("typst".into()),
-        ..settings
+        portable: crate::settings::Portable {
+            key_output: Some("typst".into()),
+            ..settings.portable
+        },
+        device: settings.device,
+        unknown: settings.unknown,
     };
     assert_eq!(said(&settings, Some(&obsidian)), ("typst".into(), FormatFrom::Yours));
     assert_eq!(
@@ -81,9 +91,12 @@ fn your_format_applies_only_to_apps_of_its_own_kind() {
     );
     // A key id left in the documents value, or a style in the key value, is no choice.
     let crossed = Settings {
-        output: Some("pandoc".into()),
-        key_output: Some("apa".into()),
-        ..Settings::default()
+        portable: crate::settings::Portable {
+            output: Some("pandoc".into()),
+            key_output: Some("apa".into()),
+            ..Default::default()
+        },
+        ..Default::default()
     };
     assert_eq!(said(&crossed, Some(&word)), ("apa".into(), FormatFrom::Suggestion));
     assert_eq!(
@@ -96,8 +109,11 @@ fn your_format_applies_only_to_apps_of_its_own_kind() {
 fn an_apps_own_format_beats_yours_whatever_its_kind() {
     let obsidian = app(Macos, "md.obsidian");
     let mut settings = Settings {
-        key_output: Some("typst".into()),
-        ..Settings::default()
+        portable: crate::settings::Portable {
+            key_output: Some("typst".into()),
+            ..Default::default()
+        },
+        ..Default::default()
     };
     settings.remember_app_output(&obsidian, "modern-language-association".into());
     assert_eq!(
@@ -119,8 +135,9 @@ fn a_writing_chosen_for_the_app_beats_the_apps_format_and_says_its_name() {
         "format": {"kind": "csl", "style": "chicago-notes-bibliography"},
     }))
     .unwrap_or_else(|error| panic!("{error}"));
-    settings.writings.push(thesis);
+    settings.device.writings.push(thesis);
     settings
+        .device
         .writing_apps
         .insert("macos:com.microsoft.word".into(), "Thesis".into());
     let chosen = choose(&settings, Some(&word));
@@ -195,7 +212,12 @@ fn a_first_successful_suggested_paste_is_reported_once_per_kind_and_survives_reo
     let next = choose(&settings, Some(&pages));
     assert!(!accept_suggestion(&mut settings, Some(&pages), &next));
     assert_eq!(choose(&settings, Some(&pages)).from, FormatFrom::App);
-    crate::settings::save(&path, &settings)?;
+    crate::settings::Owner::open(path.clone())
+        .change(|current| {
+            *current = settings.clone();
+            Ok::<_, crate::settings::SettingsError>(())
+        })
+        .map(|_| ())?;
     let mut settings = crate::settings::load(&path).settings;
     let keys = choose(&settings, Some(&markdown));
     assert!(accept_suggestion(&mut settings, Some(&markdown), &keys));

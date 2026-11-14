@@ -1,4 +1,6 @@
 //! Defaults stay unset when another choice is saved.
+#[path = "support/settings.rs"]
+mod fixture;
 use ibis_engine::settings;
 
 #[test]
@@ -10,17 +12,14 @@ fn shortcut_defaults_stay_unwritten_and_explicit_choices_survive_saves() {
         (Some("control+command+r"), false),
         (Some("Alt+Shift+K"), false),
     ] {
-        let directory = tempfile::tempdir().unwrap_or_else(|error| panic!("{error}"));
-        let path = directory.path().join("settings.json");
+        let (_directory, path) = fixture::file();
         let mut original = serde_json::json!({ "schema_version": settings::SCHEMA_VERSION });
         if shortcut.is_some() || explicit_null {
             original["shortcut"] = serde_json::json!(shortcut);
         }
         std::fs::write(&path, original.to_string()).unwrap_or_else(|error| panic!("{error}"));
-        let loaded = settings::load(&path);
-        assert!(loaded.problem.is_none());
-        assert_eq!(loaded.settings.shortcut.here(), shortcut);
-        settings::update(&path, |current| current.output = Some("typst".into()))
+        assert_eq!(fixture::read(&path).portable.shortcut.here(), shortcut);
+        fixture::edit(&path, |settings| settings.portable.output = Some("typst".into()))
             .unwrap_or_else(|error| panic!("{error}"));
         let saved: serde_json::Value =
             serde_json::from_slice(&std::fs::read(&path).unwrap_or_default()).unwrap_or_else(|error| panic!("{error}"));
